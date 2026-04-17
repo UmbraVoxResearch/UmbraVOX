@@ -97,9 +97,9 @@ faster than birthday bound.
 
 **Analysis:**
 
-The best known attack reaches 38 of 64 rounds for SHA-256 (Eichlseder,
-Mendel & Schläffer 2020) with impractical complexity.  SHA-512 (80 rounds) has even larger
-margin.  The Merkle-Damgård structure with Davies-Meyer compression
+The best known collision attack reaches 38 of 64 rounds for SHA-256
+(Mendel, Nad & Schläffer 2013) with impractical complexity.  SHA-512
+(80 rounds) has even larger margin (Eichlseder, Mendel & Schläffer 2020).  The Merkle-Damgård structure with Davies-Meyer compression
 provides collision resistance reducible to compression function resistance.
 
 **UmbraVox context:** SHA-256 used for block hashing and Merkle trees;
@@ -472,7 +472,7 @@ without domain separation.
    - Signal ratchet root key: `"UmbraVox_Ratchet_v1"`
    - PQ chain key derivation: `"UmbraVox_PQChain_v1"`
    - PQ per-message key derivation: `"UmbraVox_PQMsg_v1"`
-   - HMAC chain key derivation: `"UmbraVox_HMAC_v1"`
+   - Per-message HMAC authentication key derivation: `"UmbraVox_HMAC_v1"`
    - The info string is bound into the PRF output (HKDF-Expand), making
      outputs from different contexts computationally independent.
 

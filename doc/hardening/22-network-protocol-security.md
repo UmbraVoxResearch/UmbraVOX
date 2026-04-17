@@ -237,7 +237,7 @@ plaintext_frame:
 | Maximum PEER_EXCHANGE entries | 1,000 addresses | Prevent peer table overflow |
 | Minimum frame length | 9 bytes | msg_type (1) + msg_id (8) |
 
-**Enforcement:** The length field is read first. If length > 4,194,304, the connection is immediately terminated with a REJECT message (reason: `OVERSIZE_MESSAGE`) and the peer's ban score is incremented by 50.
+**Enforcement:** The length field is read first. If length > 6,291,456, the connection is immediately terminated with a REJECT message (reason: `OVERSIZE_MESSAGE`) and the peer's ban score is incremented by 50.
 
 ### 4.4 Memory Allocation Strategy
 
