@@ -402,6 +402,26 @@ the HMAC chain (violating PRF, A4), solve CDH on fresh ephemeral DH
 |Pr[G0] - Pr[G1]| ≤ Adv^CCA_{Signal}(A₁)
 ```
 
+**ML-KEM decapsulation failure handling.**  FIPS 203 specifies implicit
+rejection: on decapsulation failure, ML-KEM outputs `H(z || c)` where `z`
+is a per-key secret seed and `c` is the ciphertext.  This output is
+computationally indistinguishable from a valid shared secret (it is a PRF
+output keyed by the secret `z`).  In the composition proof, decapsulation
+failure does not introduce an additional security term because:
+
+1. The implicit rejection output is indistinguishable from random to any
+   adversary without `z`, so Game 1 (replace pq_ss with random) already
+   covers this case — the adversary cannot distinguish a valid shared
+   secret from the implicit rejection output.
+2. If decapsulation fails and the protocol falls back to classical-only
+   security, the independence argument (Games 2–3 below, lines 438–441)
+   ensures that the Signal layer alone provides IND-CCA2 security.
+3. The cost of this failure path is bounded by `Adv^CCA_{ML-KEM}(B₁)`,
+   already accounted for in the Game 0→Game 1 transition.
+
+Cross-reference: `doc/hardening/19-composition-verification.md` §3.1–3.2
+(INV-ERR-1) for the operational handling of decapsulation failure.
+
 **Game 2 (Replace PQ layer).**  Replace ct_final with encryption of a
 random string under the PQ key.
 

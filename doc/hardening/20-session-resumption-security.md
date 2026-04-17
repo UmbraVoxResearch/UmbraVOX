@@ -1,6 +1,6 @@
 # Hardening-20: Session Resumption Security
 
-**Status:** Draft
+**Status:** Normative
 **Depends on:** `doc/03-cryptography.md` (PQXDH, Double Ratchet, skipped key limits), `doc/proof-02-protocol-security.md` (CK model, forward secrecy proofs), `doc/11-node-architecture.md` (storage layout, key store encryption)
 **Cross-references:** `doc/hardening/05-ratchet-state-protection.md` (encrypted state on disk)
 **References:** RFC 7748 (X25519), RFC 8032 (Ed25519), FIPS 203 (ML-KEM-768), Signal Double Ratchet specification

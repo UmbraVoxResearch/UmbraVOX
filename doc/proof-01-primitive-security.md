@@ -322,6 +322,10 @@ each ratchet step produces a unique (chain_key, message_number) pair.  The
 ratchet chain uses a fresh chain key, making cross-chain nonce collision
 irrelevant (different keys).
 
+### 4.5a Nonce Overflow Prevention
+
+UmbraVox enforces a 500,000-message session limit (`doc/hardening/20-session-resumption-security.md` §9.1, "Maximum total messages"). The GCM nonce is derived from a Word32 monotonic counter per ratchet chain. Since 500,000 << 2^32 (a margin of ~8,589×), counter overflow within a single session is impossible. When the 500,000-message limit is reached, the session expires and is re-established via fresh PQXDH handshake with new counters starting from 0. This architectural bound ensures the nonce uniqueness guarantee (§4.5) holds for all reachable session states.
+
 ### 4.6 Concrete Security
 
 With AES-256 PRP security at ~128 bits, per-key security depends on

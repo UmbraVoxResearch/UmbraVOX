@@ -78,7 +78,7 @@ $UmbraVox_DATA/
 |----------|----------|
 | CPU | 4 cores minimum, 8 recommended |
 | RAM | 2 GB min, 4 GB recommended |
-| Disk | ~80 GB steady-state (derivation: 3,927 slots × 20% occupancy = 785 blocks/epoch × 4,550,656 bytes (~4.44 MB) = ~3.57 GB chain data/epoch × 22 epochs = ~78.5 GB/cycle + state DB + indexes + WAL headroom) |
+| Disk | ~80 GB steady-state (derivation: 3,927 slots × 20% occupancy = 785 blocks/epoch × 4,550,656 bytes (~4.55 MB) = ~3.57 GB chain data/epoch × 22 epochs = ~78.5 GB/cycle + state DB + indexes + WAL headroom) |
 | Bandwidth | ~400 KB/s sustained (minimum); peaks to ~5 MB/s during sync |
 
 ## Memory Limits and Backpressure

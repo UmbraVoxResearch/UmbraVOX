@@ -39,12 +39,12 @@ Each consensus block contains up to **4,444 message transactions**:
 |-----------|-------|
 | Messages per block | 4,444 |
 | Message size | 1,024 bytes |
-| Full block size | 4,444 × 1,024 = 4,550,656 bytes (~4.44 MB) |
+| Full block size | 4,444 × 1,024 = 4,550,656 bytes (~4.55 MB) |
 | Compact block size | ~50-130 KB (with 95%+ mempool hit rate) |
 | Block rate | ~1 block per 55 seconds (f=0.20, 11s slots) |
 | Global throughput | ~80.8 messages/second (~6.98M/day) |
 
-Compact block relay is mandatory at this block size. Without it, full ~4.44 MB blocks cannot propagate within the 11-second slot. See `doc/09-network.md` for the compact block relay protocol.
+Compact block relay is mandatory at this block size. Without it, full ~4.55 MB blocks cannot propagate within the 11-second slot. See `doc/09-network.md` for the compact block relay protocol.
 
 ## Message Types
 

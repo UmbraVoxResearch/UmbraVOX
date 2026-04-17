@@ -26,3 +26,7 @@ This file is a reference index only. All authoritative project information lives
 - [doc/19-game-theory.md](doc/19-game-theory.md) — Nash equilibria, spam/Sybil/collusion/depletion attack profitability
 - [doc/20-economic-analysis.md](doc/20-economic-analysis.md) — Universe Cycle economic analysis, modeling, adaptive controller convergence
 - [doc/requirements-trace.md](doc/requirements-trace.md) — DO-178C DAL A bidirectional traceability matrix (60 requirements)
+
+### Hardening Specifications
+
+- [doc/hardening/23-treasury-governance.md](doc/hardening/23-treasury-governance.md) — Treasury governance: safety bounds, anti-capture, spending categories, formal invariants 13-15

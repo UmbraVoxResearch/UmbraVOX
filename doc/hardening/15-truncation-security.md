@@ -595,7 +595,7 @@ Genesis block size: ~136 bytes/user * user_count + attestation overhead
 
 Block sync (worst case, full 22-epoch cycle):
   ~17,279 blocks * ~100 KB avg compact block size = ~1.7 GB
-  (full blocks: ~17,279 * ~4.44 MB = ~76.7 GB; compact block relay used for sync)
+  (full blocks: ~17,279 * ~4.55 MB = ~76.7 GB; compact block relay used for sync)
 
 Total sync: ~1.8 GB for a full cycle catchup at 500K users (compact blocks + genesis).
 ```

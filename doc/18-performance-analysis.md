@@ -18,7 +18,7 @@ Each block carries up to 4,444 message transactions (each at 1 KB). Therefore:
 - **Global chain throughput: ~80.8 messages/second**
 - Per day: 80.8 × 86,400 = **~6,981,120 messages/day**
 - Per 11-day cycle: ~6.98M × 11 = **~76.8 million messages/cycle**
-- Full block size: 4,444 × 1,024 = 4,550,656 bytes (**~4.44 MB**)
+- Full block size: 4,444 × 1,024 = 4,550,656 bytes (**~4.55 MB**)
 - Compact block size: **~50-130 KB** (with 95%+ mempool hit rate)
 
 This represents an **808x improvement** over the original spec (~0.1 msg/sec).
@@ -115,7 +115,7 @@ This is comparable to Signal's latency for direct messages.
 Each epoch spans 3,927 slots (12 hours at 11s/slot):
 
 - Blocks per epoch: 3,927 × 0.20 = ~785 blocks
-- Block size: ~4.44 MB (4,444 × 1,024 = 4,550,656 bytes)
+- Block size: ~4.55 MB (4,444 × 1,024 = 4,550,656 bytes)
 - **Chain data per epoch: 785 × 4,550,656 bytes = ~3.57 GB**
 
 ### Per-Cycle Chain Data
@@ -175,7 +175,7 @@ With compact block relay enabled and ~25 gossip peers:
 
 With protocol overhead (Noise encryption, TCP headers): **~400 KB/s minimum** per node.
 
-**Compact block relay is mandatory.** Without it, full ~4.44 MB blocks would require ~11.1 seconds per hop at 400 KB/s — exceeding the 11-second slot. With CBR, compact blocks (~50-130 KB) propagate in ~0.13-0.33s per hop, providing ~10 seconds of margin within the slot.
+**Compact block relay is mandatory.** Without it, full ~4.55 MB blocks would require ~11.1 seconds per hop at 400 KB/s — exceeding the 11-second slot. With CBR, compact blocks (~50-130 KB) propagate in ~0.13-0.33s per hop, providing ~10 seconds of margin within the slot.
 
 ### Dandelion++ Overhead
 
@@ -265,7 +265,7 @@ When early truncation fires (circulating supply drops below threshold at an epoc
 
 1. **808x throughput improvement over original spec.** The redesign moves UmbraVox from ~0.1 msg/sec to ~80.8 msg/sec, approaching Signal's estimated volume within one order of magnitude.
 
-2. **Compact block relay is mandatory.** Without CBR, ~4.44 MB blocks cannot propagate within the 11-second slot. With CBR (~50-130 KB compact blocks), propagation completes in ~0.4-1.0s across 3 hops — massive headroom.
+2. **Compact block relay is mandatory.** Without CBR, ~4.55 MB blocks cannot propagate within the 11-second slot. With CBR (~50-130 KB compact blocks), propagation completes in ~0.4-1.0s across 3 hops — massive headroom.
 
 3. **Two-tier settlement balances latency and security.** Messages (encrypted, low reorder impact) settle at k=11 (~10 min). Value transfers settle at k=22 (~20 min, comparable to Bitcoin 6-conf).
 

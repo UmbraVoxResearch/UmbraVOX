@@ -146,9 +146,11 @@ StealthScan(sk_scan, PK_spend, block):
 
 ### 3.4 View Tag Optimization
 
-The 1-byte view tag reduces scan work by 256x. For each output, the recipient performs one X25519 scalar multiplication (step 1) and one HKDF evaluation (step 2), then compares a single byte. Only 1/256 of outputs proceed to the full stealth key derivation (steps 4-7).
+The 1-byte view tag reduces scan work by up to 256×. The exact reduction depends on the scan mode:
 
-Without the view tag, every output requires a full scalar-base multiplication (step 5) and a SHA-256 hash (step 6). The view tag eliminates these for 255/256 of non-matching outputs.
+- **Classical (DH-only) scan:** The view tag provides the full 256× reduction. For each output, the recipient performs one X25519 scalar multiplication (step 1) and one HKDF evaluation (step 2), then compares a single byte. Only 1/256 of outputs proceed to the expensive Ed25519 point arithmetic (steps 4-7). The eliminated operations (Ed25519 scalar-base multiplication at ~60 µs, SHA-256 at ~1 µs) account for the bulk of per-output cost after the X25519 step.
+
+- **PQ-hybrid scan:** ML-KEM-768 decapsulation (~120 µs) must be performed for every output BEFORE the view tag check (per §5.2, line 248), because the combined shared secret requires both `S_dh` and `S_pq`. The view tag still eliminates the Ed25519 point arithmetic for 255/256 of non-matching outputs, but the ML-KEM decapsulation cost is unavoidable per-output. The effective scan cost reduction from the view tag in PQ mode is ~1.3× (from ~337 µs to ~275 µs per output), not 256×.
 
 ---
 

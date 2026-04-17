@@ -189,6 +189,8 @@ if treasury + treasury_incoming > TREASURY_CAP:
     pool += treasury_excess
 ```
 
+For treasury governance — including safety bounds (treasury floor, max spend rate), anti-capture protections, and the process for adding future spending categories — see `doc/hardening/23-treasury-governance.md`.
+
 ## Reward Formula
 
 ### Pool Allocation
@@ -249,6 +251,7 @@ if user.msgs_sent >= 10 AND user.msgs_received >= 10 (this cycle):
     user_rebate = rebate_rate * total_fees_paid_by_user_this_cycle
 -- Funded from the rebate allocation of fees
 -- Requires bidirectional activity (prevents self-messaging for rebate)
+-- See doc/hardening/12-sybil-resistance.md §4 for Sybil resistance analysis of rebate eligibility
 ```
 
 ## Validator Onboarding Incentive
@@ -421,3 +424,8 @@ All of the following must hold and are verified via property-based testing:
 10. **Onboarding bonus cap**: `onboarding_bonus_total <= 0.50 * treasury_allocation_per_cycle`
 11. **Adaptive bounds**: `burn_rate in [0.20, 0.80]`, `fee_floor in [5, 100]`, `fee_ceiling in [5000, 50000]`, `target_msgs in [1000, 100000000]`
 12. **Minimum cycle duration**: `actual_cycle_slots >= 3,927` (1 epoch at 11s/slot)
+13. **Treasury floor**: `treasury >= TREASURY_FLOOR (55,000,000 MTK)` at all cycle boundaries
+14. **Treasury spend cap**: `total_treasury_spending_per_cycle <= MAX_TREASURY_SPEND_RATE (0.05) * treasury_at_cycle_start`
+15. **Anti-capture**: no disbursement (except onboarding bonus) credits an active or recent (3-cycle) validator address
+
+Invariants 13–15 are defined and proven in `doc/hardening/23-treasury-governance.md` §6.

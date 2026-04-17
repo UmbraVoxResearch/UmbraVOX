@@ -56,7 +56,7 @@ V1 uses **compact block relay** (mandatory at 4,444 messages per block). Compact
 
 | Metric | Without CBR | With CBR | Improvement |
 |--------|------------|----------|-------------|
-| Data per relay hop | ~4.44 MB (4,550,656 bytes) | ~50-130 KB (95%+ mempool hit) | 34-89x smaller |
+| Data per relay hop | ~4.55 MB (4,550,656 bytes) | ~50-130 KB (95%+ mempool hit) | 34-89x smaller |
 | Propagation time per hop | ~11.1s at 400 KB/s | ~0.13-0.33s | 34-89x faster |
 | Network-wide (3 hops) | ~33.3s (fails!) | ~0.4-1.0s | Fits within slot |
 
@@ -69,7 +69,7 @@ V1 uses **compact block relay** (mandatory at 4,444 messages per block). Compact
 
 ### Full Block Fallback
 
-New or syncing nodes download full ~4.44 MB blocks. At ~400 KB/s minimum bandwidth, this takes ~11.1 seconds — acceptable for initial sync but not for relay-critical paths.
+New or syncing nodes download full ~4.55 MB blocks. At ~400 KB/s minimum bandwidth, this takes ~11.1 seconds — acceptable for initial sync but not for relay-critical paths.
 
 ## Eclipse Attack Prevention
 
