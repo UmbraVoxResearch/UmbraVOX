@@ -60,10 +60,10 @@ Every proof file references assumptions by identifier (A1–A11 and A7').
 |---|----------|-------|--------|------------|
 | 1 | [proof-01-primitive-security.md](proof-01-primitive-security.md) | 9 cryptographic primitives | Reduction proofs | REQ-CRYPTO-009 |
 | 2 | [proof-02-protocol-security.md](proof-02-protocol-security.md) | X3DH, Double Ratchet, PQ wrapper, composition, E2E | Hybrid games, Coq-style | REQ-CRYPTO-009 |
-| 3 | [proof-03-consensus.md](proof-03-consensus.md) | Safety, liveness, fork choice | TLA+ model | 10-security §145 line 152 |
-| 4 | [proof-04-token-conservation.md](proof-04-token-conservation.md) | 12 economic invariants | Coq-style + QuickCheck | 10-security §145 lines 153–154 |
-| 5 | [proof-05-vrf-fairness.md](proof-05-vrf-fairness.md) | Leader election proportionality | Statistical (χ²) | 10-security §145 line 154 |
-| 6 | [proof-06-controller-convergence.md](proof-06-controller-convergence.md) | Adaptive parameter convergence | Control theory, Lyapunov | 10-security §145 line 153 |
+| 3 | [proof-03-consensus.md](proof-03-consensus.md) | Safety, liveness, fork choice | TLA+ model | 10-security §154 line 161 |
+| 4 | [proof-04-token-conservation.md](proof-04-token-conservation.md) | 12 economic invariants | Coq-style + QuickCheck | 10-security §154 line 162 |
+| 5 | [proof-05-vrf-fairness.md](proof-05-vrf-fairness.md) | Leader election proportionality | Statistical (χ²) | 10-security §154 line 163 |
+| 6 | [proof-06-controller-convergence.md](proof-06-controller-convergence.md) | Adaptive parameter convergence | Control theory, Lyapunov | 10-security §154 line 162 |
 | 7 | [proof-07-cryptanalysis-resistance.md](proof-07-cryptanalysis-resistance.md) | Resistance to all known attack classes | Attack taxonomy + bounds | REQ-CRYPTO-009, 10-security |
 
 ---
