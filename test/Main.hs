@@ -12,6 +12,8 @@ import qualified Test.Crypto.Ed25519 as Ed25519
 import qualified Test.Crypto.ChaCha20 as ChaCha20
 import qualified Test.Crypto.Signal.X3DH as X3DH
 import qualified Test.Crypto.Signal.DoubleRatchet as DoubleRatchet
+import qualified Test.Crypto.Keccak as Keccak
+import qualified Test.Crypto.MLKEM as MLKEM
 
 main :: IO ()
 main = do
@@ -40,9 +42,13 @@ main = do
     x3dhPass <- X3DH.runTests
     putStrLn ""
     doubleRatchetPass <- DoubleRatchet.runTests
+    putStrLn ""
+    mlkemPass <- MLKEM.runTests
+    putStrLn ""
+    keccakPass <- Keccak.runTests
 
     putStrLn ""
-    let allPass = sha256Pass && sha512Pass && hmacPass && hkdfPass && aesPass && gcmPass && curve25519Pass && ed25519Pass && chacha20Pass && x3dhPass && doubleRatchetPass
+    let allPass = sha256Pass && sha512Pass && hmacPass && hkdfPass && aesPass && gcmPass && curve25519Pass && ed25519Pass && chacha20Pass && x3dhPass && doubleRatchetPass && mlkemPass && keccakPass
     if allPass
         then do
             putStrLn "All tests passed."

@@ -64,6 +64,7 @@ library
     UmbraVox.Crypto.GCM
     UmbraVox.Crypto.Curve25519
     UmbraVox.Crypto.Ed25519
+    UmbraVox.Crypto.Keccak
     UmbraVox.Crypto.MLKEM
     UmbraVox.Crypto.VRF
     UmbraVox.Crypto.Random
@@ -173,6 +174,8 @@ test-suite umbravox-test
     Test.Crypto.ChaCha20
     Test.Crypto.Signal.X3DH
     Test.Crypto.Signal.DoubleRatchet
+    Test.Crypto.Keccak
+    Test.Crypto.MLKEM
   build-depends:
     base         >= 4.18  && < 5,
     bytestring   >= 0.11  && < 0.13,
