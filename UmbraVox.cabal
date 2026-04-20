@@ -161,6 +161,7 @@ test-suite umbravox-test
   main-is:          Main.hs
   hs-source-dirs:   test
   other-modules:
+    Test.Util
     Test.Crypto.SHA256
     Test.Crypto.SHA512
     Test.Crypto.HMAC
