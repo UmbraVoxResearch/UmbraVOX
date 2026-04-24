@@ -67,7 +67,31 @@ PHASE 0: CRYPTOGRAPHIC PRIMITIVES + CODE GENERATOR (Weeks 1-10)
 
 [ ] 0a.9  Quality gate: generator produces valid Haskell from test spec
 
---- 0b: Generated Crypto Primitives (Weeks 4-10) ---
+--- 0b: F* Verification (DESIGN REQUIREMENT: all crypto must have F* proofs) ---
+
+NOTE: F* formal verification is a MANDATORY design requirement for every
+cryptographic primitive. No primitive is considered complete without:
+  1. F* specification matching the NIST/RFC standard
+  2. KAT vector lemmas (assumed, validated by Haskell test suite)
+  3. Structural correctness lemmas (output length, roundtrip, etc.)
+  4. Correspondence proof: F* spec ↔ Haskell implementation
+
+Current F* status:
+  [x] Spec.SHA256.fst     (FIPS 180-4)    — 3 KAT vectors, structural lemmas
+  [x] Spec.SHA512.fst     (FIPS 180-4)    — 2 KAT vectors, structural lemmas
+  [x] Spec.HMAC.fst       (RFC 2104/4231) — 2 KAT vectors, PRF axiom
+  [x] Spec.HKDF.fst       (RFC 5869)      — 1 KAT vector, length guarantee
+  [x] Spec.AES256.fst     (FIPS 197)      — 1 KAT vector, roundtrip lemma
+  [x] Spec.GaloisField.fst (SP 800-38D)   — algebraic properties
+  [x] Spec.GCM.fst        (SP 800-38D)    — 2 KAT vectors, roundtrip + tampering
+  [x] Spec.ChaCha20.fst   (RFC 8439)      — 2 KAT vectors (partial: assumes double_round)
+  [x] Spec.X25519.fst     (RFC 7748)      — 3 KAT vectors, DH commutativity
+  [x] Spec.Ed25519.fst    (RFC 8032)      — 2 KAT vectors, sign-then-verify lemma
+  [ ] Spec.Keccak.fst     (FIPS 202)      — MISSING (see FSTAR-001)
+  [ ] Spec.MLKEM768.fst   (FIPS 203)      — MISSING (see FSTAR-002)
+  [ ] Spec.VRF.fst        (RFC 9381)      — MISSING (see FSTAR-003)
+
+--- 0c: Generated Crypto Primitives (Weeks 4-10) ---
 
 [ ] 0b.1  Write spec files
   [ ] 0b.1.1  codegen/Specs/SHA256.spec  (FIPS 180-4)
@@ -556,74 +580,216 @@ DOCUMENTATION & EVIDENCE
 [ ] D.11 test/coverage/codegen/               — Generator coverage
 
 ================================================================================
-BUGS FOUND BY CRYPTO REVIEW (2026-04-24)
+BUGS FOUND BY 11-AGENT CRYPTO REVIEW (2026-04-24)
 ================================================================================
 
-[x] BUG-001 invNTT butterfly sign error in ML-KEM-768 (CRITICAL — FIXED)
+--- Fixed ---
+
+[x] BUG-001 invNTT butterfly sign error in ML-KEM-768 (CRITICAL)
   FIPS 203 Algorithm 10: f[j+len] = zeta*(f[j+len]-f[j])
   Was incorrectly: zeta*(f[j]-f[j+len]). Masked by SHA-256 substitutes,
   exposed by SHA-3/SHAKE integration. Fixed in commit 5ab1f89.
 
-[x] BUG-002 HKDF-Expand dead code condition (FIXED)
+[x] BUG-002 HKDF-Expand dead code condition
   hkdfExpand line 60: BS.length (BS.concat []) >= 0 && counter > n
   Nonsensical always-true clause. Simplified to: counter > n.
 
-[x] BUG-003 GCM incr32 counter wrap at 2^32 (FIXED)
+[x] BUG-003 GCM incr32 counter wrap at 2^32
   Counter used Word64 arithmetic without 32-bit mask.
   Added .&. 0xffffffff to match SP 800-38D 32-bit counter semantics.
+
+--- Open: Crypto ---
 
 [ ] BUG-004 Double Ratchet: use Maybe for uninitialized rsDHRecv
   Currently uses BS.empty sentinel. Should use Maybe ByteString
   for type safety. File: Signal/DoubleRatchet.hs line 163.
+  [ ] BUG-004.1 Change RatchetState rsDHRecv from ByteString to Maybe ByteString
+  [ ] BUG-004.2 Update ratchetInitBob to use Nothing for initial rsDHRecv
+  [ ] BUG-004.3 Update dhRatchet to pattern match on Maybe
+  [ ] BUG-004.4 Update ratchetDecrypt to check isNothing rsDHRecv
+  [ ] BUG-004.5 Update all test cases for new type
 
 [ ] BUG-005 Double Ratchet: skipMessageKeys eviction policy
   Evicts only one key when map exceeds maxSkip (1000).
   Should implement "older than 500 steps" eviction per spec.
   File: Signal/DoubleRatchet.hs lines 314-317.
+  [ ] BUG-005.1 Add ratchet step counter to skipped key entries
+  [ ] BUG-005.2 Implement age-based eviction (>500 steps old)
+  [ ] BUG-005.3 Add test: verify keys older than 500 steps are evicted
+  [ ] BUG-005.4 Add test: verify max 1000 skipped keys enforced
 
-[ ] BUG-006 Consensus Block.hs: incomplete BlockHeader
+[ ] BUG-006 GCM constantEq timing side-channel on length mismatch
+  Early return on length mismatch creates timing leak.
+  File: GCM.hs line 183.
+  [ ] BUG-006.1 Unconditionally compare fixed-length tags (16 bytes)
+  [ ] BUG-006.2 Add test: verify constant-time for equal-length inputs
+
+--- Open: Consensus/Economics (stubs needing implementation) ---
+
+[ ] BUG-007 Consensus Block.hs: incomplete BlockHeader
   Missing 6 required fields: bhBlockNo, bhIssuerVK, bhVRFProof,
   bhVRFOutput, bhSignature, bhHeartbeat. File: Consensus/Block.hs.
+  [ ] BUG-007.1 Add bhBlockNo :: BlockNo field
+  [ ] BUG-007.2 Add bhIssuerVK :: ByteString (Ed25519 public key)
+  [ ] BUG-007.3 Add bhVRFProof :: ByteString (80 bytes per RFC 9381)
+  [ ] BUG-007.4 Add bhVRFOutput :: ByteString (64 bytes)
+  [ ] BUG-007.5 Add bhSignature :: ByteString (Ed25519 signature, 64 bytes)
+  [ ] BUG-007.6 Add bhHeartbeat :: Maybe HeartbeatChallenge
 
-[ ] BUG-007 Consensus LeaderElection.hs: wrong type signature
+[ ] BUG-008 Consensus LeaderElection.hs: wrong type signature
   Takes ByteString -> Word64 -> Bool. Should take stake ratio,
-  VRF output, and active slot coefficient. Missing 128-bit
-  fixed-point (64.64) arithmetic for threshold computation.
+  VRF output, and active slot coefficient.
+  [ ] BUG-008.1 Define proper type: StakeRatio -> VRFOutput -> ActiveSlotCoeff -> Bool
+  [ ] BUG-008.2 Implement 128-bit fixed-point (64.64) arithmetic
+  [ ] BUG-008.3 Implement threshold formula: 1 - (1-f)^sigma_j
+  [ ] BUG-008.4 Add VRF output normalization: vrf_uint64 / 2^64
+
+[ ] BUG-009 Consensus ForkChoice.hs: wrong type signature
+  Takes [ByteString] instead of proper Chain type.
+  [ ] BUG-009.1 Define Chain type with block metadata
+  [ ] BUG-009.2 Implement longest chain rule
+  [ ] BUG-009.3 Implement density-based tiebreaker for forks within k blocks
+  [ ] BUG-009.4 Implement VRF output lexicographic tiebreaker
+
+[ ] BUG-010 Economics Penalty.hs: Integer type cannot represent fractional penalties
+  Punitive multipliers are in [0.0, 1.0]. Function uses Integer.
+  [ ] BUG-010.1 Change to Double or fixed-point representation
+  [ ] BUG-010.2 Implement 3-tier penalty system with per-tier recovery formulas
+  [ ] BUG-010.3 Implement carryover persistence across cycles
 
 ================================================================================
 MISSING F* SPECIFICATIONS (2026-04-24)
 ================================================================================
 
 [ ] FSTAR-001 Write Spec.Keccak.fst (FIPS 202) — SHA-3/SHAKE
+  [ ] FSTAR-001.1 Keccak-f[1600] permutation (theta, rho, pi, chi, iota)
+  [ ] FSTAR-001.2 Sponge construction (pad10*1, absorb, squeeze)
+  [ ] FSTAR-001.3 SHA3-224/256/384/512 parameters and KAT vectors
+  [ ] FSTAR-001.4 SHAKE-128/256 XOF parameters and KAT vectors
+  [ ] FSTAR-001.5 Round constant and rotation offset tables
+
 [ ] FSTAR-002 Write Spec.MLKEM768.fst (FIPS 203) — ML-KEM-768
+  [ ] FSTAR-002.1 NTT and inverse NTT (Algorithms 9-10)
+  [ ] FSTAR-002.2 Polynomial arithmetic (basemul, add, sub)
+  [ ] FSTAR-002.3 CBD sampling (Algorithm 7)
+  [ ] FSTAR-002.4 SampleNTT rejection sampling (Algorithm 8)
+  [ ] FSTAR-002.5 ByteEncode/ByteDecode (Algorithms 6-7)
+  [ ] FSTAR-002.6 Compress/Decompress (Algorithms 4-5)
+  [ ] FSTAR-002.7 K-PKE KeyGen/Encrypt/Decrypt (Algorithms 12-14)
+  [ ] FSTAR-002.8 ML-KEM KeyGen/Encaps/Decaps (Algorithms 15-17)
+  [ ] FSTAR-002.9 Zeta table correctness lemma
+  [ ] FSTAR-002.10 NTT round-trip lemma: invNtt(ntt(p)) == p
+
 [ ] FSTAR-003 Write Spec.VRF.fst (RFC 9381) — ECVRF-ED25519-SHA512
+  [ ] FSTAR-003.1 Elligator2 hash-to-curve
+  [ ] FSTAR-003.2 DLEQ proof generation
+  [ ] FSTAR-003.3 DLEQ proof verification
+  [ ] FSTAR-003.4 VRF output derivation
+  [ ] FSTAR-003.5 Cofactor multiplication (8x)
+  [ ] FSTAR-003.6 Challenge generation (truncated SHA-512, 16 bytes)
 
 ================================================================================
 MISSING IMPLEMENTATIONS (2026-04-24)
 ================================================================================
 
-[ ] IMPL-001 VRF: full RFC 9381 implementation (Elligator2, DLEQ proofs,
-    cofactor handling, output derivation). Currently stub only.
+[ ] IMPL-001 VRF: full RFC 9381 ECVRF-ED25519-SHA512-ELL2
+  [ ] IMPL-001.1 Elligator2 hash-to-curve (RFC 9381 Section 5.1.3)
+  [ ] IMPL-001.2 Scalar multiplication for Elligator2 points
+  [ ] IMPL-001.3 DLEQ proof generation (Schnorr-like, Section 5.3)
+    [ ] IMPL-001.3.1 Deterministic nonce k from secret key via SHA-512-HMAC
+    [ ] IMPL-001.3.2 Challenge c = truncated SHA-512 (first 16 bytes)
+    [ ] IMPL-001.3.3 Response s = (k - c*sk) mod L
+  [ ] IMPL-001.4 Cofactor multiplication (3 doublings, cofactor=8)
+  [ ] IMPL-001.5 Output derivation: SHA-512(cofactor*Gamma), first 64 bytes
+  [ ] IMPL-001.6 Proof encoding: Gamma(32) + c(16) + s(32) = 80 bytes
+  [ ] IMPL-001.7 vrfVerify: decode proof, hash-to-curve, DLEQ verify
+    [ ] IMPL-001.7.1 Validate public key is on-curve
+    [ ] IMPL-001.7.2 Compute u1 = 8*s*B + 8*c*Y, u2 = 8*s*H + 8*c*Gamma
+    [ ] IMPL-001.7.3 Recompute challenge and compare
+  [ ] IMPL-001.8 RFC 9381 test vectors
+  [ ] IMPL-001.9 Statistical fairness test (chi-squared, 10^6 elections)
 
-[ ] IMPL-002 CSPRNG: stateful wrapper around ChaCha20 (entropy sourcing
-    from /dev/urandom, reseed every 2^20 outputs, fork safety via PID,
-    VM clone detection). ChaCha20 core is correct.
+[ ] IMPL-002 CSPRNG: stateful ChaCha20-based wrapper
+  [ ] IMPL-002.1 Entropy source: bind to getrandom(2) or read /dev/urandom
+  [ ] IMPL-002.2 CSPRNG state: 32-byte key + 128-bit counter + output buffer
+  [ ] IMPL-002.3 Reseed schedule: every 2^20 outputs via HKDF-Extract
+  [ ] IMPL-002.4 Fork safety: check PID before every output generation
+  [ ] IMPL-002.5 Key zeroization after reseed (backtracking resistance)
+  [ ] IMPL-002.6 Health checks: stuck-output detection, repetition detection
+  [ ] IMPL-002.7 randomBytes :: Int -> IO ByteString (public API)
+  [ ] IMPL-002.8 Thread safety: per-thread CSPRNG instances
 
-[ ] IMPL-003 Code generators: CryptoGen/FSMGen/CBORGen/TestGen all 90-100%
-    TODO. Parsers work, but no code generation implemented.
-    codegen/Specs/ directory is empty — no spec files created.
+[ ] IMPL-003 Code generators: complete implementation
+  [ ] IMPL-003.1 CryptoGen: spec→Haskell module generation
+    [ ] IMPL-003.1.1 Emit Haskell module skeleton from .spec AST
+    [ ] IMPL-003.1.2 Generate function signatures from Params
+    [ ] IMPL-003.1.3 Emit operation steps as Haskell expressions
+    [ ] IMPL-003.1.4 Generate C constant-time source
+    [ ] IMPL-003.1.5 Generate FFI binding stubs
+    [ ] IMPL-003.1.6 Add traceability annotations (spec file, line numbers)
+  [ ] IMPL-003.2 FSMGen: fsm→Haskell state machine generation
+    [ ] IMPL-003.2.1 Generate Haskell ADT (states, events, transitions)
+    [ ] IMPL-003.2.2 Generate transition function with exhaustive pattern matching
+    [ ] IMPL-003.2.3 Generate guard condition evaluation
+    [ ] IMPL-003.2.4 Generate action execution framework
+  [ ] IMPL-003.3 CBORGen: schema→encoder/decoder generation
+    [ ] IMPL-003.3.1 Generate Haskell record/type from schema
+    [ ] IMPL-003.3.2 Generate canonical CBOR encoder (deterministic)
+    [ ] IMPL-003.3.3 Generate strict CBOR decoder with validation
+    [ ] IMPL-003.3.4 Generate round-trip property tests
+    [ ] IMPL-003.3.5 Generate fuzz targets
+  [ ] IMPL-003.4 TestGen: test harness generation
+    [ ] IMPL-003.4.1 NIST CAVP vector embedding per primitive
+    [ ] IMPL-003.4.2 Edge case generation (zero, max, all-ones, etc.)
+    [ ] IMPL-003.4.3 QuickCheck property generator
+    [ ] IMPL-003.4.4 Equivalence test framework (pure vs FFI)
+    [ ] IMPL-003.4.5 MC/DC condition isolation tests
+  [ ] IMPL-003.5 Create representative spec files in codegen/Specs/
+    [ ] IMPL-003.5.1 SHA256.spec (from FIPS 180-4)
+    [ ] IMPL-003.5.2 KeyExchange.fsm (Signal X3DH states)
+    [ ] IMPL-003.5.3 Message.schema (1024-byte block layout)
+
+[ ] IMPL-004 Storage: WAL-based crash recovery
+  [ ] IMPL-004.1 WAL file format: [timestamp, op_type, target, data_hash, status]
+  [ ] IMPL-004.2 Write intent before any state modification (fsync)
+  [ ] IMPL-004.3 Recovery on startup: replay pending, verify committed
+  [ ] IMPL-004.4 Atomic truncation via single WAL transaction
+  [ ] IMPL-004.5 CRC-32 per StateDB record for corruption detection
+
+[ ] IMPL-005 Stealth addresses (DKSAP)
+  [ ] IMPL-005.1 One-time address generation from peer SPK
+  [ ] IMPL-005.2 Recipient address randomization in message blocks
+  [ ] IMPL-005.3 Scanning: check all derivable stealth addresses
+  [ ] IMPL-005.4 View tag filtering (1-byte, 256x scan reduction)
+
+[ ] IMPL-006 On-chain key registry transactions
+  [ ] IMPL-006.1 KEY_REGISTER: initial bundle (IK + SPK + 100 OPKs + PQPK)
+  [ ] IMPL-006.2 KEY_REPLENISH: 50 OPKs when count < 20
+  [ ] IMPL-006.3 KEY_ROTATE: SPK rotation every ~48 hours
+  [ ] IMPL-006.4 Key registry query for foreign peers
+
+[ ] IMPL-007 Compact block relay (mandatory for 4444-msg blocks)
+  [ ] IMPL-007.1 SipHash-2-4 short ID computation (6 bytes/tx)
+  [ ] IMPL-007.2 Mempool lookup matching short IDs to full transactions
+  [ ] IMPL-007.3 Fallback to full block request on missing transactions
+  [ ] IMPL-007.4 Full block reconstruction from mempool + requested txns
 
 ================================================================================
-IMMEDIATE NEXT ACTIONS
+IMMEDIATE NEXT ACTIONS (2026-04-24)
 ================================================================================
 
 [x] Complete FIPS 202: add SHA3-224, SHA3-384 to Keccak module
 [x] Complete FIPS 203: integrate SHA-3/SHAKE into ML-KEM-768
-[x] Fix invNTT butterfly sign bug
-[x] Fix HKDF dead code condition
-[x] Fix GCM counter wrap
-[ ] Write F* spec for Keccak/SHA-3 (Spec.Keccak.fst)
-[ ] Write F* spec for ML-KEM-768 (Spec.MLKEM768.fst)
-[ ] Implement VRF (RFC 9381) — blocks consensus Phase 3
-[ ] Implement CSPRNG wrapper — blocks Dandelion++ Phase 5
-[ ] Begin codegen implementation — spec→Haskell code generation
+[x] Fix invNTT butterfly sign bug (BUG-001)
+[x] Fix HKDF dead code condition (BUG-002)
+[x] Fix GCM counter wrap (BUG-003)
+[ ] Write F* spec for Keccak/SHA-3 (FSTAR-001)
+[ ] Write F* spec for ML-KEM-768 (FSTAR-002)
+[ ] Implement VRF (IMPL-001) — blocks consensus Phase 3
+[ ] Implement CSPRNG wrapper (IMPL-002) — blocks Dandelion++ Phase 5
+[ ] Fix Double Ratchet Maybe type (BUG-004)
+[ ] Fix Double Ratchet eviction policy (BUG-005)
+[ ] Fix GCM constantEq timing (BUG-006)
+[ ] Complete BlockHeader fields (BUG-007)
+[ ] Fix LeaderElection types (BUG-008)
+[ ] Begin codegen implementation (IMPL-003)
