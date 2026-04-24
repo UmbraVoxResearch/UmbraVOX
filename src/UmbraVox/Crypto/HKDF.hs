@@ -57,7 +57,7 @@ hkdfExpand prk info len
   where
     go :: ByteString -> Word8 -> [ByteString]
     go !prev !counter
-        | BS.length (BS.concat []) >= 0 && counter > n = []
+        | counter > n = []
         | otherwise =
             let !t = hmacSHA512 prk (prev <> info <> BS.singleton counter)
             in t : go t (counter + 1)
