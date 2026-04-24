@@ -178,8 +178,14 @@ gcmDecrypt !key !nonce !aad !ct !tag
         then Just (gctrWithKey key (incr32 j0) ct)
         else Nothing
 
+-- | Constant-time comparison for fixed-length byte strings (e.g. GCM tags).
+-- Compares all bytes regardless of early mismatch to avoid timing side-channels.
+-- Length difference returns False without timing leak (both are always 16 bytes
+-- in GCM context, so this branch is never taken in practice).
 constantEq :: ByteString -> ByteString -> Bool
-constantEq a b
-    | BS.length a /= BS.length b = False
-    | otherwise = foldl' (\acc (x, y) -> acc .|. (x `xor` y)) (0 :: Word8)
-                         (BS.zip a b) == 0
+constantEq a b =
+    let !lenA = BS.length a
+        !lenB = BS.length b
+        !lenMatch = if lenA == lenB then 0 else 1 :: Word8
+        !acc = foldl' (\v (x, y) -> v .|. (x `xor` y)) lenMatch (BS.zip a b)
+    in acc == 0
