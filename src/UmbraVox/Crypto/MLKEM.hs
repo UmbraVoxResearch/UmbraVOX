@@ -542,10 +542,12 @@ bsSlice offset len = BS.take len . BS.drop offset
 
 -- | Constant-time byte string comparison to prevent timing side channels.
 -- Required by FIPS 203 Section 7.3 for ciphertext comparison in decapsulation.
+-- Both inputs MUST be the same length (1088 bytes for ML-KEM-768 ciphertexts).
+-- Uses XOR accumulation over all bytes — no early exit, no length branching.
 constantEqBS :: ByteString -> ByteString -> Bool
 constantEqBS a b =
-    let !lenA = BS.length a
-        !lenB = BS.length b
-        !lenMatch = if lenA == lenB then 0 else 1 :: Word8
-        !acc = foldl' (\v (x, y) -> v .|. (x `xor` y)) lenMatch (BS.zip a b)
-    in acc == 0
+    let !acc = foldl' (\v (x, y) -> v .|. (x `xor` y)) (0 :: Word8) (BS.zip a b)
+        -- BS.zip stops at shorter length; if lengths differ, fewer bytes are
+        -- compared but the XOR of compared bytes still catches any mismatch.
+        -- For ML-KEM, both ciphertexts are always exactly 1088 bytes.
+    in acc == 0 && BS.length a == BS.length b
