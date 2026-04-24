@@ -43,9 +43,10 @@ let prepare_key (h : hash_fn) (block_size : nat{block_size > 0})
     let hashed = h key in
     assume (Seq.length hashed <= block_size);
     pad_right block_size hashed
-  else
+  else (
     assume (Seq.length key <= block_size);
     pad_right block_size key
+  )
 
 (** -------------------------------------------------------------------- **)
 (** RFC 2104 -- HMAC construction                                        **)

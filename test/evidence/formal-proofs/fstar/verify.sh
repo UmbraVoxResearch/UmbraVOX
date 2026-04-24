@@ -39,6 +39,10 @@ ALL_MODULES=(
     "Spec.AES256"
     "Spec.GaloisField"
     "Spec.GCM"
+    "Spec.ChaCha20"
+    "Spec.X25519"
+    "Spec.Ed25519"
+    "Spec.Keccak"
 )
 
 # F* flags

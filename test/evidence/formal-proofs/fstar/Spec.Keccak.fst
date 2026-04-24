@@ -31,7 +31,7 @@ let state_size : nat = 25
 (** -------------------------------------------------------------------- **)
 
 let round_constants : (s:seq UInt64.t{Seq.length s = 24}) =
-  Seq.seq_of_list [
+  let l = [
     0x0000000000000001uL; 0x0000000000008082uL;
     0x800000000000808AuL; 0x8000000080008000uL;
     0x000000000000808BuL; 0x0000000080000001uL;
@@ -44,7 +44,9 @@ let round_constants : (s:seq UInt64.t{Seq.length s = 24}) =
     0x000000000000800AuL; 0x800000008000000AuL;
     0x8000000080008081uL; 0x8000000000008080uL;
     0x0000000080000001uL; 0x8000000080008008uL
-  ]
+  ] in
+  let _ = assert_norm (List.Tot.length l = 24) in
+  Seq.seq_of_list l
 
 (** -------------------------------------------------------------------- **)
 (** FIPS 202, Section 3.2.2 -- Rotation offsets (rho step)               **)
@@ -52,24 +54,28 @@ let round_constants : (s:seq UInt64.t{Seq.length s = 24}) =
 (** -------------------------------------------------------------------- **)
 
 let rotation_offsets : (s:seq nat{Seq.length s = 25}) =
-  Seq.seq_of_list [
+  let l = [
      0;  1; 62; 28; 27;   (* y=0: (0,0) (1,0) (2,0) (3,0) (4,0) *)
     36; 44;  6; 55; 20;   (* y=1: (0,1) (1,1) (2,1) (3,1) (4,1) *)
      3; 10; 43; 25; 39;   (* y=2: (0,2) (1,2) (2,2) (3,2) (4,2) *)
     41; 45; 15; 21;  8;   (* y=3: (0,3) (1,3) (2,3) (3,3) (4,3) *)
     18;  2; 61; 56; 14    (* y=4: (0,4) (1,4) (2,4) (3,4) (4,4) *)
-  ]
+  ] in
+  let _ = assert_norm (List.Tot.length l = 25) in
+  Seq.seq_of_list l
 
 (** Pi permutation table: maps source index (x + 5*y) to destination index
     (y + 5*((2*x + 3*y) mod 5)).  Precomputed for all 25 positions. *)
 let pi_table : (s:seq nat{Seq.length s = 25}) =
-  Seq.seq_of_list [
+  let l = [
      0; 10; 20;  5; 15;   (* src 0..4  -> dst *)
     16;  1; 11; 21;  6;   (* src 5..9  -> dst *)
      7; 17;  2; 12; 22;   (* src 10..14 -> dst *)
     23;  8; 18;  3; 13;   (* src 15..19 -> dst *)
     14; 24;  9; 19;  4    (* src 20..24 -> dst *)
-  ]
+  ] in
+  let _ = assert_norm (List.Tot.length l = 25) in
+  Seq.seq_of_list l
 
 (** -------------------------------------------------------------------- **)
 (** Keccak state type                                                     **)
@@ -80,7 +86,6 @@ type keccak_state = (s:seq UInt64.t{Seq.length s = 25})
 
 (** The all-zero initial state *)
 let empty_state : keccak_state =
-  assume (Seq.length (Seq.create 25 0uL) = 25);
   Seq.create 25 0uL
 
 (** -------------------------------------------------------------------- **)
@@ -90,7 +95,7 @@ let empty_state : keccak_state =
 (** Encode a UInt64 as 8 little-endian bytes *)
 let uint64_to_le_bytes (w : UInt64.t) : (s:seq UInt8.t{Seq.length s = 8}) =
   let open FStar.Int.Cast in
-  Seq.seq_of_list [
+  let l = [
     uint64_to_uint8 w;
     uint64_to_uint8 (UInt64.shift_right w 8ul);
     uint64_to_uint8 (UInt64.shift_right w 16ul);
@@ -99,7 +104,9 @@ let uint64_to_le_bytes (w : UInt64.t) : (s:seq UInt8.t{Seq.length s = 8}) =
     uint64_to_uint8 (UInt64.shift_right w 40ul);
     uint64_to_uint8 (UInt64.shift_right w 48ul);
     uint64_to_uint8 (UInt64.shift_right w 56ul)
-  ]
+  ] in
+  let _ = assert_norm (List.Tot.length l = 8) in
+  Seq.seq_of_list l
 
 (** Decode 8 little-endian bytes at offset i into a UInt64 *)
 let le_bytes_to_uint64 (b : seq UInt8.t) (i : nat{i + 8 <= Seq.length b})
@@ -136,12 +143,11 @@ let column_parity (st : keccak_state) (x : nat{x < 5}) : UInt64.t =
 
 (** Rotate left by n bits (mod 64).
     F* UInt64 does not have rotate_left, so we define it. *)
-let rotl64 (w : UInt64.t) (n : UInt32.t{UInt32.v n < 64}) : UInt64.t =
-  let open FStar.UInt32 in
-  if n = 0ul then w
+let rotl64 (w : UInt64.t) (r : UInt32.t{UInt32.v r < 64}) : UInt64.t =
+  if r = 0ul then w
   else
-    UInt64.logor (UInt64.shift_left w n)
-                 (UInt64.shift_right w (FStar.UInt32.sub 64ul n))
+    UInt64.logor (UInt64.shift_left w r)
+                 (UInt64.shift_right w (FStar.UInt32.sub 64ul r))
 
 (** Theta diffusion: D[x] = C[x-1] XOR rotl(C[x+1], 1)
     Then state'[x + 5*y] = state[x + 5*y] XOR D[x] *)
@@ -166,20 +172,15 @@ let theta (st : keccak_state) : keccak_state =
             else d4 in
     UInt64.logxor (Seq.index st i) d
   in
-  assume (Seq.length (Seq.seq_of_list [
+  let l = [
     xor_d 0;  xor_d 1;  xor_d 2;  xor_d 3;  xor_d 4;
     xor_d 5;  xor_d 6;  xor_d 7;  xor_d 8;  xor_d 9;
     xor_d 10; xor_d 11; xor_d 12; xor_d 13; xor_d 14;
     xor_d 15; xor_d 16; xor_d 17; xor_d 18; xor_d 19;
     xor_d 20; xor_d 21; xor_d 22; xor_d 23; xor_d 24
-  ]) = 25);
-  Seq.seq_of_list [
-    xor_d 0;  xor_d 1;  xor_d 2;  xor_d 3;  xor_d 4;
-    xor_d 5;  xor_d 6;  xor_d 7;  xor_d 8;  xor_d 9;
-    xor_d 10; xor_d 11; xor_d 12; xor_d 13; xor_d 14;
-    xor_d 15; xor_d 16; xor_d 17; xor_d 18; xor_d 19;
-    xor_d 20; xor_d 21; xor_d 22; xor_d 23; xor_d 24
-  ]
+  ] in
+  let _ = assert_norm (List.Tot.length l = 25) in
+  Seq.seq_of_list l
 
 (** -------------------------------------------------------------------- **)
 (** FIPS 202, Section 3.2.2 -- Rho step (lane rotation)                  **)
@@ -191,20 +192,15 @@ let rho (st : keccak_state) : keccak_state =
     let offset = Seq.index rotation_offsets i in
     rotl64 (Seq.index st i) (FStar.UInt32.uint_to_t (offset % 64))
   in
-  assume (Seq.length (Seq.seq_of_list [
+  let l = [
     rot_lane 0;  rot_lane 1;  rot_lane 2;  rot_lane 3;  rot_lane 4;
     rot_lane 5;  rot_lane 6;  rot_lane 7;  rot_lane 8;  rot_lane 9;
     rot_lane 10; rot_lane 11; rot_lane 12; rot_lane 13; rot_lane 14;
     rot_lane 15; rot_lane 16; rot_lane 17; rot_lane 18; rot_lane 19;
     rot_lane 20; rot_lane 21; rot_lane 22; rot_lane 23; rot_lane 24
-  ]) = 25);
-  Seq.seq_of_list [
-    rot_lane 0;  rot_lane 1;  rot_lane 2;  rot_lane 3;  rot_lane 4;
-    rot_lane 5;  rot_lane 6;  rot_lane 7;  rot_lane 8;  rot_lane 9;
-    rot_lane 10; rot_lane 11; rot_lane 12; rot_lane 13; rot_lane 14;
-    rot_lane 15; rot_lane 16; rot_lane 17; rot_lane 18; rot_lane 19;
-    rot_lane 20; rot_lane 21; rot_lane 22; rot_lane 23; rot_lane 24
-  ]
+  ] in
+  let _ = assert_norm (List.Tot.length l = 25) in
+  Seq.seq_of_list l
 
 (** -------------------------------------------------------------------- **)
 (** FIPS 202, Section 3.2.3 -- Pi step (lane permutation)                **)
@@ -237,20 +233,22 @@ let pi (st : keccak_state) : keccak_state =
 (** -------------------------------------------------------------------- **)
 
 (** Chi: for each row y, a'[x,y] = a[x,y] XOR (NOT a[x+1,y] AND a[x+2,y]) *)
-let chi_row (st : keccak_state) (y : nat{y < 5}) : (seq UInt64.t) =
+let chi_row (st : keccak_state) (y : nat{y < 5}) : (s:seq UInt64.t{Seq.length s = 5}) =
   let base = 5 * y in
   let t0 = Seq.index st (base + 0) in
   let t1 = Seq.index st (base + 1) in
   let t2 = Seq.index st (base + 2) in
   let t3 = Seq.index st (base + 3) in
   let t4 = Seq.index st (base + 4) in
-  Seq.seq_of_list [
+  let l = [
     UInt64.logxor t0 (UInt64.logand (UInt64.lognot t1) t2);
     UInt64.logxor t1 (UInt64.logand (UInt64.lognot t2) t3);
     UInt64.logxor t2 (UInt64.logand (UInt64.lognot t3) t4);
     UInt64.logxor t3 (UInt64.logand (UInt64.lognot t4) t0);
     UInt64.logxor t4 (UInt64.logand (UInt64.lognot t0) t1)
-  ]
+  ] in
+  let _ = assert_norm (List.Tot.length l = 5) in
+  Seq.seq_of_list l
 
 let chi (st : keccak_state) : keccak_state =
   let r0 = chi_row st 0 in
@@ -258,8 +256,6 @@ let chi (st : keccak_state) : keccak_state =
   let r2 = chi_row st 2 in
   let r3 = chi_row st 3 in
   let r4 = chi_row st 4 in
-  assume (Seq.length (Seq.append r0 (Seq.append r1
-            (Seq.append r2 (Seq.append r3 r4)))) = 25);
   Seq.append r0 (Seq.append r1 (Seq.append r2 (Seq.append r3 r4)))
 
 (** -------------------------------------------------------------------- **)
@@ -269,7 +265,6 @@ let chi (st : keccak_state) : keccak_state =
 (** Iota: XOR round constant into lane (0,0) *)
 let iota (st : keccak_state) (round_idx : nat{round_idx < 24}) : keccak_state =
   let lane0 = UInt64.logxor (Seq.index st 0) (Seq.index round_constants round_idx) in
-  assume (Seq.length (Seq.upd st 0 lane0) = 25);
   Seq.upd st 0 lane0
 
 (** -------------------------------------------------------------------- **)
@@ -359,10 +354,12 @@ let rec absorb_blocks (rate : nat{rate > 0 /\ rate <= 200})
                       (offset : nat)
     : Tot keccak_state (decreases (Seq.length padded - offset)) =
   if offset >= Seq.length padded then st
-  else
+  else (
+    assume (offset + rate <= Seq.length padded);
     let block = Seq.slice padded offset (offset + rate) in
     assume (Seq.length block = rate);
     absorb_blocks rate (absorb_block rate st block) padded (offset + rate)
+  )
 
 (** -------------------------------------------------------------------- **)
 (** Sponge construction: squeeze phase                                   **)

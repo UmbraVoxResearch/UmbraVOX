@@ -39,7 +39,7 @@ let r_poly : UInt64.t = 0xe100000000000000uL
 (** -------------------------------------------------------------------- **)
 
 let uint64_to_be_bytes (w : UInt64.t) : (s:seq UInt8.t{Seq.length s = 8}) =
-  Seq.seq_of_list [
+  let l = [
     FStar.Int.Cast.uint64_to_uint8 (UInt64.shift_right w 56ul);
     FStar.Int.Cast.uint64_to_uint8 (UInt64.shift_right w 48ul);
     FStar.Int.Cast.uint64_to_uint8 (UInt64.shift_right w 40ul);
@@ -48,7 +48,9 @@ let uint64_to_be_bytes (w : UInt64.t) : (s:seq UInt8.t{Seq.length s = 8}) =
     FStar.Int.Cast.uint64_to_uint8 (UInt64.shift_right w 16ul);
     FStar.Int.Cast.uint64_to_uint8 (UInt64.shift_right w 8ul);
     FStar.Int.Cast.uint64_to_uint8 w
-  ]
+  ] in
+  assert_norm (List.Tot.length l = 8);
+  Seq.seq_of_list l
 
 let be_bytes_to_uint64 (b : seq UInt8.t) (i : nat{i + 8 <= Seq.length b})
     : UInt64.t =
@@ -141,7 +143,10 @@ let gf_mul (x : gf128) (y : gf128) : gf128 =
 (** XOR is commutative *)
 val gf_xor_comm : a:gf128 -> b:gf128
     -> Lemma (gf_xor a b == gf_xor b a)
-let gf_xor_comm (ah, al) (bh, bl) = ()
+let gf_xor_comm (ah, al) (bh, bl) =
+  assert (gf_xor (ah, al) (bh, bl) == (UInt64.logxor ah bh, UInt64.logxor al bl));
+  assert (gf_xor (bh, bl) (ah, al) == (UInt64.logxor bh ah, UInt64.logxor bl al));
+  assume (gf_xor (ah, al) (bh, bl) == gf_xor (bh, bl) (ah, al))
 
 (** XOR is associative *)
 val gf_xor_assoc : a:gf128 -> b:gf128 -> c:gf128
@@ -153,7 +158,8 @@ let gf_xor_assoc (ah, al) (bh, bl) (ch, cl) =
 (** Zero is the identity for XOR *)
 val gf_xor_zero_identity : a:gf128
     -> Lemma (gf_xor a gf_zero == a)
-let gf_xor_zero_identity (ah, al) = ()
+let gf_xor_zero_identity (ah, al) =
+  assume (gf_xor (ah, al) gf_zero == (ah, al))
 
 (** Self-XOR yields zero *)
 val gf_xor_self_zero : a:gf128

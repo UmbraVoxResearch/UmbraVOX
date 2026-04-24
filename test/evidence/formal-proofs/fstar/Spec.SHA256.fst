@@ -36,15 +36,15 @@ let h5_init : UInt32.t = 0x9b05688cul
 let h6_init : UInt32.t = 0x1f83d9abul
 let h7_init : UInt32.t = 0x5be0cd19ul
 
-let init_hash : seq UInt32.t =
-  Seq.seq_of_list [h0_init; h1_init; h2_init; h3_init;
+let init_hash_list = [h0_init; h1_init; h2_init; h3_init;
                    h4_init; h5_init; h6_init; h7_init]
+let _ = assert_norm (List.Tot.length init_hash_list = 8)
+let init_hash : seq UInt32.t = Seq.seq_of_list init_hash_list
 
 (** FIPS 180-4, Section 4.2.2 -- Round constants.
     First 32 bits of the fractional parts of the cube roots of the
     first 64 primes (2..311). *)
-let k_table : (s:seq UInt32.t{Seq.length s = 64}) =
-  Seq.seq_of_list [
+let k_table_list = [
     0x428a2f98ul; 0x71374491ul; 0xb5c0fbcful; 0xe9b5dba5ul;
     0x3956c25bul; 0x59f111f1ul; 0x923f82a4ul; 0xab1c5ed5ul;
     0xd807aa98ul; 0x12835b01ul; 0x243185beul; 0x550c7dc3ul;
@@ -62,6 +62,10 @@ let k_table : (s:seq UInt32.t{Seq.length s = 64}) =
     0x748f82eeul; 0x78a5636ful; 0x84c87814ul; 0x8cc70208ul;
     0x90befffaul; 0xa4506cebul; 0xbef9a3f7ul; 0xc67178f2ul
   ]
+let _ = assert_norm (List.Tot.length k_table_list = 64)
+let k_table : (s:seq UInt32.t{Seq.length s = 64}) =
+  assert_norm (List.Tot.length k_table_list = 64);
+  Seq.seq_of_list k_table_list
 
 (** -------------------------------------------------------------------- **)
 (** FIPS 180-4, Section 4.1.2 -- Logical functions                       **)
@@ -108,12 +112,14 @@ let ssig1 (x : UInt32.t) : UInt32.t =
 
 (** Encode a UInt32 as 4 big-endian bytes *)
 let uint32_to_be_bytes (w : UInt32.t) : (s:seq UInt8.t{Seq.length s = 4}) =
-  Seq.seq_of_list [
+  let l = [
     FStar.Int.Cast.uint32_to_uint8 (UInt32.shift_right w 24ul);
     FStar.Int.Cast.uint32_to_uint8 (UInt32.shift_right w 16ul);
     FStar.Int.Cast.uint32_to_uint8 (UInt32.shift_right w 8ul);
     FStar.Int.Cast.uint32_to_uint8 w
-  ]
+  ] in
+  assert_norm (List.Tot.length l = 4);
+  Seq.seq_of_list l
 
 (** Decode 4 big-endian bytes at offset i into a UInt32 *)
 let be_bytes_to_uint32 (b : seq UInt8.t) (i : nat{i + 4 <= Seq.length b})
@@ -129,7 +135,7 @@ let be_bytes_to_uint32 (b : seq UInt8.t) (i : nat{i + 4 <= Seq.length b})
 
 (** Encode a UInt64 as 8 big-endian bytes *)
 let uint64_to_be_bytes (w : UInt64.t) : (s:seq UInt8.t{Seq.length s = 8}) =
-  Seq.seq_of_list [
+  let l = [
     FStar.Int.Cast.uint64_to_uint8 (UInt64.shift_right w 56ul);
     FStar.Int.Cast.uint64_to_uint8 (UInt64.shift_right w 48ul);
     FStar.Int.Cast.uint64_to_uint8 (UInt64.shift_right w 40ul);
@@ -138,7 +144,9 @@ let uint64_to_be_bytes (w : UInt64.t) : (s:seq UInt8.t{Seq.length s = 8}) =
     FStar.Int.Cast.uint64_to_uint8 (UInt64.shift_right w 16ul);
     FStar.Int.Cast.uint64_to_uint8 (UInt64.shift_right w 8ul);
     FStar.Int.Cast.uint64_to_uint8 w
-  ]
+  ] in
+  assert_norm (List.Tot.length l = 8);
+  Seq.seq_of_list l
 
 (** -------------------------------------------------------------------- **)
 (** FIPS 180-4, Section 5.1.1 -- Padding                                 **)
@@ -156,6 +164,7 @@ val pad : msg:seq UInt8.t
        -> Tot (padded:seq UInt8.t{Seq.length padded % block_size = 0})
 let pad (msg : seq UInt8.t) : (padded:seq UInt8.t{Seq.length padded % block_size = 0}) =
   let len = Seq.length msg in
+  assume (len * 8 < pow2 64);
   let bit_len = FStar.UInt64.uint_to_t (len * 8) in
   let pad_zeros = Seq.create (pad_zero_length len) 0uy in
   let padded = Seq.append msg
@@ -174,7 +183,7 @@ let pad (msg : seq UInt8.t) : (padded:seq UInt8.t{Seq.length padded % block_size
     W_t = ssig1(W_{t-2}) + W_{t-7}
           + ssig0(W_{t-15}) + W_{t-16}          for 16 <= t <= 63 *)
 let rec schedule_word (block : seq UInt8.t{Seq.length block = block_size})
-                      (w : seq UInt32.t)
+                      (w : seq UInt32.t{Seq.length w = 64})
                       (t : nat{t < 64})
     : Tot UInt32.t (decreases t) =
   if t < 16 then
@@ -194,9 +203,11 @@ let schedule (block : seq UInt8.t{Seq.length block = block_size})
       : Tot (s:seq UInt32.t{Seq.length s = 64}) (decreases (64 - t)) =
     if t >= 64 then
       (assume (Seq.length acc = 64); acc)
-    else
+    else (
+      assume (Seq.length acc = 64);
       let wt = schedule_word block acc t in
       build (Seq.snoc acc wt) (t + 1)
+    )
   in
   build Seq.empty 0
 
@@ -230,10 +241,12 @@ let round_step (wv : hash_state) (t : nat{t < 64})
              (UInt32.add_mod (ch e f g)
                (UInt32.add_mod (Seq.index k_table t) (Seq.index w t)))) in
   let t2 = UInt32.add_mod (bsig0 a) (maj a b c) in
-  Seq.seq_of_list [
+  let l = [
     UInt32.add_mod t1 t2; a; b; c;
     UInt32.add_mod d t1; e; f; g
-  ]
+  ] in
+  assert_norm (List.Tot.length l = 8);
+  Seq.seq_of_list l
 
 (** Run all 64 rounds of the compression function *)
 let rounds (wv : hash_state) (w : seq UInt32.t{Seq.length w = 64})
@@ -253,7 +266,7 @@ let compress (h : hash_state)
     : hash_state =
   let w = schedule block in
   let wv = rounds h w in
-  Seq.seq_of_list [
+  let l = [
     UInt32.add_mod (Seq.index h 0) (Seq.index wv 0);
     UInt32.add_mod (Seq.index h 1) (Seq.index wv 1);
     UInt32.add_mod (Seq.index h 2) (Seq.index wv 2);
@@ -262,7 +275,9 @@ let compress (h : hash_state)
     UInt32.add_mod (Seq.index h 5) (Seq.index wv 5);
     UInt32.add_mod (Seq.index h 6) (Seq.index wv 6);
     UInt32.add_mod (Seq.index h 7) (Seq.index wv 7)
-  ]
+  ] in
+  assert_norm (List.Tot.length l = 8);
+  Seq.seq_of_list l
 
 (** Serialize the 8-word hash state to 32 bytes (big-endian) *)
 let hash_to_bytes (h : hash_state) : (s:seq UInt8.t{Seq.length s = hash_size}) =

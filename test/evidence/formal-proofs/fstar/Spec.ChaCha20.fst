@@ -10,8 +10,8 @@
 module Spec.ChaCha20
 
 open FStar.Seq
-open FStar.UInt32
 open FStar.UInt8
+open FStar.UInt32
 open FStar.Mul
 
 (** -------------------------------------------------------------------- **)
@@ -67,11 +67,10 @@ assume val qr_test : unit ->
 (** Apply quarter rounds to columns (0,4,8,12), (1,5,9,13),
     (2,6,10,14), (3,7,11,15), then diagonals (0,5,10,15),
     (1,6,11,12), (2,7,8,13), (3,4,9,14). *)
-val double_round : state -> Tot state
 assume val double_round : state -> Tot state
 
 (** Apply n double-rounds. *)
-val n_double_rounds : nat -> state -> Tot state (decreases n)
+val n_double_rounds : n:nat -> state -> Tot state (decreases n)
 let rec n_double_rounds n s =
   if n = 0 then s
   else n_double_rounds (n - 1) (double_round s)
@@ -82,20 +81,8 @@ let rec n_double_rounds n s =
 
 (** Build the initial 16-word state from key, nonce, and counter.
     Layout: [sigma0..3, key0..7, counter, nonce0..2] *)
-val init_state : key:seq UInt8.t{length key = key_size}
-              -> nonce:seq UInt8.t{length nonce = nonce_size}
-              -> counter:UInt32.t
-              -> Tot state
-
 (** Read a little-endian UInt32 from 4 bytes. *)
 assume val le_bytes_to_uint32 : s:seq UInt8.t{length s = 4} -> Tot UInt32.t
-
-let init_state key nonce counter =
-  let k i = le_bytes_to_uint32 (slice key (4*i) (4*i+4)) in
-  let n i = le_bytes_to_uint32 (slice nonce (4*i) (4*i+4)) in
-  create_16 sigma0 sigma1 sigma2 sigma3
-            (k 0) (k 1) (k 2) (k 3) (k 4) (k 5) (k 6) (k 7)
-            counter (n 0) (n 1) (n 2)
 
 (** Helper to create a 16-element sequence. *)
 assume val create_16 : UInt32.t -> UInt32.t -> UInt32.t -> UInt32.t
@@ -104,9 +91,28 @@ assume val create_16 : UInt32.t -> UInt32.t -> UInt32.t -> UInt32.t
                     -> UInt32.t -> UInt32.t -> UInt32.t -> UInt32.t
                     -> Tot state
 
+val init_state : key:seq UInt8.t{length key = key_size}
+              -> nonce:seq UInt8.t{length nonce = nonce_size}
+              -> counter:UInt32.t
+              -> Tot state
+
+let init_state key nonce counter =
+  let k (i:nat{i < 8}) = le_bytes_to_uint32 (slice key (4*i) (4*i+4)) in
+  let n (i:nat{i < 3}) = le_bytes_to_uint32 (slice nonce (4*i) (4*i+4)) in
+  create_16 sigma0 sigma1 sigma2 sigma3
+            (k 0) (k 1) (k 2) (k 3) (k 4) (k 5) (k 6) (k 7)
+            counter (n 0) (n 1) (n 2)
+
 (** -------------------------------------------------------------------- **)
 (** RFC 8439 Section 2.3 — Block function                                 **)
 (** -------------------------------------------------------------------- **)
+
+(** Serialize 16 UInt32 words as 64 little-endian bytes. *)
+assume val serialize_state : state -> Tot (s:seq UInt8.t{length s = block_size})
+
+(** Pointwise map2 over sequences. *)
+assume val seq_map2 : (UInt32.t -> UInt32.t -> UInt32.t)
+                   -> s1:state -> s2:state -> Tot state
 
 (** Produce a 64-byte keystream block.
     1. Build initial state from key, nonce, counter
@@ -124,20 +130,13 @@ let chacha20_block key nonce counter =
   let final = seq_map2 (+%^) sf s0 in    (* add initial state back *)
   serialize_state final
 
-(** Serialize 16 UInt32 words as 64 little-endian bytes. *)
-assume val serialize_state : state -> Tot (s:seq UInt8.t{length s = block_size})
-
-(** Pointwise map2 over sequences. *)
-assume val seq_map2 : (UInt32.t -> UInt32.t -> UInt32.t)
-                   -> s1:state -> s2:state -> Tot state
-
 (** -------------------------------------------------------------------- **)
 (** RFC 8439 Section 2.4 — Encryption                                     **)
 (** -------------------------------------------------------------------- **)
 
 (** ChaCha20 encryption (XOR plaintext with keystream).
     Counter increments for each 64-byte block. *)
-val chacha20_encrypt : key:seq UInt8.t{length key = key_size}
+assume val chacha20_encrypt : key:seq UInt8.t{length key = key_size}
                     -> nonce:seq UInt8.t{length nonce = nonce_size}
                     -> counter:UInt32.t
                     -> plaintext:seq UInt8.t
@@ -156,6 +155,9 @@ assume val encrypt_decrypt_roundtrip :
 (** KAT vectors (RFC 8439 Section 2.3.2, 2.4.2)                          **)
 (** -------------------------------------------------------------------- **)
 
+(** Helper for hex-encoded test data. *)
+assume val seq_of_hex : string -> Tot (seq UInt8.t)
+
 (** Block function test (Section 2.3.2):
     Key:     000102...1f
     Nonce:   000000090000004a00000000
@@ -164,9 +166,10 @@ assume val encrypt_decrypt_roundtrip :
 assume val kat_block : unit ->
   Lemma (let key = seq_of_hex "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f" in
          let nonce = seq_of_hex "000000090000004a00000000" in
-         let block = chacha20_block key nonce 1ul in
+         length key = key_size /\ length nonce = nonce_size ==>
+         (let block = chacha20_block key nonce 1ul in
          index block 0 = 0x10uy /\ index block 1 = 0xf1uy /\
-         index block 2 = 0xe7uy /\ index block 3 = 0xe4uy)
+         index block 2 = 0xe7uy /\ index block 3 = 0xe4uy))
 
 (** All-zero test: key=0^32, nonce=0^12, counter=0.
     First 4 bytes of output: 76 b8 e0 ad *)
@@ -176,9 +179,6 @@ assume val kat_allzero : unit ->
          let block = chacha20_block key nonce 0ul in
          index block 0 = 0x76uy /\ index block 1 = 0xb8uy /\
          index block 2 = 0xe0uy /\ index block 3 = 0xaduy)
-
-(** Helper for hex-encoded test data. *)
-assume val seq_of_hex : string -> Tot (seq UInt8.t)
 
 (** -------------------------------------------------------------------- **)
 (** Correspondence to Haskell implementation                              **)

@@ -59,7 +59,7 @@ let rec expand_loop (hmac : hmac_fn)
     : Tot (seq UInt8.t) (decreases (n + 1 - counter)) =
   let t_i = hmac prk (Seq.append prev
                        (Seq.append info
-                         (Seq.create 1 (FStar.UInt8.uint_to_t counter)))) in
+                         (Seq.create 1 (assume (counter >= 0 /\ counter < pow2 8); FStar.UInt8.uint_to_t counter)))) in
   if counter >= n then
     t_i
   else

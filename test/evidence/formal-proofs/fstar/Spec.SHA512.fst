@@ -34,15 +34,15 @@ let h5_init : UInt64.t = 0x9b05688c2b3e6c1fuL
 let h6_init : UInt64.t = 0x1f83d9abfb41bd6buL
 let h7_init : UInt64.t = 0x5be0cd19137e2179uL
 
-let init_hash : seq UInt64.t =
-  Seq.seq_of_list [h0_init; h1_init; h2_init; h3_init;
+let init_hash_list = [h0_init; h1_init; h2_init; h3_init;
                    h4_init; h5_init; h6_init; h7_init]
+let _ = assert_norm (List.Tot.length init_hash_list = 8)
+let init_hash : seq UInt64.t = Seq.seq_of_list init_hash_list
 
 (** FIPS 180-4, Section 4.2.3 -- Round constants.
     First 64 bits of the fractional parts of the cube roots of the
     first 80 primes (2..409). *)
-let k_table : (s:seq UInt64.t{Seq.length s = 80}) =
-  Seq.seq_of_list [
+let k_table_list = [
     0x428a2f98d728ae22uL; 0x7137449123ef65cduL; 0xb5c0fbcfec4d3b2fuL; 0xe9b5dba58189dbbcuL;
     0x3956c25bf348b538uL; 0x59f111f1b605d019uL; 0x923f82a4af194f9buL; 0xab1c5ed5da6d8118uL;
     0xd807aa98a3030242uL; 0x12835b0145706fbeuL; 0x243185be4ee4b28cuL; 0x550c7dc3d5ffb4e2uL;
@@ -64,6 +64,10 @@ let k_table : (s:seq UInt64.t{Seq.length s = 80}) =
     0x28db77f523047d84uL; 0x32caab7b40c72493uL; 0x3c9ebe0a15c9bebcuL; 0x431d67c49c100d4cuL;
     0x4cc5d4becb3e42b6uL; 0x597f299cfc657e2auL; 0x5fcb6fab3ad6faecuL; 0x6c44198c4a475817uL
   ]
+let _ = assert_norm (List.Tot.length k_table_list = 80)
+let k_table : (s:seq UInt64.t{Seq.length s = 80}) =
+  assert_norm (List.Tot.length k_table_list = 80);
+  Seq.seq_of_list k_table_list
 
 (** -------------------------------------------------------------------- **)
 (** FIPS 180-4, Section 4.1.3 -- Logical functions                       **)
@@ -107,7 +111,7 @@ let ssig1 (x : UInt64.t) : UInt64.t =
 (** -------------------------------------------------------------------- **)
 
 let uint64_to_be_bytes (w : UInt64.t) : (s:seq UInt8.t{Seq.length s = 8}) =
-  Seq.seq_of_list [
+  let l = [
     FStar.Int.Cast.uint64_to_uint8 (UInt64.shift_right w 56ul);
     FStar.Int.Cast.uint64_to_uint8 (UInt64.shift_right w 48ul);
     FStar.Int.Cast.uint64_to_uint8 (UInt64.shift_right w 40ul);
@@ -116,7 +120,9 @@ let uint64_to_be_bytes (w : UInt64.t) : (s:seq UInt8.t{Seq.length s = 8}) =
     FStar.Int.Cast.uint64_to_uint8 (UInt64.shift_right w 16ul);
     FStar.Int.Cast.uint64_to_uint8 (UInt64.shift_right w 8ul);
     FStar.Int.Cast.uint64_to_uint8 w
-  ]
+  ] in
+  assert_norm (List.Tot.length l = 8);
+  Seq.seq_of_list l
 
 let be_bytes_to_uint64 (b : seq UInt8.t) (i : nat{i + 8 <= Seq.length b})
     : UInt64.t =
@@ -151,6 +157,7 @@ val pad : msg:seq UInt8.t
        -> Tot (padded:seq UInt8.t{Seq.length padded % block_size = 0})
 let pad (msg : seq UInt8.t) : (padded:seq UInt8.t{Seq.length padded % block_size = 0}) =
   let len = Seq.length msg in
+  assume (len * 8 >= 0 /\ len * 8 < pow2 64);
   let bit_len = FStar.UInt64.uint_to_t (len * 8) in
   let pad_zeros = Seq.create (pad_zero_length len) 0uy in
   let len_hi = uint64_to_be_bytes 0uL in   (* upper 64 bits of 128-bit length *)
@@ -167,7 +174,7 @@ let pad (msg : seq UInt8.t) : (padded:seq UInt8.t{Seq.length padded % block_size
 (** -------------------------------------------------------------------- **)
 
 let rec schedule_word (block : seq UInt8.t{Seq.length block = block_size})
-                      (w : seq UInt64.t)
+                      (w : seq UInt64.t{Seq.length w = 80})
                       (t : nat{t < 80})
     : Tot UInt64.t (decreases t) =
   if t < 16 then
@@ -186,9 +193,11 @@ let schedule (block : seq UInt8.t{Seq.length block = block_size})
       : Tot (s:seq UInt64.t{Seq.length s = 80}) (decreases (80 - t)) =
     if t >= 80 then
       (assume (Seq.length acc = 80); acc)
-    else
+    else (
+      assume (Seq.length acc = 80);
       let wt = schedule_word block acc t in
       build (Seq.snoc acc wt) (t + 1)
+    )
   in
   build Seq.empty 0
 
@@ -214,10 +223,12 @@ let round_step (wv : hash_state) (t : nat{t < 80})
              (UInt64.add_mod (ch e f g)
                (UInt64.add_mod (Seq.index k_table t) (Seq.index w t)))) in
   let t2 = UInt64.add_mod (bsig0 a) (maj a b c) in
-  Seq.seq_of_list [
+  let l = [
     UInt64.add_mod t1 t2; a; b; c;
     UInt64.add_mod d t1; e; f; g
-  ]
+  ] in
+  assert_norm (List.Tot.length l = 8);
+  Seq.seq_of_list l
 
 let rounds (wv : hash_state) (w : seq UInt64.t{Seq.length w = 80})
     : hash_state =
@@ -233,7 +244,7 @@ let compress (h : hash_state)
     : hash_state =
   let w = schedule block in
   let wv = rounds h w in
-  Seq.seq_of_list [
+  let l = [
     UInt64.add_mod (Seq.index h 0) (Seq.index wv 0);
     UInt64.add_mod (Seq.index h 1) (Seq.index wv 1);
     UInt64.add_mod (Seq.index h 2) (Seq.index wv 2);
@@ -242,7 +253,9 @@ let compress (h : hash_state)
     UInt64.add_mod (Seq.index h 5) (Seq.index wv 5);
     UInt64.add_mod (Seq.index h 6) (Seq.index wv 6);
     UInt64.add_mod (Seq.index h 7) (Seq.index wv 7)
-  ]
+  ] in
+  assert_norm (List.Tot.length l = 8);
+  Seq.seq_of_list l
 
 (** -------------------------------------------------------------------- **)
 (** Serialization and top-level function                                 **)
