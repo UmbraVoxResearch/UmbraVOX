@@ -267,9 +267,14 @@ dhRatchet st header =
                 !dhOutput1 = dh (rsDHSend st2) peerPub
                 !(rootKey1, recvChain) = kdfRK (rsRootKey st2) dhOutput1
                 -- Generate new sending keypair
-                -- We derive a new DH secret deterministically from current state
-                -- In production, this would use a CSPRNG. Here we derive from
-                -- the root key for determinism.
+                -- TEMPORARY (IMPL-002): DH secret is derived deterministically
+                -- from the root key because randomBytes / CSPRNG is not yet
+                -- implemented.  This deterministic derivation still provides
+                -- forward secrecy within the session (each step's keys are
+                -- deleted), but does NOT provide break-in recovery: an
+                -- attacker who compromises the current root key can predict
+                -- all future DH keypairs.  Production MUST replace this with
+                -- CSPRNG-generated ephemeral keys (see IMPL-002).
                 !newDHSecret = hmacSHA256 rootKey1 (snd (rsDHSend st2))
                 !newDHKP = generateDH newDHSecret
                 -- Derive new sending chain
@@ -336,15 +341,17 @@ skipMessageKeys st until'
 
 -- | Build a 12-byte GCM nonce from message key and counter.
 --
--- Nonce = first 4 bytes of HMAC-SHA256(msgKey, "nonce")
+-- Nonce = first 8 bytes of HMAC-SHA256(msgKey, "nonce")
 --       + 4-byte big-endian message counter
---       + 4 zero bytes
+--
+-- Each msgKey is unique (derived from a unique chain key), so the 8 HMAC
+-- bytes provide strong nonce uniqueness.  The counter ensures distinct
+-- nonces even if the same msgKey were ever reused.
 makeNonce :: ByteString -> Word32 -> ByteString
 makeNonce msgKey counter =
     let !h = hmacSHA256 msgKey "nonce"
-        !prefix = BS.take 4 h
         !ctrBytes = encodeWord32BE counter
-    in prefix <> ctrBytes <> BS.replicate 4 0
+    in BS.take 8 h <> ctrBytes
 
 -- | Encode a Word32 as 4-byte big-endian.
 encodeWord32BE :: Word32 -> ByteString

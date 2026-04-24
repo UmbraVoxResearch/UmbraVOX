@@ -775,6 +775,66 @@ MISSING IMPLEMENTATIONS (2026-04-24)
   [ ] IMPL-007.4 Full block reconstruction from mempool + requested txns
 
 ================================================================================
+BUGS FOUND BY 11-AGENT EXPERT CRYPTO REVIEW #2 (2026-04-24)
+================================================================================
+
+--- Fixed (in progress) ---
+
+[~] BUG-011 ML-KEM SampleNTT: finite XOF buffer with zero-padding fallback
+  FIPS 203 requires XOF to produce bytes indefinitely. Zero-padding produces
+  wrong polynomials. Fix: error on exhaustion (astronomically unlikely with
+  672+ bytes), never zero-pad.
+
+[~] BUG-012 ML-KEM matrix A: XOF index ordering (j,i) vs FIPS 203 (i,j)
+  xof rho j i produces rho||j||i. FIPS 203 Algorithm 12 says A[i,j] = XOF(rho,i,j).
+  Self-consistent but breaks FIPS 203 KAT vector compatibility.
+  Fix: swap to xof rho i j in both kpkeKeyGen and kpkeEncrypt.
+
+[~] BUG-013 ML-KEM decaps: non-constant-time ciphertext comparison
+  `ct' == ct` is variable-time ByteString equality on 1088-byte ciphertext.
+  FIPS 203 Section 7.3 requires constant-time selection to prevent
+  implicit-rejection oracle attacks.
+  Fix: use constantEq pattern (fold with XOR accumulator).
+
+[~] BUG-014 Double Ratchet: nonce construction wastes 32 bits
+  Last 4 bytes of 12-byte GCM nonce always zero.
+  Fix: use 8 bytes HMAC + 4 bytes counter = full 12-byte nonce.
+
+[~] BUG-015 Double Ratchet: deterministic DH key generation
+  New DH keypairs derived via HMAC instead of CSPRNG.
+  Breaks break-in recovery (future secrecy) guarantees.
+  Blocked on IMPL-002 (CSPRNG). Add clear documentation.
+
+--- Open: Security (from cross-cutting review) ---
+
+[ ] BUG-016 No key material zeroing in Haskell (GC limitation)
+  Secret keys held in ordinary heap ByteStrings. No explicit zeroing.
+  [ ] BUG-016.1 Implement FFI scrubBytes using C explicit_bzero
+  [ ] BUG-016.2 Add SecureByteString wrapper type with finalizer
+  [ ] BUG-016.3 Zero RatchetState keys on session teardown
+  [ ] BUG-016.4 Zero MLKEM decapsulation key after use
+  [ ] BUG-016.5 Zero Ed25519/X25519 private keys after signing/DH
+
+[ ] BUG-017 C FFI constant-time implementations missing (all primitives)
+  Path 3 of 3-way verification (F* + Haskell + C FFI) is universally absent.
+  Pure Haskell is NOT constant-time (GHC lazy eval, GC, branch prediction).
+  [ ] BUG-017.1 Write constant-time C for AES-256 (no table lookups on secret)
+  [ ] BUG-017.2 Write constant-time C for X25519 (fixed-time Montgomery ladder)
+  [ ] BUG-017.3 Write constant-time C for Ed25519 (constant-time scalar mult)
+  [ ] BUG-017.4 Write constant-time C for SHA-256/512 (no secret-dep branches)
+  [ ] BUG-017.5 Write constant-time C for ML-KEM-768 (NTT, polynomial ops)
+  [ ] BUG-017.6 Write constant-time C for GHASH (GF multiplication)
+  [ ] BUG-017.7 Generate FFI bindings for all C implementations
+  [ ] BUG-017.8 ctgrind/dudect validation for all C implementations
+  [ ] BUG-017.9 Equivalence testing: 10,000+ random inputs, pure == FFI
+
+[ ] BUG-018 F* specs: all KAT lemmas use `assume` (no machine-checked proofs)
+  Structural lemmas should be provable; KAT lemmas require normalization.
+  [ ] BUG-018.1 Fix all F* verification errors (10/11 currently failing)
+  [ ] BUG-018.2 Enable --fuel/--ifuel for KAT normalization where feasible
+  [ ] BUG-018.3 Prove structural lemmas without assume where possible
+
+================================================================================
 IMMEDIATE NEXT ACTIONS (2026-04-24)
 ================================================================================
 
@@ -783,13 +843,21 @@ IMMEDIATE NEXT ACTIONS (2026-04-24)
 [x] Fix invNTT butterfly sign bug (BUG-001)
 [x] Fix HKDF dead code condition (BUG-002)
 [x] Fix GCM counter wrap (BUG-003)
-[ ] Write F* spec for Keccak/SHA-3 (FSTAR-001)
+[x] Fix Double Ratchet Maybe type (BUG-004)
+[x] Fix Double Ratchet eviction policy (BUG-005)
+[x] Fix GCM constantEq timing (BUG-006)
+[x] Write F* spec for Keccak/SHA-3 (FSTAR-001)
+[~] Fix ML-KEM SampleNTT zero-padding (BUG-011)
+[~] Fix ML-KEM XOF index ordering for FIPS 203 KAT compat (BUG-012)
+[~] Fix ML-KEM constant-time decaps comparison (BUG-013)
+[~] Fix Double Ratchet nonce (BUG-014)
+[~] Document Double Ratchet deterministic DH limitation (BUG-015)
+[ ] Fix all F* verification errors (BUG-018.1)
 [ ] Write F* spec for ML-KEM-768 (FSTAR-002)
 [ ] Implement VRF (IMPL-001) — blocks consensus Phase 3
 [ ] Implement CSPRNG wrapper (IMPL-002) — blocks Dandelion++ Phase 5
-[ ] Fix Double Ratchet Maybe type (BUG-004)
-[ ] Fix Double Ratchet eviction policy (BUG-005)
-[ ] Fix GCM constantEq timing (BUG-006)
+[ ] Implement C FFI constant-time backends (BUG-017)
+[ ] Implement key material zeroing (BUG-016)
 [ ] Complete BlockHeader fields (BUG-007)
 [ ] Fix LeaderElection types (BUG-008)
 [ ] Begin codegen implementation (IMPL-003)
