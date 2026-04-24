@@ -847,15 +847,82 @@ IMMEDIATE NEXT ACTIONS (2026-04-24)
 [x] Fix Double Ratchet eviction policy (BUG-005)
 [x] Fix GCM constantEq timing (BUG-006)
 [x] Write F* spec for Keccak/SHA-3 (FSTAR-001)
-[~] Fix ML-KEM SampleNTT zero-padding (BUG-011)
-[~] Fix ML-KEM XOF index ordering for FIPS 203 KAT compat (BUG-012)
-[~] Fix ML-KEM constant-time decaps comparison (BUG-013)
-[~] Fix Double Ratchet nonce (BUG-014)
-[~] Document Double Ratchet deterministic DH limitation (BUG-015)
-[ ] Fix all F* verification errors (BUG-018.1)
+[x] Fix ML-KEM SampleNTT zero-padding (BUG-011)
+[x] Fix ML-KEM XOF index ordering for FIPS 203 KAT compat (BUG-012)
+[x] Fix ML-KEM constant-time decaps comparison (BUG-013)
+[x] Fix Double Ratchet nonce (BUG-014)
+[x] Document Double Ratchet deterministic DH limitation (BUG-015)
+[x] Fix all F* verification errors — 11/11 pass (BUG-018.1)
+
+--- P0 Critical (from 7-agent full project audit, 2026-04-24) ---
+
+[ ] P0.1 Implement CSPRNG (IMPL-002) — foundation, unblocks DH fix
+  [ ] P0.1.1 Read /dev/urandom for initial 256-bit seed (Haskell IO)
+  [ ] P0.1.2 ChaCha20 block cipher for stream generation
+  [ ] P0.1.3 Reseed every 2^20 outputs via HKDF-Extract(old_key, fresh_entropy)
+  [ ] P0.1.4 Fork safety: check PID before every generation
+  [ ] P0.1.5 randomBytes :: Int -> IO ByteString public API
+  [ ] P0.1.6 Replace deterministic DH in DoubleRatchet with randomBytes
+
+[ ] P0.2 Implement PQXDH (Signal/PQXDH.hs) — PQ session establishment
+  [ ] P0.2.1 Fetch peer PQPK (ML-KEM public key) from bundle
+  [ ] P0.2.2 Compute 4 classical DH shared secrets (dh1-dh4)
+  [ ] P0.2.3 ML-KEM encapsulation against peer PQPK
+  [ ] P0.2.4 Derive master secret: HKDF(0xFF*32||dh1||dh2||dh3||dh4||pq_ss)
+  [ ] P0.2.5 Handle ML-KEM decapsulation failure (fallback to classical)
+  [ ] P0.2.6 Initialize Double Ratchet with hybrid master secret
+
+[ ] P0.3 Implement stealth addresses (DKSAP)
+  [ ] P0.3.1 One-time address generation from peer SPK
+  [ ] P0.3.2 Recipient address randomization in message blocks
+  [ ] P0.3.3 Recipient scanning: check all derivable stealth addresses
+  [ ] P0.3.4 View tag filtering (1-byte, 256x scan reduction)
+  [ ] P0.3.5 PQ hybrid stealth addresses (ML-KEM component)
+
+[ ] P0.4 Add monotonic nonce counter in DoubleRatchet
+  [ ] P0.4.1 Add session-lifetime nonce counter to RatchetState
+  [ ] P0.4.2 Increment on every encrypt, never reset
+  [ ] P0.4.3 Include session ID in nonce derivation
+  [ ] P0.4.4 Test: verify nonce uniqueness across 10,000 messages
+
+[ ] P0.5 Update legal notices
+  [ ] P0.5.1 LEGAL-NOTICE.md: jurisdictional operator warnings
+  [ ] P0.5.2 README.md: compliance advisory for US/UK/EU operators
+  [ ] P0.5.3 Token disclaimer: MTK not offered as investment
+
+--- P1 High (blocks deployment) ---
+
+[ ] P1.1 C FFI constant-time backends (BUG-017) — all 11 primitives
+[ ] P1.2 Key material zeroing (BUG-016) — FFI scrubBytes + SecureByteString
+[ ] P1.3 Equivocation detection — track (validator, slot), penalize duplicates
+[ ] P1.4 PQ ratchet frequency — reduce from 50 to 25 messages
+[ ] P1.5 MC/DC infrastructure — Template Haskell condition tracking
+[ ] P1.6 Hybrid composition proof — TLA+/Coq artifact
+
+--- P2 Medium (pre-mainnet) ---
+
+[ ] P2.1 Post-quantum signatures (Dilithium/FIPS 204) — hybrid Ed25519+Dilithium
+[ ] P2.2 Redesign Double Ratchet for HNDL — derive keys from DH + ML-KEM
+[ ] P2.3 Partition recovery semantics — canonical state selection
+[ ] P2.4 Cover traffic default — increase to MEDIUM (1/10 Hz)
+[ ] P2.5 Requirements traceability — populate 60 REQ entries
+[ ] P2.6 BIS export control ruling — legal determination
+[ ] P2.7 Configuration management — doc/configuration-index.md
+
+--- P3 Low (pre-audit) ---
+
+[ ] P3.1 GCM error path constant-time fix
+[ ] P3.2 Automatic address rotation at cycle boundaries
+[ ] P3.3 TLA+ stake grinding formal verification
+[ ] P3.4 Independent code review engagement
+[ ] P3.5 Data/control coupling analysis in quality gates
+[ ] P3.6 StateDB tamper detection — HMAC-SHA256 instead of CRC-32
+[ ] P3.7 Storage graceful degradation — disk quota monitoring
+
+--- Existing items ---
+
 [ ] Write F* spec for ML-KEM-768 (FSTAR-002)
 [ ] Implement VRF (IMPL-001) — blocks consensus Phase 3
-[ ] Implement CSPRNG wrapper (IMPL-002) — blocks Dandelion++ Phase 5
 [ ] Implement C FFI constant-time backends (BUG-017)
 [ ] Implement key material zeroing (BUG-016)
 [ ] Complete BlockHeader fields (BUG-007)
