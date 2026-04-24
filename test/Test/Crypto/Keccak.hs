@@ -1,5 +1,6 @@
--- | SHA-3 / Keccak test suite: NIST test vectors for SHA3-256, SHA3-512,
--- SHAKE-128, SHAKE-256, plus permutation self-tests and property tests.
+-- | SHA-3 / Keccak test suite: NIST test vectors for all FIPS 202 functions
+-- (SHA3-224, SHA3-256, SHA3-384, SHA3-512, SHAKE-128, SHAKE-256),
+-- plus permutation self-tests and property tests.
 module Test.Crypto.Keccak (runTests) where
 
 import Data.Array.Unboxed (listArray, (!))
@@ -7,14 +8,19 @@ import qualified Data.ByteString as BS
 
 import Test.Util
 import UmbraVox.Crypto.Keccak
-    ( sha3_256, sha3_512, shake128, shake256, keccakF1600 )
+    ( sha3_224, sha3_256, sha3_384, sha3_512
+    , shake128, shake256, keccakF1600 )
 
 runTests :: IO Bool
 runTests = do
     putStrLn "[Keccak/SHA-3] Running NIST test vectors..."
     vectorResults <- sequence
-        [ testSHA3_256_empty
+        [ testSHA3_224_empty
+        , testSHA3_224_abc
+        , testSHA3_256_empty
         , testSHA3_256_abc
+        , testSHA3_384_empty
+        , testSHA3_384_abc
         , testSHA3_512_empty
         , testSHA3_512_abc
         , testSHAKE128_empty_32
@@ -46,6 +52,20 @@ runTests = do
 -- NIST test vectors
 ------------------------------------------------------------------------
 
+-- SHA3-224("") = 6b4e03423667dbb73b6e15454f0eb1abd4597f9a1b078e3f5b5a6bc7
+testSHA3_224_empty :: IO Bool
+testSHA3_224_empty =
+    assertEq "SHA3-224(\"\")"
+        "6b4e03423667dbb73b6e15454f0eb1abd4597f9a1b078e3f5b5a6bc7"
+        (hexEncode (sha3_224 BS.empty))
+
+-- SHA3-224("abc") = e642824c3f8cf24ad09234ee7d3c766fc9a3a5168d0c94ad73b46fdf
+testSHA3_224_abc :: IO Bool
+testSHA3_224_abc =
+    assertEq "SHA3-224(\"abc\")"
+        "e642824c3f8cf24ad09234ee7d3c766fc9a3a5168d0c94ad73b46fdf"
+        (hexEncode (sha3_224 (strToBS "abc")))
+
 -- SHA3-256("") = a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a
 testSHA3_256_empty :: IO Bool
 testSHA3_256_empty =
@@ -59,6 +79,20 @@ testSHA3_256_abc =
     assertEq "SHA3-256(\"abc\")"
         "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532"
         (hexEncode (sha3_256 (strToBS "abc")))
+
+-- SHA3-384("") = 0c63a75b845e4f7d01107d852e4c2485c51a50aaaa94fc61995e71bbee983a2ac3713831264adb47fb6bd1e058d5f004
+testSHA3_384_empty :: IO Bool
+testSHA3_384_empty =
+    assertEq "SHA3-384(\"\")"
+        "0c63a75b845e4f7d01107d852e4c2485c51a50aaaa94fc61995e71bbee983a2ac3713831264adb47fb6bd1e058d5f004"
+        (hexEncode (sha3_384 BS.empty))
+
+-- SHA3-384("abc") = ec01498288516fc926459f58e2c6ad8df9b473cb0fc08c2596da7cf0e49be4b298d88cea927ac7f539f1edf228376d25
+testSHA3_384_abc :: IO Bool
+testSHA3_384_abc =
+    assertEq "SHA3-384(\"abc\")"
+        "ec01498288516fc926459f58e2c6ad8df9b473cb0fc08c2596da7cf0e49be4b298d88cea927ac7f539f1edf228376d25"
+        (hexEncode (sha3_384 (strToBS "abc")))
 
 -- SHA3-512("") = a69f73cca23a9ac5c8b567dc185a756e97c982164fe25859e0d1dcc1475c80a615b2123af1f5f94c11e3e9402c3ac558f500199d95b6d3e301758586281dcd26
 testSHA3_512_empty :: IO Bool

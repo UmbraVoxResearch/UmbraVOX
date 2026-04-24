@@ -7,7 +7,9 @@
 -- NOT constant-time. Production builds should use FFI to a
 -- constant-time C implementation.
 module UmbraVox.Crypto.Keccak
-    ( sha3_256    -- SHA3-256: msg -> 32-byte digest
+    ( sha3_224    -- SHA3-224: msg -> 28-byte digest
+    , sha3_256    -- SHA3-256: msg -> 32-byte digest
+    , sha3_384    -- SHA3-384: msg -> 48-byte digest
     , sha3_512    -- SHA3-512: msg -> 64-byte digest
     , shake128    -- SHAKE-128: msg -> output_len -> arbitrary-length output
     , shake256    -- SHAKE-256: msg -> output_len -> arbitrary-length output
@@ -306,11 +308,23 @@ stateToBytes st rate =
 -- Public API
 ------------------------------------------------------------------------
 
+-- | SHA3-224: produces a 28-byte (224-bit) digest.
+-- Rate = 144 bytes (1152 bits), capacity = 448 bits, suffix = 0x06
+sha3_224 :: ByteString -> ByteString
+sha3_224 = sponge 144 0x06 28
+{-# INLINE sha3_224 #-}
+
 -- | SHA3-256: produces a 32-byte (256-bit) digest.
 -- Rate = 136 bytes (1088 bits), capacity = 512 bits, suffix = 0x06
 sha3_256 :: ByteString -> ByteString
 sha3_256 = sponge 136 0x06 32
 {-# INLINE sha3_256 #-}
+
+-- | SHA3-384: produces a 48-byte (384-bit) digest.
+-- Rate = 104 bytes (832 bits), capacity = 768 bits, suffix = 0x06
+sha3_384 :: ByteString -> ByteString
+sha3_384 = sponge 104 0x06 48
+{-# INLINE sha3_384 #-}
 
 -- | SHA3-512: produces a 64-byte (512-bit) digest.
 -- Rate = 72 bytes (576 bits), capacity = 1024 bits, suffix = 0x06

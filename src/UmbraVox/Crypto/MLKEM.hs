@@ -2,10 +2,8 @@
 --
 -- Pure Haskell reference implementation. NOT constant-time.
 --
--- NOTE: FIPS 203 specifies SHAKE-128 (XOF), SHA3-256 (H), SHA3-512 (G),
--- and SHAKE-256 (J/PRF). This reference implementation substitutes
--- SHA-256 and SHA-512 as simplified replacements. A production build
--- MUST use the correct SHA-3/SHAKE primitives.
+-- Uses the correct FIPS 202 hash functions as required by FIPS 203:
+--   H = SHA3-256, G = SHA3-512, PRF/J = SHAKE-256, XOF = SHAKE-128.
 module UmbraVox.Crypto.MLKEM
     ( MLKEMEncapKey
     , MLKEMDecapKey
@@ -13,6 +11,16 @@ module UmbraVox.Crypto.MLKEM
     , mlkemKeyGen
     , mlkemEncaps
     , mlkemDecaps
+    -- Internal (exported for testing/verification)
+    , kpkeKeyGen
+    , kpkeEncrypt
+    , kpkeDecrypt
+    , encodeEK
+    , encodeDK
+    , hashG
+    , ntt
+    , invNtt
+    , Poly(..)
     ) where
 
 import Control.Monad (forM_)
@@ -26,8 +34,7 @@ import Data.Int (Int16)
 import Data.List (foldl')
 import Data.Word (Word8)
 
-import UmbraVox.Crypto.SHA256 (sha256)
-import UmbraVox.Crypto.SHA512 (sha512)
+import UmbraVox.Crypto.Keccak (sha3_256, sha3_512, shake128, shake256)
 
 ------------------------------------------------------------------------
 -- ML-KEM-768 parameters (FIPS 203, Table 2)
@@ -191,8 +198,9 @@ invNtt (Poly f0) = Poly result
             forM_ [start .. start + len - 1] $ \j -> do
                 fj    <- readArray arr j
                 fjlen <- readArray arr (j + len)
+                -- FIPS 203 Algorithm 10: t = f[j], f[j] = t + f[j+len], f[j+len] = z*(f[j+len] - t)
                 let t = ((fj + fjlen) `mod` _Q + _Q) `mod` _Q
-                    u = (z * ((fj - fjlen + _Q) `mod` _Q)) `mod` _Q
+                    u = (z * ((fjlen - fj + _Q) `mod` _Q)) `mod` _Q
                 writeArray arr j       t
                 writeArray arr (j+len) u
             outerLoop arr (k - 1) len (start + 2 * len)
@@ -310,20 +318,13 @@ sampleCBD eta bs =
         in modQ (x - y)
 
 -- | SampleNTT (Algorithm 8): sample polynomial in NTT domain via rejection.
--- NOTE: Uses iterated SHA-256 instead of SHAKE-128 (not production-safe).
+-- Uses SHAKE-128 as the XOF per FIPS 203.
 sampleNTT :: ByteString -> Poly
 sampleNTT seed =
-    let stream = expandStream seed
+    let stream = BS.unpack (shake128 seed 4096)
         coeffs = rejection stream 0 []
     in Poly (listArray (0, _N - 1) coeffs)
   where
-    expandStream :: ByteString -> [Word8]
-    expandStream s = go s 0
-      where
-        go prev !ctr =
-            let block = sha256 (prev `BS.append` BS.pack [fromIntegral ctr])
-            in BS.unpack block ++ go block (ctr + 1 :: Int)
-
     rejection :: [Word8] -> Int -> [Int16] -> [Int16]
     rejection _ 256 acc = reverse acc
     rejection (b0:b1:b2:rest) n acc =
@@ -339,44 +340,34 @@ sampleNTT seed =
     rejection _ _ acc = reverse acc ++ replicate (256 - length acc) 0
 
 ------------------------------------------------------------------------
--- Hash function substitutes
--- FIPS 203 uses SHA3-256 (H), SHA3-512 (G), SHAKE-256 (J/PRF).
--- We substitute with SHA-256 and SHA-512 for this reference impl.
+-- FIPS 203 hash functions (using correct FIPS 202 primitives)
 ------------------------------------------------------------------------
 
--- | H: hash function (substitute for SHA3-256)
+-- | H: SHA3-256 (FIPS 203 Section 4.1)
 hashH :: ByteString -> ByteString
-hashH = sha256
+hashH = sha3_256
 
--- | G: hash function producing 64 bytes (substitute for SHA3-512)
+-- | G: SHA3-512 producing 64 bytes, split into two 32-byte halves (FIPS 203 Section 4.1)
 hashG :: ByteString -> (ByteString, ByteString)
 hashG input =
-    let h = sha512 input
+    let h = sha3_512 input
     in (BS.take 32 h, BS.drop 32 h)
 
--- | PRF: pseudorandom function (substitute for SHAKE-256)
+-- | PRF_eta: SHAKE-256(s || b) truncated to len bytes (FIPS 203 Section 4.1)
 prf :: ByteString -> Word8 -> Int -> ByteString
 prf seed byte len =
     let input = seed `BS.append` BS.singleton byte
-    in expandPRF input len
+    in shake256 input len
 
--- | J: hash for implicit rejection (substitute for SHAKE-256)
+-- | J: SHAKE-256(z || c) for implicit rejection (FIPS 203 Section 4.1)
 hashJ :: ByteString -> ByteString -> ByteString
-hashJ z ct = BS.take 32 (sha256 (z `BS.append` ct))
-
--- | Expand a seed to arbitrary length via iterated SHA-256.
-expandPRF :: ByteString -> Int -> ByteString
-expandPRF seed len = BS.take len (go seed 0)
-  where
-    go :: ByteString -> Int -> ByteString
-    go prev !ctr =
-        let block = sha256 (prev `BS.append` BS.pack [fromIntegral (ctr .&. (0xFF :: Int))])
-        in block `BS.append` go block (ctr + 1)
+hashJ z ct = shake256 (z `BS.append` ct) 32
 
 ------------------------------------------------------------------------
--- XOF (substitute for SHAKE-128)
+-- XOF: SHAKE-128 (FIPS 203 Section 4.1)
 ------------------------------------------------------------------------
 
+-- | XOF(rho, i, j): SHAKE-128 seed for matrix sampling
 xof :: ByteString -> Word8 -> Word8 -> ByteString
 xof seed i j = seed `BS.append` BS.pack [i, j]
 
