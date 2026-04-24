@@ -30,20 +30,20 @@ cd "$SCRIPT_DIR"
 FSTAR="${FSTAR_EXE:-fstar.exe}"
 Z3="${Z3_EXE:-z3}"
 
-# Modules in dependency order
-ALL_MODULES=(
-    "Spec.SHA256"
-    "Spec.SHA512"
-    "Spec.HMAC"
-    "Spec.HKDF"
-    "Spec.AES256"
-    "Spec.GaloisField"
-    "Spec.GCM"
-    "Spec.ChaCha20"
-    "Spec.X25519"
-    "Spec.Ed25519"
-    "Spec.Keccak"
-)
+# Auto-discover all F* spec files (any .fst file in this directory)
+ALL_MODULES=()
+for fst_file in "$SCRIPT_DIR"/Spec.*.fst; do
+    if [[ -f "$fst_file" ]]; then
+        basename="${fst_file##*/}"
+        module="${basename%.fst}"
+        ALL_MODULES+=("$module")
+    fi
+done
+
+if [[ ${#ALL_MODULES[@]} -eq 0 ]]; then
+    log_fail "No Spec.*.fst files found in $SCRIPT_DIR"
+    exit 1
+fi
 
 # F* flags
 FSTAR_FLAGS=(

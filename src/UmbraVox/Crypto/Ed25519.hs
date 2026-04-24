@@ -193,6 +193,34 @@ encodePoint (!x, !y, !z, !_t) =
         !lastByte' = if odd xn then lastByte .|. 0x80 else lastByte
     in BS.take 31 encoded `BS.append` BS.singleton lastByte'
 
+-- | Adjust x-coordinate to match the desired sign bit.
+adjustSign :: Bool -> Integer -> Integer
+adjustSign !xSign !x
+    | odd x /= xSign = p - x
+    | otherwise       = x
+{-# INLINE adjustSign #-}
+
+-- | Recover x-coordinate from y per RFC 8032 Section 5.1.3, returning
+-- the x value adjusted to match the given sign bit, or Nothing on failure.
+recoverXForDecode :: Integer -> Bool -> Maybe Integer
+recoverXForDecode !y !xSign =
+    let !y2  = fMul y y
+        !u   = fSub y2 1               -- u = y^2 - 1
+        !v   = fAdd 1 (fMul curveD y2) -- v = d*y^2 + 1
+        !v3  = fMul v (fMul v v)
+        !v7  = fMul v3 (fMul v3 v)
+        !uv7 = fMul u v7
+        !x   = fMul (fMul u v3) (powMod uv7 ((p - 5) `div` 8) p)
+        !vx2 = fMul v (fMul x x)
+    in if vx2 == u `mod` p
+       then Just (adjustSign xSign x)
+       else if vx2 == (p - u) `mod` p
+            then let !x' = fMul x (powMod 2 ((p - 1) `div` 4) p)
+                 in Just (adjustSign xSign x')
+            else if u `mod` p == 0 && not xSign
+                 then Just 0
+                 else Nothing
+
 -- | Decode a point from 32 bytes per RFC 8032 Section 5.1.3.
 decodePoint :: ByteString -> Maybe ExtPoint
 decodePoint !bs
@@ -205,25 +233,9 @@ decodePoint !bs
             !y = decodeLE bs'
         in if y >= p
            then Nothing
-           else let !y2  = fMul y y
-                    !u   = fSub y2 1               -- u = y^2 - 1
-                    !v   = fAdd 1 (fMul curveD y2) -- v = d*y^2 + 1
-                    !v3  = fMul v (fMul v v)
-                    !v7  = fMul v3 (fMul v3 v)
-                    !uv7 = fMul u v7
-                    !x   = fMul (fMul u v3) (powMod uv7 ((p - 5) `div` 8) p)
-                    !vx2 = fMul v (fMul x x)
-                in if vx2 == u `mod` p
-                   then let !xFinal = if odd x /= xSign then p - x else x
-                        in Just (xFinal, y, 1, fMul xFinal y)
-                   else if vx2 == (p - u) `mod` p
-                        then let !sqrtM1 = powMod 2 ((p - 1) `div` 4) p
-                                 !x' = fMul x sqrtM1
-                                 !xFinal = if odd x' /= xSign then p - x' else x'
-                             in Just (xFinal, y, 1, fMul xFinal y)
-                        else if u `mod` p == 0
-                             then if xSign then Nothing else Just (0, y, 1, 0)
-                             else Nothing
+           else case recoverXForDecode y xSign of
+               Nothing     -> Nothing
+               Just !xFinal -> Just (xFinal, y, 1, fMul xFinal y)
 
 ------------------------------------------------------------------------
 -- RFC 8032 Section 5.1 — Key generation, signing, verification
