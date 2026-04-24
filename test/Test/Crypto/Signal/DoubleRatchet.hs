@@ -68,8 +68,9 @@ testInitAndSingleMessage = do
     let alice = ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret
         bob   = ratchetInitBob sharedSecret bobSPKSecret
         msg   = strToBS "Hello, Bob!"
-        (_alice', header, ct, tag) = ratchetEncrypt alice msg
-    case ratchetDecrypt bob header ct tag of
+    (_alice', header, ct, tag) <- ratchetEncrypt alice msg
+    result <- ratchetDecrypt bob header ct tag
+    case result of
         Just (_, pt) -> assertEq "Init + single message A->B" msg pt
         Nothing      -> putStrLn "  FAIL: Init + single message A->B (decryption failed)" >> pure False
 
@@ -83,28 +84,30 @@ testMultipleMessagesOneDirection = do
         bob0   = ratchetInitBob sharedSecret bobSPKSecret
 
         msg1 = strToBS "Message 1"
-        (alice1, h1, ct1, tag1) = ratchetEncrypt alice0 msg1
+    (alice1, h1, ct1, tag1) <- ratchetEncrypt alice0 msg1
 
-        msg2 = strToBS "Message 2"
-        (alice2, h2, ct2, tag2) = ratchetEncrypt alice1 msg2
+    let msg2 = strToBS "Message 2"
+    (alice2, h2, ct2, tag2) <- ratchetEncrypt alice1 msg2
 
-        msg3 = strToBS "Message 3"
-        (_alice3, h3, ct3, tag3) = ratchetEncrypt alice2 msg3
+    let msg3 = strToBS "Message 3"
+    (_alice3, h3, ct3, tag3) <- ratchetEncrypt alice2 msg3
 
-    r1 <- case ratchetDecrypt bob0 h1 ct1 tag1 of
+    r1 <- ratchetDecrypt bob0 h1 ct1 tag1
+    case r1 of
         Just (bob1, pt1) -> do
             ok1 <- assertEq "Multi A->B msg1" msg1 pt1
-            r2 <- case ratchetDecrypt bob1 h2 ct2 tag2 of
+            r2 <- ratchetDecrypt bob1 h2 ct2 tag2
+            case r2 of
                 Just (bob2, pt2) -> do
                     ok2 <- assertEq "Multi A->B msg2" msg2 pt2
-                    r3 <- case ratchetDecrypt bob2 h3 ct3 tag3 of
-                        Just (_, pt3) -> assertEq "Multi A->B msg3" msg3 pt3
+                    r3 <- ratchetDecrypt bob2 h3 ct3 tag3
+                    case r3 of
+                        Just (_, pt3) -> do
+                            ok3 <- assertEq "Multi A->B msg3" msg3 pt3
+                            pure (ok1 && ok2 && ok3)
                         Nothing -> putStrLn "  FAIL: Multi A->B msg3 decrypt" >> pure False
-                    pure (ok2 && r3)
                 Nothing -> putStrLn "  FAIL: Multi A->B msg2 decrypt" >> pure False
-            pure (ok1 && r2)
         Nothing -> putStrLn "  FAIL: Multi A->B msg1 decrypt" >> pure False
-    pure r1
 
 ------------------------------------------------------------------------
 -- Test 3: Bidirectional (A->B then B->A, triggers DH ratchet)
@@ -117,15 +120,17 @@ testBidirectional = do
 
         -- Alice sends to Bob
         msgAB = strToBS "Hello from Alice"
-        (alice1, hAB, ctAB, tagAB) = ratchetEncrypt alice0 msgAB
+    (alice1, hAB, ctAB, tagAB) <- ratchetEncrypt alice0 msgAB
 
-    case ratchetDecrypt bob0 hAB ctAB tagAB of
+    resultAB <- ratchetDecrypt bob0 hAB ctAB tagAB
+    case resultAB of
         Just (bob1, ptAB) -> do
             ok1 <- assertEq "Bidi A->B" msgAB ptAB
             -- Bob sends to Alice (this triggers DH ratchet on Bob)
             let msgBA = strToBS "Hello from Bob"
-                (_bob2, hBA, ctBA, tagBA) = ratchetEncrypt bob1 msgBA
-            case ratchetDecrypt alice1 hBA ctBA tagBA of
+            (_bob2, hBA, ctBA, tagBA) <- ratchetEncrypt bob1 msgBA
+            resultBA <- ratchetDecrypt alice1 hBA ctBA tagBA
+            case resultBA of
                 Just (_, ptBA) -> do
                     ok2 <- assertEq "Bidi B->A" msgBA ptBA
                     pure (ok1 && ok2)
@@ -142,22 +147,25 @@ testOutOfOrder = do
         bob0   = ratchetInitBob sharedSecret bobSPKSecret
 
         msg1 = strToBS "First"
-        (alice1, h1, ct1, tag1) = ratchetEncrypt alice0 msg1
+    (alice1, h1, ct1, tag1) <- ratchetEncrypt alice0 msg1
 
-        msg2 = strToBS "Second"
-        (alice2, h2, ct2, tag2) = ratchetEncrypt alice1 msg2
+    let msg2 = strToBS "Second"
+    (alice2, h2, ct2, tag2) <- ratchetEncrypt alice1 msg2
 
-        msg3 = strToBS "Third"
-        (_alice3, h3, ct3, tag3) = ratchetEncrypt alice2 msg3
+    let msg3 = strToBS "Third"
+    (_alice3, h3, ct3, tag3) <- ratchetEncrypt alice2 msg3
 
     -- Deliver in reverse order: msg3, msg2, msg1
-    case ratchetDecrypt bob0 h3 ct3 tag3 of
+    r3 <- ratchetDecrypt bob0 h3 ct3 tag3
+    case r3 of
         Just (bob1, pt3) -> do
             ok3 <- assertEq "OOO msg3 (delivered first)" msg3 pt3
-            case ratchetDecrypt bob1 h2 ct2 tag2 of
+            r2 <- ratchetDecrypt bob1 h2 ct2 tag2
+            case r2 of
                 Just (bob2, pt2) -> do
                     ok2 <- assertEq "OOO msg2 (delivered second)" msg2 pt2
-                    case ratchetDecrypt bob2 h1 ct1 tag1 of
+                    r1 <- ratchetDecrypt bob2 h1 ct1 tag1
+                    case r1 of
                         Just (_, pt1) -> do
                             ok1 <- assertEq "OOO msg1 (delivered third)" msg1 pt1
                             pure (ok3 && ok2 && ok1)
@@ -203,9 +211,10 @@ propBidirectional g0 = do
     sendAndRecv :: RatchetState -> RatchetState -> [ByteString]
                 -> IO (Maybe (RatchetState, RatchetState))
     sendAndRecv sender receiver [] = pure (Just (sender, receiver))
-    sendAndRecv sender receiver (msg:msgs) =
-        let (sender', hdr, ct, tag) = ratchetEncrypt sender msg
-        in case ratchetDecrypt receiver hdr ct tag of
+    sendAndRecv sender receiver (msg:msgs) = do
+        (sender', hdr, ct, tag) <- ratchetEncrypt sender msg
+        result <- ratchetDecrypt receiver hdr ct tag
+        case result of
             Just (receiver', pt)
                 | pt == msg -> sendAndRecv sender' receiver' msgs
                 | otherwise -> pure Nothing
@@ -220,10 +229,11 @@ testTamperedCiphertext = do
     let alice = ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret
         bob   = ratchetInitBob sharedSecret bobSPKSecret
         msg   = strToBS "Secret message"
-        (_alice', header, ct, tag) = ratchetEncrypt alice msg
-        -- Flip first bit of ciphertext
+    (_alice', header, ct, tag) <- ratchetEncrypt alice msg
+    let -- Flip first bit of ciphertext
         tamperedCt = flipByte 0 ct
-    case ratchetDecrypt bob header tamperedCt tag of
+    result <- ratchetDecrypt bob header tamperedCt tag
+    case result of
         Nothing -> assertEq "Tampered ciphertext rejected" True True
         Just _  -> putStrLn "  FAIL: Tampered ciphertext was accepted!" >> pure False
 
