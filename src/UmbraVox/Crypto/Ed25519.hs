@@ -6,6 +6,17 @@ module UmbraVox.Crypto.Ed25519
     ( ed25519Sign
     , ed25519Verify
     , ed25519PublicKey
+    -- * Low-level point operations (for stealth addresses)
+    , ExtPoint
+    , basepoint
+    , pointAdd
+    , scalarMul
+    , encodePoint
+    , decodePoint
+    , groupL
+    , decodeLE
+    , encodeLEn
+    , clampScalar
     ) where
 
 import Data.Bits ((.&.), (.|.), shiftL, shiftR, testBit)
@@ -135,6 +146,7 @@ intBitLen !n = 1 + intBitLen (shiftR n 1)
 -- Basepoint B: y = 4/5 mod p, x recovered from curve equation
 ------------------------------------------------------------------------
 
+{-# NOINLINE basepoint #-}
 basepoint :: ExtPoint
 basepoint =
     let !y = fMul 4 (modInv 5 p)
