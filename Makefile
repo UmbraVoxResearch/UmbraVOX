@@ -12,7 +12,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build test verify complexity quality lint clean help
+.PHONY: all build run test verify complexity quality lint codegen clean help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -48,23 +48,43 @@ NC     := \033[0m
 all: build
 
 help:
-	@echo "UmbraVOX Build System"
-	@echo "====================="
 	@echo ""
-	@echo "Targets:"
-	@echo "  make build       - Build library + executables"
-	@echo "  make test        - Run Haskell test suite (179 tests)"
-	@echo "  make verify      - Run F* formal verification (11 modules)"
-	@echo "  make complexity  - Check cyclomatic complexity (<= $(MAX_COMPLEXITY))"
-	@echo "  make lint        - Check code formatting and style"
-	@echo "  make quality     - Run ALL quality gates (test + verify + complexity + lint)"
-	@echo "  make clean       - Remove build artifacts"
+	@echo -e "$(BLUE)  UmbraVOX Build System$(NC)"
+	@echo -e "$(BLUE)  =====================$(NC)"
 	@echo ""
-	@echo "Quality Gate Requirements (DO-178C DAL A):"
-	@echo "  - All 179 Haskell tests pass"
-	@echo "  - All 11 F* specifications verify"
-	@echo "  - Cyclomatic complexity <= $(MAX_COMPLEXITY) for all functions"
-	@echo "  - No compiler warnings (-Wall -Werror equivalent)"
+	@echo "  Build & Run:"
+	@echo "    make build       Build library + executables"
+	@echo "    make run         Run UmbraVOX TUI application"
+	@echo "    make test        Run Haskell test suite (216 tests)"
+	@echo "    make codegen     Generate Haskell + C + FFI from .spec files"
+	@echo ""
+	@echo "  Quality Gates (DO-178C DAL A):"
+	@echo "    make verify      Run F* formal verification (all modules)"
+	@echo "    make complexity  Check cyclomatic complexity (<= $(MAX_COMPLEXITY))"
+	@echo "    make lint        Check code formatting and style"
+	@echo "    make quality     Run ALL quality gates"
+	@echo ""
+	@echo "  Maintenance:"
+	@echo "    make clean       Remove build artifacts"
+	@echo "    make help        Show this help"
+	@echo ""
+	@echo "  Quality Gate Requirements:"
+	@echo "    - All 216 Haskell tests pass (KAT, fuzz, security, integration)"
+	@echo "    - All F* specifications verify (auto-discovered)"
+	@echo "    - Cyclomatic complexity <= $(MAX_COMPLEXITY) for all functions"
+	@echo "    - 10 .spec files generate 30 Haskell + C + FFI outputs"
+	@echo ""
+	@echo "  Keyboard Shortcuts (TUI):"
+	@echo "    Tab     Switch focus (contacts <-> chat)"
+	@echo "    N       New connection    S   Secure notes"
+	@echo "    R       Rename contact    K   Identity & keys"
+	@echo "    Ctrl+N  New connection    Ctrl+R  Verify keys"
+	@echo "    Ctrl+X  Export (encrypted) Ctrl+P  Preferences"
+	@echo "    Ctrl+Q  Quit             ?       Help"
+	@echo ""
+
+run: build
+	@cabal run umbravox
 
 # --------------------------------------------------------------------------
 # Build
@@ -159,6 +179,15 @@ lint:
 	else \
 		echo -e "$(GREEN)[LINT]$(NC) All files pass style check."; \
 	fi
+
+# --------------------------------------------------------------------------
+# Code Generation
+# --------------------------------------------------------------------------
+
+codegen: build
+	@echo -e "$(BLUE)[CODEGEN]$(NC) Generating Haskell + C + FFI from .spec files..."
+	@cabal run codegen 2>&1 | tail -20
+	@echo -e "$(GREEN)[CODEGEN]$(NC) Code generation complete."
 
 # --------------------------------------------------------------------------
 # Quality Gate (all checks)
