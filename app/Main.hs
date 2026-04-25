@@ -140,14 +140,28 @@ render st = do
         ++ "\x2514" ++ replicate (rightW-2) '\x2500' ++ "\x2518"; resetSGR
     -- status bar
     goto (chatH+6) 1; setFg 30; csi "47m"
-    let bar = " F1:Help F2:File F3:Verify F5:Export F9:Settings F10:Quit"
+    let bar = " ^H:Help ^F:File ^V:Verify ^E:Export ^O:Options ^Q:Quit"
         full = if null status then bar
                else bar ++ " | " ++ take (totalW - length bar - 4) status
-    putStr (padR totalW full); resetSGR; hFlush stdout
+    putStr (padR totalW full); resetSGR
+    -- Redraw active dialog overlay on top of main UI
+    dlg <- readIORef (asDialogMode st)
+    case dlg of
+        Just DlgHelp     -> renderHelpOverlay
+        Just DlgKeys     -> renderKeysOverlay st
+        Just DlgSettings -> renderSettingsOverlay st
+        Just DlgNewConn  -> renderNewConnOverlay
+        Just DlgVerify   -> renderVerifyOverlay
+        Just (DlgPrompt title _) -> do
+            buf' <- readIORef (asInputBuf st)
+            renderPromptOverlay title buf'
+        Nothing -> pure ()
+    hFlush stdout
 -- Input handling ----------------------------------------------------------
 data InputEvent = KeyChar Char | KeyEnter | KeyTab | KeyBackspace | KeyEscape
     | KeyUp | KeyDown | KeyPageUp | KeyPageDown
-    | KeyF1 | KeyF2 | KeyF3 | KeyF5 | KeyF9 | KeyF10 | KeyUnknown
+    | KeyCtrlH | KeyCtrlF | KeyCtrlV | KeyCtrlE | KeyCtrlO | KeyCtrlQ
+    | KeyUnknown
 
 readKey :: IO InputEvent
 readKey = do
@@ -155,6 +169,13 @@ readKey = do
     case c of
         '\n' -> pure KeyEnter; '\r' -> pure KeyEnter; '\t' -> pure KeyTab
         '\DEL' -> pure KeyBackspace; '\BS' -> pure KeyBackspace
+        '\b'   -> pure KeyBackspace
+        '\x08' -> pure KeyCtrlH    -- Ctrl+H = Help
+        '\x06' -> pure KeyCtrlF    -- Ctrl+F = File
+        '\x16' -> pure KeyCtrlV    -- Ctrl+V = Verify
+        '\x05' -> pure KeyCtrlE    -- Ctrl+E = Export
+        '\x0F' -> pure KeyCtrlO    -- Ctrl+O = Options/Settings
+        '\x11' -> pure KeyCtrlQ    -- Ctrl+Q = Quit
         '\ESC' -> do
             ready <- hReady stdin
             if not ready then pure KeyEscape else do
@@ -168,28 +189,13 @@ readCSI = do
     c <- getChar
     case c of
         'A' -> pure KeyUp; 'B' -> pure KeyDown
-        '5' -> dt >> pure KeyPageUp; '6' -> dt >> pure KeyPageDown
-        '1' -> csiSub [('5',KeyF5),('7',KeyF1),('8',KeyF2)]
-        '2' -> csiSub [('0',KeyF9),('1',KeyF10)]
+        '5' -> drainTilde >> pure KeyPageUp
+        '6' -> drainTilde >> pure KeyPageDown
         _ -> drainSeq >> pure KeyUnknown
-  where dt = hReady stdin >>= \r -> when r (void getChar)
-
-csiSub :: [(Char, InputEvent)] -> IO InputEvent
-csiSub tbl = do
-    ready <- hReady stdin
-    if not ready then pure KeyUnknown else do
-        c <- getChar
-        case lookup c tbl of
-            Just ev -> do
-                r <- hReady stdin; when r (void getChar)
-                pure ev
-            Nothing -> if c == '~' then pure KeyUnknown
-                       else drainSeq >> pure KeyUnknown
+  where drainTilde = hReady stdin >>= \r -> when r (void getChar)
 
 readSS3 :: IO InputEvent
-readSS3 = do
-    c <- getChar
-    pure $ case c of 'P'->KeyF1; 'Q'->KeyF2; 'R'->KeyF3; _->KeyUnknown
+readSS3 = getChar >> pure KeyUnknown
 
 drainSeq :: IO ()
 drainSeq = hReady stdin >>= \r -> when r (void getChar >> drainSeq)
@@ -217,10 +223,13 @@ handleNormal :: AppState -> InputEvent -> IO ()
 handleNormal st key = do
     focus <- readIORef (asFocus st)
     case key of
-        KeyTab  -> modifyIORef' (asFocus st) (\p -> if p==ContactPane then ChatPane else ContactPane)
-        KeyF1   -> showHelp st;    KeyF2  -> setStatus st "Type /file <path> in chat"
-        KeyF3   -> startVerify st; KeyF5  -> startExport st
-        KeyF9   -> startSettings st; KeyF10 -> quitApp st
+        KeyTab   -> modifyIORef' (asFocus st) (\p -> if p==ContactPane then ChatPane else ContactPane)
+        KeyCtrlH -> showHelp st
+        KeyCtrlF -> setStatus st "Type /file <path> in chat"
+        KeyCtrlV -> startVerify st
+        KeyCtrlE -> startExport st
+        KeyCtrlO -> startSettings st
+        KeyCtrlQ -> quitApp st
         _ -> case focus of { ContactPane -> handleContact st key; ChatPane -> handleChat st key }
 
 handleContact :: AppState -> InputEvent -> IO ()
@@ -289,6 +298,8 @@ handleDialog st key = do
                 b <- readIORef (asInputBuf st); cb b
                 writeIORef (asInputBuf st) ""
                 writeIORef (asDialogMode st) Nothing
+            KeyChar c -> modifyIORef' (asInputBuf st) (++[c])
+            KeyBackspace -> modifyIORef' (asInputBuf st) (\s -> if null s then s else init s)
             _ -> pure ()
         _ -> writeIORef (asDialogMode st) Nothing
 
@@ -304,28 +315,57 @@ showOverlay title lns = do
         goto (r0+i) c0 >> setFg 36 >> bold >> putStr line >> resetSGR
     hFlush stdout
 
-showHelp :: AppState -> IO ()
-showHelp st = do
-    writeIORef (asDialogMode st) (Just DlgHelp)
-    showOverlay "Help - UmbraVOX"
-        [ "Tab       Switch pane focus"
-        , "Up/Down   Navigate contacts / scroll chat"
-        , "Enter     Send message / select contact"
-        , "N  New connection   G  Group"
-        , "K  Identity & keys  S  Secure notes"
-        , "F1 Help  F2 File  F3 Verify  F5 Export"
-        , "F9 Settings  F10 Quit"
-        , "", "Press any key to close..." ]
+renderHelpOverlay :: IO ()
+renderHelpOverlay = showOverlay "Help - UmbraVOX"
+    [ "Tab       Switch pane focus"
+    , "Up/Down   Navigate contacts / scroll chat"
+    , "Enter     Send message / select contact"
+    , "N  New connection   G  Group"
+    , "K  Identity & keys  S  Secure notes"
+    , "F1 Help  F2 File  F3 Verify  F5 Export"
+    , "F9 Settings  F10 Quit"
+    , "", "Press Esc to close" ]
 
-startSettings :: AppState -> IO ()
-startSettings st = do
-    writeIORef (asDialogMode st) (Just DlgSettings)
+renderNewConnOverlay :: IO ()
+renderNewConnOverlay = showOverlay "New Connection"
+    ["1. Connect to peer (enter host:port)"
+    ,"2. Listen for peer"
+    ,"3. Loopback test (self)", "", "Press 1/2/3, Esc to cancel"]
+
+renderVerifyOverlay :: IO ()
+renderVerifyOverlay = showOverlay "Verify Keys"
+    ["Compare fingerprints with your contact"
+    ,"via a separate channel (phone, in person)."
+    ,"", "Press Esc to close"]
+
+renderSettingsOverlay :: AppState -> IO ()
+renderSettingsOverlay st = do
     port <- readIORef (cfgListenPort (asConfig st))
     name <- readIORef (cfgDisplayName (asConfig st))
     showOverlay "Settings"
         [ "1. Listen port: " ++ show port
         , "2. Display name: " ++ name, ""
         , "Press 1/2 to change, Esc to close" ]
+
+renderKeysOverlay :: AppState -> IO ()
+renderKeysOverlay st = do
+    mIk <- readIORef (cfgIdentity (asConfig st))
+    case mIk of
+        Nothing -> showOverlay "Identity & Keys" ["No identity generated yet.", "Press Esc to close"]
+        Just ik -> showOverlay "Identity & Keys"
+            [ "X25519:  " ++ fingerprint (ikX25519Public ik)
+            , "Ed25519: " ++ fingerprint (ikEd25519Public ik)
+            , "", "Press Esc to close" ]
+
+renderPromptOverlay :: String -> String -> IO ()
+renderPromptOverlay title buf = showOverlay title
+    ["Enter value:", "> " ++ buf ++ "_", "", "Press Enter to confirm, Esc to cancel"]
+
+showHelp :: AppState -> IO ()
+showHelp st = writeIORef (asDialogMode st) (Just DlgHelp)
+
+startSettings :: AppState -> IO ()
+startSettings st = writeIORef (asDialogMode st) (Just DlgSettings)
 
 handleSettingsDlg :: AppState -> InputEvent -> IO ()
 handleSettingsDlg st (KeyChar '1') = do
@@ -342,22 +382,23 @@ setStatus :: AppState -> String -> IO ()
 setStatus st msg = writeIORef (asStatusMsg st) msg
 -- Actions -----------------------------------------------------------------
 startNewConn :: AppState -> IO ()
-startNewConn st = do
-    writeIORef (asDialogMode st) (Just DlgNewConn)
-    showOverlay "New Connection"
-        ["1. Connect to peer", "2. Listen for peer"
-        ,"3. Loopback test (self)", "", "Press 1/2/3, Esc to cancel"]
+startNewConn st = writeIORef (asDialogMode st) (Just DlgNewConn)
 
 handleNewConnDlg :: AppState -> InputEvent -> IO ()
 handleNewConnDlg st (KeyChar '1') = do
-    writeIORef (asDialogMode st) Nothing
-    setStatus st "Connecting to 127.0.0.1:9999..."
-    void $ forkIO $ (do
-        t <- connect "127.0.0.1" 9999
-        session <- handshakeInitiator t
-        sid <- addSession (asConfig st) t session "127.0.0.1:9999"
-        selectLast st; setStatus st ("Connected #" ++ show sid)
-        ) `catch` (\(e::SomeException) -> setStatus st ("Failed: "++show e))
+    writeIORef (asInputBuf st) ""
+    writeIORef (asDialogMode st) (Just (DlgPrompt "Connect (host:port)" $ \val -> do
+        let (host, portStr) = break (==':') val
+            port = if null portStr then 9999 else read (drop 1 portStr) :: Int
+            h = if null host then "127.0.0.1" else host
+        setStatus st ("Connecting to " ++ h ++ ":" ++ show port ++ "...")
+        void $ forkIO $ (do
+            t <- connect h port
+            session <- handshakeInitiator t
+            sid <- addSession (asConfig st) t session (h ++ ":" ++ show port)
+            selectLast st; setStatus st ("Connected #" ++ show sid)
+            ) `catch` (\(e::SomeException) -> setStatus st ("Failed: "++show e))
+        ))
 handleNewConnDlg st (KeyChar '2') = do
     writeIORef (asDialogMode st) Nothing
     port <- readIORef (cfgListenPort (asConfig st))
@@ -397,13 +438,9 @@ startKeysView :: AppState -> IO ()
 startKeysView st = do
     writeIORef (asDialogMode st) (Just DlgKeys)
     mIk <- readIORef (cfgIdentity (asConfig st))
-    ik <- case mIk of
-        Just ik -> pure ik
-        Nothing -> do ik <- genIdentity; writeIORef (cfgIdentity (asConfig st)) (Just ik); pure ik
-    showOverlay "Identity & Keys"
-        [ "X25519:  " ++ fingerprint (ikX25519Public ik)
-        , "Ed25519: " ++ fingerprint (ikEd25519Public ik)
-        , "", "Press any key to close" ]
+    case mIk of
+        Nothing -> do ik <- genIdentity; writeIORef (cfgIdentity (asConfig st)) (Just ik)
+        Just _  -> pure ()
 
 startVerify :: AppState -> IO ()
 startVerify st = do
