@@ -54,25 +54,25 @@ main = do
                        <*> newIORef (calcLayout r0 c0)
                        <*> newIORef 0
                        <*> pure termRef
-    -- Wire mDNS discovery if enabled
+    -- Wire mDNS discovery if enabled (graceful if multicast unavailable)
     mdnsOn <- readIORef (cfgMDNSEnabled cfg)
-    when mdnsOn $ do
+    when mdnsOn $ (do
         port <- readIORef (cfgListenPort cfg)
         mIk <- readIORef (cfgIdentity cfg)
         let pubkey = maybe BS.empty ikX25519Public mIk
         (_peersRef, tid) <- startMDNS port pubkey
         writeIORef (cfgMDNSThread cfg) (Just tid)
-        writeIORef (cfgMDNSPeers cfg) []
-    -- Wire Anthony DB persistence if enabled
+        ) `catch` (\(_ :: SomeException) -> pure ())  -- mDNS unavailable
+    -- Wire Anthony DB persistence if enabled (graceful fallback if anthony unavailable)
     dbOn <- readIORef (cfgDBEnabled cfg)
-    when dbOn $ do
+    when dbOn $ (do
         dbPath <- readIORef (cfgDBPath cfg)
         home <- getHomeDirectory
         let path = if "~/" `isPrefixOf` dbPath
                    then home ++ drop 1 dbPath else dbPath
-        db <- openDB path `catch` (\(_ :: SomeException) -> do
-            createDirectoryIfMissing True (takeDirectory path)
-            openDB path)
+        createDirectoryIfMissing True (takeDirectory path)
+        db <- openDB path
         writeIORef (cfgAnthonyDB cfg) (Just db)
+        ) `catch` (\(_ :: SomeException) -> pure ())  -- DB unavailable, continue without
     _ <- installHandler sigWINCH (Catch $ getTermSize >>= writeIORef (asTermSize st)) Nothing
     withRawMode $ clearScreen >> render st >> eventLoop st

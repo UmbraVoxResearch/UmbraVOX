@@ -213,11 +213,11 @@ buildAnthony = do
     callProcess "go" ["build", "-C", repoDir </> "cmd" </> "anthony", "."]
     pure binPath
 
--- | Clone the anthony repository (0.7.x branch).
+-- | Clone the anthony repository (latest v0.7.x tag from main).
 cloneRepo :: FilePath -> IO ()
 cloneRepo dest = callProcess "git"
     [ "clone"
-    , "--branch", "0.7.x"
+    , "--branch", "v0.7.3"
     , "--depth", "1"
     , "https://github.com/cyanitol/Public.Lib.Anthony"
     , dest
