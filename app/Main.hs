@@ -34,9 +34,9 @@ import UmbraVox.Protocol.CBOR (encodeMessage)
 type SessionId = Int
 
 data SessionInfo = SessionInfo
-    { siTransport :: Transport
+    { siTransport :: Maybe Transport     -- Nothing for loopback (self-chat)
     , siSession   :: IORef ChatSession
-    , siRecvTid   :: ThreadId
+    , siRecvTid   :: Maybe ThreadId      -- Nothing for loopback
     , siPeerName  :: String
     , siHistory   :: IORef [String]
     }
@@ -101,28 +101,44 @@ main = do
 mainLoop :: AppConfig -> IO ()
 mainLoop cfg = do
     n <- drawMenu "U M B R A V O X  --  Post-Quantum Encrypted Messaging"
-        [ "New Conversation", "Active Conversations", "Group Conversations"
+        [ "New Conversation", "Secure Notes (Self)"
+        , "Active Conversations", "Group Conversations"
         , "File Transfer", "Identity & Keys", "Import/Export"
         , "Settings", "Quit" ]
     case n of
-        1 -> newConversation cfg   >> mainLoop cfg
-        2 -> activeConversations cfg >> mainLoop cfg
-        3 -> groupConversations cfg  >> mainLoop cfg
-        4 -> fileTransfer cfg      >> mainLoop cfg
-        5 -> identityKeys cfg      >> mainLoop cfg
-        6 -> importExport cfg      >> mainLoop cfg
-        7 -> settings cfg          >> mainLoop cfg
-        8 -> quitApp cfg
+        1 -> newConversation cfg     >> mainLoop cfg
+        2 -> secureNotes cfg         >> mainLoop cfg
+        3 -> activeConversations cfg >> mainLoop cfg
+        4 -> groupConversations cfg  >> mainLoop cfg
+        5 -> fileTransfer cfg        >> mainLoop cfg
+        6 -> identityKeys cfg        >> mainLoop cfg
+        7 -> importExport cfg        >> mainLoop cfg
+        8 -> settings cfg            >> mainLoop cfg
+        9 -> quitApp cfg
         _ -> mainLoop cfg
 
 quitApp :: AppConfig -> IO ()
 quitApp cfg = do
     sessions <- readIORef (cfgSessions cfg)
     forM_ (Map.elems sessions) $ \si -> do
-        killThread (siRecvTid si)
-        close (siTransport si)
+        maybe (pure ()) killThread (siRecvTid si)
+        maybe (pure ()) close (siTransport si)
     clearScreen
     putStrLn "Goodbye."
+
+-- Secure Notes (Self) -----------------------------------------------------
+
+secureNotes :: AppConfig -> IO ()
+secureNotes cfg = do
+    clearScreen
+    setColor 36; putStrLn "--- Secure Notes (Self-Chat) ---"; resetColor
+    putStr "  Note label [Secure Notes]: "; hFlush stdout
+    label <- getLine
+    let name = if null label then "Secure Notes" else label
+    sid <- addLoopbackSession cfg ("\x1F512 " ++ name)
+    putStrLn "  Loopback session created. Messages encrypt locally."
+    threadDelay 500000
+    chatWindow cfg sid
 
 -- 1. New Conversation -----------------------------------------------------
 
@@ -130,7 +146,7 @@ newConversation :: AppConfig -> IO ()
 newConversation cfg = do
     clearScreen
     setColor 36; putStrLn "--- New Conversation ---"; resetColor
-    putStr "  Mode (1=Connect, 2=Listen): "; hFlush stdout
+    putStr "  Mode (1=Connect, 2=Listen, 3=Self): "; hFlush stdout
     mode <- getLine
     case mode of
         "1" -> do
@@ -157,6 +173,27 @@ newConversation cfg = do
             putStrLn "  Session established!"
             threadDelay 500000
             chatWindow cfg sid
+        "3" -> do
+            putStr "  Port [19999]: "; hFlush stdout
+            portS <- getLine
+            let port = if null portS then 19999 else read portS
+            putStrLn "  Starting loopback test (localhost TCP)..."
+            -- Start a listener on a background thread, then connect to it
+            void $ forkIO $ do
+                tServer <- listen port
+                sessionB <- handshakeResponder tServer
+                refB <- newIORef sessionB
+                histB <- newIORef []
+                -- Server just receives and echoes (loopback)
+                recvLoopTUI tServer refB histB
+            threadDelay 500000
+            tClient <- connect "127.0.0.1" port
+            putStrLn "  Running PQXDH handshake (loopback)..."
+            sessionA <- handshakeInitiator tClient
+            sid <- addSession cfg tClient sessionA ("loopback:" ++ show port)
+            putStrLn "  Loopback session established!"
+            threadDelay 500000
+            chatWindow cfg sid
         _ -> pure ()
 
 addSession :: AppConfig -> Transport -> ChatSession -> String -> IO SessionId
@@ -166,7 +203,23 @@ addSession cfg t session peerName = do
     ref <- newIORef session
     histRef <- newIORef []
     tid <- forkIO (recvLoopTUI t ref histRef)
-    let si = SessionInfo t ref tid peerName histRef
+    let si = SessionInfo (Just t) ref (Just tid) peerName histRef
+    modifyIORef' (cfgSessions cfg) (Map.insert sid si)
+    pure sid
+
+-- | Create a loopback (self-chat) session for secure note-taking.
+-- Messages are encrypted then immediately decrypted locally — no network.
+addLoopbackSession :: AppConfig -> String -> IO SessionId
+addLoopbackSession cfg label = do
+    sid <- readIORef (cfgNextId cfg)
+    writeIORef (cfgNextId cfg) (sid + 1)
+    secret <- randomBytes 32
+    dhSec  <- randomBytes 32
+    peerPub <- randomBytes 32
+    session <- initChatSession secret dhSec peerPub
+    ref <- newIORef session
+    histRef <- newIORef []
+    let si = SessionInfo Nothing ref Nothing label histRef
     modifyIORef' (cfgSessions cfg) (Map.insert sid si)
     pure sid
 
@@ -420,7 +473,17 @@ sendToSession si msg = do
     session <- readIORef (siSession si)
     (session', wire) <- sendChatMessage session msg
     writeIORef (siSession si) session'
-    send (siTransport si) (encodeMessage wire)
+    case siTransport si of
+        Just t  -> send t (encodeMessage wire)
+        Nothing -> do
+            -- Loopback: decrypt our own message and add to history
+            session2 <- readIORef (siSession si)
+            result <- recvChatMessage session2 wire
+            case result of
+                Just (session3, _plaintext) -> writeIORef (siSession si) session3
+                Nothing -> pure ()
+            ts <- timestamp
+            modifyIORef' (siHistory si) (++ [ts ++ " [saved] " ++ BC.unpack msg])
 
 timestamp :: IO String
 timestamp = formatTime defaultTimeLocale "%H:%M" <$> getCurrentTime
