@@ -5,9 +5,9 @@
 -- Uses the correct FIPS 202 hash functions as required by FIPS 203:
 --   H = SHA3-256, G = SHA3-512, PRF/J = SHAKE-256, XOF = SHAKE-128.
 module UmbraVox.Crypto.MLKEM
-    ( MLKEMEncapKey
-    , MLKEMDecapKey
-    , MLKEMCiphertext
+    ( MLKEMEncapKey(..)
+    , MLKEMDecapKey(..)
+    , MLKEMCiphertext(..)
     , mlkemKeyGen
     , mlkemEncaps
     , mlkemDecaps
