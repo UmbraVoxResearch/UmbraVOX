@@ -91,8 +91,8 @@ render st = do
     -- top border (ASCII-safe)
     goto 1 1; setFg 36
     putStr $ "+-Contacts-" ++ replicate (leftW - 12) '-'
-        ++ "++-Chat: " ++ take (rightW - 12) peer ++ " "
-        ++ replicate (max 0 (rightW - 10 - length (take (rightW-12) peer))) '-'
+        ++ "+-Chat: " ++ take (rightW - 11) peer ++ " "
+        ++ replicate (max 0 (rightW - 9 - length (take (rightW-11) peer))) '-'
         ++ "+"; resetSGR
     -- panes
     forM_ [0..chatH-1] $ \row -> do
@@ -108,8 +108,7 @@ render st = do
             when (row==sel) $ if focus==ContactPane then bold>>setFg 32 else bold
             putStr (take (leftW-2) cell); resetSGR
         else putStr (replicate (leftW-2) ' ')
-        setFg 36; putStr "|"; resetSGR
-        -- chat cell
+        -- separator between panes (single pipe)
         setFg 36; putStr "|"; resetSGR
         msg <- case selSi of
             Nothing -> pure ""
@@ -124,11 +123,11 @@ render st = do
     -- middle border
     goto (chatH+2) 1; setFg 36
     putStr $ "+" ++ replicate (leftW-2) '-' ++ "+"
-        ++ "+" ++ replicate (rightW-2) '-' ++ "+"; resetSGR
+        ++ replicate (rightW-2) '-' ++ "+"; resetSGR
     -- bottom panes
     goto (chatH+3) 1; setFg 36; putStr "|"; resetSGR
     setFg 33; putStr (padR (leftW-2) " [N]ew [R]ename"); resetSGR
-    setFg 36; putStr "||"; resetSGR
+    setFg 36; putStr "|"; resetSGR
     -- Green cursor when chat is focused
     if focus == ChatPane then do
         bold; setFg 32
@@ -139,12 +138,12 @@ render st = do
     setFg 36; putStr "|"; resetSGR
     goto (chatH+4) 1; setFg 36; putStr "|"; resetSGR
     setFg 33; putStr (padR (leftW-2) " [K]eys [S]elf"); resetSGR
-    setFg 36; putStr "||"; resetSGR
+    setFg 36; putStr "|"; resetSGR
     putStr (replicate (rightW-2) ' '); setFg 36; putStr "|"; resetSGR
     -- bottom border
     goto (chatH+5) 1; setFg 36
     putStr $ "+" ++ replicate (leftW-2) '-' ++ "+"
-        ++ "+" ++ replicate (rightW-2) '-' ++ "+"; resetSGR
+        ++ replicate (rightW-2) '-' ++ "+"; resetSGR
     -- status bar
     goto (chatH+6) 1; setFg 30; csi "47m"
     let bar = " ^N:New ^R:Verify ^X:Export ^P:Prefs ^Q:Quit | Tab:Switch"
@@ -475,6 +474,8 @@ selectLast :: AppState -> IO ()
 selectLast st = do
     n <- Map.size <$> readIORef (cfgSessions (asConfig st))
     writeIORef (asSelected st) (max 0 (n-1))
+    writeIORef (asFocus st) ChatPane  -- auto-focus chat for new conversations
+    writeIORef (asChatScroll st) 0
 
 renameContact :: AppState -> IO ()
 renameContact st = do
