@@ -70,6 +70,8 @@ library
     UmbraVox.Crypto.VRF
     UmbraVox.Crypto.Random
     UmbraVox.Crypto.StealthAddress
+    UmbraVox.Crypto.BIP39
+    UmbraVox.Crypto.Export
     -- Signal protocol
     UmbraVox.Crypto.Signal.X3DH
     UmbraVox.Crypto.Signal.PQXDH

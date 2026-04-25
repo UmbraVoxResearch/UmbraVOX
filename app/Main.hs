@@ -19,6 +19,8 @@ import UmbraVox.Chat.Session
     (ChatSession, initChatSession, sendChatMessage, recvChatMessage)
 import UmbraVox.Crypto.MLKEM (mlkemKeyGen,
     MLKEMEncapKey(..), MLKEMDecapKey(..), MLKEMCiphertext(..))
+import UmbraVox.Crypto.BIP39 (generatePassphrase)
+import UmbraVox.Crypto.Export (encryptExport, decryptExport)
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Crypto.Signal.PQXDH
     (PQPreKeyBundle(..), PQXDHResult(..), pqxdhInitiate, pqxdhRespond)
@@ -28,7 +30,7 @@ import UmbraVox.Crypto.Signal.X3DH
 import UmbraVox.Network.Transport
     (Transport(..), listen, connect, send, recv, close)
 import UmbraVox.Protocol.CBOR (encodeMessage)
-import UmbraVox.Protocol.QRCode (generateQR, renderQR)
+import UmbraVox.Protocol.QRCode (generateSafetyNumber, renderSafetyNumber, renderFingerprint)
 -- Types -------------------------------------------------------------------
 type SessionId = Int
 data ContactStatus = Online | Offline | Local | Group deriving stock (Eq)
@@ -370,14 +372,22 @@ renderVerifyOverlay :: AppState -> IO ()
 renderVerifyOverlay st = do
     sessions <- readIORef (cfgSessions (asConfig st))
     sel <- readIORef (asSelected st)
+    mIk <- readIORef (cfgIdentity (asConfig st))
     let entries = Map.toList sessions
     if sel < length entries then do
         let (_,si) = entries !! sel
-            peerFp = siPeerName si
-            qr = renderQR (generateQR peerFp)
-        showOverlay "Verify Keys" $
-            ["Peer: " ++ siPeerName si, ""] ++ qr ++
-            ["", "Compare via a separate channel.", "Press Esc to close"]
+        case mIk of
+            Nothing -> showOverlay "Verify Keys"
+                ["No identity generated yet.", "", "Press K to generate keys first.", "Press Esc to close"]
+            Just ik -> do
+                let ourKey  = ikX25519Public ik
+                    -- Use peer name as stand-in; real peer key would come from session
+                    peerKey = BC.pack (siPeerName si)
+                    safetyNum = generateSafetyNumber ourKey peerKey
+                    rows = renderSafetyNumber safetyNum
+                showOverlay "Verify Keys" $
+                    ["Peer: " ++ siPeerName si, "", "Safety Number:"] ++ rows ++
+                    ["", "Compare via a separate channel.", "Press Esc to close"]
     else showOverlay "Verify Keys"
         ["No contact selected", "", "Press Esc to close"]
 
@@ -396,12 +406,12 @@ renderKeysOverlay st = do
     case mIk of
         Nothing -> showOverlay "Identity & Keys" ["No identity generated yet.", "Press Esc to close"]
         Just ik -> do
-            let fp = fingerprint (ikX25519Public ik)
-                qr = renderQR (generateQR fp)
+            let x25519Lines  = renderFingerprint (ikX25519Public ik)
+                ed25519Lines = renderFingerprint (ikEd25519Public ik)
             showOverlay "Identity & Keys" $
-                [ "X25519:  " ++ fp
-                , "Ed25519: " ++ fingerprint (ikEd25519Public ik)
-                , "" ] ++ qr ++ ["", "Press Esc to close"]
+                [ "X25519 fingerprint:" ] ++ x25519Lines ++
+                [ "", "Ed25519 fingerprint:" ] ++ ed25519Lines ++
+                [ "", "Press Esc to close" ]
 
 renderPromptOverlay :: String -> String -> IO ()
 renderPromptOverlay title buf = showOverlay title
@@ -514,12 +524,61 @@ startExport st = do
     sel <- readIORef (asSelected st)
     let entries = Map.toList sessions
     if sel < length entries then do
-        let (_,si) = entries !! sel
-        hist <- readIORef (siHistory si)
-        let path = "umbravox_export.txt"
-        writeFile path (unlines (reverse hist))
-        setStatus st ("Exported "++show (length hist)++" msgs to "++path)
+        writeIORef (asDialogBuf st) ""
+        writeIORef (asDialogMode st) (Just (DlgPrompt "Export path (or 'import')" $ \val ->
+            if val == "import" then startImport st
+            else exportToPath st val))
     else setStatus st "No contact selected"
+
+-- | Prompt for password then encrypt and write the export.
+exportToPath :: AppState -> String -> IO ()
+exportToPath st path = do
+    let path' = if null path then "umbravox_export.enc" else path
+    writeIORef (asDialogBuf st) ""
+    writeIORef (asDialogMode st) (Just (DlgPrompt "Password (empty=BIP39)" $ \pw -> do
+        password <- if null pw then do
+            phrase <- generatePassphrase 6
+            setStatus st ("BIP39 passphrase: " ++ phrase)
+            pure (BC.pack phrase)
+          else pure (BC.pack pw)
+        sessions <- readIORef (cfgSessions (asConfig st))
+        sel <- readIORef (asSelected st)
+        let entries = Map.toList sessions
+        when (sel < length entries) $ do
+            let (_,si) = entries !! sel
+            hist <- readIORef (siHistory si)
+            let plaintext = BC.pack (unlines (reverse hist))
+            blob <- encryptExport password plaintext
+            BS.writeFile path' blob
+            setStatus st ("Encrypted " ++ show (length hist)
+                         ++ " msgs to " ++ path')
+        ))
+
+-- | Prompt for file path and password, decrypt, and load into history.
+startImport :: AppState -> IO ()
+startImport st = do
+    writeIORef (asDialogBuf st) ""
+    writeIORef (asDialogMode st) (Just (DlgPrompt "Import file path" $ \path -> do
+        exists <- doesFileExist path
+        if not exists then setStatus st ("File not found: " ++ path)
+        else do
+            writeIORef (asDialogBuf st) ""
+            writeIORef (asDialogMode st) (Just (DlgPrompt "Import password" $ \pw -> do
+                blob <- BS.readFile path
+                case decryptExport (BC.pack pw) blob of
+                    Nothing -> setStatus st "Decryption failed (wrong password?)"
+                    Just plaintext -> do
+                        sessions <- readIORef (cfgSessions (asConfig st))
+                        sel <- readIORef (asSelected st)
+                        let entries = Map.toList sessions
+                        when (sel < length entries) $ do
+                            let (_,si) = entries !! sel
+                                msgs = lines (BC.unpack plaintext)
+                            modifyIORef' (siHistory si) (reverse msgs ++)
+                            setStatus st ("Imported " ++ show (length msgs)
+                                         ++ " msgs from " ++ path)
+                ))
+        ))
 
 quitApp :: AppState -> IO ()
 quitApp st = do
