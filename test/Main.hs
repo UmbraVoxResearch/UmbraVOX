@@ -19,6 +19,11 @@ import qualified Test.Security as Security
 import qualified Test.Fuzz as Fuzz
 import qualified Test.Integration as Integration
 import qualified Test.Equivalence as Equivalence
+import qualified Test.Network.Transport as Transport
+import qualified Test.Protocol.CBOR as CBOR
+import qualified Test.Crypto.BIP39 as BIP39
+import qualified Test.Crypto.Export as Export
+import qualified Test.Protocol.QRCode as QRCode
 
 main :: IO ()
 main = do
@@ -61,9 +66,19 @@ main = do
     integrationPass <- Integration.runTests
     putStrLn ""
     equivalencePass <- Equivalence.runTests
+    putStrLn ""
+    transportPass <- Transport.runTests
+    putStrLn ""
+    cborPass <- CBOR.runTests
+    putStrLn ""
+    bip39Pass <- BIP39.runTests
+    putStrLn ""
+    exportPass <- Export.runTests
+    putStrLn ""
+    qrcodePass <- QRCode.runTests
 
     putStrLn ""
-    let allPass = sha256Pass && sha512Pass && hmacPass && hkdfPass && aesPass && gcmPass && curve25519Pass && ed25519Pass && chacha20Pass && x3dhPass && doubleRatchetPass && mlkemPass && keccakPass && poly1305Pass && securityPass && fuzzPass && integrationPass && equivalencePass
+    let allPass = sha256Pass && sha512Pass && hmacPass && hkdfPass && aesPass && gcmPass && curve25519Pass && ed25519Pass && chacha20Pass && x3dhPass && doubleRatchetPass && mlkemPass && keccakPass && poly1305Pass && securityPass && fuzzPass && integrationPass && equivalencePass && transportPass && cborPass && bip39Pass && exportPass && qrcodePass
     if allPass
         then do
             putStrLn "All tests passed."

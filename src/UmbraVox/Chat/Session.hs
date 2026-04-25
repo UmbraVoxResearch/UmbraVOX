@@ -81,14 +81,15 @@ decodeWire bs
             !msgBytes  = BS.take 4 (BS.drop 36 bs)
             !payload   = BS.drop 40 bs
             !payLen    = BS.length payload
-            !ct        = BS.take (payLen - 16) payload
-            !tag       = BS.drop (payLen - 16) payload
-            !hdr = RatchetHeader
-                { rhDHPublic   = dhPub
-                , rhPrevChainN = getWord32BE prevBytes
-                , rhMsgN       = getWord32BE msgBytes
-                }
-        in Just (hdr, ct, tag)
+        in if payLen < 16 then Nothing else
+            let !ct  = BS.take (payLen - 16) payload
+                !tag = BS.drop (payLen - 16) payload
+                !hdr = RatchetHeader
+                    { rhDHPublic   = dhPub
+                    , rhPrevChainN = getWord32BE prevBytes
+                    , rhMsgN       = getWord32BE msgBytes
+                    }
+            in Just (hdr, ct, tag)
 
 -- | Encode a ratchet header as 40 bytes (same as DoubleRatchet.encodeHeader).
 encodeHeader :: RatchetHeader -> ByteString

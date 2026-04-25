@@ -26,7 +26,7 @@ import UmbraVox.Crypto.HKDF (hkdfSHA256Extract, hkdfSHA256Expand)
 import UmbraVox.Crypto.HMAC (hmacSHA256)
 import UmbraVox.Crypto.Random (chacha20Encrypt, randomBytes)
 import UmbraVox.Crypto.SHA256 (sha256)
-import UmbraVox.Network.Transport (Transport, send, recv)
+import UmbraVox.Network.TransportClass (AnyTransport, anySend, anyRecv)
 
 ------------------------------------------------------------------------
 -- Types
@@ -98,8 +98,8 @@ noiseDecrypt st msg
 noiseHandshakeInitiator
     :: ByteString   -- ^ Our static secret key (32 bytes)
     -> ByteString   -- ^ Our static public key (32 bytes)
-    -> ByteString   -- ^ Responder's static public key (32 bytes)
-    -> Transport    -- ^ Network transport
+    -> ByteString      -- ^ Responder's static public key (32 bytes)
+    -> AnyTransport    -- ^ Network transport
     -> IO NoiseState
 noiseHandshakeInitiator iStaticSec iStaticPub rStaticPub transport = do
     -- Initialize handshake hash: h = SHA256(protocolName padded to 32)
@@ -169,9 +169,9 @@ noiseHandshakeInitiator iStaticSec iStaticPub rStaticPub transport = do
 -- Receives message 1, sends message 2, derives session keys.
 noiseHandshakeResponder
     :: ByteString   -- ^ Our static secret key (32 bytes)
-    -> ByteString   -- ^ Our static public key (32 bytes)
-    -> Transport    -- ^ Network transport
-    -> IO NoiseState
+    -> ByteString      -- ^ Our static public key (32 bytes)
+    -> AnyTransport    -- ^ Network transport
+    -> IO (Maybe NoiseState)
 noiseHandshakeResponder rStaticSec rStaticPub transport = do
     -- Initialize handshake hash and chaining key (same as initiator)
     let !h0 = initHash
@@ -193,41 +193,43 @@ noiseHandshakeResponder rStaticSec rStaticPub transport = do
     let (!ck1, !k1) = hkdfCK ck0 dhES
 
     -- -> s: decrypt initiator's static public key
-    let !iStaticPub = decryptWithKey k1 h3 encStaticPub
-    let !h4 = mixHash h3 encStaticPub
+    case decryptWithKey k1 h3 encStaticPub of
+        Nothing -> pure Nothing
+        Just iStaticPub -> do
+            let !h4 = mixHash h3 encStaticPub
 
-    -- -> ss: DH(s_r, s_i) — responder computes DH(s_r, s_i)
-    let !dhSS = x25519 rStaticSec iStaticPub
-    let (!ck2, !_k2) = hkdfCK ck1 dhSS
+            -- -> ss: DH(s_r, s_i) — responder computes DH(s_r, s_i)
+            let !dhSS = x25519 rStaticSec iStaticPub
+            let (!ck2, !_k2) = hkdfCK ck1 dhSS
 
-    -- Generate responder ephemeral keypair
-    eSec <- randomBytes 32
-    let !ePub = x25519 eSec x25519Basepoint
+            -- Generate responder ephemeral keypair
+            eSec <- randomBytes 32
+            let !ePub = x25519 eSec x25519Basepoint
 
-    -- <- e: send ephemeral public, mix into hash
-    let !_h5 = mixHash h4 ePub
+            -- <- e: send ephemeral public, mix into hash
+            let !_h5 = mixHash h4 ePub
 
-    -- <- ee: DH(e_r, e_i)
-    let !dhEE = x25519 eSec iEPub
-    let (!ck3, !_k3) = hkdfCK ck2 dhEE
+            -- <- ee: DH(e_r, e_i)
+            let !dhEE = x25519 eSec iEPub
+            let (!ck3, !_k3) = hkdfCK ck2 dhEE
 
-    -- <- se: DH(s_r, e_i) — responder's static, initiator's ephemeral
-    let !dhSE = x25519 rStaticSec iEPub
-    let (!ck4, !_k4) = hkdfCK ck3 dhSE
+            -- <- se: DH(s_r, e_i) — responder's static, initiator's ephemeral
+            let !dhSE = x25519 rStaticSec iEPub
+            let (!ck4, !_k4) = hkdfCK ck3 dhSE
 
-    -- Send message 2: ePub
-    let !msg2 = ePub
-    sendFrame transport msg2
+            -- Send message 2: ePub
+            let !msg2 = ePub
+            sendFrame transport msg2
 
-    -- Derive final send/recv keys (responder's send = initiator's recv)
-    let (!iSendKey, !rSendKey) = splitKeys ck4
+            -- Derive final send/recv keys (responder's send = initiator's recv)
+            let (!iSendKey, !rSendKey) = splitKeys ck4
 
-    pure NoiseState
-        { nsSendKey = rSendKey
-        , nsRecvKey = iSendKey
-        , nsSendN   = 0
-        , nsRecvN   = 0
-        }
+            pure (Just NoiseState
+                { nsSendKey = rSendKey
+                , nsRecvKey = iSendKey
+                , nsSendN   = 0
+                , nsRecvN   = 0
+                })
 
 ------------------------------------------------------------------------
 -- Handshake helpers
@@ -279,34 +281,37 @@ encryptWithKey !k !h !plaintext =
     in ct <> mac
 
 -- | Decrypt data with a handshake key, verifying the HMAC tag.
-decryptWithKey :: ByteString -> ByteString -> ByteString -> ByteString
-decryptWithKey !k !h !cipherMac =
-    let !ctLen = BS.length cipherMac - macLen
-        !ct    = BS.take ctLen cipherMac
-        !mac   = BS.drop ctLen cipherMac
-        !expected = hmacSHA256 k (h <> ct)
-        !nonce = BS.replicate 12 0
-    in if constantEq mac expected
-       then chacha20Encrypt k nonce 0 ct
-       else error "Noise: handshake decryption failed (bad MAC)"
+-- Returns 'Nothing' if the MAC does not match.
+decryptWithKey :: ByteString -> ByteString -> ByteString -> Maybe ByteString
+decryptWithKey !k !h !cipherMac
+    | BS.length cipherMac < macLen = Nothing
+    | otherwise =
+        let !ctLen = BS.length cipherMac - macLen
+            !ct    = BS.take ctLen cipherMac
+            !mac   = BS.drop ctLen cipherMac
+            !expected = hmacSHA256 k (h <> ct)
+            !nonce = BS.replicate 12 0
+        in if constantEq mac expected
+           then Just (chacha20Encrypt k nonce 0 ct)
+           else Nothing
 
 ------------------------------------------------------------------------
 -- Framing: length-prefixed messages over transport
 ------------------------------------------------------------------------
 
 -- | Send a length-prefixed frame (4-byte big-endian length + payload).
-sendFrame :: Transport -> ByteString -> IO ()
+sendFrame :: AnyTransport -> ByteString -> IO ()
 sendFrame t payload = do
     let !len = fromIntegral (BS.length payload) :: Word32
-    send t (putWord32BE len)
-    send t payload
+    anySend t (putWord32BE len)
+    anySend t payload
 
 -- | Receive a length-prefixed frame.
-recvFrame :: Transport -> IO ByteString
+recvFrame :: AnyTransport -> IO ByteString
 recvFrame t = do
-    lenBS <- recv t 4
+    lenBS <- anyRecv t 4
     let !len = getWord32BE lenBS
-    recv t (fromIntegral len)
+    anyRecv t (fromIntegral len)
 
 ------------------------------------------------------------------------
 -- Utility functions
