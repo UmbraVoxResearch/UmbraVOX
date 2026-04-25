@@ -1,17 +1,20 @@
--- | Message types, 1K block chunking
+-- | Message chunking and reassembly
 --
+-- For MVP: single-chunk messages (< 64 KB).
 -- See: doc/spec/chat.md
 module UmbraVox.Chat.Message
-  ( ChatMessage
-  , chunkMessage
+  ( chunkMessage
+  , reassemble
   ) where
 
 import Data.ByteString (ByteString)
+import qualified Data.ByteString as BS
 
--- | A chat message.
-data ChatMessage = ChatMessage
-  deriving (Show)
-
--- | Chunk a message into 1024-byte blocks.
+-- | Chunk a message into a list of fragments.
+-- For MVP, messages are sent as a single chunk (must be < 64 KB).
 chunkMessage :: ByteString -> [ByteString]
-chunkMessage = error "not implemented"
+chunkMessage msg = [msg]
+
+-- | Reassemble chunks back into a single message.
+reassemble :: [ByteString] -> ByteString
+reassemble = BS.concat
