@@ -74,8 +74,8 @@ calcLayout rows cols =
         usableH = rows - 2 * padY
     in Layout
     { lCols = usableW, lRows = usableH
-    , lLeftW = max 18 (usableW `div` 4)
-    , lRightW = usableW - max 18 (usableW `div` 4)
+    , lLeftW = max 25 (usableW `div` 4)
+    , lRightW = usableW - max 25 (usableW `div` 4)
     , lChatH = usableH - 6
     , lPadX = padX, lPadY = padY
     }
@@ -222,7 +222,18 @@ render st = do
             Just (DlgPrompt title _) -> do
                 buf' <- readIORef (asDialogBuf st)
                 renderPromptOverlay lay title buf'
-            Nothing -> pure ()
+            Nothing ->
+                when (Map.null sessions) $
+                    showOverlay lay "Welcome to UmbraVOX"
+                        [ " Post-Quantum Encrypted Messaging"
+                        , ""
+                        , " Press N or Ctrl+N to start:"
+                        , "   1. Private  - encrypted notes (local)"
+                        , "   2. Single   - connect to a peer"
+                        , "   3. Group    - multi-peer chat"
+                        , ""
+                        , " Press Ctrl+P for preferences"
+                        , " Press ? for help" ]
         hFlush stdout
 
 -- Overlays ----------------------------------------------------------------
@@ -248,8 +259,9 @@ renderHelpOverlay lay = showOverlay lay "Help - UmbraVOX"
     , "Esc         Close dialog"
     , ""
     , "Contact pane shortcuts:"
-    , "  N  New connection   G  Group"
+    , "  N  New connection   G  Group details"
     , "  K  Identity & keys  S  Self notes"
+    , "  R  Rename contact   ?  Show this help"
     , ""
     , "Global shortcuts:"
     , "  Ctrl+N  New connection"
