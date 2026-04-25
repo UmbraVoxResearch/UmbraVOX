@@ -294,13 +294,17 @@ renderVerifyOverlay lay st = do
 
 renderSettingsOverlay :: Layout -> AppState -> IO ()
 renderSettingsOverlay lay st = do
-    port   <- readIORef (cfgListenPort (asConfig st))
-    name   <- readIORef (cfgDisplayName (asConfig st))
-    mdns   <- readIORef (cfgMDNSEnabled (asConfig st))
-    pex    <- readIORef (cfgPEXEnabled (asConfig st))
-    db     <- readIORef (cfgDBEnabled (asConfig st))
-    dbPath <- readIORef (cfgDBPath (asConfig st))
+    port      <- readIORef (cfgListenPort (asConfig st))
+    name      <- readIORef (cfgDisplayName (asConfig st))
+    mdns      <- readIORef (cfgMDNSEnabled (asConfig st))
+    pex       <- readIORef (cfgPEXEnabled (asConfig st))
+    db        <- readIORef (cfgDBEnabled (asConfig st))
+    dbPath'   <- readIORef (cfgDBPath (asConfig st))
+    retention <- readIORef (cfgRetentionDays (asConfig st))
+    autoSave  <- readIORef (cfgAutoSaveMessages (asConfig st))
     let tf True = "ON"; tf False = "OFF"
+        retLabel = if retention == 0 then "forever"
+                   else show retention ++ " days"
     showOverlay lay "Preferences"
         [ " General"
         , "   1. Listen port:    " ++ show port
@@ -312,12 +316,15 @@ renderSettingsOverlay lay st = do
         , ""
         , " Storage"
         , "   5. Persistence:   [" ++ tf db ++ "]"
-        , "   6. DB path:       " ++ dbPath
+        , "   6. DB path:       " ++ dbPath'
+        , "   7. Retention:     " ++ retLabel ++ " (0 = forever)"
+        , "   8. Auto-save msgs: [" ++ tf autoSave ++ "]"
+        , "   9. Clear history..."
         , ""
         , " Identity"
-        , "   7. View/regenerate keys"
+        , "   0. View/regenerate keys"
         , ""
-        , " Press 1-7 to change, Esc to close" ]
+        , " Press 0-9 to change, Esc to close" ]
 
 renderKeysOverlay :: Layout -> AppState -> IO ()
 renderKeysOverlay lay st = do

@@ -18,6 +18,7 @@ import UmbraVox.Chat.Session (ChatSession)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey)
 import UmbraVox.Network.Transport (Transport)
 import UmbraVox.Network.MDNS (MDNSPeer)
+import UmbraVox.Storage.Anthony (AnthonyDB)
 
 type SessionId = Int
 
@@ -66,6 +67,10 @@ data AppConfig = AppConfig
     -- Discovery state
     , cfgMDNSThread  :: IORef (Maybe ThreadId)
     , cfgMDNSPeers   :: IORef [MDNSPeer]
+    -- Retention settings
+    , cfgRetentionDays    :: IORef Int              -- days to keep messages (0 = forever)
+    , cfgAutoSaveMessages :: IORef Bool             -- auto-save messages to DB
+    , cfgAnthonyDB        :: IORef (Maybe AnthonyDB) -- DB handle
     }
 
 data Layout = Layout

@@ -15,6 +15,11 @@ module UmbraVox.Storage.Anthony
     , saveSetting
     , loadSetting
     , ensureAnthony
+    , saveMessage
+    , loadMessages
+    , pruneMessages
+    , clearConversation
+    , messageCount
     ) where
 
 import Data.ByteString (ByteString)
@@ -49,6 +54,11 @@ schemaStatements =
     , "CREATE TABLE IF NOT EXISTS conversations "
       <> "(id INTEGER PRIMARY KEY, peer_pubkey TEXT, "
       <> "name TEXT, created INTEGER)"
+    , "CREATE TABLE IF NOT EXISTS messages "
+      <> "(id INTEGER PRIMARY KEY AUTOINCREMENT, "
+      <> "conversation_id INTEGER, sender TEXT, "
+      <> "content TEXT, timestamp INTEGER, "
+      <> "FOREIGN KEY (conversation_id) REFERENCES conversations(id))"
     ]
 
 ------------------------------------------------------------------------
@@ -125,6 +135,50 @@ loadSetting db key = do
         (v : _) | not (null v) -> pure (Just v)
         _                      -> pure Nothing
 
+-- | Save a message to the database.
+saveMessage :: AnthonyDB -> Int -> String -> String -> Int -> IO ()
+saveMessage db convId sender content timestamp = do
+    let sql = "INSERT INTO messages "
+              <> "(conversation_id, sender, content, timestamp) VALUES ("
+              <> show convId <> ", "
+              <> quote sender <> ", "
+              <> quote content <> ", "
+              <> show timestamp <> ")"
+    runSQL db sql
+
+-- | Load the most recent N messages for a conversation.
+--
+-- Returns @(sender, content, timestamp)@ tuples, oldest first.
+loadMessages :: AnthonyDB -> Int -> Int -> IO [(String, String, Int)]
+loadMessages db convId limit = do
+    output <- querySQL db
+        ("SELECT sender, content, timestamp FROM messages "
+         <> "WHERE conversation_id = " <> show convId
+         <> " ORDER BY timestamp DESC LIMIT " <> show limit)
+    pure (reverse (parseMessageRows output))
+
+-- | Delete messages older than N days.
+pruneMessages :: AnthonyDB -> Int -> IO ()
+pruneMessages db days = do
+    let sql = "DELETE FROM messages WHERE timestamp < "
+              <> "(strftime('%s','now') - " <> show (days * 86400) <> ")"
+    runSQL db sql
+
+-- | Clear all messages for a conversation.
+clearConversation :: AnthonyDB -> Int -> IO ()
+clearConversation db convId = do
+    let sql = "DELETE FROM messages WHERE conversation_id = "
+              <> show convId
+    runSQL db sql
+
+-- | Get the number of messages in a conversation.
+messageCount :: AnthonyDB -> Int -> IO Int
+messageCount db convId = do
+    output <- querySQL db
+        ("SELECT COUNT(*) FROM messages WHERE conversation_id = "
+         <> show convId)
+    pure (readInt (head (lines output ++ ["0"])))
+
 ------------------------------------------------------------------------
 -- Internal — anthony CLI interaction
 ------------------------------------------------------------------------
@@ -182,6 +236,20 @@ escapeQuotes :: String -> String
 escapeQuotes [] = []
 escapeQuotes ('\'' : rest) = '\'' : '\'' : escapeQuotes rest
 escapeQuotes (c : rest) = c : escapeQuotes rest
+
+-- | Parse pipe-delimited message rows from anthony output.
+--
+-- Expected format: @sender|content|timestamp@
+parseMessageRows :: String -> [(String, String, Int)]
+parseMessageRows output =
+    [ parseMessageRow row | row <- lines output, not (null row) ]
+
+-- | Parse a single pipe-delimited message row.
+parseMessageRow :: String -> (String, String, Int)
+parseMessageRow row =
+    case splitOn '|' row of
+        [s, c, t] -> (s, c, readInt t)
+        _         -> ("", "", 0)
 
 -- | Parse pipe-delimited peer rows from anthony output.
 --
