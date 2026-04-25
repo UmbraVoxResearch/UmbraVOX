@@ -21,14 +21,14 @@ runTests = do
     putStrLn $ "[BIP39] " ++ show passed ++ "/" ++ show total ++ " passed."
     pure (and results)
 
--- | The BIP39 wordlist should have a reasonable number of words (>= 64).
+-- | The BIP39 wordlist should have >= 512 words for adequate entropy.
 testWordlistSize :: IO Bool
 testWordlistSize = do
     let n = length bip39Words
-        pass = n >= 64
+        pass = n >= 512
     if pass
-        then putStrLn ("  PASS: wordlist has " ++ show n ++ " words") >> pure True
-        else putStrLn ("  FAIL: wordlist has " ++ show n ++ " words (need >= 64)") >> pure False
+        then putStrLn ("  PASS: wordlist has " ++ show n ++ " words (>= 512)") >> pure True
+        else putStrLn ("  FAIL: wordlist has " ++ show n ++ " words (need >= 512)") >> pure False
 
 -- | All words in the wordlist should contain only lowercase letters.
 testWordsAreAlpha :: IO Bool

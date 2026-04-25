@@ -128,6 +128,28 @@ All major design documentation lives in [`doc/`](doc/):
 
 Design and specification phase. No production release yet.
 
+## Security Notice
+
+**THIS SOFTWARE HAS NOT BEEN INDEPENDENTLY PEER-REVIEWED OR AUDITED.**
+The cryptographic implementations, while tested against NIST/RFC vectors
+and formally specified in F*, have not been reviewed by an independent
+third party. This software **SHOULD NOT BE TRUSTED** for protecting sensitive
+communications until an independent security audit has been completed.
+
+Use at your own risk. See [LEGAL-NOTICE.md](LEGAL-NOTICE.md) for full terms.
+
+## Future Development
+
+- FIPS 140-3 validated encryption modules for use by the Defense Industrial Base
+- Independent third-party security audit of all cryptographic implementations
+
+## Additional Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Use Cases](doc/use-cases.md) | Usage guide by organization type: churches, schools, fraternal organizations, non-profits, businesses, and public institutions |
+| [Export Control Compliance](doc/legal-process.md) | EAR notification process under 15 CFR 742.15(b) |
+
 ## License
 
 See [LICENSE](LICENSE).
