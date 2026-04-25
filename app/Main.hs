@@ -28,6 +28,7 @@ import UmbraVox.Crypto.Signal.X3DH
 import UmbraVox.Network.Transport
     (Transport(..), listen, connect, send, recv, close)
 import UmbraVox.Protocol.CBOR (encodeMessage)
+import UmbraVox.Protocol.QRCode (generateQR, renderQR)
 -- Types -------------------------------------------------------------------
 type SessionId = Int
 data ContactStatus = Online | Offline | Local | Group deriving stock (Eq)
@@ -42,7 +43,8 @@ data SessionInfo = SessionInfo
 data Pane = ContactPane | ChatPane deriving stock (Eq)
 data AppState = AppState
     { asConfig :: AppConfig, asSelected :: IORef Int, asFocus :: IORef Pane
-    , asInputBuf :: IORef String, asChatScroll :: IORef Int
+    , asInputBuf :: IORef String, asDialogBuf :: IORef String
+    , asChatScroll :: IORef Int
     , asStatusMsg :: IORef String, asRunning :: IORef Bool
     , asDialogMode :: IORef (Maybe DialogMode) }
 data DialogMode = DlgHelp | DlgSettings | DlgVerify | DlgNewConn
@@ -86,17 +88,17 @@ render st = do
         selSi = if sel < length entries
                 then Map.lookup (fst (entries !! sel)) sessions else Nothing
         peer  = maybe "(no contact)" siPeerName selSi
-    -- top border
+    -- top border (ASCII-safe)
     goto 1 1; setFg 36
-    putStr $ "\x250C\x2500 Contacts " ++ replicate (leftW - 12) '\x2500'
-        ++ "\x2510\x250C\x2500 Chat: " ++ take (rightW - 12) peer ++ " "
-        ++ replicate (max 0 (rightW - 10 - length (take (rightW-12) peer))) '\x2500'
-        ++ "\x2510"; resetSGR
+    putStr $ "+-Contacts-" ++ replicate (leftW - 12) '-'
+        ++ "++-Chat: " ++ take (rightW - 12) peer ++ " "
+        ++ replicate (max 0 (rightW - 10 - length (take (rightW-12) peer))) '-'
+        ++ "+"; resetSGR
     -- panes
     forM_ [0..chatH-1] $ \row -> do
         goto (row+2) 1
         -- contact cell
-        setFg 36; putStr "\x2502"; resetSGR
+        setFg 36; putStr "|"; resetSGR
         if row < length entries then do
             let (_,si) = entries !! row
             tag <- statusTag <$> readIORef (siStatus si)
@@ -106,9 +108,9 @@ render st = do
             when (row==sel) $ if focus==ContactPane then bold>>setFg 32 else bold
             putStr (take (leftW-2) cell); resetSGR
         else putStr (replicate (leftW-2) ' ')
-        setFg 36; putStr "\x2502"; resetSGR
+        setFg 36; putStr "|"; resetSGR
         -- chat cell
-        setFg 36; putStr "\x2502"; resetSGR
+        setFg 36; putStr "|"; resetSGR
         msg <- case selSi of
             Nothing -> pure ""
             Just si -> do
@@ -118,26 +120,31 @@ render st = do
                     idx = start + row
                 pure $ if idx >= 0 && idx < total then msgs !! idx else ""
         putStr (padR (rightW-2) (take (rightW-2) msg))
-        setFg 36; putStr "\x2502"; resetSGR
+        setFg 36; putStr "|"; resetSGR
     -- middle border
     goto (chatH+2) 1; setFg 36
-    putStr $ "\x251C" ++ replicate (leftW-2) '\x2500' ++ "\x2524"
-        ++ "\x251C" ++ replicate (rightW-2) '\x2500' ++ "\x2524"; resetSGR
+    putStr $ "+" ++ replicate (leftW-2) '-' ++ "+"
+        ++ "+" ++ replicate (rightW-2) '-' ++ "+"; resetSGR
     -- bottom panes
-    goto (chatH+3) 1; setFg 36; putStr "\x2502"; resetSGR
-    setFg 33; putStr (padR (leftW-2) " [N]ew [G]roup"); resetSGR
-    setFg 36; putStr "\x2502\x2502"; resetSGR
-    let cur = if focus==ChatPane then "_" else ""
-    putStr (padR (rightW-2) (" > " ++ take (rightW-6) buf ++ cur))
-    setFg 36; putStr "\x2502"; resetSGR
-    goto (chatH+4) 1; setFg 36; putStr "\x2502"; resetSGR
+    goto (chatH+3) 1; setFg 36; putStr "|"; resetSGR
+    setFg 33; putStr (padR (leftW-2) " [N]ew [R]ename"); resetSGR
+    setFg 36; putStr "||"; resetSGR
+    -- Green cursor when chat is focused
+    if focus == ChatPane then do
+        bold; setFg 32
+        putStr (padR (rightW-2) (" > " ++ take (rightW-6) buf ++ "_"))
+        resetSGR
+    else
+        putStr (padR (rightW-2) (" > " ++ take (rightW-6) buf))
+    setFg 36; putStr "|"; resetSGR
+    goto (chatH+4) 1; setFg 36; putStr "|"; resetSGR
     setFg 33; putStr (padR (leftW-2) " [K]eys [S]elf"); resetSGR
-    setFg 36; putStr "\x2502\x2502"; resetSGR
-    putStr (replicate (rightW-2) ' '); setFg 36; putStr "\x2502"; resetSGR
+    setFg 36; putStr "||"; resetSGR
+    putStr (replicate (rightW-2) ' '); setFg 36; putStr "|"; resetSGR
     -- bottom border
     goto (chatH+5) 1; setFg 36
-    putStr $ "\x2514" ++ replicate (leftW-2) '\x2500' ++ "\x2518"
-        ++ "\x2514" ++ replicate (rightW-2) '\x2500' ++ "\x2518"; resetSGR
+    putStr $ "+" ++ replicate (leftW-2) '-' ++ "+"
+        ++ "+" ++ replicate (rightW-2) '-' ++ "+"; resetSGR
     -- status bar
     goto (chatH+6) 1; setFg 30; csi "47m"
     let bar = " ^N:New ^R:Verify ^X:Export ^P:Prefs ^Q:Quit | Tab:Switch"
@@ -151,9 +158,9 @@ render st = do
         Just DlgKeys     -> renderKeysOverlay st
         Just DlgSettings -> renderSettingsOverlay st
         Just DlgNewConn  -> renderNewConnOverlay
-        Just DlgVerify   -> renderVerifyOverlay
+        Just DlgVerify   -> renderVerifyOverlay st
         Just (DlgPrompt title _) -> do
-            buf' <- readIORef (asInputBuf st)
+            buf' <- readIORef (asDialogBuf st)
             renderPromptOverlay title buf'
         Nothing -> pure ()
     hFlush stdout
@@ -216,7 +223,8 @@ main = do
     cfg <- AppConfig <$> newIORef 9999 <*> newIORef "User"
                      <*> newIORef Nothing <*> newIORef Map.empty <*> newIORef 1
     st <- AppState cfg <$> newIORef 0 <*> newIORef ContactPane
-                       <*> newIORef "" <*> newIORef 0 <*> newIORef ""
+                       <*> newIORef "" <*> newIORef ""
+                       <*> newIORef 0 <*> newIORef ""
                        <*> newIORef True <*> newIORef Nothing
     withRawMode $ clearScreen >> render st >> eventLoop st
 
@@ -259,6 +267,7 @@ handleContact st key = do
         KeyChar 'n' -> startNewConn st; KeyChar 'N' -> startNewConn st
         KeyChar 'g' -> setStatus st "Group: add peers with N, msgs go to all"
         KeyChar 'G' -> setStatus st "Group: add peers with N, msgs go to all"
+        KeyChar 'r' -> renameContact st; KeyChar 'R' -> renameContact st
         KeyChar 'k' -> startKeysView st; KeyChar 'K' -> startKeysView st
         KeyChar 's' -> addSecureNotes st; KeyChar 'S' -> addSecureNotes st
         KeyChar '?' -> showHelp st
@@ -313,11 +322,11 @@ handleDialog st key = do
         Just DlgNewConn  -> handleNewConnDlg st key
         Just (DlgPrompt _ cb) -> case key of
             KeyEnter -> do
-                b <- readIORef (asInputBuf st); cb b
-                writeIORef (asInputBuf st) ""
+                b <- readIORef (asDialogBuf st); cb b
+                writeIORef (asDialogBuf st) ""
                 writeIORef (asDialogMode st) Nothing
-            KeyChar c -> modifyIORef' (asInputBuf st) (++[c])
-            KeyBackspace -> modifyIORef' (asInputBuf st) (\s -> if null s then s else init s)
+            KeyChar c -> modifyIORef' (asDialogBuf st) (++[c])
+            KeyBackspace -> modifyIORef' (asDialogBuf st) (\s -> if null s then s else init s)
             _ -> pure ()
         _ -> writeIORef (asDialogMode st) Nothing
 
@@ -325,10 +334,10 @@ showOverlay :: String -> [String] -> IO ()
 showOverlay title lns = do
     let w = 50; h = length lns + 2; r0 = max 2 ((24-h) `div` 2)
         c0 = max 1 ((totalW-w) `div` 2)
-        top = "\x250C\x2500 " ++ take (w-6) title ++ " "
-              ++ replicate (max 0 (w-5-length (take (w-6) title))) '\x2500' ++ "\x2510"
-        bot = "\x2514" ++ replicate (w-2) '\x2500' ++ "\x2518"
-        rows = map (\l -> "\x2502 "++padR (w-3) (take (w-3) l)++"\x2502") lns
+        top = "+-" ++ take (w-6) title ++ " "
+              ++ replicate (max 0 (w-5-length (take (w-6) title))) '-' ++ "+"
+        bot = "+" ++ replicate (w-2) '-' ++ "+"
+        rows = map (\l -> "| "++padR (w-3) (take (w-3) l)++"|") lns
     forM_ (zip [0..] (top : rows ++ [bot])) $ \(i,line) ->
         goto (r0+i) c0 >> setFg 36 >> bold >> putStr line >> resetSGR
     hFlush stdout
@@ -358,11 +367,20 @@ renderNewConnOverlay = showOverlay "New Connection"
     ,"2. Listen for peer"
     ,"3. Loopback test (self)", "", "Press 1/2/3, Esc to cancel"]
 
-renderVerifyOverlay :: IO ()
-renderVerifyOverlay = showOverlay "Verify Keys"
-    ["Compare fingerprints with your contact"
-    ,"via a separate channel (phone, in person)."
-    ,"", "Press Esc to close"]
+renderVerifyOverlay :: AppState -> IO ()
+renderVerifyOverlay st = do
+    sessions <- readIORef (cfgSessions (asConfig st))
+    sel <- readIORef (asSelected st)
+    let entries = Map.toList sessions
+    if sel < length entries then do
+        let (_,si) = entries !! sel
+            peerFp = siPeerName si
+            qr = renderQR (generateQR peerFp)
+        showOverlay "Verify Keys" $
+            ["Peer: " ++ siPeerName si, ""] ++ qr ++
+            ["", "Compare via a separate channel.", "Press Esc to close"]
+    else showOverlay "Verify Keys"
+        ["No contact selected", "", "Press Esc to close"]
 
 renderSettingsOverlay :: AppState -> IO ()
 renderSettingsOverlay st = do
@@ -378,10 +396,13 @@ renderKeysOverlay st = do
     mIk <- readIORef (cfgIdentity (asConfig st))
     case mIk of
         Nothing -> showOverlay "Identity & Keys" ["No identity generated yet.", "Press Esc to close"]
-        Just ik -> showOverlay "Identity & Keys"
-            [ "X25519:  " ++ fingerprint (ikX25519Public ik)
-            , "Ed25519: " ++ fingerprint (ikEd25519Public ik)
-            , "", "Press Esc to close" ]
+        Just ik -> do
+            let fp = fingerprint (ikX25519Public ik)
+                qr = renderQR (generateQR fp)
+            showOverlay "Identity & Keys" $
+                [ "X25519:  " ++ fp
+                , "Ed25519: " ++ fingerprint (ikEd25519Public ik)
+                , "" ] ++ qr ++ ["", "Press Esc to close"]
 
 renderPromptOverlay :: String -> String -> IO ()
 renderPromptOverlay title buf = showOverlay title
@@ -395,13 +416,13 @@ startSettings st = writeIORef (asDialogMode st) (Just DlgSettings)
 
 handleSettingsDlg :: AppState -> InputEvent -> IO ()
 handleSettingsDlg st (KeyChar '1') = do
-    writeIORef (asDialogMode st) (Just (DlgPrompt "port" $ \val ->
+    writeIORef (asDialogBuf st) ""
+    writeIORef (asDialogMode st) (Just (DlgPrompt "Set Port" $ \val ->
         case reads val of { [(p,_)] -> writeIORef (cfgListenPort (asConfig st)) (p::Int); _ -> pure () }))
-    showOverlay "Set Port" ["Enter new port number:", ""]
 handleSettingsDlg st (KeyChar '2') = do
-    writeIORef (asDialogMode st) (Just (DlgPrompt "name" $ \val ->
+    writeIORef (asDialogBuf st) ""
+    writeIORef (asDialogMode st) (Just (DlgPrompt "Set Display Name" $ \val ->
         unless (null val) $ writeIORef (cfgDisplayName (asConfig st)) val))
-    showOverlay "Set Name" ["Enter new display name:", ""]
 handleSettingsDlg st _ = writeIORef (asDialogMode st) Nothing
 
 setStatus :: AppState -> String -> IO ()
@@ -412,7 +433,7 @@ startNewConn st = writeIORef (asDialogMode st) (Just DlgNewConn)
 
 handleNewConnDlg :: AppState -> InputEvent -> IO ()
 handleNewConnDlg st (KeyChar '1') = do
-    writeIORef (asInputBuf st) ""
+    writeIORef (asDialogBuf st) ""
     writeIORef (asDialogMode st) (Just (DlgPrompt "Connect (host:port)" $ \val -> do
         let (host, portStr) = break (==':') val
             port = if null portStr then 9999 else read (drop 1 portStr) :: Int
@@ -455,6 +476,21 @@ selectLast st = do
     n <- Map.size <$> readIORef (cfgSessions (asConfig st))
     writeIORef (asSelected st) (max 0 (n-1))
 
+renameContact :: AppState -> IO ()
+renameContact st = do
+    sessions <- readIORef (cfgSessions (asConfig st))
+    sel <- readIORef (asSelected st)
+    let entries = Map.toList sessions
+    when (sel < length entries) $ do
+        let (sid, si) = entries !! sel
+        writeIORef (asDialogBuf st) ""
+        writeIORef (asDialogMode st) (Just (DlgPrompt ("Rename: " ++ siPeerName si) $ \val ->
+            unless (null val) $ do
+                let si' = si { siPeerName = val }
+                modifyIORef' (cfgSessions (asConfig st)) (Map.insert sid si')
+                setStatus st ("Renamed to: " ++ val)
+            ))
+
 addSecureNotes :: AppState -> IO ()
 addSecureNotes st = do
     sid <- addLoopbackSession (asConfig st) "\x1F512 Secure Notes"
@@ -469,18 +505,7 @@ startKeysView st = do
         Just _  -> pure ()
 
 startVerify :: AppState -> IO ()
-startVerify st = do
-    writeIORef (asDialogMode st) (Just DlgVerify)
-    sessions <- readIORef (cfgSessions (asConfig st))
-    sel <- readIORef (asSelected st)
-    let entries = Map.toList sessions
-    if sel < length entries then do
-        let (_,si) = entries !! sel
-        showOverlay "Verify Keys"
-            ["Peer: " ++ siPeerName si, ""
-            ,"Key verification via safety numbers"
-            ,"is not yet implemented.", "", "Press any key to close"]
-    else showOverlay "Verify Keys" ["No contact selected","","Press any key"]
+startVerify st = writeIORef (asDialogMode st) (Just DlgVerify)
 
 startExport :: AppState -> IO ()
 startExport st = do

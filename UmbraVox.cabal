@@ -118,6 +118,7 @@ library
     -- Protocol / Serialization
     UmbraVox.Protocol.CBOR
     UmbraVox.Protocol.MessageFormat
+    UmbraVox.Protocol.QRCode
     UmbraVox.Protocol.WireFormat
   build-depends:
     base         >= 4.18  && < 5,
