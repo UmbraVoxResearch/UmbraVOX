@@ -935,9 +935,34 @@ See also: doc/mvp-plan.md
 [ ] MVP.3 Manual test: two terminals exchanging encrypted messages
 [ ] MVP.4 Wireshark confirms only ciphertext on wire
 
---- Existing items (post-MVP) ---
+--- MVP Phase C: TUI Polish + Discovery (2026-04-25) ---
 
-[ ] P0.2 Implement PQXDH (Signal/PQXDH.hs) — PQ session establishment
+[~] C1 Fix terminal resize (SIGWINCH signal handler)
+[~] C2 Add 11% border padding to layout
+[~] C3 Split TUI into modules (Types, Render, Input, Actions, Handshake)
+[~] C4 mDNS/DNS-SD LAN auto-discovery (Network/MDNS.hs)
+[~] C5 Peer Exchange on first connect (Network/PeerExchange.hs)
+[~] C6 Anthony DB persistence (Storage/Anthony.hs)
+    [ ] C6.1 Auto-download and build anthony CLI if not available
+    [ ] C6.2 Schema: peers, settings, conversations tables
+    [ ] C6.3 Persist discovered/connected peers across restarts
+
+--- Deferred Discovery (post-MVP) ---
+
+[ ] D1 DHT Kademlia — internet-wide discovery (Network/DHT.hs)
+  [ ] D1.1 160-bit node IDs from SHA-256 of pubkey
+  [ ] D1.2 k-bucket routing table (k=8)
+  [ ] D1.3 FIND_NODE, STORE, FIND_VALUE operations
+  [ ] D1.4 UDP for DHT, TCP for connections
+
+[ ] D2 Discovery Manager — orchestrates all methods (Network/Discovery.hs)
+  [ ] D2.1 Unified peer database with scoring and expiry
+  [ ] D2.2 TUI integration: [LAN], [DHT], [PEX] tags
+  [ ] D2.3 Settings: enable/disable each discovery method
+
+--- Existing items (post-MVP, completed) ---
+
+[x] P0.2 Implement PQXDH (Signal/PQXDH.hs) — PQ session establishment
   [ ] P0.2.1 Fetch peer PQPK (ML-KEM public key) from bundle
   [ ] P0.2.2 Compute 4 classical DH shared secrets (dh1-dh4)
   [ ] P0.2.3 ML-KEM encapsulation against peer PQPK
