@@ -17,14 +17,20 @@ import Data.Map.Strict (Map)
 import UmbraVox.Chat.Session (ChatSession)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey)
 import UmbraVox.Network.Transport (Transport)
+import UmbraVox.Network.MDNS (MDNSPeer)
 
 type SessionId = Int
 
-data ContactStatus = Online | Offline | Local | Group deriving stock (Eq)
+data ContactStatus = Online | Offline | Local | Group | LAN | PEX
+    deriving stock (Eq)
 
 statusTag :: ContactStatus -> String
-statusTag Online = "[ON]"; statusTag Offline = "[OFF]"
-statusTag Local = "[LOCAL]"; statusTag Group = "[GRP]"
+statusTag Online  = "[ON]"
+statusTag Offline = "[OFF]"
+statusTag Local   = "[LOCAL]"
+statusTag Group   = "[GRP]"
+statusTag LAN     = "[LAN]"
+statusTag PEX     = "[PEX]"
 
 data SessionInfo = SessionInfo
     { siTransport :: Maybe Transport, siSession :: IORef ChatSession
@@ -47,10 +53,20 @@ data DialogMode = DlgHelp | DlgSettings | DlgVerify | DlgNewConn
     | DlgKeys | DlgPrompt String (String -> IO ())
 
 data AppConfig = AppConfig
-    { cfgListenPort :: IORef Int, cfgDisplayName :: IORef String
-    , cfgIdentity :: IORef (Maybe IdentityKey)
-    , cfgSessions :: IORef (Map SessionId SessionInfo)
-    , cfgNextId :: IORef SessionId }
+    { cfgListenPort  :: IORef Int
+    , cfgDisplayName :: IORef String
+    , cfgIdentity    :: IORef (Maybe IdentityKey)
+    , cfgSessions    :: IORef (Map SessionId SessionInfo)
+    , cfgNextId      :: IORef SessionId
+    -- Discovery settings
+    , cfgMDNSEnabled :: IORef Bool
+    , cfgPEXEnabled  :: IORef Bool
+    , cfgDBEnabled   :: IORef Bool
+    , cfgDBPath      :: IORef String
+    -- Discovery state
+    , cfgMDNSThread  :: IORef (Maybe ThreadId)
+    , cfgMDNSPeers   :: IORef [MDNSPeer]
+    }
 
 data Layout = Layout
     { lCols :: Int, lRows :: Int

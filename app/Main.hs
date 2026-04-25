@@ -17,8 +17,20 @@ sigWINCH = 28
 main :: IO ()
 main = do
     hSetBuffering stdout (BlockBuffering (Just 8192))
-    cfg <- AppConfig <$> newIORef 9999 <*> newIORef "User"
-                     <*> newIORef Nothing <*> newIORef Map.empty <*> newIORef 1
+    cfg <- AppConfig
+        <$> newIORef 9999        -- listen port
+        <*> newIORef "User"      -- display name
+        <*> newIORef Nothing     -- identity key
+        <*> newIORef Map.empty   -- sessions
+        <*> newIORef 1           -- next session ID
+        -- Discovery settings
+        <*> newIORef True        -- mDNS enabled
+        <*> newIORef True        -- PEX enabled
+        <*> newIORef True        -- DB persistence enabled
+        <*> newIORef "~/.umbravox/umbravox.db"  -- DB path
+        -- Discovery state
+        <*> newIORef Nothing     -- mDNS thread
+        <*> newIORef []          -- mDNS discovered peers
     (initRows, initCols) <- getTermSize
     let (r0, c0) = clampSize initRows initCols
     termRef <- newIORef (initRows, initCols)
