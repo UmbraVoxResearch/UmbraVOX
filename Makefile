@@ -209,3 +209,13 @@ clean:
 	@rm -rf $(FSTAR_DIR)/_cache $(FSTAR_DIR)/_output
 	@rm -f /tmp/umbravox-test-output.txt /tmp/umbravox-verify-output.txt
 	@echo -e "$(GREEN)[CLEAN]$(NC) Done."
+
+cleandb:
+	@echo -e "$(BLUE)[CLEANDB]$(NC) Removing local database..."
+	@rm -f ~/.umbravox/umbravox.db
+	@echo -e "$(GREEN)[CLEANDB]$(NC) Database removed. Will be recreated on next launch."
+
+cleanall: clean cleandb
+	@echo -e "$(BLUE)[CLEANALL]$(NC) Removing all local data..."
+	@rm -rf ~/.umbravox/tools
+	@echo -e "$(GREEN)[CLEANALL]$(NC) All cleaned (build + DB + tools)."

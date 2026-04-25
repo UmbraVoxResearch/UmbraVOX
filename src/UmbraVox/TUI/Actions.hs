@@ -180,9 +180,10 @@ sendCurrentMessage st = do
             when autoSave $ do
                 mDb <- readIORef (cfgAnthonyDB (asConfig st))
                 case mDb of
-                    Just db -> do
+                    Just db -> (do
                         t <- round <$> getPOSIXTime
                         saveMessage db sel "You" buf t
+                        ) `catch` (\(_ :: SomeException) -> pure ())
                     Nothing -> pure ()
 
 quitApp :: AppState -> IO ()

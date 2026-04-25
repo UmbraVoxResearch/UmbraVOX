@@ -2,9 +2,20 @@
 
 This file is a reference index only. All authoritative project information lives in the documents listed below.
 
+## Project Status
+
+MVP is functional. 238 tests across 23 suites. 17 F* formal specifications. 10 .spec files generating 30 Haskell + C + FFI outputs.
+
 ## Source of Truth
 
-- [README.md](README.md) — Project overview and quick start
+### Top-Level
+
+- [README.md](README.md) — Project overview, current status, quick numbers
+- [TODO.txt](TODO.txt) — Implementation tracking (phases 0-7, bugs, F* specs, MVP plan)
+- [doc/mvp-plan.md](doc/mvp-plan.md) — MVP plan: codegen pipeline, P2P messaging, TUI/discovery (all phases complete)
+
+### Design Specifications
+
 - [doc/01-overview.md](doc/01-overview.md) — System overview, core principles, architecture, DO-178C designation
 - [doc/02-language-and-structure.md](doc/02-language-and-structure.md) — Language choice, project structure, code generation toolchain
 - [doc/03-cryptography.md](doc/03-cryptography.md) — Cryptographic primitives, Signal protocol, PQ wrapper, side-channel mitigation
@@ -30,3 +41,9 @@ This file is a reference index only. All authoritative project information lives
 ### Hardening Specifications
 
 - [doc/hardening/23-treasury-governance.md](doc/hardening/23-treasury-governance.md) — Treasury governance: safety bounds, anti-capture, spending categories, formal invariants 13-15
+
+### Legal
+
+- [LEGAL-NOTICE.md](LEGAL-NOTICE.md) — Export controls, telecommunications, data retention, token economics
+- [PUBLISHING-NOTE.md](PUBLISHING-NOTE.md) — Expressive and research framing
+- [LICENSE](LICENSE) — Project license

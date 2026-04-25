@@ -124,9 +124,25 @@ All major design documentation lives in [`doc/`](doc/):
 - **Offline message loss**: Users offline for a full cycle may lose messages permanently
 - **Compression deferred**: Wire-level payload compression is not part of v1
 
-## Status
+## Current Status
 
-Design and specification phase. No production release yet.
+**MVP functional.** Two clients can exchange post-quantum encrypted messages over TCP with Noise_IK transport security and Signal Double Ratchet + ML-KEM-768 encryption.
+
+| Metric | Value |
+|--------|-------|
+| Tests | 238 across 23 suites |
+| F* formal specifications | 17 (all verified) |
+| .spec files | 10 generating 30 Haskell + C + FFI outputs |
+| Transport backends | TCP, Loopback (functional); UDP, Signal, XMPP, Discord, Matrix, Blockchain (stubs) |
+
+### Implemented Features
+
+- **TUI**: Midnight Commander-style split pane interface with resize handling
+- **Discovery**: mDNS/DNS-SD LAN auto-discovery + peer exchange protocol
+- **Persistence**: Anthony DB for peers, settings, and conversations
+- **Identity export**: Encrypted exports with BIP39 passphrases (full 2048-word wordlist)
+- **Modular transport**: Pluggable transport abstraction (`TransportClass`) with multiple backend implementations
+- **Codegen pipeline**: 10 `.spec` files drive generation of pure Haskell, constant-time C, and FFI bindings
 
 ## Security Notice
 

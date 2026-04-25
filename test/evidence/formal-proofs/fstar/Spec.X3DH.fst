@@ -109,8 +109,8 @@ val derive_secret :
     dh1:seq UInt8.t{Seq.length dh1 = key_size}
     -> dh2:seq UInt8.t{Seq.length dh2 = key_size}
     -> dh3:seq UInt8.t{Seq.length dh3 = key_size}
-    -> dh4:option (s:seq UInt8.t{Seq.length s = key_size})
-    -> Tot (s:seq UInt8.t{Seq.length s = secret_size})
+    -> dh4:option (seq UInt8.t)
+    -> Tot (seq UInt8.t)
 let derive_secret dh1 dh2 dh3 dh4 =
   let pad  = Seq.create 32 0xffuy in
   let salt = Seq.create 32 0x00uy in

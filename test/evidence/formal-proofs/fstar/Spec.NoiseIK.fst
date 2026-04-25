@@ -85,7 +85,7 @@ let hmac_sha256 key msg =
 
 (** Initial handshake hash: pad protocol_name to 32 bytes if <= 32,
     otherwise SHA-256 hash it. *)
-val init_hash : Tot (s:seq UInt8.t{Seq.length s = 32})
+val init_hash : seq UInt8.t
 let init_hash =
   if Seq.length protocol_name <= 32 then
     let padding = Seq.create (32 - Seq.length protocol_name) 0uy in

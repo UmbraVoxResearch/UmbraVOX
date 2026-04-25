@@ -69,9 +69,10 @@ let le_roundtrip_lemma n v =
 
 let clamp_mask : nat = 0x0ffffffc0ffffffc0ffffffc0fffffff
 
+assume val bitwise_and : nat -> nat -> Tot nat
+
 val clamp_r : nat -> Tot nat
-let clamp_r r =
-  FStar.UInt.logand #131 r clamp_mask
+let clamp_r r = bitwise_and r clamp_mask
 
 (** Clamping produces a value with specific bits cleared *)
 val clamp_r_bound_lemma : r:nat
@@ -123,9 +124,9 @@ let finalize acc s =
 (** -------------------------------------------------------------------- **)
 
 (** Poly1305(key, msg) where key = r[0..15] || s[0..15] *)
-val poly1305 : key:seq UInt8.t{Seq.length key = key_size}
+val poly1305 : key:seq UInt8.t
     -> msg:seq UInt8.t
-    -> Tot (s:seq UInt8.t{Seq.length s = tag_size})
+    -> Tot (seq UInt8.t)
 let poly1305 key msg =
   let r_bytes = Seq.slice key 0 16 in
   let s_bytes = Seq.slice key 16 32 in

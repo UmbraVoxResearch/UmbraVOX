@@ -24,6 +24,12 @@ import qualified Test.Protocol.CBOR as CBOR
 import qualified Test.Crypto.BIP39 as BIP39
 import qualified Test.Crypto.Export as Export
 import qualified Test.Protocol.QRCode as QRCode
+import qualified Test.Network.Noise as Noise
+import qualified Test.Chat.Session as ChatSession
+import qualified Test.Crypto.StealthAddress as StealthAddress
+import qualified Test.Network.PeerExchange as PeerExchange
+import qualified Test.Protocol.SafetyNumber as SafetyNumber
+import qualified Test.Crypto.PQXDH as PQXDH
 
 main :: IO ()
 main = do
@@ -76,9 +82,21 @@ main = do
     exportPass <- Export.runTests
     putStrLn ""
     qrcodePass <- QRCode.runTests
+    putStrLn ""
+    noisePass <- Noise.runTests
+    putStrLn ""
+    chatSessionPass <- ChatSession.runTests
+    putStrLn ""
+    stealthPass <- StealthAddress.runTests
+    putStrLn ""
+    pexPass <- PeerExchange.runTests
+    putStrLn ""
+    safetyNumPass <- SafetyNumber.runTests
+    putStrLn ""
+    pqxdhPass <- PQXDH.runTests
 
     putStrLn ""
-    let allPass = sha256Pass && sha512Pass && hmacPass && hkdfPass && aesPass && gcmPass && curve25519Pass && ed25519Pass && chacha20Pass && x3dhPass && doubleRatchetPass && mlkemPass && keccakPass && poly1305Pass && securityPass && fuzzPass && integrationPass && equivalencePass && transportPass && cborPass && bip39Pass && exportPass && qrcodePass
+    let allPass = sha256Pass && sha512Pass && hmacPass && hkdfPass && aesPass && gcmPass && curve25519Pass && ed25519Pass && chacha20Pass && x3dhPass && doubleRatchetPass && mlkemPass && keccakPass && poly1305Pass && securityPass && fuzzPass && integrationPass && equivalencePass && transportPass && cborPass && bip39Pass && exportPass && qrcodePass && noisePass && chatSessionPass && stealthPass && pexPass && safetyNumPass && pqxdhPass
     if allPass
         then do
             putStrLn "All tests passed."
