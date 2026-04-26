@@ -164,7 +164,6 @@ Use at your own risk. See [LEGAL-NOTICE.md](LEGAL-NOTICE.md) for full terms.
 | Document | Description |
 |----------|-------------|
 | [Use Cases](doc/use-cases.md) | Usage guide by organization type: churches, schools, fraternal organizations, non-profits, businesses, and public institutions |
-| [Export Control Compliance](doc/legal-process.md) | EAR notification process under 15 CFR 742.15(b) |
 
 ## License
 
