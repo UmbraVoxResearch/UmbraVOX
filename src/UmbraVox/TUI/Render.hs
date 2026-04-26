@@ -58,11 +58,14 @@ withRawMode act = do
     pure result
   where
     cleanup = do
+        showCursor
+        putStr "\ESC[?25h"  -- ensure cursor visible
+        hFlush stdout
+        -- Restore terminal FIRST via stty before changing Haskell buffering
+        void (readProcess "stty" ["-F", "/dev/tty", "sane", "echo", "ixon"] "" `catch`
+              (\(_ :: SomeException) -> pure ""))
         hSetBuffering stdin LineBuffering
         hSetEcho stdin True
-        showCursor
-        void (readProcess "stty" ["-F", "/dev/tty", "ixon", "sane"] "" `catch`
-              (\(_ :: SomeException) -> pure ""))
 
 -- Terminal size detection -------------------------------------------------
 getTermSize :: IO (Int, Int)  -- (rows, cols)

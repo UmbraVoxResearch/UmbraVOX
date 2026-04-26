@@ -8,14 +8,15 @@ module UmbraVox.TUI.Actions
 
 import Control.Concurrent (forkIO, killThread)
 import Control.Exception (catch, SomeException)
-import Control.Monad (when, unless, forM_)
+import Control.Monad (when, unless, forM_, void)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BC
 import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
 import qualified Data.Map.Strict as Map
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import System.Directory (doesFileExist)
-import System.IO (hFlush, stdout)
+import System.IO (hFlush, stdout, stdin, hSetBuffering, hSetEcho, BufferMode(..))
+import System.Process (readProcess)
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Render (clearScreen, goto, showCursor, isPfx)
 import UmbraVox.Chat.Session
@@ -193,7 +194,13 @@ quitApp st = do
     forM_ (Map.elems sessions) $ \si -> do
         maybe (pure ()) killThread (siRecvTid si)
         maybe (pure ()) anyClose (siTransport si)
-    clearScreen; goto 1 1; showCursor; putStrLn "Goodbye."; hFlush stdout
+    -- Restore terminal to sane state before exiting
+    clearScreen; goto 1 1; showCursor
+    hSetBuffering stdin LineBuffering
+    hSetEcho stdin True
+    void (readProcess "stty" ["-F", "/dev/tty", "sane"] "" `catch`
+          (\(_ :: SomeException) -> pure ""))
+    putStrLn "Goodbye."; hFlush stdout
 
 -- Session management ------------------------------------------------------
 addSession :: AppConfig -> AnyTransport -> ChatSession -> String -> IO SessionId
