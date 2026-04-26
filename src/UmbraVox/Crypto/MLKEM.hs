@@ -538,7 +538,9 @@ mlkemDecaps (MLKEMDecapKey fullDK) (MLKEMCiphertext ct) =
 ------------------------------------------------------------------------
 
 bsSlice :: Int -> Int -> ByteString -> ByteString
-bsSlice offset len = BS.take len . BS.drop offset
+bsSlice offset len bs
+    | offset + len > BS.length bs = BS.empty
+    | otherwise                   = BS.take len (BS.drop offset bs)
 
 -- | Constant-time byte string comparison to prevent timing side channels.
 -- Required by FIPS 203 Section 7.3 for ciphertext comparison in decapsulation.

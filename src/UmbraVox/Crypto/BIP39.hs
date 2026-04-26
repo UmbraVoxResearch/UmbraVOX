@@ -1,7 +1,7 @@
 -- | BIP39 passphrase generation for encrypted exports.
 --
--- Uses the first 512 words of the BIP39 English wordlist (9 bits per word).
--- A 6-word passphrase provides 54 bits of entropy from word selection.
+-- Uses the full 2048 words of the BIP39 English wordlist (11 bits per word).
+-- A 6-word passphrase provides 66 bits of entropy from word selection.
 module UmbraVox.Crypto.BIP39
     ( generatePassphrase
     , bip39Words
@@ -13,8 +13,8 @@ import qualified Data.ByteString as BS
 import UmbraVox.Crypto.Random (randomBytes)
 
 -- | Generate an n-word passphrase from the BIP39 wordlist.
--- Each word is selected uniformly from the 512-word list using
--- 2 random bytes per word (mod 512 for uniform distribution).
+-- Each word is selected uniformly from the 2048-word list using
+-- 2 random bytes per word (mod 2048 for uniform distribution).
 generatePassphrase :: Int -> IO String
 generatePassphrase n
     | n <= 0    = pure ""

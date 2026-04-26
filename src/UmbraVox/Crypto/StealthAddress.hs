@@ -136,7 +136,7 @@ deriveViewTagBytes sharedSecret = hkdf hkdfSalt sharedSecret viewTagInfo 32
 addSpendKey :: ExtPoint -> ByteString -> ByteString
 addSpendKey sG spendPubBS =
     case decodePoint spendPubBS of
-        Nothing -> error "StealthAddress: invalid spend public key"
+        Nothing      -> BS.empty
         Just !bPoint -> encodePoint (pointAdd sG bPoint)
 
 ------------------------------------------------------------------------

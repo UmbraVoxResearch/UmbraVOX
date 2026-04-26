@@ -183,9 +183,18 @@ reseedInterval = 1048576
 globalCSPRNG :: IORef (Maybe CSPRNGState)
 globalCSPRNG = unsafePerformIO (newIORef Nothing)
 
--- | Read entropy from @\/dev\/urandom@.
+-- | Read entropy from @\/dev\/urandom@, retrying until exactly @n@ bytes
+-- are obtained (handles partial reads from the OS).
 readEntropy :: Int -> IO ByteString
-readEntropy n = withBinaryFile "/dev/urandom" ReadMode (\h -> BS.hGet h n)
+readEntropy n = withBinaryFile "/dev/urandom" ReadMode (\h -> readLoop h n BS.empty)
+  where
+    readLoop h remaining acc
+        | remaining <= 0 = return acc
+        | otherwise = do
+            chunk <- BS.hGet h remaining
+            if BS.null chunk
+                then return acc  -- EOF, should not happen for /dev/urandom
+                else readLoop h (remaining - BS.length chunk) (acc <> chunk)
 
 -- | Seed (or reseed) the CSPRNG from fresh OS entropy.
 seedCSPRNG :: IO CSPRNGState

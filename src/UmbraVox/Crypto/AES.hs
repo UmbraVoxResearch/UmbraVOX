@@ -114,14 +114,15 @@ rotWord w = (w `shiftL` 8) .|. (w `shiftR` 24)
 ------------------------------------------------------------------------
 
 rcon :: Int -> Word32
-rcon 1  = 0x01000000
-rcon 2  = 0x02000000
-rcon 3  = 0x04000000
-rcon 4  = 0x08000000
-rcon 5  = 0x10000000
-rcon 6  = 0x20000000
-rcon 7  = 0x40000000
-rcon _  = error "AES-256: rcon index out of range"
+rcon i
+    | i >= 1 && i <= length rconTable = rconTable !! (i - 1)
+    | otherwise                       = 0x00000000
+  where
+    rconTable :: [Word32]
+    rconTable =
+        [ 0x01000000, 0x02000000, 0x04000000, 0x08000000
+        , 0x10000000, 0x20000000, 0x40000000, 0x80000000
+        , 0x1B000000, 0x36000000 ]
 
 ------------------------------------------------------------------------
 -- State operations — state is 16 bytes in column-major order

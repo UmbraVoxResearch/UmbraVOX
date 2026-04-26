@@ -9,6 +9,11 @@ module UmbraVox.Network.MDNS
     , startMDNS
     , stopMDNS
     , getDiscoveredPeers
+      -- * Internal (exported for testing)
+    , parseAnnouncement
+    , safeReadPort
+    , addrToIP
+    , buildAnnouncement
     ) where
 
 import Data.ByteString (ByteString)
