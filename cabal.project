@@ -1,0 +1,2 @@
+packages: .
+-- All dependencies are GHC boot libraries, no Hackage needed

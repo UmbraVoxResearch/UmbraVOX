@@ -1,0 +1,230 @@
+cabal-version:      3.0
+name:               UmbraVox
+version:            0.1.0.0
+synopsis:           Decentralized encrypted communications protocol
+description:
+  UmbraVox is a blockchain-based encrypted messaging protocol with
+  post-quantum cryptography, Ouroboros Praos consensus, and DO-178C
+  DAL A assurance. All cryptographic primitives are hand-implemented
+  using only GHC boot libraries.
+license:            AGPL-3.0-or-later
+license-file:       LICENSE
+build-type:         Simple
+
+flag pure-haskell
+  description: Use pure Haskell reference implementations (no FFI C)
+  default:     True
+  manual:      True
+
+flag profiling
+  description: Enable GHC cost-centre profiling annotations
+  default:     False
+  manual:      True
+
+flag coverage
+  description: Enable HPC instrumentation for MC/DC coverage
+  default:     False
+  manual:      True
+
+common warnings
+  ghc-options:
+    -Wall
+    -Wcompat
+    -Widentities
+    -Wincomplete-record-updates
+    -Wincomplete-uni-patterns
+    -Wmissing-deriving-strategies
+    -Wpartial-fields
+    -Wredundant-constraints
+    -Wunused-packages
+
+common lang
+  default-language:   Haskell2010
+  default-extensions:
+    BangPatterns
+    DeriveGeneric
+    DerivingStrategies
+    GeneralizedNewtypeDeriving
+    LambdaCase
+    OverloadedStrings
+    ScopedTypeVariables
+    StrictData
+    TypeApplications
+
+library
+  import:           warnings, lang
+  hs-source-dirs:   src
+  exposed-modules:
+    -- Crypto primitives
+    UmbraVox.Crypto.SHA256
+    UmbraVox.Crypto.SHA512
+    UmbraVox.Crypto.HMAC
+    UmbraVox.Crypto.HKDF
+    UmbraVox.Crypto.AES
+    UmbraVox.Crypto.GCM
+    UmbraVox.Crypto.Curve25519
+    UmbraVox.Crypto.Ed25519
+    UmbraVox.Crypto.Keccak
+    UmbraVox.Crypto.Poly1305
+    UmbraVox.Crypto.MLKEM
+    UmbraVox.Crypto.VRF
+    UmbraVox.Crypto.Random
+    UmbraVox.Crypto.StealthAddress
+    UmbraVox.Crypto.BIP39
+    UmbraVox.Crypto.Export
+    -- Signal protocol
+    UmbraVox.Crypto.Signal.X3DH
+    UmbraVox.Crypto.Signal.PQXDH
+    UmbraVox.Crypto.Signal.DoubleRatchet
+    UmbraVox.Crypto.Signal.SenderKeys
+    UmbraVox.Crypto.Signal.Session
+    UmbraVox.Crypto.PQWrapper
+    UmbraVox.Crypto.KeyStore
+    -- Consensus
+    UmbraVox.Consensus.Types
+    UmbraVox.Consensus.Block
+    UmbraVox.Consensus.Ledger
+    UmbraVox.Consensus.Protocol
+    UmbraVox.Consensus.LeaderElection
+    UmbraVox.Consensus.Validation
+    UmbraVox.Consensus.ForkChoice
+    UmbraVox.Consensus.Nonce
+    UmbraVox.Consensus.Truncation
+    UmbraVox.Consensus.Mempool
+    -- Economics
+    UmbraVox.Economics.Token
+    UmbraVox.Economics.Fees
+    UmbraVox.Economics.Rewards
+    UmbraVox.Economics.Penalty
+    UmbraVox.Economics.Cycle
+    UmbraVox.Economics.Onboarding
+    -- Network
+    UmbraVox.Network.TransportClass
+    UmbraVox.Network.Transport
+    UmbraVox.Network.Transport.Loopback
+    UmbraVox.Network.Transport.UDP
+    UmbraVox.Network.Transport.Blockchain
+    UmbraVox.Network.Transport.SignalServer
+    UmbraVox.Network.Transport.XMPP
+    UmbraVox.Network.Transport.Discord
+    UmbraVox.Network.Transport.Matrix
+    UmbraVox.Network.Noise
+    UmbraVox.Network.PeerManager
+    UmbraVox.Network.Gossip
+    UmbraVox.Network.Dandelion
+    UmbraVox.Network.Protocol
+    UmbraVox.Network.Sync
+    UmbraVox.Network.MDNS
+    UmbraVox.Network.PeerExchange
+    -- Chat
+    UmbraVox.Chat.Session
+    UmbraVox.Chat.Message
+    UmbraVox.Chat.Transaction
+    UmbraVox.Chat.Contacts
+    UmbraVox.Chat.API
+    -- Storage
+    UmbraVox.Storage.ChainDB
+    UmbraVox.Storage.StateDB
+    UmbraVox.Storage.Index
+    UmbraVox.Storage.Checkpoint
+    UmbraVox.Storage.Anthony
+    -- Protocol / Serialization
+    UmbraVox.Protocol.CBOR
+    UmbraVox.Protocol.MessageFormat
+    UmbraVox.Protocol.QRCode
+    UmbraVox.Protocol.WireFormat
+    -- TUI
+    UmbraVox.TUI.Types
+    UmbraVox.TUI.Render
+    UmbraVox.TUI.Input
+    UmbraVox.TUI.Actions
+    UmbraVox.TUI.Handshake
+  build-depends:
+    base         >= 4.18  && < 5,
+    bytestring   >= 0.11  && < 0.13,
+    containers   >= 0.6   && < 0.8,
+    array        >= 0.5   && < 0.6,
+    stm          >= 2.5   && < 2.6,
+    network      >= 3.1   && < 3.3,
+    binary       >= 0.8   && < 0.9,
+    directory    >= 1.3   && < 1.4,
+    filepath     >= 1.4   && < 1.6,
+    time         >= 1.12  && < 1.15,
+    process      >= 1.6   && < 1.7,
+    unix         >= 2.8   && < 2.9
+
+executable umbravox
+  import:           warnings, lang
+  main-is:          Main.hs
+  hs-source-dirs:   app
+  build-depends:
+    base         >= 4.18  && < 5,
+    bytestring   >= 0.11  && < 0.13,
+    containers   >= 0.6   && < 0.8,
+    directory    >= 1.3   && < 1.4,
+    filepath     >= 1.4   && < 1.6,
+    network      >= 3.1   && < 3.3,
+    unix         >= 2.8   && < 2.9,
+    UmbraVox
+  ghc-options:      -threaded -rtsopts "-with-rtsopts=-N"
+
+executable codegen
+  import:           warnings, lang
+  main-is:          Main.hs
+  hs-source-dirs:   codegen
+  other-modules:
+    CryptoGen
+    CBORGen
+    FSMGen
+    TestGen
+  build-depends:
+    base         >= 4.18  && < 5,
+    bytestring   >= 0.11  && < 0.13,
+    containers   >= 0.6   && < 0.8,
+    directory    >= 1.3   && < 1.4,
+    filepath     >= 1.4   && < 1.6
+
+test-suite umbravox-test
+  import:           warnings, lang
+  type:             exitcode-stdio-1.0
+  main-is:          Main.hs
+  hs-source-dirs:   test
+  other-modules:
+    Test.Util
+    Test.Crypto.SHA256
+    Test.Crypto.SHA512
+    Test.Crypto.HMAC
+    Test.Crypto.HKDF
+    Test.Crypto.AES
+    Test.Crypto.GCM
+    Test.Crypto.Curve25519
+    Test.Crypto.Ed25519
+    Test.Crypto.ChaCha20
+    Test.Crypto.Signal.X3DH
+    Test.Crypto.Signal.DoubleRatchet
+    Test.Crypto.Keccak
+    Test.Crypto.MLKEM
+    Test.Crypto.Poly1305
+    Test.Security
+    Test.Fuzz
+    Test.Integration
+    Test.Equivalence
+    Test.Network.Transport
+    Test.Protocol.CBOR
+    Test.Crypto.BIP39
+    Test.Crypto.Export
+    Test.Protocol.QRCode
+    Test.Network.Noise
+    Test.Chat.Session
+    Test.Crypto.StealthAddress
+    Test.Network.PeerExchange
+    Test.Protocol.SafetyNumber
+    Test.Crypto.PQXDH
+  build-depends:
+    base         >= 4.18  && < 5,
+    bytestring   >= 0.11  && < 0.13,
+    array        >= 0.5   && < 0.6,
+    containers   >= 0.6   && < 0.8,
+    network      >= 3.1   && < 3.3,
+    UmbraVox
+  ghc-options:      -threaded -rtsopts "-with-rtsopts=-N"

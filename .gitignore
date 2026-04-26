@@ -1,0 +1,9 @@
+# Build artifacts
+dist-newstyle/
+*.hi
+*.o
+*.dyn_hi
+*.dyn_o
+test-runner
+test/evidence/formal-proofs/fstar/_cache/
+test/evidence/formal-proofs/fstar/_output/

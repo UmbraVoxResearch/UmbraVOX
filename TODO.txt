@@ -1,0 +1,1025 @@
+UmbraVOX Implementation TODO
+=============================
+Status: [ ] = pending, [~] = in progress, [x] = done, [!] = blocked
+
+Last updated: 2026-04-23
+
+================================================================================
+PHASE 0: CRYPTOGRAPHIC PRIMITIVES + CODE GENERATOR (Weeks 1-10)
+================================================================================
+
+--- 0a: Code Generator Bootstrap (Weeks 1-3) ---
+
+[ ] 0a.1  Project scaffolding
+  [ ] 0a.1.1  Create UmbraVox.cabal with all modules, flags (-fpure-haskell, -fprofiling, -fcoverage)
+  [ ] 0a.1.2  Create directory structure per doc/02-language-and-structure.md
+  [ ] 0a.1.3  Create app/Main.hs entry point (stub)
+  [ ] 0a.1.4  Verify nix-shell builds empty project (cabal build)
+  [ ] 0a.1.5  Set up CI pipeline skeleton (commit hook: build + test)
+
+[ ] 0a.2  Spec DSL parser
+  [ ] 0a.2.1  Define .spec AST types (Algorithm, Params, Constants, Steps, Operations)
+  [ ] 0a.2.2  Write .spec parser (restricted DSL: assignments, bitwise ops, mod arithmetic, conditionals)
+  [ ] 0a.2.3  Define .fsm AST types (States, Events, Transitions, Guards)
+  [ ] 0a.2.4  Write .fsm parser (state×event matrix, guard predicates, actions)
+  [ ] 0a.2.5  Define .schema AST types (CDDL-like: Record, Field, types)
+  [ ] 0a.2.6  Write .schema parser (uint, bstr, tstr, array, map, fixed sizes, optional fields)
+  [ ] 0a.2.7  Unit tests for all three parsers (valid input, malformed input, edge cases)
+
+[ ] 0a.3  CryptoGen.hs — Crypto primitive generator
+  [ ] 0a.3.1  Spec→Haskell backend: generate pure Haskell module from .spec AST
+  [ ] 0a.3.2  Spec→C backend: generate constant-time C source from .spec AST
+  [ ] 0a.3.3  Spec→FFI backend: generate Haskell foreign import ccall wrappers
+  [ ] 0a.3.4  Embed traceability annotations (spec file, section, line) in generated code
+  [ ] 0a.3.5  Generator versioning header (semver + timestamp + source spec)
+  [ ] 0a.3.6  Deterministic output verification (same spec → byte-identical output)
+
+[ ] 0a.4  TestGen.hs — Test harness generator
+  [ ] 0a.4.1  Generate test module with embedded NIST/RFC KAT vectors per .spec
+  [ ] 0a.4.2  Generate edge case tests (zero, max-length, all-ones, all-zeros, 0xAA/0x55)
+  [ ] 0a.4.3  Generate property-based tests (QuickCheck, seed=42, 1000 cases/property)
+  [ ] 0a.4.4  Generate equivalence tests (pure Haskell == FFI for 10,000+ random inputs)
+  [ ] 0a.4.5  Generate MC/DC condition isolation tests per compound boolean decision
+
+[ ] 0a.5  FSMGen.hs — State machine generator
+  [ ] 0a.5.1  Generate typed state machine with exhaustive pattern matching from .fsm
+  [ ] 0a.5.2  Reject incomplete state×event matrices at generation time
+  [ ] 0a.5.3  Generate test cases for every valid transition path
+  [ ] 0a.5.4  Generate invariant-checking wrappers for all reachable states
+
+[ ] 0a.6  CBORGen.hs — Serialization generator
+  [ ] 0a.6.1  Generate canonical CBOR encoder from .schema (deterministic for hashing)
+  [ ] 0a.6.2  Generate strict CBOR decoder with validation (reject malformed)
+  [ ] 0a.6.3  Generate round-trip property tests
+  [ ] 0a.6.4  Generate fuzz targets (malformed input → graceful error, never crash)
+
+[ ] 0a.7  codegen binary entry point
+  [ ] 0a.7.1  Read all .spec/.fsm/.schema from codegen/Specs/
+  [ ] 0a.7.2  Write generated modules to src/UmbraVox/ and test/Test/
+  [ ] 0a.7.3  cabal run codegen integration test
+
+[ ] 0a.8  TQL-1 qualification evidence
+  [ ] 0a.8.1  Tool Operational Requirements document
+  [ ] 0a.8.2  MC/DC coverage of generator logic (>95%)
+  [ ] 0a.8.3  Generator correctness: reference output comparison (NIST CAVP)
+  [ ] 0a.8.4  Independent review record placeholder
+  [ ] 0a.8.5  Tool Qualification Plan + Results documents
+
+[ ] 0a.9  Quality gate: generator produces valid Haskell from test spec
+
+--- 0b: F* Verification (DESIGN REQUIREMENT: all crypto must have F* proofs) ---
+
+NOTE: F* formal verification is a MANDATORY design requirement for every
+cryptographic primitive. No primitive is considered complete without:
+  1. F* specification matching the NIST/RFC standard
+  2. KAT vector lemmas (assumed, validated by Haskell test suite)
+  3. Structural correctness lemmas (output length, roundtrip, etc.)
+  4. Correspondence proof: F* spec ↔ Haskell implementation
+
+Current F* status (17 total, all verified):
+  [x] Spec.SHA256.fst       (FIPS 180-4)    — 3 KAT vectors, structural lemmas
+  [x] Spec.SHA512.fst       (FIPS 180-4)    — 2 KAT vectors, structural lemmas
+  [x] Spec.HMAC.fst         (RFC 2104/4231) — 2 KAT vectors, PRF axiom
+  [x] Spec.HKDF.fst         (RFC 5869)      — 1 KAT vector, length guarantee
+  [x] Spec.AES256.fst       (FIPS 197)      — 1 KAT vector, roundtrip lemma
+  [x] Spec.GaloisField.fst  (SP 800-38D)    — algebraic properties
+  [x] Spec.GCM.fst          (SP 800-38D)    — 2 KAT vectors, roundtrip + tampering
+  [x] Spec.ChaCha20.fst     (RFC 8439)      — 2 KAT vectors (partial: assumes double_round)
+  [x] Spec.X25519.fst       (RFC 7748)      — 3 KAT vectors, DH commutativity
+  [x] Spec.Ed25519.fst      (RFC 8032)      — 2 KAT vectors, sign-then-verify lemma
+  [x] Spec.Keccak.fst       (FIPS 202)      — SHA-3/SHAKE permutation + sponge
+  [x] Spec.MLKEM768.fst     (FIPS 203)      — NTT, polynomial ops, KEM
+  [x] Spec.Poly1305.fst     (RFC 8439)      — MAC over GF(2^130-5)
+  [x] Spec.DoubleRatchet.fst               — Signal Double Ratchet protocol
+  [x] Spec.X3DH.fst                        — X3DH key agreement
+  [x] Spec.PQXDH.fst                       — Post-quantum extended Diffie-Hellman
+  [x] Spec.NoiseIK.fst                     — Noise_IK transport handshake
+  [ ] Spec.VRF.fst          (RFC 9381)      — MISSING (see FSTAR-003)
+
+--- 0c: Generated Crypto Primitives (Weeks 4-10) ---
+
+[ ] 0b.1  Write spec files
+  [ ] 0b.1.1  codegen/Specs/SHA256.spec  (FIPS 180-4)
+  [ ] 0b.1.2  codegen/Specs/SHA512.spec  (FIPS 180-4)
+  [ ] 0b.1.3  codegen/Specs/HMAC.spec    (RFC 2104)
+  [ ] 0b.1.4  codegen/Specs/HKDF.spec    (RFC 5869)
+  [ ] 0b.1.5  codegen/Specs/AES256.spec  (FIPS 197)
+  [ ] 0b.1.6  codegen/Specs/AESGCM.spec  (SP 800-38D)
+  [ ] 0b.1.7  codegen/Specs/X25519.spec  (RFC 7748)
+  [ ] 0b.1.8  codegen/Specs/Ed25519.spec (RFC 8032)
+  [ ] 0b.1.9  codegen/Specs/ChaCha20.spec (RFC 8439)
+  [ ] 0b.1.10 codegen/Specs/MLKEM768.spec (FIPS 203) [Phase 2 but spec written early]
+
+[ ] 0b.2  Generate and verify SHA-256
+  [ ] 0b.2.1  Generate src/UmbraVox/Crypto/SHA256.hs (pure Haskell)
+  [ ] 0b.2.2  Generate C constant-time implementation
+  [ ] 0b.2.3  Generate FFI stubs
+  [ ] 0b.2.4  Generate test harness with all NIST CAVP vectors (129 vectors)
+  [ ] 0b.2.5  Verify: all KAT vectors pass, MC/DC > 95%
+
+[ ] 0b.3  Generate and verify SHA-512
+  [ ] 0b.3.1  Generate src/UmbraVox/Crypto/SHA512.hs
+  [ ] 0b.3.2  Generate C + FFI
+  [ ] 0b.3.3  Generate tests with NIST CAVP vectors
+  [ ] 0b.3.4  Verify: all KAT vectors pass, MC/DC > 95%
+
+[ ] 0b.4  Generate and verify HMAC
+  [ ] 0b.4.1  Generate src/UmbraVox/Crypto/HMAC.hs
+  [ ] 0b.4.2  Generate C + FFI
+  [ ] 0b.4.3  Generate tests with RFC 2104 vectors
+  [ ] 0b.4.4  Verify: all vectors pass, MC/DC > 95%
+
+[ ] 0b.5  Generate and verify HKDF
+  [ ] 0b.5.1  Generate src/UmbraVox/Crypto/HKDF.hs
+  [ ] 0b.5.2  Generate C + FFI
+  [ ] 0b.5.3  Generate tests with RFC 5869 vectors
+  [ ] 0b.5.4  Verify: all vectors pass, MC/DC > 95%
+
+[ ] 0b.6  Generate and verify AES-256
+  [ ] 0b.6.1  Generate src/UmbraVox/Crypto/AES.hs (SubBytes, ShiftRows, MixColumns, KeyExpansion)
+  [ ] 0b.6.2  Generate C constant-time (no branches on secret data)
+  [ ] 0b.6.3  Generate FFI stubs
+  [ ] 0b.6.4  Generate tests with NIST CAVP vectors (400+ vectors)
+  [ ] 0b.6.5  Verify: all KAT vectors pass, MC/DC > 95%
+
+[ ] 0b.7  Generate and verify AES-GCM
+  [ ] 0b.7.1  Generate src/UmbraVox/Crypto/GCM.hs (GHASH, GCTR, GCM-AE/AD)
+  [ ] 0b.7.2  Generate C + FFI
+  [ ] 0b.7.3  Generate tests with NIST GCM vectors
+  [ ] 0b.7.4  Verify: all vectors pass, MC/DC > 95%
+
+[ ] 0b.8  Modular arithmetic for Curve25519 field
+  [ ] 0b.8.1  Generate field operations (mod 2^255-19)
+  [ ] 0b.8.2  Generate C constant-time field ops
+  [ ] 0b.8.3  Property tests: field axioms (associativity, commutativity, inverses)
+
+[ ] 0b.9  Generate and verify X25519
+  [ ] 0b.9.1  Generate src/UmbraVox/Crypto/Curve25519.hs (Montgomery ladder)
+  [ ] 0b.9.2  Generate C constant-time + FFI
+  [ ] 0b.9.3  Generate tests with RFC 7748 vectors
+  [ ] 0b.9.4  Verify: all vectors pass, MC/DC > 95%
+
+[ ] 0b.10 Generate and verify Ed25519
+  [ ] 0b.10.1 Generate src/UmbraVox/Crypto/Ed25519.hs (point ops, scalar mult, encoding)
+  [ ] 0b.10.2 Generate C constant-time + FFI
+  [ ] 0b.10.3 Generate tests with RFC 8032 vectors
+  [ ] 0b.10.4 Verify: all vectors pass, MC/DC > 95%
+
+[ ] 0b.11 Generate and verify ChaCha20
+  [ ] 0b.11.1 Generate src/UmbraVox/Crypto/Random.hs (quarter round, block function, CSPRNG)
+  [ ] 0b.11.2 Generate C + FFI
+  [ ] 0b.11.3 Generate tests with RFC 8439 vectors
+  [ ] 0b.11.4 Verify: all vectors pass, MC/DC > 95%
+
+[ ] 0b.12 Constant-time verification
+  [ ] 0b.12.1 ctgrind/dudect validation for all C implementations
+  [ ] 0b.12.2 No branches on secret data audit (manual review)
+
+[ ] 0b.13 Equivalence CI check
+  [ ] 0b.13.1 Nightly pipeline: 10,000+ random inputs per primitive, pure == FFI bitwise-identical
+
+[ ] 0b.14 Quality gate: 100% NIST/RFC test vectors pass; MC/DC > 95% all generated code
+
+================================================================================
+PHASE 1: SIGNAL PROTOCOL (Weeks 11-16)
+================================================================================
+
+[ ] 1.1  Write Signal.fsm spec
+  [ ] 1.1.1  X3DH state machine (Init, KeyFetch, Computing, Established, Error)
+  [ ] 1.1.2  Double Ratchet state machine (Idle, Sending, Receiving, DH_Ratcheting)
+
+[ ] 1.2  X3DH key agreement
+  [ ] 1.2.1  Generate FSM from Signal.fsm
+  [ ] 1.2.2  Implement src/UmbraVox/Crypto/Signal/X3DH.hs
+  [ ] 1.2.3  PreKey bundle generation and consumption
+  [ ] 1.2.4  Initial shared secret derivation (HKDF chain)
+  [ ] 1.2.5  Test against libsignal published test vectors
+  [ ] 1.2.6  X3DH complete by week 15 (Phase 2 dependency)
+
+[ ] 1.3  Double Ratchet
+  [ ] 1.3.1  Generate FSM from Ratchet.fsm
+  [ ] 1.3.2  Implement src/UmbraVox/Crypto/Signal/DoubleRatchet.hs
+  [ ] 1.3.3  Symmetric ratchet (sending/receiving chains)
+  [ ] 1.3.4  DH ratchet step
+  [ ] 1.3.5  Out-of-order message handling (skipped message keys)
+  [ ] 1.3.6  Property: encrypt N msgs, decrypt any order, recover plaintext
+
+[ ] 1.4  Session management
+  [ ] 1.4.1  Implement src/UmbraVox/Crypto/Signal/Session.hs
+  [ ] 1.4.2  Session state serialization/deserialization
+  [ ] 1.4.3  Multi-session per contact support
+  [ ] 1.4.4  500,000-message session limit enforcement
+
+[ ] 1.5  Key store
+  [ ] 1.5.1  Implement src/UmbraVox/Crypto/KeyStore.hs
+  [ ] 1.5.2  Encrypted-at-rest key storage (AES-256-GCM)
+  [ ] 1.5.3  Key rotation and cleanup
+
+[ ] 1.6  Sender keys (group messaging)
+  [ ] 1.6.1  Implement src/UmbraVox/Crypto/Signal/SenderKeys.hs
+  [ ] 1.6.2  Group key distribution
+  [ ] 1.6.3  Group message encrypt/decrypt
+
+[ ] 1.7  Quality gate: all Signal test vectors pass; ratchet properties verified; MC/DC > 95%
+
+================================================================================
+PHASE 2: POST-QUANTUM (Weeks 11-16, parallel with Phase 1)
+================================================================================
+
+[ ] 2.1  ML-KEM-768
+  [ ] 2.1.1  Generate from MLKEM768.spec (NTT, polynomial arithmetic)
+  [ ] 2.1.2  Generate C constant-time + FFI
+  [ ] 2.1.3  Implement src/UmbraVox/Crypto/MLKEM.hs
+  [ ] 2.1.4  Verify against FIPS 203 KAT vectors (100 vectors)
+  [ ] 2.1.5  MC/DC > 95%
+
+[ ] 2.2  PQ outer wrapper
+  [ ] 2.2.1  Implement src/UmbraVox/Crypto/PQWrapper.hs
+  [ ] 2.2.2  AES-256-GCM encryption with ML-KEM-derived keys
+  [ ] 2.2.3  FIPS 203 implicit rejection handling (H(z || c))
+
+[ ] 2.3  PQ ratchet
+  [ ] 2.3.1  Write PQRatchet.fsm (Active, Refreshing; MsgCount50, RefreshComplete)
+  [ ] 2.3.2  Generate FSM
+  [ ] 2.3.3  Re-encapsulation every 50 messages
+  [ ] 2.3.4  PQ ciphertext transmission (2-block KEY_EXCHANGE format)
+
+[ ] 2.4  PQXDH integration (week 16 merge)
+  [ ] 2.4.1  Write PQXDH.fsm (Init, Classical, Hybrid, Established)
+  [ ] 2.4.2  Generate FSM
+  [ ] 2.4.3  Implement src/UmbraVox/Crypto/Signal/PQXDH.hs
+  [ ] 2.4.4  Combine Phase 1 X3DH + Phase 2 ML-KEM
+  [ ] 2.4.5  Composition verification (independence argument)
+
+[ ] 2.5  Coq crypto composition proof (weeks 14-20, overlaps Phase 3)
+  [ ] 2.5.1  IND-CCA2 security proof of Signal+PQ composition
+  [ ] 2.5.2  Machine-checked proof: test/evidence/formal-proofs/crypto-composition.v
+
+[ ] 2.6  Quality gate: FIPS 203 vectors pass; PQ composition tests pass; PQXDH verified; MC/DC > 95%
+
+================================================================================
+PHASE 3: CONSENSUS + ECONOMICS (Weeks 17-26)
+================================================================================
+
+[ ] 3.1  ECVRF
+  [ ] 3.1.1  Write VRF.spec (RFC 9381)
+  [ ] 3.1.2  Generate src/UmbraVox/Crypto/VRF.hs
+  [ ] 3.1.3  Generate C + FFI
+  [ ] 3.1.4  Verify against RFC 9381 test vectors
+  [ ] 3.1.5  VRF statistical fairness proof (chi-squared, 10^6 elections, p > 0.01)
+
+[ ] 3.2  Consensus types
+  [ ] 3.2.1  Implement src/UmbraVox/Consensus/Types.hs (SlotNo, EpochNo, CycleNo, BlockNo)
+  [ ] 3.2.2  Slot clock + epoch management + clock synchronization
+  [ ] 3.2.3  Implement src/UmbraVox/Consensus/Block.hs (Block, BlockHeader types)
+
+[ ] 3.3  Leader election
+  [ ] 3.3.1  Implement src/UmbraVox/Consensus/LeaderElection.hs
+  [ ] 3.3.2  isSlotLeader :: StakeRatio -> VRFOutput -> Bool
+  [ ] 3.3.3  Epoch nonce evolution (src/UmbraVox/Consensus/Nonce.hs)
+
+[ ] 3.4  Block production and validation
+  [ ] 3.4.1  Implement src/UmbraVox/Consensus/Protocol.hs (Ouroboros Praos adaptation)
+  [ ] 3.4.2  Implement src/UmbraVox/Consensus/Validation.hs
+  [ ] 3.4.3  Block signature verification, transaction validation
+
+[ ] 3.5  Ledger state
+  [ ] 3.5.1  Implement src/UmbraVox/Consensus/Ledger.hs (balances, nonces, stakes)
+  [ ] 3.5.2  WAL-based crash recovery for ledger state
+  [ ] 3.5.3  Two-tier settlement (k=11 message, k=22 value)
+
+[ ] 3.6  Fork choice
+  [ ] 3.6.1  Write Consensus.fsm
+  [ ] 3.6.2  Generate FSM
+  [ ] 3.6.3  Implement src/UmbraVox/Consensus/ForkChoice.hs (longest chain + density rule)
+  [ ] 3.6.4  compareForks :: Chain -> Chain -> Ordering
+
+[ ] 3.7  Token economics v3 (Universe Cycle Model)
+  [ ] 3.7.1  Implement src/UmbraVox/Economics/Token.hs (11B supply, distribution)
+  [ ] 3.7.2  Implement src/UmbraVox/Economics/Fees.hs (C_base * ceil(size/1024))
+  [ ] 3.7.3  Implement src/UmbraVox/Economics/Rewards.hs (uptime-weighted stake multiplier)
+  [ ] 3.7.4  Implement src/UmbraVox/Economics/Penalty.hs (tiered punitive multipliers)
+  [ ] 3.7.5  Implement src/UmbraVox/Economics/Cycle.hs (11-day cycle, supply restoration, burn)
+  [ ] 3.7.6  Implement src/UmbraVox/Economics/Onboarding.hs (new user bootstrap)
+  [ ] 3.7.7  Quadratic bonding: stake_required(n) = 50,000 * n^2
+
+[ ] 3.8  Adaptive parameter controller
+  [ ] 3.8.1  duration_ratio computation
+  [ ] 3.8.2  Two-step: clamp raw target → 50% damping
+  [ ] 3.8.3  Burn rate [0.20, 0.80], fee floor [5, 100], fee ceiling [5000, 50000], target msgs [1000, 100M]
+  [ ] 3.8.4  Convergence testing: converges within 5 cycles for 95% of runs
+
+[ ] 3.9  Early truncation
+  [ ] 3.9.1  Supply monitoring (15% of INITIAL_SUPPLY threshold, adaptive [5%, 25%])
+  [ ] 3.9.2  Epoch boundary evaluation
+  [ ] 3.9.3  Trigger: snapshot phase when supply < threshold
+
+[ ] 3.10 Treasury cap enforcement
+  [ ] 3.10.1 Cap at 10% of INITIAL_SUPPLY (1.1B MTK)
+  [ ] 3.10.2 Overflow → pool
+  [ ] 3.10.3 TREASURY_FLOOR (55M MTK) enforcement
+  [ ] 3.10.4 MAX_TREASURY_SPEND_RATE (0.05) enforcement
+
+[ ] 3.11 Mempool
+  [ ] 3.11.1 Implement src/UmbraVox/Consensus/Mempool.hs
+  [ ] 3.11.2 50K tx cap, fee-priority eviction
+  [ ] 3.11.3 Transaction validation before admission
+
+[ ] 3.12 Formal BFT proof (TLA+, weeks 20-26)
+  [ ] 3.12.1 TLA+ consensus model (4-7 nodes, 3 rounds, two-tier finality)
+  [ ] 3.12.2 Safety: no two honest nodes finalize conflicting blocks
+  [ ] 3.12.3 Liveness: if <1/3 Byzantine, transactions eventually finalize
+  [ ] 3.12.4 TLC model checking (up to 10^6 states, 48h timeout)
+
+[ ] 3.13 Token conservation proof (Coq, weeks 27-31, overlaps Phase 4)
+  [ ] 3.13.1 Prove sum(tokens) = INITIAL_SUPPLY - burned at all transitions
+  [ ] 3.13.2 Machine-checked: test/evidence/formal-proofs/token-conservation.v
+
+[ ] 3.14 All 15 formal invariants hold for 100K random sequences
+
+[ ] 3.15 Quality gate: token conservation 100K sequences; adaptive converges; TLA+ checked; MC/DC > 95%
+
+================================================================================
+PHASE 4: CHAIN TRUNCATION (Weeks 27-31)
+================================================================================
+
+[ ] 4.1  Snapshot computation
+  [ ] 4.1.1  Merkle root computation over ledger state
+  [ ] 4.1.2  Epoch snapshot data structure
+
+[ ] 4.2  Epoch genesis block
+  [ ] 4.2.1  Implement src/UmbraVox/Consensus/Truncation.hs
+  [ ] 4.2.2  Genesis block construction with snapshot Merkle root
+  [ ] 4.2.3  Chain revision counter embedding
+
+[ ] 4.3  WAL-based truncation execution
+  [ ] 4.3.1  Write-ahead log for truncation steps
+  [ ] 4.3.2  Crash recovery at every truncation step
+  [ ] 4.3.3  Atomic wallet reset (5-step: snapshot, reset, restore, adjust, credit)
+
+[ ] 4.4  Cross-epoch validator set transition
+  [ ] 4.4.1  Validator set update logic
+  [ ] 4.4.2  Attestation failure handling (extend + emergency carry-forward)
+
+[ ] 4.5  Cross-epoch replay prevention
+  [ ] 4.5.1  epoch_nonce in signed data
+  [ ] 4.5.2  Verify replay prevention across truncation boundaries
+
+[ ] 4.6  Chain revision system
+  [ ] 4.6.1  Revision counter increment at each truncation
+  [ ] 4.6.2  Revision→genesis-hash history for bootstrap verification
+  [ ] 4.6.3  Support current + 3 prior revisions
+
+[ ] 4.7  Write Truncation.fsm (Normal, Snapshot, Attesting, Executing, Failed)
+  [ ] 4.7.1  Generate FSM
+  [ ] 4.7.2  Integrate with truncation execution
+
+[ ] 4.8  Quality gate: fault injection at every truncation step; all recover; revision continuity verified
+
+================================================================================
+PHASE 5: P2P NETWORKING (Weeks 32-41)
+================================================================================
+
+[ ] 5.1  TCP transport
+  [ ] 5.1.1  Implement src/UmbraVox/Network/Transport.hs
+  [ ] 5.1.2  Connection management (accept, connect, keepalive, close)
+  [ ] 5.1.3  Per-session rekeying
+
+[ ] 5.2  Noise_IK handshake
+  [ ] 5.2.1  Implement src/UmbraVox/Network/Noise.hs (hand-implemented)
+  [ ] 5.2.2  Static key authentication (IK pattern)
+  [ ] 5.2.3  Session key derivation
+
+[ ] 5.3  Wire protocol
+  [ ] 5.3.1  Write WireFormat.schema
+  [ ] 5.3.2  Generate CBOR encode/decode from schema
+  [ ] 5.3.3  Implement src/UmbraVox/Network/Protocol.hs
+
+[ ] 5.4  CBOR serialization
+  [ ] 5.4.1  Write MessageFormat.schema
+  [ ] 5.4.2  Generate CBOR encode/decode
+  [ ] 5.4.3  Implement src/UmbraVox/Protocol/CBOR.hs (hand-implemented core)
+  [ ] 5.4.4  Implement src/UmbraVox/Protocol/MessageFormat.hs (1024-byte block layout)
+  [ ] 5.4.5  Implement src/UmbraVox/Protocol/WireFormat.hs (network envelope)
+
+[ ] 5.5  Peer discovery
+  [ ] 5.5.1  Implement src/UmbraVox/Network/PeerManager.hs
+  [ ] 5.5.2  Kademlia DHT for peer discovery
+  [ ] 5.5.3  Peer scoring, banning logic
+  [ ] 5.5.4  Version negotiation (exchange protocol version on handshake)
+
+[ ] 5.6  Gossip protocol
+  [ ] 5.6.1  Implement src/UmbraVox/Network/Gossip.hs
+  [ ] 5.6.2  Block + transaction gossip with multiplexing priority
+  [ ] 5.6.3  Compact block relay (SipHash short IDs, 95%+ mempool hit rate)
+
+[ ] 5.7  Dandelion++
+  [ ] 5.7.1  Implement src/UmbraVox/Network/Dandelion.hs
+  [ ] 5.7.2  Stem phase: 4 relay peers, randomized selection
+  [ ] 5.7.3  Fluff phase: standard gossip
+  [ ] 5.7.4  5-30s embargo timer
+  [ ] 5.7.5  Cover traffic generation
+
+[ ] 5.8  Chain sync
+  [ ] 5.8.1  Implement src/UmbraVox/Network/Sync.hs
+  [ ] 5.8.2  Initial sync (bootstrap from genesis/checkpoint)
+  [ ] 5.8.3  Ongoing sync (follow chain tip)
+
+[ ] 5.9  Quality gate: 10-node convergence; Dandelion++ anonymity < 15% deanon with 10% adversary
+
+================================================================================
+PHASE 6: CHAT APPLICATION (Weeks 42-47)
+================================================================================
+
+[ ] 6.1  Message format
+  [ ] 6.1.1  Implement src/UmbraVox/Chat/Message.hs (1K block layout, 8-byte message_id)
+  [ ] 6.1.2  Multi-block chunking/reassembly
+  [ ] 6.1.3  Uniform 2-block on-chain size (metadata minimization)
+
+[ ] 6.2  Chat→blockchain transaction
+  [ ] 6.2.1  Implement src/UmbraVox/Chat/Transaction.hs
+  [ ] 6.2.2  msg_type encrypted inside payload (not visible on-chain)
+  [ ] 6.2.3  Timestamp inside encrypted payload
+
+[ ] 6.3  On-chain key registry
+  [ ] 6.3.1  PreKey bundle publication
+  [ ] 6.3.2  Key rotation announcements
+
+[ ] 6.4  Stealth addresses (DKSAP)
+  [ ] 6.4.1  One-time address derivation
+  [ ] 6.4.2  PQ hybrid stealth addresses
+  [ ] 6.4.3  View tag filtering (1-byte, 256x classical scan reduction)
+  [ ] 6.4.4  Scanning performance: < 2s per block single-threaded, < 500ms 4-core
+
+[ ] 6.5  Chat session management
+  [ ] 6.5.1  Implement src/UmbraVox/Chat/Session.hs
+  [ ] 6.5.2  Contact/identity management (src/UmbraVox/Chat/Contacts.hs)
+
+[ ] 6.6  JSON-RPC API
+  [ ] 6.6.1  Implement src/UmbraVox/Chat/API.hs
+  [ ] 6.6.2  Authentication
+  [ ] 6.6.3  All chat operations exposed via API
+
+[ ] 6.7  CLI interface
+  [ ] 6.7.1  Command-line chat client
+  [ ] 6.7.2  Node management commands
+
+[ ] 6.8  Quality gate: E2E encrypted delivery across 3+ nodes; stealth address unlinkability
+
+================================================================================
+PHASE 7: INTEGRATION + HARDENING + DO-178C V&V (Weeks 48-67)
+================================================================================
+
+--- 7a: Integration Testing (Weeks 48-53) ---
+
+[ ] 7a.1  Multi-node test network (5-10 nodes)
+[ ] 7a.2  End-to-end message flow testing
+[ ] 7a.3  11-day truncation simulation (accelerated)
+[ ] 7a.4  Economic model Monte Carlo (100,000 cycles)
+  [ ] 7a.4.1 User count ~ LogNormal(mu=8, sigma=1.5)
+  [ ] 7a.4.2 Message rate ~ Poisson(lambda=100/hour)
+  [ ] 7a.4.3 Validator count ~ Uniform(100, 10000)
+  [ ] 7a.4.4 Adversarial policies
+  [ ] 7a.4.5 Success: all 15 invariants hold for >99.9% of runs
+
+--- 7b: Adversarial Testing (Weeks 54-57) ---
+
+[ ] 7b.1  Spam flood simulation
+[ ] 7b.2  Sybil attack simulation
+[ ] 7b.3  Eclipse attack simulation
+[ ] 7b.4  Dandelion++ traffic analysis
+[ ] 7b.5  CBOR fuzzing (10,000+ random inputs per parser)
+[ ] 7b.6  Fault injection (crash at every write point)
+[ ] 7b.7  Supply depletion attack simulation
+[ ] 7b.8  Validator cartel simulation
+
+--- 7c: DO-178C V&V Evidence (Weeks 58-62) ---
+
+[ ] 7c.1  MC/DC structural coverage (100% all DAL A modules)
+[ ] 7c.2  Requirements traceability matrix completion (doc/requirements-trace.md)
+[ ] 7c.3  Formal proof evidence packaging (TLA+, Coq)
+[ ] 7c.4  scripts/gen-trace.hs (reads REQ annotations → test ID mapping)
+[ ] 7c.5  Configuration index + quality assurance records
+[ ] 7c.6  Dead code analysis
+[ ] 7c.7  Data coupling / control coupling analysis
+[ ] 7c.8  Code review and inspection records
+
+--- 7d: External Security Audit (Weeks 60-65) ---
+
+[ ] 7d.1  Crypto audit (weeks 55-57): all primitives, constant-time C, key management
+[ ] 7d.2  Protocol audit (weeks 57-60): Signal+PQ, consensus, Dandelion++
+[ ] 7d.3  Remediation (weeks 60-64)
+[ ] 7d.4  Re-audit critical findings (weeks 64-65)
+[ ] 7d.5  Audit reports stored in test/evidence/external-audit/
+
+================================================================================
+STORAGE SUBSYSTEM (Phase 3-4 dependency)
+================================================================================
+
+[ ] S.1  Implement src/UmbraVox/Storage/ChainDB.hs (append-only block file)
+[ ] S.2  Implement src/UmbraVox/Storage/StateDB.hs (flat file + index)
+[ ] S.3  Implement src/UmbraVox/Storage/Index.hs (block/tx indexes)
+[ ] S.4  Implement src/UmbraVox/Storage/Checkpoint.hs (truncation checkpoints)
+[ ] S.5  Write-ahead log implementation
+
+================================================================================
+NODE ARCHITECTURE (Phase 5-6 dependency)
+================================================================================
+
+[ ] N.1  app/Main.hs: boot sequence (per doc/11-node-architecture.md)
+[ ] N.2  Component initialization order
+[ ] N.3  Graceful shutdown
+[ ] N.4  Configuration management (chain revisions)
+
+================================================================================
+CONTINUOUS PIPELINE
+================================================================================
+
+[ ] CI.1  Every-commit pipeline (~25 min)
+  [ ] CI.1.1 NIST KAT test suites
+  [ ] CI.1.2 Property tests (1,000 cases/property)
+  [ ] CI.1.3 State machine tests (all transition paths)
+  [ ] CI.1.4 MC/DC structural coverage
+  [ ] CI.1.5 Token conservation invariant check
+
+[ ] CI.2  Nightly pipeline (~4 hours)
+  [ ] CI.2.1 Extended property tests (100,000 cases/property)
+  [ ] CI.2.2 3-node integration (1-hour simulated cycle)
+  [ ] CI.2.3 Economic simulation (1,000 cycles)
+  [ ] CI.2.4 Fuzzing: crypto 10^8 executions/primitive, CBOR grammar-aware, Noise_IK
+
+[ ] CI.3  Weekly pipeline (~9 hours)
+  [ ] CI.3.1 Full 11-day truncation simulation
+  [ ] CI.3.2 Adversarial testing suite
+  [ ] CI.3.3 Coverage report + gap analysis
+  [ ] CI.3.4 Dandelion++ anonymity simulation (1,000 nodes)
+  [ ] CI.3.5 Fuzz corpus review
+
+================================================================================
+FORMAL PROOFS TIMELINE
+================================================================================
+
+[ ] FP.1  Coq crypto composition proof (weeks 14-20)
+[ ] FP.2  VRF statistical fairness (weeks 17-22)
+[ ] FP.3  TLA+ consensus model (weeks 20-26)
+[ ] FP.4  Token conservation Coq proof (weeks 27-31)
+[ ] FP.5  All proofs reviewed (weeks 58-62)
+[ ] FP.6  Adaptive controller convergence proof (control theory + simulation)
+[ ] FP.7  Supply restoration correctness proof
+[ ] FP.8  Two-tier settlement proof (TLA+ + simulation)
+
+================================================================================
+DOCUMENTATION & EVIDENCE
+================================================================================
+
+[ ] D.1  test/evidence/tool-qualification/    — TQL-1 codegen qualification
+[ ] D.2  test/evidence/kat-results/           — NIST/RFC KAT test results
+[ ] D.3  test/evidence/fuzzing/               — Fuzz corpora, crash reproducers, triage
+[ ] D.4  test/evidence/formal-proofs/         — Coq .v files, TLA+ specs
+[ ] D.5  test/evidence/traceability/          — Req→code→test mapping
+[ ] D.6  test/evidence/reviews/               — Code review records
+[ ] D.7  test/evidence/analysis/              — Dead code, coupling analysis
+[ ] D.8  test/evidence/external-audit/        — Audit reports, remediation
+[ ] D.9  test/coverage/mcdc/                  — MC/DC coverage reports
+[ ] D.10 test/coverage/structural/            — Statement + branch coverage
+[ ] D.11 test/coverage/codegen/               — Generator coverage
+
+================================================================================
+BUGS FOUND BY 11-AGENT CRYPTO REVIEW (2026-04-24)
+================================================================================
+
+--- Fixed ---
+
+[x] BUG-001 invNTT butterfly sign error in ML-KEM-768 (CRITICAL)
+  FIPS 203 Algorithm 10: f[j+len] = zeta*(f[j+len]-f[j])
+  Was incorrectly: zeta*(f[j]-f[j+len]). Masked by SHA-256 substitutes,
+  exposed by SHA-3/SHAKE integration. Fixed in commit 5ab1f89.
+
+[x] BUG-002 HKDF-Expand dead code condition
+  hkdfExpand line 60: BS.length (BS.concat []) >= 0 && counter > n
+  Nonsensical always-true clause. Simplified to: counter > n.
+
+[x] BUG-003 GCM incr32 counter wrap at 2^32
+  Counter used Word64 arithmetic without 32-bit mask.
+  Added .&. 0xffffffff to match SP 800-38D 32-bit counter semantics.
+
+--- Fixed (Crypto) ---
+
+[x] BUG-004 Double Ratchet: use Maybe for uninitialized rsDHRecv
+  [x] BUG-004.1 Change RatchetState rsDHRecv from ByteString to Maybe ByteString
+  [x] BUG-004.2 Update ratchetInitBob to use Nothing for initial rsDHRecv
+  [x] BUG-004.3 Update dhRatchet to pattern match on Maybe
+  [x] BUG-004.4 Update ratchetDecrypt to check isNothing rsDHRecv
+  [x] BUG-004.5 Update all test cases for new type
+
+[x] BUG-005 Double Ratchet: skipMessageKeys eviction policy
+  [x] BUG-005.1 Add ratchet step counter to skipped key entries
+  [x] BUG-005.2 Implement age-based eviction (>500 steps old)
+  [x] BUG-005.3 Add test: verify keys older than 500 steps are evicted
+  [x] BUG-005.4 Add test: verify max 1000 skipped keys enforced
+
+[x] BUG-006 GCM constantEq timing side-channel on length mismatch
+  [x] BUG-006.1 Unconditionally compare fixed-length tags (16 bytes)
+  [x] BUG-006.2 Add test: verify constant-time for equal-length inputs
+
+--- Open: Consensus/Economics (stubs needing implementation) ---
+
+[ ] BUG-007 Consensus Block.hs: incomplete BlockHeader
+  Missing 6 required fields: bhBlockNo, bhIssuerVK, bhVRFProof,
+  bhVRFOutput, bhSignature, bhHeartbeat. File: Consensus/Block.hs.
+  [ ] BUG-007.1 Add bhBlockNo :: BlockNo field
+  [ ] BUG-007.2 Add bhIssuerVK :: ByteString (Ed25519 public key)
+  [ ] BUG-007.3 Add bhVRFProof :: ByteString (80 bytes per RFC 9381)
+  [ ] BUG-007.4 Add bhVRFOutput :: ByteString (64 bytes)
+  [ ] BUG-007.5 Add bhSignature :: ByteString (Ed25519 signature, 64 bytes)
+  [ ] BUG-007.6 Add bhHeartbeat :: Maybe HeartbeatChallenge
+
+[ ] BUG-008 Consensus LeaderElection.hs: wrong type signature
+  Takes ByteString -> Word64 -> Bool. Should take stake ratio,
+  VRF output, and active slot coefficient.
+  [ ] BUG-008.1 Define proper type: StakeRatio -> VRFOutput -> ActiveSlotCoeff -> Bool
+  [ ] BUG-008.2 Implement 128-bit fixed-point (64.64) arithmetic
+  [ ] BUG-008.3 Implement threshold formula: 1 - (1-f)^sigma_j
+  [ ] BUG-008.4 Add VRF output normalization: vrf_uint64 / 2^64
+
+[ ] BUG-009 Consensus ForkChoice.hs: wrong type signature
+  Takes [ByteString] instead of proper Chain type.
+  [ ] BUG-009.1 Define Chain type with block metadata
+  [ ] BUG-009.2 Implement longest chain rule
+  [ ] BUG-009.3 Implement density-based tiebreaker for forks within k blocks
+  [ ] BUG-009.4 Implement VRF output lexicographic tiebreaker
+
+[ ] BUG-010 Economics Penalty.hs: Integer type cannot represent fractional penalties
+  Punitive multipliers are in [0.0, 1.0]. Function uses Integer.
+  [ ] BUG-010.1 Change to Double or fixed-point representation
+  [ ] BUG-010.2 Implement 3-tier penalty system with per-tier recovery formulas
+  [ ] BUG-010.3 Implement carryover persistence across cycles
+
+================================================================================
+MISSING F* SPECIFICATIONS (2026-04-24)
+================================================================================
+
+[x] FSTAR-001 Write Spec.Keccak.fst (FIPS 202) — SHA-3/SHAKE (DONE)
+  [x] FSTAR-001.1 Keccak-f[1600] permutation (theta, rho, pi, chi, iota)
+  [x] FSTAR-001.2 Sponge construction (pad10*1, absorb, squeeze)
+  [x] FSTAR-001.3 SHA3-224/256/384/512 parameters and KAT vectors
+  [x] FSTAR-001.4 SHAKE-128/256 XOF parameters and KAT vectors
+  [x] FSTAR-001.5 Round constant and rotation offset tables
+
+[ ] FSTAR-002 Write Spec.MLKEM768.fst (FIPS 203) — ML-KEM-768
+  [ ] FSTAR-002.1 NTT and inverse NTT (Algorithms 9-10)
+  [ ] FSTAR-002.2 Polynomial arithmetic (basemul, add, sub)
+  [ ] FSTAR-002.3 CBD sampling (Algorithm 7)
+  [ ] FSTAR-002.4 SampleNTT rejection sampling (Algorithm 8)
+  [ ] FSTAR-002.5 ByteEncode/ByteDecode (Algorithms 6-7)
+  [ ] FSTAR-002.6 Compress/Decompress (Algorithms 4-5)
+  [ ] FSTAR-002.7 K-PKE KeyGen/Encrypt/Decrypt (Algorithms 12-14)
+  [ ] FSTAR-002.8 ML-KEM KeyGen/Encaps/Decaps (Algorithms 15-17)
+  [ ] FSTAR-002.9 Zeta table correctness lemma
+  [ ] FSTAR-002.10 NTT round-trip lemma: invNtt(ntt(p)) == p
+
+[ ] FSTAR-003 Write Spec.VRF.fst (RFC 9381) — ECVRF-ED25519-SHA512
+  [ ] FSTAR-003.1 Elligator2 hash-to-curve
+  [ ] FSTAR-003.2 DLEQ proof generation
+  [ ] FSTAR-003.3 DLEQ proof verification
+  [ ] FSTAR-003.4 VRF output derivation
+  [ ] FSTAR-003.5 Cofactor multiplication (8x)
+  [ ] FSTAR-003.6 Challenge generation (truncated SHA-512, 16 bytes)
+
+================================================================================
+MISSING IMPLEMENTATIONS (2026-04-24)
+================================================================================
+
+[ ] IMPL-001 VRF: full RFC 9381 ECVRF-ED25519-SHA512-ELL2
+  [ ] IMPL-001.1 Elligator2 hash-to-curve (RFC 9381 Section 5.1.3)
+  [ ] IMPL-001.2 Scalar multiplication for Elligator2 points
+  [ ] IMPL-001.3 DLEQ proof generation (Schnorr-like, Section 5.3)
+    [ ] IMPL-001.3.1 Deterministic nonce k from secret key via SHA-512-HMAC
+    [ ] IMPL-001.3.2 Challenge c = truncated SHA-512 (first 16 bytes)
+    [ ] IMPL-001.3.3 Response s = (k - c*sk) mod L
+  [ ] IMPL-001.4 Cofactor multiplication (3 doublings, cofactor=8)
+  [ ] IMPL-001.5 Output derivation: SHA-512(cofactor*Gamma), first 64 bytes
+  [ ] IMPL-001.6 Proof encoding: Gamma(32) + c(16) + s(32) = 80 bytes
+  [ ] IMPL-001.7 vrfVerify: decode proof, hash-to-curve, DLEQ verify
+    [ ] IMPL-001.7.1 Validate public key is on-curve
+    [ ] IMPL-001.7.2 Compute u1 = 8*s*B + 8*c*Y, u2 = 8*s*H + 8*c*Gamma
+    [ ] IMPL-001.7.3 Recompute challenge and compare
+  [ ] IMPL-001.8 RFC 9381 test vectors
+  [ ] IMPL-001.9 Statistical fairness test (chi-squared, 10^6 elections)
+
+[ ] IMPL-002 CSPRNG: stateful ChaCha20-based wrapper
+  [ ] IMPL-002.1 Entropy source: bind to getrandom(2) or read /dev/urandom
+  [ ] IMPL-002.2 CSPRNG state: 32-byte key + 128-bit counter + output buffer
+  [ ] IMPL-002.3 Reseed schedule: every 2^20 outputs via HKDF-Extract
+  [ ] IMPL-002.4 Fork safety: check PID before every output generation
+  [ ] IMPL-002.5 Key zeroization after reseed (backtracking resistance)
+  [ ] IMPL-002.6 Health checks: stuck-output detection, repetition detection
+  [ ] IMPL-002.7 randomBytes :: Int -> IO ByteString (public API)
+  [ ] IMPL-002.8 Thread safety: per-thread CSPRNG instances
+
+[ ] IMPL-003 Code generators: complete implementation
+  [ ] IMPL-003.1 CryptoGen: spec→Haskell module generation
+    [ ] IMPL-003.1.1 Emit Haskell module skeleton from .spec AST
+    [ ] IMPL-003.1.2 Generate function signatures from Params
+    [ ] IMPL-003.1.3 Emit operation steps as Haskell expressions
+    [ ] IMPL-003.1.4 Generate C constant-time source
+    [ ] IMPL-003.1.5 Generate FFI binding stubs
+    [ ] IMPL-003.1.6 Add traceability annotations (spec file, line numbers)
+  [ ] IMPL-003.2 FSMGen: fsm→Haskell state machine generation
+    [ ] IMPL-003.2.1 Generate Haskell ADT (states, events, transitions)
+    [ ] IMPL-003.2.2 Generate transition function with exhaustive pattern matching
+    [ ] IMPL-003.2.3 Generate guard condition evaluation
+    [ ] IMPL-003.2.4 Generate action execution framework
+  [ ] IMPL-003.3 CBORGen: schema→encoder/decoder generation
+    [ ] IMPL-003.3.1 Generate Haskell record/type from schema
+    [ ] IMPL-003.3.2 Generate canonical CBOR encoder (deterministic)
+    [ ] IMPL-003.3.3 Generate strict CBOR decoder with validation
+    [ ] IMPL-003.3.4 Generate round-trip property tests
+    [ ] IMPL-003.3.5 Generate fuzz targets
+  [ ] IMPL-003.4 TestGen: test harness generation
+    [ ] IMPL-003.4.1 NIST CAVP vector embedding per primitive
+    [ ] IMPL-003.4.2 Edge case generation (zero, max, all-ones, etc.)
+    [ ] IMPL-003.4.3 QuickCheck property generator
+    [ ] IMPL-003.4.4 Equivalence test framework (pure vs FFI)
+    [ ] IMPL-003.4.5 MC/DC condition isolation tests
+  [ ] IMPL-003.5 Create representative spec files in codegen/Specs/
+    [ ] IMPL-003.5.1 SHA256.spec (from FIPS 180-4)
+    [ ] IMPL-003.5.2 KeyExchange.fsm (Signal X3DH states)
+    [ ] IMPL-003.5.3 Message.schema (1024-byte block layout)
+
+[ ] IMPL-004 Storage: WAL-based crash recovery
+  [ ] IMPL-004.1 WAL file format: [timestamp, op_type, target, data_hash, status]
+  [ ] IMPL-004.2 Write intent before any state modification (fsync)
+  [ ] IMPL-004.3 Recovery on startup: replay pending, verify committed
+  [ ] IMPL-004.4 Atomic truncation via single WAL transaction
+  [ ] IMPL-004.5 CRC-32 per StateDB record for corruption detection
+
+[ ] IMPL-005 Stealth addresses (DKSAP)
+  [ ] IMPL-005.1 One-time address generation from peer SPK
+  [ ] IMPL-005.2 Recipient address randomization in message blocks
+  [ ] IMPL-005.3 Scanning: check all derivable stealth addresses
+  [ ] IMPL-005.4 View tag filtering (1-byte, 256x scan reduction)
+
+[ ] IMPL-006 On-chain key registry transactions
+  [ ] IMPL-006.1 KEY_REGISTER: initial bundle (IK + SPK + 100 OPKs + PQPK)
+  [ ] IMPL-006.2 KEY_REPLENISH: 50 OPKs when count < 20
+  [ ] IMPL-006.3 KEY_ROTATE: SPK rotation every ~48 hours
+  [ ] IMPL-006.4 Key registry query for foreign peers
+
+[ ] IMPL-007 Compact block relay (mandatory for 4444-msg blocks)
+  [ ] IMPL-007.1 SipHash-2-4 short ID computation (6 bytes/tx)
+  [ ] IMPL-007.2 Mempool lookup matching short IDs to full transactions
+  [ ] IMPL-007.3 Fallback to full block request on missing transactions
+  [ ] IMPL-007.4 Full block reconstruction from mempool + requested txns
+
+================================================================================
+BUGS FOUND BY 11-AGENT EXPERT CRYPTO REVIEW #2 (2026-04-24)
+================================================================================
+
+--- Fixed ---
+
+[x] BUG-011 ML-KEM SampleNTT: finite XOF buffer with zero-padding fallback
+  FIPS 203 requires XOF to produce bytes indefinitely. Zero-padding produces
+  wrong polynomials. Fix: error on exhaustion (astronomically unlikely with
+  672+ bytes), never zero-pad.
+
+[x] BUG-012 ML-KEM matrix A: XOF index ordering (j,i) vs FIPS 203 (i,j)
+  xof rho j i produces rho||j||i. FIPS 203 Algorithm 12 says A[i,j] = XOF(rho,i,j).
+  Self-consistent but breaks FIPS 203 KAT vector compatibility.
+  Fix: swap to xof rho i j in both kpkeKeyGen and kpkeEncrypt.
+
+[x] BUG-013 ML-KEM decaps: non-constant-time ciphertext comparison
+  `ct' == ct` is variable-time ByteString equality on 1088-byte ciphertext.
+  FIPS 203 Section 7.3 requires constant-time selection to prevent
+  implicit-rejection oracle attacks.
+  Fix: use constantEq pattern (fold with XOR accumulator).
+
+[x] BUG-014 Double Ratchet: nonce construction wastes 32 bits
+  Last 4 bytes of 12-byte GCM nonce always zero.
+  Fix: use 8 bytes HMAC + 4 bytes counter = full 12-byte nonce.
+
+[x] BUG-015 Double Ratchet: deterministic DH key generation
+  New DH keypairs derived via HMAC instead of CSPRNG.
+  Fixed: replaced with randomBytes from CSPRNG (IMPL-002).
+
+--- Open: Security (from cross-cutting review) ---
+
+[ ] BUG-016 No key material zeroing in Haskell (GC limitation)
+  Secret keys held in ordinary heap ByteStrings. No explicit zeroing.
+  [ ] BUG-016.1 Implement FFI scrubBytes using C explicit_bzero
+  [ ] BUG-016.2 Add SecureByteString wrapper type with finalizer
+  [ ] BUG-016.3 Zero RatchetState keys on session teardown
+  [ ] BUG-016.4 Zero MLKEM decapsulation key after use
+  [ ] BUG-016.5 Zero Ed25519/X25519 private keys after signing/DH
+
+[ ] BUG-017 C FFI constant-time implementations missing (all primitives)
+  Path 3 of 3-way verification (F* + Haskell + C FFI) is universally absent.
+  Pure Haskell is NOT constant-time (GHC lazy eval, GC, branch prediction).
+  [ ] BUG-017.1 Write constant-time C for AES-256 (no table lookups on secret)
+  [ ] BUG-017.2 Write constant-time C for X25519 (fixed-time Montgomery ladder)
+  [ ] BUG-017.3 Write constant-time C for Ed25519 (constant-time scalar mult)
+  [ ] BUG-017.4 Write constant-time C for SHA-256/512 (no secret-dep branches)
+  [ ] BUG-017.5 Write constant-time C for ML-KEM-768 (NTT, polynomial ops)
+  [ ] BUG-017.6 Write constant-time C for GHASH (GF multiplication)
+  [ ] BUG-017.7 Generate FFI bindings for all C implementations
+  [ ] BUG-017.8 ctgrind/dudect validation for all C implementations
+  [ ] BUG-017.9 Equivalence testing: 10,000+ random inputs, pure == FFI
+
+[ ] BUG-018 F* specs: all KAT lemmas use `assume` (no machine-checked proofs)
+  Structural lemmas should be provable; KAT lemmas require normalization.
+  [ ] BUG-018.1 Fix all F* verification errors (10/11 currently failing)
+  [ ] BUG-018.2 Enable --fuel/--ifuel for KAT normalization where feasible
+  [ ] BUG-018.3 Prove structural lemmas without assume where possible
+
+================================================================================
+IMMEDIATE NEXT ACTIONS (2026-04-24)
+================================================================================
+
+[x] Complete FIPS 202: add SHA3-224, SHA3-384 to Keccak module
+[x] Complete FIPS 203: integrate SHA-3/SHAKE into ML-KEM-768
+[x] Fix invNTT butterfly sign bug (BUG-001)
+[x] Fix HKDF dead code condition (BUG-002)
+[x] Fix GCM counter wrap (BUG-003)
+[x] Fix Double Ratchet Maybe type (BUG-004)
+[x] Fix Double Ratchet eviction policy (BUG-005)
+[x] Fix GCM constantEq timing (BUG-006)
+[x] Write F* spec for Keccak/SHA-3 (FSTAR-001)
+[x] Fix ML-KEM SampleNTT zero-padding (BUG-011)
+[x] Fix ML-KEM XOF index ordering for FIPS 203 KAT compat (BUG-012)
+[x] Fix ML-KEM constant-time decaps comparison (BUG-013)
+[x] Fix Double Ratchet nonce (BUG-014)
+[x] Document Double Ratchet deterministic DH limitation (BUG-015)
+[x] Fix all F* verification errors — 11/11 pass (BUG-018.1)
+
+--- P0 Critical (COMPLETED 2026-04-24) ---
+
+[x] P0.1 Implement CSPRNG (IMPL-002)
+[x] P0.1.6 Replace deterministic DH in DoubleRatchet with randomBytes
+[x] P0.2 Implement PQXDH (Signal/PQXDH.hs)
+[x] P0.3 Implement stealth addresses (DKSAP)
+[x] P0.4 Add monotonic nonce counter in DoubleRatchet
+[x] P0.5 Update legal notices
+
+================================================================================
+MVP PLAN: CODEGEN PIPELINE → P2P ENCRYPTED MESSAGING (2026-04-24)
+================================================================================
+See also: doc/mvp-plan.md
+
+--- Phase A: .spec → C Codegen Pipeline (COMPLETED 2026-04-23) ---
+
+[x] A1 Complete CryptoGen emitters (codegen/CryptoGen.hs)
+  [x] A1.1 Haskell emitter: AST → pure Haskell module
+  [x] A1.2 C emitter: AST → constant-time C source
+  [x] A1.3 FFI emitter: AST → foreign import ccall + C wrappers
+  [x] A1.4 Traceability annotations in generated code
+
+[x] A2 Write .spec files for crypto primitives (codegen/Specs/) — 10 spec files
+  [x] A2.1 SHA256.spec (FIPS 180-4) — validates pipeline
+  [x] A2.2 SHA512.spec (FIPS 180-4)
+  [x] A2.3 AES256.spec (FIPS 197)
+  [x] A2.4 ChaCha20.spec (RFC 8439)
+  [x] A2.5 Poly1305.spec (RFC 8439 §2.5) — needed for Noise_IK
+  [x] A2.6 X25519.spec (RFC 7748)
+  [x] A2.7 HMAC.spec (RFC 2104)
+  [x] A2.8 HKDF.spec (RFC 5869)
+  [x] A2.9 Keccak.spec (FIPS 202)
+  [x] A2.10 MLKEM768.spec (FIPS 203)
+
+[x] A3 Complete TestGen (codegen/TestGen.hs)
+  [x] A3.1 NIST CAVP / RFC KAT vector embedding
+  [x] A3.2 Edge case test generation
+  [x] A3.3 Equivalence tests (pure Haskell == C FFI, 10K random inputs)
+
+[x] A4 Validate pipeline end-to-end
+  [x] A4.1 cabal run codegen → generates SHA256 Haskell + C + FFI
+  [x] A4.2 Generated tests pass NIST KAT vectors
+  [x] A4.3 Equivalence: pure == FFI for 10,000 random inputs
+
+--- Phase B: P2P MVP — Two Clients, Encrypted TCP (COMPLETED 2026-04-23) ---
+
+[x] B1 Implement Poly1305 MAC (src/UmbraVox/Crypto/Poly1305.hs)
+  [x] B1.1 RFC 8439 §2.5: clamp r, GF(2^130-5) multiply, accumulate, finalize
+  [x] B1.2 KAT vector from RFC 8439 §2.5.2
+  [x] B1.3 Add to cabal exposed-modules
+
+[x] B2 Implement TCP Transport (src/UmbraVox/Network/Transport.hs)
+  [x] B2.1 listen :: Int -> IO Transport (accept one connection)
+  [x] B2.2 connect :: String -> Int -> IO Transport
+  [x] B2.3 send/recv/close
+
+[x] B3 Implement Noise_IK Handshake (src/UmbraVox/Network/Noise.hs)
+  [x] B3.1 Noise_IK pattern: X25519 + ChaChaPoly1305
+  [x] B3.2 Prologue "UmbraVox_v1"
+  [x] B3.3 Output: two CipherState (send/recv)
+
+[x] B4 Implement simple serialization (src/UmbraVox/Protocol/CBOR.hs)
+  [x] B4.1 Length-prefixed binary encoding for MVP
+
+[x] B5 Implement Chat Session (src/UmbraVox/Chat/Session.hs)
+  [x] B5.1 Wrapper: X3DH → DoubleRatchet encrypt/decrypt
+
+[x] B6 Implement Chat Message (src/UmbraVox/Chat/Message.hs)
+  [x] B6.1 Single-chunk message handling for MVP
+
+[x] B7 Implement CLI entry point (app/Main.hs)
+  [x] B7.1 umbravox listen <port> / umbravox connect <host> <port>
+  [x] B7.2 Handshake → message loop (stdin → encrypt → send; recv → decrypt → stdout)
+
+--- MVP Quality Gate (PASSED) ---
+
+[x] MVP.1 cabal build — compiles cleanly
+[x] MVP.2 cabal test — 238 tests across 23 suites pass
+[x] MVP.3 Manual test: two terminals exchanging encrypted messages
+[x] MVP.4 Wireshark confirms only ciphertext on wire
+
+--- MVP Phase C: TUI Polish + Discovery (COMPLETED 2026-04-23) ---
+
+[x] C1 Fix terminal resize (SIGWINCH signal handler)
+[x] C2 Add 11% border padding to layout
+[x] C3 Split TUI into modules (Types, Render, Input, Actions, Handshake)
+[x] C4 mDNS/DNS-SD LAN auto-discovery (Network/MDNS.hs)
+[x] C5 Peer Exchange on first connect (Network/PeerExchange.hs)
+[x] C6 Anthony DB persistence (Storage/Anthony.hs)
+    [x] C6.1 Auto-download and build anthony CLI if not available
+    [x] C6.2 Schema: peers, settings, conversations tables
+    [x] C6.3 Persist discovered/connected peers across restarts
+
+--- Deferred Discovery (post-MVP) ---
+
+[ ] D1 DHT Kademlia — internet-wide discovery (Network/DHT.hs)
+  [ ] D1.1 160-bit node IDs from SHA-256 of pubkey
+  [ ] D1.2 k-bucket routing table (k=8)
+  [ ] D1.3 FIND_NODE, STORE, FIND_VALUE operations
+  [ ] D1.4 UDP for DHT, TCP for connections
+
+[ ] D2 Discovery Manager — orchestrates all methods (Network/Discovery.hs)
+  [ ] D2.1 Unified peer database with scoring and expiry
+  [ ] D2.2 TUI integration: [LAN], [DHT], [PEX] tags
+  [ ] D2.3 Settings: enable/disable each discovery method
+
+--- Existing items (post-MVP, completed) ---
+
+[x] P0.2 Implement PQXDH (Signal/PQXDH.hs) — PQ session establishment
+  [ ] P0.2.1 Fetch peer PQPK (ML-KEM public key) from bundle
+  [ ] P0.2.2 Compute 4 classical DH shared secrets (dh1-dh4)
+  [ ] P0.2.3 ML-KEM encapsulation against peer PQPK
+  [ ] P0.2.4 Derive master secret: HKDF(0xFF*32||dh1||dh2||dh3||dh4||pq_ss)
+  [ ] P0.2.5 Handle ML-KEM decapsulation failure (fallback to classical)
+  [ ] P0.2.6 Initialize Double Ratchet with hybrid master secret
+
+[ ] P0.3 Implement stealth addresses (DKSAP)
+  [ ] P0.3.1 One-time address generation from peer SPK
+  [ ] P0.3.2 Recipient address randomization in message blocks
+  [ ] P0.3.3 Recipient scanning: check all derivable stealth addresses
+  [ ] P0.3.4 View tag filtering (1-byte, 256x scan reduction)
+  [ ] P0.3.5 PQ hybrid stealth addresses (ML-KEM component)
+
+[ ] P0.4 Add monotonic nonce counter in DoubleRatchet
+  [ ] P0.4.1 Add session-lifetime nonce counter to RatchetState
+  [ ] P0.4.2 Increment on every encrypt, never reset
+  [ ] P0.4.3 Include session ID in nonce derivation
+  [ ] P0.4.4 Test: verify nonce uniqueness across 10,000 messages
+
+[ ] P0.5 Update legal notices
+  [ ] P0.5.1 LEGAL-NOTICE.md: jurisdictional operator warnings
+  [ ] P0.5.2 README.md: compliance advisory for US/UK/EU operators
+  [ ] P0.5.3 Token disclaimer: MTK not offered as investment
+
+--- P1 High (blocks deployment) ---
+
+[ ] P1.1 C FFI constant-time backends (BUG-017) — all 11 primitives
+[ ] P1.2 Key material zeroing (BUG-016) — FFI scrubBytes + SecureByteString
+[ ] P1.3 Equivocation detection — track (validator, slot), penalize duplicates
+[ ] P1.4 PQ ratchet frequency — reduce from 50 to 25 messages
+[ ] P1.5 MC/DC infrastructure — Template Haskell condition tracking
+[ ] P1.6 Hybrid composition proof — TLA+/Coq artifact
+
+--- P2 Medium (pre-mainnet) ---
+
+[ ] P2.1 Post-quantum signatures (Dilithium/FIPS 204) — hybrid Ed25519+Dilithium
+[ ] P2.2 Redesign Double Ratchet for HNDL — derive keys from DH + ML-KEM
+[ ] P2.3 Partition recovery semantics — canonical state selection
+[ ] P2.4 Cover traffic default — increase to MEDIUM (1/10 Hz)
+[ ] P2.5 Requirements traceability — populate 60 REQ entries
+[ ] P2.6 BIS export control ruling — legal determination
+[ ] P2.7 Configuration management — doc/configuration-index.md
+
+--- P3 Low (pre-audit) ---
+
+[ ] P3.1 GCM error path constant-time fix
+[ ] P3.2 Automatic address rotation at cycle boundaries
+[ ] P3.3 TLA+ stake grinding formal verification
+[ ] P3.4 Independent code review engagement
+[ ] P3.5 Data/control coupling analysis in quality gates
+[ ] P3.6 StateDB tamper detection — HMAC-SHA256 instead of CRC-32
+[ ] P3.7 Storage graceful degradation — disk quota monitoring
+
+--- Existing items ---
+
+[ ] Write F* spec for ML-KEM-768 (FSTAR-002)
+[ ] Implement VRF (IMPL-001) — blocks consensus Phase 3
+[ ] Implement C FFI constant-time backends (BUG-017)
+[ ] Implement key material zeroing (BUG-016)
+[ ] Complete BlockHeader fields (BUG-007)
+[ ] Fix LeaderElection types (BUG-008)
+[ ] Begin codegen implementation (IMPL-003)
