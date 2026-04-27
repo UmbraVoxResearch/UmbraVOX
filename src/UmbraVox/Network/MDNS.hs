@@ -56,9 +56,9 @@ mdnsPort_ = 5353
 serviceName :: ByteString
 serviceName = "_umbravox._tcp.local"
 
--- | Announcement interval in microseconds (60 seconds).
+-- | Announcement interval in microseconds (10 seconds for faster discovery).
 announceIntervalUs :: Int
-announceIntervalUs = 60 * 1000000
+announceIntervalUs = 10 * 1000000
 
 ------------------------------------------------------------------------
 -- FFI for setsockopt (IP_ADD_MEMBERSHIP)
@@ -110,7 +110,7 @@ runMDNS ourPort ourPubkey peersRef =
     bracket openMulticastSocket NS.close $ \sock -> do
         -- Spawn a separate thread for periodic announcements.
         _ <- forkIO (announceLoop sock ourPort ourPubkey)
-        listenLoop sock peersRef
+        listenLoop sock peersRef ourPort ourPubkey
   `catch` \(_e :: SomeException) -> pure ()
 
 -- | Open a UDP socket and join the mDNS multicast group.
@@ -118,12 +118,16 @@ openMulticastSocket :: IO NS.Socket
 openMulticastSocket = do
     sock <- NS.socket NS.AF_INET NS.Datagram NS.defaultProtocol
     NS.setSocketOption sock NS.ReuseAddr 1
+    -- SO_REUSEPORT allows multiple processes to bind to the same mDNS port
+    NS.setSocketOption sock NS.ReusePort 1
     let bindAddr = NS.SockAddrInet (fromIntegral mdnsPort_) 0
     NS.bind sock bindAddr
     -- Join the multicast group via raw setsockopt.
     let mcastAddr = tupleToHostAddress (224, 0, 0, 251)
         localAddr = tupleToHostAddress (0, 0, 0, 0)
     joinMulticast sock mcastAddr localAddr
+    -- Enable multicast loopback so peers on the same machine can discover each other
+    enableMulticastLoop sock
     pure sock
 
 -- | Join a multicast group using IP_ADD_MEMBERSHIP via raw setsockopt.
@@ -136,6 +140,15 @@ joinMulticast sock mcastAddr localAddr =
         pokeByteOff ptr 4 (localAddr :: Word32)
         NS.withFdSocket sock $ \fd ->
             void (c_setsockopt fd ipprotoIP ipAddMembership (castPtr ptr) 8)
+
+-- | Enable IP_MULTICAST_LOOP so peers on the same machine receive each other's
+-- multicast packets. IP_MULTICAST_LOOP = 34 on Linux.
+enableMulticastLoop :: NS.Socket -> IO ()
+enableMulticastLoop sock =
+    allocaBytes 4 $ \ptr -> do
+        pokeByteOff ptr 0 (1 :: Word32)  -- enable = 1
+        NS.withFdSocket sock $ \fd ->
+            void (c_setsockopt fd ipprotoIP 34 (castPtr ptr) 4)
 
 ------------------------------------------------------------------------
 -- Internal — announcement
@@ -168,12 +181,17 @@ multicastDest =
 ------------------------------------------------------------------------
 
 -- | Listen for mDNS announcements and update the peer list.
-listenLoop :: NS.Socket -> MVar [MDNSPeer] -> IO ()
-listenLoop sock peersRef = forever $ do
+-- Filters out our own announcements based on port and pubkey.
+listenLoop :: NS.Socket -> MVar [MDNSPeer] -> Int -> ByteString -> IO ()
+listenLoop sock peersRef ourPort ourPubkey = forever $ do
     (payload, srcAddr) <- NSB.recvFrom sock 1500
     case parseAnnouncement payload srcAddr of
         Nothing   -> pure ()
-        Just peer -> updatePeerList peersRef peer
+        Just peer ->
+            -- Skip our own announcements
+            if mdnsPort peer == ourPort && mdnsPubkey peer == toHex ourPubkey
+                then pure ()
+                else updatePeerList peersRef peer
 
 -- | Parse an incoming announcement payload into an 'MDNSPeer'.
 parseAnnouncement :: ByteString -> NS.SockAddr -> Maybe MDNSPeer
