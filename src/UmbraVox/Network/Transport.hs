@@ -5,6 +5,7 @@ module UmbraVox.Network.Transport
   ( TCPTransport(..)
   , listen
   , connect
+  , connectTryPorts
   , send
   , recv
   , close
@@ -12,6 +13,7 @@ module UmbraVox.Network.Transport
 
 import qualified Data.ByteString as BS
 import Data.ByteString (ByteString)
+import Control.Exception (SomeException, onException, try)
 import qualified Network.Socket as NS
 import qualified Network.Socket.ByteString as NSB
 
@@ -39,12 +41,13 @@ listen port = do
           }
     addr : _ <- NS.getAddrInfo (Just hints) (Just "0.0.0.0") (Just (show port))
     sock <- NS.openSocket addr
-    NS.setSocketOption sock NS.ReuseAddr 1
-    NS.bind sock (NS.addrAddress addr)
-    NS.listen sock 1
-    (conn, peer) <- NS.accept sock
-    NS.close sock
-    pure TCPTransport { tSocket = conn, tAddr = peer }
+    flip onException (NS.close sock) $ do
+        NS.setSocketOption sock NS.ReuseAddr 1
+        NS.bind sock (NS.addrAddress addr)
+        NS.listen sock 1
+        (conn, peer) <- NS.accept sock
+        NS.close sock
+        pure TCPTransport { tSocket = conn, tAddr = peer }
 
 -- | Establish a TCP connection to the given host and port.
 connect :: String -> Int -> IO TCPTransport
@@ -55,8 +58,19 @@ connect host port = do
           }
     addr : _ <- NS.getAddrInfo (Just hints) (Just host) (Just (show port))
     sock <- NS.openSocket addr
-    NS.connect sock (NS.addrAddress addr)
+    NS.connect sock (NS.addrAddress addr) `onException` NS.close sock
     pure TCPTransport { tSocket = sock, tAddr = NS.addrAddress addr }
+
+-- | Try connecting to a host on a sequence of ports, returning the first success.
+-- Throws the last error if all ports fail.
+connectTryPorts :: String -> [Int] -> IO TCPTransport
+connectTryPorts host [] = connect host 7853  -- fallback to primary
+connectTryPorts host [p] = connect host p
+connectTryPorts host (p:ps) = do
+    result <- try (connect host p) :: IO (Either SomeException TCPTransport)
+    case result of
+        Right t -> pure t
+        Left _  -> connectTryPorts host ps
 
 -- | Send all bytes over the transport.
 send :: TCPTransport -> ByteString -> IO ()

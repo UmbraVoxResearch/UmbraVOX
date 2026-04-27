@@ -13,6 +13,8 @@ import qualified Data.ByteString as BS
 import Data.List (foldl')
 import Data.Word (Word32, Word64)
 
+import UmbraVox.Protocol.Encoding (putWord64BE)
+
 ------------------------------------------------------------------------
 -- FIPS 180-4, Section 4.2.2 — Round constants
 -- First 32 bits of the fractional parts of the cube roots of the
@@ -82,18 +84,6 @@ getWord32 !bs !i =
 putWord32 :: Word32 -> ByteString
 putWord32 !w = BS.pack
     [ fromIntegral (w `shiftR` 24)
-    , fromIntegral (w `shiftR` 16)
-    , fromIntegral (w `shiftR` 8)
-    , fromIntegral w
-    ]
-
-putWord64BE :: Word64 -> ByteString
-putWord64BE !w = BS.pack
-    [ fromIntegral (w `shiftR` 56)
-    , fromIntegral (w `shiftR` 48)
-    , fromIntegral (w `shiftR` 40)
-    , fromIntegral (w `shiftR` 32)
-    , fromIntegral (w `shiftR` 24)
     , fromIntegral (w `shiftR` 16)
     , fromIntegral (w `shiftR` 8)
     , fromIntegral w

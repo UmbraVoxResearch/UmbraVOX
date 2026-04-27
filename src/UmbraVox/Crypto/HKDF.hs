@@ -14,8 +14,6 @@ module UmbraVox.Crypto.HKDF
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
-import Data.Word (Word8)
-
 import UmbraVox.Crypto.HMAC (hmacSHA256, hmacSHA512)
 
 ------------------------------------------------------------------------
@@ -55,13 +53,13 @@ hkdfExpand prk info len
     | len > 255 * 64 = error "HKDF-Expand: output length exceeds 255*HashLen"
     | otherwise = BS.take len (BS.concat (go BS.empty 1))
   where
-    go :: ByteString -> Word8 -> [ByteString]
+    go :: ByteString -> Int -> [ByteString]
     go !prev !counter
         | counter > n = []
         | otherwise =
-            let !t = hmacSHA512 prk (prev <> info <> BS.singleton counter)
+            let !t = hmacSHA512 prk (prev <> info <> BS.singleton (fromIntegral counter))
             in t : go t (counter + 1)
-    !n = ceiling (fromIntegral len / 64.0 :: Double) :: Word8
+    !n = (len + 63) `div` 64
 
 -- | Combined HKDF Extract-then-Expand with HMAC-SHA-512.
 hkdf :: ByteString  -- ^ Salt
@@ -90,13 +88,13 @@ hkdfSHA256Expand prk info len
     | len > 255 * 32 = error "HKDF-SHA256-Expand: output length exceeds 255*HashLen"
     | otherwise = BS.take len (BS.concat (go BS.empty 1))
   where
-    go :: ByteString -> Word8 -> [ByteString]
+    go :: ByteString -> Int -> [ByteString]
     go !prev !counter
         | counter > n = []
         | otherwise =
-            let !t = hmacSHA256 prk (prev <> info <> BS.singleton counter)
+            let !t = hmacSHA256 prk (prev <> info <> BS.singleton (fromIntegral counter))
             in t : go t (counter + 1)
-    !n = ceiling (fromIntegral len / 32.0 :: Double) :: Word8
+    !n = (len + 31) `div` 32
 
 -- | Combined HKDF Extract-then-Expand with HMAC-SHA-256.
 hkdfSHA256 :: ByteString -> ByteString -> ByteString -> Int -> ByteString

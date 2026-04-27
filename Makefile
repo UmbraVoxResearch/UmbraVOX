@@ -4,7 +4,7 @@
 #
 # Usage:
 #   make              - Build all (library + executables)
-#   make test         - Run full test suite (179 tests)
+#   make test         - Run full test suite (733+ tests)
 #   make verify       - Run F* formal verification (11 modules)
 #   make quality      - Run all quality gates (tests + verify + complexity)
 #   make complexity   - Check cyclomatic complexity (<= 8 for all functions)
@@ -55,7 +55,7 @@ help:
 	@echo "  Build & Run:"
 	@echo "    make build       Build library + executables"
 	@echo "    make run         Run UmbraVOX TUI application"
-	@echo "    make test        Run Haskell test suite (216 tests)"
+	@echo "    make test        Run Haskell test suite (733+ tests)"
 	@echo "    make codegen     Generate Haskell + C + FFI from .spec files"
 	@echo ""
 	@echo "  Quality Gates (DO-178C DAL A):"
@@ -69,7 +69,7 @@ help:
 	@echo "    make help        Show this help"
 	@echo ""
 	@echo "  Quality Gate Requirements:"
-	@echo "    - All 216 Haskell tests pass (KAT, fuzz, security, integration)"
+	@echo "    - All 733+ Haskell tests pass (KAT, fuzz, security, integration)"
 	@echo "    - All F* specifications verify (auto-discovered)"
 	@echo "    - Cyclomatic complexity <= $(MAX_COMPLEXITY) for all functions"
 	@echo "    - 10 .spec files generate 30 Haskell + C + FFI outputs"
@@ -84,7 +84,7 @@ help:
 	@echo ""
 
 run: build
-	@cabal run umbravox
+	@cabal run umbravox; stty sane echo 2>/dev/null; true
 
 # --------------------------------------------------------------------------
 # Build
@@ -115,7 +115,7 @@ test: build
 
 verify:
 	@echo -e "$(BLUE)[VERIFY]$(NC) Running F* formal verification (all modules)..."
-	@cd $(FSTAR_DIR) && bash verify.sh 2>&1 | tee /tmp/umbravox-verify-output.txt | grep -E "PASS|FAIL|Summary" --color=never
+	@cabal run fstar-verify 2>&1 | tee /tmp/umbravox-verify-output.txt | grep -E "PASS|FAIL|Summary" --color=never
 	@if grep -q "All modules verified" /tmp/umbravox-verify-output.txt; then \
 		echo -e "$(GREEN)[VERIFY]$(NC) All F* modules verified."; \
 	else \
@@ -138,7 +138,7 @@ complexity:
 	@echo -e "$(BLUE)[COMPLEXITY]$(NC) Checking cyclomatic complexity (<= $(MAX_COMPLEXITY))..."
 	@violations=0; total=0; \
 	for f in $(SRC_FILES); do \
-		result=$$(python3 scripts/check_complexity.py "$$f" $(MAX_COMPLEXITY) 2>/dev/null); \
+		result=$$(cabal run check-complexity -- "$$f" $(MAX_COMPLEXITY) 2>/dev/null); \
 		if [ $$? -ne 0 ]; then \
 			echo "$$result"; \
 			violations=$$((violations + 1)); \

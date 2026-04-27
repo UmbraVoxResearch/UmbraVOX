@@ -3,7 +3,7 @@ module Main (main) where
 import Control.Exception (SomeException, catch)
 import Control.Monad (when)
 import qualified Data.ByteString as BS
-import Data.IORef (newIORef, readIORef, writeIORef)
+import Data.IORef (newIORef, readIORef, writeIORef, modifyIORef')
 import Data.List (isPrefixOf)
 import qualified Data.Map.Strict as Map
 import System.Directory (getHomeDirectory, createDirectoryIfMissing)
@@ -19,7 +19,10 @@ import UmbraVox.Crypto.BIP39 (generatePassphrase)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 import UmbraVox.Network.MDNS (startMDNS)
 import qualified Network.Socket as NS
-import UmbraVox.Storage.Anthony (openDB)
+import Control.Monad (forM_)
+import UmbraVox.Storage.Anthony (openDB, loadConversations, loadMessages)
+import UmbraVox.Chat.Session (initChatSession)
+import UmbraVox.Crypto.Random (randomBytes)
 
 -- SIGWINCH = 28 on Linux/macOS (not exported by all versions of System.Posix.Signals)
 sigWINCH :: CInt
@@ -31,7 +34,7 @@ main = do
     -- Generate random display name from BIP39 wordlist
     randomName <- generatePassphrase 1
     -- Find available listen port
-    listenPort <- findAvailablePort [1111, 2222, 4747, 8383, 3838, 3008]
+    listenPort <- findAvailablePort [7853, 7854, 7855, 9999, 7856, 7857, 7858, 7859, 7860]
     cfg <- AppConfig
         <$> newIORef listenPort  -- listen port (first available)
         <*> newIORef randomName  -- display name (random BIP39 word)
@@ -50,16 +53,19 @@ main = do
         <*> newIORef 30          -- retention days (0 = forever)
         <*> newIORef True        -- auto-save messages to DB
         <*> newIORef Nothing     -- Anthony DB handle
+        <*> newIORef False       -- trusted contacts only (off by default)
     (initRows, initCols) <- getTermSize
     let (r0, c0) = clampSize initRows initCols
     termRef <- newIORef (initRows, initCols)
     st <- AppState cfg <$> newIORef 0 <*> newIORef ContactPane
                        <*> newIORef "" <*> newIORef ""
                        <*> newIORef 0 <*> newIORef ""
-                       <*> newIORef True <*> newIORef Nothing
+                       <*> newIORef True <*> newIORef (Just DlgWelcome)
                        <*> newIORef (calcLayout r0 c0)
                        <*> newIORef 0
                        <*> pure termRef
+                       <*> newIORef Nothing  -- asMenuOpen
+                       <*> newIORef 0        -- asMenuIndex
     -- Wire mDNS discovery if enabled (graceful if multicast unavailable)
     mdnsOn <- readIORef (cfgMDNSEnabled cfg)
     when mdnsOn $ (do
@@ -86,7 +92,36 @@ main = do
             putStrLn "  Initializing database..."
             db <- openDB path
             writeIORef (cfgAnthonyDB cfg) (Just db)
-            putStrLn "  Storage: persistent mode"
+            -- Restore saved conversations and their messages
+            convs <- loadConversations db
+            forM_ convs $ \(convId, _pubkey, name, _created) -> do
+                -- Create a loopback session for each saved conversation
+                chatSec <- randomBytes 32
+                dhSec   <- randomBytes 32
+                dhPub   <- randomBytes 32
+                session <- initChatSession chatSec dhSec dhPub
+                sessRef <- newIORef session
+                histRef <- newIORef []
+                statRef <- newIORef Offline
+                let si = SessionInfo
+                        { siTransport = Nothing
+                        , siSession   = sessRef
+                        , siRecvTid   = Nothing
+                        , siPeerName  = name
+                        , siHistory   = histRef
+                        , siStatus    = statRef
+                        }
+                -- Load saved messages into history
+                msgs <- loadMessages db convId 500
+                let formatted = map (\(sender, content, _ts) ->
+                        sender ++ ": " ++ content) msgs
+                writeIORef histRef formatted
+                -- Add to sessions map
+                sid <- readIORef (cfgNextId cfg)
+                writeIORef (cfgNextId cfg) (sid + 1)
+                modifyIORef' (cfgSessions cfg) (Map.insert sid si)
+            nRestored <- Map.size <$> readIORef (cfgSessions cfg)
+            putStrLn $ "  Storage: persistent mode (" ++ show nRestored ++ " conversations restored)"
             ) `catch` (\(_ :: SomeException) -> do
                 putStrLn "  Storage: ephemeral mode (DB unavailable)"
                 writeIORef (cfgDBEnabled cfg) False

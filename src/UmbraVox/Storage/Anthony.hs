@@ -20,6 +20,8 @@ module UmbraVox.Storage.Anthony
     , pruneMessages
     , clearConversation
     , messageCount
+    , saveConversation
+    , loadConversations
     ) where
 
 import Data.ByteString (ByteString)
@@ -28,6 +30,9 @@ import Control.Exception (SomeException, catch)
 import System.Directory (findExecutable, getHomeDirectory)
 import System.FilePath ((</>))
 import System.Process (readProcess, callProcess)
+
+import UmbraVox.Protocol.Encoding (splitOn)
+import UmbraVox.Storage.Schema (schemaStatements)
 
 ------------------------------------------------------------------------
 -- Types
@@ -38,27 +43,6 @@ data AnthonyDB = AnthonyDB
     { dbPath    :: !FilePath  -- ^ Path to the SQLite database file
     , dbAnthony :: !FilePath  -- ^ Path to the anthony binary
     } deriving stock (Show)
-
-------------------------------------------------------------------------
--- Schema
-------------------------------------------------------------------------
-
--- | SQL statements to initialise the database schema.
-schemaStatements :: [String]
-schemaStatements =
-    [ "CREATE TABLE IF NOT EXISTS peers "
-      <> "(pubkey TEXT PRIMARY KEY, ip TEXT, port INTEGER, "
-      <> "last_seen INTEGER, source TEXT)"
-    , "CREATE TABLE IF NOT EXISTS settings "
-      <> "(key TEXT PRIMARY KEY, value TEXT)"
-    , "CREATE TABLE IF NOT EXISTS conversations "
-      <> "(id INTEGER PRIMARY KEY, peer_pubkey TEXT, "
-      <> "name TEXT, created INTEGER)"
-    , "CREATE TABLE IF NOT EXISTS messages "
-      <> "(id INTEGER PRIMARY KEY, "
-      <> "conversation_id INTEGER, sender TEXT, "
-      <> "content TEXT, timestamp INTEGER)"
-    ]
 
 ------------------------------------------------------------------------
 -- Public API
@@ -178,6 +162,33 @@ messageCount db convId = do
          <> show convId)
     pure (readInt (head (lines output ++ ["0"])))
 
+-- | Create or update a conversation record. Returns the conversation ID.
+saveConversation :: AnthonyDB -> Int -> String -> String -> Int -> IO ()
+saveConversation db convId peerPubkey name created = do
+    let sql = "INSERT OR REPLACE INTO conversations "
+              <> "(id, peer_pubkey, name, created) VALUES ("
+              <> show convId <> ", "
+              <> quote peerPubkey <> ", "
+              <> quote name <> ", "
+              <> show created <> ")"
+    runSQL db sql
+
+-- | Load all conversations. Returns @(id, peer_pubkey, name, created)@.
+loadConversations :: AnthonyDB -> IO [(Int, String, String, Int)]
+loadConversations db = do
+    output <- querySQL db "SELECT id, peer_pubkey, name, created FROM conversations ORDER BY id"
+    pure (parseConversationRows output)
+
+parseConversationRows :: String -> [(Int, String, String, Int)]
+parseConversationRows s = concatMap parseConvRow (lines s)
+  where
+    parseConvRow line =
+        let fields = splitOn '|' line
+        in case fields of
+            (idStr:pubkey:name:createdStr:_) ->
+                [(readInt idStr, pubkey, name, readInt createdStr)]
+            _ -> []
+
 ------------------------------------------------------------------------
 -- Internal — anthony CLI interaction
 ------------------------------------------------------------------------
@@ -288,14 +299,6 @@ parseRow row =
             (pk, ip, readInt p, readInt ls, src)
         _ -> ("", "", 0, 0, "")
 
--- | Split a string on a delimiter character.
-splitOn :: Char -> String -> [String]
-splitOn _ [] = [""]
-splitOn delim s =
-    let (token, rest) = break (== delim) s
-    in  case rest of
-            []      -> [token]
-            (_ : r) -> token : splitOn delim r
 
 -- | Safe integer parsing with a fallback of 0.
 readInt :: String -> Int

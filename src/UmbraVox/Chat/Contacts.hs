@@ -12,4 +12,4 @@ data ContactList = ContactList
 
 -- | An empty contact list.
 emptyContacts :: ContactList
-emptyContacts = error "not implemented"
+emptyContacts = ContactList

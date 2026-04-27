@@ -20,6 +20,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Word (Word8)
 
+import UmbraVox.Crypto.ConstantTime (constantEq)
 import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
 import UmbraVox.Crypto.Ed25519
     ( ExtPoint, basepoint, pointAdd, scalarMul
@@ -177,7 +178,7 @@ scanForPayment scanSecret spendSecret spendPub ephR candidateP =
         -- Step 3: Recompute expected stealth public key
         !sG = scalarMul s basepoint
         !expectedP = addSpendKey sG spendPub
-    in if expectedP == candidateP
+    in if constantEq expectedP candidateP
        then Just (computeSpendingSecret s spendSecret)
        else Nothing
 
@@ -191,3 +192,4 @@ computeSpendingSecret s spendSecret =
         !a = clampScalar (BS.take 32 h)
         !skStealth = (s + a) `mod` groupL
     in encodeLEn 32 skStealth
+

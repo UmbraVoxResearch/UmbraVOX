@@ -2,7 +2,8 @@
 module Test.TUI.Types (runTests) where
 
 import Test.Util (assertEq)
-import UmbraVox.TUI.Types (ContactStatus(..), statusTag, Layout(..))
+import UmbraVox.TUI.Types (ContactStatus(..), statusTag, Layout(..), MenuTab(..),
+                           menuTabLabel, menuTabItems)
 import UmbraVox.TUI.Render (calcLayout, sizeValid)
 
 runTests :: IO Bool
@@ -17,25 +18,28 @@ runTests = do
     p7 <- testCalcLayoutDimensions
     p8 <- testCalcLayoutMinSize
     p9 <- testSizeValid
-    pure (p1 && p2 && p3 && p4 && p5 && p6 && p7 && p8 && p9)
+    p10 <- testMenuTabEnum
+    p11 <- testMenuTabItems
+    p12 <- testMenuTabLabel
+    pure (p1 && p2 && p3 && p4 && p5 && p6 && p7 && p8 && p9 && p10 && p11 && p12)
 
 testStatusTagOnline :: IO Bool
-testStatusTagOnline = assertEq "statusTag Online"  "[ON]"    (statusTag Online)
+testStatusTagOnline = assertEq "statusTag Online"  " \x25CF"   (statusTag Online)
 
 testStatusTagOffline :: IO Bool
-testStatusTagOffline = assertEq "statusTag Offline" "[OFF]"   (statusTag Offline)
+testStatusTagOffline = assertEq "statusTag Offline" " \x25CB"   (statusTag Offline)
 
 testStatusTagLocal :: IO Bool
-testStatusTagLocal = assertEq "statusTag Local"  "[LOCAL]" (statusTag Local)
+testStatusTagLocal = assertEq "statusTag Local"  " \x1F512" (statusTag Local)
 
 testStatusTagGroup :: IO Bool
-testStatusTagGroup = assertEq "statusTag Group"  "[GRP]"   (statusTag Group)
+testStatusTagGroup = assertEq "statusTag Group"  " \x1F465"   (statusTag Group)
 
 testStatusTagLAN :: IO Bool
-testStatusTagLAN = assertEq "statusTag LAN"    "[LAN]"   (statusTag LAN)
+testStatusTagLAN = assertEq "statusTag LAN"    " \x1F5A7"   (statusTag LAN)
 
 testStatusTagPEX :: IO Bool
-testStatusTagPEX = assertEq "statusTag PEX"    "[PEX]"   (statusTag PEX)
+testStatusTagPEX = assertEq "statusTag PEX"    " \x1F517"   (statusTag PEX)
 
 -- | calcLayout at 80x24 should produce valid positive dimensions.
 testCalcLayoutDimensions :: IO Bool
@@ -46,11 +50,9 @@ testCalcLayoutDimensions = do
     c <- assertEq "layout lLeftW > 0"  True (lLeftW lay > 0)
     d <- assertEq "layout lRightW > 0" True (lRightW lay > 0)
     e <- assertEq "layout lChatH > 0"  True (lChatH lay > 0)
-    f <- assertEq "layout lPadX > 0"   True (lPadX lay > 0)
-    g <- assertEq "layout lPadY > 0"   True (lPadY lay > 0)
     -- lLeftW + lRightW should equal lCols
-    h <- assertEq "layout width sum" (lCols lay) (lLeftW lay + lRightW lay)
-    pure (a && b && c && d && e && f && g && h)
+    f <- assertEq "layout width sum" (lCols lay) (lLeftW lay + lRightW lay)
+    pure (a && b && c && d && e && f)
 
 -- | calcLayout at larger terminal should produce larger usable area.
 testCalcLayoutMinSize :: IO Bool
@@ -68,3 +70,31 @@ testSizeValid = do
     b <- assertEq "sizeValid 10 40"  False (sizeValid 10 40)
     c <- assertEq "sizeValid 50 200" True  (sizeValid 50 200)
     pure (a && b && c)
+
+-- | MenuTab enum covers all 5 tabs.
+testMenuTabEnum :: IO Bool
+testMenuTabEnum = do
+    let tabs = [minBound .. maxBound] :: [MenuTab]
+    assertEq "MenuTab has 5 variants" 5 (length tabs)
+
+-- | Each MenuTab has at least one item.
+testMenuTabItems :: IO Bool
+testMenuTabItems = do
+    let tabs = [MenuFile, MenuContacts, MenuChat, MenuPrefs, MenuHelp]
+        allNonEmpty = all (\t -> not (null (menuTabItems t))) tabs
+    assertEq "all MenuTab items non-empty" True allNonEmpty
+
+-- | Each MenuTab has a non-empty label.
+testMenuTabLabel :: IO Bool
+testMenuTabLabel = do
+    let tabs = [MenuFile, MenuContacts, MenuChat, MenuPrefs, MenuHelp]
+        allNonEmpty = all (\t -> not (null (menuTabLabel t))) tabs
+    a <- assertEq "all MenuTab labels non-empty" True allNonEmpty
+    -- Verify specific labels contain expected F-key references
+    b <- assertEq "MenuFile label contains F1" True ("F1" `isIn` menuTabLabel MenuFile)
+    c <- assertEq "MenuPrefs label contains F4" True ("F4" `isIn` menuTabLabel MenuPrefs)
+    d <- assertEq "MenuHelp label contains F5" True ("F5" `isIn` menuTabLabel MenuHelp)
+    pure (a && b && c && d)
+  where
+    isIn needle haystack = any (\i -> take (length needle) (drop i haystack) == needle)
+                               [0..length haystack - length needle]

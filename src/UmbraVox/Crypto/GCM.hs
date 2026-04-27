@@ -11,9 +11,11 @@ import Data.Bits ((.&.), (.|.), shiftL, shiftR, testBit, xor)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.List (foldl')
-import Data.Word (Word8, Word64)
+import Data.Word (Word64)
 
 import UmbraVox.Crypto.AES (aesEncrypt)
+import UmbraVox.Crypto.ConstantTime (constantEq)
+import UmbraVox.Protocol.Encoding (putWord64BE)
 
 ------------------------------------------------------------------------
 -- Byte helpers
@@ -21,14 +23,6 @@ import UmbraVox.Crypto.AES (aesEncrypt)
 
 xorBS :: ByteString -> ByteString -> ByteString
 xorBS a b = BS.pack (BS.zipWith xor a b)
-
-putWord64BE :: Word64 -> ByteString
-putWord64BE !w = BS.pack
-    [ fromIntegral (w `shiftR` 56), fromIntegral (w `shiftR` 48)
-    , fromIntegral (w `shiftR` 40), fromIntegral (w `shiftR` 32)
-    , fromIntegral (w `shiftR` 24), fromIntegral (w `shiftR` 16)
-    , fromIntegral (w `shiftR` 8),  fromIntegral w
-    ]
 
 incr32 :: ByteString -> ByteString
 incr32 !cb =
@@ -178,14 +172,3 @@ gcmDecrypt !key !nonce !aad !ct !tag
         then Just (gctrWithKey key (incr32 j0) ct)
         else Nothing
 
--- | Constant-time comparison for fixed-length byte strings (e.g. GCM tags).
--- Compares all bytes regardless of early mismatch to avoid timing side-channels.
--- Length difference returns False without timing leak (both are always 16 bytes
--- in GCM context, so this branch is never taken in practice).
-constantEq :: ByteString -> ByteString -> Bool
-constantEq a b =
-    let !lenA = BS.length a
-        !lenB = BS.length b
-        !lenMatch = if lenA == lenB then 0 else 1 :: Word8
-        !acc = foldl' (\v (x, y) -> v .|. (x `xor` y)) lenMatch (BS.zip a b)
-    in acc == 0

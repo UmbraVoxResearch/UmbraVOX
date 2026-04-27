@@ -107,7 +107,10 @@ x25519 !scalar !uCoord =
     let !k = decodeLE (clampScalar scalar)
         -- RFC 7748: decode u-coordinate, masking bit 255
         !u = decodeLE uCoord .&. (2 ^ (255 :: Int) - 1)
-    in encodeLE (scalarMult k u)
+        !result = encodeLE (scalarMult k u)
+    in if result == BS.replicate 32 0
+       then error "x25519: all-zero DH output (RFC 7748 Section 6.1)"
+       else result
 
 -- | Scalar multiplication on Curve25519 via the Montgomery ladder.
 --

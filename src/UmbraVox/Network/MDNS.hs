@@ -22,7 +22,7 @@ import qualified Data.ByteString.Char8 as C8
 import Control.Concurrent.MVar (MVar, newMVar, readMVar, modifyMVar_)
 import Data.Word (Word8, Word32)
 import Control.Concurrent (ThreadId, forkIO, killThread, threadDelay)
-import Control.Exception (SomeException, catch)
+import Control.Exception (SomeException, bracket, catch)
 import Control.Monad (forever, void)
 import Foreign.C.Types (CInt(..))
 import Foreign.Marshal.Alloc (allocaBytes)
@@ -106,11 +106,11 @@ getDiscoveredPeers = readMVar
 
 -- | Main mDNS loop: announce and listen on a shared UDP multicast socket.
 runMDNS :: Int -> ByteString -> MVar [MDNSPeer] -> IO ()
-runMDNS ourPort ourPubkey peersRef = do
-    sock <- openMulticastSocket
-    -- Spawn a separate thread for periodic announcements.
-    _ <- forkIO (announceLoop sock ourPort ourPubkey)
-    listenLoop sock peersRef
+runMDNS ourPort ourPubkey peersRef =
+    bracket openMulticastSocket NS.close $ \sock -> do
+        -- Spawn a separate thread for periodic announcements.
+        _ <- forkIO (announceLoop sock ourPort ourPubkey)
+        listenLoop sock peersRef
   `catch` \(_e :: SomeException) -> pure ()
 
 -- | Open a UDP socket and join the mDNS multicast group.

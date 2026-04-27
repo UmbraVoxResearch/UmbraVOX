@@ -1,6 +1,7 @@
 -- | X25519 test suite: RFC 7748 KAT vectors + edge cases + property/fuzz tests.
 module Test.Crypto.Curve25519 (runTests) where
 
+import Control.Exception (SomeException, evaluate, try)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 
@@ -62,11 +63,14 @@ katVectors =
 testScalarZero :: IO Bool
 testScalarZero = assertEq "Edge: scalar=0 (clamped) produces 32B" 32 (BS.length (x25519 (BS.replicate 32 0) x25519Basepoint))
 
--- Edge: u = 0 → result should be all zeros
+-- Edge: u = 0 → must abort per RFC 7748 Section 6.1 (all-zero DH output)
 testUZero :: IO Bool
 testUZero = do
     let sk = hexDecode "a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4"
-    assertEq "Edge: u=0" (BS.replicate 32 0) (x25519 sk (BS.replicate 32 0))
+    result <- try (evaluate (x25519 sk (BS.replicate 32 0))) :: IO (Either SomeException ByteString)
+    case result of
+        Left _  -> putStrLn "  PASS: Edge: u=0 rejected (RFC 7748 6.1)" >> pure True
+        Right _ -> putStrLn "  FAIL: Edge: u=0 should have been rejected" >> pure False
 
 propOutputLen :: PRNG -> Bool
 propOutputLen g =

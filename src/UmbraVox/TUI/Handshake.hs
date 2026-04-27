@@ -11,7 +11,7 @@ import Data.Bits (shiftL, shiftR, (.&.))
 import Data.Word (Word32)
 import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (formatTime, defaultTimeLocale)
-import UmbraVox.Chat.Session (ChatSession, initChatSession)
+import UmbraVox.Chat.Session (ChatSession, initChatSession, initChatSessionBob)
 import UmbraVox.Crypto.MLKEM (mlkemKeyGen,
     MLKEMEncapKey(..), MLKEMDecapKey(..), MLKEMCiphertext(..))
 import UmbraVox.Crypto.Random (randomBytes)
@@ -90,9 +90,9 @@ deserializeBundle bs
                , pqpkbOneTimePreKey   = decOpk rest }
 
 -- PQXDH Handshake ---------------------------------------------------------
-handshakeInitiator :: AnyTransport -> IO ChatSession
-handshakeInitiator t = do
-    aliceIK <- genIdentity; bundle <- recvBundle t
+handshakeInitiator :: AnyTransport -> IdentityKey -> IO ChatSession
+handshakeInitiator t aliceIK = do
+    bundle <- recvBundle t
     ekRand <- randomBytes 32; mlkemRand <- randomBytes 32
     result <- case pqxdhInitiate aliceIK bundle ekRand mlkemRand of
         Nothing -> fail "PQXDH: SPK signature verification failed"
@@ -104,16 +104,15 @@ handshakeInitiator t = do
     initChatSession (pqxdhSharedSecret result)
                     (ikX25519Secret aliceIK) (pqpkbSignedPreKey bundle)
 
-handshakeResponder :: AnyTransport -> IO ChatSession
-handshakeResponder t = do
-    bobIK <- genIdentity
+handshakeResponder :: AnyTransport -> IdentityKey -> IO ChatSession
+handshakeResponder t bobIK = do
     (spk, spkSig) <- genSignedPreKey bobIK
     (pqEK, pqDK) <- genPQPreKey
     anySend t . encodeMessage $ serializeBundle bobIK (kpPublic spk) spkSig pqEK Nothing
     (aliceIKPub, aliceEKPub, pqCt) <- recvInitialMessage t
     let !shared = pqxdhRespond bobIK (kpSecret spk) Nothing pqDK
                                aliceIKPub aliceEKPub pqCt
-    initChatSession shared (kpSecret spk) aliceEKPub
+    initChatSessionBob shared (kpSecret spk)
 
 recvBundle :: AnyTransport -> IO PQPreKeyBundle
 recvBundle t = do

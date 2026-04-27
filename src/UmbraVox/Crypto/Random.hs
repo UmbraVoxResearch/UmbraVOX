@@ -12,7 +12,7 @@ module UmbraVox.Crypto.Random
 import Data.Bits ((.&.), (.|.), rotateL, shiftL, shiftR, xor)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
-import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import Control.Concurrent.MVar (MVar, newMVar, modifyMVar)
 import Data.Word (Word8, Word32)
 import System.IO (withBinaryFile, IOMode(..))
 import System.IO.Unsafe (unsafePerformIO)
@@ -180,13 +180,18 @@ reseedInterval = 1048576
 
 -- | Global CSPRNG state, initialised lazily on first call.
 {-# NOINLINE globalCSPRNG #-}
-globalCSPRNG :: IORef (Maybe CSPRNGState)
-globalCSPRNG = unsafePerformIO (newIORef Nothing)
+globalCSPRNG :: MVar (Maybe CSPRNGState)
+globalCSPRNG = unsafePerformIO (newMVar Nothing)
 
 -- | Read entropy from @\/dev\/urandom@, retrying until exactly @n@ bytes
 -- are obtained (handles partial reads from the OS).
 readEntropy :: Int -> IO ByteString
-readEntropy n = withBinaryFile "/dev/urandom" ReadMode (\h -> readLoop h n BS.empty)
+readEntropy n = do
+    result <- withBinaryFile "/dev/urandom" ReadMode (\h -> readLoop h n BS.empty)
+    if BS.length result < n
+        then error $ "readEntropy: short read from /dev/urandom (got "
+                   ++ show (BS.length result) ++ ", expected " ++ show n ++ ")"
+        else return result
   where
     readLoop h remaining acc
         | remaining <= 0 = return acc
@@ -223,9 +228,8 @@ reseedCSPRNG old = do
         , csBuffer = BS.empty, csOutputs = 0, csPID = pid }
 
 -- | Obtain a valid CSPRNG state, seeding or reseeding as needed.
-ensureState :: IO CSPRNGState
-ensureState = do
-    mst <- readIORef globalCSPRNG
+ensureState :: Maybe CSPRNGState -> IO CSPRNGState
+ensureState mst = do
     pid <- fromIntegral <$> getProcessID
     case mst of
         Nothing -> seedCSPRNG
@@ -269,13 +273,12 @@ generateBlocks needed st = go needed [] st
 -- | Generate the specified number of cryptographically secure random bytes.
 --
 -- Backed by a ChaCha20-based CSPRNG seeded from @\/dev\/urandom@.
--- Thread-safe via global 'IORef'. Fork-safe via PID check.
+-- Thread-safe via global 'MVar'. Fork-safe via PID check.
 -- Reseeds every 2^20 outputs for forward secrecy.
 randomBytes :: Int -> IO ByteString
 randomBytes n
     | n <= 0    = return BS.empty
-    | otherwise = do
-        st <- ensureState
+    | otherwise = modifyMVar globalCSPRNG $ \mst -> do
+        st <- ensureState mst
         let !(result, st') = generate n st
-        writeIORef globalCSPRNG (Just st')
-        return result
+        return (Just st', result)

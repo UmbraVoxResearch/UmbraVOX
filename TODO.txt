@@ -1023,3 +1023,111 @@ See also: doc/mvp-plan.md
 [ ] Complete BlockHeader fields (BUG-007)
 [ ] Fix LeaderElection types (BUG-008)
 [ ] Begin codegen implementation (IMPL-003)
+
+================================================================================
+FULL PROJECT AUDIT (2026-04-26) — 11 PARALLEL AGENTS
+================================================================================
+
+--- Fixed during audit ---
+
+[x] AUDIT-001 Keys overlay crash: generateQRCode passed hex chars (not digits)
+    Fix: use generateSafetyNumber output for QR code.
+    File: src/UmbraVox/TUI/Render.hs:377-379
+
+[x] AUDIT-002 Port parsing crash: bare 'read' on user input
+    Fix: replaced with 'reads' + fallback in Input.hs:221,239
+    File: src/UmbraVox/TUI/Input.hs
+
+[x] AUDIT-003 QR encoding crash: bare 'read' on non-digit strings
+    Fix: added safeReadInt with fallback.
+    File: src/UmbraVox/Protocol/QRCode.hs:207,210
+
+[x] AUDIT-004 Floating-point comparison in Penalty tests
+    Fix: use approximate comparison (abs diff < 1e-10)
+
+[x] AUDIT-005 splitOn trailing delim test expectation wrong
+    Fix: match actual behavior (drops trailing empty)
+
+[x] AUDIT-006 Storage stub tests crashed on seq of bottom values
+    Fix: use try/evaluate + catch pattern for stubs
+
+--- Critical (unfixed — see also BUG-016, BUG-017 above) ---
+
+[ ] AUDIT-007 CSPRNG thread safety: globalCSPRNG uses plain IORef
+    Fix: use atomicModifyIORef' or MVar
+    File: src/UmbraVox/Crypto/Random.hs:274-281
+    (Same as BUG-015 but more specific)
+
+[ ] AUDIT-008 X25519 missing all-zero DH output check (RFC 7748 Section 6.1)
+    Fix: check result /= BS.replicate 32 0
+    File: src/UmbraVox/Crypto/Curve25519.hs:106-110
+
+[ ] AUDIT-009 ML-KEM constantEqBS timing leak on different-length inputs
+    Fix: check lengths first
+    File: src/UmbraVox/Crypto/MLKEM.hs:549-555
+
+--- High (unfixed) ---
+
+[ ] AUDIT-010 Ed25519 no cofactor check on public keys
+    File: src/UmbraVox/Crypto/Ed25519.hs:293-314
+
+[ ] AUDIT-011 Export uses HKDF as password KDF (should use Argon2id/PBKDF2)
+    File: src/UmbraVox/Crypto/Export.hs:29-31
+
+[ ] AUDIT-012 StealthAddress scanForPayment uses non-constant-time ==
+    File: src/UmbraVox/Crypto/StealthAddress.hs:180
+
+--- Medium (unfixed) ---
+
+[ ] AUDIT-013 HKDF-Expand uses floating-point for block count
+    Fix: (len + 63) `div` 64
+    File: src/UmbraVox/Crypto/HKDF.hs:64
+
+[ ] AUDIT-014 readEntropy silently returns short on EOF
+    File: src/UmbraVox/Crypto/Random.hs:190-197
+
+[ ] AUDIT-015 Noise handshake no key length validation
+    File: src/UmbraVox/Network/Noise.hs:139,185-186
+
+[ ] AUDIT-016 TCP socket leak on failure (no bracket)
+    File: src/UmbraVox/Network/Transport.hs:33-47
+
+[ ] AUDIT-017 mDNS socket never closed on killThread
+    File: src/UmbraVox/Network/MDNS.hs:108-114
+
+[ ] AUDIT-018 putWord32BE/getWord32BE duplicated 4 times
+    Fix: create shared UmbraVox.Protocol.Encoding module
+    Files: Noise.hs, CBOR.hs, Session.hs, Handshake.hs
+
+[ ] AUDIT-019 splitOn duplicated in Anthony.hs and Input.hs
+    Fix: extract to shared utility
+    Files: Storage/Anthony.hs, TUI/Input.hs
+
+[ ] AUDIT-020 getWord32BE crashes on short ByteStrings (4 locations)
+    Fix: add length guard
+
+[ ] AUDIT-021 Contacts.hs emptyContacts = error instead of ContactList
+    File: src/UmbraVox/Chat/Contacts.hs:15
+
+[ ] AUDIT-022 No input length limit on TUI buffers
+    File: src/UmbraVox/TUI/Input.hs
+
+[ ] AUDIT-023 Loopback transport silently drops excess recv data
+    File: src/UmbraVox/Network/Transport/Loopback.hs:24-26
+
+--- Low (unfixed) ---
+
+[ ] AUDIT-024 Makefile test count stale (says 179/216, actual 733+)
+    File: Makefile:9,59,71,73
+
+[ ] AUDIT-025 Protocol.CBOR misnamed (it's length-prefixed framing, not CBOR)
+    File: src/UmbraVox/Protocol/CBOR.hs
+
+[ ] AUDIT-026 O(n) list indexing via (!!) in TUI render loop
+    File: src/UmbraVox/TUI/Render.hs:132,155,226
+
+--- TUI improvements needed ---
+
+[ ] AUDIT-027 TUI needs comprehensive UI path tests (all key handlers)
+[ ] AUDIT-028 TUI should use UTF-8 box-drawing and modern visual elements
+[ ] AUDIT-029 Port parsing should be unified in shared utility
