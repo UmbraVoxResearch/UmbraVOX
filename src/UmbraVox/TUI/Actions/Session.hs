@@ -5,6 +5,7 @@ module UmbraVox.TUI.Actions.Session
     ) where
 
 import Control.Concurrent (forkIO)
+import Control.Concurrent.MVar (MVar, newMVar, withMVar)
 import Control.Exception (catch, SomeException)
 import Control.Monad (when, unless)
 import qualified Data.ByteString as BS
@@ -29,8 +30,9 @@ addSession :: AppConfig -> AnyTransport -> ChatSession -> String -> IO SessionId
 addSession cfg t session peerName = do
     sid <- readIORef (cfgNextId cfg); writeIORef (cfgNextId cfg) (sid+1)
     ref <- newIORef session; histRef <- newIORef []; stRef <- newIORef Online
-    tid <- forkIO (recvLoopTUI t ref histRef)
-    let si = SessionInfo (Just t) ref (Just tid) peerName histRef stRef
+    lock <- newMVar ()
+    tid <- forkIO (recvLoopTUI t ref lock histRef)
+    let si = SessionInfo (Just t) ref lock (Just tid) peerName histRef stRef
     modifyIORef' (cfgSessions cfg) (Map.insert sid si)
     -- Persist conversation to DB (graceful on failure)
     mDb <- readIORef (cfgAnthonyDB cfg)
@@ -49,7 +51,8 @@ addLoopbackSession cfg label = do
     secret <- randomBytes 32; dhSec <- randomBytes 32; peerPub <- randomBytes 32
     session <- initChatSession secret dhSec peerPub
     ref <- newIORef session; histRef <- newIORef []; stRef <- newIORef Local
-    let si = SessionInfo Nothing ref Nothing label histRef stRef
+    lock <- newMVar ()
+    let si = SessionInfo Nothing ref lock Nothing label histRef stRef
     modifyIORef' (cfgSessions cfg) (Map.insert sid si)
     -- Persist conversation to DB (graceful on failure)
     mDb <- readIORef (cfgAnthonyDB cfg)
@@ -64,19 +67,20 @@ addLoopbackSession cfg label = do
 -- | Send a bytestring to a session (remote or loopback).
 sendToSession :: SessionInfo -> BS.ByteString -> IO ()
 sendToSession si msg = do
-    session <- readIORef (siSession si)
-    (session', wire) <- sendChatMessage session msg
-    writeIORef (siSession si) session'
-    case siTransport si of
-        Just t  -> anySend t (encodeMessage wire)
-        Nothing -> do
-            session2 <- readIORef (siSession si)
-            result <- recvChatMessage session2 wire
-            case result of
-                Just (session3, _pt) -> writeIORef (siSession si) session3
-                Nothing -> pure ()
-            ts <- timestamp
-            modifyIORef' (siHistory si) ((ts++" [saved] "++BC.unpack msg):)
+    withMVar (siSessionLock si) $ \_ -> do
+        session <- readIORef (siSession si)
+        (session', wire) <- sendChatMessage session msg
+        writeIORef (siSession si) session'
+        case siTransport si of
+            Just t  -> anySend t (encodeMessage wire)
+            Nothing -> do
+                session2 <- readIORef (siSession si)
+                result <- recvChatMessage session2 wire
+                case result of
+                    Just (session3, _pt) -> writeIORef (siSession si) session3
+                    Nothing -> pure ()
+                ts <- timestamp
+                modifyIORef' (siHistory si) ((ts++" [saved] "++BC.unpack msg):)
 
 -- | Send the current input buffer as a message.
 sendCurrentMessage :: AppState -> IO ()
@@ -87,7 +91,7 @@ sendCurrentMessage st = do
         sel <- readIORef (asSelected st)
         let entries = Map.toList sessions
         when (sel < length entries) $ do
-            let (_,si) = entries !! sel
+            let (sid, si) = entries !! sel
             if isPfx "/file " buf then do
                 let path = drop 6 buf
                 exists <- doesFileExist path
@@ -111,7 +115,7 @@ sendCurrentMessage st = do
                 case mDb of
                     Just db -> (do
                         t <- round <$> getPOSIXTime
-                        saveMessage db sel "You" buf t
+                        saveMessage db sid "You" buf t
                         ) `catch` (\(_ :: SomeException) -> pure ())
                     Nothing -> pure ()
 
@@ -122,8 +126,8 @@ addSecureNotes st = do
     selectLastLocal st; setStatusLocal st ("Secure Notes #" ++ show sid)
 
 -- | Background receive loop for a remote transport.
-recvLoopTUI :: AnyTransport -> IORef ChatSession -> IORef [String] -> IO ()
-recvLoopTUI t ref histRef = go `catch` handler where
+recvLoopTUI :: AnyTransport -> IORef ChatSession -> MVar () -> IORef [String] -> IO ()
+recvLoopTUI t ref lock histRef = go `catch` handler where
     go = do
         lenBs <- anyRecv t 4
         if BS.length lenBs < 4
@@ -131,12 +135,17 @@ recvLoopTUI t ref histRef = go `catch` handler where
             else do
                 let !len = fromIntegral (getW32BE lenBs)
                 payload <- anyRecv t len
-                session <- readIORef ref
-                result <- recvChatMessage session payload
+                result <- withMVar lock $ \_ -> do
+                    session <- readIORef ref
+                    result <- recvChatMessage session payload
+                    case result of
+                        Nothing -> pure Nothing
+                        Just (session', plaintext) -> do
+                            writeIORef ref session'
+                            pure (Just plaintext)
                 case result of
                     Nothing -> modifyIORef' histRef ("  [Decryption failed]":) >> go
-                    Just (session', plaintext) -> do
-                        writeIORef ref session'
+                    Just plaintext -> do
                         now <- timestamp
                         modifyIORef' histRef (("["++now++"] Peer: "++BC.unpack plaintext):)
                         go

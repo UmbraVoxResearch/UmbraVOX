@@ -8,7 +8,7 @@ import qualified Data.Map.Strict as Map
 import Test.Util (assertEq)
 import Test.TUI.Sim.Util
 import UmbraVox.TUI.Types
-import UmbraVox.TUI.Input (handleNewConnDlg)
+import UmbraVox.TUI.Input (handleChat, handleNewConnDlg)
 
 runTests :: IO Bool
 runTests = do
@@ -107,8 +107,19 @@ testSaveMessageNoDbNoError = do
     _ <- addTestSession (asConfig st) "peer"
     writeIORef (asInputBuf st) "test message"
     writeIORef (asFocus st) ChatPane
-    -- sendCurrentMessage reads autoSave and mDb — both should be safe with Nothing
-    assertEq "message send with no DB safe" True True
+    result <- try (handleChat st KeyEnter) :: IO (Either SomeException ())
+    case result of
+        Left _ -> assertEq "message send with no DB safe" True False
+        Right _ -> do
+            buf <- readIORef (asInputBuf st)
+            sessions <- readIORef (cfgSessions (asConfig st))
+            case Map.elems sessions of
+                (si:_) -> do
+                    hist <- readIORef (siHistory si)
+                    ok1 <- assertEq "message send clears input" "" buf
+                    ok2 <- assertEq "message send appends history" True (length hist >= 1)
+                    pure (ok1 && ok2)
+                [] -> assertEq "message send has session" True False
 
 ------------------------------------------------------------------------
 -- Contact list state

@@ -1,7 +1,7 @@
 module Main (main) where
 
 import Control.Concurrent (forkIO, threadDelay)
-import Control.Concurrent.MVar (readMVar)
+import Control.Concurrent.MVar (newMVar, readMVar)
 import Control.Exception (SomeException, catch)
 import Control.Monad (when, forever, forM_, void)
 import qualified Data.ByteString as BS
@@ -26,6 +26,7 @@ import UmbraVox.Protocol.Encoding (defaultPorts)
 import UmbraVox.Storage.Anthony (openDB, loadConversations, loadMessages)
 import UmbraVox.Chat.Session (initChatSession)
 import UmbraVox.Crypto.Random (randomBytes)
+import UmbraVox.TUI.Handshake (genIdentity)
 
 -- SIGWINCH = 28 on Linux/macOS (not exported by all versions of System.Posix.Signals)
 sigWINCH :: CInt
@@ -71,6 +72,9 @@ main = do
                        <*> pure termRef
                        <*> newIORef Nothing  -- asMenuOpen
                        <*> newIORef 0        -- asMenuIndex
+    -- Generate a stable local identity before network services advertise us.
+    identity <- genIdentity
+    writeIORef (cfgIdentity cfg) (Just identity)
     -- Wire mDNS discovery if enabled (graceful if multicast unavailable)
     mdnsOn <- readIORef (cfgMDNSEnabled cfg)
     when mdnsOn $ (do
@@ -112,11 +116,13 @@ main = do
                 dhPub   <- randomBytes 32
                 session <- initChatSession chatSec dhSec dhPub
                 sessRef <- newIORef session
+                lockRef <- newMVar ()
                 histRef <- newIORef []
                 statRef <- newIORef Offline
                 let si = SessionInfo
                         { siTransport = Nothing
                         , siSession   = sessRef
+                        , siSessionLock = lockRef
                         , siRecvTid   = Nothing
                         , siPeerName  = name
                         , siHistory   = histRef

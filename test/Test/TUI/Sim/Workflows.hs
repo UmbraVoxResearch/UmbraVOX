@@ -28,11 +28,13 @@ testWorkflowCreateSecureNotes :: IO Bool
 testWorkflowCreateSecureNotes = do
     st <- mkTestState
     handleNormal st KeyF2         -- open Contacts menu
-    handleMenu st KeyDown         -- highlight "New" (index 0 → stays 0, already there)
     handleMenu st KeyEnter        -- activate → opens DlgNewConn
+    dlg <- readIORef (asDialogMode st)
+    ok1 <- assertEq "workflow: new connection dialog opened" True (isDlgNewConn dlg)
     handleNewConnDlg st (KeyChar '1')  -- create secure notes
     sessions <- readIORef (cfgSessions (asConfig st))
-    assertEq "workflow: secure notes created" True (Map.size sessions > 0)
+    ok2 <- assertEq "workflow: secure notes created" True (Map.size sessions > 0)
+    pure (ok1 && ok2)
 
 -- | Tab to chat → type → F3 → Down → Enter (Clear) → empty
 testWorkflowTypeAndClear :: IO Bool

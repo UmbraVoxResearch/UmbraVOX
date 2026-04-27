@@ -6,6 +6,7 @@
 module Test.Harness
     ( TestClient(..)
     , createClientPair
+    , createNamedClientPair
     , handshakeClients
     , clientSend
     , clientRecv
@@ -15,7 +16,7 @@ module Test.Harness
     ) where
 
 import Control.Concurrent (forkIO, threadDelay)
-import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
+import Control.Concurrent.MVar (MVar, newEmptyMVar, newMVar, putMVar, takeMVar, withMVar)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
@@ -33,6 +34,7 @@ import UmbraVox.TUI.Handshake (handshakeInitiator, handshakeResponder, genIdenti
 data TestClient = TestClient
     { tcIdentity  :: !IdentityKey                -- ^ PQXDH identity key
     , tcSession   :: !(IORef (Maybe ChatSession)) -- ^ Current ratchet session
+    , tcSessionLock :: !(MVar ())                -- ^ Serializes ratchet updates
     , tcHistory   :: !(IORef [ByteString])        -- ^ Received plaintext history
     , tcTransport :: !AnyTransport                -- ^ Wrapped transport handle
     , tcName      :: !String                      -- ^ Logical name (e.g. "alice")
@@ -41,7 +43,19 @@ data TestClient = TestClient
 -- | Create a connected pair of test clients over a loopback transport
 -- with interception logging.
 createClientPair :: IORef [TrafficEntry] -> IO (TestClient, TestClient)
-createClientPair logRef = do
+createClientPair logRef =
+    createNamedClientPair logRef "alice" Nothing "bob" Nothing
+
+-- | Create a connected pair of test clients with explicit endpoint names.
+-- Identities may be supplied to model one logical client across multiple peers.
+createNamedClientPair
+    :: IORef [TrafficEntry]
+    -> String
+    -> Maybe IdentityKey
+    -> String
+    -> Maybe IdentityKey
+    -> IO (TestClient, TestClient)
+createNamedClientPair logRef leftName leftIdentity rightName rightIdentity = do
     -- Create loopback pair
     (loopA, loopB) <- newLoopbackPair "e2e"
 
@@ -49,34 +63,38 @@ createClientPair logRef = do
     counterRef <- newIORef (0 :: Int)
 
     -- Wrap both sides with interception
-    interceptA <- wrapWithIntercept logRef counterRef "alice" "bob"
+    interceptA <- wrapWithIntercept logRef counterRef leftName rightName
                       (AnyTransport loopA)
-    interceptB <- wrapWithIntercept logRef counterRef "bob" "alice"
+    interceptB <- wrapWithIntercept logRef counterRef rightName leftName
                       (AnyTransport loopB)
 
     -- Generate identity keys
-    aliceId <- genIdentity
-    bobId   <- genIdentity
+    leftId  <- maybe genIdentity pure leftIdentity
+    rightId <- maybe genIdentity pure rightIdentity
 
     -- Create session and history refs
     aliceSess <- newIORef Nothing
     bobSess   <- newIORef Nothing
+    aliceLock <- newMVar ()
+    bobLock   <- newMVar ()
     aliceHist <- newIORef []
     bobHist   <- newIORef []
 
     let alice = TestClient
-            { tcIdentity  = aliceId
+            { tcIdentity  = leftId
             , tcSession   = aliceSess
+            , tcSessionLock = aliceLock
             , tcHistory   = aliceHist
             , tcTransport = AnyTransport interceptA
-            , tcName      = "alice"
+            , tcName      = leftName
             }
         bob = TestClient
-            { tcIdentity  = bobId
+            { tcIdentity  = rightId
             , tcSession   = bobSess
+            , tcSessionLock = bobLock
             , tcHistory   = bobHist
             , tcTransport = AnyTransport interceptB
-            , tcName      = "bob"
+            , tcName      = rightName
             }
 
     pure (alice, bob)
@@ -86,13 +104,15 @@ createClientPair logRef = do
 handshakeClients :: TestClient -> TestClient -> IO ()
 handshakeClients alice bob = do
     -- Bob runs the responder in a separate thread
+    readyVar <- newEmptyMVar :: IO (MVar ())
     resultVar <- newEmptyMVar :: IO (MVar ChatSession)
     _ <- forkIO $ do
+        putMVar readyVar ()
         sess <- handshakeResponder (tcTransport bob) (tcIdentity bob)
         putMVar resultVar sess
 
-    -- Small delay to ensure Bob's thread is ready to send
-    threadDelay 10000  -- 10ms
+    -- Wait until the responder thread has started before initiating.
+    takeMVar readyVar
 
     -- Alice runs the initiator on the main thread
     aliceSess <- handshakeInitiator (tcTransport alice) (tcIdentity alice)
@@ -106,37 +126,37 @@ handshakeClients alice bob = do
 -- Encrypts via the Double Ratchet, then length-prefixes and sends.
 clientSend :: TestClient -> ByteString -> IO ()
 clientSend client msg = do
-    mSess <- readIORef (tcSession client)
-    case mSess of
-        Nothing   -> fail $ tcName client ++ ": no active session"
-        Just sess -> do
-            (sess', wireBytes) <- sendChatMessage sess msg
-            writeIORef (tcSession client) (Just sess')
-            -- Length-prefix the wire bytes and send
-            let lenPrefix = putWord32BE (fromIntegral (BS.length wireBytes))
-            anySend (tcTransport client) (lenPrefix <> wireBytes)
+    withMVar (tcSessionLock client) $ \_ -> do
+        mSess <- readIORef (tcSession client)
+        case mSess of
+            Nothing   -> fail $ tcName client ++ ": no active session"
+            Just sess -> do
+                (sess', wireBytes) <- sendChatMessage sess msg
+                writeIORef (tcSession client) (Just sess')
+                -- Length-prefix the wire bytes and send
+                let lenPrefix = putWord32BE (fromIntegral (BS.length wireBytes))
+                anySend (tcTransport client) (lenPrefix <> wireBytes)
 
 -- | Receive and decrypt a message for a client.
 -- Reads the length prefix, then the payload, decrypts, appends to history.
 clientRecv :: TestClient -> IO (Maybe ByteString)
 clientRecv client = do
-    mSess <- readIORef (tcSession client)
-    case mSess of
-        Nothing   -> fail $ tcName client ++ ": no active session"
-        Just sess -> do
-            -- Read 4-byte length prefix
-            lenBs <- anyRecv (tcTransport client) 4
-            let len = fromIntegral (getWord32BE lenBs) :: Int
-            -- Read the encrypted payload
-            wireBytes <- anyRecv (tcTransport client) len
-            -- Decrypt
-            result <- recvChatMessage sess wireBytes
-            case result of
-                Nothing -> pure Nothing
-                Just (sess', plaintext) -> do
-                    writeIORef (tcSession client) (Just sess')
-                    modifyIORef' (tcHistory client) (plaintext :)
-                    pure (Just plaintext)
+    -- Read transport bytes outside the lock so receiving does not block local sends.
+    lenBs <- anyRecv (tcTransport client) 4
+    let len = fromIntegral (getWord32BE lenBs) :: Int
+    wireBytes <- anyRecv (tcTransport client) len
+    withMVar (tcSessionLock client) $ \_ -> do
+        mSess <- readIORef (tcSession client)
+        case mSess of
+            Nothing   -> fail $ tcName client ++ ": no active session"
+            Just sess -> do
+                result <- recvChatMessage sess wireBytes
+                case result of
+                    Nothing -> pure Nothing
+                    Just (sess', plaintext) -> do
+                        writeIORef (tcSession client) (Just sess')
+                        modifyIORef' (tcHistory client) (plaintext :)
+                        pure (Just plaintext)
 
 -- | Wait up to @timeout@ milliseconds for @expectedCount@ messages in history.
 -- Polls every 10ms. Returns 'True' if the expected count is reached.
