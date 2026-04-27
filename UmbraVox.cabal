@@ -239,6 +239,7 @@ test-suite umbravox-test
     Test.Util
     Test.Harness
     Test.EndToEnd
+    Test.EndToEnd2
     Test.Crypto.SHA256
     Test.Crypto.SHA512
     Test.Crypto.HMAC
@@ -260,6 +261,7 @@ test-suite umbravox-test
     Test.Network.Transport
     Test.Network.TransportClass
     Test.Network.Transport.Loopback
+    Test.Network.TransportEdge
     Test.Protocol.CBOR
     Test.Crypto.BIP39
     Test.Crypto.Export
@@ -294,6 +296,7 @@ test-suite umbravox-test
     Test.TUI.Render
     Test.TUI.Input
     Test.TUI.Handshake
+    Test.TUI.HandshakeEdge
     Test.TUI.Actions
     Test.TUI.Paths
     Test.TUI.Sim.Util
@@ -303,6 +306,7 @@ test-suite umbravox-test
     Test.TUI.Sim.Shortcuts
     Test.TUI.Sim.Menu
     Test.TUI.Sim.Dialogs
+    Test.TUI.Sim.SettingsEdge
     Test.TUI.Sim.Workflows
     Test.TUI.Sim.Runtime
     Test.Tools.Complexity
