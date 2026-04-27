@@ -1,30 +1,58 @@
 # UmbraVox: System Overview
 
-UmbraVox is a blockchain-based secure communications system. Existing chat platforms rely on centralized servers that can be compelled to hand over metadata, shut down, or compromised. UmbraVox eliminates central points of failure by using a blockchain as the message transport layer, combining multiple cryptographic protocols for defense-in-depth, and using token economics to prevent spam while incentivizing network participation. The 11-day chain truncation enforces ephemeral messaging at the protocol level -- messages are destroyed by design, not policy.
+UmbraVox is a peer-to-peer encrypted messaging system. Each participant runs a full node that communicates directly over TCP with Noise_IK transport encryption. Messages are protected by the Signal Double Ratchet protocol with a post-quantum outer wrapper using ML-KEM-768. Peers discover each other via mDNS on local networks and peer exchange on first connection.
 
-## Core Principles
+The long-term design envisions a blockchain-based message transport layer with Ouroboros Praos consensus, Dandelion++ IP obfuscation, and 11-day chain truncation for protocol-level ephemeral messaging. These components are specified in the design documents but not yet implemented in code. The current MVP focuses on direct peer-to-peer encrypted chat.
 
-- **No central servers**: Every participant runs a full node
-- **Defense in depth**: Signal Protocol + post-quantum wrapper + Dandelion++ IP obfuscation
-- **Ephemeral by design**: Chain truncates every 11 days, destroying message records at the protocol level
-- **Economic spam prevention**: Token costs per message, rewards for honest participation, adaptive parameters self-tune to network growth
-- **Cyclical renewal**: Each 11-day cycle is a self-contained economic universe — full supply restores at cycle boundary, with adaptive parameters ensuring sustainability as the network grows
-- **Deniability**: OTR properties preserved -- no asymmetric signatures on message content
-- **No external libraries**: Pure Haskell reference implementations for verification + FFI to constant-time C for production, both produced by TQL-1 qualified code generators. No third-party library dependencies
+## Current Implementation
 
-## Software Assurance (DO-178C DAL A)
+The following subsystems are functional:
 
-All core features of UmbraVox are designated DAL A (Design Assurance Level A), the highest assurance level defined by DO-178C. This designation reflects the system's role as critical communications infrastructure where failure could result in loss of confidentiality, integrity, or availability of private messages.
+- **Cryptographic primitives**: SHA-256, SHA-512, HMAC, HKDF, AES-256, AES-GCM, X25519, Ed25519, Keccak/SHA-3, ML-KEM-768, Poly1305, ChaCha20, VRF. All hand-implemented in pure Haskell using only GHC boot libraries.
+- **Signal protocol**: X3DH key agreement, PQXDH (post-quantum extended X3DH with ML-KEM-768), Double Ratchet, Sender Keys, Session management.
+- **Post-quantum wrapper**: AES-256-GCM encryption with ML-KEM-768-derived keys applied over Signal ciphertext.
+- **Transport security**: Noise_IK handshake (X25519 + ChaChaPoly1305) for authenticated encrypted TCP connections.
+- **Peer discovery**: mDNS/DNS-SD for LAN auto-discovery, peer exchange protocol for transitive peer sharing.
+- **Persistence**: Anthony DB for storing peers, settings, conversations, and message history across restarts.
+- **Identity management**: BIP39-based encrypted identity export/import, stealth addresses (DKSAP), QR code safety numbers.
+- **Terminal UI**: Split-pane interface with F1-F5 menu bar (File, Contacts, Chat, Prefs, Help), dialog system, SIGWINCH resize handling.
+- **Codegen pipeline**: 10 `.spec` files drive generation of pure Haskell modules, constant-time C source, and FFI bindings.
+- **Formal verification**: 17 F* specifications covering all cryptographic primitives and key protocols, all verified.
 
-DAL A designation requires:
+The following subsystems exist as stubs or type definitions only:
 
-- **100% MC/DC structural coverage**: Every condition in every decision must be shown to independently affect the decision outcome. All source code paths must be exercised by requirements-based tests.
-- **Full bidirectional requirements traceability**: Every high-level requirement traces to low-level requirements, source code, and test cases. Every line of code traces back to a requirement. No dead code, no untraceable functionality.
-- **Formal methods (DO-333 supplement)**: Consensus logic and cryptographic composition proofs require formal verification per the DO-333 Formal Methods supplement. This includes model checking of protocol state machines and mathematical proof of crypto primitive correctness.
-- **Independent verification**: All verification activities require external audit by an independent party with no involvement in the development process.
-- **TQL-1 qualified code generators**: Any tool whose output is not verified by downstream testing must itself be qualified to Tool Qualification Level 1 (TQL-1), the most rigorous tool qualification level.
+- **Consensus**: Types, Block, Ledger, Protocol, LeaderElection, Validation, ForkChoice, Nonce, Truncation, Mempool. Type signatures and data structures are defined but implementations are placeholders.
+- **Economics**: Token, Fees, Rewards, Penalty, Cycle, Onboarding. Stub implementations only.
+- **Advanced networking**: Gossip, Dandelion++, chain sync, Kademlia DHT. Not yet implemented.
+- **Additional transports**: UDP, Signal server relay, XMPP, Discord, Matrix, Blockchain. Stub backends in the transport abstraction.
 
-## Architecture at a Glance
+## Encryption Pipeline (per message)
+
+```
+Plaintext
+  |-> Signal Double Ratchet encrypt (AES-256-GCM + HMAC-SHA256)
+  |-> PQ Outer Wrapper encrypt (ML-KEM-768 derived key -> AES-256-GCM)
+  |-> Noise_IK transport encryption (X25519 + ChaChaPoly1305)
+  |-> TCP transmission
+```
+
+## Architecture at a Glance (current)
+
+```
+Terminal UI (split-pane, F1-F5 menus, dialogs)
+    |
+Chat Session (encrypt/decrypt, contact management)
+    |
+Signal Protocol (PQXDH key agreement, Double Ratchet)
+    |
+PQ Wrapper (ML-KEM-768 outer encryption layer)
+    |
+Transport Layer (Noise_IK over TCP, mDNS discovery)
+    |
+Persistence (Anthony DB: peers, conversations, messages)
+```
+
+## Architecture at a Glance (design target)
 
 ```
 Chat API (JSON-RPC over WebSocket)
@@ -40,76 +68,67 @@ Chain Storage (append-only blocks, state DB, indexes)
 Network Layer (TCP transport, Noise encryption, gossip, Dandelion++)
 ```
 
-## Known Limitations (v1)
+## Core Design Principles
 
-- **Offline message loss**: 11-day message ephemerality means users who are offline for a full cycle will lose messages. There is no off-chain store-and-forward mechanism in v1.
-- **Archival node threat**: Nodes that retain pre-truncation chain data are not fully mitigated until truncation enforcement is hardened in later phases.
-- **Steady-state storage**: ~80 GB steady-state disk requirement (40x original spec) is commodity SSD territory but may challenge resource-constrained devices
-- **Compression deferred**: Wire-level DEFLATE compression of block and transaction payloads is deferred to v2. All data is transmitted uncompressed.
+- **No central servers**: Every participant runs a full node
+- **Defense in depth**: Signal Protocol + post-quantum wrapper + Noise_IK transport
+- **Deniability**: No asymmetric signatures on message content
+- **No external crypto libraries**: Pure Haskell reference implementations using only GHC boot libraries, with FFI to constant-time C planned for production
+- **Formal verification**: F* specifications for all cryptographic primitives
 
-## Code Generation Strategy
+## Test Coverage
 
-Critical subsystems use generated code rather than hand-written implementations to reduce human error and enable formal-methods-backed correctness guarantees. All generators are qualified to TQL-1 per DO-178C.
+The project includes 1,082 tests across 70+ test modules covering:
 
-- **Crypto primitives**: Generated from FIPS/RFC specifications via a TQL-1 qualified Haskell meta-program. The generator ingests formal algorithm definitions (FIPS 197 for AES, RFC 7748 for X25519, FIPS 203 for ML-KEM, etc.) and emits constant-time Haskell implementations with no branching on secret data.
-- **Protocol state machines**: Generated from typed finite state machine (FSM) definitions. Each protocol (Signal handshake, consensus rounds, Dandelion++ routing) is specified as a typed FSM, and the generator produces exhaustive state transition code with compile-time guarantees that no invalid transitions exist.
-- **CBOR serialization**: Generated from declarative schemas. Message formats, block structures, and wire protocols are defined in a schema language, and the generator emits serialization/deserialization code with round-trip correctness proofs.
-- **Consensus logic**: Generated from formal models written in TLA+ and Alloy. The generator translates verified specifications into executable code, preserving the safety and liveness properties proven in the formal models.
-- **Embedded test harnesses**: All generated code includes embedded test harnesses that exercise every code path. These harnesses provide the MC/DC coverage evidence required by DAL A and are themselves traceable to requirements.
+- NIST/RFC known-answer test vectors for all cryptographic primitives
+- Signal protocol round-trip and session management tests
+- Network transport and Noise handshake tests
+- TUI simulation tests (menu navigation, dialog workflows, keyboard input)
+- Storage round-trip tests
+- Integration and end-to-end encrypted messaging tests
+- Fuzz and security tests (malformed input handling)
+- Consensus and economics type/stub tests
 
-## Encryption Pipeline (per message)
+## F* Formal Specifications (17 total, all verified)
 
-```
-Plaintext
-  |-> Signal Double Ratchet encrypt (AES-256-GCM + HMAC-SHA256)
-  |-> PQ Outer Wrapper encrypt (ML-KEM-768 derived key -> AES-256-GCM)
-  |-> Serialize into message blocks (CBOR encoding, up to 4,444 per block)
-  |-> Blockchain transaction (Ed25519 signed)
-  |-> Dandelion++ stem/fluff broadcast
-```
+| Specification | Standard |
+|---------------|----------|
+| Spec.SHA256.fst | FIPS 180-4 |
+| Spec.SHA512.fst | FIPS 180-4 |
+| Spec.HMAC.fst | RFC 2104/4231 |
+| Spec.HKDF.fst | RFC 5869 |
+| Spec.AES256.fst | FIPS 197 |
+| Spec.GaloisField.fst | SP 800-38D |
+| Spec.GCM.fst | SP 800-38D |
+| Spec.ChaCha20.fst | RFC 8439 |
+| Spec.X25519.fst | RFC 7748 |
+| Spec.Ed25519.fst | RFC 8032 |
+| Spec.Keccak.fst | FIPS 202 |
+| Spec.MLKEM768.fst | FIPS 203 |
+| Spec.Poly1305.fst | RFC 8439 |
+| Spec.DoubleRatchet.fst | Signal Protocol |
+| Spec.X3DH.fst | Signal Protocol |
+| Spec.PQXDH.fst | Signal Protocol + FIPS 203 |
+| Spec.NoiseIK.fst | Noise Protocol Framework |
 
-## Key Parameters
+## Known Limitations (current)
 
-| Parameter | Value |
-|-----------|-------|
-| Slot duration | 11 seconds |
-| Epochs per cycle | 22 (12-hour epochs) |
-| Cycle length | 11 days |
-| Message base size | 1,024 bytes per message; 4,444 messages per block |
-| Message base cost | Dynamic (10 to 10,000 MTK, EMA-adjusted) |
-| Total token supply | 11,000,000,000 MTK |
-| Settlement depth | k=11 (messages, ~10 min) / k=22 (value, ~20 min) |
-| Send-to-display latency | ~370-530ms |
-| Fee split | Adaptive burn (20-80%, initial 65%) / proportional producer-treasury-rebate (20:10:5 ratio) |
-| Economic model | Universe Cycle (full supply restoration each cycle) |
-| Early truncation threshold | 15% of supply (adaptive, range 5-25%) |
-| Node hardware minimum | 4 cores, 4 GB RAM, 100 GB SSD, 5 Mbps symmetric (400 KB/s minimum) |
-| Assurance level | DO-178C DAL A (all core features) |
-| Compact block relay | Enabled (mandatory at 4,444 msgs/block) |
-| Global throughput | ~80.8 msg/sec (~6.98M/day) |
-| Full block size | ~4.55 MB (4,550,656 bytes) |
-| Compact block size | ~50-130 KB (95%+ mempool hit rate) |
-| Timeline | 62-67 weeks |
+- **Not constant-time**: Pure Haskell implementations are not constant-time due to GHC lazy evaluation and garbage collection. C FFI backends are planned.
+- **No key zeroing**: Secret keys are held in ordinary heap ByteStrings with no explicit zeroing on deallocation.
+- **CSPRNG thread safety**: The global CSPRNG uses a plain IORef, which is not safe under concurrent access.
+- **No independent audit**: Cryptographic implementations have not been reviewed by an independent third party.
 
 ## Documentation Index
 
 - [Language and Project Structure](02-language-and-structure.md)
 - [Cryptographic Architecture](03-cryptography.md)
-- [Consensus Mechanism](04-consensus.md)
-- [Chain Truncation](05-truncation.md)
-- [Token Economics](06-economics.md)
+- [Consensus Mechanism](04-consensus.md) *(design only)*
+- [Chain Truncation](05-truncation.md) *(design only)*
+- [Token Economics](06-economics.md) *(design only)*
 - [Message Format](07-message-format.md)
-- [Dandelion++ IP Obfuscation](08-dandelion.md)
+- [Dandelion++ IP Obfuscation](08-dandelion.md) *(design only)*
 - [P2P Network Layer](09-network.md)
 - [Security Model](10-security.md)
 - [Node Architecture](11-node-architecture.md)
 - [Development Phases](12-development-phases.md)
-- [DO-178C Assurance Plan](13-do178c-assurance.md)
-- [Code Generation Strategy](14-code-generation.md)
-- [Economic Model v3 (Universe Cycle)](15-economic-model-v3.md)
-- [Verification Plan](16-verification-plan.md)
-- [Related Work and Comparative Analysis](17-related-work.md)
-- [Performance Analysis](18-performance-analysis.md)
-- [Game-Theoretic Analysis](19-game-theory.md)
-- [Economic Analysis](20-economic-analysis.md)
-- [Requirements Traceability Matrix](requirements-trace.md)
+- [Module Map](ARCHITECTURE.md)

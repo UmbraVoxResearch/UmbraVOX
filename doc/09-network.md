@@ -1,201 +1,172 @@
-# P2P Network Layer
+# Network Layer
 
-## Topology
+## Implementation Status
 
-- **Kademlia DHT** for peer discovery (node_id = SHA-256(pubkey))
-  - k-bucket size = 20
-  - Alpha (parallelism) = 3
-  - Refresh interval = 1 hour
-  - ID space: SHA-256(Ed25519_pubkey)
-  - Record TTL: 24 hours
-  - Republish interval: 1 hour
-- **Unstructured gossip mesh** for data propagation
-- Target: 25 peers (min 8, max 50, min 8 outbound)
+The network layer currently implements TCP transport, loopback transport for testing, intercept middleware for traffic capture, Noise_IK encrypted handshake, mDNS peer discovery, and peer exchange (PEX). Higher-level protocols (gossip, Dandelion++, chain sync, peer scoring) exist as stub modules that raise "not implemented" errors.
 
 ## Transport
 
-- TCP with hand-implemented Noise_IK handshake (X25519 + ChaChaPoly)
-  - Prologue = `"UmbraVox_v1"`
-  - DH function: X25519
-  - Cipher: ChaChaPoly
-  - Hash: SHA-256
-  - Per-session keys derived from Noise handshake output via HKDF
-- **Version negotiation**: During the `HANDSHAKE` message (sent immediately after Noise_IK completes), each node announces its software version as a `(major, minor, patch)` tuple and the chain revision number it is currently operating on. A node MUST reject and disconnect any peer whose software version is more than 3 minor releases behind the current release. Chain revision compatibility is enforced separately at the consensus layer (see doc/04-consensus.md) — nodes reject blocks from chain revisions more than 3 behind current. Software versions and chain revisions are independent: a software release may support multiple chain revisions, and a chain revision bump does not require a software update if the node already supports it.
-- Multiplexed logical streams: control, blocks, transactions, consensus, Dandelion++ stem
+### Transport Abstraction
 
-## Peer Discovery
+All transports implement the `TransportHandle` typeclass (`Network.TransportClass`):
 
-1. **Bootstrap nodes**: Hardcoded seed nodes for initial DHT entry
-   - **DNS seed discovery**: Resolve TXT record at `_UmbraVox._tcp.seeds.UmbraVox.network` for dynamic seed list
-   - **Bootstrap fallback**: If all hardcoded seed nodes are unreachable after 60 seconds, the node enters **manual bootstrap mode**. The user can provide a peer address via CLI (`--bootstrap-peer <addr>`) or API (`POST /admin/bootstrap`).
-2. **Peer exchange (PEX)**: Periodic peer list exchange
-   - Max 1 PEX request per peer per 120 seconds
-   - Responses capped at 50 addresses
-   - Addresses include timestamp; ignore if older than 3 hours
-   - Violations (exceeding rate limit): -10 peer score
-3. **Outbound-only connections**: Nodes connect outbound to discovered peers. No NAT traversal is performed. Validators with public IPs are recommended for better network health but not required. All nodes participate in gossip via outbound connections.
-
-## Block Relay
-
-V1 uses **compact block relay** (mandatory at 4,444 messages per block). Compact block relay (inspired by Bitcoin's BIP 152) reduces block propagation time by exploiting mempool overlap.
-
-### How Compact Block Relay Works
-
-**Block producer** sends a compact block (~50-130 KB) containing:
-- Block header (~200 bytes)
-- Short transaction IDs (SipHash-2-4, 6 bytes each × 4,444 = ~26.7 KB)
-- Prefilled transactions (only new txns not yet in mempool, typically 0-5%)
-
-**Receiving peer**:
-1. Matches short IDs against local mempool (~1ms)
-2. Reconstructs full block from mempool transactions
-3. If missing any transactions, requests them individually (`GET_DATA`)
-4. Validates reconstructed block
-
-### Performance
-
-| Metric | Without CBR | With CBR | Improvement |
-|--------|------------|----------|-------------|
-| Data per relay hop | ~4.55 MB (4,550,656 bytes) | ~50-130 KB (95%+ mempool hit) | 34-89x smaller |
-| Propagation time per hop | ~11.1s at 400 KB/s | ~0.13-0.33s | 34-89x faster |
-| Network-wide (3 hops) | ~33.3s (fails!) | ~0.4-1.0s | Fits within slot |
-
-**Critical**: Without CBR, 4,444-message blocks cannot propagate within the 11-second slot. CBR is mandatory.
-
-### Operational Modes
-
-- **High bandwidth mode** (default for validators): Send compact block immediately upon receipt. Minimizes propagation latency.
-- **Low bandwidth mode** (optional for light nodes): Send `INV` first; peer requests compact block only if interested. Reduces unsolicited bandwidth.
-
-### Full Block Fallback
-
-New or syncing nodes download full ~4.55 MB blocks. At ~400 KB/s minimum bandwidth, this takes ~11.1 seconds — acceptable for initial sync but not for relay-critical paths.
-
-## Eclipse Attack Prevention
-
-- Min 8 outbound connections (node-initiated)
-- Max 2 connections per /16 subnet
-- Bucketed address tables (new + tried)
-- Anchor connections persisted across restarts
-- Node ID bound to public key (prevents cheap Sybil ID generation)
-
-## Peer Scoring
-
-| Event | Score Change |
-|-------|-------------|
-| Valid block relayed first | +10 |
-| Valid tx relayed first | +5 |
-| Successful block relay (first seen) | +2 |
-| Per hour of sustained connection | +1 |
-| Invalid block or transaction | -50 |
-| Protocol violation | -20 |
-| Request timeout | -10 |
-| PEX rate limit violation | -10 |
-| Version too old (>3 behind) | immediate disconnect |
-| 3+ invalid blocks in 1 hour | -100 (immediate ban) |
-
-**Thresholds**: Below 0 = disconnect + 1h ban. Below -200 = 24h ban. Above 200 = preferred peer, exempt from eviction.
-
-## Wire Protocol Messages
-
-```
-Control:     HANDSHAKE, PING/PONG, PEX_REQUEST/RESPONSE, DISCONNECT
-Inventory:   INV, GET_DATA, NOT_FOUND
-Blocks:      BLOCK_ANNOUNCE, FULL_BLOCK, COMPACT_BLOCK, GET_BLOCK_TXNS, BLOCK_TXNS, GET_HEADERS, HEADERS
-Transactions: TX, TX_ANNOUNCE
-Consensus:   STAKE_ANNOUNCE, VOTE, EPOCH_BOUNDARY
-Dandelion:   DANDELION_TX (stem phase)
-Truncation:  TRUNCATION_CHECKPOINT, GET_CHECKPOINT, CHECKPOINT_RESPONSE
+```haskell
+class TransportHandle t where
+    thSend  :: t -> ByteString -> IO ()
+    thRecv  :: t -> Int -> IO ByteString
+    thClose :: t -> IO ()
+    thInfo  :: t -> String
 ```
 
-**Message size limits**:
+An existential wrapper `AnyTransport` enables polymorphic transport usage across the codebase.
 
-- Max message size per stream: 6 MiB
-- `INV` message: array of `(type: uint8, hash: 32 bytes)`, max 500 entries
-- `GET_DATA`: same format as `INV`
+### TCP Transport (`Network.Transport`)
 
-## Chain Sync Protocol
+Implemented and functional:
 
-- `GET_HEADERS(from_hash, count)` → `HEADERS([BlockHeader])`
-- Node requests headers from last known hash, validates VRF proofs and signatures, then requests missing blocks via `GET_DATA`
-- Parallel download: up to 16 concurrent block requests
+- **`listen :: Int -> IO TCPTransport`** -- Bind to a port, accept one connection. Uses `AI_PASSIVE`, `ReuseAddr`, IPv4.
+- **`connect :: String -> Int -> IO TCPTransport`** -- Establish outbound TCP connection.
+- **`connectTryPorts :: String -> [Int] -> IO TCPTransport`** -- Try a sequence of ports, return the first successful connection.
+- **`send`** -- Uses `sendAll` for complete delivery.
+- **`recv`** -- Reads exactly N bytes, handling partial reads from the OS.
+- **`close`** -- Graceful close with 5-second linger.
 
-## Bandwidth Estimates
+### Loopback Transport (`Network.Transport.Loopback`)
 
-UmbraVox bandwidth estimates with compact block relay enabled:
+In-process transport for testing and secure local notes:
 
-| Traffic type | Calculation | Rate |
-|---|---|---|
-| Block relay (compact) | ~1 block/55s × ~90 KB avg × relay factor ~3 | ~5 KB/s |
-| Transaction relay | ~80.8 tx/s × 1 KB × relay factor ~3 | ~242 KB/s |
-| Block headers/advertisements | ~0.018/s × 200 bytes × 25 peers | ~0.09 KB/s |
-| Peer management | ~50 bytes/peer/10s × 25 peers | ~0.125 KB/s |
-| Slot/epoch protocol messages | ~100 bytes/slot × 1/11s | ~0.009 KB/s |
-| **Total baseline** | | **~270 KB/s** |
+- Backed by a pair of `Chan ByteString` pipes -- one side's send channel is the other's receive channel.
+- Internal `MVar ByteString` read buffer supports partial reads (`recv n` where n < message size).
+- **`newLoopbackPair :: String -> IO (LoopbackTransport, LoopbackTransport)`** -- Creates a connected pair.
+- Unbounded buffering (Chan-based).
 
-With protocol overhead (Noise encryption framing, TCP headers): approximately **~400 KB/s** minimum per node.
+### Intercept Transport (`Network.Transport.Intercept`)
 
-- Spikes during sync or high-traffic periods: up to **~5 MB/s**
-- Block propagation (compact) to 95% of network: < 1 second
-- Full block propagation for syncing nodes: ~11 seconds at minimum bandwidth
+Traffic capture middleware for integration testing:
 
-## Connection Model
+- Wraps any `AnyTransport` and logs all `thSend` calls to a shared `IORef [TrafficEntry]`.
+- Each entry records: monotonic counter timestamp, sender name, receiver name, raw bytes, and size.
+- Useful for verifying that no plaintext leaks onto the wire.
+- **`wrapWithIntercept`** -- Wraps an existing transport with logging.
+- Recv and close pass through to the underlying transport.
 
-All nodes connect **outbound only**. No NAT traversal (UPnP, STUN, hole punching, relay) is performed in v1.
+### Default Port Sequence
 
-- Nodes behind NAT can fully participate by maintaining outbound connections to peers discovered via DHT and PEX.
-- Validators with public IPs are recommended for better network health (they can accept inbound connections from NATed peers), but public reachability is not required.
-- A node that cannot establish at least 8 outbound connections after 5 minutes logs a warning and retries bootstrap discovery.
+Defined in `Protocol.Encoding.defaultPorts`:
 
-## Dual-Mode Transport
+```haskell
+defaultPorts = [7853, 7854, 7855, 9999, 7856, 7857, 7858, 7859, 7860]
+```
 
-UmbraVox supports two transport modes. On-chain is primary; direct P2P is preserved for low-latency use.
+The primary UmbraVOX port is **7853**. `connectTryPorts` iterates through this list when no explicit port is specified.
 
-| Mode | Transport | Latency | Throughput | Censorship Resistance |
-|------|-----------|---------|------------|----------------------|
-| **On-chain** | Dandelion++ → gossip → block inclusion | ~370-530ms + ~55s block wait | ~80.8 msg/sec global | **Strong** — no single point of censorship |
-| **Direct P2P** | TCP + Noise_IK → Signal Double Ratchet | 50-150ms | Unlimited (bandwidth-bound) | **Weak** — requires both peers online, IP visible to peer |
+## Noise_IK Handshake (`Network.Noise`, `Network.Noise.Handshake`, `Network.Noise.State`)
 
-### Direct P2P Protocol
+Implemented and functional. Pattern:
 
-Direct peer-to-peer connections use the same Noise_IK transport as gossip connections but carry Signal Double Ratchet messages directly between peers:
+```
+-> e, es, s, ss
+<- e, ee, se
+```
 
-- Noise_IK handshake establishes encrypted channel (X25519 + ChaChaPoly)
-- Per-session rekeying every 1,000 messages or 10 minutes
-- Content encrypted via Signal Double Ratchet (same as on-chain messages)
-- IP address visible to direct peer (unavoidable without relay)
-- Optional Tor: route through SOCKS5 → .onion for IP hiding
+### Configuration
 
-## Multiplexing Priority
+- **Protocol name**: `Noise_IK_25519_ChaChaPoly_SHA256`
+- **Prologue**: `"UmbraVox_v1"` (mixed into the handshake hash)
+- **DH function**: X25519 (`Crypto.Curve25519`)
+- **Cipher**: ChaCha20 (`Crypto.Random.chacha20Encrypt`)
+- **Hash**: SHA-256 (`Crypto.SHA256`)
+- **MAC**: HMAC-SHA-256 (`Crypto.HMAC`), tag length = 32 bytes
+- **Key derivation**: HKDF-SHA-256 (`Crypto.HKDF.hkdfSHA256Extract`/`hkdfSHA256Expand`)
 
-Stream priority (highest first):
+### Key Separation Fix
 
-1. **Consensus** (VOTE, EPOCH_BOUNDARY, STAKE_ANNOUNCE)
-2. **Blocks** (BLOCK_ANNOUNCE, FULL_BLOCK)
-3. **Dandelion stem** (DANDELION_TX)
-4. **Transactions** (TX, TX_ANNOUNCE)
-5. **Control** (HANDSHAKE, PING/PONG, PEX, DISCONNECT)
+The `splitKeys` function derives four independent session keys from the final chaining key:
 
-Implementation: weighted fair queuing with strict priority for consensus.
-Starvation prevention: lower-priority streams guaranteed 10% bandwidth minimum.
+```haskell
+splitKeys ck =
+    let prk = hkdfSHA256Extract ck empty
+        sendEncKey = hkdfSHA256Expand prk "enc-send" 32
+        sendMacKey = hkdfSHA256Expand prk "mac-send" 32
+        recvEncKey = hkdfSHA256Expand prk "enc-recv" 32
+        recvMacKey = hkdfSHA256Expand prk "mac-recv" 32
+    in (sendEncKey, sendMacKey, recvEncKey, recvMacKey)
+```
 
-## Noise_IK Forward Secrecy
+The responder swaps send/recv keys so that initiator-send = responder-recv and vice versa.
 
-- Handshake provides initial forward secrecy (ephemeral X25519)
-- Per-session rekeying: every 1,000 messages OR every 10 minutes, whichever comes first
-- Rekeying uses fresh ephemeral DH (not derived from prior keys)
-- Old session keys zeroized after rekey (secure deletion)
-- **Rekeying failure**: If rekey handshake fails 3 times, terminate connection and reconnect with fresh handshake
+### Post-Handshake State
 
-## Peer Scoring Validation (DO-178C DAL A)
+```haskell
+data NoiseState = NoiseState
+    { nsSendEncKey :: !ByteString   -- 32-byte ChaCha20 key for sending
+    , nsSendMacKey :: !ByteString   -- 32-byte HMAC key for send authentication
+    , nsRecvEncKey :: !ByteString   -- 32-byte ChaCha20 key for receiving
+    , nsRecvMacKey :: !ByteString   -- 32-byte HMAC key for recv authentication
+    , nsSendN      :: !Word64       -- Send nonce counter
+    , nsRecvN      :: !Word64       -- Recv nonce counter
+    }
+```
 
-- Scoring thresholds must be validated via network simulation
-- False positive rate target: <0.1% honest nodes incorrectly banned per epoch
-- Simulation: 1000 nodes, 10% adversarial, 100 epochs
-- Score values calibrated from simulation results, not hardcoded assumptions
+Post-handshake encryption (`noiseEncrypt`/`noiseDecrypt` in `Network.Noise`) uses ChaCha20 with HMAC-SHA-256 authentication. Nonces are 12 bytes: 4 zero bytes + 8-byte little-endian counter.
+
+### Framing
+
+Handshake messages use length-prefixed framing: 4-byte big-endian length header + payload. Maximum frame size is 64 KiB to prevent DoS via large allocations.
+
+## mDNS Peer Discovery (`Network.MDNS`)
+
+Implemented and functional. Discovers peers on the local network via UDP multicast:
+
+- **Multicast group**: 224.0.0.251 (standard mDNS, RFC 6762)
+- **Port**: 5353 (standard mDNS)
+- **Service name**: `_umbravox._tcp.local`
+- **Socket options**: `SO_REUSEADDR` + `SO_REUSEPORT` (allows multiple processes on the same host)
+- **Multicast join**: Raw `setsockopt` FFI call for `IP_ADD_MEMBERSHIP`
+- **Multicast loopback**: Enabled, so peers on the same machine discover each other
+- **Announcement interval**: 10 seconds
+- **Self-filtering**: Announcements from our own port + pubkey are ignored (`isSelfAnnouncement`)
+- **Peer deduplication**: By public key fingerprint
+
+### Announcement Format
+
+```
+_umbravox._tcp.local\nport=NNNN;pubkey=HEXHEX
+```
+
+### API
+
+- **`startMDNS :: Int -> ByteString -> IO (MVar [MDNSPeer], ThreadId)`** -- Start discovery with our port and pubkey
+- **`stopMDNS :: ThreadId -> IO ()`** -- Kill the discovery thread
+- **`getDiscoveredPeers :: MVar [MDNSPeer] -> IO [MDNSPeer]`** -- Read current peer list
+
+## Peer Exchange (`Network.PeerExchange`)
+
+Implemented. After a handshake completes, connected peers exchange known peer lists:
+
+- Peers received via PEX are marked as indirect and are never re-forwarded (1-hop maximum)
+- Provides: `encodePeerList`, `decodePeerList`, `exchangePeers`
+
+## Not Implemented
+
+The following are defined as stub modules (raise "not implemented" errors) or are empty:
+
+| Feature | Module | Status |
+|---------|--------|--------|
+| UDP transport | `Network.Transport.UDP` | Empty module, no implementation |
+| Kademlia DHT | -- | Not implemented |
+| Dandelion++ routing | `Network.Dandelion` | Stub (`routeMessage` raises error) |
+| Gossip protocol | `Network.Gossip` | Stub (`gossipBlock` raises error) |
+| Chain sync | `Network.Sync` | Stub (`syncChain` raises error) |
+| Peer scoring/banning | `Network.PeerManager` | Stub (`newPeerManager` raises error) |
+| Compact block relay | -- | Not implemented |
+| Eclipse attack prevention | -- | Not implemented |
+| Wire protocol messages (INV, GET_DATA, etc.) | -- | Not implemented |
+| Version negotiation | -- | Not implemented |
+| Multiplexed logical streams | -- | Not implemented |
+| Per-session rekeying | -- | Not implemented |
 
 ## References
 
 - Noise Protocol Framework (Perrin, 2018)
-- Kademlia (Maymounkov & Mazieres, 2002)
-- BIP 152 (Compact Block Relay) — enabled in V1
+- RFC 6762 -- Multicast DNS
