@@ -35,8 +35,8 @@ import UmbraVox.Crypto.HMAC (hmacSHA256)
 data RatchetState = RatchetState
     { rsDHSend      :: !(ByteString, ByteString)
       -- ^ (secret, public) X25519 sending keypair
-    , rsDHRecv      :: !ByteString
-      -- ^ Peer's current X25519 public key
+    , rsDHRecv      :: !(Maybe ByteString)
+      -- ^ Peer's current X25519 public key (Nothing before first message)
     , rsRootKey     :: !ByteString
       -- ^ 32-byte root key
     , rsSendChain   :: !ByteString
@@ -138,7 +138,7 @@ ratchetInitAlice sharedSecret bobSPK aliceDHSecret =
         !(rootKey1, sendChain) = kdfRK sharedSecret dhOutput
     in RatchetState
         { rsDHSend      = aliceKP
-        , rsDHRecv      = bobSPK
+        , rsDHRecv      = Just bobSPK
         , rsRootKey     = rootKey1
         , rsSendChain   = sendChain
         , rsRecvChain   = BS.replicate 32 0  -- Will be set on first DH ratchet from Bob
@@ -160,7 +160,7 @@ ratchetInitBob sharedSecret bobSPKSecret =
     let !bobKP = generateDH bobSPKSecret
     in RatchetState
         { rsDHSend      = bobKP
-        , rsDHRecv      = BS.empty  -- Set from first message header
+        , rsDHRecv      = Nothing   -- Set from first message header
         , rsRootKey     = sharedSecret
         , rsSendChain   = BS.replicate 32 0  -- Will be set on first DH ratchet
         , rsRecvChain   = BS.replicate 32 0  -- Will be set on first DH ratchet
@@ -217,9 +217,11 @@ ratchetDecrypt st header ct tag =
         Just result -> Just result
         Nothing ->
             -- If header DH key differs from our stored peer key, do DH ratchet
-            let !st1 = if rhDHPublic header /= rsDHRecv st
-                       then dhRatchet st header
-                       else Just st
+            let !st1 = case rsDHRecv st of
+                           Nothing    -> dhRatchet st header
+                           Just peer
+                               | rhDHPublic header /= peer -> dhRatchet st header
+                               | otherwise                 -> Just st
             in case st1 of
                 Nothing -> Nothing  -- Too many skipped keys
                 Just st2 ->
@@ -256,10 +258,13 @@ dhRatchet st header =
                     { rsPrevChainN = rsSendN st1
                     , rsSendN      = 0
                     , rsRecvN      = 0
-                    , rsDHRecv     = rhDHPublic header
+                    , rsDHRecv     = Just (rhDHPublic header)
                     }
-                -- Derive new receiving chain
-                !dhOutput1 = dh (rsDHSend st2) (rsDHRecv st2)
+                -- Derive new receiving chain (rsDHRecv is guaranteed Just here)
+                !peerPub = case rsDHRecv st2 of
+                    Just pk -> pk
+                    Nothing -> error "dhRatchet: impossible: rsDHRecv is Nothing after assignment"
+                !dhOutput1 = dh (rsDHSend st2) peerPub
                 !(rootKey1, recvChain) = kdfRK (rsRootKey st2) dhOutput1
                 -- Generate new sending keypair
                 -- We derive a new DH secret deterministically from current state
@@ -268,7 +273,7 @@ dhRatchet st header =
                 !newDHSecret = hmacSHA256 rootKey1 (snd (rsDHSend st2))
                 !newDHKP = generateDH newDHSecret
                 -- Derive new sending chain
-                !dhOutput2 = dh newDHKP (rsDHRecv st2)
+                !dhOutput2 = dh newDHKP peerPub
                 !(rootKey2, sendChain) = kdfRK rootKey1 dhOutput2
             in Just st2
                 { rsDHSend    = newDHKP
@@ -309,12 +314,16 @@ skipMessageKeys st until'
         | rsRecvN s >= until' = s
         | otherwise =
             let !(newChainKey, msgKey) = kdfCK (rsRecvChain s)
-                !key = (rsDHRecv s, rsRecvN s)
+                !peerKey = case rsDHRecv s of
+                    Just pk -> pk
+                    Nothing -> error "skipMessageKeys: rsDHRecv is Nothing"
+                !key = (peerKey, rsRecvN s)
                 !skipped = Map.insert key msgKey (rsSkippedKeys s)
-                -- Evict old keys if map is too large
-                !skipped' = if fromIntegral (Map.size skipped) > maxSkip
-                            then Map.deleteMin skipped
-                            else skipped
+                -- Evict keys older than 500 ratchet steps from current counter
+                !currentN = rsRecvN s + 1
+                !skipped' = Map.filterWithKey
+                    (\(_, msgN) _ -> currentN <= msgN + 500)
+                    skipped
             in go s
                 { rsRecvChain   = newChainKey
                 , rsRecvN       = rsRecvN s + 1
