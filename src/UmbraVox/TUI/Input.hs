@@ -9,6 +9,7 @@ module UmbraVox.TUI.Input
 import Control.Concurrent (forkIO)
 import Control.Exception (catch, SomeException)
 import Control.Monad (void, when, unless)
+import Data.List (isPrefixOf)
 import Data.IORef (readIORef, writeIORef, modifyIORef')
 import qualified Data.Map.Strict as Map
 import System.IO (stdin, hReady)
@@ -235,9 +236,13 @@ handleNewConnDlg st (KeyChar '1') = do
 -- 2 = Single (connect to one peer via host:port or listen)
 handleNewConnDlg st (KeyChar '2') = do
     writeIORef (asDialogBuf st) ""
-    writeIORef (asDialogMode st) (Just (DlgPrompt "host:port (or 'listen')" $ \val ->
-        if val == "listen" then do
-            port <- readIORef (cfgListenPort (asConfig st))
+    writeIORef (asDialogMode st) (Just (DlgPrompt "host:port (or 'listen' or 'listen:PORT')" $ \val ->
+        if val == "listen" || "listen:" `isPrefixOf` val then do
+            port <- case break (== ':') val of
+                (_, ':':p) -> case reads p of
+                    [(n, _)] -> pure (n :: Int)
+                    _        -> readIORef (cfgListenPort (asConfig st))
+                _          -> readIORef (cfgListenPort (asConfig st))
             setStatus st ("Listening on " ++ show port ++ "...")
             void $ forkIO $ (do
                 ik <- getOrCreateIdentity (asConfig st)

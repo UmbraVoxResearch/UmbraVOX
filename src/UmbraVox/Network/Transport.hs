@@ -64,7 +64,7 @@ connect host port = do
 -- | Try connecting to a host on a sequence of ports, returning the first success.
 -- Throws the last error if all ports fail.
 connectTryPorts :: String -> [Int] -> IO TCPTransport
-connectTryPorts host [] = connect host 7853  -- fallback to primary
+connectTryPorts host [] = connect host 7853  -- fallback to primary default
 connectTryPorts host [p] = connect host p
 connectTryPorts host (p:ps) = do
     result <- try (connect host p) :: IO (Either SomeException TCPTransport)

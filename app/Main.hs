@@ -22,6 +22,7 @@ import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 import UmbraVox.Network.MDNS (startMDNS)
 import qualified Network.Socket as NS
 import Control.Monad (forM_)
+import UmbraVox.Protocol.Encoding (defaultPorts)
 import UmbraVox.Storage.Anthony (openDB, loadConversations, loadMessages)
 import UmbraVox.Chat.Session (initChatSession)
 import UmbraVox.Crypto.Random (randomBytes)
@@ -38,7 +39,7 @@ main = do
     -- Generate random display name from BIP39 wordlist
     randomName <- generatePassphrase 1
     -- Find available listen port
-    listenPort <- findAvailablePort [7853, 7854, 7855, 9999, 7856, 7857, 7858, 7859, 7860]
+    listenPort <- findAvailablePort defaultPorts
     cfg <- AppConfig
         <$> newIORef listenPort  -- listen port (first available)
         <*> newIORef randomName  -- display name (random BIP39 word)
