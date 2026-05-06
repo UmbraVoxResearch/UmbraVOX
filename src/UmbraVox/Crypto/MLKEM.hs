@@ -27,7 +27,7 @@ import Control.Monad (forM_)
 import Control.Monad.ST (ST, runST)
 import Data.Array (Array, listArray, (!), elems, array)
 import Data.Array.ST (STUArray, newListArray, readArray, writeArray, freeze)
-import Data.Bits ((.&.), (.|.), shiftL, shiftR, testBit)
+import Data.Bits ((.&.), (.|.), shiftL, shiftR, testBit, xor)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Int (Int16)
@@ -321,12 +321,19 @@ sampleCBD eta bs =
 -- Uses SHAKE-128 as the XOF per FIPS 203.
 sampleNTT :: ByteString -> Poly
 sampleNTT seed =
-    let stream = BS.unpack (shake128 seed 4096)
-        coeffs = rejection stream 0 []
+    let coeffs = sampleLoop seed 0 [] 672
     in Poly (listArray (0, _N - 1) coeffs)
   where
-    rejection :: [Word8] -> Int -> [Int16] -> [Int16]
-    rejection _ 256 acc = reverse acc
+    sampleLoop :: ByteString -> Int -> [Int16] -> Int -> [Int16]
+    sampleLoop sd n acc streamLen
+        | n >= 256 = take 256 (reverse acc)
+        | otherwise =
+            let stream = BS.unpack (shake128 sd streamLen)
+                (n', acc') = rejection stream n acc
+            in if n' >= 256 then take 256 (reverse acc')
+               else sampleLoop sd n' acc' (streamLen * 2)
+    rejection :: [Word8] -> Int -> [Int16] -> (Int, [Int16])
+    rejection _ 256 acc = (256, acc)
     rejection (b0:b1:b2:rest) n acc =
         let d1 = fromIntegral b0 + 256 * (fromIntegral b1 .&. 0x0F) :: Int
             d2 = (fromIntegral b1 `shiftR` 4) + 16 * fromIntegral b2 :: Int
@@ -337,7 +344,7 @@ sampleNTT seed =
                            then (n' + 1, fromIntegral d2 : acc')
                            else (n', acc')
         in rejection rest n'' acc''
-    rejection _ _ acc = reverse acc ++ replicate (256 - length acc) 0
+    rejection _ n acc = (n, acc)
 
 ------------------------------------------------------------------------
 -- FIPS 203 hash functions (using correct FIPS 202 primitives)
@@ -379,7 +386,7 @@ xof seed i j = seed `BS.append` BS.pack [i, j]
 kpkeKeyGen :: ByteString -> ([[Poly]], [Poly], [Poly])
 kpkeKeyGen d =
     let (rho, sigma) = hashG d
-        aHat = [[sampleNTT (xof rho (fromIntegral j) (fromIntegral i))
+        aHat = [[sampleNTT (xof rho (fromIntegral i) (fromIntegral j))
                  | j <- [0.._K-1]]
                 | i <- [0.._K-1]]
         sVec = [ntt (sampleCBD _ETA1 (prf sigma (fromIntegral i) (64 * _ETA1)))
@@ -418,7 +425,7 @@ decodeDK dk =
 kpkeEncrypt :: ByteString -> ByteString -> ByteString -> ByteString
 kpkeEncrypt ek m r =
     let (tHat, rho) = decodeEK ek
-        aHat = [[sampleNTT (xof rho (fromIntegral j) (fromIntegral i))
+        aHat = [[sampleNTT (xof rho (fromIntegral i) (fromIntegral j))
                  | j <- [0.._K-1]]
                 | i <- [0.._K-1]]
         rVec = [ntt (sampleCBD _ETA1 (prf r (fromIntegral i) (64 * _ETA1)))
@@ -508,7 +515,7 @@ mlkemDecaps (MLKEMDecapKey fullDK) (MLKEMCiphertext ct) =
         (sharedSecret', r') = hashG (m' `BS.append` ekHash)
         ct' = kpkeEncrypt ek m' r'
         rejectionSecret = hashJ z ct
-    in if ct' == ct
+    in if constantEqBS ct' ct
        then sharedSecret'
        else rejectionSecret
 
@@ -518,3 +525,13 @@ mlkemDecaps (MLKEMDecapKey fullDK) (MLKEMCiphertext ct) =
 
 bsSlice :: Int -> Int -> ByteString -> ByteString
 bsSlice offset len = BS.take len . BS.drop offset
+
+-- | Constant-time byte string comparison to prevent timing side channels.
+-- Required by FIPS 203 Section 7.3 for ciphertext comparison in decapsulation.
+constantEqBS :: ByteString -> ByteString -> Bool
+constantEqBS a b =
+    let !lenA = BS.length a
+        !lenB = BS.length b
+        !lenMatch = if lenA == lenB then 0 else 1 :: Word8
+        !acc = foldl' (\v (x, y) -> v .|. (x `xor` y)) lenMatch (BS.zip a b)
+    in acc == 0
