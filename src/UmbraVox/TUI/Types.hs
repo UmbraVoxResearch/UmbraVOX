@@ -15,6 +15,7 @@ module UmbraVox.TUI.Types
     ) where
 
 import Control.Concurrent (ThreadId)
+import Control.Concurrent.MVar (MVar)
 import Data.IORef (IORef)
 import Data.Map.Strict (Map)
 import UmbraVox.Chat.Session (ChatSession)
@@ -38,6 +39,7 @@ statusTag PEX     = " \x1F517"  -- 🔗 link
 
 data SessionInfo = SessionInfo
     { siTransport :: Maybe AnyTransport, siSession :: IORef ChatSession
+    , siSessionLock :: MVar ()
     , siRecvTid :: Maybe ThreadId, siPeerName :: String
     , siHistory :: IORef [String], siStatus :: IORef ContactStatus }
 

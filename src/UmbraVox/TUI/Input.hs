@@ -215,7 +215,12 @@ handleSettingsDlg st (KeyChar '9') = do
             mDb <- readIORef (cfgAnthonyDB (asConfig st))
             sel <- readIORef (asSelected st)
             case mDb of
-                Just db -> clearConversation db sel
+                Just db -> do
+                    sessions <- readIORef (cfgSessions (asConfig st))
+                    let entries = Map.toList sessions
+                    when (sel < length entries) $ do
+                        let (sid, _) = entries !! sel
+                        clearConversation db sid
                 Nothing -> pure ()
             -- Also clear the in-memory history for the selected session
             sessions <- readIORef (cfgSessions (asConfig st))
@@ -246,10 +251,7 @@ handleNewConnDlg st (KeyChar '2') = do
             setStatus st ("Listening on " ++ show port ++ "...")
             void $ forkIO $ (do
                 ik <- getOrCreateIdentity (asConfig st)
-                t <- listen port; let at = AnyTransport t
-                session <- handshakeResponder at ik
-                sid <- addSession (asConfig st) at session ("peer:" ++ show port)
-                selectLast st; setStatus st ("Session #" ++ show sid)
+                acceptLoopTUI st ik port
                 ) `catch` (\(e::SomeException) -> setStatus st ("Failed: "++show e))
         else do
             let (h, mPort) = parseHostPort val
@@ -281,17 +283,9 @@ handleNewConnDlg st (KeyChar '3') = do
         setStatus st ("Connecting to " ++ show (length peers) ++ " peers...")
         void $ forkIO $ do
             ik <- getOrCreateIdentity (asConfig st)
-            mapM_ (\p -> (do
-                let (h, mPort) = parseHostPort (strip' p)
-                t <- case mPort of
-                    Just port -> connect h port
-                    Nothing   -> connectTryPorts h defaultPorts
-                let at = AnyTransport t
-                session <- handshakeInitiator at ik
-                void $ addSession (asConfig st) at session h
-                ) `catch` (\(e::SomeException) -> setStatus st ("Failed: "++show e))
-                ) peers
-        selectLast st; setStatus st ("Group with " ++ show (length peers) ++ " peers")
+            successes <- connectGroupPeers st ik peers 0
+            when (successes > 0) $ selectLast st
+            setStatus st ("Group connected: " ++ show successes ++ "/" ++ show (length peers))
         ))
 handleNewConnDlg st _ = writeIORef (asDialogMode st) Nothing
 
@@ -308,3 +302,28 @@ getOrCreateIdentity cfg = do
             ik <- genIdentity
             writeIORef (cfgIdentity cfg) (Just ik)
             pure ik
+
+acceptLoopTUI :: AppState -> IdentityKey -> Int -> IO ()
+acceptLoopTUI st ik port = do
+    t <- listen port
+    let at = AnyTransport t
+    session <- handshakeResponder at ik
+    sid <- addSession (asConfig st) at session ("peer:" ++ show port)
+    selectLast st
+    setStatus st ("Session #" ++ show sid)
+    acceptLoopTUI st ik port
+
+connectGroupPeers :: AppState -> IdentityKey -> [String] -> Int -> IO Int
+connectGroupPeers _ _ [] successes = pure successes
+connectGroupPeers st ik (p:ps) successes =
+    ((do
+        let peer = strip' p
+            (h, mPort) = parseHostPort peer
+        t <- case mPort of
+            Just port -> connect h port
+            Nothing   -> connectTryPorts h defaultPorts
+        let at = AnyTransport t
+        session <- handshakeInitiator at ik
+        void $ addSession (asConfig st) at session peer
+        connectGroupPeers st ik ps (successes + 1)
+        ) `catch` (\(_ :: SomeException) -> connectGroupPeers st ik ps successes))

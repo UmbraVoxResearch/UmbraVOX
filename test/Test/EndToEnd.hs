@@ -4,16 +4,18 @@
 -- traffic analysis resistance, ordering, concurrency, and multi-peer.
 module Test.EndToEnd (runTests) where
 
-import Control.Concurrent (forkIO, threadDelay, MVar, newEmptyMVar, putMVar, takeMVar)
+import Control.Concurrent (forkIO, MVar, newEmptyMVar, putMVar, takeMVar)
 import Control.Monad (forM_, void, when)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BC
 import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef')
-import Test.Util (assertEq, PRNG, nextBytes, nextBytesRange, mkPRNG)
+import System.Timeout (timeout)
+import Test.Util (assertEq, PRNG, nextBytesRange, mkPRNG)
 import Test.Harness
-    ( TestClient, createClientPair, handshakeClients
-    , clientSend, clientRecv, waitForHistory, assertNoPlaintextInTraffic
+    ( TestClient(..), createClientPair, createNamedClientPair, handshakeClients
+    , clientSend, clientRecv, assertNoPlaintextInTraffic
     )
+import UmbraVox.Crypto.Signal.X3DH (ikX25519Public)
 import UmbraVox.Network.Transport.Intercept (TrafficEntry(..))
 import UmbraVox.Protocol.Encoding (getWord32BE)
 
@@ -30,8 +32,10 @@ runTests = do
         , testConcurrentSends
         , testSessionConsistency
         , testFuzzMessages
+        , testPairwiseMultiPeerIsolation
         , testMultiPeer
         , testWireProtocolStructure
+        , testFourClientMesh
         ]
     let passed = length (filter id results)
         total  = length results
@@ -53,7 +57,7 @@ testTwoClientChat = do
     _ <- forkIO $ do
         msg <- recvOne bob
         putMVar bobResult msg
-    received <- takeMVar bobResult
+    received <- awaitMVar "two-client chat: bob recv" bobResult
     assertEq "two-client chat" (BC.pack "Hello") received
 
 ------------------------------------------------------------------------
@@ -76,8 +80,8 @@ testBidirectionalChat = do
     _ <- forkIO $ do
         msg <- recvOne alice
         putMVar aliceGot msg
-    bMsg <- takeMVar bobGot
-    aMsg <- takeMVar aliceGot
+    bMsg <- awaitMVar "bidir: bob recv" bobGot
+    aMsg <- awaitMVar "bidir: alice recv" aliceGot
     ok1 <- assertEq "bidir: bob received" (BC.pack "Hi Bob") bMsg
     ok2 <- assertEq "bidir: alice received" (BC.pack "Hi Alice") aMsg
     pure (ok1 && ok2)
@@ -96,7 +100,7 @@ testTrafficEncrypted = do
     _ <- forkIO $ do
         msg <- recvOne bob
         putMVar recvResult msg
-    _ <- takeMVar recvResult
+    _ <- awaitMVar "traffic encrypted: bob recv" recvResult
     -- Check traffic log for plaintext leakage
     assertNoPlaintextInTraffic log (BC.pack "SECRET MESSAGE")
 
@@ -120,8 +124,8 @@ testRapidExchange = do
     forM_ [0..24 :: Int] $ \i -> do
         clientSend alice (BC.pack ("a2b-" ++ show i))
         clientSend bob   (BC.pack ("b2a-" ++ show i))
-    takeMVar bobDone
-    takeMVar aliceDone
+    awaitUnit "rapid: bob recv loop" bobDone
+    awaitUnit "rapid: alice recv loop" aliceDone
     bMsgs <- readIORef bobRecvd
     aMsgs <- readIORef aliceRecvd
     ok1 <- assertEq "rapid: bob count" 25 (length bMsgs)
@@ -143,7 +147,7 @@ testMessageOrdering = do
     bobRecvd <- newIORef ([] :: [BS.ByteString])
     bobDone  <- newEmptyMVar
     _ <- forkIO $ recvN bob 20 bobRecvd bobDone
-    takeMVar bobDone
+    awaitUnit "ordering: bob recv loop" bobDone
     msgs <- readIORef bobRecvd
     let expected = [BC.pack ("msg-" ++ show i) | i <- [0..19 :: Int]]
     -- Messages are stored in reverse order by recvN, so reverse them
@@ -163,7 +167,7 @@ testLargeMessage = do
     _ <- forkIO $ do
         msg <- recvOne bob
         putMVar result msg
-    received <- takeMVar result
+    received <- awaitMVar "large message: bob recv" result
     assertEq "large message (10240 bytes)" largeMsg received
 
 ------------------------------------------------------------------------
@@ -192,10 +196,10 @@ testConcurrentSends = do
         forM_ [0..9 :: Int] $ \i ->
             clientSend bob (BC.pack ("bob-" ++ show i))
         putMVar bSendDone ()
-    takeMVar aSendDone
-    takeMVar bSendDone
-    takeMVar bobDone
-    takeMVar aliceDone
+    awaitUnit "concurrent: alice send loop" aSendDone
+    awaitUnit "concurrent: bob send loop" bSendDone
+    awaitUnit "concurrent: bob recv loop" bobDone
+    awaitUnit "concurrent: alice recv loop" aliceDone
     bMsgs <- readIORef bobRecvd
     aMsgs <- readIORef aliceRecvd
     ok1 <- assertEq "concurrent: bob count" 10 (length bMsgs)
@@ -220,8 +224,8 @@ testSessionConsistency = do
     forM_ [0..49 :: Int] $ \i -> do
         clientSend alice (BC.pack ("a-" ++ show i))
         clientSend bob   (BC.pack ("b-" ++ show i))
-    takeMVar bobDone
-    takeMVar aliceDone
+    awaitUnit "consistency: bob recv loop" bobDone
+    awaitUnit "consistency: alice recv loop" aliceDone
     -- Verify both sides received the expected count
     bMsgs <- readIORef bobRecvd
     aMsgs <- readIORef aliceRecvd
@@ -247,7 +251,7 @@ testFuzzMessages = do
     -- Alice sends all 200
     forM_ messages $ \msg ->
         clientSend alice msg
-    takeMVar bobDone
+    awaitUnit "fuzz: bob recv loop" bobDone
     received <- readIORef bobRecvd
     -- Received in reverse order from recvN, reverse to compare
     let receivedInOrder = reverse received
@@ -256,12 +260,35 @@ testFuzzMessages = do
 ------------------------------------------------------------------------
 -- 10. Multi-peer: A talks to B and C separately
 ------------------------------------------------------------------------
+testPairwiseMultiPeerIsolation :: IO Bool
+testPairwiseMultiPeerIsolation = do
+    logAB <- newIORef []
+    logAC <- newIORef []
+    (aliceForB, bob) <- createNamedClientPair logAB "alice-1" Nothing "bob" Nothing
+    (aliceForC, carol) <- createNamedClientPair logAC "alice-2" Nothing "carol" Nothing
+    handshakeClients aliceForB bob
+    handshakeClients aliceForC carol
+    clientSend aliceForB (BC.pack "Hello Bob")
+    clientSend aliceForC (BC.pack "Hello Carol")
+    bobResult <- newEmptyMVar
+    carolResult <- newEmptyMVar
+    _ <- forkIO $ putMVar bobResult =<< recvOne bob
+    _ <- forkIO $ putMVar carolResult =<< recvOne carol
+    bMsg <- awaitMVar "pairwise isolation: bob recv" bobResult
+    cMsg <- awaitMVar "pairwise isolation: carol recv" carolResult
+    ok1 <- assertEq "pairwise isolation: bob received" (BC.pack "Hello Bob") bMsg
+    ok2 <- assertEq "pairwise isolation: carol received" (BC.pack "Hello Carol") cMsg
+    ok3 <- assertEq "pairwise isolation: distinct local identities"
+        True
+        (ikX25519Public (tcIdentity aliceForB) /= ikX25519Public (tcIdentity aliceForC))
+    pure (ok1 && ok2 && ok3)
+
 testMultiPeer :: IO Bool
 testMultiPeer = do
     logAB <- newIORef []
     logAC <- newIORef []
-    (aliceForB, bob) <- createClientPair logAB
-    (aliceForC, carol) <- createClientPair logAC
+    (aliceForB, bob) <- createNamedClientPair logAB "alice" Nothing "bob" Nothing
+    (aliceForC, carol) <- createNamedClientPair logAC "alice" (Just (tcIdentity aliceForB)) "carol" Nothing
     handshakeClients aliceForB bob
     handshakeClients aliceForC carol
     -- A sends different messages to B and C
@@ -275,8 +302,8 @@ testMultiPeer = do
     _ <- forkIO $ do
         msg <- recvOne carol
         putMVar carolResult msg
-    bMsg <- takeMVar bobResult
-    cMsg <- takeMVar carolResult
+    bMsg <- awaitMVar "multi-peer: bob recv" bobResult
+    cMsg <- awaitMVar "multi-peer: carol recv" carolResult
     ok1 <- assertEq "multi-peer: bob received" (BC.pack "Hello Bob") bMsg
     ok2 <- assertEq "multi-peer: carol received" (BC.pack "Hello Carol") cMsg
     pure (ok1 && ok2)
@@ -300,7 +327,7 @@ testWireProtocolStructure = do
     -- Recv to complete the exchange
     recvResult <- newEmptyMVar
     _ <- forkIO $ putMVar recvResult =<< recvOne bob
-    _ <- takeMVar recvResult
+    _ <- awaitMVar "wire structure: bob recv" recvResult
     -- Inspect traffic log
     traffic <- readIORef logRef
     -- Find the data message (should be the last send from alice, after handshake)
@@ -326,6 +353,124 @@ testWireProtocolStructure = do
         pure (ok1 && ok2 && ok3 && ok4)
 
 ------------------------------------------------------------------------
+-- 12. Four-client mesh: all pairs communicate with lorem ipsum
+------------------------------------------------------------------------
+testFourClientMesh :: IO Bool
+testFourClientMesh = do
+    putStr "  four-client mesh: "
+    -- Create 4 clients: A-B, A-C, A-D, B-C, B-D, C-D (6 pairs)
+    logAB <- newIORef []; logAC <- newIORef []; logAD <- newIORef []
+    logBC <- newIORef []; logBD <- newIORef []; logCD <- newIORef []
+
+    (a1, b1) <- createNamedClientPair logAB "alice" Nothing "bob" Nothing
+    let aliceId = tcIdentity a1
+        bobId = tcIdentity b1
+    (a2, c1) <- createNamedClientPair logAC "alice" (Just aliceId) "carol" Nothing
+    let carolId = tcIdentity c1
+    (a3, d1) <- createNamedClientPair logAD "alice" (Just aliceId) "dave" Nothing
+    let daveId = tcIdentity d1
+    (b2, c2) <- createNamedClientPair logBC "bob" (Just bobId) "carol" (Just carolId)
+    (b3, d2) <- createNamedClientPair logBD "bob" (Just bobId) "dave" (Just daveId)
+    (c3, d3) <- createNamedClientPair logCD "carol" (Just carolId) "dave" (Just daveId)
+
+    -- Handshake all 6 pairs
+    handshakeClients a1 b1
+    handshakeClients a2 c1
+    handshakeClients a3 d1
+    handshakeClients b2 c2
+    handshakeClients b3 d2
+    handshakeClients c3 d3
+
+    -- Lorem ipsum messages
+    let msgs =
+            [ "Hello World!"
+            , "Lorem ipsum dolor sit amet, consectetur adipiscing elit."
+            , "Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
+            , "Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris."
+            , "Duis aute irure dolor in reprehenderit in voluptate velit esse."
+            , "Excepteur sint occaecat cupidatat non proident."
+            , "Post-quantum encryption protects your privacy."
+            , "UmbraVOX: decentralized, encrypted, unstoppable."
+            ]
+
+    -- Alice sends to Bob, Carol, Dave
+    mapM_ (\m -> clientSend a1 (BC.pack m)) (take 2 msgs)
+    mapM_ (\m -> clientSend a2 (BC.pack m)) (take 2 (drop 2 msgs))
+    mapM_ (\m -> clientSend a3 (BC.pack m)) (take 2 (drop 4 msgs))
+
+    -- Bob sends to Carol, Dave
+    mapM_ (\m -> clientSend b2 (BC.pack m)) (take 1 (drop 6 msgs))
+    mapM_ (\m -> clientSend b3 (BC.pack m)) (take 1 (drop 7 msgs))
+
+    -- Carol sends to Dave
+    clientSend c3 (BC.pack "Final message from Carol to Dave!")
+
+    -- Receive on all endpoints
+    -- Bob receives 2 from Alice
+    bobDone <- newEmptyMVar; bobRecvd <- newIORef []
+    _ <- forkIO $ recvN b1 2 bobRecvd bobDone
+    -- Carol receives 2 from Alice + 1 from Bob = 3
+    carolFromA <- newEmptyMVar; carolARecvd <- newIORef []
+    _ <- forkIO $ recvN c1 2 carolARecvd carolFromA
+    carolFromB <- newEmptyMVar; carolBRecvd <- newIORef []
+    _ <- forkIO $ recvN c2 1 carolBRecvd carolFromB
+    -- Dave receives 2 from Alice + 1 from Bob + 1 from Carol = 4
+    daveFromA <- newEmptyMVar; daveARecvd <- newIORef []
+    _ <- forkIO $ recvN d1 2 daveARecvd daveFromA
+    daveFromB <- newEmptyMVar; daveBRecvd <- newIORef []
+    _ <- forkIO $ recvN d2 1 daveBRecvd daveFromB
+    daveFromC <- newEmptyMVar; daveCRecvd <- newIORef []
+    _ <- forkIO $ recvN d3 1 daveCRecvd daveFromC
+
+    -- Wait for all receives
+    awaitUnit "mesh: bob recv loop" bobDone
+    awaitUnit "mesh: carol recv from alice" carolFromA
+    awaitUnit "mesh: carol recv from bob" carolFromB
+    awaitUnit "mesh: dave recv from alice" daveFromA
+    awaitUnit "mesh: dave recv from bob" daveFromB
+    awaitUnit "mesh: dave recv from carol" daveFromC
+
+    -- Verify counts
+    bobMsgs <- readIORef bobRecvd
+    carolAMsgs <- readIORef carolARecvd
+    carolBMsgs <- readIORef carolBRecvd
+    daveAMsgs <- readIORef daveARecvd
+    daveBMsgs <- readIORef daveBRecvd
+    daveCMsgs <- readIORef daveCRecvd
+
+    let ok1 = length bobMsgs == 2
+        ok2 = length carolAMsgs == 2
+        ok3 = length carolBMsgs == 1
+        ok4 = length daveAMsgs == 2
+        ok5 = length daveBMsgs == 1
+        ok6 = length daveCMsgs == 1
+
+    -- Verify specific content
+    let bobGotHello = BC.pack "Hello World!" `elem` bobMsgs
+        daveGotFinal = BC.pack "Final message from Carol to Dave!" `elem` daveCMsgs
+
+    -- Verify no plaintext in ANY traffic log
+    allLogs <- mapM readIORef [logAB, logAC, logAD, logBC, logBD, logCD]
+    let allTraffic = concat allLogs
+        noLeak = not (any (\e -> BS.isInfixOf (BC.pack "Hello World!") (teRawBytes e)) allTraffic)
+
+    let allOk = ok1 && ok2 && ok3 && ok4 && ok5 && ok6 && bobGotHello && daveGotFinal && noLeak
+    if allOk
+        then putStrLn "PASS" >> pure True
+        else do
+            putStrLn "FAIL"
+            putStrLn $ "  bob:" ++ show (length bobMsgs) ++ "/2"
+                ++ " carolA:" ++ show (length carolAMsgs) ++ "/2"
+                ++ " carolB:" ++ show (length carolBMsgs) ++ "/1"
+            putStrLn $ "  daveA:" ++ show (length daveAMsgs) ++ "/2"
+                ++ " daveB:" ++ show (length daveBMsgs) ++ "/1"
+                ++ " daveC:" ++ show (length daveCMsgs) ++ "/1"
+            putStrLn $ "  bobGotHello:" ++ show bobGotHello
+                ++ " daveGotFinal:" ++ show daveGotFinal
+                ++ " noPlaintextLeak:" ++ show noLeak
+            pure False
+
+------------------------------------------------------------------------
 -- Helpers
 ------------------------------------------------------------------------
 
@@ -333,7 +478,9 @@ testWireProtocolStructure = do
 recvOne :: TestClient -> IO BS.ByteString
 recvOne client = do
     mMsg <- clientRecv client
-    pure (maybe BS.empty id mMsg)
+    case mMsg of
+        Just msg -> pure msg
+        Nothing  -> fail ("decrypt failed for " ++ tcName client)
 
 -- | Receive exactly @n@ messages, storing them in the IORef (prepended),
 -- then signal completion via the MVar.
@@ -351,3 +498,13 @@ genRandomMessages n g =
     let (msg, g')   = nextBytesRange 1 1024 g
         (rest, g'') = genRandomMessages (n - 1) g'
     in (msg : rest, g'')
+
+awaitMVar :: String -> MVar a -> IO a
+awaitMVar label var = do
+    result <- timeout (5 * 1000000) (takeMVar var)
+    case result of
+        Just value -> pure value
+        Nothing -> fail ("timeout waiting for " ++ label)
+
+awaitUnit :: String -> MVar () -> IO ()
+awaitUnit label var = void (awaitMVar label var)

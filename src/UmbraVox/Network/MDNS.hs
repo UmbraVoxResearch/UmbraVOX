@@ -14,6 +14,8 @@ module UmbraVox.Network.MDNS
     , safeReadPort
     , addrToIP
     , buildAnnouncement
+    , isSelfAnnouncement
+    , updatePeerList
     ) where
 
 import Data.ByteString (ByteString)
@@ -189,7 +191,7 @@ listenLoop sock peersRef ourPort ourPubkey = forever $ do
         Nothing   -> pure ()
         Just peer ->
             -- Skip our own announcements
-            if mdnsPort peer == ourPort && mdnsPubkey peer == toHex ourPubkey
+            if isSelfAnnouncement ourPort ourPubkey peer
                 then pure ()
                 else updatePeerList peersRef peer
 
@@ -225,6 +227,11 @@ parseHexField :: ByteString -> ByteString -> Maybe ByteString
 parseHexField key body = do
     hexVal <- parseField key body
     fromHex hexVal
+
+-- | Check whether a discovered peer record is our own announcement.
+isSelfAnnouncement :: Int -> ByteString -> MDNSPeer -> Bool
+isSelfAnnouncement ourPort ourPubkey peer =
+    mdnsPort peer == ourPort && mdnsPubkey peer == ourPubkey
 
 ------------------------------------------------------------------------
 -- Internal — peer list management

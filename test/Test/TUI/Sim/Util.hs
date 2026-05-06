@@ -10,6 +10,7 @@ module Test.TUI.Sim.Util
     , isDlgPrompt, isDlgPromptWithSubstring
     ) where
 
+import Control.Concurrent.MVar (newMVar)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.List (isInfixOf)
 import qualified Data.Map.Strict as Map
@@ -71,9 +72,10 @@ addTestSessionWithHistory cfg label history = do
     peerPub <- randomBytes 32
     session <- initChatSession secret dhSec peerPub
     ref <- newIORef session
+    lock <- newMVar ()
     histRef <- newIORef history
     stRef <- newIORef Local
-    let si = SessionInfo Nothing ref Nothing label histRef stRef
+    let si = SessionInfo Nothing ref lock Nothing label histRef stRef
     modifyIORef' (cfgSessions cfg) (Map.insert sid si)
     pure sid
   where
