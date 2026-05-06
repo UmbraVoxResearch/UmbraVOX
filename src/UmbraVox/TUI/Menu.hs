@@ -6,10 +6,8 @@ module UmbraVox.TUI.Menu
 
 import Data.IORef (readIORef, writeIORef, modifyIORef')
 import UmbraVox.TUI.Types
-import UmbraVox.TUI.Actions (startNewConn, startSettings, startExport,
-    startImport, startKeysView, startVerify, startBrowse, showHelp,
-    renameContact, sendCurrentMessage, quitApp, setStatus)
-import UmbraVox.Version (versionFull)
+import UmbraVox.TUI.Actions (setStatus)
+import UmbraVox.TUI.RuntimeCommand (commandForMenuItem, runRuntimeCommand, RuntimeCommand(CmdOpenNewConversation, CmdQuit))
 
 -- Menu handling -----------------------------------------------------------
 
@@ -51,9 +49,10 @@ handleMenu st key = case key of
     KeyF4      -> openMenu st MenuPrefs
     KeyF5      -> pure ()
     -- Ctrl shortcuts pass through
-    KeyCtrlQ   -> closeMenu st >> quitApp st
-    KeyCtrlD   -> closeMenu st >> quitApp st
-    KeyCtrlN   -> closeMenu st >> startNewConn st
+    KeyCtrlQ   -> closeMenu st >> runRuntimeCommand st CmdQuit
+    KeyCtrlD   -> closeMenu st >> runRuntimeCommand st CmdQuit
+    KeyCtrlN   -> closeMenu st >> runRuntimeCommand st CmdOpenNewConversation
+    KeyCtrlG   -> closeMenu st >> setStatus st "Use Ctrl+G from the main screen to start a group chat"
     -- All other keys (including KeyChar) are ignored
     _          -> pure ()
 
@@ -88,29 +87,7 @@ activateMenuItem st = do
 -- | Execute a menu action based on tab and item index.
 -- Every menu item is wired to a real action.
 executeMenuItem :: AppState -> MenuTab -> Int -> IO ()
--- Help menu
-executeMenuItem st MenuHelp 0     = showHelp st          -- Help
-executeMenuItem st MenuHelp 1     =                      -- About
-    setStatus st (versionFull ++ " \x2014 Post-Quantum Encrypted Messaging")
--- Contacts menu
-executeMenuItem st MenuContacts 0 = startBrowse st       -- Browse
-executeMenuItem st MenuContacts 1 = startVerify st       -- Verify
--- Chat menu
-executeMenuItem st MenuChat 0     = startNewConn st      -- New
-executeMenuItem st MenuChat 1     = renameContact st     -- Rename
-executeMenuItem st MenuChat 2     = sendCurrentMessage st -- Send
-executeMenuItem st MenuChat 3     = do                   -- Clear Input
-    writeIORef (asInputBuf st) ""
-    setStatus st "Input cleared"
--- Prefs menu
-executeMenuItem st MenuPrefs 0    = startSettings st     -- Settings
-executeMenuItem st MenuPrefs 1    = startKeysView st     -- Keys
-executeMenuItem st MenuPrefs 2    = do                   -- mDNS Toggle
-    modifyIORef' (cfgMDNSEnabled (asConfig st)) not
-    on <- readIORef (cfgMDNSEnabled (asConfig st))
-    setStatus st ("mDNS: " ++ if on then "ON" else "OFF")
-executeMenuItem st MenuPrefs 3    = startExport st       -- Export Chat
-executeMenuItem st MenuPrefs 4    = startImport st       -- Import Chat
--- Quit menu
-executeMenuItem st MenuQuit 0     = quitApp st           -- Quit
-executeMenuItem _  _        _     = pure ()
+executeMenuItem st tab idx =
+    case commandForMenuItem tab idx of
+        Just cmd -> runRuntimeCommand st cmd
+        Nothing  -> pure ()

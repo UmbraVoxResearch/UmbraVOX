@@ -14,6 +14,8 @@ runTests = do
     putStrLn (replicate 40 '-')
     results <- sequence
         [ testCtrlNOpensNewConn
+        , testCtrlGOpensGroupPrompt
+        , testCtrlQQuits
         , testEscapeClosesDialog
         , testEscapeNoOpWithoutDialog
         , testF1OpensHelp
@@ -31,6 +33,20 @@ testCtrlNOpensNewConn = do
     handleNormal st KeyCtrlN
     dlg <- readIORef (asDialogMode st)
     assertEq "Ctrl+N opens NewConn" True (isDlgNewConn dlg)
+
+testCtrlGOpensGroupPrompt :: IO Bool
+testCtrlGOpensGroupPrompt = do
+    st <- mkTestState
+    handleNormal st KeyCtrlG
+    dlg <- readIORef (asDialogMode st)
+    assertEq "Ctrl+G opens group prompt" True (isDlgPromptWithSubstring "Group" dlg)
+
+testCtrlQQuits :: IO Bool
+testCtrlQQuits = do
+    st <- mkTestState
+    handleNormal st KeyCtrlQ
+    running <- readIORef (asRunning st)
+    assertEq "Ctrl+Q quits" False running
 
 testEscapeClosesDialog :: IO Bool
 testEscapeClosesDialog = do

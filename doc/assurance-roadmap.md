@@ -14,6 +14,11 @@ current assurance boundary explicit, keep the messaging MVP testable, and move
 incrementally from reference semantics toward independently checked,
 constant-time-capable production cryptography.
 
+Runtime troubleshooting logs are part of that same boundary discipline. Even
+with payload redaction and restrictive file permissions, they still capture
+sensitive operational metadata and should not be treated as production-safe
+telemetry.
+
 ## Current Assurance Model
 
 - The active confidentiality and integrity path is the layered runtime path:

@@ -8,11 +8,17 @@
 #   make run          - Run UmbraVOX TUI application
 #   make test         - Run the fast messaging-MVP hardening gate
 #   make test-core    - Run the core deterministic messaging suite
+#   make test-core-crypto - Run deterministic crypto/unit coverage
+#   make test-core-network - Run deterministic network/discovery coverage
+#   make test-core-chat - Run deterministic chat/protocol coverage
+#   make test-core-tui - Run deterministic non-simulated TUI coverage
+#   make test-core-tools - Run deterministic codegen/tools/fuzz coverage
 #   make test-tcp     - Run real TCP hardening scenarios
 #   make test-fault   - Run adversarial fault-injection scenarios
 #   make test-recovery - Run persistence and recovery scenarios
 #   make test-tui-sim - Run TUI simulation coverage
 #   make test-integrity - Run wire/integrity coverage
+#   make test-mdns    - Run the exact mDNS/discovery suite
 #   make test-deferred - Run preserved deferred blockchain/economics suites
 #   make soak         - Run the long soak suite and write an artifact report
 #   make verify       - Run F* formal verification (17 modules)
@@ -23,6 +29,7 @@
 #   make format-check - Check for tabs and trailing whitespace
 #   make codegen      - Generate Haskell + C + FFI from .spec files
 #   make quality      - Run the full pipeline (same as make)
+#   make evidence     - Run quality and write a publication evidence bundle
 #   make clean        - Remove build artifacts
 #   make cleandb      - Remove local database
 #   make cleanall     - Remove everything (build + DB + tools)
@@ -30,7 +37,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build run test test-core test-tcp test-fault test-recovery test-tui-sim test-integrity test-deferred soak verify complexity quality lint license license-fix format-check codegen clean help
+.PHONY: all build run test test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify complexity quality evidence lint license license-fix format-check codegen clean help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -60,6 +67,7 @@ BLUE   := \033[0;34m
 NC     := \033[0m
 
 TEST_ARTIFACT_DIR := build/test-artifacts
+EVIDENCE_DIR := build/evidence
 SUITE_LOCK := ./scripts/with-suite-lock.sh suite-gate
 
 # --------------------------------------------------------------------------
@@ -83,14 +91,21 @@ help:
 	@echo "    make run         Run UmbraVOX TUI application"
 	@echo "    make test        Run fast messaging-MVP hardening gate"
 	@echo "    make test-core   Run core deterministic messaging suite"
+	@echo "    make test-core-crypto Run deterministic crypto/unit coverage"
+	@echo "    make test-core-network Run deterministic network/discovery coverage"
+	@echo "    make test-core-chat Run deterministic chat/protocol coverage"
+	@echo "    make test-core-tui Run deterministic non-simulated TUI coverage"
+	@echo "    make test-core-tools Run deterministic codegen/tools/fuzz coverage"
 	@echo "    make test-tcp    Run real TCP hardening suite"
 	@echo "    make test-fault  Run adversarial fault-injection suite"
 	@echo "    make test-recovery Run persistence and recovery suite"
 	@echo "    make test-tui-sim Run TUI simulation suite"
 	@echo "    make test-integrity Run wire/integrity suite"
+	@echo "    make test-mdns   Run exact mDNS/discovery suite"
 	@echo "    make test-deferred Run preserved deferred blockchain/economics suites"
 	@echo "    make soak        Run long soak suite and write artifact report"
 	@echo "    make codegen     Generate Haskell + C + FFI from .spec files"
+	@echo "    make evidence    Run quality and write a publication evidence bundle"
 	@echo ""
 	@echo "  Quality Gates:"
 	@echo "    make verify      Run F* formal verification (17 modules)"
@@ -163,6 +178,26 @@ test-core: build
 	@echo -e "$(BLUE)[TEST-CORE]$(NC) Running core deterministic suite..."
 	@$(SUITE_LOCK) cabal test umbravox-test --test-options="core"
 
+test-core-crypto: build
+	@echo -e "$(BLUE)[TEST-CORE-CRYPTO]$(NC) Running core crypto suite..."
+	@$(SUITE_LOCK) cabal test umbravox-test --test-options="core-crypto"
+
+test-core-network: build
+	@echo -e "$(BLUE)[TEST-CORE-NETWORK]$(NC) Running core network suite..."
+	@$(SUITE_LOCK) cabal test umbravox-test --test-options="core-network"
+
+test-core-chat: build
+	@echo -e "$(BLUE)[TEST-CORE-CHAT]$(NC) Running core chat/protocol suite..."
+	@$(SUITE_LOCK) cabal test umbravox-test --test-options="core-chat"
+
+test-core-tui: build
+	@echo -e "$(BLUE)[TEST-CORE-TUI]$(NC) Running core TUI suite..."
+	@$(SUITE_LOCK) cabal test umbravox-test --test-options="core-tui"
+
+test-core-tools: build
+	@echo -e "$(BLUE)[TEST-CORE-TOOLS]$(NC) Running core tools/codegen suite..."
+	@$(SUITE_LOCK) cabal test umbravox-test --test-options="core-tools"
+
 test-tcp: build
 	@echo -e "$(BLUE)[TEST-TCP]$(NC) Running real TCP suite..."
 	@$(SUITE_LOCK) cabal test umbravox-test --test-options="tcp"
@@ -182,6 +217,10 @@ test-tui-sim: build
 test-integrity: build
 	@echo -e "$(BLUE)[TEST-INTEGRITY]$(NC) Running wire/integrity suite..."
 	@$(SUITE_LOCK) cabal test umbravox-test --test-options="integrity"
+
+test-mdns: build
+	@echo -e "$(BLUE)[TEST-MDNS]$(NC) Running exact mDNS/discovery suite..."
+	@$(SUITE_LOCK) cabal test umbravox-test --test-options="mdns"
 
 test-deferred: build
 	@echo -e "$(BLUE)[TEST-DEFERRED]$(NC) Running preserved deferred suite..."
@@ -345,6 +384,27 @@ codegen: build
 # --------------------------------------------------------------------------
 
 quality: all
+
+evidence:
+	@echo -e "$(BLUE)[EVIDENCE]$(NC) Building publication evidence bundle..."
+	@mkdir -p $(EVIDENCE_DIR)
+	@ts=$$(date -u +%Y%m%dT%H%M%SZ); \
+	out="$(EVIDENCE_DIR)/$$ts"; \
+	mkdir -p "$$out"; \
+	echo -e "$(BLUE)[EVIDENCE]$(NC) Output: $$out"; \
+	set -o pipefail; \
+	$(MAKE) quality 2>&1 | tee "$$out/quality.log"; \
+	cp -a $(TEST_ARTIFACT_DIR) "$$out/test-artifacts" 2>/dev/null || true; \
+	git rev-parse HEAD > "$$out/git-head.txt"; \
+	git status -sb > "$$out/git-status.txt"; \
+	{ \
+		echo "timestamp_utc=$$ts"; \
+		echo "quality_log=$$out/quality.log"; \
+		echo "test_artifacts=$$out/test-artifacts"; \
+		echo "git_head=$$(cat $$out/git-head.txt)"; \
+	} > "$$out/manifest.txt"; \
+	ln -sfn "$$ts" "$(EVIDENCE_DIR)/latest"; \
+	echo -e "$(GREEN)[EVIDENCE]$(NC) Bundle complete: $$out"
 
 # --------------------------------------------------------------------------
 # Clean

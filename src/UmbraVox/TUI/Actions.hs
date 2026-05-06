@@ -4,7 +4,7 @@ module UmbraVox.TUI.Actions
       module UmbraVox.TUI.Actions.Session
     , module UmbraVox.TUI.Actions.Export
       -- * Dialog openers
-    , startNewConn, showHelp, startSettings, startBrowse
+    , startNewConn, showHelp, showAbout, startSettings, startBrowse
     , startVerify, startKeysView
       -- * Contact management
     , renameContact, selectLast, adjustContactScroll
@@ -36,11 +36,19 @@ startNewConn st = writeIORef (asDialogMode st) (Just DlgNewConn)
 showHelp :: AppState -> IO ()
 showHelp st = writeIORef (asDialogMode st) (Just DlgHelp)
 
+showAbout :: AppState -> IO ()
+showAbout st = writeIORef (asDialogMode st) (Just DlgAbout)
+
 startSettings :: AppState -> IO ()
-startSettings st = writeIORef (asDialogMode st) (Just DlgSettings)
+startSettings st = do
+    writeIORef (asDialogTab st) 0
+    writeIORef (asDialogMode st) (Just DlgSettings)
 
 startBrowse :: AppState -> IO ()
-startBrowse st = writeIORef (asDialogMode st) (Just DlgBrowse)
+startBrowse st = do
+    writeIORef (asBrowsePage st) 0
+    writeIORef (asBrowseFilter st) ""
+    writeIORef (asDialogMode st) (Just DlgBrowse)
 
 startVerify :: AppState -> IO ()
 startVerify st = writeIORef (asDialogMode st) (Just DlgVerify)

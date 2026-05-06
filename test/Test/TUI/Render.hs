@@ -6,7 +6,10 @@ module Test.TUI.Render (runTests) where
 import Test.Util (assertEq, checkProperty, PRNG, nextWord32)
 import UmbraVox.TUI.Terminal (esc, padR, isPfx)
 import UmbraVox.TUI.Layout (clampSize, sizeValid, calcLayout)
-import UmbraVox.TUI.Types (Layout(..))
+import UmbraVox.TUI.PaginatedList (pageItemBySlot, pageMaxIndex, slicePage, psItems, psPage, psTotalPages)
+import UmbraVox.TUI.Text (displayWidth, trimToWidth)
+import UmbraVox.TUI.Types (Layout(..), ConnectionMode(..))
+import UmbraVox.TUI.Render (statusBarConnTag)
 
 runTests :: IO Bool
 runTests = do
@@ -19,6 +22,8 @@ runTests = do
         , testPadRExact
         , testPadRLong
         , testPadRZero
+        , testPadRWideGlyph
+        , testTrimToWidthCombining
         , testIsPfxEmpty
         , testIsPfxMatch
         , testIsPfxMismatch
@@ -38,6 +43,10 @@ runTests = do
         , testCalcLayoutWidthSum
         , testCalcLayoutLeftMinimum
         , testCalcLayoutEdgeToEdge
+        , testStatusBarConnTagNormal
+        , testStatusBarConnTagChastity
+        , testPaginatedSliceClampsPage
+        , testPaginatedSlotSelection
         , propPadRLength
         , propClampSizeInRange
         , propLayoutWidthSum
@@ -66,6 +75,19 @@ testPadRLong = assertEq "padR truncates long" "hel" (padR 3 "hello")
 
 testPadRZero :: IO Bool
 testPadRZero = assertEq "padR width 0" "" (padR 0 "hello")
+
+testPadRWideGlyph :: IO Bool
+testPadRWideGlyph = do
+    let rendered = padR 6 "\x4F60\x597D"
+    a <- assertEq "padR wide glyph display width" 6 (displayWidth rendered)
+    b <- assertEq "padR wide glyph content preserved" "\x4F60\x597D" (trimToWidth 4 rendered)
+    pure (a && b)
+
+testTrimToWidthCombining :: IO Bool
+testTrimToWidthCombining =
+    assertEq "trimToWidth keeps combining mark with base"
+        "e\x0301"
+        (trimToWidth 1 "e\x0301x")
 
 -- isPfx -----------------------------------------------------------------------
 
@@ -151,13 +173,42 @@ testCalcLayoutEdgeToEdge = do
     b <- assertEq "calcLayout lRows == rows" 50 (lRows lay)
     pure (a && b)
 
+testStatusBarConnTagNormal :: IO Bool
+testStatusBarConnTagNormal =
+    assertEq "status bar normal mode omits ephemeral"
+        False
+        ("EPHEMERAL" `contains` statusBarConnTag Promiscuous 0)
+
+testStatusBarConnTagChastity :: IO Bool
+testStatusBarConnTagChastity = do
+    let tag = statusBarConnTag Chastity 2
+    a <- assertEq "status bar chastity shows ephemeral" True ("EPHEMERAL" `contains` tag)
+    b <- assertEq "status bar chastity separates version with diamond" True ("\x25C6 UmbraVOX" `contains` tag)
+    pure (a && b)
+
+testPaginatedSliceClampsPage :: IO Bool
+testPaginatedSliceClampsPage = do
+    let page = slicePage 10 5 ([0..11] :: [Int])
+    a <- assertEq "paginated slice clamps page index" 1 (psPage page)
+    b <- assertEq "paginated slice total pages" 2 (psTotalPages page)
+    c <- assertEq "paginated slice keeps second page slots" [(0,10),(1,11)] (psItems page)
+    pure (a && b && c)
+
+testPaginatedSlotSelection :: IO Bool
+testPaginatedSlotSelection = do
+    let xs = ["a","b","c","d","e","f","g","h","i","j","k"]
+    a <- assertEq "paginated slot picks visible second-page item" (Just "k") (pageItemBySlot 10 1 0 xs)
+    b <- assertEq "paginated slot rejects missing slot" Nothing (pageItemBySlot 10 1 1 xs)
+    c <- assertEq "paginated page max index" 1 (pageMaxIndex 10 xs)
+    pure (a && b && c)
+
 -- Property tests --------------------------------------------------------------
 
 propPadRLength :: IO Bool
 propPadRLength = checkProperty "padR always produces width-length string" 100 $ \g ->
     let (w32, _) = nextWord32 g
         w = fromIntegral (w32 `mod` 200) :: Int
-    in length (padR w "test") == w
+    in displayWidth (padR w "test") == w
 
 propClampSizeInRange :: IO Bool
 propClampSizeInRange = checkProperty "clampSize always in valid range" 100 $ \g ->
@@ -185,3 +236,7 @@ propSizeValidClampIdempotent = checkProperty "clamped sizes are always valid" 10
         c = fromIntegral (w2 `mod` 500) :: Int
         (cr, cc) = clampSize r c
     in sizeValid cr cc
+
+contains :: String -> String -> Bool
+contains needle haystack = any (\i -> take (length needle) (drop i haystack) == needle)
+    [0 .. max 0 (length haystack - length needle)]

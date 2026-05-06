@@ -4,27 +4,31 @@
 module Test.TUI.Sim.Util
     ( mkTestState
     , mkTestConfig
+    , calcTestLayout
     , addTestSession
     , addTestSessionWithHistory
-    , isDlgNewConn, isDlgSettings, isDlgHelp, isDlgKeys
-    , isDlgVerify, isDlgBrowse, isDlgWelcome, isDlgNothing
+    , seedBrowsePeers
+    , isDlgNewConn, isDlgSettings, isDlgHelp, isDlgAbout, isDlgKeys
+    , isDlgVerify, isDlgBrowse, isDlgNothing
     , isDlgPrompt, isDlgPromptWithSubstring
     ) where
 
 import Control.Concurrent.MVar (newMVar)
-import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.List (isInfixOf)
+import qualified Data.ByteString as BS
 import qualified Data.Map.Strict as Map
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Layout (calcLayout)
 import UmbraVox.Chat.Session (initChatSession)
 import UmbraVox.Crypto.Random (randomBytes)
+import UmbraVox.Network.MDNS (MDNSPeer(..))
 
 -- | Create a minimal AppState suitable for testing.
 mkTestState :: IO AppState
 mkTestState = do
     cfg <- mkTestConfig
-    let lay = calcLayout 40 120
+    let lay = calcTestLayout
     AppState cfg
         <$> newIORef 0           -- asSelected
         <*> newIORef ContactPane -- asFocus
@@ -34,11 +38,18 @@ mkTestState = do
         <*> newIORef ""          -- asStatusMsg
         <*> newIORef True        -- asRunning
         <*> newIORef Nothing     -- asDialogMode
+        <*> newIORef 0           -- asBrowsePage
+        <*> newIORef ""          -- asBrowseFilter
         <*> newIORef lay         -- asLayout
         <*> newIORef 0           -- asContactScroll
         <*> newIORef (40, 120)   -- asTermSize
         <*> newIORef Nothing     -- asMenuOpen
         <*> newIORef 0           -- asMenuIndex
+        <*> newIORef 0           -- asDialogTab
+        <*> newIORef Nothing     -- asLastRenderToken
+
+calcTestLayout :: Layout
+calcTestLayout = calcLayout 40 120
 
 mkTestConfig :: IO AppConfig
 mkTestConfig =
@@ -86,6 +97,19 @@ addTestSessionWithHistory cfg label history = do
   where
     modifyIORef' r f = readIORef r >>= \v -> writeIORef r (f v)
 
+seedBrowsePeers :: AppState -> Int -> IO ()
+seedBrowsePeers st count =
+    writeIORef (cfgMDNSPeers (asConfig st))
+        [ MDNSPeer
+            { mdnsPubkey = BS.pack [fromIntegral i, 0xAA]
+            , mdnsName = Just ("peer-" ++ show i)
+            , mdnsIP = "127.0.0.1"
+            , mdnsPort = 3000 + i
+            , mdnsLastSeen = 0
+            }
+        | i <- [0 .. count - 1]
+        ]
+
 ------------------------------------------------------------------------
 -- Dialog mode pattern matchers
 ------------------------------------------------------------------------
@@ -99,6 +123,9 @@ isDlgSettings (Just DlgSettings) = True; isDlgSettings _ = False
 isDlgHelp :: Maybe DialogMode -> Bool
 isDlgHelp (Just DlgHelp) = True; isDlgHelp _ = False
 
+isDlgAbout :: Maybe DialogMode -> Bool
+isDlgAbout (Just DlgAbout) = True; isDlgAbout _ = False
+
 isDlgKeys :: Maybe DialogMode -> Bool
 isDlgKeys (Just DlgKeys) = True; isDlgKeys _ = False
 
@@ -107,9 +134,6 @@ isDlgVerify (Just DlgVerify) = True; isDlgVerify _ = False
 
 isDlgBrowse :: Maybe DialogMode -> Bool
 isDlgBrowse (Just DlgBrowse) = True; isDlgBrowse _ = False
-
-isDlgWelcome :: Maybe DialogMode -> Bool
-isDlgWelcome (Just DlgWelcome) = True; isDlgWelcome _ = False
 
 isDlgNothing :: Maybe DialogMode -> Bool
 isDlgNothing Nothing = True; isDlgNothing _ = False

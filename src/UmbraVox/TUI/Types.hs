@@ -8,6 +8,7 @@ module UmbraVox.TUI.Types
     , ConnectionMode(..)
     , MenuTab(..)
     , menuTabLabel
+    , menuTabUnderlineIndex
     , menuTabItems
     , AppState(..)
     , DialogMode(..)
@@ -65,7 +66,11 @@ menuTabLabel MenuHelp     = " F1 Help "
 menuTabLabel MenuContacts = " F2 Contacts "
 menuTabLabel MenuChat     = " F3 Chat "
 menuTabLabel MenuPrefs    = " F4 Prefs "
-menuTabLabel MenuQuit     = " Q̲uit "
+menuTabLabel MenuQuit     = " Q Quit "
+
+menuTabUnderlineIndex :: MenuTab -> Maybe Int
+menuTabUnderlineIndex MenuQuit = Just 1
+menuTabUnderlineIndex _        = Nothing
 
 menuTabItems :: MenuTab -> [String]
 menuTabItems MenuHelp     = ["Help", "About"]
@@ -80,34 +85,38 @@ data AppState = AppState
     , asChatScroll :: IORef Int
     , asStatusMsg :: IORef String, asRunning :: IORef Bool
     , asDialogMode :: IORef (Maybe DialogMode)
+    , asBrowsePage :: IORef Int
+    , asBrowseFilter :: IORef String
     , asLayout :: IORef Layout
     , asContactScroll :: IORef Int
     , asTermSize :: IORef (Int, Int)
     , asMenuOpen :: IORef (Maybe MenuTab)
-    , asMenuIndex :: IORef Int }
+    , asMenuIndex :: IORef Int
+    , asDialogTab :: IORef Int
+    , asLastRenderToken :: IORef (Maybe String) }
 
-data DialogMode = DlgHelp | DlgSettings | DlgVerify | DlgNewConn
-    | DlgKeys | DlgBrowse | DlgWelcome | DlgPrompt String (String -> IO ())
+data DialogMode = DlgHelp | DlgAbout | DlgSettings | DlgVerify | DlgNewConn
+    | DlgKeys | DlgBrowse | DlgPrompt String (String -> IO ())
 
 instance Eq DialogMode where
     DlgHelp       == DlgHelp       = True
+    DlgAbout      == DlgAbout      = True
     DlgSettings   == DlgSettings   = True
     DlgVerify     == DlgVerify     = True
     DlgNewConn    == DlgNewConn    = True
     DlgKeys       == DlgKeys       = True
     DlgBrowse     == DlgBrowse     = True
-    DlgWelcome    == DlgWelcome    = True
     DlgPrompt a _ == DlgPrompt b _ = a == b
     _             == _             = False
 
 instance Show DialogMode where
     show DlgHelp         = "DlgHelp"
+    show DlgAbout        = "DlgAbout"
     show DlgSettings     = "DlgSettings"
     show DlgVerify       = "DlgVerify"
     show DlgNewConn      = "DlgNewConn"
     show DlgKeys         = "DlgKeys"
     show DlgBrowse       = "DlgBrowse"
-    show DlgWelcome      = "DlgWelcome"
     show (DlgPrompt s _) = "DlgPrompt " ++ show s ++ " <callback>"
 
 data AppConfig = AppConfig
@@ -147,6 +156,8 @@ data Layout = Layout
 data InputEvent = KeyChar Char | KeyEnter | KeyTab | KeyBackspace | KeyEscape
     | KeyUp | KeyDown | KeyLeft | KeyRight
     | KeyPageUp | KeyPageDown
-    | KeyCtrlN | KeyCtrlQ | KeyCtrlD
+    | KeyCtrlN | KeyCtrlG | KeyCtrlQ | KeyCtrlD
+    | KeyMouseLeft Int Int  -- row, col (1-based terminal coordinates)
+    | KeyIgnored
     | KeyF1 | KeyF2 | KeyF3 | KeyF4 | KeyF5
     | KeyUnknown

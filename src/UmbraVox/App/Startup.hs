@@ -4,6 +4,7 @@ module UmbraVox.App.Startup
     ( newDefaultAppConfig
     , initializeLocalIdentity
     , applyPersistenceAnswer
+    , persistenceAnswerEnables
     , resolvePersistencePreference
     , resolvePersistencePreferenceAt
     , resolveIdentity
@@ -14,7 +15,9 @@ module UmbraVox.App.Startup
 
 import Control.Exception (SomeException, catch)
 import Control.Concurrent.MVar (newMVar)
+import Data.Char (isSpace, toLower)
 import Data.IORef (newIORef, readIORef, writeIORef, modifyIORef')
+import Data.List (dropWhileEnd)
 import qualified Data.Map.Strict as Map
 import System.Directory (createDirectoryIfMissing, doesFileExist, getHomeDirectory)
 import System.Environment (lookupEnv)
@@ -82,15 +85,22 @@ initializeLocalIdentity cfg = do
 
 applyPersistenceAnswer :: AppConfig -> String -> IO Int
 applyPersistenceAnswer cfg answer
-    | answer `elem` ["y", "Y", "yes", "Yes", "YES"] =
+    | persistenceAnswerEnables answer =
         restorePersistentState cfg `catch` \(_ :: SomeException) -> do
             logEvent cfg "persistence.restore.failed" []
             writeIORef (cfgDBEnabled cfg) False
             pure 0
     | otherwise = do
+        rememberPersistencePreference cfg False
         logEvent cfg "persistence.mode" [("enabled", "false")]
         writeIORef (cfgDBEnabled cfg) False
         pure 0
+
+persistenceAnswerEnables :: String -> Bool
+persistenceAnswerEnables raw =
+    normalize raw `elem` ["y", "yes"]
+  where
+    normalize = map toLower . dropWhileEnd isSpace . dropWhile isSpace
 
 resolvePersistencePreference :: AppConfig -> IO (Maybe Bool)
 resolvePersistencePreference cfg = do
@@ -107,7 +117,7 @@ resolvePersistencePreferenceAt path = do
             db <- openDB path
             mValue <- loadSetting db persistenceSettingKey
             closeDB db
-            pure (Just (parsePersistenceValue mValue))
+            pure (fmap (const (parsePersistenceValue mValue)) mValue)
             ) `catch` \(_ :: SomeException) -> pure Nothing
 
 resolveIdentity :: IO IdentityKey
@@ -158,7 +168,7 @@ restorePersistentStateAtUnsafe cfg path = do
     Map.size <$> readIORef (cfgSessions cfg)
 
 parsePersistenceValue :: Maybe String -> Bool
-parsePersistenceValue Nothing = True
+parsePersistenceValue Nothing = False
 parsePersistenceValue (Just raw) =
     case raw of
         "0"     -> False
@@ -167,6 +177,19 @@ parsePersistenceValue (Just raw) =
         "no"    -> False
         "No"    -> False
         _       -> True
+
+rememberPersistencePreference :: AppConfig -> Bool -> IO ()
+rememberPersistencePreference cfg enabled = do
+    dbPath <- readIORef (cfgDBPath cfg)
+    home <- getHomeDirectory
+    let path = expandHome home dbPath
+        value = if enabled then "1" else "0"
+    createDirectoryIfMissing True (takeDirectory path)
+    (do
+        db <- openDB path
+        saveSetting db persistenceSettingKey value
+        closeDB db
+        ) `catch` \(_ :: SomeException) -> pure ()
 
 restoreConversation
     :: AppConfig

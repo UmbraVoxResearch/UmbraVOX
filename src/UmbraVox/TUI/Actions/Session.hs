@@ -10,10 +10,10 @@ import Control.Concurrent.MVar (MVar, newMVar, withMVar)
 import Control.Exception (catch, SomeException)
 import Control.Monad (when, unless)
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Char8 as BC
 import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
 import qualified Data.Map.Strict as Map
 import Data.Time.Clock.POSIX (getPOSIXTime)
+import Data.Word (Word8)
 import System.Directory (doesFileExist)
 import UmbraVox.App.RuntimeLog (logEvent)
 import UmbraVox.TUI.Types
@@ -24,6 +24,7 @@ import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Network.TransportClass
     (AnyTransport, anySend, anyRecv)
 import UmbraVox.Protocol.CBOR (encodeMessage)
+import UmbraVox.Protocol.UTF8 (encodeStringUtf8, decodeUtf8String)
 import UmbraVox.Storage.Anthony (saveMessage, saveConversation)
 import UmbraVox.TUI.Handshake (getW32BE, timestamp)
 
@@ -47,7 +48,7 @@ addSession cfg t session peerName = do
             saveConversation db sid "" peerName now
             ) `catch` (\(_ :: SomeException) -> pure ())
         Nothing -> pure ()
-    logEvent cfg "session.add.remote"
+    logEvent cfg "session.established.remote"
         [ ("session_id", show sid)
         , ("peer", peerName)
         ]
@@ -71,7 +72,7 @@ addLoopbackSession cfg label = do
             saveConversation db sid "" label now
             ) `catch` (\(_ :: SomeException) -> pure ())
         Nothing -> pure ()
-    logEvent cfg "session.add.local"
+    logEvent cfg "session.established.local"
         [ ("session_id", show sid)
         , ("peer", label)
         ]
@@ -96,7 +97,10 @@ sendToSession si msg = do
                             Just (session3, _pt) -> writeIORef (siSession si) session3
                             Nothing -> pure ()
                         ts <- timestamp
-                        modifyIORef' (siHistory si) ((ts++" [saved] "++BC.unpack msg):)
+                        let savedLine = case payloadHistoryText msg of
+                                Right text -> ts ++ " [saved] " ++ text
+                                Left _ -> ts ++ " [saved] [invalid UTF-8 payload]"
+                        modifyIORef' (siHistory si) (savedLine :)
                         pure SendStoredLocal
                     _ -> pure SendUnavailable
 
@@ -116,7 +120,7 @@ sendCurrentMessage st = do
                 exists <- doesFileExist path
                 if exists then do
                     contents <- BS.readFile path
-                    result <- sendToSession si (BC.pack ("/file:"++path++":") <> contents)
+                    result <- sendToSession si (encodeFilePayload path contents)
                     case result of
                         SendUnavailable ->
                             setStatusLocal st ("Session offline; reconnect required for " ++ siPeerName si)
@@ -135,7 +139,7 @@ sendCurrentMessage st = do
                             persistMessageIfEnabled cfg sid "You" buf
                 else setStatusLocal st "File not found"
             else do
-                result <- sendToSession si (BC.pack buf)
+                result <- sendToSession si (encodeStringUtf8 buf)
                 case result of
                     SendUnavailable ->
                         setStatusLocal st ("Session offline; reconnect required for " ++ siPeerName si)
@@ -187,7 +191,7 @@ recvLoopTUI cfg sid peerName t ref lock histRef = go `catch` handler where
                     Nothing -> modifyIORef' histRef ("  [Decryption failed]":) >> go
                     Just plaintext -> do
                         now <- timestamp
-                        let content = BC.unpack plaintext
+                        let content = either (const "[invalid UTF-8 message]") id (payloadHistoryText plaintext)
                         modifyIORef' histRef (("["++now++"] Peer: "++content):)
                         logEvent cfg "message.recv"
                             [ ("session_id", show sid)
@@ -246,3 +250,22 @@ markSessionOffline cfg sid = do
             writeIORef (siStatus si) Offline
             let si' = si { siTransport = Nothing, siRecvTid = Nothing }
             writeIORef (cfgSessions cfg) (Map.insert sid si' sessions)
+
+encodeFilePayload :: FilePath -> BS.ByteString -> BS.ByteString
+encodeFilePayload path contents = encodeStringUtf8 ("/file:" ++ path ++ ":") <> contents
+
+payloadHistoryText :: BS.ByteString -> Either String String
+payloadHistoryText payload
+    | filePrefix `BS.isPrefixOf` payload =
+        case BS.break (== fileSep) (BS.drop (BS.length filePrefix) payload) of
+            (pathBs, rest) ->
+                case BS.uncons rest of
+                    Just (_, contents) -> do
+                        path <- decodeUtf8String pathBs
+                        pure ("[received file " ++ path ++ " (" ++ show (BS.length contents) ++ " bytes)]")
+                    Nothing -> decodeUtf8String payload
+    | otherwise = decodeUtf8String payload
+  where
+    filePrefix = encodeStringUtf8 "/file:"
+    fileSep :: Word8
+    fileSep = 58

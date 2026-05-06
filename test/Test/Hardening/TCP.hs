@@ -32,8 +32,8 @@ import Test.Util (assertEq)
 import UmbraVox.Network.TransportClass (anyClose)
 import UmbraVox.TUI.Actions.Session (sendCurrentMessage)
 import UmbraVox.TUI.Handshake (genIdentity)
-import UmbraVox.TUI.Input
-    ( acceptLoopTUI, handleDialog, handleNewConnDlg, startListenerIfNeeded )
+import UmbraVox.TUI.Input (handleDialog, handleNewConnDlg)
+import UmbraVox.TUI.RuntimeNetwork (acceptLoopTUI, startListenerIfNeeded)
 import UmbraVox.TUI.Types
     ( AppState(..), AppConfig(..), DialogMode(..), InputEvent(..)
     , SessionInfo(..), ContactStatus(..)
@@ -46,6 +46,7 @@ runTests = do
         [ testTCPHandshakeRoundTrip
         , testTCPBidirectional
         , testTUIBidirectionalRuntime
+        , testTUIUtf8Runtime
         , testTUIRuntimeLogging
         , testTUIListenerSingleOwner
         , testTUIDisconnectMarksOffline
@@ -135,6 +136,39 @@ testTUIBidirectionalRuntime = do
            && okAliceLoggedSend && okBobSawAlice
             )
 
+testTUIUtf8Runtime :: IO Bool
+testTUIUtf8Runtime = do
+    alice <- mkTestState
+    bob <- mkTestState
+    aliceIk <- genIdentity
+    bobIk <- genIdentity
+    writeIORef (cfgIdentity (asConfig alice)) (Just aliceIk)
+    writeIORef (cfgIdentity (asConfig bob)) (Just bobIk)
+    writeIORef (cfgListenPort (asConfig alice)) 19416
+    listenerTid <- forkIO (acceptLoopTUI alice aliceIk 19416)
+    let cleanup = do
+            cleanupSessions alice
+            cleanupSessions bob
+            killThread listenerTid `catch` ignoreError
+            threadDelay 50000
+        msg = "\x4F60\x597D \x1F44B cafe\x0301"
+    (`finally` cleanup) $ do
+        threadDelay 50000
+        writeIORef (asDialogMode bob) (Just DlgNewConn)
+        handleNewConnDlg bob (KeyChar '2')
+        feedPrompt bob "127.0.0.1:19416"
+        connectedAlice <- waitForSessionCount alice 1 5000
+        connectedBob <- waitForSessionCount bob 1 5000
+        writeIORef (asInputBuf bob) msg
+        sendCurrentMessage bob
+        bobLoggedSend <- waitForHistoryLine bob ("You: " ++ msg) 5000
+        aliceSawBob <- waitForHistoryLine alice ("Peer: " ++ msg) 5000
+        okConnectedAlice <- assertEq "tui utf8 alice connected" True connectedAlice
+        okConnectedBob <- assertEq "tui utf8 bob connected" True connectedBob
+        okBobLoggedSend <- assertEq "tui utf8 bob local echo" True bobLoggedSend
+        okAliceSawBob <- assertEq "tui utf8 alice recv" True aliceSawBob
+        pure (okConnectedAlice && okConnectedBob && okBobLoggedSend && okAliceSawBob)
+
 testTUIRuntimeLogging :: IO Bool
 testTUIRuntimeLogging = do
     let logPath = "build/test-runtime-events.log"
@@ -173,20 +207,22 @@ testTUIRuntimeLogging = do
         _ <- waitForHistoryLine bob "Peer: log-from-alice" 5000
         logExists <- waitForFile logPath 5000
         logReady <- waitForLogEvents logPath
-            [ "session.add.remote"
+            [ "session.established.remote"
             , "message.send"
             , "message.recv"
             ]
             5000
         permsOk <- logFilePrivate logPath
+        redactionOk <- runtimeLogRedactionOk logPath
         okConnectedAlice <- assertEq "tui runtime log alice connected" True connectedAlice
         okConnectedBob <- assertEq "tui runtime log bob connected" True connectedBob
         okLogExists <- assertEq "tui runtime log file exists" True logExists
         okPerms <- assertEq "tui runtime log file perms" True permsOk
+        okRedaction <- assertEq "tui runtime log metadata redacted" True redactionOk
         okLogReady <- assertEq "tui runtime log events" True logReady
         pure
             ( okConnectedAlice && okConnectedBob
-           && okLogExists && okPerms && okLogReady
+           && okLogExists && okPerms && okRedaction && okLogReady
             )
 
 testTUIListenerSingleOwner :: IO Bool
@@ -366,6 +402,16 @@ logFilePrivate path = do
                 groupClear = mode .&. groupModes == 0
                 otherClear = mode .&. otherModes == 0
             pure (ownerOk && groupClear && otherClear)
+
+runtimeLogRedactionOk :: FilePath -> IO Bool
+runtimeLogRedactionOk path = do
+    contents <- readFile path
+    let hasRedactedPeer = "peer=\"[redacted]\"" `isInfixOf` contents
+        hasRedactedPort = "port=\"[redacted]\"" `isInfixOf` contents
+        leaksHost = "127.0.0.1" `isInfixOf` contents
+        leaksPort = "19408" `isInfixOf` contents
+        leaksPeerPayload = "log-from-bob" `isInfixOf` contents || "log-from-alice" `isInfixOf` contents
+    pure (hasRedactedPeer && hasRedactedPort && not leaksHost && not leaksPort && not leaksPeerPayload)
 
 getOnlySession :: AppState -> IO (Maybe SessionInfo)
 getOnlySession st = do

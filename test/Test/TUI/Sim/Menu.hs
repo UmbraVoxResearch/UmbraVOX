@@ -5,8 +5,10 @@ module Test.TUI.Sim.Menu (runTests) where
 import Data.IORef (readIORef, writeIORef)
 import Test.Util (assertEq)
 import Test.TUI.Sim.Util
+import UmbraVox.TUI.Dialog (browseOverlayLines, overlayBounds, settingsOverlayLines)
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Menu (handleMenu, toggleMenu, openMenu, executeMenuItem)
+import UmbraVox.TUI.Input (handleNormal)
 
 runTests :: IO Bool
 runTests = do
@@ -21,6 +23,7 @@ runTests = do
         , testMenuEscCloses
         , testMenuToggleSameCloses
         , testMenuSwitchDirect
+        , testMenuCtrlGStatusHint
         , testMenuContactsBrowse
         , testMenuContactsVerify
         , testMenuChatNew
@@ -29,10 +32,19 @@ runTests = do
         , testMenuPrefsKeys
         , testMenuPrefsMDNSToggle
         , testMenuPrefsExportChat
+        , testMenuPrefsExportChatNoSelection
         , testMenuPrefsImportChat
+        , testMenuPrefsImportChatNoSelection
         , testMenuHelpHelp
+        , testMenuHelpAbout
         , testMenuChatClearInput
         , testMenuQuit
+        , testMenuMouseClickTab
+        , testMenuMouseClickQuitTab
+        , testMenuMouseClickDropdownItem
+        , testMouseClickPaneFocusAndSelection
+        , testMouseClickBrowsePeerSelection
+        , testMouseClickSettingsOption
         ]
     pure (and results)
 
@@ -93,6 +105,16 @@ testMenuSwitchDirect = do
     m <- readIORef (asMenuOpen st)
     assertEq "F3 switches to Chat" (Just MenuChat) m
 
+testMenuCtrlGStatusHint :: IO Bool
+testMenuCtrlGStatusHint = do
+    st <- mkTestState; openMenu st MenuHelp
+    handleMenu st KeyCtrlG
+    m <- readIORef (asMenuOpen st)
+    status <- readIORef (asStatusMsg st)
+    ok1 <- assertEq "Ctrl+G closes menu" Nothing m
+    ok2 <- assertEq "Ctrl+G menu hint status" "Use Ctrl+G from the main screen to start a group chat" status
+    pure (ok1 && ok2)
+
 testMenuContactsBrowse :: IO Bool
 testMenuContactsBrowse = do
     st <- mkTestState; executeMenuItem st MenuContacts 0
@@ -147,18 +169,49 @@ testMenuPrefsExportChat = do
     dlg <- readIORef (asDialogMode st)
     assertEq "prefs export chat opens prompt" True (isDlgPrompt dlg)
 
+testMenuPrefsExportChatNoSelection :: IO Bool
+testMenuPrefsExportChatNoSelection = do
+    st <- mkTestState
+    _ <- addTestSession (asConfig st) "peer-1"
+    writeIORef (asSelected st) (-1)
+    executeMenuItem st MenuPrefs 3
+    dlg <- readIORef (asDialogMode st)
+    status <- readIORef (asStatusMsg st)
+    ok1 <- assertEq "prefs export chat no selection stays closed" True (isDlgNothing dlg)
+    ok2 <- assertEq "prefs export chat no selection status" "No contact selected" status
+    pure (ok1 && ok2)
+
 testMenuPrefsImportChat :: IO Bool
 testMenuPrefsImportChat = do
     st <- mkTestState
+    _ <- addTestSession (asConfig st) "peer-1"
     executeMenuItem st MenuPrefs 4
     dlg <- readIORef (asDialogMode st)
     assertEq "prefs import chat opens prompt" True (isDlgPrompt dlg)
+
+testMenuPrefsImportChatNoSelection :: IO Bool
+testMenuPrefsImportChatNoSelection = do
+    st <- mkTestState
+    _ <- addTestSession (asConfig st) "peer-1"
+    writeIORef (asSelected st) (-1)
+    executeMenuItem st MenuPrefs 4
+    dlg <- readIORef (asDialogMode st)
+    status <- readIORef (asStatusMsg st)
+    ok1 <- assertEq "prefs import chat no selection stays closed" True (isDlgNothing dlg)
+    ok2 <- assertEq "prefs import chat no selection status" "No contact selected" status
+    pure (ok1 && ok2)
 
 testMenuHelpHelp :: IO Bool
 testMenuHelpHelp = do
     st <- mkTestState; executeMenuItem st MenuHelp 0
     dlg <- readIORef (asDialogMode st)
     assertEq "help opens DlgHelp" True (isDlgHelp dlg)
+
+testMenuHelpAbout :: IO Bool
+testMenuHelpAbout = do
+    st <- mkTestState; executeMenuItem st MenuHelp 1
+    dlg <- readIORef (asDialogMode st)
+    assertEq "about opens DlgAbout" True (isDlgAbout dlg)
 
 testMenuChatClearInput :: IO Bool
 testMenuChatClearInput = do
@@ -173,3 +226,97 @@ testMenuQuit = do
     executeMenuItem st MenuQuit 0
     running <- readIORef (asRunning st)
     assertEq "quit menu stops app" False running
+
+testMenuMouseClickTab :: IO Bool
+testMenuMouseClickTab = do
+    st <- mkTestState
+    -- 40x120 test layout: Help tab label starts at col 66 in row 1.
+    handleNormal st (KeyMouseLeft 1 67)
+    m <- readIORef (asMenuOpen st)
+    assertEq "mouse click tab opens menu" (Just MenuHelp) m
+
+testMenuMouseClickQuitTab :: IO Bool
+testMenuMouseClickQuitTab = do
+    st <- mkTestState
+    handleNormal st (KeyMouseLeft 1 112)
+    running <- readIORef (asRunning st)
+    m <- readIORef (asMenuOpen st)
+    ok1 <- assertEq "mouse click quit tab stops app" False running
+    ok2 <- assertEq "mouse click quit tab leaves no menu open" Nothing m
+    pure (ok1 && ok2)
+
+testMenuMouseClickDropdownItem :: IO Bool
+testMenuMouseClickDropdownItem = do
+    st <- mkTestState
+    openMenu st MenuPrefs
+    -- Prefs dropdown starts near col 100 in row 3 (items begin row 3).
+    -- Row 4 is item index 1 => "Keys".
+    handleNormal st (KeyMouseLeft 4 101)
+    dlg <- readIORef (asDialogMode st)
+    m <- readIORef (asMenuOpen st)
+    ok1 <- assertEq "mouse dropdown click executes item" True (isDlgKeys dlg)
+    ok2 <- assertEq "mouse dropdown click closes menu" Nothing m
+    pure (ok1 && ok2)
+
+testMouseClickPaneFocusAndSelection :: IO Bool
+testMouseClickPaneFocusAndSelection = do
+    st <- mkTestState
+    _ <- addTestSession (asConfig st) "peer-1"
+    _ <- addTestSession (asConfig st) "peer-2"
+    handleNormal st (KeyMouseLeft 2 80)
+    f1 <- readIORef (asFocus st)
+    handleNormal st (KeyMouseLeft 3 3)
+    f2 <- readIORef (asFocus st)
+    sel <- readIORef (asSelected st)
+    ok1 <- assertEq "mouse click chat area focuses chat" ChatPane f1
+    ok2 <- assertEq "mouse click contacts focuses contacts" ContactPane f2
+    ok3 <- assertEq "mouse click contacts selects row" 1 sel
+    pure (ok1 && ok2 && ok3)
+
+testMouseClickBrowsePeerSelection :: IO Bool
+testMouseClickBrowsePeerSelection = do
+    st <- mkTestState
+    seedBrowsePeers st 1
+    lines' <- browseOverlayLines st
+    let peerLine = findLinePrefix "  0. peer-0" lines'
+        (r0, c0, _, _) = overlayBounds calcTestLayout (length lines')
+    writeIORef (asDialogMode st) (Just DlgBrowse)
+    handleNormal st (KeyMouseLeft (r0 + peerLine + 1) (c0 + 3))
+    dlg <- readIORef (asDialogMode st)
+    status <- readIORef (asStatusMsg st)
+    ok1 <- assertEq "mouse click browse peer closes dialog" True (isDlgNothing dlg)
+    ok2 <- assertEq "mouse click browse peer starts connect" True
+        ("Connecting to 127.0.0.1:3000" `prefixOf` status)
+    pure (ok1 && ok2)
+
+testMouseClickSettingsOption :: IO Bool
+testMouseClickSettingsOption = do
+    st <- mkTestState
+    lines' <- settingsOverlayLines st
+    let keyLine = findLineIndex "   0. View/regenerate keys" lines'
+        (r0, c0, _, _) = overlayBounds calcTestLayout (length lines')
+    writeIORef (asDialogMode st) (Just DlgSettings)
+    handleNormal st (KeyMouseLeft (r0 + keyLine + 1) (c0 + 6))
+    dlg <- readIORef (asDialogMode st)
+    assertEq "mouse click settings option opens keys" True (isDlgKeys dlg)
+
+prefixOf :: String -> String -> Bool
+prefixOf [] _ = True
+prefixOf _ [] = False
+prefixOf (x:xs) (y:ys) = x == y && prefixOf xs ys
+
+findLineIndex :: String -> [String] -> Int
+findLineIndex needle = go 0
+  where
+    go _ [] = 0
+    go n (line:rest)
+        | line == needle = n
+        | otherwise = go (n + 1) rest
+
+findLinePrefix :: String -> [String] -> Int
+findLinePrefix needle = go 0
+  where
+    go _ [] = 0
+    go n (line:rest)
+        | prefixOf needle line = n
+        | otherwise = go (n + 1) rest

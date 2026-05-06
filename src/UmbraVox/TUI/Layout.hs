@@ -31,9 +31,12 @@ calcLayout rows cols = Layout
     leftW = max minLeftPaneW (cols `div` leftPaneRatio)
 
 -- | Compute the column position for a dropdown menu under the given tab.
-dropdownCol :: MenuTab -> Int
-dropdownCol tab =
+-- Tabs are right-justified in the header, so include left-side fill padding.
+dropdownCol :: Int -> MenuTab -> Int
+dropdownCol totalW tab =
     let labels = map menuTabLabel [minBound..maxBound]
         idx = fromEnum tab
         preceding = take idx labels
-    in 2 + sum (map (\l -> length l + 1) preceding)
+        tabsContentW = 1 + sum (map (\l -> length l + 1) labels)
+        fillW = max 0 (totalW - tabsContentW - 2)
+    in 3 + fillW + sum (map (\l -> length l + 1) preceding)

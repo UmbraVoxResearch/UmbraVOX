@@ -15,6 +15,7 @@ import Test.Util (assertEq)
 import UmbraVox.Network.MDNS
     ( MDNSPeer(..)
     , buildAnnouncement
+    , buildAnnouncementWithName
     , addrToIP
     , getDiscoveredPeers
     , isSelfAnnouncement
@@ -28,6 +29,7 @@ runTests = do
     putStrLn "Network.MDNS"
     results <- sequence
         [ testParseValid
+        , testParseValidWithName
         , testParseInvalidNoService
         , testParseInvalidNoFields
         , testSafeReadPortValid
@@ -62,6 +64,21 @@ testParseValid = do
             a <- assertEq "parseAnnouncement valid port" 9000 (mdnsPort peer)
             b <- assertEq "parseAnnouncement valid pubkey" pubkeyBytes (mdnsPubkey peer)
             c <- assertEq "parseAnnouncement valid IP" "192.168.1.42" (mdnsIP peer)
+            pure (a && b && c)
+
+testParseValidWithName :: IO Bool
+testParseValidWithName = do
+    let pubkeyBytes = BS.pack [0xAB, 0xCD]
+        payload = buildAnnouncementWithName 9001 "alice" pubkeyBytes
+        srcAddr = NS.SockAddrInet 5353 (NS.tupleToHostAddress (192, 168, 1, 99))
+    case parseAnnouncement payload srcAddr of
+        Nothing -> do
+            putStrLn "  FAIL: parseAnnouncement valid with name: expected Just, got Nothing"
+            pure False
+        Just peer -> do
+            a <- assertEq "parseAnnouncement valid name port" 9001 (mdnsPort peer)
+            b <- assertEq "parseAnnouncement valid name pubkey" pubkeyBytes (mdnsPubkey peer)
+            c <- assertEq "parseAnnouncement valid name" (Just "alice") (mdnsName peer)
             pure (a && b && c)
 
 -- | Payload missing the service name prefix should return Nothing.
