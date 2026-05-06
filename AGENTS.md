@@ -16,7 +16,7 @@ This file is a reference index only. All authoritative project information lives
 - [doc/09-network.md](doc/09-network.md) — P2P networking, peer scoring, version negotiation, Noise_IK transport
 - [doc/10-security.md](doc/10-security.md) — Threat model, adversary classes, supply depletion attack, formal methods requirements
 - [doc/11-node-architecture.md](doc/11-node-architecture.md) — Node internals, storage, WAL, API, boot sequence
-- [doc/12-development-phases.md](doc/12-development-phases.md) — 53-67 week timeline, quality gates, verification pipeline
+- [doc/12-development-phases.md](doc/12-development-phases.md) — 62-67 week timeline, quality gates, verification pipeline
 - [doc/13-do178c-assurance.md](doc/13-do178c-assurance.md) — DO-178C DAL A plan, objectives, tool qualification
 - [doc/14-code-generation.md](doc/14-code-generation.md) — Code generation strategy, TQL-1 qualification, targets
 - [doc/15-economic-model-v3.md](doc/15-economic-model-v3.md) — Economic model v3 (Universe Cycle), formal invariants, simulation parameters
