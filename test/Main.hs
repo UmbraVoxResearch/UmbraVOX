@@ -17,6 +17,7 @@ import qualified Test.Crypto.MLKEM as MLKEM
 import qualified Test.Crypto.Poly1305 as Poly1305
 import qualified Test.Security as Security
 import qualified Test.Fuzz as Fuzz
+import qualified Test.FuzzInputs as FuzzInputs
 import qualified Test.Integration as Integration
 import qualified Test.Equivalence as Equivalence
 import qualified Test.Network.Transport as Transport
@@ -119,6 +120,8 @@ main = do
     securityPass <- Security.runTests
     putStrLn ""
     fuzzPass <- Fuzz.runTests
+    putStrLn ""
+    fuzzInputsPass <- FuzzInputs.runTests
     putStrLn ""
     integrationPass <- Integration.runTests
     putStrLn ""
@@ -249,7 +252,7 @@ main = do
     endToEnd2Pass <- EndToEnd2.runTests
 
     putStrLn ""
-    let allPass = sha256Pass && sha512Pass && hmacPass && hkdfPass && aesPass && gcmPass && curve25519Pass && ed25519Pass && chacha20Pass && x3dhPass && doubleRatchetPass && mlkemPass && keccakPass && poly1305Pass && securityPass && fuzzPass && integrationPass && equivalencePass && transportPass && transportClassPass && loopbackPass && transportEdgePass && cborPass && bip39Pass && exportPass && qrcodePass && noisePass && chatSessionPass && stealthPass && pexPass && safetyNumPass && msgFmtPass && wireFmtPass && pqxdhPass && randomPass && vrfPass && pqWrapperPass && keyStorePass && senderKeysPass && sessionPass && anthonyPass && chainDBPass && stateDBPass && storageIndexPass && checkpointPass && mdnsPass && protocolPass && chatMsgPass && chatTxPass && chatContactsPass && chatAPIPass && codegenPass && tuiTypesPass && tuiRenderPass && tuiInputPass && tuiHandshakePass && tuiHandshakeEdgePass && tuiActionsPass && tuiPathsPass && toolsComplexityPass && toolsFStarVerifyPass && toolsFetchReferencesPass && consensusTypesPass && consensusBlockPass && consensusLedgerPass && consensusMempoolPass && consensusValidationPass && consensusForkChoicePass && consensusNoncePass && consensusLeaderElectionPass && consensusProtocolPass && consensusTruncationPass && econTokenPass && econFeesPass && econRewardsPass && econPenaltyPass && econCyclePass && econOnboardingPass && endToEndPass && endToEnd2Pass
+    let allPass = sha256Pass && sha512Pass && hmacPass && hkdfPass && aesPass && gcmPass && curve25519Pass && ed25519Pass && chacha20Pass && x3dhPass && doubleRatchetPass && mlkemPass && keccakPass && poly1305Pass && securityPass && fuzzPass && integrationPass && equivalencePass && transportPass && transportClassPass && loopbackPass && transportEdgePass && cborPass && bip39Pass && exportPass && qrcodePass && noisePass && chatSessionPass && stealthPass && pexPass && safetyNumPass && msgFmtPass && wireFmtPass && pqxdhPass && randomPass && vrfPass && pqWrapperPass && keyStorePass && senderKeysPass && sessionPass && anthonyPass && chainDBPass && stateDBPass && storageIndexPass && checkpointPass && mdnsPass && protocolPass && chatMsgPass && chatTxPass && chatContactsPass && chatAPIPass && codegenPass && tuiTypesPass && tuiRenderPass && tuiInputPass && tuiHandshakePass && tuiHandshakeEdgePass && tuiActionsPass && tuiPathsPass && toolsComplexityPass && toolsFStarVerifyPass && toolsFetchReferencesPass && consensusTypesPass && consensusBlockPass && consensusLedgerPass && consensusMempoolPass && consensusValidationPass && consensusForkChoicePass && consensusNoncePass && consensusLeaderElectionPass && consensusProtocolPass && consensusTruncationPass && econTokenPass && econFeesPass && econRewardsPass && econPenaltyPass && econCyclePass && econOnboardingPass && endToEndPass && endToEnd2Pass && fuzzInputsPass
     if allPass
         then do
             putStrLn "All tests passed."
