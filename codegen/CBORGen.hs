@@ -52,54 +52,60 @@ data SchemaAST = SchemaAST
 -- | Parse a .schema file. Returns Left on error.
 parseSchema :: String -> Either String SchemaAST
 parseSchema input = do
-    let ls = filter (not . isCommentOrEmpty) (lines input)
+    let ls = filter (not . schemaIsCommentOrEmpty) (lines input)
     case ls of
         [] -> Left "Empty schema file"
         (header:body) -> do
-            name <- parseName header
-            fields <- mapM parseField body
+            name <- schemaParseNameLine header
+            fields <- mapM schemaParseField body
             pure $ SchemaAST name (mapMaybe id fields)
-  where
-    isCommentOrEmpty l =
-        let s = dropWhile isSpace l
-        in null s || "--" `isPrefixOf` s || "#" `isPrefixOf` s || ";" `isPrefixOf` s
 
-    parseName l =
-        let s = dropWhile isSpace l
-        in case words s of
-            (n:_) -> Right (filter isAlphaNum n)
-            []    -> Left "Expected schema name"
+-- Internal helpers for parseSchema ---------------------------------------------
 
-    parseField :: String -> Either String (Maybe FieldDef)
-    parseField l =
-        let s = dropWhile isSpace l
-        in case break (== ':') s of
-            (name, ':':typeStr) ->
-                let n = strip name
-                    (opt, t) = parseOptionalType (strip typeStr)
-                in case parseType t of
-                    Just ft -> Right $ Just $ FieldDef n ft opt
-                    Nothing -> Right Nothing
-            _ -> Right Nothing
+schemaIsCommentOrEmpty :: String -> Bool
+schemaIsCommentOrEmpty l =
+    let s = dropWhile isSpace l
+    in null s || "--" `isPrefixOf` s || "#" `isPrefixOf` s || ";" `isPrefixOf` s
 
-    parseOptionalType s
-        | "?" `isPrefixOf` s = (True, drop 1 s)
-        | last s == '?' = (True, init s)
-        | otherwise = (False, s)
+schemaParseNameLine :: String -> Either String String
+schemaParseNameLine l =
+    let s = dropWhile isSpace l
+    in case words s of
+        (n:_) -> Right (filter isAlphaNum n)
+        []    -> Left "Expected schema name"
 
-    parseType :: String -> Maybe FieldType
-    parseType s = case words s of
-        ["uint8"]  -> Just FUInt8
-        ["uint16"] -> Just FUInt16
-        ["uint32"] -> Just FUInt32
-        ["uint48"] -> Just FUInt48
-        ["uint64"] -> Just FUInt64
-        ["bstr"]   -> Just FByteString
-        ("bstr":".size":n:_) -> Just $ FFixedBytes (read (filter isDigit n))
-        ["tstr"]   -> Just FTextString
-        _          -> Nothing
+schemaParseField :: String -> Either String (Maybe FieldDef)
+schemaParseField l =
+    let s = dropWhile isSpace l
+    in case break (== ':') s of
+        (name, ':':typeStr) ->
+            let n = schemaStrip name
+                (opt, t) = schemaParseOptionalType (schemaStrip typeStr)
+            in case schemaParseType t of
+                Just ft -> Right $ Just $ FieldDef n ft opt
+                Nothing -> Right Nothing
+        _ -> Right Nothing
 
-    strip = reverse . dropWhile isSpace . reverse . dropWhile isSpace
+schemaParseOptionalType :: String -> (Bool, String)
+schemaParseOptionalType s
+    | "?" `isPrefixOf` s = (True, drop 1 s)
+    | last s == '?' = (True, init s)
+    | otherwise = (False, s)
+
+schemaParseType :: String -> Maybe FieldType
+schemaParseType s = case words s of
+    ["uint8"]  -> Just FUInt8
+    ["uint16"] -> Just FUInt16
+    ["uint32"] -> Just FUInt32
+    ["uint48"] -> Just FUInt48
+    ["uint64"] -> Just FUInt64
+    ["bstr"]   -> Just FByteString
+    ("bstr":".size":n:_) -> Just $ FFixedBytes (read (filter isDigit n))
+    ["tstr"]   -> Just FTextString
+    _          -> Nothing
+
+schemaStrip :: String -> String
+schemaStrip = reverse . dropWhile isSpace . reverse . dropWhile isSpace
 
 -- | Process a .schema file: parse, validate, generate encoder/decoder.
 processSchema :: FilePath -> IO ()

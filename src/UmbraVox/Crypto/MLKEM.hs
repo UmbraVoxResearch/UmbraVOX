@@ -382,13 +382,18 @@ xof seed i j = seed `BS.append` BS.pack [i, j]
 -- K-PKE (Internal PKE) — FIPS 203 Algorithms 12-14
 ------------------------------------------------------------------------
 
+-- | Sample the public matrix A from rho (FIPS 203 Algorithm 12, line 6)
+sampleMatrix :: ByteString -> [[Poly]]
+sampleMatrix rho =
+    [[sampleNTT (xof rho (fromIntegral i) (fromIntegral j))
+     | j <- [0.._K-1]]
+    | i <- [0.._K-1]]
+
 -- | K-PKE.KeyGen (Algorithm 12)
 kpkeKeyGen :: ByteString -> ([[Poly]], [Poly], [Poly])
 kpkeKeyGen d =
     let (rho, sigma) = hashG d
-        aHat = [[sampleNTT (xof rho (fromIntegral i) (fromIntegral j))
-                 | j <- [0.._K-1]]
-                | i <- [0.._K-1]]
+        aHat = sampleMatrix rho
         sVec = [ntt (sampleCBD _ETA1 (prf sigma (fromIntegral i) (64 * _ETA1)))
                | i <- [0.._K-1]]
         eVec = [ntt (sampleCBD _ETA1 (prf sigma (fromIntegral (_K + i)) (64 * _ETA1)))
@@ -421,23 +426,32 @@ decodeDK dk =
     in [byteDecode12 (bsSlice (i * polyBytes) polyBytes dk)
        | i <- [0.._K-1]]
 
--- | K-PKE.Encrypt (Algorithm 13)
-kpkeEncrypt :: ByteString -> ByteString -> ByteString -> ByteString
-kpkeEncrypt ek m r =
-    let (tHat, rho) = decodeEK ek
-        aHat = [[sampleNTT (xof rho (fromIntegral i) (fromIntegral j))
-                 | j <- [0.._K-1]]
-                | i <- [0.._K-1]]
-        rVec = [ntt (sampleCBD _ETA1 (prf r (fromIntegral i) (64 * _ETA1)))
+-- | Sample error vectors for encryption (FIPS 203 Algorithm 13, lines 3-7)
+sampleEncryptVectors :: ByteString -> ([Poly], [Poly], Poly)
+sampleEncryptVectors r =
+    let rVec = [ntt (sampleCBD _ETA1 (prf r (fromIntegral i) (64 * _ETA1)))
                | i <- [0.._K-1]]
         e1 = [sampleCBD _ETA2 (prf r (fromIntegral (_K + i)) (64 * _ETA2))
              | i <- [0.._K-1]]
         e2 = sampleCBD _ETA2 (prf r (fromIntegral (2 * _K)) (64 * _ETA2))
-        uVec = [invNtt (foldl1 polyAdd
-                    [polyBaseMul (aHat !! j !! i) (rVec !! j)
-                    | j <- [0.._K-1]])
-                `polyAdd` (e1 !! i)
-               | i <- [0.._K-1]]
+    in (rVec, e1, e2)
+
+-- | Compute u = NTT^{-1}(A^T * r) + e1 (FIPS 203 Algorithm 13, line 9)
+computeU :: [[Poly]] -> [Poly] -> [Poly] -> [Poly]
+computeU aHat rVec e1 =
+    [invNtt (foldl1 polyAdd
+                [polyBaseMul (aHat !! j !! i) (rVec !! j)
+                | j <- [0.._K-1]])
+        `polyAdd` (e1 !! i)
+    | i <- [0.._K-1]]
+
+-- | K-PKE.Encrypt (Algorithm 13)
+kpkeEncrypt :: ByteString -> ByteString -> ByteString -> ByteString
+kpkeEncrypt ek m r =
+    let (tHat, rho) = decodeEK ek
+        aHat = sampleMatrix rho
+        (rVec, e1, e2) = sampleEncryptVectors r
+        uVec = computeU aHat rVec e1
         mu = decompressPoly 1 (byteDecode 1 m)
         v = foldl1 polyAdd
                 [invNtt (polyBaseMul (tHat !! i) (rVec !! i))

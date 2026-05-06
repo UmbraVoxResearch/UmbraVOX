@@ -40,88 +40,96 @@ data FSMAST = FSMAST
 -- | Parse a .fsm file. Returns Left on error.
 parseFSM :: String -> Either String FSMAST
 parseFSM input = do
-    let ls = filter (not . isCommentOrEmpty) (lines input)
-    (name, rest) <- parseHeader ls
-    (states, rest2) <- parseNameList "states" rest
-    (events, rest3) <- parseNameList "events" rest2
-    (transitions, _) <- parseTransitions rest3
+    let ls = filter (not . fsmIsCommentOrEmpty) (lines input)
+    (name, rest) <- fsmParseHeader ls
+    (states, rest2) <- fsmParseNameList "states" rest
+    (events, rest3) <- fsmParseNameList "events" rest2
+    (transitions, _) <- fsmParseTransitions rest3
     let ast = FSMAST name states events transitions
     validateExhaustive ast
     pure ast
-  where
-    isCommentOrEmpty l =
-        let s = dropWhile isSpace l
-        in null s || "--" `isPrefixOf` s || "#" `isPrefixOf` s
 
-    parseHeader [] = Left "Expected 'machine <name> {'"
-    parseHeader (l:rest) =
-        case words (dropWhile isSpace l) of
-            ("machine" : n : _) -> Right (filter isAlphaNum n, rest)
-            _ -> Left $ "Expected 'machine <name> {', got: " ++ l
+-- Internal helpers for parseFSM ------------------------------------------------
 
-    parseNameList :: String -> [String] -> Either String ([String], [String])
-    parseNameList section lns =
-        case dropWhile (\l -> not (section `isPrefixOf` dropWhile isSpace l)) lns of
-            [] -> Left $ "Missing section: " ++ section
-            (_:rest) ->
-                let (body, remaining) = span (\l -> not ("}" `isPrefixOf` dropWhile isSpace l)) rest
-                    names = concatMap (filter (not . null) . map (filter isAlphaNum) . splitOn ',') body
-                in Right (names, drop 1 remaining)
+fsmIsCommentOrEmpty :: String -> Bool
+fsmIsCommentOrEmpty l =
+    let s = dropWhile isSpace l
+    in null s || "--" `isPrefixOf` s || "#" `isPrefixOf` s
 
-    parseTransitions :: [String] -> Either String ([Transition], [String])
-    parseTransitions lns =
-        case dropWhile (\l -> not ("transitions" `isPrefixOf` dropWhile isSpace l)) lns of
-            [] -> Right ([], lns)
-            (_:rest) ->
-                let (body, remaining) = span (\l -> not ("}" `isPrefixOf` dropWhile isSpace l)) rest
-                    trans = mapMaybe parseTransition body
-                in Right (trans, drop 1 remaining)
+fsmParseHeader :: [String] -> Either String (String, [String])
+fsmParseHeader [] = Left "Expected 'machine <name> {'"
+fsmParseHeader (l:rest) =
+    case words (dropWhile isSpace l) of
+        ("machine" : n : _) -> Right (filter isAlphaNum n, rest)
+        _ -> Left $ "Expected 'machine <name> {', got: " ++ l
 
-    parseTransition :: String -> Maybe Transition
-    parseTransition l =
-        let s = dropWhile isSpace l
-        in case break (== '+') s of
-            (from, '+':rest1) ->
-                let (eventGuard, rest2) = break (== '-') rest1
-                    (event, guard) = parseEventGuard (dropWhile isSpace eventGuard)
-                    (to, actions) = case stripArrow (dropWhile isSpace rest2) of
-                        Just r -> parseToActions r
-                        Nothing -> ("Error", [])
-                in Just $ Transition
-                    { transFrom   = strip from
-                    , transEvent  = event
-                    , transGuard  = guard
-                    , transTo     = to
-                    , transAction = actions
-                    }
-            _ -> Nothing
+fsmParseNameList :: String -> [String] -> Either String ([String], [String])
+fsmParseNameList section lns =
+    case dropWhile (\l -> not (section `isPrefixOf` dropWhile isSpace l)) lns of
+        [] -> Left $ "Missing section: " ++ section
+        (_:rest) ->
+            let (body, remaining) = span (\l -> not ("}" `isPrefixOf` dropWhile isSpace l)) rest
+                names = concatMap (filter (not . null) . map (filter isAlphaNum) . fsmSplitOn ',') body
+            in Right (names, drop 1 remaining)
 
-    parseEventGuard s =
-        case break (== '[') s of
-            (ev, '[':rest) ->
-                let g = takeWhile (/= ']') rest
-                in (strip ev, Just (strip g))
-            (ev, _) -> (strip ev, Nothing)
+fsmParseTransitions :: [String] -> Either String ([Transition], [String])
+fsmParseTransitions lns =
+    case dropWhile (\l -> not ("transitions" `isPrefixOf` dropWhile isSpace l)) lns of
+        [] -> Right ([], lns)
+        (_:rest) ->
+            let (body, remaining) = span (\l -> not ("}" `isPrefixOf` dropWhile isSpace l)) rest
+                trans = mapMaybe fsmParseTransition body
+            in Right (trans, drop 1 remaining)
 
-    stripArrow s
-        | "->" `isPrefixOf` s = Just (drop 2 s)
-        | ">" `isPrefixOf` (drop 1 s) = Just (drop 2 s)
-        | otherwise = Nothing
+fsmParseTransition :: String -> Maybe Transition
+fsmParseTransition l =
+    let s = dropWhile isSpace l
+    in case break (== '+') s of
+        (from, '+':rest1) ->
+            let (eventGuard, rest2) = break (== '-') rest1
+                (event, guard) = fsmParseEventGuard (dropWhile isSpace eventGuard)
+                (to, actions) = case fsmStripArrow (dropWhile isSpace rest2) of
+                    Just r -> fsmParseToActions r
+                    Nothing -> ("Error", [])
+            in Just $ Transition
+                { transFrom   = fsmStrip from
+                , transEvent  = event
+                , transGuard  = guard
+                , transTo     = to
+                , transAction = actions
+                }
+        _ -> Nothing
 
-    parseToActions s =
-        case break (== '/') (dropWhile isSpace s) of
-            (to, '/':acts) -> (strip to, map strip (splitOn ',' acts))
-            (to, _) -> (strip to, [])
+fsmParseEventGuard :: String -> (String, Maybe String)
+fsmParseEventGuard s =
+    case break (== '[') s of
+        (ev, '[':rest) ->
+            let g = takeWhile (/= ']') rest
+            in (fsmStrip ev, Just (fsmStrip g))
+        (ev, _) -> (fsmStrip ev, Nothing)
 
-    strip = reverse . dropWhile isSpace . reverse . dropWhile isSpace
+fsmStripArrow :: String -> Maybe String
+fsmStripArrow s
+    | "->" `isPrefixOf` s = Just (drop 2 s)
+    | ">" `isPrefixOf` (drop 1 s) = Just (drop 2 s)
+    | otherwise = Nothing
 
-    splitOn :: Char -> String -> [String]
-    splitOn _ [] = []
-    splitOn c s =
-        let (w, rest) = break (== c) s
-        in w : case rest of
-            [] -> []
-            (_:r) -> splitOn c r
+fsmParseToActions :: String -> (String, [String])
+fsmParseToActions s =
+    case break (== '/') (dropWhile isSpace s) of
+        (to, '/':acts) -> (fsmStrip to, map fsmStrip (fsmSplitOn ',' acts))
+        (to, _) -> (fsmStrip to, [])
+
+fsmStrip :: String -> String
+fsmStrip = reverse . dropWhile isSpace . reverse . dropWhile isSpace
+
+fsmSplitOn :: Char -> String -> [String]
+fsmSplitOn _ [] = []
+fsmSplitOn c s =
+    let (w, rest) = break (== c) s
+    in w : case rest of
+        [] -> []
+        (_:r) -> fsmSplitOn c r
 
 -- | Validate that every (state × event) pair has a transition.
 validateExhaustive :: FSMAST -> Either String ()

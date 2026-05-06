@@ -104,87 +104,90 @@ parseSpec input =
         [] -> Left "Empty spec file"
         _  -> parseAlgorithm cleaned
 
+-- Internal helpers for parseSpec -----------------------------------------------
+
+isCommentOrEmpty :: String -> Bool
+isCommentOrEmpty l =
+    let stripped = dropWhile isSpace l
+    in null stripped || "--" `isPrefixOf` stripped || "#" `isPrefixOf` stripped
+
+parseAlgorithm :: [String] -> Either String SpecAST
+parseAlgorithm lns = do
+    (name, rest) <- parseHeader lns
+    (params, rest2) <- parseSection "params" rest
+    (consts, rest3) <- parseSection "constants" rest2
+    (steps, _) <- parseSection "steps" rest3
+    pure SpecAST
+        { specAlgorithm = name
+        , specParams    = parseParams params
+        , specConstants = parseConstants consts
+        , specSteps     = parseSteps steps
+        }
+
+parseHeader :: [String] -> Either String (String, [String])
+parseHeader [] = Left "Expected 'algorithm <name> {'"
+parseHeader (l:rest) =
+    case words (strip l) of
+        ("algorithm" : name : _) -> Right (filter isAlphaNum name, rest)
+        _ -> Left $ "Expected 'algorithm <name> {', got: " ++ l
+
+parseSection :: String -> [String] -> Either String ([String], [String])
+parseSection name lns =
+    case dropWhile (\l -> not (name `isPrefixOf` strip l)) lns of
+        [] -> Right ([], lns)
+        (_header:rest) ->
+            let (body, remaining) = collectBlock 0 rest
+            in Right (body, remaining)
+
+collectBlock :: Int -> [String] -> ([String], [String])
+collectBlock _ [] = ([], [])
+collectBlock depth (l:rest)
+    | "}" `isPrefixOf` strip l && depth == 0 = ([], rest)
+    | "}" `isPrefixOf` strip l = collectBlock (depth - 1) rest
+    | "{" `elem` words (strip l) =
+        let (inner, remaining) = collectBlock (depth + 1) rest
+        in (l : inner ++ remaining, [])
+    | otherwise =
+        let (more, remaining) = collectBlock depth rest
+        in (l : more, remaining)
+
+strip :: String -> String
+strip = dropWhile isSpace
+
+parseParams :: [String] -> [Param]
+parseParams = mapMaybe parseParam
   where
-    isCommentOrEmpty l =
-        let stripped = dropWhile isSpace l
-        in null stripped || "--" `isPrefixOf` stripped || "#" `isPrefixOf` stripped
+    parseParam l =
+        case break (== ':') (strip l) of
+            (n, ':':t) -> Just $ Param (strip n) (parseType (strip t))
+            _ -> Nothing
+    parseType "Bytes"  = TBytes
+    parseType "UInt32" = TUInt32
+    parseType "UInt64" = TUInt64
+    parseType "Bool"   = TBool
+    parseType _        = TBytes
 
-    parseAlgorithm :: [String] -> Either String SpecAST
-    parseAlgorithm lns = do
-        (name, rest) <- parseHeader lns
-        (params, rest2) <- parseSection "params" rest
-        (consts, rest3) <- parseSection "constants" rest2
-        (steps, _) <- parseSection "steps" rest3
-        pure SpecAST
-            { specAlgorithm = name
-            , specParams    = parseParams params
-            , specConstants = parseConstants consts
-            , specSteps     = parseSteps steps
-            }
-
-    parseHeader :: [String] -> Either String (String, [String])
-    parseHeader [] = Left "Expected 'algorithm <name> {'"
-    parseHeader (l:rest) =
-        case words (strip l) of
-            ("algorithm" : name : _) -> Right (filter isAlphaNum name, rest)
-            _ -> Left $ "Expected 'algorithm <name> {', got: " ++ l
-
-    parseSection :: String -> [String] -> Either String ([String], [String])
-    parseSection name lns =
-        case dropWhile (\l -> not (name `isPrefixOf` strip l)) lns of
-            [] -> Right ([], lns)
-            (_header:rest) ->
-                let (body, remaining) = collectBlock 0 rest
-                in Right (body, remaining)
-
-    collectBlock :: Int -> [String] -> ([String], [String])
-    collectBlock _ [] = ([], [])
-    collectBlock depth (l:rest)
-        | "}" `isPrefixOf` strip l && depth == 0 = ([], rest)
-        | "}" `isPrefixOf` strip l = collectBlock (depth - 1) rest
-        | "{" `elem` words (strip l) =
-            let (inner, remaining) = collectBlock (depth + 1) rest
-            in (l : inner ++ remaining, [])
-        | otherwise =
-            let (more, remaining) = collectBlock depth rest
-            in (l : more, remaining)
-
-    strip = dropWhile isSpace
-
-    parseParams :: [String] -> [Param]
-    parseParams = mapMaybe parseParam
-      where
-        parseParam l =
-            case break (== ':') (strip l) of
-                (n, ':':t) -> Just $ Param (strip n) (parseType (strip t))
-                _ -> Nothing
-        parseType "Bytes"  = TBytes
-        parseType "UInt32" = TUInt32
-        parseType "UInt64" = TUInt64
-        parseType "Bool"   = TBool
-        parseType _        = TBytes
-
-    parseConstants :: [String] -> [Constant]
-    parseConstants = mapMaybe parseConst
-      where
-        parseConst l =
-            case break (== '=') (strip l) of
-                (n, '=':v) -> Just $ Constant (strip n) (strip v)
-                _ -> Nothing
-
-    parseSteps :: [String] -> [Step]
-    parseSteps lns = [Step Nothing (map parseOp lns)]
-
-    parseOp :: String -> Operation
-    parseOp l =
+parseConstants :: [String] -> [Constant]
+parseConstants = mapMaybe parseConst
+  where
+    parseConst l =
         case break (== '=') (strip l) of
-            (lhs, '=':rhs) -> Assign (strip lhs) (parseExpr (strip rhs))
-            _ -> Assign (strip l) (Lit "0")
+            (n, '=':v) -> Just $ Constant (strip n) (strip v)
+            _ -> Nothing
 
-    parseExpr :: String -> Expr
-    parseExpr s
-        | null s    = Lit "0"
-        | otherwise = Var (strip s)
+parseSteps :: [String] -> [Step]
+parseSteps lns = [Step Nothing (map parseOp lns)]
+
+parseOp :: String -> Operation
+parseOp l =
+    case break (== '=') (strip l) of
+        (lhs, '=':rhs) -> Assign (strip lhs) (parseExpr (strip rhs))
+        _ -> Assign (strip l) (Lit "0")
+
+parseExpr :: String -> Expr
+parseExpr s
+    | null s    = Lit "0"
+    | otherwise = Var (strip s)
 
 -- | Process a single .spec file: parse, validate, and generate outputs.
 processSpec :: FilePath -> IO ()
