@@ -34,6 +34,7 @@ import Data.Int (Int16)
 import Data.List (foldl')
 import Data.Word (Word8)
 
+import UmbraVox.Crypto.ConstantTime (constantEq)
 import UmbraVox.Crypto.Keccak (sha3_256, sha3_512, shake128, shake256)
 
 ------------------------------------------------------------------------
@@ -529,7 +530,7 @@ mlkemDecaps (MLKEMDecapKey fullDK) (MLKEMCiphertext ct) =
         (sharedSecret', r') = hashG (m' `BS.append` ekHash)
         ct' = kpkeEncrypt ek m' r'
         rejectionSecret = hashJ z ct
-    in if constantEqBS ct' ct
+    in if constantEq ct' ct
        then sharedSecret'
        else rejectionSecret
 
@@ -542,14 +543,3 @@ bsSlice offset len bs
     | offset + len > BS.length bs = BS.empty
     | otherwise                   = BS.take len (BS.drop offset bs)
 
--- | Constant-time byte string comparison to prevent timing side channels.
--- Required by FIPS 203 Section 7.3 for ciphertext comparison in decapsulation.
--- Both inputs MUST be the same length (1088 bytes for ML-KEM-768 ciphertexts).
--- Uses XOR accumulation over all bytes — no early exit, no length branching.
-constantEqBS :: ByteString -> ByteString -> Bool
-constantEqBS a b =
-    let !acc = foldl' (\v (x, y) -> v .|. (x `xor` y)) (0 :: Word8) (BS.zip a b)
-        -- BS.zip stops at shorter length; if lengths differ, fewer bytes are
-        -- compared but the XOR of compared bytes still catches any mismatch.
-        -- For ML-KEM, both ciphertexts are always exactly 1088 bytes.
-    in acc == 0 && BS.length a == BS.length b

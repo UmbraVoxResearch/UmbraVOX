@@ -100,14 +100,21 @@ x3dhInfo = BS.pack (map (fromIntegral . fromEnum) "UmbraVox_X3DH_v1")
 -- | Derive the master secret from DH outputs.
 -- ikm = 0xFF*32 || dh1 || dh2 || dh3 || [dh4]
 -- salt = 0x00*32
--- info = "UmbraVox_X3DH_v1"
+-- info = "UmbraVox_X3DH_v1" || IK_A_pub || IK_B_pub (identity binding)
 -- output = 32 bytes
-deriveSecret :: ByteString -> ByteString -> ByteString -> Maybe ByteString -> ByteString
-deriveSecret !dh1 !dh2 !dh3 !mDh4 =
+deriveSecret :: ByteString  -- ^ dh1
+             -> ByteString  -- ^ dh2
+             -> ByteString  -- ^ dh3
+             -> Maybe ByteString  -- ^ dh4 (optional)
+             -> ByteString  -- ^ Initiator (Alice) X25519 identity public key
+             -> ByteString  -- ^ Responder (Bob) X25519 identity public key
+             -> ByteString
+deriveSecret !dh1 !dh2 !dh3 !mDh4 !aliceIKPub !bobIKPub =
     let !pad = BS.replicate 32 0xff
         !salt = BS.replicate 32 0x00
         !ikm = BS.concat $ [pad, dh1, dh2, dh3] ++ maybe [] (:[]) mDh4
-    in hkdf salt ikm x3dhInfo 32
+        !info = x3dhInfo <> aliceIKPub <> bobIKPub
+    in hkdf salt ikm info 32
 
 ------------------------------------------------------------------------
 -- X3DH Initiation (Alice's side)
@@ -131,8 +138,9 @@ x3dhInitiate aliceIK bundle ekSecret =
             !dh2 = x25519 (kpSecret ek)             (pkbIdentityKey bundle)
             !dh3 = x25519 (kpSecret ek)             (pkbSignedPreKey bundle)
             !mDh4 = fmap (x25519 (kpSecret ek)) (pkbOneTimePreKey bundle)
-            -- Step 4: Derive master secret
+            -- Step 4: Derive master secret (with identity binding)
             !masterSecret = deriveSecret dh1 dh2 dh3 mDh4
+                                (ikX25519Public aliceIK) (pkbIdentityKey bundle)
         in Just X3DHResult
             { x3dhSharedSecret = masterSecret
             , x3dhEphemeralKey = kpPublic ek
@@ -160,4 +168,4 @@ x3dhRespond bobIK spkSecret mOPKSecret aliceIKPub aliceEKPub =
         !dh2 = x25519 (ikX25519Secret bobIK) aliceEKPub
         !dh3 = x25519 spkSecret              aliceEKPub
         !mDh4 = fmap (\opkSec -> x25519 opkSec aliceEKPub) mOPKSecret
-    in deriveSecret dh1 dh2 dh3 mDh4
+    in deriveSecret dh1 dh2 dh3 mDh4 aliceIKPub (ikX25519Public bobIK)

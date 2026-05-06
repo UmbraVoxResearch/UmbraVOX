@@ -4,6 +4,9 @@ module UmbraVox.TUI.Types
     , statusTag
     , SessionInfo(..)
     , Pane(..)
+    , MenuTab(..)
+    , menuTabLabel
+    , menuTabItems
     , AppState(..)
     , DialogMode(..)
     , AppConfig(..)
@@ -26,19 +29,36 @@ data ContactStatus = Online | Offline | Local | Group | LAN | PEX
     deriving stock (Eq)
 
 statusTag :: ContactStatus -> String
-statusTag Online  = "[ON]"
-statusTag Offline = "[OFF]"
-statusTag Local   = "[LOCAL]"
-statusTag Group   = "[GRP]"
-statusTag LAN     = "[LAN]"
-statusTag PEX     = "[PEX]"
+statusTag Online  = " \x25CF"   -- ● filled circle
+statusTag Offline = " \x25CB"   -- ○ empty circle
+statusTag Local   = " \x1F512"  -- 🔒 lock
+statusTag Group   = " \x1F465"  -- 👥 people
+statusTag LAN     = " \x1F5A7"  -- 🖧 network
+statusTag PEX     = " \x1F517"  -- 🔗 link
 
 data SessionInfo = SessionInfo
     { siTransport :: Maybe AnyTransport, siSession :: IORef ChatSession
     , siRecvTid :: Maybe ThreadId, siPeerName :: String
     , siHistory :: IORef [String], siStatus :: IORef ContactStatus }
 
-data Pane = ContactPane | ChatPane deriving stock (Eq)
+data Pane = ContactPane | ChatPane deriving stock (Eq, Show, Enum, Bounded)
+
+data MenuTab = MenuFile | MenuContacts | MenuChat | MenuPrefs | MenuHelp
+    deriving stock (Eq, Show, Enum, Bounded)
+
+menuTabLabel :: MenuTab -> String
+menuTabLabel MenuFile     = " F1 File "
+menuTabLabel MenuContacts = " F2 Contacts "
+menuTabLabel MenuChat     = " F3 Chat "
+menuTabLabel MenuPrefs    = " F4 Prefs "
+menuTabLabel MenuHelp     = " F5 Help "
+
+menuTabItems :: MenuTab -> [String]
+menuTabItems MenuFile     = ["Export", "Import", "Quit"]
+menuTabItems MenuContacts = ["New", "Rename", "Browse", "Verify"]
+menuTabItems MenuChat     = ["Send", "Clear Input"]
+menuTabItems MenuPrefs    = ["Settings", "Keys", "mDNS Toggle"]
+menuTabItems MenuHelp     = ["Help", "About"]
 
 data AppState = AppState
     { asConfig :: AppConfig, asSelected :: IORef Int, asFocus :: IORef Pane
@@ -48,10 +68,33 @@ data AppState = AppState
     , asDialogMode :: IORef (Maybe DialogMode)
     , asLayout :: IORef Layout
     , asContactScroll :: IORef Int
-    , asTermSize :: IORef (Int, Int) }
+    , asTermSize :: IORef (Int, Int)
+    , asMenuOpen :: IORef (Maybe MenuTab)
+    , asMenuIndex :: IORef Int }
 
 data DialogMode = DlgHelp | DlgSettings | DlgVerify | DlgNewConn
-    | DlgKeys | DlgPrompt String (String -> IO ())
+    | DlgKeys | DlgBrowse | DlgWelcome | DlgPrompt String (String -> IO ())
+
+instance Eq DialogMode where
+    DlgHelp       == DlgHelp       = True
+    DlgSettings   == DlgSettings   = True
+    DlgVerify     == DlgVerify     = True
+    DlgNewConn    == DlgNewConn    = True
+    DlgKeys       == DlgKeys       = True
+    DlgBrowse     == DlgBrowse     = True
+    DlgWelcome    == DlgWelcome    = True
+    DlgPrompt a _ == DlgPrompt b _ = a == b
+    _             == _             = False
+
+instance Show DialogMode where
+    show DlgHelp         = "DlgHelp"
+    show DlgSettings     = "DlgSettings"
+    show DlgVerify       = "DlgVerify"
+    show DlgNewConn      = "DlgNewConn"
+    show DlgKeys         = "DlgKeys"
+    show DlgBrowse       = "DlgBrowse"
+    show DlgWelcome      = "DlgWelcome"
+    show (DlgPrompt s _) = "DlgPrompt " ++ show s ++ " <callback>"
 
 data AppConfig = AppConfig
     { cfgListenPort  :: IORef Int
@@ -71,16 +114,21 @@ data AppConfig = AppConfig
     , cfgRetentionDays    :: IORef Int              -- days to keep messages (0 = forever)
     , cfgAutoSaveMessages :: IORef Bool             -- auto-save messages to DB
     , cfgAnthonyDB        :: IORef (Maybe AnthonyDB) -- DB handle
+    -- Security
+    , cfgTrustedOnly      :: IORef Bool             -- reject non-trusted contacts
     }
 
 data Layout = Layout
-    { lCols :: Int, lRows :: Int
-    , lLeftW :: Int, lRightW :: Int, lChatH :: Int
-    , lPadX :: Int, lPadY :: Int }
-    deriving stock (Eq)
+    { lCols :: Int     -- ^ total terminal columns
+    , lRows :: Int     -- ^ total terminal rows
+    , lLeftW :: Int    -- ^ contacts pane width (including border)
+    , lRightW :: Int   -- ^ chat pane width (including border)
+    , lChatH :: Int    -- ^ number of content rows (between header and input)
+    } deriving stock (Eq)
 
 data InputEvent = KeyChar Char | KeyEnter | KeyTab | KeyBackspace | KeyEscape
-    | KeyUp | KeyDown | KeyPageUp | KeyPageDown
-    | KeyCtrlN | KeyCtrlW | KeyCtrlR | KeyCtrlX
-    | KeyCtrlP | KeyCtrlQ | KeyCtrlL | KeyCtrlD
+    | KeyUp | KeyDown | KeyLeft | KeyRight
+    | KeyPageUp | KeyPageDown
+    | KeyCtrlN | KeyCtrlQ | KeyCtrlD
+    | KeyF1 | KeyF2 | KeyF3 | KeyF4 | KeyF5
     | KeyUnknown

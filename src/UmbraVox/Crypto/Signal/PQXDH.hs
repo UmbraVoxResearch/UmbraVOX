@@ -56,21 +56,24 @@ pqxdhInfo = BS.pack (map (fromIntegral . fromEnum) "UmbraVox_PQXDH_v1")
 -- | Derive the PQXDH master secret from DH outputs and ML-KEM shared secret.
 -- ikm = 0xFF*32 || dh1 || dh2 || dh3 || [dh4] || pq_ss
 -- salt = 0x00*32
--- info = "UmbraVox_PQXDH_v1"
+-- info = "UmbraVox_PQXDH_v1" || IK_A_pub || IK_B_pub (identity binding)
 -- output = 32 bytes
 derivePQSecret :: ByteString   -- ^ dh1
                -> ByteString   -- ^ dh2
                -> ByteString   -- ^ dh3
                -> Maybe ByteString  -- ^ dh4 (optional)
                -> ByteString   -- ^ pq_ss (ML-KEM shared secret)
+               -> ByteString   -- ^ Initiator (Alice) X25519 identity public key
+               -> ByteString   -- ^ Responder (Bob) X25519 identity public key
                -> ByteString   -- ^ 32-byte master secret
-derivePQSecret !dh1 !dh2 !dh3 !mDh4 !pqSS =
+derivePQSecret !dh1 !dh2 !dh3 !mDh4 !pqSS !aliceIKPub !bobIKPub =
     let !pad  = BS.replicate 32 0xff
         !salt = BS.replicate 32 0x00
         !ikm  = BS.concat $ [pad, dh1, dh2, dh3]
                           ++ maybe [] (:[]) mDh4
                           ++ [pqSS]
-    in hkdf salt ikm pqxdhInfo 32
+        !info = pqxdhInfo <> aliceIKPub <> bobIKPub
+    in hkdf salt ikm info 32
 
 ------------------------------------------------------------------------
 -- PQXDH Initiation (Alice's side)
@@ -107,8 +110,9 @@ initSession aliceIK bundle ekSecret mlkemRand =
         !mDh4 = fmap (x25519 (kpSecret ek)) (pqpkbOneTimePreKey bundle)
         -- ML-KEM encapsulation
         !(pqCt, pqSS) = mlkemEncaps (pqpkbPQPreKey bundle) mlkemRand
-        -- Derive master secret
+        -- Derive master secret (with identity binding)
         !masterSecret = derivePQSecret dh1 dh2 dh3 mDh4 pqSS
+                            (ikX25519Public aliceIK) (pqpkbIdentityKey bundle)
     in PQXDHResult
         { pqxdhSharedSecret = masterSecret
         , pqxdhEphemeralKey = kpPublic ek
@@ -140,4 +144,4 @@ pqxdhRespond bobIK spkSecret mOPKSecret pqDK aliceIKPub aliceEKPub pqCt =
         !mDh4 = fmap (\opkSec -> x25519 opkSec aliceEKPub) mOPKSecret
         -- ML-KEM decapsulation
         !pqSS = mlkemDecaps pqDK pqCt
-    in derivePQSecret dh1 dh2 dh3 mDh4 pqSS
+    in derivePQSecret dh1 dh2 dh3 mDh4 pqSS aliceIKPub (ikX25519Public bobIK)

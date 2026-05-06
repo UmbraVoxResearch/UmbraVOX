@@ -88,21 +88,24 @@ testMLKEMConsistency = do
 testNoiseRoundTrip :: IO Bool
 testNoiseRoundTrip = do
     ok1 <- checkProperty "Noise round-trip recovers plaintext" 50
-        (\g -> let (key, g1)  = nextBytes 32 g
-                   (msg, _)   = nextBytesRange 1 256 g1
-                   sendState  = NoiseState key key 0 0
-                   (st', ct)  = noiseEncrypt sendState msg
-                   recvState  = NoiseState key key 0 0
+        (\g -> let (encKey, g1) = nextBytes 32 g
+                   (macKey, g2) = nextBytes 32 g1
+                   (msg, _)    = nextBytesRange 1 256 g2
+                   sendState   = NoiseState encKey macKey encKey macKey 0 0
+                   (st', ct)   = noiseEncrypt sendState msg
+                   recvState   = NoiseState encKey macKey encKey macKey 0 0
                in case noiseDecrypt recvState ct of
                    Just (_, pt) -> pt == msg
                    Nothing      -> False)
     ok2 <- checkProperty "Noise wrong key rejects" 50
-        (\g -> let (key1, g1) = nextBytes 32 g
-                   (key2, g2) = nextBytes 32 g1
-                   (msg, _)   = nextBytesRange 1 64 g2
-                   sendSt = NoiseState key1 key1 0 0
+        (\g -> let (encKey1, g1) = nextBytes 32 g
+                   (macKey1, g2) = nextBytes 32 g1
+                   (encKey2, g3) = nextBytes 32 g2
+                   (macKey2, g4) = nextBytes 32 g3
+                   (msg, _)     = nextBytesRange 1 64 g4
+                   sendSt = NoiseState encKey1 macKey1 encKey1 macKey1 0 0
                    (_, ct) = noiseEncrypt sendSt msg
-                   recvSt = NoiseState key2 key2 0 0
+                   recvSt = NoiseState encKey2 macKey2 encKey2 macKey2 0 0
                in case noiseDecrypt recvSt ct of
                    Nothing -> True
                    Just _  -> False)

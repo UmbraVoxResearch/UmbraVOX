@@ -3,24 +3,29 @@ module UmbraVox.TUI.Input
     , eventLoop
     , handleNormal, handleContact, handleChat, handleDialog
     , handleSettingsDlg, handleNewConnDlg
+    , strip'
     ) where
 
-import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent (forkIO)
 import Control.Exception (catch, SomeException)
 import Control.Monad (void, when, unless)
-import Data.IORef (newIORef, readIORef, writeIORef, modifyIORef')
+import Data.IORef (readIORef, writeIORef, modifyIORef')
 import qualified Data.Map.Strict as Map
 import System.IO (stdin, hReady)
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Render (render, clearScreen)
+import UmbraVox.TUI.Menu (toggleMenu, openMenu, closeMenu, handleMenu)
+import UmbraVox.TUI.Constants (maxInputLen, maxDialogBufLen)
+import UmbraVox.Crypto.Signal.X3DH (IdentityKey)
 import UmbraVox.TUI.Actions (startNewConn, startVerify, startExport,
-    startSettings, startKeysView, addSecureNotes, showHelp, renameContact,
-    sendCurrentMessage, quitApp, setStatus, adjustContactScroll,
-    addSession, selectLast, recvLoopTUI)
-import UmbraVox.TUI.Handshake (handshakeInitiator, handshakeResponder)
-import UmbraVox.Network.Transport (listen, connect)
+    startSettings, startKeysView, startBrowse, addSecureNotes, showHelp,
+    renameContact, sendCurrentMessage, quitApp, setStatus,
+    adjustContactScroll, addSession, selectLast, recvLoopTUI)
+import UmbraVox.TUI.Handshake (handshakeInitiator, handshakeResponder, genIdentity)
+import UmbraVox.Network.Transport (listen, connect, connectTryPorts)
 import UmbraVox.Network.TransportClass (AnyTransport(..))
 import UmbraVox.Storage.Anthony (clearConversation)
+import UmbraVox.Protocol.Encoding (splitOn, safeReadPort, defaultPorts, parseHostPort)
 
 -- Input handling ----------------------------------------------------------
 readKey :: IO InputEvent
@@ -34,12 +39,7 @@ readKey = do
         '\x7F' -> pure KeyBackspace
         '\x08' -> pure KeyBackspace
         '\x0E' -> pure KeyCtrlN
-        '\x17' -> pure KeyCtrlW
-        '\x12' -> pure KeyCtrlR
-        '\x18' -> pure KeyCtrlX
-        '\x10' -> pure KeyCtrlP
         '\x11' -> pure KeyCtrlQ
-        '\x0C' -> pure KeyCtrlL
         '\x04' -> pure KeyCtrlD
         '\ESC' -> do
             ready <- hReady stdin
@@ -54,13 +54,34 @@ readCSI = do
     c <- getChar
     case c of
         'A' -> pure KeyUp; 'B' -> pure KeyDown
+        'C' -> pure KeyRight; 'D' -> pure KeyLeft
         '5' -> drainTilde >> pure KeyPageUp
         '6' -> drainTilde >> pure KeyPageDown
+        '1' -> readCSIExtended
         _ -> drainSeq >> pure KeyUnknown
   where drainTilde = hReady stdin >>= \r -> when r (void getChar)
 
+-- | Handle extended CSI sequences like ESC[1x~ for F-keys
+-- F1=ESC[11~, F2=ESC[12~, F3=ESC[13~, F4=ESC[14~, F5=ESC[15~
+readCSIExtended :: IO InputEvent
+readCSIExtended = do
+    c2 <- getChar
+    case c2 of
+        '1' -> drainTilde' >> pure KeyF1   -- ESC[11~
+        '2' -> drainTilde' >> pure KeyF2   -- ESC[12~
+        '3' -> drainTilde' >> pure KeyF3   -- ESC[13~
+        '4' -> drainTilde' >> pure KeyF4   -- ESC[14~
+        '5' -> drainTilde' >> pure KeyF5   -- ESC[15~
+        _   -> drainSeq >> pure KeyUnknown
+  where drainTilde' = hReady stdin >>= \r -> when r (void getChar)
+
 readSS3 :: IO InputEvent
-readSS3 = getChar >> pure KeyUnknown
+readSS3 = do
+    c <- getChar
+    case c of
+        'P' -> pure KeyF1; 'Q' -> pure KeyF2
+        'R' -> pure KeyF3; 'S' -> pure KeyF4
+        _   -> pure KeyUnknown
 
 drainSeq :: IO ()
 drainSeq = hReady stdin >>= \r -> when r (void getChar >> drainSeq)
@@ -72,7 +93,13 @@ eventLoop st = do
     when running $ do
         key <- readKey
         dlg <- readIORef (asDialogMode st)
-        case dlg of { Just _ -> handleDialog st key; Nothing -> handleNormal st key }
+        case dlg of
+            Just _  -> handleDialog st key
+            Nothing -> do
+                mOpen <- readIORef (asMenuOpen st)
+                case mOpen of
+                    Just _  -> handleMenu st key
+                    Nothing -> handleNormal st key
         readIORef (asRunning st) >>= \r -> when r (render st >> eventLoop st)
 
 -- Normal key handling -----------------------------------------------------
@@ -80,21 +107,26 @@ handleNormal :: AppState -> InputEvent -> IO ()
 handleNormal st key = do
     focus <- readIORef (asFocus st)
     case key of
-        KeyTab   -> modifyIORef' (asFocus st) (\p -> if p==ContactPane then ChatPane else ContactPane)
+        KeyTab   -> modifyIORef' (asFocus st) (\p ->
+            if p == ContactPane then ChatPane else ContactPane)
         KeyCtrlN -> startNewConn st
-        KeyCtrlR -> startVerify st
-        KeyCtrlX -> startExport st
-        KeyCtrlP -> startSettings st
         KeyCtrlQ -> quitApp st
-        KeyCtrlW -> quitApp st
-        KeyCtrlL -> clearScreen
         KeyCtrlD -> quitApp st
+        KeyF1    -> toggleMenu st MenuFile
+        KeyF2    -> toggleMenu st MenuContacts
+        KeyF3    -> toggleMenu st MenuChat
+        KeyF4    -> toggleMenu st MenuPrefs
+        KeyF5    -> toggleMenu st MenuHelp
         KeyEscape -> do
             dlg <- readIORef (asDialogMode st)
             case dlg of
                 Just _  -> writeIORef (asDialogMode st) Nothing
                 Nothing -> pure ()
-        _ -> case focus of { ContactPane -> handleContact st key; ChatPane -> handleChat st key }
+        _ -> case focus of
+            ContactPane -> handleContact st key
+            ChatPane    -> handleChat st key
+
+-- Contact key handling ----------------------------------------------------
 
 handleContact :: AppState -> InputEvent -> IO ()
 handleContact st key = do
@@ -106,16 +138,9 @@ handleContact st key = do
             modifyIORef' (asSelected st) (\i -> max 0 (i-1))
             adjustContactScroll st visRows
         KeyDown  -> do
-            modifyIORef' (asSelected st) (\i -> min (n-1) (i+1))
+            modifyIORef' (asSelected st) (\i -> min (max 0 (n-1)) (i+1))
             adjustContactScroll st visRows
         KeyEnter -> writeIORef (asFocus st) ChatPane >> writeIORef (asChatScroll st) 0
-        KeyChar 'n' -> startNewConn st; KeyChar 'N' -> startNewConn st
-        KeyChar 'g' -> setStatus st "Group: add peers with N, msgs go to all"
-        KeyChar 'G' -> setStatus st "Group: add peers with N, msgs go to all"
-        KeyChar 'r' -> renameContact st; KeyChar 'R' -> renameContact st
-        KeyChar 'k' -> startKeysView st; KeyChar 'K' -> startKeysView st
-        KeyChar 's' -> addSecureNotes st; KeyChar 'S' -> addSecureNotes st
-        KeyChar '?' -> showHelp st
         _ -> pure ()
 
 handleChat :: AppState -> InputEvent -> IO ()
@@ -123,7 +148,8 @@ handleChat st key = do
     lay <- readIORef (asLayout st)
     let ch = lChatH lay
     case key of
-        KeyChar c    -> modifyIORef' (asInputBuf st) (++[c])
+        KeyChar c    -> modifyIORef' (asInputBuf st) (\s ->
+            if length s >= maxInputLen then s else s ++ [c])
         KeyBackspace -> modifyIORef' (asInputBuf st) (\s -> if null s then s else init s)
         KeyEnter     -> sendCurrentMessage st
         KeyUp        -> modifyIORef' (asChatScroll st) (+1)
@@ -141,6 +167,8 @@ handleDialog st key = do
         Just DlgHelp    -> writeIORef (asDialogMode st) Nothing
         Just DlgKeys    -> writeIORef (asDialogMode st) Nothing
         Just DlgVerify  -> writeIORef (asDialogMode st) Nothing
+        Just DlgBrowse  -> writeIORef (asDialogMode st) Nothing
+        Just DlgWelcome -> writeIORef (asDialogMode st) Nothing
         Just DlgSettings -> handleSettingsDlg st key
         Just DlgNewConn  -> handleNewConnDlg st key
         Just (DlgPrompt _ cb) -> case key of
@@ -148,7 +176,8 @@ handleDialog st key = do
                 b <- readIORef (asDialogBuf st); cb b
                 writeIORef (asDialogBuf st) ""
                 writeIORef (asDialogMode st) Nothing
-            KeyChar c -> modifyIORef' (asDialogBuf st) (++[c])
+            KeyChar c -> modifyIORef' (asDialogBuf st) (\s ->
+                if length s >= maxDialogBufLen then s else s ++ [c])
             KeyBackspace -> modifyIORef' (asDialogBuf st) (\s -> if null s then s else init s)
             _ -> pure ()
         _ -> writeIORef (asDialogMode st) Nothing
@@ -211,22 +240,33 @@ handleNewConnDlg st (KeyChar '2') = do
             port <- readIORef (cfgListenPort (asConfig st))
             setStatus st ("Listening on " ++ show port ++ "...")
             void $ forkIO $ (do
+                ik <- getOrCreateIdentity (asConfig st)
                 t <- listen port; let at = AnyTransport t
-                session <- handshakeResponder at
+                session <- handshakeResponder at ik
                 sid <- addSession (asConfig st) at session ("peer:" ++ show port)
                 selectLast st; setStatus st ("Session #" ++ show sid)
                 ) `catch` (\(e::SomeException) -> setStatus st ("Failed: "++show e))
         else do
-            let (host, portStr) = break (==':') val
-                port = if null portStr then 9999 else read (drop 1 portStr) :: Int
-                h = if null host then "127.0.0.1" else host
-            setStatus st ("Connecting to " ++ h ++ ":" ++ show port ++ "...")
-            void $ forkIO $ (do
-                t <- connect h port; let at = AnyTransport t
-                session <- handshakeInitiator at
-                sid <- addSession (asConfig st) at session (h ++ ":" ++ show port)
-                selectLast st; setStatus st ("Connected #" ++ show sid)
-                ) `catch` (\(e::SomeException) -> setStatus st ("Failed: "++show e))
+            let (h, mPort) = parseHostPort val
+            case mPort of
+                Just port -> do
+                    setStatus st ("Connecting to " ++ h ++ ":" ++ show port ++ "...")
+                    void $ forkIO $ (do
+                        ik <- getOrCreateIdentity (asConfig st)
+                        t <- connect h port; let at = AnyTransport t
+                        session <- handshakeInitiator at ik
+                        sid <- addSession (asConfig st) at session (h ++ ":" ++ show port)
+                        selectLast st; setStatus st ("Connected #" ++ show sid)
+                        ) `catch` (\(e::SomeException) -> setStatus st ("Failed: "++show e))
+                Nothing -> do
+                    setStatus st ("Connecting to " ++ h ++ " (trying default ports)...")
+                    void $ forkIO $ (do
+                        ik <- getOrCreateIdentity (asConfig st)
+                        t <- connectTryPorts h defaultPorts; let at = AnyTransport t
+                        session <- handshakeInitiator at ik
+                        sid <- addSession (asConfig st) at session h
+                        selectLast st; setStatus st ("Connected #" ++ show sid)
+                        ) `catch` (\(e::SomeException) -> setStatus st ("Failed: "++show e))
         ))
 -- 3 = Group (multiple peers)
 handleNewConnDlg st (KeyChar '3') = do
@@ -234,23 +274,32 @@ handleNewConnDlg st (KeyChar '3') = do
     writeIORef (asDialogMode st) (Just (DlgPrompt "Group: host:port (comma-separated)" $ \val -> do
         let peers = filter (not . null) $ splitOn ',' val
         setStatus st ("Connecting to " ++ show (length peers) ++ " peers...")
-        void $ forkIO $ mapM_ (\p -> (do
-            let (host, portStr) = break (==':') (strip' p)
-                port = if null portStr then 9999 else read (drop 1 portStr) :: Int
-                h = if null host then "127.0.0.1" else host
-            t <- connect h port; let at = AnyTransport t
-            session <- handshakeInitiator at
-            void $ addSession (asConfig st) at session (h ++ ":" ++ show port)
-            ) `catch` (\(e::SomeException) -> setStatus st ("Failed: "++show e))
-            ) peers
+        void $ forkIO $ do
+            ik <- getOrCreateIdentity (asConfig st)
+            mapM_ (\p -> (do
+                let (h, mPort) = parseHostPort (strip' p)
+                t <- case mPort of
+                    Just port -> connect h port
+                    Nothing   -> connectTryPorts h defaultPorts
+                let at = AnyTransport t
+                session <- handshakeInitiator at ik
+                void $ addSession (asConfig st) at session h
+                ) `catch` (\(e::SomeException) -> setStatus st ("Failed: "++show e))
+                ) peers
         selectLast st; setStatus st ("Group with " ++ show (length peers) ++ " peers")
         ))
 handleNewConnDlg st _ = writeIORef (asDialogMode st) Nothing
 
-splitOn :: Char -> String -> [String]
-splitOn _ [] = []
-splitOn c s = let (w, rest) = break (== c) s
-              in w : case rest of { [] -> []; (_:r) -> splitOn c r }
-
 strip' :: String -> String
 strip' = dropWhile (== ' ')
+
+-- | Get the persistent identity key, generating one if it doesn't exist yet.
+getOrCreateIdentity :: AppConfig -> IO IdentityKey
+getOrCreateIdentity cfg = do
+    mIk <- readIORef (cfgIdentity cfg)
+    case mIk of
+        Just ik -> pure ik
+        Nothing -> do
+            ik <- genIdentity
+            writeIORef (cfgIdentity cfg) (Just ik)
+            pure ik

@@ -56,6 +56,9 @@ in pkgs.mkShell {
     # Go (for anthony DB tool)
     pkgs.go
 
+    # SQLite (direct DB access, fallback for anthony)
+    pkgs.sqlite
+
     # Fuzzing
     afl
 

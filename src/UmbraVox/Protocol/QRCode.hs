@@ -16,7 +16,7 @@ module UmbraVox.Protocol.QRCode
 import Data.Bits (shiftR, shiftL, (.&.), (.|.), xor, testBit)
 import qualified Data.ByteString as BS
 import Data.ByteString (ByteString)
-import Data.Char (digitToInt)
+import Data.Char (digitToInt, isDigit)
 import Data.List (intercalate, foldl')
 import Data.Word (Word8)
 import UmbraVox.Crypto.SHA256 (sha256)
@@ -204,14 +204,18 @@ encodeNumericGroups [] = []
 encodeNumericGroups ds
     | length ds >= 3 =
         let (grp, rest) = splitAt 3 ds
-            val = read grp :: Int
+            val = safeReadInt grp
         in intToBits 10 val ++ encodeNumericGroups rest
     | length ds == 2 =
-        let val = read ds :: Int
+        let val = safeReadInt ds
         in intToBits 7 val
     | otherwise =
-        let val = digitToInt (head ds)
+        let val = if isDigit (head ds) then digitToInt (head ds) else 0
         in intToBits 4 val
+
+-- | Safely parse a numeric string, returning 0 on failure.
+safeReadInt :: String -> Int
+safeReadInt s = case reads s of { [(v,_)] -> v; _ -> 0 }
 
 -- | Pad a bit stream to fill exactly n codewords (n * 8 bits).
 padToCodewords :: Int -> [Bool] -> [Bool]

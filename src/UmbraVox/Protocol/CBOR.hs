@@ -7,10 +7,11 @@ module UmbraVox.Protocol.CBOR
   , decodeMessage
   ) where
 
-import Data.Bits (shiftL, shiftR, (.&.))
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Word (Word32)
+
+import UmbraVox.Protocol.Encoding (putWord32BE, getWord32BE)
 
 -- | Encode a message by prepending a 4-byte big-endian length header.
 encodeMessage :: ByteString -> ByteString
@@ -32,19 +33,3 @@ decodeMessage bs
                else Just (BS.take (fromIntegral len) rest,
                           BS.drop (fromIntegral len) rest)
 
--- | Write a Word32 as 4 big-endian bytes.
-putWord32BE :: Word32 -> ByteString
-putWord32BE w = BS.pack
-    [ fromIntegral (w `shiftR` 24 .&. 0xff)
-    , fromIntegral (w `shiftR` 16 .&. 0xff)
-    , fromIntegral (w `shiftR` 8  .&. 0xff)
-    , fromIntegral (w .&. 0xff)
-    ]
-
--- | Read a big-endian Word32 from the first 4 bytes.
-getWord32BE :: ByteString -> Word32
-getWord32BE bs =
-    (fromIntegral (BS.index bs 0) `shiftL` 24)
-    + (fromIntegral (BS.index bs 1) `shiftL` 16)
-    + (fromIntegral (BS.index bs 2) `shiftL` 8)
-    + fromIntegral (BS.index bs 3)
