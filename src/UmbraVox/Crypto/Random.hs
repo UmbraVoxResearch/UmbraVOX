@@ -51,7 +51,7 @@ chacha20Block !key !nonce !counter
     !s0  = 0x61707865  -- "expa"
     !s1  = 0x3320646e  -- "nd 3"
     !s2  = 0x79622d32  -- "2-by"
-    !s3  = 0x74652078  -- "te k"
+    !s3  = 0x6b206574  -- "te k"
     !s4  = getLE32 key  0
     !s5  = getLE32 key  4
     !s6  = getLE32 key  8
