@@ -1,14 +1,16 @@
 module Main (main) where
 
+import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent.MVar (readMVar)
 import Control.Exception (SomeException, catch)
-import Control.Monad (when)
+import Control.Monad (when, forever, forM_, void)
 import qualified Data.ByteString as BS
 import Data.IORef (newIORef, readIORef, writeIORef, modifyIORef')
 import Data.List (isPrefixOf)
 import qualified Data.Map.Strict as Map
 import System.Directory (getHomeDirectory, createDirectoryIfMissing)
 import System.FilePath (takeDirectory)
-import System.IO (hSetBuffering, hFlush, stdout, BufferMode(..))
+import System.IO (hSetBuffering, hSetEncoding, hFlush, stdout, utf8, BufferMode(..))
 import System.Posix.Signals (installHandler, Handler(Catch))
 import Foreign.C.Types (CInt(..))
 import UmbraVox.TUI.Types
@@ -30,6 +32,8 @@ sigWINCH = 28
 
 main :: IO ()
 main = do
+    -- Ensure stdout handles UTF-8 for Unicode box-drawing characters
+    hSetEncoding stdout utf8
     hSetBuffering stdout (BlockBuffering (Just 8192))
     -- Generate random display name from BIP39 wordlist
     randomName <- generatePassphrase 1
@@ -42,7 +46,7 @@ main = do
         <*> newIORef Map.empty   -- sessions
         <*> newIORef 1           -- next session ID
         -- Discovery settings (off by default)
-        <*> newIORef False       -- mDNS disabled
+        <*> newIORef True        -- mDNS enabled by default
         <*> newIORef False       -- PEX disabled
         <*> newIORef True        -- DB persistence enabled
         <*> newIORef "~/.umbravox/umbravox.db"  -- DB path
@@ -72,8 +76,14 @@ main = do
         port <- readIORef (cfgListenPort cfg)
         mIk <- readIORef (cfgIdentity cfg)
         let pubkey = maybe BS.empty ikX25519Public mIk
-        (_peersRef, tid) <- startMDNS port pubkey
+        (peersRef, tid) <- startMDNS port pubkey
         writeIORef (cfgMDNSThread cfg) (Just tid)
+        -- Poll mDNS peer list into cfgMDNSPeers every 5 seconds
+        _ <- forkIO $ forever $ do
+            threadDelay 5000000  -- 5 seconds
+            peers <- readMVar peersRef
+            writeIORef (cfgMDNSPeers cfg) peers
+        pure ()
         ) `catch` (\(_ :: SomeException) -> pure ())  -- mDNS unavailable
     -- Ask user about persistence mode before attempting DB download
     putStrLn ""
