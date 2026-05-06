@@ -13,7 +13,8 @@ import UmbraVox.App.RuntimeLog (logEvent, runtimeLoggingEnabled)
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Render (getTermSize, clampSize, calcLayout, clearScreen,
                             withRawMode, render)
-import UmbraVox.TUI.Input (eventLoop, startListenerIfNeeded)
+import UmbraVox.TUI.Input (eventLoop)
+import UmbraVox.TUI.RuntimeNetwork (startListenerIfNeeded)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 import UmbraVox.Network.MDNS (startMDNS)
 import UmbraVox.App.Startup
