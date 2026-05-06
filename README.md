@@ -28,8 +28,10 @@ nix-shell              # Enter development environment
 cabal build            # Build everything
 cabal run umbravox     # Launch the TUI
 make test              # Fast messaging-MVP hardening gate
+make test-core-network # Deterministic network/discovery suite
 make test-tui-sim      # TUI simulation suite
 make test-integrity    # Wire/integrity suite
+make test-mdns         # Exact mDNS/discovery suite
 make test-deferred     # Preserved deferred blockchain/economics suites
 make soak              # Longer soak/stress run with artifact report
 make                   # Full pipeline: build + test + verify + complexity + lint + license + format-check
@@ -45,7 +47,8 @@ make quality           # Same full pipeline as make; lint/format-check are advis
 5. To connect to a peer, type the other peer's `host:port` and press `Enter`.
 6. For runtime troubleshooting, enable debug logging in `F4 -> Settings -> a`
    or set `UMBRAVOX_DEBUG_LOG=1`. Logs write to the configured path without
-   including plaintext payloads.
+   including plaintext payloads, but they still remain sensitive operational
+   metadata and are not production-safe telemetry.
 
 See [`doc/QUICKSTART.md`](doc/QUICKSTART.md) for the active command set and
 [`doc/README.md`](doc/README.md) for the fresh documentation index.
@@ -392,8 +395,12 @@ large flat suite.
 * `make test` runs the required messaging gate: deterministic core, real TCP,
   fault injection, and recovery. It streams the full live output and writes a
   per-run log under `build/test-artifacts/`.
-* `make test-core` runs the deterministic crypto, protocol, TUI, and codegen
-  coverage.
+* `make test-core` runs the full deterministic core suite.
+* `make test-core-crypto` runs only deterministic crypto/unit coverage.
+* `make test-core-network` runs only deterministic network/discovery coverage.
+* `make test-core-chat` runs only deterministic chat/protocol coverage.
+* `make test-core-tui` runs only deterministic non-simulated TUI coverage.
+* `make test-core-tools` runs only deterministic codegen/tools/fuzz coverage.
 * `make test-tcp` runs real localhost TCP end-to-end scenarios.
 * `make test-fault` runs adversarial transport and parser hardening scenarios.
 * `make test-recovery` runs persistence and restart-oriented scenarios.
@@ -401,8 +408,11 @@ large flat suite.
   fast gate.
 * `make test-integrity` runs the explicit wire-format and cryptographic
   integrity coverage.
+* `make test-mdns` runs only the exact mDNS/discovery suite.
 * `make test-deferred` runs the preserved blockchain, economics, and storage
   stub suites outside the MVP fast gate.
+* Exact suite names such as `mdns`, `sha256`, or `tui-sim-dialogs` are also
+  accepted directly through `cabal test umbravox-test --test-options='<suite>'`.
 * `make soak` runs the longer stress suite and writes:
 
 ```text

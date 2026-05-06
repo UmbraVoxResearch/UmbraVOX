@@ -2,7 +2,7 @@ UmbraVOX Implementation TODO
 =============================
 Status: [ ] = pending, [~] = in progress, [x] = done, [!] = blocked
 
-Last updated: 2026-04-30
+Last updated: 2026-05-03
 
 ================================================================================
 TOP PRIORITY: POST-MERGE MESSAGING MVP HARDENING + COMPLETION (ACTIVE)
@@ -63,11 +63,11 @@ Immediate assurance priority:
   [x] MP.1.5.2  metadata-only send/recv/listener/persistence log events
   [x] MP.1.5.3  automated runtime test asserting log file emission
   [ ] MP.1.5.4  harden runtime logging for operational assurance
-    [ ] MP.1.5.4.1  redact or suppress peer labels, host/port targets, attachment paths, DB paths, and restore counts from durable logs
-    [ ] MP.1.5.4.2  distinguish pre-auth transport arrival from post-auth trusted session establishment
+    [x] MP.1.5.4.1  redact or suppress peer labels, host/port targets, attachment paths, DB paths, and restore counts from durable logs
+    [x] MP.1.5.4.2  distinguish pre-auth transport arrival from post-auth trusted session establishment
     [x] MP.1.5.4.3  stop using pre-auth listener events as success evidence in tests
     [x] MP.1.5.4.4  ensure log file creation uses restrictive permissions and single-writer discipline
-    [ ] MP.1.5.4.5  document runtime logging as sensitive metadata collection, not production-safe default telemetry
+    [x] MP.1.5.4.5  document runtime logging as sensitive metadata collection, not production-safe default telemetry
 
 --- MP.2: Recovery + Restart Coverage ---
 
@@ -235,10 +235,10 @@ Future / planned codegen work:
   [~] MP.5.4.5  update docs and active status text after verification is green again
   [x] MP.5.4.6  treat F* completion as a blocker for any stronger publication-grade assurance statement
 
-[~] MP.5.5  Re-run full `make quality` immediately after F* verification is green
+[x] MP.5.5  Re-run full `make quality` immediately after F* verification is green
   [x] MP.5.5.1  rerun `make quality`
-  [~] MP.5.5.2  confirm blocking gates (`build`, `test`, `verify`, `complexity`, `license`) are green
-  [ ] MP.5.5.3  review advisory output from `lint` and `format-check`
+  [x] MP.5.5.2  confirm blocking gates (`build`, `test`, `verify`, `complexity`, `license`) are green
+  [x] MP.5.5.3  review advisory output from `lint` and `format-check`
 [ ] MP.5.6  Decide whether to commit/report soak artifacts or keep them ephemeral only
 [~] MP.5.7  Reconcile assurance claims with MVP reality before publication
   [~] MP.5.7.1  audit all DO-178C / DAL / life-critical wording in package metadata, README, QUICKSTART, and overview docs
@@ -297,10 +297,82 @@ Future / planned codegen work:
   [ ] MP.7.7.3  harden runtime logs to avoid creating a new durable metadata leak
   [ ] MP.7.7.4  decide whether current generated C/FFI bridge evidence is sufficient for MVP assurance claims
   [x] MP.7.7.5  clear the formal verification blockers and keep `make verify` green
-  [ ] MP.7.7.6  rerun full gates and capture a publication evidence bundle
+  [x] MP.7.7.6  rerun full gates and capture a publication evidence bundle
+    [x] MP.7.7.6.1  add `make evidence` target to run `quality` and snapshot logs + git metadata into `build/evidence/<timestamp>/`
+    [x] MP.7.7.6.2  capture and review a fresh publication evidence bundle from the current branch head (`build/evidence/20260503T111851Z`)
   [ ] MP.7.7.7  keep Haskell as the active semantic oracle until the C path is semantically real and differential tests are green
   [ ] MP.7.7.8  promote the C path only after FFI hardening, malformed-input coverage, and boundary evidence are in place
   [ ] MP.7.7.9  publish the final bounded MVP assurance statement and the stronger target assurance statement side by side
+
+[ ] MP.7.8  Group messaging + membership lifecycle
+  [ ] MP.7.8.1  define the bounded MVP group model
+    [ ] MP.7.8.1.1  decide whether groups are creator-owned rooms or persistent shared identities
+    [ ] MP.7.8.1.2  define the canonical group identifier, creator identity binding, and membership versioning
+    [ ] MP.7.8.1.3  define creator authority rules: remove participant, revoke invite, delete group and all local group data
+    [ ] MP.7.8.1.4  define recipient behavior when a group is deleted or the local user is removed
+    [ ] MP.7.8.1.5  define the MVP offline/rejoin story and which membership changes require full re-invite
+  [ ] MP.7.8.2  add protocol/message types for groups
+    [ ] MP.7.8.2.1  add group-create message type
+    [ ] MP.7.8.2.2  add group-invite message type
+    [ ] MP.7.8.2.3  add group-join / invite-accept message type
+    [ ] MP.7.8.2.4  add group-member-remove message type
+    [ ] MP.7.8.2.5  add group-delete message type
+    [ ] MP.7.8.2.6  add group-message envelope carrying sealed-sender metadata and membership epoch/version
+    [ ] MP.7.8.2.7  define transcript binding and replay/ordering rules for all group control messages
+  [ ] MP.7.8.3  add sealed-sender delivery path for group messages
+    [ ] MP.7.8.3.1  decide whether to reuse existing sender-key machinery or add a dedicated group sender-state path
+    [ ] MP.7.8.3.2  hide sender identity from non-members while preserving authenticated member delivery
+    [ ] MP.7.8.3.3  define per-group sender state rotation / membership-epoch invalidation behavior
+    [ ] MP.7.8.3.4  ensure removed members cannot continue decrypting future group traffic after membership changes
+    [ ] MP.7.8.3.5  define how sealed-sender interacts with the existing layered runtime path and associated data
+  [ ] MP.7.8.4  extend session/chat state for groups
+    [ ] MP.7.8.4.1  represent group sessions separately from single-peer sessions in state and storage
+    [ ] MP.7.8.4.2  track creator, membership list, pending invites, and membership epoch/version
+    [ ] MP.7.8.4.3  distinguish group history, control events, and user-visible member changes in the chat timeline
+    [ ] MP.7.8.4.4  define local-only tombstone state for deleted groups so recovery/UI behavior stays explicit
+  [ ] MP.7.8.5  extend persistence/recovery for groups
+    [ ] MP.7.8.5.1  persist group metadata, membership state, pending invites, and group history
+    [ ] MP.7.8.5.2  restore groups cleanly on restart without reviving deleted or removed membership state incorrectly
+    [ ] MP.7.8.5.3  define retention/clear-history behavior for group control records vs chat payload records
+    [ ] MP.7.8.5.4  ensure creator-driven delete removes local persisted group state and associated cached membership data
+  [ ] MP.7.8.6  implement group UX in the TUI
+    [ ] MP.7.8.6.1  add create-group flow
+    [ ] MP.7.8.6.2  add invite-member flow
+    [ ] MP.7.8.6.3  add join-group flow for received invites
+    [ ] MP.7.8.6.4  add remove-member flow restricted to the creator
+    [ ] MP.7.8.6.5  add delete-group flow restricted to the creator and clearly confirm destructive removal
+    [ ] MP.7.8.6.6  show group membership, pending invites, and creator status in the UI
+    [ ] MP.7.8.6.7  ensure browse/new-connection/group creation flows stay coherent with the existing single-peer UX
+  [ ] MP.7.8.7  add deterministic tests for group correctness
+    [ ] MP.7.8.7.1  create-group happy path
+    [ ] MP.7.8.7.2  invite and accept happy path
+    [ ] MP.7.8.7.3  creator removes participant
+    [ ] MP.7.8.7.4  creator deletes group
+    [ ] MP.7.8.7.5  removed member cannot send or decrypt future group messages
+    [ ] MP.7.8.7.6  deleted group stays tombstoned after restart
+    [ ] MP.7.8.7.7  group history and membership restore correctly after restart
+    [ ] MP.7.8.7.8  direct `0-9` selection / invite/member UI flows remain stable in the TUI
+  [ ] MP.7.8.8  add hardening/fault coverage for groups
+    [ ] MP.7.8.8.1  replayed invite / replayed join rejection
+    [ ] MP.7.8.8.2  stale membership epoch rejection
+    [ ] MP.7.8.8.3  removed-member send rejection
+    [ ] MP.7.8.8.4  forged creator-control message rejection
+    [ ] MP.7.8.8.5  duplicate or reordered group control messages
+    [ ] MP.7.8.8.6  disconnect/reconnect behavior during invite or membership change
+  [ ] MP.7.8.9  reconcile docs and assurance tracking for groups
+    [ ] MP.7.8.9.1  update README / QUICKSTART / overview for group creation, invites, and deletion semantics
+    [ ] MP.7.8.9.2  update assurance roadmap and matrix for the sealed-sender group path
+    [ ] MP.7.8.9.3  explicitly document what the MVP does and does not guarantee for group secrecy, removals, and offline members
+    [ ] MP.7.8.9.4  state the exact sealed-sender claim boundary for groups: transport metadata only vs member-visible sender identity
+    [ ] MP.7.8.9.5  state whether creator authority is cryptographically enforced, runtime-enforced, or both
+    [ ] MP.7.8.9.6  state whether removed members are blocked only prospectively or also from previously retained local history
+    [ ] MP.7.8.9.7  state whether group deletion means tombstone only, remote convergence, history purge, or all three
+  [ ] MP.7.8.10 retire single-peer assumptions that block real groups
+    [ ] MP.7.8.10.1  replace the current multi-direct-session fanout shortcut with first-class group conversation state
+    [ ] MP.7.8.10.2  split conversation objects from per-member transport/session attachments
+    [ ] MP.7.8.10.3  stop treating `selected index -> one peer transport -> one history buffer` as the universal chat model
+    [ ] MP.7.8.10.4  update verify-key UX so groups no longer reuse the direct safety-number flow
+    [ ] MP.7.8.10.5  update creator/member role visibility and disabled actions in the TUI
 
 Priority order from here:
   [ ] P1  Implement persistence confidentiality at rest
@@ -308,6 +380,39 @@ Priority order from here:
   [x] P3  Track listener ownership explicitly and prevent duplicate background accept loops
   [ ] P4  Capture a publication evidence bundle from the current green gates
   [ ] P5  Convert generated C/FFI from linkage-only coverage into a real semantic path
+  [~] P6  Start the group messaging + membership track after the current TUI/discovery/logging cleanup lands
+    [x] P6.1  Add idle UI render tick (250ms) so discovery and background state updates surface without keypress
+    [x] P6.2  Add terminal mouse input support (xterm 1000/1006) for menu tab clicks, dropdown selection, and pane focus/selection
+    [x] P6.3  Suppress mouse release/motion noise so open menus and modals do not self-dismiss
+    [x] P6.4  Route mouse clicks into interactive overlays (browse, settings, new conversation)
+    [x] P6.5  Upgrade text chat from `ByteString.Char8` to real UTF-8 encode/decode with end-to-end tests
+    [x] P6.6  Add Unicode-safe TUI width/clipping helpers so chat, contact rows, status, and overlays no longer rely on naive `length`/`take`
+    [x] P6.7  Force terminal UTF-8 handles and cover UTF-8 chat/export/import and TCP runtime round-trips in tests
+    [~] P6.8  Normalize keyboard and mouse onto one shared TUI action model so every screen widget is first-class for both inputs
+      [x] P6.8.1  Add explicit modal GUI controls (`[X]`, `[Close]`, `[OK]`, `[Cancel]`, action buttons) with mouse hit-target routing
+      [x] P6.8.2  Keep keyboard parity for every modal action path currently wired by mouse
+      [x] P6.8.3  Add simulation coverage for modal/footer button clicks and top-bar close control
+      [x] P6.8.4  Remove render flicker by eliminating unconditional full-frame clears and rendering only on state changes
+      [ ] P6.8.5  Extend mouse parity to all remaining list-style selectors (including future group/member selectors) via shared helpers
+    [~] P6.9  Extract reusable TUI screen/component templates for lists, forms, modals, timelines, and status panes
+      [x] P6.9.1  Add shared modal control-row and button hitbox helpers (single source for render + input)
+      [x] P6.9.2  Add shared paginated list widget model (0-9 mapping, arrows, search, footer actions)
+      [x] P6.9.3  Add optional modal tabs pattern for advanced/diagnostic sections while defaulting to simple mode
+    [~] P6.10  Introduce an in-process runtime command/event boundary first, then move the TUI to full IPC after the boundary is proven by tests
+      [x] P6.10.1  Route top-level menu and shortcut actions through an in-process runtime command dispatcher
+      [~] P6.10.2  Move listener, discovery, storage, and settings side effects behind the same command boundary
+        [x] P6.10.2.1  Extract immediate settings toggles and security-mode side effects into a shared runtime settings module
+        [~] P6.10.2.2  Move prompt-driven settings callbacks (port/name/path/retention/history) behind runtime commands
+          [x] P6.10.2.2.1  Route display name, DB path, retention, debug log path, and clear-history callbacks through runtime commands
+          [x] P6.10.2.2.2  Route listen-port callback through runtime commands after listener restart helpers move out of `Input`
+        [x] P6.10.2.3  Move connect/listen/group-connect flows behind runtime commands
+          [x] P6.10.2.3.1  Extract listener and direct-connect helpers into a shared runtime network module
+          [x] P6.10.2.3.2  Route browse/direct/group-connect entrypoints through runtime commands
+      [~] P6.10.3  Introduce explicit runtime event outputs that the TUI can consume without direct state mutation
+        [~] P6.10.3.1  Introduce a runtime event type plus an apply layer for status/dialog output
+          [ ] P6.10.3.1.1  Move command-originated status text through runtime events
+          [ ] P6.10.3.1.2  Move command-originated dialog open/close actions through runtime events
+        [ ] P6.10.3.2  Move runtime-side contact/session selection updates behind explicit events where practical
   [ ] Post-MVP future refactor  Evaluate whether selected primitives should move to an `F* -> KaRaMeL/Low* -> C` extraction path after the MVP assurance bar is met
 
 ================================================================================

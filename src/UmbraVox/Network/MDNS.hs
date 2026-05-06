@@ -15,6 +15,7 @@ module UmbraVox.Network.MDNS
     , safeReadPort
     , addrToIP
     , buildAnnouncement
+    , buildAnnouncementWithName
     , isSelfAnnouncement
     , updatePeerList
     ) where
@@ -42,6 +43,7 @@ import qualified Network.Socket.ByteString as NSB
 -- | A peer discovered via mDNS on the local network.
 data MDNSPeer = MDNSPeer
     { mdnsPubkey   :: !ByteString  -- ^ SHA-256 fingerprint of peer's public key
+    , mdnsName     :: !(Maybe String) -- ^ Advertised display name
     , mdnsIP       :: !String      -- ^ IPv4 address
     , mdnsPort     :: !Int         -- ^ TCP listening port
     , mdnsLastSeen :: !Int         -- ^ POSIX timestamp of last announcement
@@ -89,10 +91,10 @@ ipAddMembership = 35
 -- 2. Listens for peer announcements and updates the peer list.
 --
 -- Returns the discovered-peer list reference and the thread identifier.
-startMDNS :: Int -> ByteString -> IO (MVar [MDNSPeer], ThreadId)
-startMDNS ourPort ourPubkey = do
+startMDNS :: Int -> String -> ByteString -> IO (MVar [MDNSPeer], ThreadId)
+startMDNS ourPort ourName ourPubkey = do
     peersRef <- newMVar []
-    tid <- forkIO (runMDNS ourPort ourPubkey peersRef)
+    tid <- forkIO (runMDNS ourPort ourName ourPubkey peersRef)
     pure (peersRef, tid)
 
 -- | Stop the mDNS discovery thread.
@@ -108,11 +110,11 @@ getDiscoveredPeers = readMVar
 ------------------------------------------------------------------------
 
 -- | Main mDNS loop: announce and listen on a shared UDP multicast socket.
-runMDNS :: Int -> ByteString -> MVar [MDNSPeer] -> IO ()
-runMDNS ourPort ourPubkey peersRef =
+runMDNS :: Int -> String -> ByteString -> MVar [MDNSPeer] -> IO ()
+runMDNS ourPort ourName ourPubkey peersRef =
     bracket openMulticastSocket NS.close $ \sock -> do
         -- Spawn a separate thread for periodic announcements.
-        _ <- forkIO (announceLoop sock ourPort ourPubkey)
+        _ <- forkIO (announceLoop sock ourPort ourName ourPubkey)
         listenLoop sock peersRef ourPort ourPubkey
   `catch` \(_e :: SomeException) -> pure ()
 
@@ -158,9 +160,9 @@ enableMulticastLoop sock =
 ------------------------------------------------------------------------
 
 -- | Periodically announce our service on the multicast group.
-announceLoop :: NS.Socket -> Int -> ByteString -> IO ()
-announceLoop sock ourPort ourPubkey = forever $ do
-    let !payload = buildAnnouncement ourPort ourPubkey
+announceLoop :: NS.Socket -> Int -> String -> ByteString -> IO ()
+announceLoop sock ourPort ourName ourPubkey = forever $ do
+    let !payload = buildAnnouncementWithName ourPort ourName ourPubkey
     dest <- multicastDest
     void (NSB.sendTo sock payload dest
       `catch` \(_e :: SomeException) -> pure 0)
@@ -170,9 +172,13 @@ announceLoop sock ourPort ourPubkey = forever $ do
 --
 -- Format: @_umbravox._tcp.local\\nport=NNNN;pubkey=HEXHEX@
 buildAnnouncement :: Int -> ByteString -> ByteString
-buildAnnouncement port pubkey =
+buildAnnouncement port pubkey = buildAnnouncementWithName port "" pubkey
+
+buildAnnouncementWithName :: Int -> String -> ByteString -> ByteString
+buildAnnouncementWithName port name pubkey =
     serviceName <> "\n" <> "port=" <> C8.pack (show port)
     <> ";pubkey=" <> toHex pubkey
+    <> ";name=" <> C8.pack (sanitizeName name)
 
 -- | Resolve the multicast destination address.
 multicastDest :: IO NS.SockAddr
@@ -207,9 +213,11 @@ parseAnnouncement payload srcAddr = do
             let body = BS.drop 1 rest  -- skip newline
             port   <- parseField "port=" body
             pubkey <- parseHexField "pubkey=" body
+            let mName = parseOptionalName body
             let ip = addrToIP srcAddr
             Just MDNSPeer
                 { mdnsPubkey   = pubkey
+                , mdnsName     = mName
                 , mdnsIP       = ip
                 , mdnsPort     = safeReadPort (C8.unpack port)
                 , mdnsLastSeen = 0  -- Caller should stamp with current time
@@ -222,6 +230,17 @@ parseField key body =
     in  case filter (BS.isPrefixOf key) parts of
             (match : _) -> Just (BS.drop (BS.length key) match)
             []          -> Nothing
+
+parseOptionalName :: ByteString -> Maybe String
+parseOptionalName body =
+    case parseField "name=" body of
+        Just raw ->
+            let name = C8.unpack raw
+            in if null name then Nothing else Just name
+        Nothing -> Nothing
+
+sanitizeName :: String -> String
+sanitizeName = map (\c -> if c == ';' || c == '\n' || c == '\r' then '_' else c)
 
 -- | Extract and decode a hex-encoded field.
 parseHexField :: ByteString -> ByteString -> Maybe ByteString

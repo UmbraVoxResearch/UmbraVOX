@@ -4,7 +4,8 @@ module Test.TUI.Types (runTests) where
 
 import Test.Util (assertEq)
 import UmbraVox.TUI.Types (ContactStatus(..), statusTag, Layout(..), MenuTab(..),
-                           menuTabLabel, menuTabItems)
+                           menuTabLabel, menuTabItems, menuTabUnderlineIndex)
+import UmbraVox.TUI.Layout (dropdownCol)
 import UmbraVox.TUI.Render (calcLayout, sizeValid)
 
 runTests :: IO Bool
@@ -22,7 +23,9 @@ runTests = do
     p10 <- testMenuTabEnum
     p11 <- testMenuTabItems
     p12 <- testMenuTabLabel
-    pure (p1 && p2 && p3 && p4 && p5 && p6 && p7 && p8 && p9 && p10 && p11 && p12)
+    p13 <- testMenuQuitUnderline
+    p14 <- testDropdownAnchorTracksRightJustifiedTabs
+    pure (p1 && p2 && p3 && p4 && p5 && p6 && p7 && p8 && p9 && p10 && p11 && p12 && p13 && p14)
 
 testStatusTagOnline :: IO Bool
 testStatusTagOnline = assertEq "statusTag Online"  " \x25CF"   (statusTag Online)
@@ -99,3 +102,20 @@ testMenuTabLabel = do
   where
     isIn needle haystack = any (\i -> take (length needle) (drop i haystack) == needle)
                                [0..length haystack - length needle]
+
+testMenuQuitUnderline :: IO Bool
+testMenuQuitUnderline =
+    assertEq "MenuQuit underline index" (Just 1) (menuTabUnderlineIndex MenuQuit)
+
+testDropdownAnchorTracksRightJustifiedTabs :: IO Bool
+testDropdownAnchorTracksRightJustifiedTabs = do
+    let help80 = dropdownCol 80 MenuHelp
+        help120 = dropdownCol 120 MenuHelp
+        contacts120 = dropdownCol 120 MenuContacts
+        chat120 = dropdownCol 120 MenuChat
+        prefs120 = dropdownCol 120 MenuPrefs
+        quit120 = dropdownCol 120 MenuQuit
+    a <- assertEq "dropdown anchor shifts right on wider terminals" True (help120 > help80)
+    b <- assertEq "dropdown anchors remain ordered by tab" True
+        (help120 < contacts120 && contacts120 < chat120 && chat120 < prefs120 && prefs120 < quit120)
+    pure (a && b)

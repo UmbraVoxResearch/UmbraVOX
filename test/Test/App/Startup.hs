@@ -114,19 +114,24 @@ testResolvePersistencePreference = withDB "umbravox-startup-pref.db" $ \dbPath -
     prefMissing <- resolvePersistencePreferenceAt dbPath
 
     db <- openDB dbPath
-    saveSetting db "storage.persistent.enabled" "1"
     closeDB db
-    prefEnabled <- resolvePersistencePreferenceAt dbPath
+    prefUnset <- resolvePersistencePreferenceAt dbPath
 
     db2 <- openDB dbPath
-    saveSetting db2 "storage.persistent.enabled" "0"
+    saveSetting db2 "storage.persistent.enabled" "1"
     closeDB db2
+    prefEnabled <- resolvePersistencePreferenceAt dbPath
+
+    db3 <- openDB dbPath
+    saveSetting db3 "storage.persistent.enabled" "0"
+    closeDB db3
     prefDisabled <- resolvePersistencePreferenceAt dbPath
 
     ok1 <- assertEq "resolvePersistencePreferenceAt missing DB" Nothing prefMissing
-    ok2 <- assertEq "resolvePersistencePreferenceAt enabled flag" (Just True) prefEnabled
-    ok3 <- assertEq "resolvePersistencePreferenceAt disabled flag" (Just False) prefDisabled
-    pure (and [ok1, ok2, ok3])
+    ok2 <- assertEq "resolvePersistencePreferenceAt unset flag" Nothing prefUnset
+    ok3 <- assertEq "resolvePersistencePreferenceAt enabled flag" (Just True) prefEnabled
+    ok4 <- assertEq "resolvePersistencePreferenceAt disabled flag" (Just False) prefDisabled
+    pure (and [ok1, ok2, ok3, ok4])
 
 testRestoredOfflineSessionsFailClosedOnSend :: IO Bool
 testRestoredOfflineSessionsFailClosedOnSend = withDB "umbravox-startup-restored-send.db" $ \dbPath -> do
@@ -142,14 +147,19 @@ testRestoredOfflineSessionsFailClosedOnSend = withDB "umbravox-startup-restored-
     statusRef <- newIORef ""
     runningRef <- newIORef True
     dialogModeRef <- newIORef Nothing
+    browsePageRef <- newIORef 0
+    browseFilterRef <- newIORef ""
     layoutRef <- newIORef (calcLayout 40 120)
     contactScrollRef <- newIORef 0
     termSizeRef <- newIORef (40, 120)
     menuOpenRef <- newIORef Nothing
     menuIndexRef <- newIORef 0
+    dialogTabRef <- newIORef 0
+    renderTokenRef <- newIORef Nothing
     let st = AppState cfg selectedRef focusRef inputRef dialogBufRef chatScrollRef
-            statusRef runningRef dialogModeRef layoutRef contactScrollRef termSizeRef
-            menuOpenRef menuIndexRef
+            statusRef runningRef dialogModeRef browsePageRef browseFilterRef
+            layoutRef contactScrollRef termSizeRef menuOpenRef menuIndexRef
+            dialogTabRef renderTokenRef
     sendCurrentMessage st
     sessions <- readIORef (cfgSessions cfg)
     let (_, aliceSi) = head (Map.toAscList sessions)

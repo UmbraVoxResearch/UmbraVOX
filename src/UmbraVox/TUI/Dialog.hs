@@ -1,43 +1,137 @@
 -- SPDX-License-Identifier: Apache-2.0
 module UmbraVox.TUI.Dialog
-    ( showOverlay
-    , renderHelpOverlay, renderNewConnOverlay, renderVerifyOverlay
+    ( overlayBounds
+    , overlayCloseBounds
+    , overlayButtonAt
+    , overlayButtonAtLine
+    , settingsTabLabels
+    , showOverlay
+    , helpOverlayLines, aboutOverlayLines, newConnOverlayLines
+    , renderHelpOverlay, renderAboutOverlay, renderNewConnOverlay, renderVerifyOverlay
     , renderSettingsOverlay, renderKeysOverlay, renderBrowseOverlay
-    , renderWelcomeOverlay, renderPromptOverlay
+    , keysOverlayLines, verifyOverlayLines, promptOverlayLines
+    , settingsOverlayLines, browseOverlayLines
+    , renderPromptOverlay
     , renderDropdown
     ) where
 
 import Control.Monad (forM_, when)
 import Data.IORef (readIORef)
+import Data.Char (toLower)
+import Data.List (dropWhileEnd)
 import System.IO (hFlush, stdout)
 import UmbraVox.TUI.Types
-import UmbraVox.TUI.Terminal (goto, setFg, resetSGR, bold, inverse, padR, csi)
+import UmbraVox.TUI.Terminal (goto, setFg, resetSGR, bold, padR, csi)
 import UmbraVox.TUI.Layout (dropdownCol)
 import UmbraVox.TUI.Constants (maxOverlayW, overlayMinMargin, minDropdownW)
+import UmbraVox.TUI.PaginatedList (slicePage, psItems, psPage, psTotalPages)
+import UmbraVox.TUI.Text (displayWidth, trimToWidth)
 import UmbraVox.Protocol.QRCode (generateSafetyNumber, renderSafetyNumber,
                                     renderFingerprint, generateQRCode, renderQRCode)
 import qualified Data.ByteString.Char8 as BC
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 import UmbraVox.Network.MDNS (MDNSPeer(..))
 import qualified Data.Map.Strict as Map
+import qualified Data.ByteString as BS
 
 -- Overlays ----------------------------------------------------------------
+overlayBounds :: Layout -> Int -> (Int, Int, Int, Int)
+overlayBounds lay lineCount =
+    let chatLeft = lLeftW lay + 1
+        chatWidth = max 20 (lRightW lay - 1)
+        chatTop = 2
+        chatHeight = max 6 (lRows lay - 2)
+        w = max 20 (min maxOverlayW (chatWidth - overlayMinMargin))
+        h = lineCount + 2
+        r0 = max chatTop (chatTop + ((chatHeight - h) `div` 2))
+        c0 = max chatLeft (chatLeft + ((chatWidth - w) `div` 2))
+    in (r0, c0, w, h)
+
+overlayCloseBounds :: Layout -> Int -> (Int, Int, Int)
+overlayCloseBounds lay lineCount =
+    let (r0, c0, w, _) = overlayBounds lay lineCount
+        innerW = w - 2
+        closeText = "[X]"
+        startCol = c0 + 1 + max 0 (innerW - displayWidth closeText)
+    in (r0, startCol, startCol + displayWidth closeText - 1)
+
+overlayButtonAt :: Layout -> [String] -> Int -> Int -> Maybe String
+overlayButtonAt lay lns row col = do
+    lineIx <- overlayContentLine lay (length lns) row col
+    overlayButtonAtLine lay lns lineIx row col
+
+overlayButtonAtLine :: Layout -> [String] -> Int -> Int -> Int -> Maybe String
+overlayButtonAtLine lay lns lineIx row col
+    | lineIx < 0 || lineIx >= length lns = Nothing
+    | otherwise =
+        let (r0, c0, _, _) = overlayBounds lay (length lns)
+            line = lns !! lineIx
+            targetRow = r0 + 1 + lineIx
+            relCol = col - (c0 + 2)
+        in if row /= targetRow || relCol < 0
+            then Nothing
+            else buttonAtColumn relCol (lineButtons line)
+  where
+    buttonAtColumn _ [] = Nothing
+    buttonAtColumn x ((label, startCol, endCol):rest)
+        | x >= startCol && x <= endCol = Just label
+        | otherwise = buttonAtColumn x rest
+
+overlayContentLine :: Layout -> Int -> Int -> Int -> Maybe Int
+overlayContentLine lay lineCount row col =
+    let (r0, c0, w, h) = overlayBounds lay lineCount
+        insideRows = row > r0 && row < r0 + h - 1
+        insideCols = col > c0 && col < c0 + w - 1
+    in if insideRows && insideCols
+        then Just (row - r0 - 1)
+        else Nothing
+
+lineButtons :: String -> [(String, Int, Int)]
+lineButtons = go 0
+  where
+    go _ [] = []
+    go col ('[':rest) =
+        let (labelPart, suffix) = break (== ']') rest
+            buttonText = "[" ++ labelPart ++ "]"
+            buttonWidth = displayWidth buttonText
+            label = trim labelPart
+        in case suffix of
+            ']':after ->
+                (label, col, col + buttonWidth - 1) : go (col + buttonWidth) after
+            _ ->
+                go (col + 1) rest
+    go col (ch:rest) = go (col + displayWidth [ch]) rest
+
+    trim = dropWhile (== ' ') . dropWhileEnd (== ' ')
+
+tabRowLine :: [String] -> Int -> String
+tabRowLine labels activeIx =
+    "Tabs: " ++ unwords (zipWith renderTab [0 :: Int ..] labels)
+  where
+    renderTab ix label
+        | ix == activeIx = "*[" ++ label ++ "]*"
+        | otherwise = "[" ++ label ++ "]"
+
+settingsTabLabels :: [String]
+settingsTabLabels = ["Simple", "Discovery", "Storage", "Security", "Advanced"]
+
 showOverlay :: Layout -> String -> [String] -> IO ()
 showOverlay lay title lns = do
-    let w = min maxOverlayW (lCols lay - overlayMinMargin)
-        h = length lns + 2
-        r0 = max 2 ((lRows lay - h) `div` 2)
-        c0 = max 1 ((lCols lay - w) `div` 2)
-        top = "\x2554\x2550" ++ take (w-6) title ++ " "
-              ++ replicate (max 0 (w-5-length (take (w-6) title))) '\x2550' ++ "\x2557"
-        bot = "\x255A" ++ replicate (w-2) '\x2550' ++ "\x255D"
-        ovRows = map (\l -> "\x2551 "++padR (w-3) (take (w-3) l)++"\x2551") lns
+    let (r0, c0, w, _) = overlayBounds lay (length lns)
+        innerW = w - 2
+        closeText = "[X]"
+        titleText = " " ++ trimToWidth (max 0 (innerW - displayWidth closeText - 1)) title
+        top = "\x2554" ++ titleText
+              ++ replicate (max 0 (innerW - displayWidth titleText - displayWidth closeText)) '\x2550'
+              ++ closeText ++ "\x2557"
+        bot = "\x255A" ++ replicate innerW '\x2550' ++ "\x255D"
+        ovRows = map (\l -> "\x2551 " ++ padR (w - 3) l ++ "\x2551") lns
     forM_ (zip [0..] (top : ovRows ++ [bot])) $ \(i,line) ->
         goto (r0+i) c0 >> setFg 36 >> bold >> putStr line >> resetSGR
     hFlush stdout
 
-renderHelpOverlay :: Layout -> IO ()
-renderHelpOverlay lay = showOverlay lay "Help"
+helpOverlayLines :: [String]
+helpOverlayLines =
     [ "Navigation:"
     , "  Tab         Switch pane (Contacts/Chat)"
     , "  Up/Down     Navigate / scroll"
@@ -51,20 +145,44 @@ renderHelpOverlay lay = showOverlay lay "Help"
     , ""
     , "Shortcuts:"
     , "  Ctrl+N  New connection"
+    , "  Ctrl+G  Group chat"
     , "  Ctrl+Q  Quit"
     , ""
-    , "Press Esc to close" ]
+    , "[ Close ]" ]
+
+renderHelpOverlay :: Layout -> IO ()
+renderHelpOverlay lay = showOverlay lay "Help" helpOverlayLines
+
+aboutOverlayLines :: [String]
+aboutOverlayLines =
+    [ " UmbraVOX"
+    , " Post-Quantum Encrypted Messaging"
+    , ""
+    , " Research-oriented encrypted messaging MVP"
+    , ""
+    , " License"
+    , "   Apache License"
+    , "   Version 2.0, January 2004"
+    , "   See LICENSE for full terms"
+    , ""
+    , "[ Close ]" ]
+
+renderAboutOverlay :: Layout -> IO ()
+renderAboutOverlay lay = showOverlay lay "About UmbraVOX" aboutOverlayLines
+
+newConnOverlayLines :: [String]
+newConnOverlayLines =
+    [ " 1. Private (secure notes, local only)"
+    , " 2. Single  (connect to one peer)"
+    , " 3. Group   (connect to multiple peers)"
+    , ""
+    , "[ Private ]  [ Single ]  [ Group ]  [ Cancel ]" ]
 
 renderNewConnOverlay :: Layout -> IO ()
-renderNewConnOverlay lay = showOverlay lay "New Conversation"
-    [" 1. \x1F512 Private (secure notes, local only)"
-    ," 2. \x25CB Single  (connect to one peer)"
-    ," 3. \x1F465 Group   (connect to multiple peers)"
-    ,""
-    ," Press 1/2/3, Esc to cancel"]
+renderNewConnOverlay lay = showOverlay lay "New Conversation" newConnOverlayLines
 
-renderVerifyOverlay :: Layout -> AppState -> IO ()
-renderVerifyOverlay lay st = do
+verifyOverlayLines :: AppState -> IO [String]
+verifyOverlayLines st = do
     sessions <- readIORef (cfgSessions (asConfig st))
     sel <- readIORef (asSelected st)
     mIk <- readIORef (cfgIdentity (asConfig st))
@@ -72,8 +190,8 @@ renderVerifyOverlay lay st = do
     if sel >= 0 && sel < length entries then do
         let (_,si) = entries !! sel
         case mIk of
-            Nothing -> showOverlay lay "Verify Keys"
-                ["No identity generated yet.", "", "Press K to generate keys first.", "Press Esc to close"]
+            Nothing -> pure
+                ["No identity generated yet.", "", "Press K to generate keys first.", "", "[ Close ]" ]
             Just ik -> do
                 let ourKey  = ikX25519Public ik
                     peerKey = BC.pack (siPeerName si)
@@ -81,27 +199,35 @@ renderVerifyOverlay lay st = do
                     safetyRows = renderSafetyNumber safetyNum
                     qrMatrix = generateQRCode safetyNum
                     qrLines  = renderQRCode qrMatrix
-                showOverlay lay "Verify Keys" $
+                pure $
                     ["Peer: " ++ siPeerName si, "", "Safety Number:"] ++ safetyRows ++
                     ["", "QR Code:"] ++ map ("  " ++) qrLines ++
-                    ["", "Compare via a separate channel.", "Press Esc to close"]
-    else showOverlay lay "Verify Keys"
-        ["No contact selected", "", "Press Esc to close"]
+                    ["", "Compare via a separate channel.", "", "[ Close ]" ]
+    else pure ["No contact selected", "", "[ Close ]" ]
+
+renderVerifyOverlay :: Layout -> AppState -> IO ()
+renderVerifyOverlay lay st = showOverlay lay "Verify Keys" =<< verifyOverlayLines st
 
 renderSettingsOverlay :: Layout -> AppState -> IO ()
-renderSettingsOverlay lay st = do
+renderSettingsOverlay lay st = showOverlay lay "Preferences" =<< settingsOverlayLines st
+
+settingsOverlayLines :: AppState -> IO [String]
+settingsOverlayLines st = do
+    tabIx     <- readIORef (asDialogTab st)
     port      <- readIORef (cfgListenPort (asConfig st))
     name      <- readIORef (cfgDisplayName (asConfig st))
     mdns      <- readIORef (cfgMDNSEnabled (asConfig st))
     pex       <- readIORef (cfgPEXEnabled (asConfig st))
     debugLog  <- readIORef (cfgDebugLogging (asConfig st))
     debugPath <- readIORef (cfgDebugLogPath (asConfig st))
+    dbEnabled <- readIORef (cfgDBEnabled (asConfig st))
     mDb       <- readIORef (cfgAnthonyDB (asConfig st))
     let tf True = "ON"; tf False = "OFF"
         ephemeral = case mDb of { Nothing -> True; Just _ -> False }
     storageLines <- if ephemeral
         then pure
             [ " Storage"
+            , "   5. Persistent DB: [" ++ tf dbEnabled ++ "]"
             , "   [EPHEMERAL MODE - no persistence]"
             , "   Messages exist only in memory."
             , "   9. Clear history..." ]
@@ -112,10 +238,11 @@ renderSettingsOverlay lay st = do
             let retLabel = if retention == 0 then "forever"
                            else show retention ++ " days"
             pure [ " Storage"
-                 , "   5. DB path:       " ++ dbPath'
-                 , "   6. Retention:     " ++ retLabel
-                 , "   7. Auto-save msgs: [" ++ tf autoSave ++ "]"
-                 , "   8. Clear history..." ]
+                 , "   5. Persistent DB: [" ++ tf dbEnabled ++ "]"
+                 , "   6. DB path:       " ++ dbPath'
+                 , "   7. Retention:     " ++ retLabel
+                 , "   8. Auto-save msgs: [" ++ tf autoSave ++ "]"
+                 , "   9. Clear history..." ]
     connMode <- readIORef (cfgConnectionMode (asConfig st))
     let modeLabel = case connMode of
             Swing       -> "SWING"
@@ -123,91 +250,159 @@ renderSettingsOverlay lay st = do
             Selective   -> "SELECTIVE"
             Chaste      -> "CHASTE"
             Chastity    -> "CHASTITY"
-    showOverlay lay "Preferences" $
-        [ " General"
-        , "   1. Listen port:    " ++ show port
-        , "   2. Display name:   " ++ name
-        , "   a. Debug logging:  [" ++ tf debugLog ++ "]"
-        , "   b. Log path:       " ++ debugPath
+        tabLine = tabRowLine settingsTabLabels tabIx
+        tabBody = case tabIx of
+            0 ->
+                [ " Simple"
+                , "   1. Listen port:    " ++ show port
+                , "   2. Display name:   " ++ name
+                , "   3. mDNS (LAN):    [" ++ tf mdns ++ "]"
+                , "   c. Connection mode: [" ++ modeLabel ++ "]"
+                , "   0. View/regenerate keys"
+                ]
+            1 ->
+                [ " Discovery"
+                , "   3. mDNS (LAN):    [" ++ tf mdns ++ "]"
+                , "   4. Peer Exchange: [" ++ tf pex ++ "]"
+                , ""
+                , " Peer discovery applies immediately."
+                ]
+            2 ->
+                [ " Storage" ] ++ tail storageLines
+            3 ->
+                [ " Security"
+                , "   c. Connection mode: [" ++ modeLabel ++ "]"
+                , "   (Swing / Promiscuous / Selective / Chaste / Chastity)"
+                , ""
+                , " Switching mode renegotiates remote sessions."
+                ]
+            _ ->
+                [ " Advanced"
+                , "   a. Debug logging:  [" ++ tf debugLog ++ "]"
+                , "   b. Log path:       " ++ debugPath
+                , ""
+                , " Diagnostic controls stay off by default."
+                ]
+    pure $
+        [ tabLine
         , ""
-        , " Discovery"
-        , "   3. mDNS (LAN):    [" ++ tf mdns ++ "]"
-        , "   4. Peer Exchange: [" ++ tf pex ++ "]"
-        , ""
-        , " Security"
-        , "   Connection mode:  [" ++ modeLabel ++ "]"
-        , "   (Promiscuous / Selective / Chaste)"
-        , "" ] ++ storageLines ++
+        ] ++ tabBody ++
         [ ""
-        , " Identity"
-        , "   0. View/regenerate keys"
-        , ""
-        , " Press 0-9/a/b to change, Esc to close" ]
+        , " Press Left/Right to switch tabs"
+        , " Press 0-9/a/b/c to change, Esc to close"
+        , "[ Close ]" ]
 
 renderKeysOverlay :: Layout -> AppState -> IO ()
-renderKeysOverlay lay st = do
+renderKeysOverlay lay st = showOverlay lay "Identity & Keys" =<< keysOverlayLines st
+
+keysOverlayLines :: AppState -> IO [String]
+keysOverlayLines st = do
     mIk <- readIORef (cfgIdentity (asConfig st))
     case mIk of
-        Nothing -> showOverlay lay "Identity & Keys" ["No identity generated yet.", "Press Esc to close"]
+        Nothing -> pure ["No identity generated yet.", "", "[ Close ]" ]
         Just ik -> do
             let x25519Lines  = renderFingerprint (ikX25519Public ik)
                 ed25519Lines = renderFingerprint (ikEd25519Public ik)
                 safetyNum = generateSafetyNumber (ikX25519Public ik) (ikX25519Public ik)
                 qrLines = renderQRCode (generateQRCode safetyNum)
-            showOverlay lay "Identity & Keys" $
+            pure $
                 [ "X25519 fingerprint:" ] ++ x25519Lines ++
                 [ "", "Ed25519 fingerprint:" ] ++ ed25519Lines ++
                 [ "", "QR Code (X25519):" ] ++ map ("  " ++) qrLines ++
-                [ "", "Press Esc to close" ]
+                [ "", "[ Close ]" ]
 
-renderBrowseOverlay :: Layout -> AppState -> IO ()
-renderBrowseOverlay lay st = do
+browseOverlayLines :: AppState -> IO [String]
+browseOverlayLines st = do
     peers <- readIORef (cfgMDNSPeers (asConfig st))
+    query <- readIORef (asBrowseFilter st)
+    page <- readIORef (asBrowsePage st)
     mdnsOn <- readIORef (cfgMDNSEnabled (asConfig st))
     pexOn  <- readIORef (cfgPEXEnabled (asConfig st))
+    let filtered = filter (browseMatches query) peers
+        pageSlice = slicePage 10 page filtered
+        page' = psPage pageSlice
+        totalPages = psTotalPages pageSlice
+        visible = psItems pageSlice
     let header = [ "Discovered peers on the local network:"
                  , "  mDNS: " ++ (if mdnsOn then "ON" else "OFF")
                     ++ "  |  PEX: " ++ (if pexOn then "ON" else "OFF")
+                 , "  Search: " ++ if null query then "(none)" else query
+                 , "  Page: " ++ show (page' + 1) ++ "/" ++ show totalPages
                  , "" ]
-        peerLines = if null peers
+        peerLines = if null filtered
             then ["  (no peers discovered yet)"
                  , ""
-                 , "  Make sure mDNS is enabled in Preferences"
-                 , "  and other UmbraVOX instances are running"
-                 , "  on the local network." ]
-            else concatMap fmtPeer (zip [1::Int ..] peers)
+                 , "  Make sure mDNS is enabled in Preferences,"
+                 , "  or adjust the current search filter." ]
+            else concatMap fmtPeer visible
         fmtPeer (i, p) =
-            [ "  " ++ show i ++ ". " ++ mdnsIP p ++ ":" ++ show (mdnsPort p) ]
-    showOverlay lay "Browse Peers" $
+            [ "  " ++ show i ++ ". "
+                ++ peerDisplayName p
+                ++ "  "
+                ++ mdnsIP p ++ ":" ++ show (mdnsPort p)
+                ++ "  "
+                ++ take 16 (pubkeyHex p)
+            ]
+    pure $
         header ++ peerLines ++
-        [ "", " Press Esc to close" ]
+        [ ""
+        , "  0-9 connect  / \8592/\8594 page"
+        , "[ Prev ]  [ Next ]  [ Search ]  [ Clear ]  [ Close ]"
+        ]
 
-renderWelcomeOverlay :: Layout -> IO ()
-renderWelcomeOverlay lay = showOverlay lay "Welcome to UmbraVOX"
-    [ " Post-Quantum Encrypted Messaging"
-    , ""
-    , " Getting started:"
-    , "   Press F3 to open Chat menu"
-    , "   Select 'New' to start a conversation"
-    , ""
-    , " Navigation:"
-    , "   F1-F4      Open menus"
-    , "   Tab        Switch panes"
-    , "   Ctrl+N     Quick new connection"
-    , "   Ctrl+Q     Quit"
-    , ""
-    , " Press Esc to dismiss" ]
+renderBrowseOverlay :: Layout -> AppState -> IO ()
+renderBrowseOverlay lay st = showOverlay lay "Browse Peers" =<< browseOverlayLines st
+
+browseMatches :: String -> MDNSPeer -> Bool
+browseMatches raw peer =
+    null needles
+    || all (\needle -> any (contains needle) haystacks) needles
+  where
+    needles = queryTerms raw
+    haystacks =
+        [ map toLower (maybe "" id (mdnsName peer))
+        , map toLower (pubkeyHex peer)
+        ]
+    contains sub s = any (sub `isPrefixOf`) (tails s)
+    isPrefixOf [] _ = True
+    isPrefixOf _ [] = False
+    isPrefixOf (x:xs) (y:ys) = x == y && isPrefixOf xs ys
+    tails [] = [[]]
+    tails xs@(_:rest) = xs : tails rest
+
+queryTerms :: String -> [String]
+queryTerms =
+    words . map normalize
+  where
+    normalize c
+        | c `elem` [',', ':', ';'] = ' '
+        | otherwise = toLower c
+
+peerDisplayName :: MDNSPeer -> String
+peerDisplayName peer = maybe "(unnamed)" id (mdnsName peer)
+
+pubkeyHex :: MDNSPeer -> String
+pubkeyHex = concatMap byteHex . BS.unpack . mdnsPubkey
+  where
+    byteHex b =
+        let digits = "0123456789abcdef"
+            hi = digits !! fromIntegral (b `div` 16)
+            lo = digits !! fromIntegral (b `mod` 16)
+        in [hi, lo]
+
+promptOverlayLines :: String -> String -> [String]
+promptOverlayLines _ buf =
+    ["Enter value:", "\x25B8 " ++ buf ++ "\x2588", "", "[ OK ]  [ Cancel ]"]
 
 renderPromptOverlay :: Layout -> String -> String -> IO ()
-renderPromptOverlay lay title buf = showOverlay lay title
-    ["Enter value:", "\x25B8 " ++ buf ++ "\x2588", "", "Press \x23CE to confirm, Esc to cancel"]
+renderPromptOverlay lay title buf = showOverlay lay title (promptOverlayLines title buf)
 
 -- | Render a dropdown menu below its tab position
 renderDropdown :: Layout -> MenuTab -> Int -> IO ()
 renderDropdown lay tab selIdx = do
     let items = menuTabItems tab
         boxW = max minDropdownW (maximum (map length items) + 4)
-        col = dropdownCol tab
+        col = dropdownCol (lCols lay) tab
         startRow = 2
         topLine = "\x2554" ++ replicate (boxW - 2) '\x2550' ++ "\x2557"
         botLine = "\x255A" ++ replicate (boxW - 2) '\x2550' ++ "\x255D"

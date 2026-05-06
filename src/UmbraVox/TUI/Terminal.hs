@@ -16,6 +16,7 @@ import System.IO (hFlush, stdout, stdin, hSetBuffering, BufferMode(..),
                   hSetEcho)
 import System.Process (readProcess)
 import UmbraVox.TUI.Constants (defaultTermRows, defaultTermCols)
+import UmbraVox.TUI.Text (padRight)
 
 -- ANSI / helpers ----------------------------------------------------------
 esc :: String -> String; esc code = "\ESC[" ++ code
@@ -28,7 +29,7 @@ setFg :: Int -> IO (); setFg c = csi (show c ++ "m")
 resetSGR :: IO (); resetSGR = csi "0m"
 bold :: IO (); bold = csi "1m"
 inverse :: IO (); inverse = csi "7m"
-padR :: Int -> String -> String; padR w s = take w (s ++ replicate w ' ')
+padR :: Int -> String -> String; padR = padRight
 isPfx :: String -> String -> Bool
 isPfx [] _ = True; isPfx _ [] = False
 isPfx (x:xs) (y:ys) = x == y && isPfx xs ys
@@ -39,6 +40,10 @@ withRawMode act = do
     void (readProcess "stty" ["-F", "/dev/tty", "-ixon", "-ixoff", "raw", "-echo"] "" `catch`
           (\(_ :: SomeException) -> pure ""))
     hideCursor
+    -- Enable xterm mouse reporting when supported:
+    -- 1000 = click press/release, 1006 = SGR extended coordinates.
+    putStr "\ESC[?1000h\ESC[?1006h"
+    hFlush stdout
     hSetBuffering stdin NoBuffering
     hSetEcho stdin False
     result <- act `catch` (\(e :: SomeException) -> do
@@ -48,6 +53,8 @@ withRawMode act = do
     pure result
   where
     cleanup = do
+        -- Disable mouse reporting before restoring line mode.
+        putStr "\ESC[?1006l\ESC[?1000l"
         showCursor
         putStr "\ESC[?25h"  -- ensure cursor visible
         hFlush stdout

@@ -30,6 +30,7 @@ runTests = do
         , testMultipleSendsAccumulate
         , testBulkHistoryAccumulation
         , testLoopbackSelfEcho
+        , testUtf8LoopbackRoundTrip
         , testLoopbackSendToSessionEncryptsAndReceives
         , testOfflineSessionRejectsSend
         ]
@@ -223,6 +224,25 @@ testLoopbackSelfEcho = do
             pure False
     pure (r1 && r2)
 
+testUtf8LoopbackRoundTrip :: IO Bool
+testUtf8LoopbackRoundTrip = do
+    st <- mkTestState
+    _ <- addLoopbackSession (asConfig st) "utf8"
+    writeIORef (asSelected st) 0
+    writeIORef (asFocus st) ChatPane
+    let msg = "\x4F60\x597D \x1F44B cafe\x0301"
+    writeIORef (asInputBuf st) msg
+    sendCurrentMessage st
+    sessions <- readIORef (cfgSessions (asConfig st))
+    let entries = Map.toList sessions
+        (_, si) = head entries
+    hist <- readIORef (siHistory si)
+    let hasSaved = any ((("[saved] " ++ msg) `isInfixOf`)) hist
+        hasYou = any (("You: " ++ msg) `isInfixOf`) hist
+    a <- assertEq "utf8 loopback saved history" True hasSaved
+    b <- assertEq "utf8 loopback you history" True hasYou
+    pure (a && b)
+
 -- 10. Session with no transport (loopback): sendToSession encrypts and self-receives
 testLoopbackSendToSessionEncryptsAndReceives :: IO Bool
 testLoopbackSendToSessionEncryptsAndReceives = do
@@ -232,7 +252,7 @@ testLoopbackSendToSessionEncryptsAndReceives = do
     case Map.lookup sid sessions of
         Just si -> do
             -- Directly call sendToSession on a loopback (no transport) session
-            sendToSession si (BC.pack "direct loopback")
+            _ <- sendToSession si (BC.pack "direct loopback")
             hist <- readIORef (siHistory si)
             -- Should have one entry with "[saved]" and the message text
             let hasSaved = any (\h -> "[saved]" `isInfixOf` h && "direct loopback" `isInfixOf` h) hist

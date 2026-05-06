@@ -6,7 +6,7 @@ import Control.Exception (SomeException, catch)
 import Control.Monad (when, forever)
 import qualified Data.ByteString as BS
 import Data.IORef (newIORef, readIORef, writeIORef)
-import System.IO (hSetBuffering, hSetEncoding, hFlush, stdout, utf8, BufferMode(..))
+import System.IO (hSetBuffering, hSetEncoding, hFlush, stdout, stdin, utf8, BufferMode(..))
 import System.Posix.Signals (installHandler, Handler(Catch))
 import Foreign.C.Types (CInt(..))
 import UmbraVox.App.RuntimeLog (logEvent, runtimeLoggingEnabled)
@@ -18,7 +18,7 @@ import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 import UmbraVox.Network.MDNS (startMDNS)
 import UmbraVox.App.Startup
     ( newDefaultAppConfig, initializeLocalIdentity, applyPersistenceAnswer
-    , resolvePersistencePreference
+    , resolvePersistencePreference, persistenceAnswerEnables
     )
 
 -- SIGWINCH = 28 on Linux/macOS (not exported by all versions of System.Posix.Signals)
@@ -28,6 +28,7 @@ sigWINCH = 28
 main :: IO ()
 main = do
     -- Ensure stdout handles UTF-8 for Unicode box-drawing characters
+    hSetEncoding stdin utf8
     hSetEncoding stdout utf8
     hSetBuffering stdout (BlockBuffering (Just 8192))
     cfg <- newDefaultAppConfig
@@ -38,21 +39,26 @@ main = do
     st <- AppState cfg <$> newIORef 0 <*> newIORef ContactPane
                        <*> newIORef "" <*> newIORef ""
                        <*> newIORef 0 <*> newIORef ""
-                       <*> newIORef True <*> newIORef (Just DlgWelcome)
+                       <*> newIORef True <*> newIORef Nothing
+                       <*> newIORef 0
+                       <*> newIORef ""
                        <*> newIORef (calcLayout r0 c0)
                        <*> newIORef 0
                        <*> pure termRef
                        <*> newIORef Nothing  -- asMenuOpen
                        <*> newIORef 0        -- asMenuIndex
+                       <*> newIORef 0        -- asDialogTab
+                       <*> newIORef Nothing  -- asLastRenderToken
     identity <- initializeLocalIdentity cfg
     when debugLogging $ logEvent cfg "app.start" []
     -- Wire mDNS discovery if enabled (graceful if multicast unavailable)
     mdnsOn <- readIORef (cfgMDNSEnabled cfg)
     when mdnsOn $ (do
         port <- readIORef (cfgListenPort cfg)
+        name <- readIORef (cfgDisplayName cfg)
         mIk <- readIORef (cfgIdentity cfg)
         let pubkey = maybe BS.empty ikX25519Public mIk
-        (peersRef, tid) <- startMDNS port pubkey
+        (peersRef, tid) <- startMDNS port name pubkey
         writeIORef (cfgMDNSThread cfg) (Just tid)
         logEvent cfg "mdns.start" [("port", show port)]
         -- Poll mDNS peer list into cfgMDNSPeers every 5 seconds
@@ -82,7 +88,7 @@ main = do
             putStr "  Enable persistent storage? (requires sqlite3 from nix-shell) [y/N]: "
             hFlush stdout
             answer <- getLine
-            if answer `elem` ["y", "Y", "yes", "Yes", "YES"]
+            if persistenceAnswerEnables answer
                 then do
                     putStrLn "  Initializing database..."
                     nRestored <- applyPersistenceAnswer cfg answer

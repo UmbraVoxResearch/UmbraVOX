@@ -45,7 +45,7 @@ logEvent cfg name fields = do
             let rendered =
                     unwords $
                         [ts, name] ++
-                        map (\(k, v) -> k ++ "=" ++ quoteValue v) fields
+                        map renderField fields
             withMVar runtimeLogLock $ \_ ->
                 writeLogLine path (rendered ++ "\n")
                     `catch` \(_ :: SomeException) -> pure ()
@@ -68,3 +68,22 @@ quoteValue raw = "\"" ++ concatMap escapeChar raw ++ "\""
     escapeChar '\r' = "\\r"
     escapeChar '\t' = "\\t"
     escapeChar c = [c]
+
+renderField :: (String, String) -> String
+renderField (key, value) = key ++ "=" ++ quoteValue (sanitizeFieldValue key value)
+
+sanitizeFieldValue :: String -> String -> String
+sanitizeFieldValue key value
+    | key `elem` redactedFieldKeys = "[redacted]"
+    | otherwise = value
+
+redactedFieldKeys :: [String]
+redactedFieldKeys =
+    [ "host"
+    , "messages"
+    , "path"
+    , "peer"
+    , "port"
+    , "selected_index"
+    , "sender"
+    ]

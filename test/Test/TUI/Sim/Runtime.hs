@@ -4,7 +4,7 @@
 module Test.TUI.Sim.Runtime (runTests) where
 
 import Control.Exception (SomeException, try)
-import Data.IORef (newIORef, readIORef, writeIORef)
+import Data.IORef (readIORef, writeIORef)
 import qualified Data.Map.Strict as Map
 import Test.Util (assertEq)
 import Test.TUI.Sim.Util

@@ -2,6 +2,7 @@ module Main (main) where
 
 import System.Environment (getArgs)
 import System.Exit (exitFailure, exitSuccess)
+import Data.List (find, intercalate)
 
 import qualified Test.App.Startup as AppStartup
 import qualified Test.Chat.API as ChatAPI
@@ -124,6 +125,11 @@ runSuiteArg suiteArg =
     case suiteArg of
         "required" -> runSuiteGroup "UmbraVox Messaging MVP Fast Gate" requiredSuites
         "core" -> runSuiteGroup "UmbraVox Core Messaging Suite" coreSuites
+        "core-crypto" -> runSuiteGroup "UmbraVox Core Crypto Suite" coreCryptoSuites
+        "core-network" -> runSuiteGroup "UmbraVox Core Network Suite" coreNetworkSuites
+        "core-chat" -> runSuiteGroup "UmbraVox Core Chat Suite" coreChatSuites
+        "core-tui" -> runSuiteGroup "UmbraVox Core TUI Suite" coreTUISuites
+        "core-tools" -> runSuiteGroup "UmbraVox Core Tools Suite" coreToolsSuites
         "tcp" -> runSuiteGroup "UmbraVox TCP Hardening Suite" tcpSuites
         "fault" -> runSuiteGroup "UmbraVox Fault Hardening Suite" faultSuites
         "recovery" -> runSuiteGroup "UmbraVox Recovery Hardening Suite" recoverySuites
@@ -133,10 +139,14 @@ runSuiteArg suiteArg =
         "deferred" -> runSuiteGroup "UmbraVox Deferred Stub Suite" deferredSuites
         "all" -> runSuiteGroup "UmbraVox Full Test Matrix"
             (requiredSuites ++ tuiSimSuites ++ integritySuites ++ soakSuites ++ deferredSuites)
-        _ -> do
-            putStrLn $ "Unknown suite: " ++ suiteArg
-            putStrLn "Valid suites: required, core, tcp, fault, recovery, tui-sim, integrity, soak, deferred, all"
-            pure False
+        _ ->
+            case find ((== suiteArg) . suiteName) allSuites of
+                Just suite -> runSuiteGroup ("UmbraVox Suite: " ++ suiteArg) [suite]
+                Nothing -> do
+                    putStrLn $ "Unknown suite: " ++ suiteArg
+                    putStrLn $ "Valid suites: " ++ intercalate ", " validSuiteArgs
+                    putStrLn "You can also run any exact [suite] name shown by the grouped runners."
+                    pure False
 
 runSuiteGroup :: String -> [Suite] -> IO Bool
 runSuiteGroup title suites = do
@@ -211,6 +221,78 @@ coreSuites =
     , Suite "tools-complexity" ToolsComplexity.runTests
     , Suite "tools-fstar-verify" ToolsFStarVerify.runTests
     , Suite "tools-fetch-references" ToolsFetchReferences.runTests
+    ]
+
+coreCryptoSuites :: [Suite]
+coreCryptoSuites =
+    [ Suite "sha256" SHA256.runTests
+    , Suite "sha512" SHA512.runTests
+    , Suite "hmac" HMAC.runTests
+    , Suite "hkdf" HKDF.runTests
+    , Suite "aes" AES.runTests
+    , Suite "gcm" GCM.runTests
+    , Suite "curve25519" Curve25519.runTests
+    , Suite "ed25519" Ed25519.runTests
+    , Suite "chacha20" ChaCha20.runTests
+    , Suite "x3dh" X3DH.runTests
+    , Suite "double-ratchet" DoubleRatchet.runTests
+    , Suite "mlkem" MLKEM.runTests
+    , Suite "keccak" Keccak.runTests
+    , Suite "poly1305" Poly1305.runTests
+    , Suite "bip39" BIP39.runTests
+    , Suite "export" Export.runTests
+    , Suite "pqxdh" PQXDH.runTests
+    , Suite "random" Random.runTests
+    , Suite "vrf" VRF.runTests
+    , Suite "pq-wrapper" PQWrapper.runTests
+    , Suite "sender-keys" SenderKeys.runTests
+    , Suite "signal-session" Session.runTests
+    , Suite "security" Security.runTests
+    ]
+
+coreNetworkSuites :: [Suite]
+coreNetworkSuites =
+    [ Suite "transport-class" TransportClass.runTests
+    , Suite "loopback-transport" Loopback.runTests
+    , Suite "noise" Noise.runTests
+    , Suite "peer-exchange" PeerExchange.runTests
+    , Suite "mdns" MDNS.runTests
+    , Suite "network-protocol" Protocol.runTests
+    ]
+
+coreChatSuites :: [Suite]
+coreChatSuites =
+    [ Suite "chat-session" ChatSession.runTests
+    , Suite "chat-message" ChatMessage.runTests
+    , Suite "chat-contacts" ChatContacts.runTests
+    , Suite "chat-api" ChatAPI.runTests
+    , Suite "message-format" MessageFormat.runTests
+    , Suite "wire-format" WireFormat.runTests
+    , Suite "cbor" CBOR.runTests
+    , Suite "qrcode" QRCode.runTests
+    , Suite "safety-number" SafetyNumber.runTests
+    , Suite "integration" Integration.runTests
+    , Suite "equivalence" Equivalence.runTests
+    ]
+
+coreTUISuites :: [Suite]
+coreTUISuites =
+    [ Suite "tui-types" TUITypes.runTests
+    , Suite "tui-render" TUIRender.runTests
+    , Suite "tui-input" TUIInput.runTests
+    , Suite "tui-handshake" TUIHandshake.runTests
+    , Suite "tui-actions" TUIActions.runTests
+    , Suite "tui-paths" TUIPaths.runTests
+    ]
+
+coreToolsSuites :: [Suite]
+coreToolsSuites =
+    [ Suite "tools-complexity" ToolsComplexity.runTests
+    , Suite "tools-fstar-verify" ToolsFStarVerify.runTests
+    , Suite "tools-fetch-references" ToolsFetchReferences.runTests
+    , Suite "codegen" Codegen.runTests
+    , Suite "fuzz" Fuzz.runTests
+    , Suite "fuzz-inputs" FuzzInputs.runTests
     ]
 
 tcpSuites :: [Suite]
@@ -289,3 +371,15 @@ deferredSuites =
 
 requiredSuites :: [Suite]
 requiredSuites = coreSuites ++ tcpSuites ++ faultSuites ++ recoverySuites
+
+allSuites :: [Suite]
+allSuites =
+    coreSuites ++ tcpSuites ++ faultSuites ++ recoverySuites ++
+    tuiSimSuites ++ integritySuites ++ soakSuites ++ deferredSuites
+
+validSuiteArgs :: [String]
+validSuiteArgs =
+    [ "required", "core", "core-crypto", "core-network", "core-chat"
+    , "core-tui", "core-tools", "tcp", "fault", "recovery", "tui-sim"
+    , "integrity", "soak", "deferred", "all"
+    ]

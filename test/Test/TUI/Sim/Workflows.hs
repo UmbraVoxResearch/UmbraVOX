@@ -9,7 +9,7 @@ import Test.TUI.Sim.Util
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Input (handleNormal, handleContact, handleChat, handleDialog,
                            handleNewConnDlg)
-import UmbraVox.TUI.Menu (handleMenu, openMenu)
+import UmbraVox.TUI.Menu (handleMenu)
 
 runTests :: IO Bool
 runTests = do
