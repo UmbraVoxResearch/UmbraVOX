@@ -1,0 +1,12 @@
+id=udp
+api=uvx-provider-v1
+name=UDP
+class=direct-carrier
+status=stub
+endpoint=host:port
+inherits=
+capabilities=connect
+host=in-process
+entrypoint=module:UmbraVox.Network.Transport.UDP
+encryption=core-e2ee
+notes=Stub datagram carrier reserved for future provider-backed sessions.

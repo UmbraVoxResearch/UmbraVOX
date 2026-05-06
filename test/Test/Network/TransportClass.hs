@@ -6,9 +6,13 @@
 -- using the Loopback transport as a concrete instance.
 module Test.Network.TransportClass (runTests) where
 
+import Control.Exception (try)
 import qualified Data.ByteString as BS
+import Data.List (isInfixOf)
 
 import Test.Util
+import UmbraVox.Network.ProviderCatalog (TransportProviderId(..))
+import UmbraVox.Network.ProviderRuntime (connectWithProviderTryPorts)
 import UmbraVox.Network.TransportClass
     ( TransportHandle(..)
     , AnyTransport(..)
@@ -27,6 +31,7 @@ runTests = do
         , testAnyTransportClose
         , testAnyInfoPreservesLabel
         , testExistentialHidesType
+        , testUnsupportedProviderFailsClosed
         ]
     pure (and results)
 
@@ -88,3 +93,10 @@ testExistentialHidesType = do
     r1 <- assertEq "existential pair1" msg1 got1
     r2 <- assertEq "existential pair2" msg2 got2
     pure (r1 && r2)
+
+testUnsupportedProviderFailsClosed :: IO Bool
+testUnsupportedProviderFailsClosed = do
+    result <- try (connectWithProviderTryPorts ProviderSignal "127.0.0.1" [7853]) :: IO (Either IOError AnyTransport)
+    case result of
+        Left err -> assertEq "unsupported provider runtime failure mentions provider" True ("ProviderSignal" `isInfixOf` show err)
+        Right _ -> assertEq "unsupported provider runtime should fail" True False

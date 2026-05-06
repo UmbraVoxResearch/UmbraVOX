@@ -45,6 +45,7 @@ runTests = do
         , testCalcLayoutEdgeToEdge
         , testStatusBarConnTagNormal
         , testStatusBarConnTagChastity
+        , testStatusBarConnTagExplicitEphemeral
         , testPaginatedSliceClampsPage
         , testPaginatedSlotSelection
         , propPadRLength
@@ -177,14 +178,20 @@ testStatusBarConnTagNormal :: IO Bool
 testStatusBarConnTagNormal =
     assertEq "status bar normal mode omits ephemeral"
         False
-        ("EPHEMERAL" `contains` statusBarConnTag Promiscuous 0)
+        ("EPHEMERAL" `contains` statusBarConnTag Promiscuous Nothing 0)
 
 testStatusBarConnTagChastity :: IO Bool
 testStatusBarConnTagChastity = do
-    let tag = statusBarConnTag Chastity 2
+    let tag = statusBarConnTag Chastity Nothing 2
     a <- assertEq "status bar chastity shows ephemeral" True ("EPHEMERAL" `contains` tag)
     b <- assertEq "status bar chastity separates version with diamond" True ("\x25C6 UmbraVOX" `contains` tag)
     pure (a && b)
+
+testStatusBarConnTagExplicitEphemeral :: IO Bool
+testStatusBarConnTagExplicitEphemeral =
+    assertEq "status bar explicit ephemeral preference shows tag"
+        True
+        ("EPHEMERAL" `contains` statusBarConnTag Promiscuous (Just False) 0)
 
 testPaginatedSliceClampsPage :: IO Bool
 testPaginatedSliceClampsPage = do

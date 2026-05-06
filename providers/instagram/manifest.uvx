@@ -1,0 +1,12 @@
+id=instagram
+api=uvx-provider-v1
+name=Instagram
+class=closed-bridge
+status=planned
+endpoint=account-id
+inherits=facebook
+capabilities=connect,bridge,media
+host=ipc-stdio
+entrypoint=exec:generated/instagram-provider
+encryption=bridge-adapted
+notes=Closed-platform bridge stub inheriting Facebook bridge traits.

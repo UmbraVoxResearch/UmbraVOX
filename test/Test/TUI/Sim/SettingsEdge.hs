@@ -144,23 +144,32 @@ testDBToggleThreeTimes :: IO Bool
 testDBToggleThreeTimes = do
     st <- mkTestState
     let ref = cfgDBEnabled (asConfig st)
+        prefRef = cfgPersistencePreference (asConfig st)
     v0 <- readIORef ref
+    p0 <- readIORef prefRef
     writeIORef (asDialogMode st) (Just DlgSettings)
     handleSettingsDlg st (KeyChar '5')
     v1 <- readIORef ref
+    p1 <- readIORef prefRef
     -- After first toggle the dialog closes, re-open it
     writeIORef (asDialogMode st) (Just DlgSettings)
     handleSettingsDlg st (KeyChar '5')
     v2 <- readIORef ref
+    p2 <- readIORef prefRef
     writeIORef (asDialogMode st) (Just DlgSettings)
     handleSettingsDlg st (KeyChar '5')
     v3 <- readIORef ref
+    p3 <- readIORef prefRef
     let enabledPath = (v1 == not v0) && (v2 == v0) && (v3 == not v0)
         unavailablePath = (not v1) && (not v2) && (not v3)
     r1 <- assertEq "DB toggle runtime path accepted" True (enabledPath || unavailablePath)
     r2 <- assertEq "DB toggle keeps bool state coherent" True (v2 == v0 || not v2)
     r3 <- assertEq "DB toggle final state coherent" True (v3 == not v0 || not v3)
-    pure (r1 && r2 && r3)
+    r4 <- assertEq "DB toggle initial preference unset" Nothing p0
+    r5 <- assertEq "DB toggle first enable records preference" (Just True) p1
+    r6 <- assertEq "DB toggle disable records preference" (Just False) p2
+    r7 <- assertEq "DB toggle second enable records preference" (Just True) p3
+    pure (and [r1, r2, r3, r4, r5, r6, r7])
 
 testDBToggleSetsRestartStatus :: IO Bool
 testDBToggleSetsRestartStatus = do

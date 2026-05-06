@@ -158,15 +158,15 @@ renderBottomBorder lay chatH' = do
           ++ replicate (rw - 1) '\x2500' ++ "\x256F"
     resetSGR
 
-statusBarConnTag :: ConnectionMode -> Int -> String
-statusBarConnTag connMode nSessions =
+statusBarConnTag :: ConnectionMode -> Maybe Bool -> Int -> String
+statusBarConnTag connMode persistencePref nSessions =
     sessionCount ++ modeTag ++ " \x25C6 " ++ versionFull
   where
     sessionCount
         | nSessions > 0 = show nSessions ++ " session" ++ (if nSessions > 1 then "s" else "")
         | otherwise = "No sessions"
     modeTag
-        | connMode == Chastity = " \x25C6 EPHEMERAL"
+        | connMode == Chastity || persistencePref == Just False = " \x25C6 EPHEMERAL"
         | otherwise = ""
 
 -- | Status bar: absolute last row, full width, inverted colors.
@@ -175,7 +175,8 @@ renderStatusBar lay st status nSessions = do
     let totalW = lCols lay; rows = lRows lay
     goto rows 1; setFg 30; csi "47m"
     connMode <- readIORef (cfgConnectionMode (asConfig st))
-    let connTag = statusBarConnTag connMode nSessions
+    persistencePref <- readIORef (cfgPersistencePreference (asConfig st))
+    let connTag = statusBarConnTag connMode persistencePref nSessions
         leftInfo = if null status then " Ready" else " " ++ status
         gap = max 1 (totalW - displayWidth leftInfo - displayWidth connTag - 1)
     putStr (padR totalW (leftInfo ++ replicate gap ' ' ++ connTag ++ " "))

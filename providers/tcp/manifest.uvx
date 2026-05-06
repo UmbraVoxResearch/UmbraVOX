@@ -1,0 +1,12 @@
+id=tcp
+api=uvx-provider-v1
+name=TCP
+class=direct-carrier
+status=active
+endpoint=host:port
+inherits=
+capabilities=connect,listen,discovery
+host=in-process
+entrypoint=module:UmbraVox.Network.Transport
+encryption=core-e2ee
+notes=Built-in direct stream carrier used by the current MVP.

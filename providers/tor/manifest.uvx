@@ -1,0 +1,12 @@
+id=tor
+api=uvx-provider-v1
+name=Tor
+class=overlay-carrier
+status=planned
+endpoint=onion:port
+inherits=tcp
+capabilities=connect,listen,tunnel,discovery
+host=ipc-stdio
+entrypoint=exec:generated/tor-provider
+encryption=overlay-plus-core-e2ee
+notes=Planned onion-routing carrier wrapper below the secure session core.

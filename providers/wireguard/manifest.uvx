@@ -1,0 +1,12 @@
+id=wireguard
+api=uvx-provider-v1
+name=WireGuard
+class=overlay-carrier
+status=planned
+endpoint=peer@host:port
+inherits=udp
+capabilities=connect,listen,tunnel
+host=ipc-stdio
+entrypoint=exec:generated/wireguard-provider
+encryption=overlay-plus-core-e2ee
+notes=Planned WireGuard-backed carrier wrapper below the secure session core.

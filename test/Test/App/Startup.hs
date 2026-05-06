@@ -29,8 +29,12 @@ import Test.TUI.Sim.Util (mkTestConfig)
 import Test.Util (assertEq)
 import UmbraVox.App.Startup
     ( newDefaultAppConfig, initializeLocalIdentity, applyPersistenceAnswer
-    , resolveIdentityAt, resolvePersistencePreferenceAt, restorePersistentStateAt
+    , refreshPackagedPluginCatalog, refreshTransportProviderCatalog
+    , resolveIdentityAt, resolvePersistencePreference
+    , resolvePersistencePreferenceAt, restorePersistentStateAt
     )
+import UmbraVox.BuildProfile (PluginLaunchSpec(..), pprLaunchSpec)
+import UmbraVox.Network.ProviderCatalog (ctpLoadStatus)
 import UmbraVox.Crypto.Signal.X3DH
     ( ikEd25519Secret, ikX25519Secret, ikX25519Public )
 import UmbraVox.Storage.Anthony
@@ -45,6 +49,11 @@ runTests = do
     putStrLn "Test.App.Startup"
     putStrLn (replicate 40 '-')
     idOk <- testResolveIdentityStable
+    pluginCatalogOk <- testPackagedPluginCatalogCache
+    providerCatalogOk <- testTransportProviderCatalogCache
+    prefRuntimeOk <- testResolvePersistencePreferenceTracksRuntimeConfig
+    prefOk <- testApplyPersistenceAnswerNoPersistsWithoutDB
+    prefYesOk <- testApplyPersistenceAnswerYesPersistsIntentWithoutHealthyDB
     anthonyReady <- hasAnthony
     dbResults <- case anthonyReady of
         Nothing -> do
@@ -61,7 +70,7 @@ runTests = do
             , testLiveTerminalBootPath
             , testRestorePersistentStateFailureDisablesPersistence
             ]
-    pure (idOk && and dbResults)
+    pure (idOk && pluginCatalogOk && providerCatalogOk && prefRuntimeOk && prefOk && prefYesOk && and dbResults)
 
 runStartupProcessChild :: String -> IO Bool
 runStartupProcessChild answer = do
@@ -89,6 +98,47 @@ testResolveIdentityStable = do
         (ikX25519Secret ik1 == ikX25519Secret ik2)
     pure (ok1 && ok2)
 
+testPackagedPluginCatalogCache :: IO Bool
+testPackagedPluginCatalogCache = do
+    cfg <- newDefaultAppConfig
+    initialCatalog <- readIORef (cfgPackagedPluginCatalog cfg)
+    initialRuntimeCatalog <- readIORef (cfgPackagedPluginRuntimeCatalog cfg)
+    writeIORef (cfgPackagedPluginCatalog cfg) []
+    writeIORef (cfgPackagedPluginRuntimeCatalog cfg) []
+    refreshPackagedPluginCatalog cfg
+    refreshedCatalog <- readIORef (cfgPackagedPluginCatalog cfg)
+    refreshedRuntimeCatalog <- readIORef (cfgPackagedPluginRuntimeCatalog cfg)
+    ok1 <- assertEq "default app config seeds packaged plugin catalog" True (not (null initialCatalog))
+    ok2 <- assertEq "default app config seeds packaged plugin runtime catalog" True (not (null initialRuntimeCatalog))
+    ok3 <- assertEq "packaged plugin refresh restores cached catalog" True (not (null refreshedCatalog))
+    ok4 <- assertEq "packaged plugin refresh restores cached runtime catalog" True (not (null refreshedRuntimeCatalog))
+    ok5 <- assertEq "runtime catalog includes typed launch spec" True
+        (any hasLaunchSpec initialRuntimeCatalog)
+    pure (ok1 && ok2 && ok3 && ok4 && ok5)
+  where
+    hasLaunchSpec entry =
+        case pprLaunchSpec entry of
+            PluginLaunchIPCStdIO _ -> True
+            _ -> False
+
+testTransportProviderCatalogCache :: IO Bool
+testTransportProviderCatalogCache = do
+    cfg <- newDefaultAppConfig
+    initialCatalog <- readIORef (cfgTransportProviderCatalog cfg)
+    initialRuntimeCatalog <- readIORef (cfgTransportProviderRuntimeCatalog cfg)
+    writeIORef (cfgTransportProviderCatalog cfg) []
+    writeIORef (cfgTransportProviderRuntimeCatalog cfg) []
+    refreshTransportProviderCatalog cfg
+    refreshedCatalog <- readIORef (cfgTransportProviderCatalog cfg)
+    refreshedRuntimeCatalog <- readIORef (cfgTransportProviderRuntimeCatalog cfg)
+    ok1 <- assertEq "default app config seeds transport provider catalog" True (not (null initialCatalog))
+    ok2 <- assertEq "default app config seeds transport provider runtime catalog" True (not (null initialRuntimeCatalog))
+    ok3 <- assertEq "transport provider refresh restores cached catalog" True (not (null refreshedCatalog))
+    ok4 <- assertEq "transport provider refresh restores cached runtime catalog" True (not (null refreshedRuntimeCatalog))
+    ok5 <- assertEq "transport provider runtime entries carry load status" True
+        (all (\entry -> case ctpLoadStatus entry of { _ -> True }) initialRuntimeCatalog)
+    pure (ok1 && ok2 && ok3 && ok4 && ok5)
+
 testRestorePersistentStateSessions :: IO Bool
 testRestorePersistentStateSessions = withDB "umbravox-startup-restore.db" $ \dbPath -> do
     cfg <- mkTestConfig
@@ -113,25 +163,68 @@ testResolvePersistencePreference :: IO Bool
 testResolvePersistencePreference = withDB "umbravox-startup-pref.db" $ \dbPath -> do
     prefMissing <- resolvePersistencePreferenceAt dbPath
 
-    db <- openDB dbPath
-    closeDB db
-    prefUnset <- resolvePersistencePreferenceAt dbPath
-
-    db2 <- openDB dbPath
-    saveSetting db2 "storage.persistent.enabled" "1"
-    closeDB db2
+    writeFile (prefPath dbPath) "1\n"
     prefEnabled <- resolvePersistencePreferenceAt dbPath
 
-    db3 <- openDB dbPath
-    saveSetting db3 "storage.persistent.enabled" "0"
-    closeDB db3
+    writeFile (prefPath dbPath) "0\n"
     prefDisabled <- resolvePersistencePreferenceAt dbPath
 
+    cleanupFile (prefPath dbPath)
+    writeFile dbPath "not-a-sqlite-db\n"
+    prefMalformed <- resolvePersistencePreferenceAt dbPath
+
     ok1 <- assertEq "resolvePersistencePreferenceAt missing DB" Nothing prefMissing
-    ok2 <- assertEq "resolvePersistencePreferenceAt unset flag" Nothing prefUnset
-    ok3 <- assertEq "resolvePersistencePreferenceAt enabled flag" (Just True) prefEnabled
-    ok4 <- assertEq "resolvePersistencePreferenceAt disabled flag" (Just False) prefDisabled
+    ok2 <- assertEq "resolvePersistencePreferenceAt enabled flag" (Just True) prefEnabled
+    ok3 <- assertEq "resolvePersistencePreferenceAt disabled flag" (Just False) prefDisabled
+    ok4 <- assertEq "resolvePersistencePreferenceAt malformed DB ignored without sidecar" Nothing prefMalformed
     pure (and [ok1, ok2, ok3, ok4])
+
+testResolvePersistencePreferenceTracksRuntimeConfig :: IO Bool
+testResolvePersistencePreferenceTracksRuntimeConfig =
+    withDB "umbravox-startup-pref-runtime.db" $ \dbPath -> do
+        cfg <- mkTestConfig
+        writeIORef (cfgDBPath cfg) dbPath
+        writeFile dbPath "not-a-sqlite-db\n"
+        writeFile (prefPath dbPath) "0\n"
+        pref <- resolvePersistencePreference cfg
+        runtimePref <- readIORef (cfgPersistencePreference cfg)
+        ok1 <- assertEq "resolvePersistencePreference returns sidecar-disabled preference" (Just False) pref
+        ok2 <- assertEq "resolvePersistencePreference updates runtime preference" (Just False) runtimePref
+        pure (ok1 && ok2)
+
+testApplyPersistenceAnswerNoPersistsWithoutDB :: IO Bool
+testApplyPersistenceAnswerNoPersistsWithoutDB =
+    withDB "umbravox-startup-pref-no.db" $ \dbPath -> do
+        cfg <- mkTestConfig
+        writeIORef (cfgDBPath cfg) dbPath
+        writeFile dbPath "not-a-sqlite-db\n"
+        restored <- applyPersistenceAnswer cfg "no"
+        dbEnabled <- readIORef (cfgDBEnabled cfg)
+        dbHandle <- readIORef (cfgAnthonyDB cfg)
+        runtimePref <- readIORef (cfgPersistencePreference cfg)
+        pref <- resolvePersistencePreferenceAt dbPath
+        ok1 <- assertEq "applyPersistenceAnswer no returns zero" 0 restored
+        ok2 <- assertEq "applyPersistenceAnswer no keeps DB disabled" False dbEnabled
+        ok3 <- assertEq "applyPersistenceAnswer no keeps DB handle empty" True (isNothing dbHandle)
+        ok4 <- assertEq "applyPersistenceAnswer no persists runtime preference" (Just False) runtimePref
+        ok5 <- assertEq "applyPersistenceAnswer no persists sidecar preference" (Just False) pref
+        pure (and [ok1, ok2, ok3, ok4, ok5])
+
+testApplyPersistenceAnswerYesPersistsIntentWithoutHealthyDB :: IO Bool
+testApplyPersistenceAnswerYesPersistsIntentWithoutHealthyDB =
+    withDB "umbravox-startup-pref-yes.db" $ \dbPath -> do
+        cfg <- mkTestConfig
+        writeIORef (cfgDBPath cfg) dbPath
+        writeFile dbPath "not-a-sqlite-db\n"
+        restored <- applyPersistenceAnswer cfg "yes"
+        dbEnabled <- readIORef (cfgDBEnabled cfg)
+        runtimePref <- readIORef (cfgPersistencePreference cfg)
+        pref <- resolvePersistencePreferenceAt dbPath
+        ok1 <- assertEq "applyPersistenceAnswer yes returns zero on malformed DB" 0 restored
+        ok2 <- assertEq "applyPersistenceAnswer yes falls back to DB disabled" False dbEnabled
+        ok3 <- assertEq "applyPersistenceAnswer yes persists runtime preference" (Just True) runtimePref
+        ok4 <- assertEq "applyPersistenceAnswer yes persists sidecar preference" (Just True) pref
+        pure (and [ok1, ok2, ok3, ok4])
 
 testRestoredOfflineSessionsFailClosedOnSend :: IO Bool
 testRestoredOfflineSessionsFailClosedOnSend = withDB "umbravox-startup-restored-send.db" $ \dbPath -> do
@@ -389,6 +482,7 @@ withDB name action = do
         putStrLn $ "  FAIL: startup recovery exception: " ++ show e
         pure False
     cleanup path
+    cleanup (prefPath path)
     pure result
 
 cleanup :: FilePath -> IO ()
@@ -399,6 +493,9 @@ cleanupFile = cleanup
 
 cleanupDir :: FilePath -> IO ()
 cleanupDir path = removeDirectoryRecursive path `catch` \(_ :: SomeException) -> pure ()
+
+prefPath :: FilePath -> FilePath
+prefPath path = path ++ ".pref"
 
 runStartupChild
     :: FilePath

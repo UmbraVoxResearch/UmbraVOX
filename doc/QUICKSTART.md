@@ -35,6 +35,12 @@ make soak
 make verify
 make quality
 make evidence
+make release-linux
+make release-windows-cli
+make release-macos-terminal
+make release-bsd-terminal
+make release-freedos
+make release
 ```
 
 ## What Each Test Target Does
@@ -59,6 +65,12 @@ make evidence
 - `make verify` runs the F* verification pass.
 - `make quality` runs the full build pipeline and is equivalent to `make` (`build + test + verify + complexity + lint + license + format-check`).
 - `make evidence` runs `make quality` and writes a timestamped publication evidence bundle under `build/evidence/` with logs, git metadata, and copied test artifacts.
+- `make release-linux` builds a portable Linux x86_64 terminal bundle with a patched local loader/lib set.
+- `make release-windows-cli` writes a Windows CLI source-release zip with native build instructions.
+- `make release-macos-terminal` writes a macOS terminal source-release tarball with native build instructions.
+- `make release-bsd-terminal` writes a BSD terminal source-release tarball with native build instructions.
+- `make release-freedos` writes a FreeDOS research/source release zip with an explicit unsupported-runtime note.
+- `make release` builds every currently defined release artifact under `build/releases/`.
 - `license` is blocking; `lint` and `format-check` are advisory/non-blocking in the current pipeline.
 
 ## First Run

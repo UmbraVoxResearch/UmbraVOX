@@ -5,6 +5,9 @@ module UmbraVox.App.Startup
     , initializeLocalIdentity
     , applyPersistenceAnswer
     , persistenceAnswerEnables
+    , setPersistencePreference
+    , refreshPackagedPluginCatalog
+    , refreshTransportProviderCatalog
     , resolvePersistencePreference
     , resolvePersistencePreferenceAt
     , resolveIdentity
@@ -15,6 +18,7 @@ module UmbraVox.App.Startup
 
 import Control.Exception (SomeException, catch)
 import Control.Concurrent.MVar (newMVar)
+import Control.Monad (when)
 import Data.Char (isSpace, toLower)
 import Data.IORef (newIORef, readIORef, writeIORef, modifyIORef')
 import Data.List (dropWhileEnd)
@@ -25,6 +29,10 @@ import System.FilePath (takeDirectory)
 import qualified Network.Socket as NS
 
 import UmbraVox.App.RuntimeLog (logEvent)
+import UmbraVox.BuildProfile
+    ( BuildPlugin, BuildPluginId(..), PackagedPluginRuntime(..), PluginManifest
+    , loadPackagedPluginRuntimeCatalog, pluginEnabled
+    )
 import UmbraVox.Crypto.BIP39 (generatePassphrase)
 import UmbraVox.Chat.Session (initChatSession)
 import UmbraVox.Crypto.KeyStore
@@ -34,13 +42,17 @@ import UmbraVox.Crypto.KeyStore
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey)
 import UmbraVox.Storage.Anthony
-    ( AnthonyDB, closeDB, loadConversations, loadMessages, loadSetting
+    ( AnthonyDB, loadConversations, loadMessages
     , loadTrustedKeys, openDB, saveSetting
     )
 import UmbraVox.TUI.Types
     ( AppConfig(..), SessionInfo(..), ContactStatus(..), ConnectionMode(..) )
 import UmbraVox.TUI.Handshake (genIdentity)
 import UmbraVox.Protocol.Encoding (defaultPorts)
+import UmbraVox.Network.ProviderCatalog
+    ( CachedTransportProvider(..), ProviderManifest, TransportProvider
+    , loadTransportProviderRuntimeCatalog
+    )
 
 persistenceSettingKey :: String
 persistenceSettingKey = "storage.persistent.enabled"
@@ -51,29 +63,44 @@ newDefaultAppConfig = do
     listenPort <- findAvailablePort defaultPorts
     home <- getHomeDirectory
     let logPath = expandHome home "~/.umbravox/umbravox.log"
+    packagedPluginRuntimeCatalog <- loadPackagedPluginRuntimeCatalog
+    let packagedPluginCatalog = map toCatalogEntry packagedPluginRuntimeCatalog
+    transportProviderRuntimeCatalog <- loadTransportProviderRuntimeCatalog
+    let transportProviderCatalog = map toProviderCatalogEntry transportProviderRuntimeCatalog
     debugEnv <- lookupEnv "UMBRAVOX_DEBUG_LOG"
     let debugEnabled = case debugEnv of
             Just raw -> raw `elem` ["1", "true", "TRUE", "yes", "YES", "on", "ON"]
             Nothing -> False
+        initialDebug = if pluginEnabled PluginRuntimeLogging then debugEnabled else False
+        initialMDNS = pluginEnabled PluginDiscovery
+        initialPEX = False
+        initialPersistencePref = if pluginEnabled PluginPersistentStorage then Nothing else Just False
+        initialAutoSave = pluginEnabled PluginPersistentStorage
+        initialMode = if pluginEnabled PluginConnectionModeSelection then Selective else Chastity
     AppConfig
         <$> newIORef listenPort
         <*> newIORef randomName
         <*> newIORef Nothing
         <*> newIORef Map.empty
         <*> newIORef 1
-        <*> newIORef debugEnabled
+        <*> newIORef initialDebug
         <*> newIORef logPath
-        <*> newIORef True
-        <*> newIORef False
+        <*> newIORef initialMDNS
+        <*> newIORef initialPEX
         <*> newIORef False
         <*> newIORef "~/.umbravox/umbravox.db"
+        <*> newIORef initialPersistencePref
+        <*> newIORef packagedPluginCatalog
+        <*> newIORef packagedPluginRuntimeCatalog
+        <*> newIORef transportProviderCatalog
+        <*> newIORef transportProviderRuntimeCatalog
         <*> newIORef Nothing
         <*> newIORef Nothing
         <*> newIORef []
         <*> newIORef 30
-        <*> newIORef True
+        <*> newIORef initialAutoSave
         <*> newIORef Nothing
-        <*> newIORef Selective
+        <*> newIORef initialMode
         <*> newIORef []
 
 initializeLocalIdentity :: AppConfig -> IO IdentityKey
@@ -85,13 +112,18 @@ initializeLocalIdentity cfg = do
 
 applyPersistenceAnswer :: AppConfig -> String -> IO Int
 applyPersistenceAnswer cfg answer
-    | persistenceAnswerEnables answer =
+    | not (pluginEnabled PluginPersistentStorage) = do
+        writeIORef (cfgPersistencePreference cfg) (Just False)
+        writeIORef (cfgDBEnabled cfg) False
+        pure 0
+    | persistenceAnswerEnables answer = do
+        setPersistencePreference cfg True
         restorePersistentState cfg `catch` \(_ :: SomeException) -> do
             logEvent cfg "persistence.restore.failed" []
             writeIORef (cfgDBEnabled cfg) False
             pure 0
     | otherwise = do
-        rememberPersistencePreference cfg False
+        setPersistencePreference cfg False
         logEvent cfg "persistence.mode" [("enabled", "false")]
         writeIORef (cfgDBEnabled cfg) False
         pure 0
@@ -104,31 +136,64 @@ persistenceAnswerEnables raw =
 
 resolvePersistencePreference :: AppConfig -> IO (Maybe Bool)
 resolvePersistencePreference cfg = do
-    dbPath <- readIORef (cfgDBPath cfg)
-    home <- getHomeDirectory
-    resolvePersistencePreferenceAt (expandHome home dbPath)
+    if not (pluginEnabled PluginPersistentStorage)
+        then do
+            writeIORef (cfgPersistencePreference cfg) (Just False)
+            pure (Just False)
+        else do
+            dbPath <- readIORef (cfgDBPath cfg)
+            home <- getHomeDirectory
+            let path = expandHome home dbPath
+            pref <- resolvePersistencePreferenceAt path
+            writeIORef (cfgPersistencePreference cfg) pref
+            pure pref
 
 resolvePersistencePreferenceAt :: FilePath -> IO (Maybe Bool)
+resolvePersistencePreferenceAt "" = pure Nothing
 resolvePersistencePreferenceAt path = do
-    exists <- doesFileExist path
+    let prefPath = persistencePreferencePath path
+    exists <- doesFileExist prefPath
     if not exists
         then pure Nothing
-        else (do
-            db <- openDB path
-            mValue <- loadSetting db persistenceSettingKey
-            closeDB db
-            pure (fmap (const (parsePersistenceValue mValue)) mValue)
-            ) `catch` \(_ :: SomeException) -> pure Nothing
+        else do
+            raw <- (do
+                contents <- readFile prefPath
+                length contents `seq` pure contents
+                ) `catch` \(_ :: SomeException) -> pure ""
+            pure (parsePersistenceFlag raw)
+
+refreshPackagedPluginCatalog :: AppConfig -> IO ()
+refreshPackagedPluginCatalog cfg = do
+    packagedPluginRuntimeCatalog <- loadPackagedPluginRuntimeCatalog
+    let packagedPluginCatalog = map toCatalogEntry packagedPluginRuntimeCatalog
+    writeIORef (cfgPackagedPluginCatalog cfg) packagedPluginCatalog
+    writeIORef (cfgPackagedPluginRuntimeCatalog cfg) packagedPluginRuntimeCatalog
+
+refreshTransportProviderCatalog :: AppConfig -> IO ()
+refreshTransportProviderCatalog cfg = do
+    transportProviderRuntimeCatalog <- loadTransportProviderRuntimeCatalog
+    let transportProviderCatalog = map toProviderCatalogEntry transportProviderRuntimeCatalog
+    writeIORef (cfgTransportProviderCatalog cfg) transportProviderCatalog
+    writeIORef (cfgTransportProviderRuntimeCatalog cfg) transportProviderRuntimeCatalog
+
+toCatalogEntry :: PackagedPluginRuntime -> (BuildPlugin, PluginManifest)
+toCatalogEntry runtimeEntry = (pprPlugin runtimeEntry, pprManifest runtimeEntry)
+
+toProviderCatalogEntry :: CachedTransportProvider -> (TransportProvider, ProviderManifest)
+toProviderCatalogEntry runtimeEntry = (ctpProvider runtimeEntry, ctpManifest runtimeEntry)
 
 resolveIdentity :: IO IdentityKey
 resolveIdentity = do
-    mIdentity <- loadIdentityKey
-    case mIdentity of
-        Just ik -> pure ik
-        Nothing -> do
-            ik <- genIdentity
-            saveIdentityKey ik
-            pure ik
+    if not (pluginEnabled PluginIdentityPersistence)
+        then genIdentity
+        else do
+            mIdentity <- loadIdentityKey
+            case mIdentity of
+                Just ik -> pure ik
+                Nothing -> do
+                    ik <- genIdentity
+                    saveIdentityKey ik
+                    pure ik
 
 resolveIdentityAt :: FilePath -> IO IdentityKey
 resolveIdentityAt path = do
@@ -142,10 +207,15 @@ resolveIdentityAt path = do
 
 restorePersistentState :: AppConfig -> IO Int
 restorePersistentState cfg = do
-    dbPath <- readIORef (cfgDBPath cfg)
-    home <- getHomeDirectory
-    let path = expandHome home dbPath
-    restorePersistentStateAt cfg path
+    if not (pluginEnabled PluginPersistentStorage)
+        then do
+            writeIORef (cfgDBEnabled cfg) False
+            pure 0
+        else do
+            dbPath <- readIORef (cfgDBPath cfg)
+            home <- getHomeDirectory
+            let path = expandHome home dbPath
+            restorePersistentStateAt cfg path
 
 restorePersistentStateAt :: AppConfig -> FilePath -> IO Int
 restorePersistentStateAt cfg path =
@@ -159,6 +229,8 @@ restorePersistentStateAtUnsafe cfg path = do
     db <- openDB path
     writeIORef (cfgAnthonyDB cfg) (Just db)
     writeIORef (cfgDBEnabled cfg) True
+    writeIORef (cfgPersistencePreference cfg) (Just True)
+    rememberPersistencePreferenceAt path True
     saveSetting db persistenceSettingKey "1"
     logEvent cfg "persistence.mode" [("enabled", "true"), ("path", path)]
     trustedPairs <- loadTrustedKeys db
@@ -167,29 +239,37 @@ restorePersistentStateAtUnsafe cfg path = do
     mapM_ (restoreConversation cfg db) convs
     Map.size <$> readIORef (cfgSessions cfg)
 
-parsePersistenceValue :: Maybe String -> Bool
-parsePersistenceValue Nothing = False
-parsePersistenceValue (Just raw) =
-    case raw of
-        "0"     -> False
-        "false" -> False
-        "False" -> False
-        "no"    -> False
-        "No"    -> False
-        _       -> True
+setPersistencePreference :: AppConfig -> Bool -> IO ()
+setPersistencePreference cfg enabled = do
+    writeIORef (cfgPersistencePreference cfg) (Just enabled)
+    when (pluginEnabled PluginPersistentStorage) $ do
+        dbPath <- readIORef (cfgDBPath cfg)
+        home <- getHomeDirectory
+        rememberPersistencePreferenceAt (expandHome home dbPath) enabled
 
-rememberPersistencePreference :: AppConfig -> Bool -> IO ()
-rememberPersistencePreference cfg enabled = do
-    dbPath <- readIORef (cfgDBPath cfg)
-    home <- getHomeDirectory
-    let path = expandHome home dbPath
-        value = if enabled then "1" else "0"
-    createDirectoryIfMissing True (takeDirectory path)
-    (do
-        db <- openDB path
-        saveSetting db persistenceSettingKey value
-        closeDB db
-        ) `catch` \(_ :: SomeException) -> pure ()
+rememberPersistencePreferenceAt :: FilePath -> Bool -> IO ()
+rememberPersistencePreferenceAt "" _ = pure ()
+rememberPersistencePreferenceAt path enabled = do
+    let prefPath = persistencePreferencePath path
+        value = if enabled then "1\n" else "0\n"
+    createDirectoryIfMissing True (takeDirectory prefPath)
+    writeFile prefPath value `catch` \(_ :: SomeException) -> pure ()
+
+persistencePreferencePath :: FilePath -> FilePath
+persistencePreferencePath path = path ++ ".pref"
+
+parsePersistenceFlag :: String -> Maybe Bool
+parsePersistenceFlag raw =
+    case map toLower (dropWhileEnd isSpace (dropWhile isSpace raw)) of
+        "1"     -> Just True
+        "true"  -> Just True
+        "yes"   -> Just True
+        "y"     -> Just True
+        "0"     -> Just False
+        "false" -> Just False
+        "no"    -> Just False
+        "n"     -> Just False
+        _       -> Nothing
 
 restoreConversation
     :: AppConfig

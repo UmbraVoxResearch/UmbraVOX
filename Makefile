@@ -29,15 +29,21 @@
 #   make format-check - Check for tabs and trailing whitespace
 #   make codegen      - Generate Haskell + C + FFI from .spec files
 #   make quality      - Run the full pipeline (same as make)
+#   make release-linux - Build a portable Linux x86_64 terminal bundle
+#   make release-windows-cli - Build a Windows CLI source release zip
+#   make release-macos-terminal - Build a macOS terminal source release tarball
+#   make release-bsd-terminal - Build a BSD terminal source release tarball
+#   make release-freedos - Build a FreeDOS research/source release zip
+#   make release      - Build all release artifacts
 #   make evidence     - Run quality and write a publication evidence bundle
-#   make clean        - Remove build artifacts
+#   make clean        - Remove build artifacts, build/, and dist-newstyle
 #   make cleandb      - Remove local database
 #   make cleanall     - Remove everything (build + DB + tools)
 #   make help         - Show help
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build run test test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify complexity quality evidence lint license license-fix format-check codegen clean help
+.PHONY: all build run test test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify complexity quality evidence lint license license-fix format-check codegen release release-linux release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -68,6 +74,7 @@ NC     := \033[0m
 
 TEST_ARTIFACT_DIR := build/test-artifacts
 EVIDENCE_DIR := build/evidence
+RELEASE_DIR := build/releases
 SUITE_LOCK := ./scripts/with-suite-lock.sh suite-gate
 
 # --------------------------------------------------------------------------
@@ -106,6 +113,12 @@ help:
 	@echo "    make soak        Run long soak suite and write artifact report"
 	@echo "    make codegen     Generate Haskell + C + FFI from .spec files"
 	@echo "    make evidence    Run quality and write a publication evidence bundle"
+	@echo "    make release-linux Build portable Linux x86_64 terminal bundle"
+	@echo "    make release-windows-cli Build Windows CLI source release zip"
+	@echo "    make release-macos-terminal Build macOS terminal source release tarball"
+	@echo "    make release-bsd-terminal Build BSD terminal source release tarball"
+	@echo "    make release-freedos Build FreeDOS research/source release zip"
+	@echo "    make release     Build all release artifacts"
 	@echo ""
 	@echo "  Quality Gates:"
 	@echo "    make verify      Run F* formal verification (17 modules)"
@@ -117,7 +130,7 @@ help:
 	@echo "    make quality     Same as make (lint/format-check are non-blocking)"
 	@echo ""
 	@echo "  Maintenance:"
-	@echo "    make clean       Remove build artifacts + dist-newstyle"
+	@echo "    make clean       Remove build artifacts + build/ + dist-newstyle"
 	@echo "    make cleandb     Remove local database"
 	@echo "    make cleanall    Remove everything (build + DB + tools)"
 	@echo "    make help        Show this help"
@@ -380,6 +393,37 @@ codegen: build
 	@echo -e "$(GREEN)[CODEGEN]$(NC) Code generation complete."
 
 # --------------------------------------------------------------------------
+# Release Packaging
+# --------------------------------------------------------------------------
+
+release: release-linux release-windows-cli release-macos-terminal release-bsd-terminal release-freedos
+	@echo -e "$(GREEN)[RELEASE]$(NC) All release artifacts written under $(RELEASE_DIR)"
+
+release-source:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Building generic source release..."
+	@./scripts/release-package.sh source
+
+release-linux:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Building Linux x86_64 portable bundle..."
+	@./scripts/release-package.sh linux
+
+release-windows-cli:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Building Windows CLI source release..."
+	@./scripts/release-package.sh windows-cli
+
+release-macos-terminal:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Building macOS terminal source release..."
+	@./scripts/release-package.sh macos-terminal
+
+release-bsd-terminal:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Building BSD terminal source release..."
+	@./scripts/release-package.sh bsd-terminal
+
+release-freedos:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Building FreeDOS research/source release..."
+	@./scripts/release-package.sh freedos
+
+# --------------------------------------------------------------------------
 # Quality Gate (all checks)
 # --------------------------------------------------------------------------
 
@@ -413,6 +457,7 @@ evidence:
 clean:
 	@echo -e "$(BLUE)[CLEAN]$(NC) Removing build artifacts..."
 	@cabal clean 2>/dev/null || true
+	@rm -rf build
 	@rm -rf dist-newstyle
 	@rm -rf $(FSTAR_DIR)/_cache $(FSTAR_DIR)/_output
 	@echo -e "$(GREEN)[CLEAN]$(NC) Done."

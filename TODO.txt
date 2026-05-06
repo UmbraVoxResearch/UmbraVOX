@@ -2,7 +2,7 @@ UmbraVOX Implementation TODO
 =============================
 Status: [ ] = pending, [~] = in progress, [x] = done, [!] = blocked
 
-Last updated: 2026-05-03
+Last updated: 2026-05-05
 
 ================================================================================
 TOP PRIORITY: POST-MERGE MESSAGING MVP HARDENING + COMPLETION (ACTIVE)
@@ -28,6 +28,11 @@ Immediate assurance priority:
 [x] MP.0.3  Build recovery work on fresh branch
 [x] MP.0.4  Merge recovery branch back into `main`
 [ ] MP.0.5  Push/sync `main` once current local work is stable
+[x] MP.0.6  Add explicit release-target packaging instead of treating raw `dist-newstyle` binaries as portable artifacts
+  [x] MP.0.6.1  add a real Linux x86_64 terminal release target that repackages the binary with a local loader/lib set
+  [x] MP.0.6.2  add explicit Windows CLI, macOS terminal, and BSD terminal source-release targets with platform-native build instructions
+  [x] MP.0.6.3  add an explicit FreeDOS research/source target marked unsupported for native runtime use
+  [x] MP.0.6.4  document the release matrix and the non-portability of raw Cabal/Nix binaries
 
 --- MP.1: Tiered Messaging Hardening Harness ---
 
@@ -93,11 +98,12 @@ Immediate assurance priority:
   [x] MP.2.4.2  verify restart preserves local identity fingerprint
   [x] MP.2.4.3  verify restart plus reconnect path
   [x] MP.2.4.4  verify graceful fallback to ephemeral mode when DB unavailable
-[x] MP.2.4.5  eliminate restored-session local loopback risk
-    [x] MP.2.4.5.1  prevent restored sessions with `siTransport = Nothing` from being treated as live-sendable peers
-    [x] MP.2.4.5.2  require explicit reconnect or outbound re-establishment before send becomes available after restore
-    [x] MP.2.4.5.3  add regression coverage proving restored disconnected sessions cannot self-deliver or falsely persist remote sends
-    [x] MP.2.4.5.4  review restart UX/status text so disconnected restored sessions are clearly marked as offline
+  [x] MP.2.4.5  persist explicit startup storage preference outside SQLite and track it in runtime config
+[x] MP.2.4.6  eliminate restored-session local loopback risk
+    [x] MP.2.4.6.1  prevent restored sessions with `siTransport = Nothing` from being treated as live-sendable peers
+    [x] MP.2.4.6.2  require explicit reconnect or outbound re-establishment before send becomes available after restore
+    [x] MP.2.4.6.3  add regression coverage proving restored disconnected sessions cannot self-deliver or falsely persist remote sends
+    [x] MP.2.4.6.4  review restart UX/status text so disconnected restored sessions are clearly marked as offline
 
 [~] MP.2.5  Protect persistent message storage without breaking testability
   [~] MP.2.5.1  define the MVP at-rest assurance model for local message history and trusted-key storage
@@ -408,10 +414,62 @@ Priority order from here:
         [x] P6.10.2.3  Move connect/listen/group-connect flows behind runtime commands
           [x] P6.10.2.3.1  Extract listener and direct-connect helpers into a shared runtime network module
           [x] P6.10.2.3.2  Route browse/direct/group-connect entrypoints through runtime commands
+        [x] P6.10.2.4  Add a compile-time capability profile for chastity-only builds so persistence, discovery, logging, and transfer features disappear from the runtime surface when not built
+          [x] P6.10.2.4.1  add a shared build-profile module and Cabal flag (`-fchastity-build`)
+          [x] P6.10.2.4.2  lock startup identity/storage behavior to in-memory-only in chastity builds
+          [x] P6.10.2.4.3  gate settings/menu/runtime-command paths behind capability checks
+          [x] P6.10.2.4.4  gate export/import and runtime logging so direct file-writing actions are disabled in chastity builds
+          [x] P6.10.2.4.5  evolve the capability profile into a fuller plugin/module registration surface for optional and premium features
+            [x] P6.10.2.4.5.1  add typed built-in plugin ids, metadata, and registry-derived availability helpers
+            [x] P6.10.2.4.5.2  route startup, settings, export/import, and runtime logging gates through registry lookups
+            [x] P6.10.2.4.5.3  expose compiled built-ins in the settings UI and add registry/menu regression coverage
+          [~] P6.10.2.4.6  extend the registry beyond built-ins into dynamically loaded or separately packaged modules
+            [x] P6.10.2.4.6.1  add explicit packaged extension slots to the registry for planned feature modules
+            [x] P6.10.2.4.6.2  bind extension slots to real manifests and per-module availability metadata
+            [~] P6.10.2.4.6.3  load packaged extension descriptors without compiling them into the core runtime
+              [x] P6.10.2.4.6.3.1  add a lightweight on-disk manifest reader for packaged extension descriptors
+              [x] P6.10.2.4.6.3.2  switch extension metadata displays from hard-coded text to manifest-loaded fields where caching is acceptable
+              [x] P6.10.2.4.6.3.3  discover packaged manifests from the `plugins/` tree instead of relying only on a hard-coded render list
+              [x] P6.10.2.4.6.3.4  cache packaged plugin manifest data in runtime config so the TUI render loop stays memory-only
+              [x] P6.10.2.4.6.3.5  refresh packaged manifests on settings open while keeping render-time manifest I/O at zero
+              [x] P6.10.2.4.6.3.6  keep packaged manifest discovery order deterministic so TUI/plugin surfaces stay stable across machines
+              [x] P6.10.2.4.6.3.7  collapse duplicated packaged-plugin descriptor lists into one canonical per-plugin descriptor source
+              [x] P6.10.2.4.6.3.8  store canonical packaged stable ids in plugin descriptors instead of deriving identity from manifest paths
+              [x] P6.10.2.4.6.3.9  define a typed packaged-plugin manifest contract with explicit API version and generated artifact entrypoint targets
+              [x] P6.10.2.4.6.3.10 surface packaged plugin load-readiness in the settings UI so manifest-only vs artifact-missing states are visible
+              [x] P6.10.2.4.6.3.11 cache packaged plugin load-readiness alongside manifests so settings rendering stays filesystem-free
+              [x] P6.10.2.4.6.3.12 define an explicit packaged-plugin host contract so generated plugin activation can target a stable IPC boundary
+              [x] P6.10.2.4.6.3.13 derive a typed packaged-plugin launch spec from host and entrypoint metadata so future loaders avoid reparsing raw manifest strings
+              [x] P6.10.2.4.6.3.14 reject incompatible packaged-plugin host and entrypoint combinations as explicit invalid contracts
+              [x] P6.10.2.4.6.3.15 render packaged plugin activation state from cached typed launch metadata instead of reparsing manifest host fields in the TUI
+              [x] P6.10.2.4.6.3.16 reject unknown packaged-plugin API versions as unsupported runtime contracts
+      [~] P6.11  Add a typed transport-provider registry below the secure session core
+        [x] P6.11.1  define typed provider ids, classes, inheritance, capability tags, and launch/load metadata separate from feature plugins
+        [x] P6.11.2  add a separate `providers/` manifest tree for transport/provider descriptors without moving secure session semantics out of core
+        [x] P6.11.3  cache discovered provider catalogs at startup and refresh them on settings open so render-time I/O remains zero
+        [x] P6.11.4  surface provider summaries in the advanced settings UI beside packaged feature metadata
+        [x] P6.11.5  route runtime connect/listen/group flows through provider ids instead of directly through TCP helpers
+        [~] P6.11.6  add provider-aware endpoint formatting, discovery metadata, and failure/status propagation
+          [x] P6.11.6.1  thread provider-aware runtime labels through connect/listen status text and transport lifecycle logs
+          [ ] P6.11.6.2  add provider-aware discovery metadata and endpoint rendering beyond the current TCP-shaped peer labels
+        [x] P6.11.7  keep provider selection internal/defaulted to TCP until runtime event and network seams are narrower
+        [ ] P6.11.8  add a provider test matrix for registry lookup, endpoint parsing, launch-contract validation, and failure behavior
+      [~] P6.12  Seed built-in and external-service provider stubs without overstating assurance
+        [x] P6.12.1  add direct carrier descriptors for TCP and UDP
+        [x] P6.12.2  add overlay carrier descriptors for Tor and WireGuard with explicit inheritance metadata
+        [x] P6.12.3  add open bridge descriptors for IRC, XMPP, and Mastodon
+        [x] P6.12.4  add closed bridge descriptors for AIM, Facebook, Instagram, WhatsApp, Signal, and Signal Server
+        [x] P6.12.5  represent bridge inheritance explicitly (`instagram <- facebook`, `signal <- signal-server`, etc.)
+        [ ] P6.12.6  attach concrete provider operations to TCP first, then decide whether UDP/Tor/WireGuard become native, proxy, or plugin-hosted providers
+        [ ] P6.12.7  document unsupported/legal/non-assurance boundaries for closed-platform bridges before any execution path is enabled
+      [ ] P6.13  Separate feature-plugin rollout from transport/provider rollout
+        [ ] P6.13.1  decide whether provider manifests should remain under `providers/` or later migrate to `plugins/providers/` once execution/runtime loading exists
+        [ ] P6.13.2  keep feature plugins (`plugins/`) and provider descriptors (`providers/`) on distinct schemas until execution/runtime semantics are proven
+        [ ] P6.13.3  require explicit non-assurance labels for any provider bridge that depends on third-party service policy or external API drift
       [~] P6.10.3  Introduce explicit runtime event outputs that the TUI can consume without direct state mutation
-        [~] P6.10.3.1  Introduce a runtime event type plus an apply layer for status/dialog output
-          [ ] P6.10.3.1.1  Move command-originated status text through runtime events
-          [ ] P6.10.3.1.2  Move command-originated dialog open/close actions through runtime events
+        [x] P6.10.3.1  Introduce a runtime event type plus an apply layer for status/dialog output
+          [x] P6.10.3.1.1  Move command-originated status text through runtime events
+          [x] P6.10.3.1.2  Move command-originated dialog open/close actions through runtime events
         [ ] P6.10.3.2  Move runtime-side contact/session selection updates behind explicit events where practical
   [ ] Post-MVP future refactor  Evaluate whether selected primitives should move to an `F* -> KaRaMeL/Low* -> C` extraction path after the MVP assurance bar is met
 

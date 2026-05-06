@@ -22,8 +22,12 @@ import Control.Concurrent.MVar (MVar)
 import Data.ByteString (ByteString)
 import Data.IORef (IORef)
 import Data.Map.Strict (Map)
+import UmbraVox.BuildProfile
+    ( BuildPlugin, BuildPluginId(..), PackagedPluginRuntime, PluginManifest, pluginEnabled )
 import UmbraVox.Chat.Session (ChatSession)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey)
+import UmbraVox.Network.ProviderCatalog
+    ( CachedTransportProvider, ProviderManifest, TransportProvider )
 import UmbraVox.Network.TransportClass (AnyTransport)
 import UmbraVox.Network.MDNS (MDNSPeer)
 import UmbraVox.Storage.Anthony (AnthonyDB)
@@ -76,7 +80,10 @@ menuTabItems :: MenuTab -> [String]
 menuTabItems MenuHelp     = ["Help", "About"]
 menuTabItems MenuContacts = ["Browse", "Verify"]
 menuTabItems MenuChat     = ["New", "Rename", "Send", "Clear Input"]
-menuTabItems MenuPrefs    = ["Settings", "Keys", "mDNS Toggle", "Export Chat", "Import Chat"]
+menuTabItems MenuPrefs
+    = ["Settings", "Keys"]
+    ++ (if pluginEnabled PluginDiscovery then ["mDNS Toggle"] else [])
+    ++ if pluginEnabled PluginChatTransfer then ["Export Chat", "Import Chat"] else []
 menuTabItems MenuQuit     = ["Quit"]
 
 data AppState = AppState
@@ -132,6 +139,11 @@ data AppConfig = AppConfig
     , cfgPEXEnabled  :: IORef Bool
     , cfgDBEnabled   :: IORef Bool
     , cfgDBPath      :: IORef String
+    , cfgPersistencePreference :: IORef (Maybe Bool)
+    , cfgPackagedPluginCatalog :: IORef [(BuildPlugin, PluginManifest)]
+    , cfgPackagedPluginRuntimeCatalog :: IORef [PackagedPluginRuntime]
+    , cfgTransportProviderCatalog :: IORef [(TransportProvider, ProviderManifest)]
+    , cfgTransportProviderRuntimeCatalog :: IORef [CachedTransportProvider]
     -- Discovery state
     , cfgListenerThread :: IORef (Maybe ThreadId)
     , cfgMDNSThread  :: IORef (Maybe ThreadId)

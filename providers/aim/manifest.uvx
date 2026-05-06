@@ -1,0 +1,12 @@
+id=aim
+api=uvx-provider-v1
+name=AIM
+class=closed-bridge
+status=planned
+endpoint=screenname@server
+inherits=tcp
+capabilities=connect,bridge
+host=ipc-stdio
+entrypoint=exec:generated/aim-provider
+encryption=bridge-adapted
+notes=Legacy closed-service bridge stub with no active runtime path.

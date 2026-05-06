@@ -20,6 +20,7 @@ import System.Posix.Files
     , unionFileModes
     )
 
+import UmbraVox.BuildProfile (BuildPluginId(..), pluginEnabled)
 import UmbraVox.TUI.Types (AppConfig(..))
 
 runtimeLogLock :: MVar ()
@@ -28,11 +29,14 @@ runtimeLogLock = unsafePerformIO (newMVar ())
 
 runtimeLoggingEnabled :: AppConfig -> IO Bool
 runtimeLoggingEnabled cfg = do
-    env <- lookupEnv "UMBRAVOX_DEBUG_LOG"
-    case env of
-        Just raw | raw `elem` ["1", "true", "TRUE", "yes", "YES", "on", "ON"] -> pure True
-        Just raw | raw `elem` ["0", "false", "FALSE", "no", "NO", "off", "OFF"] -> pure False
-        _ -> readIORef (cfgDebugLogging cfg)
+    if not (pluginEnabled PluginRuntimeLogging)
+        then pure False
+        else do
+            env <- lookupEnv "UMBRAVOX_DEBUG_LOG"
+            case env of
+                Just raw | raw `elem` ["1", "true", "TRUE", "yes", "YES", "on", "ON"] -> pure True
+                Just raw | raw `elem` ["0", "false", "FALSE", "no", "NO", "off", "OFF"] -> pure False
+                _ -> readIORef (cfgDebugLogging cfg)
 
 logEvent :: AppConfig -> String -> [(String, String)] -> IO ()
 logEvent cfg name fields = do

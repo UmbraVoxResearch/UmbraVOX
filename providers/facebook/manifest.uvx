@@ -1,0 +1,12 @@
+id=facebook
+api=uvx-provider-v1
+name=Facebook
+class=closed-bridge
+status=planned
+endpoint=account-id
+inherits=tcp
+capabilities=connect,bridge,media
+host=ipc-stdio
+entrypoint=exec:generated/facebook-provider
+encryption=bridge-adapted
+notes=Closed-platform bridge stub with explicit non-assurance status.
