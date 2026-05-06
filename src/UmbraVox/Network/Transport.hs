@@ -17,8 +17,12 @@ import Data.ByteString (ByteString)
 import Control.Exception (SomeException, onException, try)
 import qualified Network.Socket as NS
 import qualified Network.Socket.ByteString as NSB
+import System.Timeout (timeout)
 
 import UmbraVox.Network.TransportClass (TransportHandle(..))
+
+connectTimeoutUs :: Int
+connectTimeoutUs = 8 * 1000000
 
 -- | A TCP transport handle.
 data TCPTransport = TCPTransport
@@ -59,8 +63,13 @@ connect host port = do
           }
     addr : _ <- NS.getAddrInfo (Just hints) (Just host) (Just (show port))
     sock <- NS.openSocket addr
-    NS.connect sock (NS.addrAddress addr) `onException` NS.close sock
-    pure TCPTransport { tSocket = sock, tAddr = NS.addrAddress addr }
+    result <- timeout connectTimeoutUs (NS.connect sock (NS.addrAddress addr)) `onException` NS.close sock
+    case result of
+        Just () ->
+            pure TCPTransport { tSocket = sock, tAddr = NS.addrAddress addr }
+        Nothing -> do
+            NS.close sock
+            ioError (userError ("connect timeout to " ++ host ++ ":" ++ show port))
 
 -- | Try connecting to a host on a sequence of ports, returning the first success.
 -- Throws the last error if all ports fail.

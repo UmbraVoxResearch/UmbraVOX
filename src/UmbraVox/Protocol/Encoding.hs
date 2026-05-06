@@ -16,6 +16,7 @@ module UmbraVox.Protocol.Encoding
 import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
+import Data.Char (isSpace)
 import Data.Word (Word32, Word64)
 
 -- | Encode a Word32 as 4 big-endian bytes.
@@ -72,11 +73,17 @@ defaultPorts = [7853, 7854, 7855, 9999, 7856, 7857, 7858, 7859, 7860]
 parseHostPort :: String -> (String, Maybe Int)
 parseHostPort val =
     let (host, portStr) = break (== ':') val
-        h = if null host then "127.0.0.1" else host
+        hRaw = trim host
+        h = if null hRaw then "127.0.0.1" else hRaw
         mPort = case portStr of
             []      -> Nothing
-            (':':p) -> case reads p of
+            (':':p) -> case reads (trim p) of
                 [(port, _)] -> Just port
                 _           -> Nothing
             _       -> Nothing
     in (h, mPort)
+
+trim :: String -> String
+trim = dropWhileEnd isSpace . dropWhile isSpace
+  where
+    dropWhileEnd f = reverse . dropWhile f . reverse

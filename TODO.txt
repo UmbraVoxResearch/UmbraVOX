@@ -453,11 +453,14 @@ Priority order from here:
           [x] P6.11.6.1  thread provider-aware runtime labels through connect/listen status text and transport lifecycle logs
           [x] P6.11.6.2  add provider-aware endpoint rendering in browse/settings while discovery remains TCP-shaped underneath
           [ ] P6.11.6.3  extend discovery metadata beyond the current TCP-shaped peer labels before exposing non-TCP provider selection
+          [x] P6.11.6.4  start the TCP listener before the startup persistence prompt and move discovery startup behind the bound-listener path
         [x] P6.11.7  keep provider selection internal/defaulted to TCP until runtime event and network seams are narrower
         [x] P6.11.8  add a provider test matrix for registry lookup, endpoint parsing, launch-contract validation, and failure behavior
           [x] P6.11.8.1  add pure endpoint parsing/normalization helpers for provider-shaped user input
           [x] P6.11.8.2  cover registry lookup, launch-contract validation, and endpoint parsing in `tui-types`
           [x] P6.11.8.3  expand runtime failure-behavior coverage across unsupported provider ids beyond the current TCP-only executor
+          [x] P6.11.8.4  make host-only peer entry explicit in the TUI and keep default-port fallback covered in tests
+          [x] P6.11.8.5  add a startup-process regression proving the public listener is reachable while the app is still waiting on the storage prompt
       [~] P6.12  Seed built-in and external-service provider stubs without overstating assurance
         [x] P6.12.1  add direct carrier descriptors for TCP and UDP
         [x] P6.12.2  add overlay carrier descriptors for Tor and WireGuard with explicit inheritance metadata

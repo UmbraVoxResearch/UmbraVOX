@@ -550,7 +550,7 @@ handleNewConnDlg st (KeyChar '1') = do
 -- 2 = Single (connect to one peer via host:port or listen)
 handleNewConnDlg st (KeyChar '2') = do
     writeIORef (asDialogBuf st) ""
-    writeIORef (asDialogMode st) (Just (DlgPrompt "host:port (or 'listen' or 'listen:PORT')" $ \val ->
+    writeIORef (asDialogMode st) (Just (DlgPrompt "host[:port] (or 'listen' or 'listen:PORT')" $ \val ->
         if val == "listen" || "listen:" `isPrefixOf` val then do
             port <- case break (== ':') val of
                 (_, ':':p) -> case reads p of
@@ -569,7 +569,7 @@ handleNewConnDlg _ _ = pure ()
 startGroupPrompt :: AppState -> IO ()
 startGroupPrompt st = do
     writeIORef (asDialogBuf st) ""
-    writeIORef (asDialogMode st) (Just (DlgPrompt "Group: host:port (comma-separated)" $ \val -> do
+    writeIORef (asDialogMode st) (Just (DlgPrompt "Group: host[:port] (comma-separated)" $ \val -> do
         let peers = filter (not . null) $ splitOn ',' val
         runRuntimeCommand st (CmdConnectGroup peers)
         ))

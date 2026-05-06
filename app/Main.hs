@@ -1,23 +1,20 @@
 module Main (main) where
 
-import Control.Concurrent (forkIO, threadDelay)
-import Control.Concurrent.MVar (readMVar)
-import Control.Exception (SomeException, catch)
-import Control.Monad (when, forever)
-import qualified Data.ByteString as BS
+import Control.Monad (when)
 import Data.IORef (newIORef, readIORef, writeIORef)
 import System.IO (hSetBuffering, hSetEncoding, hFlush, stdout, stdin, utf8, BufferMode(..))
 import System.Posix.Signals (installHandler, Handler(Catch))
 import Foreign.C.Types (CInt(..))
 import UmbraVox.App.RuntimeLog (logEvent, runtimeLoggingEnabled)
 import UmbraVox.BuildProfile (buildProfileName, buildSupportsDiscovery, buildSupportsPersistentStorage)
+import UmbraVox.Protocol.Encoding (defaultPorts)
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Render (getTermSize, clampSize, calcLayout, clearScreen,
                             withRawMode, render)
 import UmbraVox.TUI.Input (eventLoop)
 import UmbraVox.TUI.RuntimeNetwork (startListenerIfNeeded)
+import UmbraVox.TUI.RuntimeSettings (restartMDNS)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
-import UmbraVox.Network.MDNS (startMDNS)
 import UmbraVox.App.Startup
     ( newDefaultAppConfig, initializeLocalIdentity, applyPersistenceAnswer
     , resolvePersistencePreference, persistenceAnswerEnables
@@ -53,23 +50,15 @@ main = do
                        <*> newIORef Nothing  -- asLastRenderToken
     identity <- initializeLocalIdentity cfg
     when debugLogging $ logEvent cfg "app.start" []
-    -- Wire mDNS discovery if enabled (graceful if multicast unavailable)
+    activeListenPort <- readIORef (cfgListenPort cfg)
+    putStrLn ""
+    putStrLn $ "  Network: starting tcp listener on " ++ show activeListenPort ++ " before storage selection"
+    when (activeListenPort /= head defaultPorts) $
+        putStrLn $ "  Network: primary port " ++ show (head defaultPorts)
+            ++ " unavailable; using " ++ show activeListenPort
+    _ <- startListenerIfNeeded st identity activeListenPort "startup"
     mdnsOn <- readIORef (cfgMDNSEnabled cfg)
-    when (buildSupportsDiscovery && mdnsOn) $ (do
-        port <- readIORef (cfgListenPort cfg)
-        name <- readIORef (cfgDisplayName cfg)
-        mIk <- readIORef (cfgIdentity cfg)
-        let pubkey = maybe BS.empty ikX25519Public mIk
-        (peersRef, tid) <- startMDNS port name pubkey
-        writeIORef (cfgMDNSThread cfg) (Just tid)
-        logEvent cfg "mdns.start" [("port", show port)]
-        -- Poll mDNS peer list into cfgMDNSPeers every 5 seconds
-        _ <- forkIO $ forever $ do
-            threadDelay 5000000  -- 5 seconds
-            peers <- readMVar peersRef
-            writeIORef (cfgMDNSPeers cfg) peers
-        pure ()
-        ) `catch` (\(_ :: SomeException) -> logEvent cfg "mdns.unavailable" [])  -- mDNS unavailable
+    when (buildSupportsDiscovery && mdnsOn) (restartMDNS st)
     -- Ask user about persistence mode before attempting DB download
     putStrLn ""
     putStrLn "  UmbraVOX - Post-Quantum Encrypted Messaging"
@@ -106,7 +95,4 @@ main = do
                             _ <- applyPersistenceAnswer cfg answer
                             putStrLn "  Storage: ephemeral mode"
     _ <- installHandler sigWINCH (Catch $ getTermSize >>= writeIORef (asTermSize st)) Nothing
-    -- Auto-start listening for incoming connections in background
-    activeListenPort <- readIORef (cfgListenPort cfg)
-    _ <- startListenerIfNeeded st identity activeListenPort "startup"
     withRawMode $ clearScreen >> render st >> eventLoop st

@@ -80,6 +80,7 @@ runTests = do
         -- NewConn dialog
         , testNewConnSecureNotes
         , testNewConnSingleOpensPrompt
+        , testNewConnSingleHostOnlyUsesDefaultPorts
         , testNewConnGroupOpensPrompt
         , testNewConnUnknownCloses
         , testNewConnMouseOptionOpensPrompt
@@ -658,7 +659,21 @@ testNewConnSingleOpensPrompt = do
     st <- mkTestState; writeIORef (asDialogMode st) (Just DlgNewConn)
     handleNewConnDlg st (KeyChar '2')
     dlg <- readIORef (asDialogMode st)
-    assertEq "newconn '2' opens prompt" True (isDlgPromptWithSubstring "host" dlg)
+    assertEq "newconn '2' opens prompt" True (isDlgPromptWithSubstring "host[:port]" dlg)
+
+testNewConnSingleHostOnlyUsesDefaultPorts :: IO Bool
+testNewConnSingleHostOnlyUsesDefaultPorts = do
+    st <- mkTestState; writeIORef (asDialogMode st) (Just DlgNewConn)
+    handleNewConnDlg st (KeyChar '2')
+    dlg <- readIORef (asDialogMode st)
+    case dlg of
+        Just (DlgPrompt _ callback) -> do
+            callback "198.51.100.20"
+            status <- readIORef (asStatusMsg st)
+            assertEq "newconn host-only uses default ports" True
+                ("Connecting via tcp to 198.51.100.20 (trying default ports)..." `prefixOf` status)
+        _ ->
+            assertEq "newconn host-only prompt missing" True False
 
 testNewConnGroupOpensPrompt :: IO Bool
 testNewConnGroupOpensPrompt = do
