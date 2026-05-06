@@ -26,10 +26,12 @@ import UmbraVox.BuildProfile
     , pluginName, pmStatusTag, pprLoadStatus, pprManifest, pprPlugin
     )
 import UmbraVox.Network.ProviderCatalog
-    ( ProviderClass(..), TransportProviderId(..), ctpInherits, ctpLoadStatus
-    , ctpManifest, ctpProvider, pmfStatusTag, providerLoadStatusLabel
-    , tpClass, tpName
+    ( ProviderClass(..), ctpInherits, ctpLoadStatus
+    , ctpManifest, ctpProvider, pmfEndpointTag, pmfStatusTag
+    , providerEndpointSchema, providerIdLabel, providerLoadStatusLabel
+    , renderProviderEndpoint, tpClass, tpName
     )
+import UmbraVox.Network.ProviderRuntime (activeRuntimeProvider)
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Terminal (goto, setFg, resetSGR, bold, padR, csi)
 import UmbraVox.TUI.Layout (dropdownCol)
@@ -393,7 +395,7 @@ settingsOverlayLines st = do
         let provider = ctpProvider runtimeEntry
             manifest = ctpManifest runtimeEntry
             inheritsLabel =
-                case map providerShortName (ctpInherits runtimeEntry) of
+                case map providerIdLabel (ctpInherits runtimeEntry) of
                     [] -> ""
                     names -> "<-" ++ intercalate "+" names
         in tpName provider
@@ -401,23 +403,10 @@ settingsOverlayLines st = do
             ++ pmfStatusTag manifest
             ++ inheritsLabel
             ++ "/"
+            ++ pmfEndpointTag manifest
+            ++ "/"
             ++ providerLoadStatusLabel (ctpLoadStatus runtimeEntry)
             ++ ")"
-    providerShortName providerId =
-        case providerId of
-            ProviderTCP -> "TCP"
-            ProviderUDP -> "UDP"
-            ProviderTor -> "Tor"
-            ProviderWireGuard -> "WireGuard"
-            ProviderIRC -> "IRC"
-            ProviderAIM -> "AIM"
-            ProviderXMPP -> "XMPP"
-            ProviderMastodon -> "Mastodon"
-            ProviderFacebook -> "Facebook"
-            ProviderInstagram -> "Instagram"
-            ProviderWhatsApp -> "WhatsApp"
-            ProviderSignal -> "Signal"
-            ProviderSignalServer -> "SignalServer"
     chunkItems _ [] = []
     chunkItems n xs =
         take n xs : chunkItems n (drop n xs)
@@ -453,7 +442,10 @@ browseOverlayLines st = do
         page' = psPage pageSlice
         totalPages = psTotalPages pageSlice
         visible = psItems pageSlice
+        runtimeProvider = activeRuntimeProvider
     let header = [ "Discovered peers on the local network:"
+                 , "  Provider: " ++ providerIdLabel runtimeProvider
+                    ++ "  |  Endpoint: " ++ providerEndpointSchema runtimeProvider
                  , "  mDNS: " ++ (if mdnsOn then "ON" else "OFF")
                     ++ "  |  PEX: " ++ (if pexOn then "ON" else "OFF")
                  , "  Search: " ++ if null query then "(none)" else query
@@ -469,7 +461,7 @@ browseOverlayLines st = do
             [ "  " ++ show i ++ ". "
                 ++ peerDisplayName p
                 ++ "  "
-                ++ mdnsIP p ++ ":" ++ show (mdnsPort p)
+                ++ renderProviderEndpoint runtimeProvider (mdnsIP p) (mdnsPort p)
                 ++ "  "
                 ++ take 16 (pubkeyHex p)
             ]

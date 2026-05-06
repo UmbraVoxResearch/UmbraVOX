@@ -220,7 +220,7 @@ testBrowseDigitConnectsVisiblePeer = do
     status <- readIORef (asStatusMsg st)
     ok1 <- assertEq "DlgBrowse digit closes" True (isDlgNothing dlg)
     ok2 <- assertEq "DlgBrowse digit starts connect" True
-        ("Connecting to 127.0.0.1:19421" `prefixOf` status)
+        ("Connecting via tcp to 127.0.0.1:19421" `prefixOf` status)
     pure (ok1 && ok2)
 
 testBrowseDigitClampsStalePage :: IO Bool
@@ -245,7 +245,7 @@ testBrowseDigitClampsStalePage = do
     ok1 <- assertEq "DlgBrowse stale page digit closes" True (isDlgNothing dlg)
     ok2 <- assertEq "DlgBrowse stale page digit clamps page" 0 page
     ok3 <- assertEq "DlgBrowse stale page digit starts connect" True
-        ("Connecting to 127.0.0.1:19421" `prefixOf` status)
+        ("Connecting via tcp to 127.0.0.1:19421" `prefixOf` status)
     pure (ok1 && ok2 && ok3)
 
 testBrowseInvalidDigitSetsStatus :: IO Bool
