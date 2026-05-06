@@ -13,6 +13,7 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BC
 import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
 import qualified Data.Map.Strict as Map
+import Data.Time.Clock.POSIX (getPOSIXTime)
 import System.Directory (doesFileExist)
 import System.IO (hFlush, stdout)
 import UmbraVox.TUI.Types
@@ -25,6 +26,7 @@ import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Network.Transport
     (Transport, send, recv, close)
 import UmbraVox.Protocol.CBOR (encodeMessage)
+import UmbraVox.Storage.Anthony (saveMessage)
 import UmbraVox.TUI.Handshake (getW32BE, genIdentity, timestamp)
 
 -- Actions -----------------------------------------------------------------
@@ -173,6 +175,15 @@ sendCurrentMessage st = do
                 modifyIORef' (siHistory si) (("["++now++"] You: "++buf):)
             writeIORef (asInputBuf st) ""
             writeIORef (asChatScroll st) 0
+            -- Auto-save to Anthony DB if enabled
+            autoSave <- readIORef (cfgAutoSaveMessages (asConfig st))
+            when autoSave $ do
+                mDb <- readIORef (cfgAnthonyDB (asConfig st))
+                case mDb of
+                    Just db -> do
+                        t <- round <$> getPOSIXTime
+                        saveMessage db sel "You" buf t
+                    Nothing -> pure ()
 
 quitApp :: AppState -> IO ()
 quitApp st = do
