@@ -175,11 +175,13 @@ renderBottomBorder lay chatH' = do
           ++ replicate (rw - 2) '-' ++ "+"
     resetSGR
 
-renderStatusBar :: Layout -> String -> Int -> IO ()
-renderStatusBar lay status chatH' = do
+renderStatusBar :: Layout -> AppState -> String -> Int -> IO ()
+renderStatusBar lay st status chatH' = do
     let totalW' = lCols lay
     gotoL lay (chatH' + 6) 1; setFg 30; csi "47m"
-    let bar = " ^N:New ^R:Verify ^X:Export ^P:Prefs ^Q:Quit | Tab:Switch"
+    mDb <- readIORef (cfgAnthonyDB (asConfig st))
+    let mode = case mDb of { Nothing -> " [EPHEMERAL]"; Just _ -> "" }
+        bar = " ^N:New ^P:Prefs ^Q:Quit | Tab:Switch" ++ mode
         full = if null status then bar
                else bar ++ " | " ++ take (totalW' - length bar - 4) status
     putStr (padR totalW' full); resetSGR
@@ -211,7 +213,7 @@ render st = do
         renderInputRow lay focus buf chatH'
         renderHintRow lay chatH'
         renderBottomBorder lay chatH'
-        renderStatusBar lay status chatH'
+        renderStatusBar lay st status chatH'
         dlg <- readIORef (asDialogMode st)
         case dlg of
             Just DlgHelp     -> renderHelpOverlay lay
@@ -310,14 +312,27 @@ renderSettingsOverlay lay st = do
     name      <- readIORef (cfgDisplayName (asConfig st))
     mdns      <- readIORef (cfgMDNSEnabled (asConfig st))
     pex       <- readIORef (cfgPEXEnabled (asConfig st))
-    db        <- readIORef (cfgDBEnabled (asConfig st))
-    dbPath'   <- readIORef (cfgDBPath (asConfig st))
-    retention <- readIORef (cfgRetentionDays (asConfig st))
-    autoSave  <- readIORef (cfgAutoSaveMessages (asConfig st))
+    mDb       <- readIORef (cfgAnthonyDB (asConfig st))
     let tf True = "ON"; tf False = "OFF"
-        retLabel = if retention == 0 then "forever"
-                   else show retention ++ " days"
-    showOverlay lay "Preferences"
+        ephemeral = case mDb of { Nothing -> True; Just _ -> False }
+    storageLines <- if ephemeral
+        then pure
+            [ " Storage"
+            , "   [EPHEMERAL MODE - no persistence]"
+            , "   Messages exist only in memory."
+            , "   9. Clear history..." ]
+        else do
+            dbPath'   <- readIORef (cfgDBPath (asConfig st))
+            retention <- readIORef (cfgRetentionDays (asConfig st))
+            autoSave  <- readIORef (cfgAutoSaveMessages (asConfig st))
+            let retLabel = if retention == 0 then "forever"
+                           else show retention ++ " days"
+            pure [ " Storage"
+                 , "   5. DB path:       " ++ dbPath'
+                 , "   6. Retention:     " ++ retLabel
+                 , "   7. Auto-save msgs: [" ++ tf autoSave ++ "]"
+                 , "   8. Clear history..." ]
+    showOverlay lay "Preferences" $
         [ " General"
         , "   1. Listen port:    " ++ show port
         , "   2. Display name:   " ++ name
@@ -325,14 +340,8 @@ renderSettingsOverlay lay st = do
         , " Discovery"
         , "   3. mDNS (LAN):    [" ++ tf mdns ++ "]"
         , "   4. Peer Exchange: [" ++ tf pex ++ "]"
-        , ""
-        , " Storage"
-        , "   5. Persistence:   [" ++ tf db ++ "]"
-        , "   6. DB path:       " ++ dbPath'
-        , "   7. Retention:     " ++ retLabel ++ " (0 = forever)"
-        , "   8. Auto-save msgs: [" ++ tf autoSave ++ "]"
-        , "   9. Clear history..."
-        , ""
+        , "" ] ++ storageLines ++
+        [ ""
         , " Identity"
         , "   0. View/regenerate keys"
         , ""

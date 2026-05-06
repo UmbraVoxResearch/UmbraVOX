@@ -53,6 +53,9 @@ in pkgs.mkShell {
     fstar
     z3
 
+    # Go (for anthony DB tool)
+    pkgs.go
+
     # Fuzzing
     afl
 
