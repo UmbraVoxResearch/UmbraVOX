@@ -97,7 +97,7 @@ Code generation reduces hand-coding burden by ~15 weeks compared to pure hand-im
 7. CLI interface
 8. Quality gate: end-to-end encrypted message delivery across 3+ nodes
 
-## Phase 7: Integration + Hardening + DO-178C V&V (Weeks 48-62)
+## Phase 7: Integration + Hardening + DO-178C V&V (Weeks 48-67)
 
 ### 7a: Integration Testing (Weeks 48-53)
 1. Multi-node test network (5-10 nodes)

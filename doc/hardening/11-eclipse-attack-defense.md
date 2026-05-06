@@ -278,7 +278,7 @@ Checkpoints are trusted because they are embedded in the software binary, which 
 | No new block received | > 109 slots (20 minutes) | `BLOCK_DELAY_CRITICAL` |
 | No new block received | > 327 slots (60 minutes) | `BLOCK_DELAY_EMERGENCY` |
 
-Note: With f = 0.20 and 3,927 slots/epoch, the probability of 300 consecutive empty slots under honest conditions is:
+Note: With f = 0.20 and 3,927 slots/epoch, the probability of 55 consecutive empty slots under honest conditions is:
 
 ```
 Pr[55 consecutive empty slots] = (1 - f)^55 = 0.80^55 ~ 1.8 * 10^{-6}
@@ -445,7 +445,7 @@ where alpha = m / (n + m) is the adversary's fraction of the peer pool.
 | 0.33 | 1.5 * 10^{-4} | 1.7 * 10^{-5} | 1.9 * 10^{-6} |
 | 0.50 | 3.9 * 10^{-3} | 9.8 * 10^{-4} | 2.4 * 10^{-4} |
 
-With the subnet and AS constraints (Section 2), the effective adversary fraction is reduced because the adversary must control IPs across many distinct subnets and AS numbers. If the adversary controls m nodes but they span only s_adv distinct /16 subnets, and the constraint limits 1 outbound per /16, the effective adversary capacity for outbound slots is min(m, s_adv).
+With the subnet and AS constraints (Section 2), the effective adversary fraction is reduced because the adversary must control IPs across many distinct subnets and AS numbers. If the adversary controls m nodes but they span only s_adv distinct /16 subnets, and the constraint limits 2 outbound per /16 (Section 2.2), the effective adversary capacity for outbound slots is min(m, 2 * s_adv).
 
 ### 11.4 Adjusted Bound with Subnet Constraints
 

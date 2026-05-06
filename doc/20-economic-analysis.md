@@ -55,7 +55,7 @@ IntraCycleTx(S, msg) -> S'
   S'.balances[sender]  -= fee
   S'.balances[producer]+= to_producer
   S'.treasury           = min(S.treasury + to_treasury, TREASURY_CAP)
-  S'.pool              += to_rebate    (distributed to active users at cycle boundary)
+  S'.rebate_escrow     += to_rebate    (accumulated, distributed to active users at cycle boundary)
   S'.pool               = S.pool       (unchanged intra-cycle)
 ```
 

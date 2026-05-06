@@ -7,7 +7,7 @@ This document provides bidirectional traceability between system requirements, s
 ## Traceability Structure
 
 - **Format**: REQ-\<area\>-\<number\> → Module → Test → Evidence
-- **Areas**: CRYPTO, CONS, ECON, TRUNC, STORE, NET, DANDELION, VER, API
+- **Areas**: CRYPTO, CONS, ECON, TRUNC, STORE, NET, DANDELION, VER
 - **Bidirectional**: Each requirement links to its implementing module(s); each module links back to the requirement(s) it fulfills.
 - **Coverage metric**: MC/DC (Modified Condition/Decision Coverage) per DO-178C DAL A structural coverage requirements.
 
@@ -54,7 +54,7 @@ This document provides bidirectional traceability between system requirements, s
 | REQ-ECON-005 | Onboarding faucet: min(10K, reserve/capacity) with PoW rate-limit | doc/06 | UmbraVox.Econ.Onboarding | test/econ/faucet_distribution | Pending |
 | REQ-ECON-006 | User rebate: 5% of fees for bidirectionally active users (>=10 sent, >=10 received) | doc/06 | UmbraVox.Econ.Rebate | test/econ/rebate_eligibility | Pending |
 | REQ-ECON-007 | Sybil bonding: 50,000 * n^2 MTK for nth validator per /16 subnet | doc/06 | UmbraVox.Econ.Sybil | test/econ/quadratic_bonding | Pending |
-| REQ-ECON-008 | Validator onboarding bonus (10% of referred user fees, 3-cycle expiry) | doc/06 | UmbraVox.Economics.Onboarding | test/economics/onboarding_bonus | Pending |
+| REQ-ECON-008 | Validator onboarding bonus (10% of referred user fees, 3-cycle expiry) | doc/06 | UmbraVox.Econ.Onboarding | test/econ/onboarding_bonus | Pending |
 | REQ-ECON-009 | Cycle-scoped burn: burned_total resets to 0 at cycle boundary | doc/06 | UmbraVox.Econ.CycleBurn | test/econ/cycle_burn_reset | Pending |
 | REQ-ECON-010 | Supply restoration: pool = INITIAL_SUPPLY - staked - reserve - treasury at boundary | doc/06 | UmbraVox.Econ.SupplyRestore | test/econ/supply_restoration | Pending |
 | REQ-ECON-011 | Adaptive burn rate: proportional controller, range [0.20, 0.80] | doc/06 | UmbraVox.Econ.AdaptiveController | test/econ/adaptive_burn_rate | Pending |

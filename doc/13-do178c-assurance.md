@@ -87,7 +87,7 @@ Deliverables stored in `test/evidence/formal-proofs/`.
 |----------|----------|---------|
 | Software Assurance Plan | `doc/13-do178c-assurance.md` (this file) | DAL assignments, objectives |
 | Requirements Trace | `doc/requirements-trace.md` | Bidirectional traceability |
-| Design Description | Architecture docs (`doc/01-12`) | System design |
+| Design Description | Architecture docs (`doc/01` through `doc/14`) | System design |
 | Verification Plan | `doc/16-verification-plan.md` | Test strategy |
 | Coverage Reports | `test/coverage/` | MC/DC analysis |
 | Verification Evidence | `test/evidence/` | Test results, formal proofs |
@@ -129,7 +129,7 @@ Per DO-178C Section 11.1, the safety assessment feeds into system-level safety a
 |-------------------|----------|-----|---------|
 | Key compromise (adversary recovers private keys) | Catastrophic | A | Broken PQXDH, weak RNG, side-channel leak |
 | Consensus failure (chain forks, double-spend) | Major | A | Byzantine quorum exceeded, VRF bias |
-| Message loss (messages not delivered/recoverable) | Minor | A | Truncation error, WAL corruption |
+| Message loss (messages not delivered/recoverable) | Major | A | Truncation error, WAL corruption |
 
 The safety assessment is maintained in `doc/safety-assessment.md` and reviewed at each phase gate.
 

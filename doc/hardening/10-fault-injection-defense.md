@@ -574,7 +574,7 @@ value that does not match the expected final value.
 | Guard | Hamming distance from 0 | Hamming distance from others |
 |-------|------------------------|------------------------------|
 | `GUARD_SIGNED` (0xA5A5A5A5DEADBEEF) | 40 | ≥20 from VERIFIED |
-| `GUARD_VERIFIED` (0x5A5A5A5ACABEBABE) | 38 | ≥20 from SIGNED |
+| `GUARD_VERIFIED` (0x5A5A5A5ACAFEBABE) | 38 | ≥20 from SIGNED |
 | `GUARD_RELEASED` (0xC3C3C3C3F00DCAFE) | 38 | ≥20 from both |
 
 ---

@@ -6,7 +6,7 @@ This document indexes all formal proofs required by DO-333 (Formal Methods
 Supplement to DO-178C) for UmbraVox DAL A certification.  Each proof is
 self-contained in its own file with a preamble, assumptions, and full
 derivation.  Together they satisfy the four formal-methods requirements
-enumerated in `doc/10-security.md` lines 145–156 and the verification targets
+enumerated in `doc/10-security.md` lines 158–164 and the verification targets
 in `doc/16-verification-plan.md` lines 104–152.
 
 ---

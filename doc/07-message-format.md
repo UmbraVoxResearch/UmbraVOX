@@ -67,7 +67,7 @@ Blocks belonging to the same message share the same `message_id`. The `total_blo
 
 - Max blocks per message: 65,535 (uint16)
 - Practical protocol cap: 1,024 blocks (~802 KB)
-- Cost scales linearly: `Cost(message) = base_fee * ceil(size_bytes / 1024)` where base_fee is dynamic (10-10,000 MTK, EMA-adjusted per doc/06). Fixed fees apply in V1 for metadata privacy — all transactions pay identical amount.
+- Cost: each 1,024-byte message block pays a uniform `base_fee` (dynamic, 10-10,000 MTK, EMA-adjusted per doc/06). Multi-block messages pay `base_fee * total_blocks`. All blocks pay identical per-block fees in V1 for metadata privacy — external observers cannot distinguish message sizes from fee amounts.
 - **Reassembly timeout**: recipient waits max 30 seconds for all blocks of a multi-block message. Missing blocks after timeout: discard all received blocks, log error. Sender may retry.
 
 ## Serialization: CBOR (hand-implemented)

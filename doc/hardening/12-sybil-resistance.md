@@ -510,7 +510,7 @@ At each cycle boundary, the transaction graph is analyzed:
 
 **Action on detected clusters:** Validators in a detected Sybil cluster
 receive Tier 2 penalty (P_carryover *= 0.5, enhanced monitoring). Repeat
-detection triggers Tier 3 (P_carryover = 0, 25% stake slash).
+detection triggers Tier 3 (P_carryover = 0, 25% stake slash, permanent — validator must re-stake).
 
 ---
 

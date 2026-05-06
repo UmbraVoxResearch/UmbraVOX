@@ -558,8 +558,8 @@ current and future threats. By operating in 11-day cycles with full supply
 restoration, it creates a renewable economic model that funds network
 operation without inflation.
 
-The system makes explicit trade-offs: metadata protection computational overhead, a
-minimum message cost, and an 11-day data retention limit. These are
+The system makes explicit trade-offs: metadata protection adds computational overhead,
+messages have a minimum cost, and data retention is limited to 11 days. These are
 deliberate design choices that prioritize privacy and sustainability over
 convenience. V1 includes comprehensive metadata protection through stealth addresses,
 encrypted headers, fixed fees, and uniform blocks, providing

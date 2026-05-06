@@ -80,7 +80,7 @@ Plaintext
 | Total token supply | 11,000,000,000 MTK |
 | Settlement depth | k=11 (messages, ~10 min) / k=22 (value, ~20 min) |
 | Send-to-display latency | ~370-530ms |
-| Fee split | Adaptive burn (20-80%, initial 65%) / proportional producer-reserve-rebate (20:10:5 ratio) |
+| Fee split | Adaptive burn (20-80%, initial 65%) / proportional producer-treasury-rebate (20:10:5 ratio) |
 | Economic model | Universe Cycle (full supply restoration each cycle) |
 | Early truncation threshold | 15% of supply (adaptive, range 5-25%) |
 | Node hardware minimum | 4 cores, 4 GB RAM, 100 GB SSD, 5 Mbps symmetric (400 KB/s minimum) |

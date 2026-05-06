@@ -191,7 +191,7 @@ Generated:
 **NIST KAT vectors**: All vectors from the CAVP test suite for each algorithm:
 - SHA-256: 129 vectors (short/long msg, Monte Carlo)
 - AES-256: 400 vectors (ECB, CBC, GCM encrypt/decrypt)
-- ML-KEM-768: 100 vectors from NIST PQC round 3 submissions
+- ML-KEM-768: 100 vectors from FIPS 203 KAT suite
 
 **Property tests**: 1,000 cases per property using QuickCheck with `seed=42` for reproducibility. Properties include round-trip (encode/decode), commutativity where applicable, and domain-specific invariants.
 

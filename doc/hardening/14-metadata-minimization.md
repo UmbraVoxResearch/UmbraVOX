@@ -391,7 +391,7 @@ Epoch N+1: user generates IK_2, registers new prekey bundle
 
 **Limitation**: Contacts must be notified of the new identity through a secure side channel (or via a final message from the old identity containing the new identity, which itself creates a one-time link).
 
-**Layer 3 -- Decoy transactions (v2)**: Inject decoy transactions with random `recipient_id` values that no real user can decrypt. These are indistinguishable from stealth-addressed real transactions. Decoys dilute the transaction graph, making frequency analysis less reliable.
+**Layer 3 -- Decoy transactions (V1)**: Inject decoy transactions with random `recipient_id` values that no real user can decrypt. These are indistinguishable from stealth-addressed real transactions. Decoys dilute the transaction graph, making frequency analysis less reliable.
 
 **Layer 4 -- Truncation (existing)**: The 11-day truncation cycle destroys the on-chain transaction history. Post-truncation, the transaction graph from the prior cycle is only available to archival adversaries (Section 10).
 

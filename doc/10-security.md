@@ -92,9 +92,9 @@ Validators can observe and reorder mempool transactions. Impact on UmbraVox is *
 
 **Threat**: An attacker burns tokens rapidly by sending high volumes of messages, attempting to force early truncation and disrupt the network.
 
-**Analysis**: To deplete circulating supply from 100% to 15% (triggering early truncation), the attacker must burn 85% of the initially distributed spendable tokens. With a 65% burn rate, this requires spending approximately `0.85 * distributed_supply / 0.65` MTK in fees — far exceeding any individual actor's holdings.
+**Analysis**: To deplete circulating supply from 100% to 15% (triggering early truncation), the attacker must burn 85% of the initially distributed spendable tokens. At the default 65% burn rate, this requires spending approximately `0.85 * distributed_supply / 0.65` MTK in fees — far exceeding any individual actor's holdings. Even at the minimum burn rate (20%), the attack remains uneconomical: each 10 MTK fee burns only 2 MTK, requiring ~500M messages and costing ~5B MTK to burn 1B MTK.
 
-At minimum fee (10 MTK, 65% burn = 6.5 MTK burned per message):
+At default fee (10 MTK, 65% burn = 6.5 MTK burned per message):
 - To burn 1B MTK: ~154M messages required, costing ~1.54B MTK
 - Network fee escalation via EMA makes sustained spam exponentially more expensive
 

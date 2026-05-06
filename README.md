@@ -77,7 +77,7 @@ UmbraVox is a proposed decentralized chat and communications protocol in which e
 
 UmbraVox supports two transport modes:
 
-- **On-chain (primary)**: Messages are broadcast via Dandelion++ and included in blocks. Provides strong censorship resistance with full metadata protection (stealth addresses, encrypted headers, fixed fees, uniform blocks). Latency: ~55 seconds average for block inclusion.
+- **On-chain (primary)**: Messages are broadcast via Dandelion++ and included in blocks. Provides strong censorship resistance with full metadata protection (stealth addresses, encrypted headers, fixed fees, uniform blocks). Propagation latency: ~370-530ms; block confirmation: ~55 seconds average.
 - **Direct P2P (preserved)**: Established Signal sessions can exchange messages directly over TCP + Noise_IK. Provides low latency (~50-150ms) but weaker censorship resistance. IP visible to peer unless using Tor.
 
 ## Documentation

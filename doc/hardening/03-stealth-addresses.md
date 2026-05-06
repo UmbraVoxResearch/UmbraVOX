@@ -724,7 +724,7 @@ These are distinct from all existing HKDF info strings (`"UmbraVox_PQXDH_v1"`, `
 7. **Scan key rotation**: Verify that outputs derived before and after key rotation are both scannable with their respective scan keys.
 8. **Ephemeral reuse detection**: Verify that the duplicate `R` check catches reuse.
 9. **ML-KEM failure**: Verify graceful handling of malformed `pq_ephemeral`.
-10. **Migration**: Verify Phase 1 dual-mode acceptance and Phase 2 v1 rejection.
+10. **V1 enforcement**: Verify that non-stealth-addressed transactions are rejected (stealth addresses are mandatory from V1 launch).
 
 ### 14.4 Cross-Validation
 

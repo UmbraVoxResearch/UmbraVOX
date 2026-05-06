@@ -44,7 +44,7 @@ The `stake_snapshot` is always taken from 2 epochs prior to the current epoch. T
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
 | Slot duration | 11 seconds | 11-theme alignment, propagation headroom |
-| Slots per epoch | 3,927 | 12-hour epochs (43,200s / 11s) |
+| Slots per epoch | 3,927 | ~12-hour epochs (3,927 × 11s = 43,197s) |
 | Epochs per cycle | 22 | 11-day truncation cycle |
 | Active slot coefficient (f) | 0.20 | ~1 block per 55 seconds avg |
 | Security parameter (k) | 11 (message tier) / 22 (value tier) | Two-tier settlement: ~10 min messages, ~20 min value transfers |

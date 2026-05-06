@@ -3,7 +3,7 @@
 **Status:** Required for v1
 **Applies to:** All UmbraVox node deployments in hostile physical environments
 **References:** `doc/03-cryptography.md`, `doc/10-security.md`, `doc/proof-07-cryptanalysis-resistance.md` Section 7
-**DO-178C Traceability:** REQ-SEC-MFD-001 through REQ-SEC-MFD-045
+**DO-178C Traceability:** REQ-SEC-MFD-001 through REQ-SEC-MFD-046
 
 ---
 

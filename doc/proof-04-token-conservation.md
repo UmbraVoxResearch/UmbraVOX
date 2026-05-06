@@ -491,14 +491,13 @@ So e(t) = (1 - P_floor)^t * e(0), which converges geometrically to 0.
 | 2 | 0.1 | 0.729 | 0.349 (P > 0.95 at ~22 cycles from P=0.5) |
 | 3 | 0.0 | 1.000 (no recovery) | 1.000 |
 
-**Tier 3 special case:** P_floor = 0, so P_carry(t+1) = P_carry(t).
-No recovery during the 10-cycle penalty period (P_carry remains at 0.0).
-After the 10-cycle lockout, Tier 2 recovery begins with P_floor = 0.1
-(`doc/06-economics.md` line 344).  The transition preserves monotonicity:
-P_carry is constant at 0.0 during lockout, then begins increasing under
-the Tier 2 formula (proved above).  The overall trajectory is therefore
-monotonically non-decreasing.  If the validator does not re-register,
-P_carry resets upon re-staking.  □
+**Tier 3 special case:** P_floor = 0, so P_carry(t+1) = P_carry(t) = 0.0
+permanently (`doc/06-economics.md` lines 345-348).  Tier 3 has no
+in-place recovery path: the validator must withdraw remaining stake
+(after 25% slash) and re-register with a fresh stake to participate
+again.  Monotonicity is trivially satisfied: P_carry = 0.0 is constant.
+Upon re-registration, the validator receives a fresh P_carry = 1.0
+(new identity), so the prior trajectory is irrelevant.  □
 
 ### QuickCheck
 

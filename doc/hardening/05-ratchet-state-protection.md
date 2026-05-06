@@ -119,8 +119,8 @@ data SessionState = SessionState
 | `pqPeerEncapsKey` | LOW | CRITICAL | 1,184 |
 | `pqLocalDecapsKey` | CRITICAL | CRITICAL | 2,400 |
 
-Total sensitive material per session (excluding skipped keys): ~2,828 bytes.
-Maximum with 1,000 skipped keys: ~2,828 + 68,000 = ~70,828 bytes.
+Total sensitive material per session (excluding skipped keys): ~3,828 bytes.
+Maximum with 1,000 skipped keys: ~3,828 + 68,000 = ~71,828 bytes.
 
 ---
 

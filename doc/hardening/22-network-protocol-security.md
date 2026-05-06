@@ -230,8 +230,8 @@ plaintext_frame:
 
 | Constraint | Limit | Rationale |
 |------------|-------|-----------|
-| Maximum frame length | 4 MiB (4,194,304 bytes) | Largest valid block body with maximum transactions |
-| Maximum plaintext message body | 4 MiB - 25 bytes (header overhead) | After subtracting framing |
+| Maximum frame length | 6 MiB (6,291,456 bytes) | Largest valid block body (~4.44 MB payload + CBOR overhead) |
+| Maximum plaintext message body | 6 MiB - 25 bytes (header overhead) | After subtracting framing |
 | Maximum GOSSIP_TX body | 64 KiB (65,536 bytes) | Single transaction upper bound |
 | Maximum HEADERS batch | 2,000 headers | Prevents memory exhaustion during sync |
 | Maximum PEER_EXCHANGE entries | 1,000 addresses | Prevent peer table overflow |
@@ -601,7 +601,7 @@ BLOCK PROPAGATION STATE MACHINE:
   │  1. SHA-256 Merkle root matches  │
   │     bhBodyHash                   │
   │  2. All transactions valid       │
-  │  3. Body size <= 4 MiB           │
+  │  3. Body size <= 6 MiB           │
   └───────┬──────────────────────────┘
           │
     ┌─────┴─────┐
