@@ -140,7 +140,7 @@ render st = do
         ++ "\x2514" ++ replicate (rightW-2) '\x2500' ++ "\x2518"; resetSGR
     -- status bar
     goto (chatH+6) 1; setFg 30; csi "47m"
-    let bar = " ^H:Help ^F:File ^V:Verify ^E:Export ^O:Options ^Q:Quit"
+    let bar = " ^N:New ^R:Verify ^X:Export ^P:Prefs ^Q:Quit | Tab:Switch"
         full = if null status then bar
                else bar ++ " | " ++ take (totalW - length bar - 4) status
     putStr (padR totalW full); resetSGR
@@ -158,24 +158,34 @@ render st = do
         Nothing -> pure ()
     hFlush stdout
 -- Input handling ----------------------------------------------------------
+-- Ctrl key codes: Ctrl+A=0x01..Ctrl+Z=0x1A
+-- Avoiding conflicts: Ctrl+H=0x08=backspace, Ctrl+I=0x09=tab, Ctrl+M=0x0D=enter
+-- Safe choices: Ctrl+N=0x0E, Ctrl+W=0x17, Ctrl+R=0x12, Ctrl+X=0x18,
+--               Ctrl+P=0x10, Ctrl+Q=0x11, Ctrl+L=0x0C, Ctrl+D=0x04
 data InputEvent = KeyChar Char | KeyEnter | KeyTab | KeyBackspace | KeyEscape
     | KeyUp | KeyDown | KeyPageUp | KeyPageDown
-    | KeyCtrlH | KeyCtrlF | KeyCtrlV | KeyCtrlE | KeyCtrlO | KeyCtrlQ
+    | KeyCtrlN | KeyCtrlW | KeyCtrlR | KeyCtrlX
+    | KeyCtrlP | KeyCtrlQ | KeyCtrlL | KeyCtrlD
     | KeyUnknown
 
 readKey :: IO InputEvent
 readKey = do
     c <- getChar
     case c of
-        '\n' -> pure KeyEnter; '\r' -> pure KeyEnter; '\t' -> pure KeyTab
-        '\DEL' -> pure KeyBackspace; '\BS' -> pure KeyBackspace
-        '\b'   -> pure KeyBackspace
-        '\x08' -> pure KeyCtrlH    -- Ctrl+H = Help
-        '\x06' -> pure KeyCtrlF    -- Ctrl+F = File
-        '\x16' -> pure KeyCtrlV    -- Ctrl+V = Verify
-        '\x05' -> pure KeyCtrlE    -- Ctrl+E = Export
-        '\x0F' -> pure KeyCtrlO    -- Ctrl+O = Options/Settings
-        '\x11' -> pure KeyCtrlQ    -- Ctrl+Q = Quit
+        '\n'   -> pure KeyEnter
+        '\r'   -> pure KeyEnter
+        '\t'   -> pure KeyTab
+        '\DEL' -> pure KeyBackspace
+        '\x7F' -> pure KeyBackspace  -- DEL on some terminals
+        '\x08' -> pure KeyBackspace  -- BS / Ctrl+H
+        '\x0E' -> pure KeyCtrlN     -- Ctrl+N = New connection
+        '\x17' -> pure KeyCtrlW     -- Ctrl+W = close/Quit
+        '\x12' -> pure KeyCtrlR     -- Ctrl+R = veRify keys
+        '\x18' -> pure KeyCtrlX     -- Ctrl+X = eXport
+        '\x10' -> pure KeyCtrlP     -- Ctrl+P = Preferences/settings
+        '\x11' -> pure KeyCtrlQ     -- Ctrl+Q = Quit
+        '\x0C' -> pure KeyCtrlL     -- Ctrl+L = redraw/cLear
+        '\x04' -> pure KeyCtrlD     -- Ctrl+D = EOF/Done
         '\ESC' -> do
             ready <- hReady stdin
             if not ready then pure KeyEscape else do
@@ -224,12 +234,19 @@ handleNormal st key = do
     focus <- readIORef (asFocus st)
     case key of
         KeyTab   -> modifyIORef' (asFocus st) (\p -> if p==ContactPane then ChatPane else ContactPane)
-        KeyCtrlH -> showHelp st
-        KeyCtrlF -> setStatus st "Type /file <path> in chat"
-        KeyCtrlV -> startVerify st
-        KeyCtrlE -> startExport st
-        KeyCtrlO -> startSettings st
+        KeyCtrlN -> startNewConn st
+        KeyCtrlR -> startVerify st
+        KeyCtrlX -> startExport st
+        KeyCtrlP -> startSettings st
         KeyCtrlQ -> quitApp st
+        KeyCtrlW -> quitApp st
+        KeyCtrlL -> clearScreen
+        KeyCtrlD -> quitApp st
+        KeyEscape -> do
+            dlg <- readIORef (asDialogMode st)
+            case dlg of
+                Just _  -> writeIORef (asDialogMode st) Nothing
+                Nothing -> pure ()
         _ -> case focus of { ContactPane -> handleContact st key; ChatPane -> handleChat st key }
 
 handleContact :: AppState -> InputEvent -> IO ()
@@ -244,6 +261,7 @@ handleContact st key = do
         KeyChar 'G' -> setStatus st "Group: add peers with N, msgs go to all"
         KeyChar 'k' -> startKeysView st; KeyChar 'K' -> startKeysView st
         KeyChar 's' -> addSecureNotes st; KeyChar 'S' -> addSecureNotes st
+        KeyChar '?' -> showHelp st
         _ -> pure ()
 
 handleChat :: AppState -> InputEvent -> IO ()
@@ -317,13 +335,21 @@ showOverlay title lns = do
 
 renderHelpOverlay :: IO ()
 renderHelpOverlay = showOverlay "Help - UmbraVOX"
-    [ "Tab       Switch pane focus"
-    , "Up/Down   Navigate contacts / scroll chat"
-    , "Enter     Send message / select contact"
-    , "N  New connection   G  Group"
-    , "K  Identity & keys  S  Secure notes"
-    , "F1 Help  F2 File  F3 Verify  F5 Export"
-    , "F9 Settings  F10 Quit"
+    [ "Tab         Switch pane focus"
+    , "Up/Down     Navigate / scroll"
+    , "Enter       Send message / select"
+    , "Esc         Close dialog"
+    , ""
+    , "Contact pane shortcuts:"
+    , "  N  New connection   G  Group"
+    , "  K  Identity & keys  S  Self notes"
+    , ""
+    , "Global shortcuts:"
+    , "  Ctrl+N  New connection"
+    , "  Ctrl+R  Verify keys"
+    , "  Ctrl+X  Export history"
+    , "  Ctrl+P  Preferences"
+    , "  Ctrl+Q  Quit"
     , "", "Press Esc to close" ]
 
 renderNewConnOverlay :: IO ()
