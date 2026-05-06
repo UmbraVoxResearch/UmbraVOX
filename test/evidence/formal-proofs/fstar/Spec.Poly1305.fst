@@ -128,6 +128,7 @@ val poly1305 : key:seq UInt8.t
     -> msg:seq UInt8.t
     -> Tot (seq UInt8.t)
 let poly1305 key msg =
+  assume (Seq.length key >= 32);
   let r_bytes = Seq.slice key 0 16 in
   let s_bytes = Seq.slice key 16 32 in
   let r = clamp_r (le_to_nat r_bytes) in
