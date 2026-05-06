@@ -22,6 +22,8 @@ module UmbraVox.Network.ProviderCatalog
     , providerManifestLaunchSpec
     , providerManifestLoadStatus
     , providerIdLabel
+    , providerEndpointSchema
+    , renderProviderEndpoint
     , providerClassLabel
     , providerCapabilityLabel
     , providerLaunchSpecLabel
@@ -424,6 +426,40 @@ providerLoadStatusLabel loadStatus =
 providerIdLabel :: TransportProviderId -> String
 providerIdLabel providerId =
     tpStableId (providerDescriptor providerId)
+
+providerEndpointSchema :: TransportProviderId -> String
+providerEndpointSchema providerId =
+    case providerId of
+        ProviderTCP -> "host:port"
+        ProviderUDP -> "host:port"
+        ProviderTor -> "onion:port"
+        ProviderWireGuard -> "peer@host:port"
+        ProviderIRC -> "nick@server:port/#channel"
+        ProviderAIM -> "screenname@server"
+        ProviderXMPP -> "jid/resource"
+        ProviderMastodon -> "@user@instance"
+        ProviderFacebook -> "account-id"
+        ProviderInstagram -> "account-id"
+        ProviderWhatsApp -> "e164-or-handle"
+        ProviderSignal -> "e164-or-username"
+        ProviderSignalServer -> "server:port/account"
+
+renderProviderEndpoint :: TransportProviderId -> String -> Int -> String
+renderProviderEndpoint providerId host port =
+    case providerId of
+        ProviderTCP -> host ++ ":" ++ show port
+        ProviderUDP -> "udp://" ++ host ++ ":" ++ show port
+        ProviderTor -> host ++ ":" ++ show port ++ " via tor"
+        ProviderWireGuard -> "wg://" ++ host ++ ":" ++ show port
+        ProviderIRC -> "irc://" ++ host ++ ":" ++ show port
+        ProviderAIM -> host ++ " via aim"
+        ProviderXMPP -> host ++ " via xmpp"
+        ProviderMastodon -> host ++ " via mastodon"
+        ProviderFacebook -> host ++ " via facebook"
+        ProviderInstagram -> host ++ " via instagram"
+        ProviderWhatsApp -> host ++ ":" ++ show port ++ " via whatsapp"
+        ProviderSignal -> host ++ ":" ++ show port ++ " via signal"
+        ProviderSignalServer -> host ++ ":" ++ show port ++ " via signal-server"
 
 resolveArtifactPath :: FilePath -> FilePath -> FilePath
 resolveArtifactPath manifestPath artifactPath

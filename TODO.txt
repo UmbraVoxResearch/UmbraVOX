@@ -451,7 +451,8 @@ Priority order from here:
         [x] P6.11.5  route runtime connect/listen/group flows through provider ids instead of directly through TCP helpers
         [~] P6.11.6  add provider-aware endpoint formatting, discovery metadata, and failure/status propagation
           [x] P6.11.6.1  thread provider-aware runtime labels through connect/listen status text and transport lifecycle logs
-          [ ] P6.11.6.2  add provider-aware discovery metadata and endpoint rendering beyond the current TCP-shaped peer labels
+          [x] P6.11.6.2  add provider-aware endpoint rendering in browse/settings while discovery remains TCP-shaped underneath
+          [ ] P6.11.6.3  extend discovery metadata beyond the current TCP-shaped peer labels before exposing non-TCP provider selection
         [x] P6.11.7  keep provider selection internal/defaulted to TCP until runtime event and network seams are narrower
         [ ] P6.11.8  add a provider test matrix for registry lookup, endpoint parsing, launch-contract validation, and failure behavior
       [~] P6.12  Seed built-in and external-service provider stubs without overstating assurance

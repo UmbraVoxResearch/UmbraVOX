@@ -20,7 +20,8 @@ import UmbraVox.Network.ProviderCatalog
     ( ProviderLoadStatus(..), TransportProviderId(..), ctpLoadStatus, ctpProvider
     , loadTransportProviderCatalog, loadTransportProviderManifest
     , loadTransportProviderManifestFields, loadTransportProviderManifests
-    , loadTransportProviderRuntimeCatalog, providerLoadStatusLabel
+    , loadTransportProviderRuntimeCatalog, providerEndpointSchema
+    , providerLoadStatusLabel, renderProviderEndpoint
     , providerManifestApiSupported, providerManifestInherits, tpId, tpStableId
     )
 import UmbraVox.TUI.Types (ContactStatus(..), statusTag, Layout(..), MenuTab(..),
@@ -303,7 +304,13 @@ testTransportProviderRegistry = do
         (providerLoadStatusLabel (ctpLoadStatus (head runtimeCatalog)))
     k <- assertEq "runtime catalog contains signal artifact gap" True
         (any isSignalArtifactMissing runtimeCatalog)
-    pure (a && b && c && d && e && f && g && h && i && j && k)
+    l <- assertEq "tcp endpoint schema" "host:port"
+        (providerEndpointSchema ProviderTCP)
+    m <- assertEq "tcp endpoint render" "127.0.0.1:7853"
+        (renderProviderEndpoint ProviderTCP "127.0.0.1" 7853)
+    n <- assertEq "signal endpoint render" "chat.example:443 via signal"
+        (renderProviderEndpoint ProviderSignal "chat.example" 443)
+    pure (a && b && c && d && e && f && g && h && i && j && k && l && m && n)
   where
     isSignalArtifactMissing entry =
         tpId (ctpProvider entry) == ProviderSignal
