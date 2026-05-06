@@ -65,7 +65,7 @@ Immediate assurance priority:
   [ ] MP.1.5.4  harden runtime logging for operational assurance
     [ ] MP.1.5.4.1  redact or suppress peer labels, host/port targets, attachment paths, DB paths, and restore counts from durable logs
     [ ] MP.1.5.4.2  distinguish pre-auth transport arrival from post-auth trusted session establishment
-    [ ] MP.1.5.4.3  stop using pre-auth listener events as success evidence in tests
+    [x] MP.1.5.4.3  stop using pre-auth listener events as success evidence in tests
     [x] MP.1.5.4.4  ensure log file creation uses restrictive permissions and single-writer discipline
     [ ] MP.1.5.4.5  document runtime logging as sensitive metadata collection, not production-safe default telemetry
 
