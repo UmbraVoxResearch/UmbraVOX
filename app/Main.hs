@@ -1,7 +1,7 @@
 module Main (main) where
 
 import Control.Concurrent (forkIO, threadDelay, killThread, ThreadId)
-import Control.Exception (catch, SomeException)
+import Control.Exception (catch, SomeException, bracket_)
 import Control.Monad (void, when, forM_, unless)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BC
@@ -11,10 +11,10 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Word (Word32)
 import System.Directory (doesFileExist)
-import System.IO (hFlush, stdout, stdin, hSetBuffering, BufferMode(..), hIsEOF)
+import System.IO (hFlush, stdout, stdin, hSetBuffering, BufferMode(..),
+                   hSetEcho, hReady)
 import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (formatTime, defaultTimeLocale)
-
 import UmbraVox.Chat.Session
     (ChatSession, initChatSession, sendChatMessage, recvChatMessage)
 import UmbraVox.Crypto.MLKEM (mlkemKeyGen,
@@ -28,445 +28,435 @@ import UmbraVox.Crypto.Signal.X3DH
 import UmbraVox.Network.Transport
     (Transport(..), listen, connect, send, recv, close)
 import UmbraVox.Protocol.CBOR (encodeMessage)
-
 -- Types -------------------------------------------------------------------
-
 type SessionId = Int
+data ContactStatus = Online | Offline | Local | Group deriving stock (Eq)
+statusTag :: ContactStatus -> String
+statusTag Online = "[ON]"; statusTag Offline = "[OFF]"
+statusTag Local = "[LOCAL]"; statusTag Group = "[GRP]"
 
 data SessionInfo = SessionInfo
-    { siTransport :: Maybe Transport     -- Nothing for loopback (self-chat)
-    , siSession   :: IORef ChatSession
-    , siRecvTid   :: Maybe ThreadId      -- Nothing for loopback
-    , siPeerName  :: String
-    , siHistory   :: IORef [String]
-    }
-
+    { siTransport :: Maybe Transport, siSession :: IORef ChatSession
+    , siRecvTid :: Maybe ThreadId, siPeerName :: String
+    , siHistory :: IORef [String], siStatus :: IORef ContactStatus }
+data Pane = ContactPane | ChatPane deriving stock (Eq)
+data AppState = AppState
+    { asConfig :: AppConfig, asSelected :: IORef Int, asFocus :: IORef Pane
+    , asInputBuf :: IORef String, asChatScroll :: IORef Int
+    , asStatusMsg :: IORef String, asRunning :: IORef Bool
+    , asDialogMode :: IORef (Maybe DialogMode) }
+data DialogMode = DlgHelp | DlgSettings | DlgVerify | DlgNewConn
+    | DlgKeys | DlgPrompt String (String -> IO ())
 data AppConfig = AppConfig
-    { cfgListenPort  :: IORef Int
-    , cfgDisplayName :: IORef String
-    , cfgIdentity    :: IORef (Maybe IdentityKey)
-    , cfgSessions    :: IORef (Map SessionId SessionInfo)
-    , cfgNextId      :: IORef SessionId
-    }
+    { cfgListenPort :: IORef Int, cfgDisplayName :: IORef String
+    , cfgIdentity :: IORef (Maybe IdentityKey)
+    , cfgSessions :: IORef (Map SessionId SessionInfo)
+    , cfgNextId :: IORef SessionId }
+-- Layout constants --------------------------------------------------------
+leftW, rightW, totalW, chatH :: Int
+leftW = 20; rightW = 60; totalW = leftW + rightW; chatH = 17
+-- ANSI / helpers ----------------------------------------------------------
+esc :: String -> String; esc code = "\ESC[" ++ code
+csi :: String -> IO (); csi s = putStr (esc s)
+goto :: Int -> Int -> IO (); goto r c = csi (show r ++ ";" ++ show c ++ "H")
+clearScreen :: IO (); clearScreen = csi "2J" >> csi "H" >> hFlush stdout
+hideCursor, showCursor :: IO ()
+hideCursor = putStr "\ESC[?25l"; showCursor = putStr "\ESC[?25h"
+setFg :: Int -> IO (); setFg c = csi (show c ++ "m")
+resetSGR :: IO (); resetSGR = csi "0m"
+bold :: IO (); bold = csi "1m"
+padR :: Int -> String -> String; padR w s = take w (s ++ replicate w ' ')
+isPfx :: String -> String -> Bool
+isPfx [] _ = True; isPfx _ [] = False
+isPfx (x:xs) (y:ys) = x == y && isPfx xs ys
 
--- ANSI helpers ------------------------------------------------------------
+withRawMode :: IO a -> IO a
+withRawMode = bracket_
+    (hSetBuffering stdin NoBuffering >> hSetEcho stdin False >> hideCursor)
+    (hSetBuffering stdin LineBuffering >> hSetEcho stdin True >> showCursor)
+-- Rendering ---------------------------------------------------------------
+render :: AppState -> IO ()
+render st = do
+    csi "H"
+    focus <- readIORef (asFocus st); sel <- readIORef (asSelected st)
+    sessions <- readIORef (cfgSessions (asConfig st))
+    buf <- readIORef (asInputBuf st); scroll <- readIORef (asChatScroll st)
+    status <- readIORef (asStatusMsg st)
+    let entries = Map.toList sessions
+        selSi = if sel < length entries
+                then Map.lookup (fst (entries !! sel)) sessions else Nothing
+        peer  = maybe "(no contact)" siPeerName selSi
+    -- top border
+    goto 1 1; setFg 36
+    putStr $ "\x250C\x2500 Contacts " ++ replicate (leftW - 12) '\x2500'
+        ++ "\x2510\x250C\x2500 Chat: " ++ take (rightW - 12) peer ++ " "
+        ++ replicate (max 0 (rightW - 10 - length (take (rightW-12) peer))) '\x2500'
+        ++ "\x2510"; resetSGR
+    -- panes
+    forM_ [0..chatH-1] $ \row -> do
+        goto (row+2) 1
+        -- contact cell
+        setFg 36; putStr "\x2502"; resetSGR
+        if row < length entries then do
+            let (_,si) = entries !! row
+            tag <- statusTag <$> readIORef (siStatus si)
+            let mk = if row==sel then " > " else "   "
+                nm = take (leftW-8) (siPeerName si)
+                cell = mk ++ padR (leftW-7-length tag) nm ++ tag
+            when (row==sel) $ if focus==ContactPane then bold>>setFg 32 else bold
+            putStr (take (leftW-2) cell); resetSGR
+        else putStr (replicate (leftW-2) ' ')
+        setFg 36; putStr "\x2502"; resetSGR
+        -- chat cell
+        setFg 36; putStr "\x2502"; resetSGR
+        msg <- case selSi of
+            Nothing -> pure ""
+            Just si -> do
+                hist <- readIORef (siHistory si)
+                let msgs = reverse hist; total = length msgs
+                    start = max 0 (total - chatH - scroll)
+                    idx = start + row
+                pure $ if idx >= 0 && idx < total then msgs !! idx else ""
+        putStr (padR (rightW-2) (take (rightW-2) msg))
+        setFg 36; putStr "\x2502"; resetSGR
+    -- middle border
+    goto (chatH+2) 1; setFg 36
+    putStr $ "\x251C" ++ replicate (leftW-2) '\x2500' ++ "\x2524"
+        ++ "\x251C" ++ replicate (rightW-2) '\x2500' ++ "\x2524"; resetSGR
+    -- bottom panes
+    goto (chatH+3) 1; setFg 36; putStr "\x2502"; resetSGR
+    setFg 33; putStr (padR (leftW-2) " [N]ew [G]roup"); resetSGR
+    setFg 36; putStr "\x2502\x2502"; resetSGR
+    let cur = if focus==ChatPane then "_" else ""
+    putStr (padR (rightW-2) (" > " ++ take (rightW-6) buf ++ cur))
+    setFg 36; putStr "\x2502"; resetSGR
+    goto (chatH+4) 1; setFg 36; putStr "\x2502"; resetSGR
+    setFg 33; putStr (padR (leftW-2) " [K]eys [S]elf"); resetSGR
+    setFg 36; putStr "\x2502\x2502"; resetSGR
+    putStr (replicate (rightW-2) ' '); setFg 36; putStr "\x2502"; resetSGR
+    -- bottom border
+    goto (chatH+5) 1; setFg 36
+    putStr $ "\x2514" ++ replicate (leftW-2) '\x2500' ++ "\x2518"
+        ++ "\x2514" ++ replicate (rightW-2) '\x2500' ++ "\x2518"; resetSGR
+    -- status bar
+    goto (chatH+6) 1; setFg 30; csi "47m"
+    let bar = " F1:Help F2:File F3:Verify F5:Export F9:Settings F10:Quit"
+        full = if null status then bar
+               else bar ++ " | " ++ take (totalW - length bar - 4) status
+    putStr (padR totalW full); resetSGR; hFlush stdout
+-- Input handling ----------------------------------------------------------
+data InputEvent = KeyChar Char | KeyEnter | KeyTab | KeyBackspace | KeyEscape
+    | KeyUp | KeyDown | KeyPageUp | KeyPageDown
+    | KeyF1 | KeyF2 | KeyF3 | KeyF5 | KeyF9 | KeyF10 | KeyUnknown
 
-esc :: String -> String
-esc code = "\ESC[" ++ code
+readKey :: IO InputEvent
+readKey = do
+    c <- getChar
+    case c of
+        '\n' -> pure KeyEnter; '\r' -> pure KeyEnter; '\t' -> pure KeyTab
+        '\DEL' -> pure KeyBackspace; '\BS' -> pure KeyBackspace
+        '\ESC' -> do
+            ready <- hReady stdin
+            if not ready then pure KeyEscape else do
+                c2 <- getChar
+                case c2 of
+                    '[' -> readCSI; 'O' -> readSS3; _ -> pure KeyEscape
+        _ -> pure (KeyChar c)
 
-clearScreen :: IO ()
-clearScreen = putStr (esc "2J" ++ esc "H") >> hFlush stdout
+readCSI :: IO InputEvent
+readCSI = do
+    c <- getChar
+    case c of
+        'A' -> pure KeyUp; 'B' -> pure KeyDown
+        '5' -> dt >> pure KeyPageUp; '6' -> dt >> pure KeyPageDown
+        '1' -> csiSub [('5',KeyF5),('7',KeyF1),('8',KeyF2)]
+        '2' -> csiSub [('0',KeyF9),('1',KeyF10)]
+        _ -> drainSeq >> pure KeyUnknown
+  where dt = hReady stdin >>= \r -> when r (void getChar)
 
-setColor :: Int -> IO ()
-setColor c = putStr (esc (show c ++ "m"))
+csiSub :: [(Char, InputEvent)] -> IO InputEvent
+csiSub tbl = do
+    ready <- hReady stdin
+    if not ready then pure KeyUnknown else do
+        c <- getChar
+        case lookup c tbl of
+            Just ev -> do
+                r <- hReady stdin; when r (void getChar)
+                pure ev
+            Nothing -> if c == '~' then pure KeyUnknown
+                       else drainSeq >> pure KeyUnknown
 
-resetColor :: IO ()
-resetColor = putStr (esc "0m")
+readSS3 :: IO InputEvent
+readSS3 = do
+    c <- getChar
+    pure $ case c of 'P'->KeyF1; 'Q'->KeyF2; 'R'->KeyF3; _->KeyUnknown
 
--- Box drawing -------------------------------------------------------------
-
-drawBox :: String -> [String] -> Int -> IO ()
-drawBox title rows w = do
-    let pad s = s ++ replicate (w - 2 - length s) ' '
-    putStrLn $ "\x2554" ++ replicate (w - 2) '\x2550' ++ "\x2557"
-    putStrLn $ "\x2551" ++ pad ("  " ++ title) ++ "\x2551"
-    putStrLn $ "\x2560" ++ replicate (w - 2) '\x2550' ++ "\x2563"
-    forM_ rows $ \r ->
-        putStrLn $ "\x2551" ++ pad ("  " ++ r) ++ "\x2551"
-    putStrLn $ "\x255A" ++ replicate (w - 2) '\x2550' ++ "\x255D"
-
-drawMenu :: String -> [String] -> IO Int
-drawMenu title items = do
-    clearScreen
-    setColor 36
-    drawBox title (zipWith (\i s -> show i ++ ". " ++ s) [(1::Int)..] items) 46
-    resetColor
-    putStr "\n  Select: "
-    hFlush stdout
-    line <- getLine
-    case reads line of
-        [(n, _)] | n >= 1 && n <= length items -> pure n
-        _ -> drawMenu title items
-
--- Main / menu loop --------------------------------------------------------
-
+drainSeq :: IO ()
+drainSeq = hReady stdin >>= \r -> when r (void getChar >> drainSeq)
+-- Main / event loop -------------------------------------------------------
 main :: IO ()
 main = do
-    hSetBuffering stdout LineBuffering
-    hSetBuffering stdin LineBuffering
+    hSetBuffering stdout (BlockBuffering (Just 8192))
     cfg <- AppConfig <$> newIORef 9999 <*> newIORef "User"
                      <*> newIORef Nothing <*> newIORef Map.empty <*> newIORef 1
-    mainLoop cfg
+    st <- AppState cfg <$> newIORef 0 <*> newIORef ContactPane
+                       <*> newIORef "" <*> newIORef 0 <*> newIORef ""
+                       <*> newIORef True <*> newIORef Nothing
+    withRawMode $ clearScreen >> render st >> eventLoop st
 
-mainLoop :: AppConfig -> IO ()
-mainLoop cfg = do
-    n <- drawMenu "U M B R A V O X  --  Post-Quantum Encrypted Messaging"
-        [ "New Conversation", "Secure Notes (Self)"
-        , "Active Conversations", "Group Conversations"
-        , "File Transfer", "Identity & Keys", "Import/Export"
-        , "Settings", "Quit" ]
-    case n of
-        1 -> newConversation cfg     >> mainLoop cfg
-        2 -> secureNotes cfg         >> mainLoop cfg
-        3 -> activeConversations cfg >> mainLoop cfg
-        4 -> groupConversations cfg  >> mainLoop cfg
-        5 -> fileTransfer cfg        >> mainLoop cfg
-        6 -> identityKeys cfg        >> mainLoop cfg
-        7 -> importExport cfg        >> mainLoop cfg
-        8 -> settings cfg            >> mainLoop cfg
-        9 -> quitApp cfg
-        _ -> mainLoop cfg
+eventLoop :: AppState -> IO ()
+eventLoop st = do
+    running <- readIORef (asRunning st)
+    when running $ do
+        key <- readKey
+        dlg <- readIORef (asDialogMode st)
+        case dlg of { Just _ -> handleDialog st key; Nothing -> handleNormal st key }
+        readIORef (asRunning st) >>= \r -> when r (render st >> eventLoop st)
+-- Normal key handling -----------------------------------------------------
+handleNormal :: AppState -> InputEvent -> IO ()
+handleNormal st key = do
+    focus <- readIORef (asFocus st)
+    case key of
+        KeyTab  -> modifyIORef' (asFocus st) (\p -> if p==ContactPane then ChatPane else ContactPane)
+        KeyF1   -> showHelp st;    KeyF2  -> setStatus st "Type /file <path> in chat"
+        KeyF3   -> startVerify st; KeyF5  -> startExport st
+        KeyF9   -> startSettings st; KeyF10 -> quitApp st
+        _ -> case focus of { ContactPane -> handleContact st key; ChatPane -> handleChat st key }
 
-quitApp :: AppConfig -> IO ()
-quitApp cfg = do
-    sessions <- readIORef (cfgSessions cfg)
+handleContact :: AppState -> InputEvent -> IO ()
+handleContact st key = do
+    n <- Map.size <$> readIORef (cfgSessions (asConfig st))
+    case key of
+        KeyUp    -> modifyIORef' (asSelected st) (\i -> max 0 (i-1))
+        KeyDown  -> modifyIORef' (asSelected st) (\i -> min (n-1) (i+1))
+        KeyEnter -> writeIORef (asFocus st) ChatPane >> writeIORef (asChatScroll st) 0
+        KeyChar 'n' -> startNewConn st; KeyChar 'N' -> startNewConn st
+        KeyChar 'g' -> setStatus st "Group: add peers with N, msgs go to all"
+        KeyChar 'G' -> setStatus st "Group: add peers with N, msgs go to all"
+        KeyChar 'k' -> startKeysView st; KeyChar 'K' -> startKeysView st
+        KeyChar 's' -> addSecureNotes st; KeyChar 'S' -> addSecureNotes st
+        _ -> pure ()
+
+handleChat :: AppState -> InputEvent -> IO ()
+handleChat st key = case key of
+    KeyChar c    -> modifyIORef' (asInputBuf st) (++[c])
+    KeyBackspace -> modifyIORef' (asInputBuf st) (\s -> if null s then s else init s)
+    KeyEnter     -> sendCurrentMessage st
+    KeyUp        -> modifyIORef' (asChatScroll st) (+1)
+    KeyDown      -> modifyIORef' (asChatScroll st) (\s -> max 0 (s-1))
+    KeyPageUp    -> modifyIORef' (asChatScroll st) (+chatH)
+    KeyPageDown  -> modifyIORef' (asChatScroll st) (\s -> max 0 (s-chatH))
+    _            -> pure ()
+
+sendCurrentMessage :: AppState -> IO ()
+sendCurrentMessage st = do
+    buf <- readIORef (asInputBuf st)
+    unless (null buf) $ do
+        sessions <- readIORef (cfgSessions (asConfig st))
+        sel <- readIORef (asSelected st)
+        let entries = Map.toList sessions
+        when (sel < length entries) $ do
+            let (_,si) = entries !! sel
+            if isPfx "/file " buf then do
+                let path = drop 6 buf
+                exists <- doesFileExist path
+                if exists then do
+                    contents <- BS.readFile path
+                    sendToSession si (BC.pack ("/file:"++path++":") <> contents)
+                    now <- timestamp
+                    modifyIORef' (siHistory si)
+                        (("["++now++"] You: [sent file "++path++"]"):)
+                else setStatus st "File not found"
+            else do
+                sendToSession si (BC.pack buf)
+                now <- timestamp
+                modifyIORef' (siHistory si) (("["++now++"] You: "++buf):)
+            writeIORef (asInputBuf st) ""
+            writeIORef (asChatScroll st) 0
+-- Dialogs -----------------------------------------------------------------
+handleDialog :: AppState -> InputEvent -> IO ()
+handleDialog st KeyEscape = writeIORef (asDialogMode st) Nothing
+handleDialog st key = do
+    dlg <- readIORef (asDialogMode st)
+    case dlg of
+        Just DlgHelp    -> writeIORef (asDialogMode st) Nothing
+        Just DlgKeys    -> writeIORef (asDialogMode st) Nothing
+        Just DlgVerify  -> writeIORef (asDialogMode st) Nothing
+        Just DlgSettings -> handleSettingsDlg st key
+        Just DlgNewConn  -> handleNewConnDlg st key
+        Just (DlgPrompt _ cb) -> case key of
+            KeyEnter -> do
+                b <- readIORef (asInputBuf st); cb b
+                writeIORef (asInputBuf st) ""
+                writeIORef (asDialogMode st) Nothing
+            _ -> pure ()
+        _ -> writeIORef (asDialogMode st) Nothing
+
+showOverlay :: String -> [String] -> IO ()
+showOverlay title lns = do
+    let w = 50; h = length lns + 2; r0 = max 2 ((24-h) `div` 2)
+        c0 = max 1 ((totalW-w) `div` 2)
+        top = "\x250C\x2500 " ++ take (w-6) title ++ " "
+              ++ replicate (max 0 (w-5-length (take (w-6) title))) '\x2500' ++ "\x2510"
+        bot = "\x2514" ++ replicate (w-2) '\x2500' ++ "\x2518"
+        rows = map (\l -> "\x2502 "++padR (w-3) (take (w-3) l)++"\x2502") lns
+    forM_ (zip [0..] (top : rows ++ [bot])) $ \(i,line) ->
+        goto (r0+i) c0 >> setFg 36 >> bold >> putStr line >> resetSGR
+    hFlush stdout
+
+showHelp :: AppState -> IO ()
+showHelp st = do
+    writeIORef (asDialogMode st) (Just DlgHelp)
+    showOverlay "Help - UmbraVOX"
+        [ "Tab       Switch pane focus"
+        , "Up/Down   Navigate contacts / scroll chat"
+        , "Enter     Send message / select contact"
+        , "N  New connection   G  Group"
+        , "K  Identity & keys  S  Secure notes"
+        , "F1 Help  F2 File  F3 Verify  F5 Export"
+        , "F9 Settings  F10 Quit"
+        , "", "Press any key to close..." ]
+
+startSettings :: AppState -> IO ()
+startSettings st = do
+    writeIORef (asDialogMode st) (Just DlgSettings)
+    port <- readIORef (cfgListenPort (asConfig st))
+    name <- readIORef (cfgDisplayName (asConfig st))
+    showOverlay "Settings"
+        [ "1. Listen port: " ++ show port
+        , "2. Display name: " ++ name, ""
+        , "Press 1/2 to change, Esc to close" ]
+
+handleSettingsDlg :: AppState -> InputEvent -> IO ()
+handleSettingsDlg st (KeyChar '1') = do
+    writeIORef (asDialogMode st) (Just (DlgPrompt "port" $ \val ->
+        case reads val of { [(p,_)] -> writeIORef (cfgListenPort (asConfig st)) (p::Int); _ -> pure () }))
+    showOverlay "Set Port" ["Enter new port number:", ""]
+handleSettingsDlg st (KeyChar '2') = do
+    writeIORef (asDialogMode st) (Just (DlgPrompt "name" $ \val ->
+        unless (null val) $ writeIORef (cfgDisplayName (asConfig st)) val))
+    showOverlay "Set Name" ["Enter new display name:", ""]
+handleSettingsDlg st _ = writeIORef (asDialogMode st) Nothing
+
+setStatus :: AppState -> String -> IO ()
+setStatus st msg = writeIORef (asStatusMsg st) msg
+-- Actions -----------------------------------------------------------------
+startNewConn :: AppState -> IO ()
+startNewConn st = do
+    writeIORef (asDialogMode st) (Just DlgNewConn)
+    showOverlay "New Connection"
+        ["1. Connect to peer", "2. Listen for peer"
+        ,"3. Loopback test (self)", "", "Press 1/2/3, Esc to cancel"]
+
+handleNewConnDlg :: AppState -> InputEvent -> IO ()
+handleNewConnDlg st (KeyChar '1') = do
+    writeIORef (asDialogMode st) Nothing
+    setStatus st "Connecting to 127.0.0.1:9999..."
+    void $ forkIO $ (do
+        t <- connect "127.0.0.1" 9999
+        session <- handshakeInitiator t
+        sid <- addSession (asConfig st) t session "127.0.0.1:9999"
+        selectLast st; setStatus st ("Connected #" ++ show sid)
+        ) `catch` (\(e::SomeException) -> setStatus st ("Failed: "++show e))
+handleNewConnDlg st (KeyChar '2') = do
+    writeIORef (asDialogMode st) Nothing
+    port <- readIORef (cfgListenPort (asConfig st))
+    setStatus st ("Listening on " ++ show port ++ "...")
+    void $ forkIO $ (do
+        t <- listen port; session <- handshakeResponder t
+        sid <- addSession (asConfig st) t session ("peer:"++show port)
+        selectLast st; setStatus st ("Session #" ++ show sid ++ " established")
+        ) `catch` (\(e::SomeException) -> setStatus st ("Failed: "++show e))
+handleNewConnDlg st (KeyChar '3') = do
+    writeIORef (asDialogMode st) Nothing
+    setStatus st "Starting loopback..."
+    void $ forkIO $ (do
+        let port = 19999
+        void $ forkIO $ do
+            tS <- listen port; sB <- handshakeResponder tS
+            rB <- newIORef sB; hB <- newIORef []
+            recvLoopTUI tS rB hB
+        threadDelay 500000
+        tC <- connect "127.0.0.1" port; sA <- handshakeInitiator tC
+        sid <- addSession (asConfig st) tC sA ("loopback:"++show port)
+        selectLast st; setStatus st ("Loopback #" ++ show sid ++ " ready")
+        ) `catch` (\(e::SomeException) -> setStatus st ("Failed: "++show e))
+handleNewConnDlg st _ = writeIORef (asDialogMode st) Nothing
+
+selectLast :: AppState -> IO ()
+selectLast st = do
+    n <- Map.size <$> readIORef (cfgSessions (asConfig st))
+    writeIORef (asSelected st) (max 0 (n-1))
+
+addSecureNotes :: AppState -> IO ()
+addSecureNotes st = do
+    sid <- addLoopbackSession (asConfig st) "\x1F512 Secure Notes"
+    selectLast st; setStatus st ("Secure Notes #" ++ show sid)
+
+startKeysView :: AppState -> IO ()
+startKeysView st = do
+    writeIORef (asDialogMode st) (Just DlgKeys)
+    mIk <- readIORef (cfgIdentity (asConfig st))
+    ik <- case mIk of
+        Just ik -> pure ik
+        Nothing -> do ik <- genIdentity; writeIORef (cfgIdentity (asConfig st)) (Just ik); pure ik
+    showOverlay "Identity & Keys"
+        [ "X25519:  " ++ fingerprint (ikX25519Public ik)
+        , "Ed25519: " ++ fingerprint (ikEd25519Public ik)
+        , "", "Press any key to close" ]
+
+startVerify :: AppState -> IO ()
+startVerify st = do
+    writeIORef (asDialogMode st) (Just DlgVerify)
+    sessions <- readIORef (cfgSessions (asConfig st))
+    sel <- readIORef (asSelected st)
+    let entries = Map.toList sessions
+    if sel < length entries then do
+        let (_,si) = entries !! sel
+        showOverlay "Verify Keys"
+            ["Peer: " ++ siPeerName si, ""
+            ,"Key verification via safety numbers"
+            ,"is not yet implemented.", "", "Press any key to close"]
+    else showOverlay "Verify Keys" ["No contact selected","","Press any key"]
+
+startExport :: AppState -> IO ()
+startExport st = do
+    sessions <- readIORef (cfgSessions (asConfig st))
+    sel <- readIORef (asSelected st)
+    let entries = Map.toList sessions
+    if sel < length entries then do
+        let (_,si) = entries !! sel
+        hist <- readIORef (siHistory si)
+        let path = "umbravox_export.txt"
+        writeFile path (unlines (reverse hist))
+        setStatus st ("Exported "++show (length hist)++" msgs to "++path)
+    else setStatus st "No contact selected"
+
+quitApp :: AppState -> IO ()
+quitApp st = do
+    writeIORef (asRunning st) False
+    sessions <- readIORef (cfgSessions (asConfig st))
     forM_ (Map.elems sessions) $ \si -> do
         maybe (pure ()) killThread (siRecvTid si)
         maybe (pure ()) close (siTransport si)
-    clearScreen
-    putStrLn "Goodbye."
-
--- Secure Notes (Self) -----------------------------------------------------
-
-secureNotes :: AppConfig -> IO ()
-secureNotes cfg = do
-    clearScreen
-    setColor 36; putStrLn "--- Secure Notes (Self-Chat) ---"; resetColor
-    putStr "  Note label [Secure Notes]: "; hFlush stdout
-    label <- getLine
-    let name = if null label then "Secure Notes" else label
-    sid <- addLoopbackSession cfg ("\x1F512 " ++ name)
-    putStrLn "  Loopback session created. Messages encrypt locally."
-    threadDelay 500000
-    chatWindow cfg sid
-
--- 1. New Conversation -----------------------------------------------------
-
-newConversation :: AppConfig -> IO ()
-newConversation cfg = do
-    clearScreen
-    setColor 36; putStrLn "--- New Conversation ---"; resetColor
-    putStr "  Mode (1=Connect, 2=Listen, 3=Self): "; hFlush stdout
-    mode <- getLine
-    case mode of
-        "1" -> do
-            putStr "  Host: "; hFlush stdout; host <- getLine
-            putStr "  Port: "; hFlush stdout; portS <- getLine
-            putStrLn $ "  Connecting to " ++ host ++ ":" ++ portS ++ "..."
-            t <- connect host (read portS)
-            putStrLn "  Running PQXDH handshake..."
-            session <- handshakeInitiator t
-            sid <- addSession cfg t session (host ++ ":" ++ portS)
-            putStrLn "  Session established!"
-            threadDelay 500000
-            chatWindow cfg sid
-        "2" -> do
-            lp <- readIORef (cfgListenPort cfg)
-            putStr $ "  Port [" ++ show lp ++ "]: "; hFlush stdout
-            portS <- getLine
-            let port = if null portS then lp else read portS
-            putStrLn $ "  Listening on port " ++ show port ++ "..."
-            t <- listen port
-            putStrLn "  Peer connected. Running PQXDH handshake..."
-            session <- handshakeResponder t
-            sid <- addSession cfg t session ("peer:" ++ show port)
-            putStrLn "  Session established!"
-            threadDelay 500000
-            chatWindow cfg sid
-        "3" -> do
-            putStr "  Port [19999]: "; hFlush stdout
-            portS <- getLine
-            let port = if null portS then 19999 else read portS
-            putStrLn "  Starting loopback test (localhost TCP)..."
-            -- Start a listener on a background thread, then connect to it
-            void $ forkIO $ do
-                tServer <- listen port
-                sessionB <- handshakeResponder tServer
-                refB <- newIORef sessionB
-                histB <- newIORef []
-                -- Server just receives and echoes (loopback)
-                recvLoopTUI tServer refB histB
-            threadDelay 500000
-            tClient <- connect "127.0.0.1" port
-            putStrLn "  Running PQXDH handshake (loopback)..."
-            sessionA <- handshakeInitiator tClient
-            sid <- addSession cfg tClient sessionA ("loopback:" ++ show port)
-            putStrLn "  Loopback session established!"
-            threadDelay 500000
-            chatWindow cfg sid
-        _ -> pure ()
-
+    clearScreen; goto 1 1; showCursor; putStrLn "Goodbye."; hFlush stdout
+-- Session management ------------------------------------------------------
 addSession :: AppConfig -> Transport -> ChatSession -> String -> IO SessionId
 addSession cfg t session peerName = do
-    sid <- readIORef (cfgNextId cfg)
-    writeIORef (cfgNextId cfg) (sid + 1)
-    ref <- newIORef session
-    histRef <- newIORef []
+    sid <- readIORef (cfgNextId cfg); writeIORef (cfgNextId cfg) (sid+1)
+    ref <- newIORef session; histRef <- newIORef []; stRef <- newIORef Online
     tid <- forkIO (recvLoopTUI t ref histRef)
-    let si = SessionInfo (Just t) ref (Just tid) peerName histRef
-    modifyIORef' (cfgSessions cfg) (Map.insert sid si)
-    pure sid
+    let si = SessionInfo (Just t) ref (Just tid) peerName histRef stRef
+    modifyIORef' (cfgSessions cfg) (Map.insert sid si); pure sid
 
--- | Create a loopback (self-chat) session for secure note-taking.
--- Messages are encrypted then immediately decrypted locally — no network.
 addLoopbackSession :: AppConfig -> String -> IO SessionId
 addLoopbackSession cfg label = do
-    sid <- readIORef (cfgNextId cfg)
-    writeIORef (cfgNextId cfg) (sid + 1)
-    secret <- randomBytes 32
-    dhSec  <- randomBytes 32
-    peerPub <- randomBytes 32
+    sid <- readIORef (cfgNextId cfg); writeIORef (cfgNextId cfg) (sid+1)
+    secret <- randomBytes 32; dhSec <- randomBytes 32; peerPub <- randomBytes 32
     session <- initChatSession secret dhSec peerPub
-    ref <- newIORef session
-    histRef <- newIORef []
-    let si = SessionInfo Nothing ref Nothing label histRef
-    modifyIORef' (cfgSessions cfg) (Map.insert sid si)
-    pure sid
-
--- 2. Active Conversations -------------------------------------------------
-
-activeConversations :: AppConfig -> IO ()
-activeConversations cfg = do
-    sessions <- readIORef (cfgSessions cfg)
-    if Map.null sessions
-        then promptWait "  No active conversations."
-        else do
-            let entries = Map.toList sessions
-                items = map (\(sid, si) -> "#" ++ show sid ++ " - " ++ siPeerName si) entries
-            choice <- drawMenu "Active Conversations" (items ++ ["Back"])
-            when (choice <= length entries) $ do
-                let (sid, _) = entries !! (choice - 1)
-                chatWindow cfg sid
-
--- 3. Group Conversations --------------------------------------------------
-
-groupConversations :: AppConfig -> IO ()
-groupConversations cfg = do
-    clearScreen
-    setColor 36; putStrLn "--- Group Conversation ---"; resetColor
-    putStrLn "  Enter peer addresses (host:port), empty line to finish."
-    peers <- readPeers
-    unless (null peers) $ do
-        sids <- mapM (connectPeer cfg) peers
-        groupChatLoop cfg sids
-
-readPeers :: IO [(String, Int)]
-readPeers = do
-    putStr "  > "; hFlush stdout
-    line <- getLine
-    if null line then pure []
-    else case break (== ':') line of
-        (host, ':':portS) -> ((host, read portS) :) <$> readPeers
-        _ -> putStrLn "  Invalid format. Use host:port" >> readPeers
-
-connectPeer :: AppConfig -> (String, Int) -> IO SessionId
-connectPeer cfg (host, port) = do
-    putStrLn $ "  Connecting to " ++ host ++ ":" ++ show port ++ "..."
-    t <- connect host port
-    session <- handshakeInitiator t
-    addSession cfg t session (host ++ ":" ++ show port)
-
-groupChatLoop :: AppConfig -> [SessionId] -> IO ()
-groupChatLoop cfg sids = do
-    clearScreen
-    setColor 36; putStrLn $ "--- Group Chat (" ++ show (length sids) ++ " peers) ---"
-    resetColor; putStrLn "  Type messages. /back to return.\n"
-    go
-  where
-    go = do
-        putStr "> "; hFlush stdout; line <- getLine
-        case line of
-            "/back" -> pure ()
-            _ -> do
-                sessions <- readIORef (cfgSessions cfg)
-                forM_ sids $ \sid -> case Map.lookup sid sessions of
-                    Nothing -> pure ()
-                    Just si -> sendToSession si (BC.pack line)
-                go
-
--- 4. File Transfer --------------------------------------------------------
-
-fileTransfer :: AppConfig -> IO ()
-fileTransfer cfg = do
-    clearScreen
-    setColor 36; putStrLn "--- File Transfer ---"; resetColor
-    sessions <- readIORef (cfgSessions cfg)
-    if Map.null sessions
-        then promptWait "  No active sessions. Start a conversation first."
-        else do
-            let entries = Map.toList sessions
-            forM_ entries $ \(sid, si) ->
-                putStrLn $ "  " ++ show sid ++ ". " ++ siPeerName si
-            putStr "  Session #: "; hFlush stdout; sidS <- getLine
-            case Map.lookup (read sidS) sessions of
-                Nothing -> promptWait "  Invalid session."
-                Just si -> do
-                    putStr "  File path: "; hFlush stdout; path <- getLine
-                    exists <- doesFileExist path
-                    if exists then do
-                        contents <- BS.readFile path
-                        sendToSession si (BC.pack ("/file:" ++ path ++ ":") <> contents)
-                        promptWait $ "  Sent " ++ show (BS.length contents) ++ " bytes."
-                    else promptWait "  File not found."
-
--- 5. Identity & Keys ------------------------------------------------------
-
-identityKeys :: AppConfig -> IO ()
-identityKeys cfg = do
-    clearScreen
-    setColor 36; putStrLn "--- Identity & Keys ---"; resetColor
-    mIk <- readIORef (cfgIdentity cfg)
-    ik <- case mIk of
-        Just ik -> pure ik
-        Nothing -> do
-            ik <- genIdentity
-            writeIORef (cfgIdentity cfg) (Just ik)
-            pure ik
-    putStrLn $ "  X25519 public:  " ++ fingerprint (ikX25519Public ik)
-    putStrLn $ "  Ed25519 public: " ++ fingerprint (ikEd25519Public ik)
-    putStr "\n  Regenerate keys? (y/N): "; hFlush stdout
-    ans <- getLine
-    when (ans == "y" || ans == "Y") $ do
-        ik' <- genIdentity
-        writeIORef (cfgIdentity cfg) (Just ik')
-        putStrLn "  Keys regenerated."
-    promptWait ""
-
-fingerprint :: BS.ByteString -> String
-fingerprint bs = concatMap hex2 (BS.unpack (BS.take 8 bs))
-  where
-    hex2 w = [hexC (w `shiftR` 4), hexC (w .&. 0x0f), ':']
-    hexC n | n < 10    = toEnum (fromEnum '0' + fromIntegral n)
-           | otherwise = toEnum (fromEnum 'a' + fromIntegral n - 10)
-
--- 6. Import/Export --------------------------------------------------------
-
-importExport :: AppConfig -> IO ()
-importExport cfg = do
-    n <- drawMenu "Import/Export"
-        ["Export conversation history", "Import conversation history", "Back"]
-    case n of { 1 -> exportHistory cfg; 2 -> importHistory; _ -> pure () }
-
-exportHistory :: AppConfig -> IO ()
-exportHistory cfg = do
-    sessions <- readIORef (cfgSessions cfg)
-    if Map.null sessions then promptWait "  No sessions to export."
-    else do
-        let entries = Map.toList sessions
-        forM_ entries $ \(sid, si) ->
-            putStrLn $ "  " ++ show sid ++ ". " ++ siPeerName si
-        putStr "  Session #: "; hFlush stdout; sidS <- getLine
-        case Map.lookup (read sidS) sessions of
-            Nothing -> promptWait "  Invalid session."
-            Just si -> do
-                putStr "  Output file: "; hFlush stdout; path <- getLine
-                hist <- readIORef (siHistory si)
-                writeFile path (unlines (reverse hist))
-                promptWait $ "  Exported " ++ show (length hist) ++ " messages."
-
-importHistory :: IO ()
-importHistory = do
-    putStr "  Input file: "; hFlush stdout; path <- getLine
-    exists <- doesFileExist path
-    if exists then do
-        contents <- readFile path
-        let lns = lines contents
-        putStrLn $ "  Read " ++ show (length lns) ++ " messages."
-        forM_ (take 20 lns) $ \l -> putStrLn $ "    " ++ l
-        when (length lns > 20) $ putStrLn "    ..."
-    else putStrLn "  File not found."
-    promptWait ""
-
--- 7. Settings -------------------------------------------------------------
-
-settings :: AppConfig -> IO ()
-settings cfg = do
-    port <- readIORef (cfgListenPort cfg)
-    name <- readIORef (cfgDisplayName cfg)
-    n <- drawMenu ("Settings  [Port: " ++ show port ++ "  Name: " ++ name ++ "]")
-        ["Change listen port", "Change display name", "Back"]
-    case n of
-        1 -> do putStr "  New port: "; hFlush stdout
-                writeIORef (cfgListenPort cfg) . read =<< getLine
-                settings cfg
-        2 -> do putStr "  New name: "; hFlush stdout; nm <- getLine
-                unless (null nm) $ writeIORef (cfgDisplayName cfg) nm
-                settings cfg
-        _ -> pure ()
-
--- Chat Window -------------------------------------------------------------
-
-chatWindow :: AppConfig -> SessionId -> IO ()
-chatWindow cfg sid = do
-    sessions <- readIORef (cfgSessions cfg)
-    case Map.lookup sid sessions of
-        Nothing -> putStrLn "  Session not found."
-        Just si -> chatInputLoop cfg sid si
-
-drawChatHeader :: String -> IO ()
-drawChatHeader peer = do
-    clearScreen; setColor 36
-    let w = 46; bar = replicate (w - 2) '\x2500'
-    putStrLn $ "\x250C\x2500 " ++ peer ++ " " ++ drop (length peer + 2) bar ++ "\x2510"
-    resetColor
-
-drawChatFooter :: IO ()
-drawChatFooter = do
-    setColor 36
-    let w = 46
-    putStrLn $ "\x251C" ++ replicate (w - 2) '\x2500' ++ "\x2524"
-    putStrLn $ "\x2502 > Type message... (/back to return)" ++ replicate 7 ' ' ++ "\x2502"
-    putStrLn $ "\x2514" ++ replicate (w - 2) '\x2500' ++ "\x2518"
-    resetColor
-
-redrawChat :: SessionInfo -> IO ()
-redrawChat si = do
-    drawChatHeader (siPeerName si)
-    hist <- readIORef (siHistory si)
-    forM_ (reverse (take 15 hist)) $ \msg -> do
-        setColor 37; putStrLn $ "\x2502 " ++ msg
-    resetColor
-    drawChatFooter
-
-chatInputLoop :: AppConfig -> SessionId -> SessionInfo -> IO ()
-chatInputLoop cfg sid si = do
-    redrawChat si
-    putStr "> "; hFlush stdout
-    eof <- hIsEOF stdin
-    if eof then pure ()
-    else do
-        line <- getLine
-        case line of
-            "/back" -> pure ()
-            "/quit" -> quitApp cfg
-            "/verify" -> do
-                putStrLn "  [Key verification not yet available for peer]"
-                threadDelay 1000000
-                chatInputLoop cfg sid si
-            _ | isPfx "/file " line -> do
-                    let path = drop 6 line
-                    exists <- doesFileExist path
-                    if exists then do
-                        contents <- BS.readFile path
-                        sendToSession si (BC.pack ("/file:" ++ path ++ ":") <> contents)
-                        now <- timestamp
-                        modifyIORef' (siHistory si)
-                            (("[" ++ now ++ "] You: [sent file " ++ path ++ "]") :)
-                    else modifyIORef' (siHistory si) ("  [File not found]" :)
-                    chatInputLoop cfg sid si
-              | null line -> chatInputLoop cfg sid si
-              | otherwise -> do
-                    sendToSession si (BC.pack line)
-                    now <- timestamp
-                    modifyIORef' (siHistory si) (("[" ++ now ++ "] You: " ++ line) :)
-                    chatInputLoop cfg sid si
-
--- Helpers -----------------------------------------------------------------
-
-isPfx :: String -> String -> Bool
-isPfx [] _         = True
-isPfx _ []         = False
-isPfx (x:xs) (y:ys) = x == y && isPfx xs ys
+    ref <- newIORef session; histRef <- newIORef []; stRef <- newIORef Local
+    let si = SessionInfo Nothing ref Nothing label histRef stRef
+    modifyIORef' (cfgSessions cfg) (Map.insert sid si); pure sid
 
 sendToSession :: SessionInfo -> BS.ByteString -> IO ()
 sendToSession si msg = do
@@ -476,49 +466,44 @@ sendToSession si msg = do
     case siTransport si of
         Just t  -> send t (encodeMessage wire)
         Nothing -> do
-            -- Loopback: decrypt our own message and add to history
             session2 <- readIORef (siSession si)
             result <- recvChatMessage session2 wire
             case result of
-                Just (session3, _plaintext) -> writeIORef (siSession si) session3
+                Just (session3, _pt) -> writeIORef (siSession si) session3
                 Nothing -> pure ()
             ts <- timestamp
-            modifyIORef' (siHistory si) (++ [ts ++ " [saved] " ++ BC.unpack msg])
-
-timestamp :: IO String
-timestamp = formatTime defaultTimeLocale "%H:%M" <$> getCurrentTime
-
-promptWait :: String -> IO ()
-promptWait msg = do
-    unless (null msg) $ putStrLn msg
-    putStr "  Press Enter..."; hFlush stdout; void getLine
-
+            modifyIORef' (siHistory si) ((ts++" [saved] "++BC.unpack msg):)
 -- Receive loop (background thread) ----------------------------------------
-
 recvLoopTUI :: Transport -> IORef ChatSession -> IORef [String] -> IO ()
-recvLoopTUI t ref histRef = go `catch` handler
-  where
+recvLoopTUI t ref histRef = go `catch` handler where
     go = do
         lenBs <- recv t 4
         if BS.length lenBs < 4
-            then modifyIORef' histRef ("  [Peer disconnected]" :)
+            then modifyIORef' histRef ("  [Peer disconnected]":)
             else do
                 let !len = fromIntegral (getW32BE lenBs)
                 payload <- recv t len
                 session <- readIORef ref
                 result <- recvChatMessage session payload
                 case result of
-                    Nothing -> modifyIORef' histRef ("  [Decryption failed]" :) >> go
+                    Nothing -> modifyIORef' histRef ("  [Decryption failed]":) >> go
                     Just (session', plaintext) -> do
                         writeIORef ref session'
                         now <- timestamp
-                        modifyIORef' histRef (("[" ++ now ++ "] Peer: " ++ BC.unpack plaintext) :)
+                        modifyIORef' histRef (("["++now++"] Peer: "++BC.unpack plaintext):)
                         go
     handler :: SomeException -> IO ()
-    handler _ = modifyIORef' histRef ("  [Connection lost]" :)
+    handler _ = modifyIORef' histRef ("  [Connection lost]":)
+-- Helpers -----------------------------------------------------------------
+timestamp :: IO String
+timestamp = formatTime defaultTimeLocale "%H:%M" <$> getCurrentTime
 
--- PQXDH key material generation -------------------------------------------
-
+fingerprint :: BS.ByteString -> String
+fingerprint bs = concatMap hex2 (BS.unpack (BS.take 8 bs)) where
+    hex2 w = [hexC (w `shiftR` 4), hexC (w .&. 0x0f), ':']
+    hexC n | n < 10    = toEnum (fromEnum '0' + fromIntegral n)
+           | otherwise = toEnum (fromEnum 'a' + fromIntegral n - 10)
+-- PQXDH key generation ----------------------------------------------------
 genIdentity :: IO IdentityKey
 genIdentity = do
     edSec <- randomBytes 32; xSec <- randomBytes 32
@@ -532,11 +517,8 @@ genSignedPreKey ik = do
 
 genPQPreKey :: IO (MLKEMEncapKey, MLKEMDecapKey)
 genPQPreKey = do
-    d <- randomBytes 32; z <- randomBytes 32
-    pure $! mlkemKeyGen d z
-
+    d <- randomBytes 32; z <- randomBytes 32; pure $! mlkemKeyGen d z
 -- Prekey bundle wire format -----------------------------------------------
-
 serializeBundle :: IdentityKey -> BS.ByteString -> BS.ByteString
                 -> MLKEMEncapKey -> Maybe BS.ByteString -> BS.ByteString
 serializeBundle ik spkPub spkSig (MLKEMEncapKey pqpk) mOpk = BS.concat
@@ -550,9 +532,9 @@ deserializeBundle bs
     | otherwise =
         let !pqLen = fromIntegral (getW32BE (bsSlice 160 4 bs)) :: Int
             !rest  = BS.drop (164 + pqLen) bs
-            decOpk r | BS.null r          = Nothing
-                     | BS.index r 0 == 1  = Just (BS.take 32 (BS.drop 1 r))
-                     | otherwise          = Nothing
+            decOpk r | BS.null r         = Nothing
+                     | BS.index r 0 == 1 = Just (BS.take 32 (BS.drop 1 r))
+                     | otherwise         = Nothing
         in if BS.length bs < 164 + pqLen + 1 then Nothing
            else Just PQPreKeyBundle
                { pqpkbIdentityKey     = bsSlice 0  32 bs
@@ -561,15 +543,12 @@ deserializeBundle bs
                , pqpkbSPKSignature    = bsSlice 96 64 bs
                , pqpkbPQPreKey        = MLKEMEncapKey (bsSlice 164 pqLen bs)
                , pqpkbOneTimePreKey   = decOpk rest }
-
 -- PQXDH Handshake ---------------------------------------------------------
-
 handshakeInitiator :: Transport -> IO ChatSession
 handshakeInitiator t = do
-    aliceIK <- genIdentity
-    bundle  <- recvBundle t
-    ekRand  <- randomBytes 32; mlkemRand <- randomBytes 32
-    result  <- case pqxdhInitiate aliceIK bundle ekRand mlkemRand of
+    aliceIK <- genIdentity; bundle <- recvBundle t
+    ekRand <- randomBytes 32; mlkemRand <- randomBytes 32
+    result <- case pqxdhInitiate aliceIK bundle ekRand mlkemRand of
         Nothing -> fail "PQXDH: SPK signature verification failed"
         Just r  -> pure r
     let MLKEMCiphertext ctBS = pqxdhPQCiphertext result
@@ -581,16 +560,14 @@ handshakeInitiator t = do
 
 handshakeResponder :: Transport -> IO ChatSession
 handshakeResponder t = do
-    bobIK         <- genIdentity
+    bobIK <- genIdentity
     (spk, spkSig) <- genSignedPreKey bobIK
-    (pqEK, pqDK)  <- genPQPreKey
+    (pqEK, pqDK) <- genPQPreKey
     send t . encodeMessage $ serializeBundle bobIK (kpPublic spk) spkSig pqEK Nothing
     (aliceIKPub, aliceEKPub, pqCt) <- recvInitialMessage t
     let !shared = pqxdhRespond bobIK (kpSecret spk) Nothing pqDK
                                aliceIKPub aliceEKPub pqCt
     initChatSession shared (kpSecret spk) aliceEKPub
-
--- Bundle send/receive helpers ---------------------------------------------
 
 recvBundle :: Transport -> IO PQPreKeyBundle
 recvBundle t = do
@@ -605,10 +582,9 @@ recvInitialMessage t = do
     lenBs <- recv t 4
     payload <- recv t (fromIntegral (getW32BE lenBs))
     let !ctLen = fromIntegral (getW32BE (bsSlice 64 4 payload)) :: Int
-    pure (bsSlice 0 32 payload, bsSlice 32 32 payload, MLKEMCiphertext (bsSlice 68 ctLen payload))
-
+    pure (bsSlice 0 32 payload, bsSlice 32 32 payload,
+          MLKEMCiphertext (bsSlice 68 ctLen payload))
 -- ByteString / Word32 helpers ---------------------------------------------
-
 bsSlice :: Int -> Int -> BS.ByteString -> BS.ByteString
 bsSlice off len = BS.take len . BS.drop off
 
