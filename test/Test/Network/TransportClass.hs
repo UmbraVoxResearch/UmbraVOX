@@ -12,7 +12,7 @@ import Data.List (isInfixOf)
 
 import Test.Util
 import UmbraVox.Network.ProviderCatalog (TransportProviderId(..))
-import UmbraVox.Network.ProviderRuntime (connectWithProviderTryPorts)
+import UmbraVox.Network.ProviderRuntime (connectWithProvider, connectWithProviderTryPorts, listenWithProvider)
 import UmbraVox.Network.TransportClass
     ( TransportHandle(..)
     , AnyTransport(..)
@@ -32,6 +32,7 @@ runTests = do
         , testAnyInfoPreservesLabel
         , testExistentialHidesType
         , testUnsupportedProviderFailsClosed
+        , testUnsupportedProviderFailureMatrix
         ]
     pure (and results)
 
@@ -100,3 +101,27 @@ testUnsupportedProviderFailsClosed = do
     case result of
         Left err -> assertEq "unsupported provider runtime failure mentions provider" True ("ProviderSignal" `isInfixOf` show err)
         Right _ -> assertEq "unsupported provider runtime should fail" True False
+
+testUnsupportedProviderFailureMatrix :: IO Bool
+testUnsupportedProviderFailureMatrix = do
+    results <- sequence
+        [ assertUnsupported "udp connect unsupported" "ProviderUDP" "connect"
+            (connectWithProvider ProviderUDP "127.0.0.1" 9000)
+        , assertUnsupported "tor connect unsupported" "ProviderTor" "connect"
+            (connectWithProvider ProviderTor "127.0.0.1" 9050)
+        , assertUnsupported "irc listen unsupported" "ProviderIRC" "listen"
+            (listenWithProvider ProviderIRC 6667)
+        , assertUnsupported "signal-server default ports unsupported" "ProviderSignalServer" "connect-default-ports"
+            (connectWithProviderTryPorts ProviderSignalServer "127.0.0.1" [443])
+        ]
+    pure (and results)
+  where
+    assertUnsupported label providerName action ioAction = do
+        result <- try ioAction :: IO (Either IOError AnyTransport)
+        case result of
+            Left err -> do
+                ok1 <- assertEq (label ++ " mentions provider") True (providerName `isInfixOf` show err)
+                ok2 <- assertEq (label ++ " mentions action") True (action `isInfixOf` show err)
+                pure (ok1 && ok2)
+            Right _ ->
+                assertEq (label ++ " should fail") True False

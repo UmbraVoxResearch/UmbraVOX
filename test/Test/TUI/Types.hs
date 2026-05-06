@@ -21,7 +21,7 @@ import UmbraVox.Network.ProviderCatalog
     , loadTransportProviderCatalog, loadTransportProviderManifest
     , loadTransportProviderManifestFields, loadTransportProviderManifests
     , loadTransportProviderRuntimeCatalog, providerEndpointSchema
-    , providerLoadStatusLabel, renderProviderEndpoint
+    , providerLoadStatusLabel, renderProviderEndpoint, parseProviderEndpoint
     , providerManifestApiSupported, providerManifestInherits, tpId, tpStableId
     )
 import UmbraVox.TUI.Types (ContactStatus(..), statusTag, Layout(..), MenuTab(..),
@@ -310,7 +310,17 @@ testTransportProviderRegistry = do
         (renderProviderEndpoint ProviderTCP "127.0.0.1" 7853)
     n <- assertEq "signal endpoint render" "chat.example:443 via signal"
         (renderProviderEndpoint ProviderSignal "chat.example" 443)
-    pure (a && b && c && d && e && f && g && h && i && j && k && l && m && n)
+    o <- assertEq "tcp endpoint parse" (Just "127.0.0.1:7853")
+        (parseProviderEndpoint ProviderTCP "127.0.0.1:7853")
+    p <- assertEq "wireguard endpoint parse" (Just "peer@wg.example:51820")
+        (parseProviderEndpoint ProviderWireGuard "peer@wg.example:51820")
+    q <- assertEq "signal endpoint parse" (Just "+15551234567")
+        (parseProviderEndpoint ProviderSignal "+15551234567")
+    r <- assertEq "signal server endpoint parse" (Just "server.example:443/account")
+        (parseProviderEndpoint ProviderSignalServer "server.example:443/account")
+    s <- assertEq "invalid tcp endpoint parse" Nothing
+        (parseProviderEndpoint ProviderTCP "127.0.0.1")
+    pure (a && b && c && d && e && f && g && h && i && j && k && l && m && n && o && p && q && r && s)
   where
     isSignalArtifactMissing entry =
         tpId (ctpProvider entry) == ProviderSignal

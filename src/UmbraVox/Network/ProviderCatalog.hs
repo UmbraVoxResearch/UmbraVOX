@@ -24,13 +24,14 @@ module UmbraVox.Network.ProviderCatalog
     , providerIdLabel
     , providerEndpointSchema
     , renderProviderEndpoint
+    , parseProviderEndpoint
     , providerClassLabel
     , providerCapabilityLabel
     , providerLaunchSpecLabel
     , providerLoadStatusLabel
     ) where
 
-import Data.Char (toLower)
+import Data.Char (isDigit, toLower)
 import Data.List (isPrefixOf, sortOn)
 import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
 import System.FilePath ((</>), isAbsolute, takeDirectory)
@@ -460,6 +461,86 @@ renderProviderEndpoint providerId host port =
         ProviderWhatsApp -> host ++ ":" ++ show port ++ " via whatsapp"
         ProviderSignal -> host ++ ":" ++ show port ++ " via signal"
         ProviderSignalServer -> host ++ ":" ++ show port ++ " via signal-server"
+
+parseProviderEndpoint :: TransportProviderId -> String -> Maybe String
+parseProviderEndpoint providerId raw =
+    case providerId of
+        ProviderTCP -> parseHostPort normalized
+        ProviderUDP -> parseHostPort normalized
+        ProviderTor -> parseHostPort normalized
+        ProviderWireGuard -> do
+            (peer, hostPort) <- splitOnce '@' normalized
+            hostPort' <- parseHostPort hostPort
+            pure (peer ++ "@" ++ hostPort')
+        ProviderIRC -> do
+            (nick, serverRest) <- splitOnce '@' normalized
+            (serverPort, channel) <- splitOnce '/' serverRest
+            serverPort' <- parseHostPort serverPort
+            if validToken channel
+                then pure (nick ++ "@" ++ serverPort' ++ "/" ++ channel)
+                else Nothing
+        ProviderAIM -> do
+            (screenname, server) <- splitOnce '@' normalized
+            if validToken screenname && validToken server
+                then pure (screenname ++ "@" ++ server)
+                else Nothing
+        ProviderXMPP -> do
+            (jid, resource) <- splitOnce '/' normalized
+            if validToken jid && validToken resource
+                then pure (jid ++ "/" ++ resource)
+                else Nothing
+        ProviderMastodon -> do
+            stripped <- stripLeading '@' normalized
+            (user, instanceName) <- splitOnce '@' stripped
+            if validToken user && validToken instanceName
+                then pure ("@" ++ user ++ "@" ++ instanceName)
+                else Nothing
+        ProviderFacebook -> parseAccount normalized
+        ProviderInstagram -> parseAccount normalized
+        ProviderWhatsApp -> parseAccount normalized
+        ProviderSignal -> parseAccount normalized
+        ProviderSignalServer -> do
+            (serverPort, account) <- splitOnce '/' normalized
+            serverPort' <- parseHostPort serverPort
+            if validToken account
+                then pure (serverPort' ++ "/" ++ account)
+                else Nothing
+  where
+    normalized = trim raw
+
+    parseHostPort input = do
+        (host, portRaw) <- splitOnce ':' input
+        port <- parsePort portRaw
+        if validToken host
+            then pure (host ++ ":" ++ show port)
+            else Nothing
+
+    parseAccount input =
+        if validToken input
+            then Just input
+            else Nothing
+
+    stripLeading ch (c:rest)
+        | c == ch = Just rest
+    stripLeading _ _ = Nothing
+
+    validToken = not . null . trim
+
+    parsePort portRaw =
+        let digits = trim portRaw
+        in if not (null digits) && all isDigit digits
+            then
+                let port = read digits :: Int
+                in if port > 0 && port <= 65535
+                    then Just port
+                    else Nothing
+            else Nothing
+
+    splitOnce ch input =
+        case break (== ch) input of
+            (lhs, _ : rhs)
+                | validToken lhs && validToken rhs -> Just (trim lhs, trim rhs)
+            _ -> Nothing
 
 resolveArtifactPath :: FilePath -> FilePath -> FilePath
 resolveArtifactPath manifestPath artifactPath
