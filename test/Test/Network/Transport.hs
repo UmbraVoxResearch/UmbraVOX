@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Transport loopback test suite.
 --
 -- Tests TCP transport round-trip using a loopback connection on localhost.

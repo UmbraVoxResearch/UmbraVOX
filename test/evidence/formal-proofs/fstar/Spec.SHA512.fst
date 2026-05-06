@@ -173,39 +173,140 @@ let pad (msg : seq UInt8.t) : (padded:seq UInt8.t{Seq.length padded % block_size
 (** Message schedule                                                     **)
 (** -------------------------------------------------------------------- **)
 
-let rec schedule_word (block : seq UInt8.t{Seq.length block = block_size})
-                      (w : seq UInt64.t{Seq.length w = 80})
-                      (t : nat{t < 80})
-    : Tot UInt64.t (decreases t) =
-  if t < 16 then
-    be_bytes_to_uint64 block (t * 8)
-  else
-    let w_t2  = Seq.index w (t - 2) in
-    let w_t7  = Seq.index w (t - 7) in
-    let w_t15 = Seq.index w (t - 15) in
-    let w_t16 = Seq.index w (t - 16) in
-    UInt64.add_mod (UInt64.add_mod (ssig1 w_t2) w_t7)
-                   (UInt64.add_mod (ssig0 w_t15) w_t16)
+let initial_schedule_prefix (block : seq UInt8.t{Seq.length block = block_size})
+    : (s:seq UInt64.t{Seq.length s = 16}) =
+  let l = [
+    be_bytes_to_uint64 block 0;
+    be_bytes_to_uint64 block 8;
+    be_bytes_to_uint64 block 16;
+    be_bytes_to_uint64 block 24;
+    be_bytes_to_uint64 block 32;
+    be_bytes_to_uint64 block 40;
+    be_bytes_to_uint64 block 48;
+    be_bytes_to_uint64 block 56;
+    be_bytes_to_uint64 block 64;
+    be_bytes_to_uint64 block 72;
+    be_bytes_to_uint64 block 80;
+    be_bytes_to_uint64 block 88;
+    be_bytes_to_uint64 block 96;
+    be_bytes_to_uint64 block 104;
+    be_bytes_to_uint64 block 112;
+    be_bytes_to_uint64 block 120
+  ] in
+  assert_norm (List.Tot.length l = 16);
+  Seq.seq_of_list l
+
+val schedule_index_bounds : w:seq UInt64.t
+    -> t:nat{16 <= t /\ t < 80 /\ Seq.length w = t}
+    -> Lemma (
+         t - 2 < Seq.length w /\
+         t - 7 < Seq.length w /\
+         t - 15 < Seq.length w /\
+         t - 16 < Seq.length w
+       )
+let schedule_index_bounds w t =
+  assert_norm (
+    t - 2 < Seq.length w /\
+    t - 7 < Seq.length w /\
+    t - 15 < Seq.length w /\
+    t - 16 < Seq.length w
+  )
+
+let next_schedule_word (prefix : seq UInt64.t)
+                       (t : nat{16 <= t /\ t < 80 /\ Seq.length prefix = t})
+    : UInt64.t =
+  schedule_index_bounds prefix t;
+  let w_t2  = Seq.index prefix (t - 2) in
+  let w_t7  = Seq.index prefix (t - 7) in
+  let w_t15 = Seq.index prefix (t - 15) in
+  let w_t16 = Seq.index prefix (t - 16) in
+  UInt64.add_mod (UInt64.add_mod (ssig1 w_t2) w_t7)
+                 (UInt64.add_mod (ssig0 w_t15) w_t16)
+
+let extend_schedule_prefix (prefix : seq UInt64.t)
+                           (t : nat{16 <= t /\ t < 80 /\ Seq.length prefix = t})
+    : (s:seq UInt64.t{Seq.length s = t + 1}) =
+  let wt = next_schedule_word prefix t in
+  let out = Seq.snoc prefix wt in
+  assert_norm (Seq.length out = t + 1);
+  out
+
+let extend_schedule_prefix2 (prefix : seq UInt64.t)
+                            (t : nat{16 <= t /\ t <= 78 /\ Seq.length prefix = t})
+    : (s:seq UInt64.t{Seq.length s = t + 2}) =
+  let p1 = extend_schedule_prefix prefix t in
+  let p2 = extend_schedule_prefix p1 (t + 1) in
+  assert_norm (Seq.length p2 = t + 2);
+  p2
+
+let extend_schedule_prefix4 (prefix : seq UInt64.t)
+                            (t : nat{16 <= t /\ t <= 76 /\ Seq.length prefix = t})
+    : (s:seq UInt64.t{Seq.length s = t + 4}) =
+  let p2 = extend_schedule_prefix2 prefix t in
+  let p4 = extend_schedule_prefix2 p2 (t + 2) in
+  assert_norm (Seq.length p4 = t + 4);
+  p4
+
+let schedule_prefix32 (prefix : seq UInt64.t{Seq.length prefix = 16})
+    : (out:seq UInt64.t{Seq.length out = 32}) =
+  let prefix4 = extend_schedule_prefix4 prefix 16 in
+  let prefix8 = extend_schedule_prefix4 prefix4 20 in
+  let prefix12 = extend_schedule_prefix4 prefix8 24 in
+  extend_schedule_prefix4 prefix12 28
+
+let schedule_prefix48 (prefix : seq UInt64.t{Seq.length prefix = 32})
+    : (out:seq UInt64.t{Seq.length out = 48}) =
+  let prefix4 = extend_schedule_prefix4 prefix 32 in
+  let prefix8 = extend_schedule_prefix4 prefix4 36 in
+  let prefix12 = extend_schedule_prefix4 prefix8 40 in
+  extend_schedule_prefix4 prefix12 44
+
+let schedule_prefix64 (prefix : seq UInt64.t{Seq.length prefix = 48})
+    : (out:seq UInt64.t{Seq.length out = 64}) =
+  let prefix4 = extend_schedule_prefix4 prefix 48 in
+  let prefix8 = extend_schedule_prefix4 prefix4 52 in
+  let prefix12 = extend_schedule_prefix4 prefix8 56 in
+  extend_schedule_prefix4 prefix12 60
+
+let schedule_prefix80 (prefix : seq UInt64.t{Seq.length prefix = 64})
+    : (out:seq UInt64.t{Seq.length out = 80}) =
+  let prefix4 = extend_schedule_prefix4 prefix 64 in
+  let prefix8 = extend_schedule_prefix4 prefix4 68 in
+  let prefix12 = extend_schedule_prefix4 prefix8 72 in
+  extend_schedule_prefix4 prefix12 76
 
 let schedule (block : seq UInt8.t{Seq.length block = block_size})
     : (s:seq UInt64.t{Seq.length s = 80}) =
-  let rec build (acc : seq UInt64.t) (t : nat)
-      : Tot (s:seq UInt64.t{Seq.length s = 80}) (decreases (80 - t)) =
-    if t >= 80 then
-      (assume (Seq.length acc = 80); acc)
-    else (
-      assume (Seq.length acc = 80);
-      let wt = schedule_word block acc t in
-      build (Seq.snoc acc wt) (t + 1)
-    )
-  in
-  build Seq.empty 0
+  let p16 = initial_schedule_prefix block in
+  let p32 = schedule_prefix32 p16 in
+  let p48 = schedule_prefix48 p32 in
+  let p64 = schedule_prefix64 p48 in
+  schedule_prefix80 p64
 
 (** -------------------------------------------------------------------- **)
 (** Compression function                                                 **)
 (** -------------------------------------------------------------------- **)
 
 type hash_state = (s:seq UInt64.t{Seq.length s = 8})
+
+let mk_hash_state (a : UInt64.t) (b : UInt64.t) (c : UInt64.t) (d : UInt64.t)
+                  (e : UInt64.t) (f : UInt64.t) (g : UInt64.t) (h : UInt64.t)
+    : hash_state =
+  let l = [a; b; c; d; e; f; g; h] in
+  assert_norm (List.Tot.length l = 8);
+  Seq.seq_of_list l
+
+let round_t1 (e : UInt64.t) (f : UInt64.t) (g : UInt64.t) (h : UInt64.t)
+             (kt : UInt64.t) (wt : UInt64.t)
+    : UInt64.t =
+  UInt64.add_mod h
+    (UInt64.add_mod (bsig1 e)
+      (UInt64.add_mod (ch e f g)
+        (UInt64.add_mod kt wt)))
+
+let round_t2 (a : UInt64.t) (b : UInt64.t) (c : UInt64.t)
+    : UInt64.t =
+  UInt64.add_mod (bsig0 a) (maj a b c)
 
 let round_step (wv : hash_state) (t : nat{t < 80})
                (w : seq UInt64.t{Seq.length w = 80})
@@ -218,87 +319,157 @@ let round_step (wv : hash_state) (t : nat{t < 80})
   let f = Seq.index wv 5 in
   let g = Seq.index wv 6 in
   let h = Seq.index wv 7 in
-  let t1 = UInt64.add_mod h
-           (UInt64.add_mod (bsig1 e)
-             (UInt64.add_mod (ch e f g)
-               (UInt64.add_mod (Seq.index k_table t) (Seq.index w t)))) in
-  let t2 = UInt64.add_mod (bsig0 a) (maj a b c) in
-  let l = [
-    UInt64.add_mod t1 t2; a; b; c;
-    UInt64.add_mod d t1; e; f; g
-  ] in
-  assert_norm (List.Tot.length l = 8);
-  Seq.seq_of_list l
+  let t1 = round_t1 e f g h (Seq.index k_table t) (Seq.index w t) in
+  let t2 = round_t2 a b c in
+  mk_hash_state (UInt64.add_mod t1 t2) a b c
+                (UInt64.add_mod d t1) e f g
+
+let round_step2 (wv : hash_state)
+                (t : nat{t <= 78 /\ t % 2 = 0})
+                (w : seq UInt64.t{Seq.length w = 80})
+    : hash_state =
+  let wv1 = round_step wv t w in
+  round_step wv1 (t + 1) w
+
+let round_step4 (wv : hash_state)
+                (t : nat{t <= 76 /\ t % 4 = 0})
+                (w : seq UInt64.t{Seq.length w = 80})
+    : hash_state =
+  let wv2 = round_step2 wv t w in
+  assert_norm (t + 2 <= 78 /\ (t + 2) % 2 = 0);
+  round_step2 wv2 (t + 2) w
+
+let rounds0_19 (wv : hash_state) (w : seq UInt64.t{Seq.length w = 80})
+    : hash_state =
+  let wv1 = round_step4 wv 0 w in
+  let wv2 = round_step4 wv1 4 w in
+  let wv3 = round_step4 wv2 8 w in
+  let wv4 = round_step4 wv3 12 w in
+  round_step4 wv4 16 w
+
+let rounds20_39 (wv : hash_state) (w : seq UInt64.t{Seq.length w = 80})
+    : hash_state =
+  let wv1 = round_step4 wv 20 w in
+  let wv2 = round_step4 wv1 24 w in
+  let wv3 = round_step4 wv2 28 w in
+  let wv4 = round_step4 wv3 32 w in
+  round_step4 wv4 36 w
+
+let rounds40_59 (wv : hash_state) (w : seq UInt64.t{Seq.length w = 80})
+    : hash_state =
+  let wv1 = round_step4 wv 40 w in
+  let wv2 = round_step4 wv1 44 w in
+  let wv3 = round_step4 wv2 48 w in
+  let wv4 = round_step4 wv3 52 w in
+  round_step4 wv4 56 w
+
+let rounds60_79 (wv : hash_state) (w : seq UInt64.t{Seq.length w = 80})
+    : hash_state =
+  let wv1 = round_step4 wv 60 w in
+  let wv2 = round_step4 wv1 64 w in
+  let wv3 = round_step4 wv2 68 w in
+  let wv4 = round_step4 wv3 72 w in
+  round_step4 wv4 76 w
 
 let rounds (wv : hash_state) (w : seq UInt64.t{Seq.length w = 80})
     : hash_state =
-  let rec go (wv : hash_state) (t : nat)
-      : Tot hash_state (decreases (80 - t)) =
-    if t >= 80 then wv
-    else go (round_step wv t w) (t + 1)
-  in
-  go wv 0
+  let wv1 = rounds0_19 wv w in
+  let wv2 = rounds20_39 wv1 w in
+  let wv3 = rounds40_59 wv2 w in
+  rounds60_79 wv3 w
+
+let compress_foldback (h : hash_state) (wv : hash_state)
+    : hash_state =
+  mk_hash_state
+    (UInt64.add_mod (Seq.index h 0) (Seq.index wv 0))
+    (UInt64.add_mod (Seq.index h 1) (Seq.index wv 1))
+    (UInt64.add_mod (Seq.index h 2) (Seq.index wv 2))
+    (UInt64.add_mod (Seq.index h 3) (Seq.index wv 3))
+    (UInt64.add_mod (Seq.index h 4) (Seq.index wv 4))
+    (UInt64.add_mod (Seq.index h 5) (Seq.index wv 5))
+    (UInt64.add_mod (Seq.index h 6) (Seq.index wv 6))
+    (UInt64.add_mod (Seq.index h 7) (Seq.index wv 7))
 
 let compress (h : hash_state)
              (block : seq UInt8.t{Seq.length block = block_size})
     : hash_state =
   let w = schedule block in
   let wv = rounds h w in
-  let l = [
-    UInt64.add_mod (Seq.index h 0) (Seq.index wv 0);
-    UInt64.add_mod (Seq.index h 1) (Seq.index wv 1);
-    UInt64.add_mod (Seq.index h 2) (Seq.index wv 2);
-    UInt64.add_mod (Seq.index h 3) (Seq.index wv 3);
-    UInt64.add_mod (Seq.index h 4) (Seq.index wv 4);
-    UInt64.add_mod (Seq.index h 5) (Seq.index wv 5);
-    UInt64.add_mod (Seq.index h 6) (Seq.index wv 6);
-    UInt64.add_mod (Seq.index h 7) (Seq.index wv 7)
-  ] in
-  assert_norm (List.Tot.length l = 8);
-  Seq.seq_of_list l
+  compress_foldback h wv
 
 (** -------------------------------------------------------------------- **)
 (** Serialization and top-level function                                 **)
 (** -------------------------------------------------------------------- **)
 
-let hash_to_bytes (h : hash_state) : (s:seq UInt8.t{Seq.length s = hash_size}) =
-  assume (Seq.length (Seq.append
-    (Seq.append
-      (Seq.append (uint64_to_be_bytes (Seq.index h 0))
-                  (uint64_to_be_bytes (Seq.index h 1)))
-      (Seq.append (uint64_to_be_bytes (Seq.index h 2))
-                  (uint64_to_be_bytes (Seq.index h 3))))
-    (Seq.append
-      (Seq.append (uint64_to_be_bytes (Seq.index h 4))
-                  (uint64_to_be_bytes (Seq.index h 5)))
-      (Seq.append (uint64_to_be_bytes (Seq.index h 6))
-                  (uint64_to_be_bytes (Seq.index h 7))))) = hash_size);
-  Seq.append
-    (Seq.append
-      (Seq.append (uint64_to_be_bytes (Seq.index h 0))
-                  (uint64_to_be_bytes (Seq.index h 1)))
-      (Seq.append (uint64_to_be_bytes (Seq.index h 2))
-                  (uint64_to_be_bytes (Seq.index h 3))))
-    (Seq.append
-      (Seq.append (uint64_to_be_bytes (Seq.index h 4))
-                  (uint64_to_be_bytes (Seq.index h 5)))
-      (Seq.append (uint64_to_be_bytes (Seq.index h 6))
-                  (uint64_to_be_bytes (Seq.index h 7))))
+let bytes_of_four_words (w0 : UInt64.t) (w1 : UInt64.t)
+                        (w2 : UInt64.t) (w3 : UInt64.t)
+    : (s:seq UInt8.t{Seq.length s = 32}) =
+  let b0 = uint64_to_be_bytes w0 in
+  let b1 = uint64_to_be_bytes w1 in
+  let b2 = uint64_to_be_bytes w2 in
+  let b3 = uint64_to_be_bytes w3 in
+  let left = Seq.append b0 b1 in
+  assert_norm (Seq.length left = 16);
+  let right = Seq.append b2 b3 in
+  assert_norm (Seq.length right = 16);
+  let out = Seq.append left right in
+  assert_norm (Seq.length out = 32);
+  out
 
-let rec process_blocks (h : hash_state)
-                       (padded : seq UInt8.t{Seq.length padded % block_size = 0})
-                       (i : nat)
-    : Tot hash_state (decreases (Seq.length padded / block_size - i)) =
-  if i >= Seq.length padded / block_size then h
+let hash_to_bytes (h : hash_state) : (s:seq UInt8.t{Seq.length s = hash_size}) =
+  let h0 = Seq.index h 0 in
+  let h1 = Seq.index h 1 in
+  let h2 = Seq.index h 2 in
+  let h3 = Seq.index h 3 in
+  let h4 = Seq.index h 4 in
+  let h5 = Seq.index h 5 in
+  let h6 = Seq.index h 6 in
+  let h7 = Seq.index h 7 in
+  let hi = bytes_of_four_words h0 h1 h2 h3 in
+  let lo = bytes_of_four_words h4 h5 h6 h7 in
+  let out = Seq.append hi lo in
+  assert_norm (Seq.length out = hash_size);
+  out
+
+let first_padded_block
+    (padded : seq UInt8.t{Seq.length padded >= block_size /\ Seq.length padded % block_size = 0})
+    : (block:seq UInt8.t{Seq.length block = block_size}) =
+  let block = Seq.slice padded 0 block_size in
+  assert_norm (Seq.length block = block_size);
+  block
+
+let remaining_padded_tail
+    (padded : seq UInt8.t{Seq.length padded >= block_size /\ Seq.length padded % block_size = 0})
+    : (rest:seq UInt8.t{Seq.length rest % block_size = 0}) =
+  let rest = Seq.slice padded block_size (Seq.length padded) in
+  assert_norm (Seq.length rest % block_size = 0);
+  rest
+
+let rec process_blocks_count (h : hash_state)
+                             (padded : seq UInt8.t{Seq.length padded % block_size = 0})
+                             (blocks : nat{Seq.length padded = blocks * block_size})
+    : Tot hash_state (decreases blocks) =
+  if blocks = 0 then h
+  else if blocks = 1 then
+    compress h padded
   else
-    let block = Seq.slice padded (i * block_size) ((i + 1) * block_size) in
-    process_blocks (compress h block) padded (i + 1)
+    let block = first_padded_block padded in
+    let rest = remaining_padded_tail padded in
+    assert_norm (Seq.length rest = (blocks - 1) * block_size);
+    process_blocks_count (compress h block) rest (blocks - 1)
+
+let process_blocks (h : hash_state)
+                   (padded : seq UInt8.t{Seq.length padded % block_size = 0})
+    : hash_state =
+  let blocks = Seq.length padded / block_size in
+  assert_norm (Seq.length padded = blocks * block_size);
+  process_blocks_count h padded blocks
 
 (** SHA-512: hash an arbitrary-length message to a 64-byte digest *)
 val sha512 : msg:seq UInt8.t -> Tot (digest:seq UInt8.t{Seq.length digest = hash_size})
 let sha512 (msg : seq UInt8.t) : (digest:seq UInt8.t{Seq.length digest = hash_size}) =
   let padded = pad msg in
-  let final_hash = process_blocks init_hash padded 0 in
+  let final_hash = process_blocks init_hash padded in
   hash_to_bytes final_hash
 
 (** -------------------------------------------------------------------- **)

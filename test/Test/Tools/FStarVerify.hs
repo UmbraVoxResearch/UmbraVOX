@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for the F* verification runner: pure conversion helpers,
 -- summary construction, tool discovery, and module discovery.
 module Test.Tools.FStarVerify (runTests) where
@@ -118,6 +119,7 @@ testDefaultConfigFlags =
     let cfg = defaultConfig "/some/path"
         expected = [ "--cache_checked_modules"
                    , "--already_cached", "Prims,FStar"
+                   , "--include", "/some/path"
                    , "--odir", "/some/path" </> "_output"
                    , "--cache_dir", "/some/path" </> "_cache"
                    ]

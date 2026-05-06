@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Stealth address test suite.
 --
 -- Tests key generation, deriveStealthAddress/scanForPayment round-trip,

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for UmbraVox.Consensus.LeaderElection
 --
 -- The module currently only exports a stub (isSlotLeader = error).

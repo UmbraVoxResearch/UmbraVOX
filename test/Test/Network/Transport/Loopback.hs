@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for UmbraVox.Network.Transport.Loopback
 --
 -- Tests the in-process loopback transport: bidirectional communication,

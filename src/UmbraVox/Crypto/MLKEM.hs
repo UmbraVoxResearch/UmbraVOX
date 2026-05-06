@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | {-# REQ "CRYPTO-010" #-} ML-KEM-768 (FIPS 203, formerly CRYSTALS-Kyber)
 --
 -- Pure Haskell reference implementation. NOT constant-time.

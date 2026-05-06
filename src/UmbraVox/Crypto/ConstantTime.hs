@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Constant-time comparison for ByteStrings.
 --
 -- Uses XOR accumulation over all bytes to avoid timing side-channels.

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for UmbraVox.Storage.StateDB
 --
 -- StateDB is currently a stub module. openStateDB calls @error@.

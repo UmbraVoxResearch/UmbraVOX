@@ -1,7 +1,8 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | {-# REQ "CRYPTO-002" #-} SHA-256 (FIPS 180-4)
 --
 -- Pure Haskell reference implementation. NOT constant-time.
--- Production builds use FFI to constant-time C (see doc/03-cryptography.md).
+-- Production builds use FFI to constant-time C (see attic/doc-legacy-2026-04-28/03-cryptography.md).
 module UmbraVox.Crypto.SHA256
     ( sha256
     ) where

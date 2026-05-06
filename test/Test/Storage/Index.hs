@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for UmbraVox.Storage.Index
 --
 -- Index is currently a stub module. buildIndex calls @error@.

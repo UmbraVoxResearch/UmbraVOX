@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | TUI simulation tests: chat pane input and scrolling
 module Test.TUI.Sim.Chat (runTests) where
 

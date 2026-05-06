@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | SenderKeys test suite: verify module loads and stub function throws as expected.
 -- Group messaging sender keys are not yet implemented.
 module Test.Crypto.Signal.SenderKeys (runTests) where

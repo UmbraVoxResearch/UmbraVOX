@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | QR code and safety number test suite.
 --
 -- Tests safety number determinism, fingerprint format, and QR matrix

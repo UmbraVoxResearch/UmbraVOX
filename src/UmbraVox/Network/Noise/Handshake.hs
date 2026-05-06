@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Noise_IK handshake protocol implementation.
 --
 -- Pattern:
@@ -131,7 +132,7 @@ noiseHandshakeResponder
     :: ByteString   -- ^ Our static secret key (32 bytes)
     -> ByteString      -- ^ Our static public key (32 bytes)
     -> AnyTransport    -- ^ Network transport
-    -> IO (Maybe NoiseState)
+    -> IO (Maybe (NoiseState, ByteString))
 noiseHandshakeResponder rStaticSec rStaticPub transport = do
     -- Initialize handshake hash and chaining key (same as initiator)
     let !h0 = initHash
@@ -189,14 +190,15 @@ noiseHandshakeResponder rStaticSec rStaticPub transport = do
                 -- Responder's send = initiator's recv and vice versa
                 let (!iSendEncKey, !iSendMacKey, !iRecvEncKey, !iRecvMacKey) = splitKeys ck4
 
-                pure (Just NoiseState
-                    { nsSendEncKey = iRecvEncKey
-                    , nsSendMacKey = iRecvMacKey
-                    , nsRecvEncKey = iSendEncKey
-                    , nsRecvMacKey = iSendMacKey
-                    , nsSendN      = 0
-                    , nsRecvN      = 0
-                    })
+                let !noiseState = NoiseState
+                        { nsSendEncKey = iRecvEncKey
+                        , nsSendMacKey = iRecvMacKey
+                        , nsRecvEncKey = iSendEncKey
+                        , nsRecvMacKey = iSendMacKey
+                        , nsSendN      = 0
+                        , nsRecvN      = 0
+                        }
+                pure (Just (noiseState, iStaticPub))
 
 ------------------------------------------------------------------------
 -- Handshake helpers

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Comprehensive edge-case tests for TUI settings dialog callbacks.
 -- Covers all 10 settings options and DlgPrompt callback paths.
 module Test.TUI.Sim.SettingsEdge (runTests) where
@@ -18,15 +19,22 @@ runTests = do
         [ testPortChangeValid
         , testPortChangeInvalidLetters
         , testPortChangeEmpty
+        , testPortChangeSetsRestartStatus
         -- Name change
         , testNameChangeValid
         , testNameChangeEmpty
         , testNameChangeLong
         -- Boolean toggles
         , testDBToggleThreeTimes
+        , testDBToggleSetsRestartStatus
         , testMDNSToggleThreeTimes
+        , testMDNSToggleSetsRestartStatus
         , testPEXToggle
         , testAutoSaveToggle
+        , testDebugLoggingToggle
+        -- DB path
+        , testDBPathSetsRestartStatus
+        , testDebugLogPathUpdate
         -- Keys view
         , testKeysViewOpens
         -- Clear history
@@ -83,6 +91,15 @@ testPortChangeEmpty = do
     feedPrompt st ""
     portAfter <- readIORef (cfgListenPort (asConfig st))
     assertEq "port change empty -> unchanged" portBefore portAfter
+
+testPortChangeSetsRestartStatus :: IO Bool
+testPortChangeSetsRestartStatus = do
+    st <- mkTestState
+    writeIORef (asDialogMode st) (Just DlgSettings)
+    handleSettingsDlg st (KeyChar '1')
+    feedPrompt st "8081"
+    status <- readIORef (asStatusMsg st)
+    assertEq "port change status notes restart" "Listen port set to 8081 (restart required)" status
 
 ------------------------------------------------------------------------
 -- Name change (option '2')
@@ -143,6 +160,16 @@ testDBToggleThreeTimes = do
     r3 <- assertEq "DB toggle 3: flipped"    (not v0) v3
     pure (r1 && r2 && r3)
 
+testDBToggleSetsRestartStatus :: IO Bool
+testDBToggleSetsRestartStatus = do
+    st <- mkTestState
+    writeIORef (asDialogMode st) (Just DlgSettings)
+    handleSettingsDlg st (KeyChar '5')
+    status <- readIORef (asStatusMsg st)
+    assertEq "DB toggle status notes restart"
+        "Persistent storage enabled (restart required)"
+        status
+
 testMDNSToggleThreeTimes :: IO Bool
 testMDNSToggleThreeTimes = do
     st <- mkTestState
@@ -161,6 +188,16 @@ testMDNSToggleThreeTimes = do
     r2 <- assertEq "mDNS toggle 2: back"     v0       v2
     r3 <- assertEq "mDNS toggle 3: flipped"  (not v0) v3
     pure (r1 && r2 && r3)
+
+testMDNSToggleSetsRestartStatus :: IO Bool
+testMDNSToggleSetsRestartStatus = do
+    st <- mkTestState
+    writeIORef (asDialogMode st) (Just DlgSettings)
+    handleSettingsDlg st (KeyChar '3')
+    status <- readIORef (asStatusMsg st)
+    assertEq "mDNS toggle status notes restart"
+        "mDNS enabled (restart required)"
+        status
 
 testPEXToggle :: IO Bool
 testPEXToggle = do
@@ -181,6 +218,42 @@ testAutoSaveToggle = do
     handleSettingsDlg st (KeyChar '8')
     after <- readIORef ref
     assertEq "auto-save toggle flipped" (not before) after
+
+testDebugLoggingToggle :: IO Bool
+testDebugLoggingToggle = do
+    st <- mkTestState
+    let ref = cfgDebugLogging (asConfig st)
+    before <- readIORef ref
+    writeIORef (asDialogMode st) (Just DlgSettings)
+    handleSettingsDlg st (KeyChar 'a')
+    after <- readIORef ref
+    status <- readIORef (asStatusMsg st)
+    ok1 <- assertEq "debug logging toggle flipped" (not before) after
+    ok2 <- assertEq "debug logging status updated" "Runtime debug logging enabled" status
+    pure (ok1 && ok2)
+
+testDBPathSetsRestartStatus :: IO Bool
+testDBPathSetsRestartStatus = do
+    st <- mkTestState
+    writeIORef (asDialogMode st) (Just DlgSettings)
+    handleSettingsDlg st (KeyChar '6')
+    feedPrompt st "/tmp/umbravox.db"
+    status <- readIORef (asStatusMsg st)
+    assertEq "DB path status notes restart"
+        "Database path updated (restart required)"
+        status
+
+testDebugLogPathUpdate :: IO Bool
+testDebugLogPathUpdate = do
+    st <- mkTestState
+    writeIORef (asDialogMode st) (Just DlgSettings)
+    handleSettingsDlg st (KeyChar 'b')
+    feedPrompt st "build/custom-runtime.log"
+    path <- readIORef (cfgDebugLogPath (asConfig st))
+    status <- readIORef (asStatusMsg st)
+    ok1 <- assertEq "debug log path updated" "build/custom-runtime.log" path
+    ok2 <- assertEq "debug log path status" "Runtime log path updated" status
+    pure (ok1 && ok2)
 
 ------------------------------------------------------------------------
 -- Keys view (option '0')

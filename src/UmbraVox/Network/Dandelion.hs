@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Dandelion++ stem/fluff routing
 --
 -- See: doc/spec/network.md

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | 1024-byte block layout
 --
 -- See: doc/spec/protocol.md

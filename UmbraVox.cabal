@@ -3,11 +3,12 @@ name:               UmbraVox
 version:            0.1.0.0
 synopsis:           Decentralized encrypted communications protocol
 description:
-  UmbraVox is a blockchain-based encrypted messaging protocol with
-  post-quantum cryptography, Ouroboros Praos consensus, and DO-178C
-  DAL A assurance. All cryptographic primitives are hand-implemented
-  using only GHC boot libraries.
-license:            AGPL-3.0-or-later
+  UmbraVox is a research-oriented encrypted messaging project with
+  post-quantum cryptography, preserved blockchain-facing design work,
+  and a Haskell-first runtime backed by handwritten F* formal models.
+  The current assurance boundary and trust gaps are documented in
+  README.md and doc/assurance-matrix.md.
+license:            Apache-2.0
 license-file:       LICENSE
 build-type:         Simple
 
@@ -81,6 +82,29 @@ library
     UmbraVox.Crypto.Signal.Session
     UmbraVox.Crypto.PQWrapper
     UmbraVox.Crypto.KeyStore
+    -- Active generated coverage spans the preserved Haskell, C, and FFI
+    -- namespaces. Generated C and FFI paths are linked through truthful
+    -- bridge wrappers plus compile/link probes.
+    UmbraVox.Crypto.Generated.AES256
+    UmbraVox.Crypto.Generated.ChaCha20
+    UmbraVox.Crypto.Generated.HKDF
+    UmbraVox.Crypto.Generated.HMAC
+    UmbraVox.Crypto.Generated.Keccak
+    UmbraVox.Crypto.Generated.MLKEM768
+    UmbraVox.Crypto.Generated.Poly1305
+    UmbraVox.Crypto.Generated.SHA256
+    UmbraVox.Crypto.Generated.SHA512
+    UmbraVox.Crypto.Generated.X25519
+    UmbraVox.Crypto.Generated.FFI.AES256
+    UmbraVox.Crypto.Generated.FFI.ChaCha20
+    UmbraVox.Crypto.Generated.FFI.HKDF
+    UmbraVox.Crypto.Generated.FFI.HMAC
+    UmbraVox.Crypto.Generated.FFI.Keccak
+    UmbraVox.Crypto.Generated.FFI.MLKEM768
+    UmbraVox.Crypto.Generated.FFI.Poly1305
+    UmbraVox.Crypto.Generated.FFI.SHA256
+    UmbraVox.Crypto.Generated.FFI.SHA512
+    UmbraVox.Crypto.Generated.FFI.X25519
     -- Consensus
     UmbraVox.Consensus.Types
     UmbraVox.Consensus.Block
@@ -121,6 +145,8 @@ library
     UmbraVox.Network.MDNS
     UmbraVox.Network.PeerExchange
     -- Chat
+    UmbraVox.App.RuntimeLog
+    UmbraVox.App.Startup
     UmbraVox.Chat.Wire
     UmbraVox.Chat.Session
     UmbraVox.Chat.Message
@@ -153,6 +179,8 @@ library
     UmbraVox.TUI.Actions.Session
     UmbraVox.TUI.Actions.Export
     UmbraVox.TUI.Handshake
+    -- Version
+    UmbraVox.Version
     -- Tools
     UmbraVox.Tools.Complexity
     UmbraVox.Tools.FStarVerify
@@ -170,6 +198,17 @@ library
     time         >= 1.12  && < 1.15,
     process      >= 1.6   && < 1.7,
     unix         >= 2.8   && < 2.9
+  c-sources:
+    csrc/generated/aes256.c
+    csrc/generated/chacha20.c
+    csrc/generated/hkdf.c
+    csrc/generated/hmac.c
+    csrc/generated/keccak.c
+    csrc/generated/mlkem768.c
+    csrc/generated/poly1305.c
+    csrc/generated/sha256.c
+    csrc/generated/sha512.c
+    csrc/generated/x25519.c
 
 executable umbravox
   import:           warnings, lang
@@ -237,6 +276,7 @@ test-suite umbravox-test
   hs-source-dirs:   test, codegen
   other-modules:
     Test.Util
+    Test.App.Startup
     Test.Harness
     Test.EndToEnd
     Test.EndToEnd2
@@ -256,6 +296,12 @@ test-suite umbravox-test
     Test.Crypto.Poly1305
     Test.Security
     Test.Fuzz
+    Test.FuzzInputs
+    Test.FuzzConnection
+    Test.Hardening.TCP
+    Test.Hardening.Fault
+    Test.Hardening.Recovery
+    Test.Hardening.Soak
     Test.Integration
     Test.Equivalence
     Test.Network.Transport
@@ -268,6 +314,7 @@ test-suite umbravox-test
     Test.Protocol.QRCode
     Test.Network.Noise
     Test.Chat.Session
+    Test.Chat.WireEdge
     Test.Crypto.StealthAddress
     Test.Network.PeerExchange
     Test.Protocol.SafetyNumber
@@ -287,6 +334,7 @@ test-suite umbravox-test
     Test.Storage.Checkpoint
     Test.Network.MDNS
     Test.Network.Protocol
+    Test.CryptoIntegrity
     Test.Chat.Message
     Test.Chat.Transaction
     Test.Chat.Contacts
@@ -309,6 +357,7 @@ test-suite umbravox-test
     Test.TUI.Sim.SettingsEdge
     Test.TUI.Sim.Workflows
     Test.TUI.Sim.Runtime
+    Test.TUI.Sim.MessageFlow
     Test.Tools.Complexity
     Test.Tools.FStarVerify
     Test.Tools.FetchReferences
@@ -338,5 +387,6 @@ test-suite umbravox-test
     directory    >= 1.3   && < 1.4,
     filepath     >= 1.4   && < 1.6,
     process      >= 1.6   && < 1.7,
+    unix         >= 2.8   && < 2.9,
     UmbraVox
   ghc-options:      -threaded -rtsopts "-with-rtsopts=-N"

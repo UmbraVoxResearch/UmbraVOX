@@ -1,15 +1,19 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | TUI simulation tests: message send/receive flow
 -- Tests sendCurrentMessage, sendToSession, loopback sessions, and history accumulation.
 module Test.TUI.Sim.MessageFlow (runTests) where
 
 import Control.Monad (forM_)
-import Data.IORef (readIORef, writeIORef)
+import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.List (isInfixOf, isPrefixOf)
 import qualified Data.Map.Strict as Map
+import Control.Concurrent.MVar (newMVar)
 import Test.Util (assertEq)
 import Test.TUI.Sim.Util
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Actions.Session (sendCurrentMessage, sendToSession, addLoopbackSession)
+import UmbraVox.Chat.Session (initChatSession)
+import UmbraVox.Crypto.Random (randomBytes)
 import qualified Data.ByteString.Char8 as BC
 
 runTests :: IO Bool
@@ -27,6 +31,7 @@ runTests = do
         , testBulkHistoryAccumulation
         , testLoopbackSelfEcho
         , testLoopbackSendToSessionEncryptsAndReceives
+        , testOfflineSessionRejectsSend
         ]
     pure (and results)
 
@@ -240,6 +245,28 @@ testLoopbackSendToSessionEncryptsAndReceives = do
         Nothing -> do
             putStrLn "  FAIL: sendToSession loopback - session not found"
             pure False
+
+-- 11. Session with no transport and Offline status must fail closed.
+testOfflineSessionRejectsSend :: IO Bool
+testOfflineSessionRejectsSend = do
+    cfg <- mkTestConfig
+    sid <- readIORef (cfgNextId cfg)
+    writeIORef (cfgNextId cfg) (sid + 1)
+    secret <- randomBytes 32
+    dhSec <- randomBytes 32
+    peerPub <- randomBytes 32
+    session <- initChatSession secret dhSec peerPub
+    ref <- newIORef session
+    lock <- newMVar ()
+    histRef <- newIORef ["Peer: old message"]
+    stRef <- newIORef Offline
+    let si = SessionInfo Nothing ref lock Nothing "restored-offline" histRef stRef
+    writeIORef (cfgSessions cfg) (Map.singleton sid si)
+    result <- sendToSession si (BC.pack "must not loop")
+    hist <- readIORef histRef
+    r1 <- assertEq "offline session send rejected" "SendUnavailable" (show result)
+    r2 <- assertEq "offline session history unchanged" ["Peer: old message"] hist
+    pure (r1 && r2)
 
 ------------------------------------------------------------------------
 -- Helpers

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Comprehensive fuzz testing for all crypto primitives.
 --
 -- Each fuzz target runs 1000 iterations with deterministic PRNG inputs,

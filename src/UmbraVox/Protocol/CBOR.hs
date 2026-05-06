@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Simple length-prefixed serialization for MVP
 --
 -- Prepends a 4-byte big-endian length header to each message.

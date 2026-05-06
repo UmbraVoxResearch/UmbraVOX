@@ -1,8 +1,9 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | {-# REQ "SIGNAL-002" #-} PQXDH (Post-Quantum Extended Triple Diffie-Hellman)
 --
 -- Hybrid classical + post-quantum key agreement combining X3DH with ML-KEM-768.
 -- Security holds if EITHER the classical CDH problem OR the ML-KEM (Module-LWE)
--- problem is hard. See: doc/03-cryptography.md
+-- problem is hard. See: attic/doc-legacy-2026-04-28/03-cryptography.md
 module UmbraVox.Crypto.Signal.PQXDH
     ( PQPreKeyBundle(..)
     , PQXDHResult(..)

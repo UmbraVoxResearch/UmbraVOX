@@ -1,64 +1,70 @@
 # UmbraVOX F* Formal Verification Specifications
 
 Formal specifications of UmbraVOX cryptographic primitives written in
-F* (https://fstar-lang.org).  These specifications serve as the reference
-against which the Haskell implementations are verified, targeting
-DO-178C DAL A assurance.
+F* (https://fstar-lang.org). These specifications are handwritten formal
+models of the intended standards targets. They are not generated from NIST or
+RFC prose.
 
-## 3-Way Verification Architecture (DO-178C DAL A)
+## Current Assurance Boundary
 
-Every cryptographic primitive in UmbraVOX is verified through three
-independent paths. **No primitive is considered complete without all three.**
+The current repository does **not** have a three-way, independent production
+assurance stack.
 
-```
-              F* Specification
-             (primary / formal)
-            /                    \
-           / structural           \ KAT vector
-          /  lemmas proven         \ correspondence
-         v                          v
-Haskell Implementation    <=====>    C FFI Implementation
-   (reference, tested)    equiv     (production, constant-time)
-   NIST/RFC KAT vectors   10,000+   ctgrind/dudect validated
-   property tests          random    no secret-dependent branches
-   edge cases              inputs
-```
+What is true today:
 
-### Path 1: F* Specification -> Standard
-Each `.fst` file formally specifies the algorithm per its NIST/RFC standard.
-Structural lemmas are machine-checked by the F* type checker with Z3 SMT.
-KAT lemmas use `assume` (validated by Path 2 since F* normalization of
-full hash computations is prohibitively slow).
+- the active runtime crypto path is handwritten Haskell
+- the F* suite is a handwritten formal model layer and the current full
+  `make verify` run is green
+- the generated Haskell namespace is wrapper-style and delegates to the active
+  handwritten Haskell implementations
+- the generated C artifacts are currently link-probe stubs
+- the generated FFI modules currently call the C probes and then delegate back
+  to handwritten Haskell crypto
 
-### Path 2: Haskell Implementation -> NIST/RFC KAT Vectors
-The Haskell implementation is tested against official NIST CAVP and RFC
-test vectors. This validates the implementation AND the assumed KAT
-lemmas in F*. Property-based testing (QuickCheck) and edge cases provide
-additional coverage.
+What is **not** true today:
 
-### Path 3: Haskell == C FFI (equivalence)
-For production, constant-time C implementations are used via FFI.
-10,000+ random inputs verify bitwise-identical output between pure Haskell
-and C FFI paths. Neither path depends solely on cross-validation; each has
-independent evidence (Path 1+2 for Haskell, ctgrind for C).
+- the generated C path is not an independent active cryptographic
+  implementation
+- the generated FFI path is not an independent semantic execution path
+- the repo does not yet have a machine-checked refinement proof from the F*
+  models to the active Haskell implementation
+- the repo should not currently claim DAL-A/DO-style publication assurance
+
+## Current Evidence Structure
+
+### 1. F* Specification -> Standards Model
+Each `.fst` file is a handwritten formalization of the intended NIST/RFC or
+protocol target. Structural lemmas are machine-checked by F* and Z3.
+Some parts of the current proof corpus still rely on `assume`-based trusted
+facts or placeholder security axioms.
+
+### 2. Haskell Implementation -> Runtime Test Evidence
+The Haskell implementation is tested against NIST/RFC vectors, property tests,
+fuzz tests, edge cases, and end-to-end integration suites. This is the main
+evidence for the active runtime semantics today.
+
+### 3. Generated Surface Participation
+The generated Haskell/C/FFI surfaces are wired into the build and exercised by
+wrapper/linkage parity checks. This is useful coverage, but it is not
+independent cryptographic assurance.
 
 ## Module Inventory
 
 | Module | Standard | F* Spec | Haskell | C FFI | KAT Vectors | Status |
 |--------|----------|---------|---------|-------|-------------|--------|
-| SHA-256 | FIPS 180-4 | Spec.SHA256.fst | SHA256.hs | TODO | 9 NIST | 2/3 |
-| SHA-512 | FIPS 180-4 | Spec.SHA512.fst | SHA512.hs | TODO | 4 NIST | 2/3 |
-| HMAC | RFC 2104 | Spec.HMAC.fst | HMAC.hs | TODO | 10 RFC 4231 | 2/3 |
-| HKDF | RFC 5869 | Spec.HKDF.fst | HKDF.hs | TODO | 3 RFC 5869 | 2/3 |
-| AES-256 | FIPS 197 | Spec.AES256.fst | AES.hs | TODO | 3 NIST | 2/3 |
-| GF(2^128) | SP 800-38D | Spec.GaloisField.fst | GCM.hs | TODO | - | 2/3 |
-| AES-GCM | SP 800-38D | Spec.GCM.fst | GCM.hs | TODO | 2 NIST | 2/3 |
-| ChaCha20 | RFC 8439 | Spec.ChaCha20.fst | Random.hs | TODO | 3 RFC | 2/3 |
-| X25519 | RFC 7748 | Spec.X25519.fst | Curve25519.hs | TODO | 6 RFC | 2/3 |
-| Ed25519 | RFC 8032 | Spec.Ed25519.fst | Ed25519.hs | TODO | 3 RFC | 2/3 |
-| Keccak/SHA-3 | FIPS 202 | Spec.Keccak.fst | Keccak.hs | TODO | 10 NIST | 2/3 |
-| ML-KEM-768 | FIPS 203 | **TODO** | MLKEM.hs | TODO | 8 self | 1/3 |
-| VRF | RFC 9381 | **TODO** | **TODO** | TODO | - | 0/3 |
+| SHA-256 | FIPS 180-4 | Spec.SHA256.fst | SHA256.hs | probe/bridge only | 9 NIST | model + runtime evidence |
+| SHA-512 | FIPS 180-4 | Spec.SHA512.fst | SHA512.hs | probe/bridge only | 4 NIST | model + runtime evidence |
+| HMAC | RFC 2104 | Spec.HMAC.fst | HMAC.hs | probe/bridge only | 10 RFC 4231 | model + runtime evidence, assumption-heavy |
+| HKDF | RFC 5869 | Spec.HKDF.fst | HKDF.hs | probe/bridge only | 3 RFC 5869 | model + runtime evidence, assumption-heavy |
+| AES-256 | FIPS 197 | Spec.AES256.fst | AES.hs | probe/bridge only | 3 NIST | model + runtime evidence |
+| GF(2^128) | SP 800-38D | Spec.GaloisField.fst | GCM.hs | n/a | - | model component |
+| AES-GCM | SP 800-38D | Spec.GCM.fst | GCM.hs | probe/bridge only | 2 NIST | model + runtime evidence, assumption-heavy |
+| ChaCha20 | RFC 8439 | Spec.ChaCha20.fst | Random.hs | probe/bridge only | 3 RFC | model + runtime evidence |
+| X25519 | RFC 7748 | Spec.X25519.fst | Curve25519.hs | probe/bridge only | 6 RFC | model + runtime evidence |
+| Ed25519 | RFC 8032 | Spec.Ed25519.fst | Ed25519.hs | n/a | 3 RFC | model + runtime evidence |
+| Keccak/SHA-3 | FIPS 202 | Spec.Keccak.fst | Keccak.hs | probe/bridge only | 10 NIST | model + runtime evidence |
+| ML-KEM-768 | FIPS 203 | Spec.MLKEM768.fst | MLKEM.hs | probe/bridge only | 8 self | model + runtime evidence |
+| VRF | RFC 9381 | **TODO** | **TODO** | TODO | - | not active |
 
 ## What Each File Proves
 
@@ -159,17 +165,17 @@ independent evidence (Path 1+2 for Haskell, ctgrind for C).
 # Enter development environment
 nix-shell
 
-# Verify all F* specifications (11 modules)
-./test/evidence/formal-proofs/fstar/verify.sh
+# Verify all active F* specifications
+make verify
 
 # Verify a single module
-./test/evidence/formal-proofs/fstar/verify.sh Spec.SHA256
+cabal run fstar-verify Spec.SHA256
 
-# Run Haskell test suite (KAT vectors + properties, 179 tests)
-cabal test
+# Run the fast messaging-MVP gate
+make test
 
-# Full 3-way verification (when C FFI is implemented)
-cabal test --test-option=--equivalence
+# Run the generated/reference equivalence coverage
+cabal test umbravox-test --test-options='core'
 ```
 
 ## Design Decisions

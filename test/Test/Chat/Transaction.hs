@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for UmbraVox.Chat.Transaction.
 --
 -- NOTE: messageToTx is currently a stub (error "not implemented").

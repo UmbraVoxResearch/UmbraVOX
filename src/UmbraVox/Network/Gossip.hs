@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Block + transaction gossip protocol
 --
 -- See: doc/spec/network.md

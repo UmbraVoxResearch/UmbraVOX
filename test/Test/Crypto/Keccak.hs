@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | SHA-3 / Keccak test suite: NIST test vectors for all FIPS 202 functions
 -- (SHA3-224, SHA3-256, SHA3-384, SHA3-512, SHAKE-128, SHAKE-256),
 -- plus permutation self-tests and property tests.

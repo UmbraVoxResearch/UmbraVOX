@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Wire format encoding/decoding for chat messages
 --
 -- Handles on-the-wire message framing: header (40 bytes) || ciphertext || tag (16 bytes).

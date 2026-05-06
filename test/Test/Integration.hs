@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | End-to-end integration tests: PQXDH + Double Ratchet message flow,
 -- out-of-order delivery, key exhaustion, and stealth address integration.
 module Test.Integration (runTests) where

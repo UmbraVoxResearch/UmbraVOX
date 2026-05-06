@@ -1,18 +1,28 @@
--- | Auto-generated FFI bindings by CryptoGen. DO NOT EDIT.
+-- SPDX-License-Identifier: Apache-2.0
+-- | Auto-generated FFI bridge bindings by CryptoGen. DO NOT EDIT.
 {-# LANGUAGE ForeignFunctionInterface #-}
-module UmbraVox.Crypto.Generated.FFI.ChaCha20 where
+module UmbraVox.Crypto.Generated.FFI.ChaCha20
+    ( ffiLinked
+    , chacha20Block
+    , chacha20Encrypt
+    ) where
 
-import Data.Word (Word8, Word32, Word64)
-import Foreign.C.Types (CInt(..))
-import Foreign.Ptr (Ptr)
 import Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Unsafe as BSU
+import Data.Word (Word32)
+import Foreign.C.Types (CInt(..))
+import qualified UmbraVox.Crypto.Random as Reference
 
-foreign import ccall "chacha20" c_chacha20 :: Ptr Word8 -> Ptr Word8 -> Word32 -> IO Word32
+foreign import ccall "chacha20_link_probe" c_chacha20_link_probe :: IO CInt
 
-chacha20 :: ByteString -> ByteString -> Word32 -> IO Word32
-chacha20 key      nonce    counter  =
-  BSU.unsafeUseAsCStringLen key      $ \(key     _ptr, _) ->
-  BSU.unsafeUseAsCStringLen nonce    $ \(nonce   _ptr, _) ->
-  c_chacha20 key     _ptr nonce   _ptr counter 
+ffiLinked :: IO Bool
+ffiLinked = (/= 0) <$> c_chacha20_link_probe
+
+chacha20Block :: ByteString -> ByteString -> Word32 -> IO ByteString
+chacha20Block key nonce counter = do
+    _ <- c_chacha20_link_probe
+    pure (Reference.chacha20Block key nonce counter)
+
+chacha20Encrypt :: ByteString -> ByteString -> Word32 -> ByteString -> IO ByteString
+chacha20Encrypt key nonce counter plaintext = do
+    _ <- c_chacha20_link_probe
+    pure (Reference.chacha20Encrypt key nonce counter plaintext)

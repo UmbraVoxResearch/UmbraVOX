@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | CBORGen: Generates CBOR serialization code from .schema files.

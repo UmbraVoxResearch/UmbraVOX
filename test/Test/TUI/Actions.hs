@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for UmbraVox.TUI.Actions
 -- Most functions in Actions are IO-heavy (session management, terminal control).
 -- We test the isPfx-based /file command detection logic and other testable behaviors.

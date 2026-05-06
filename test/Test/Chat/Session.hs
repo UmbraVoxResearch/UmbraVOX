@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Chat session test suite.
 --
 -- Tests initChatSession, sendChatMessage/recvChatMessage round-trip,

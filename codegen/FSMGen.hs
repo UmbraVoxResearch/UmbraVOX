@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | FSMGen: Generates typed state machines from .fsm specifications.

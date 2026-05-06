@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | TUI simulation tests: global keyboard shortcuts
 module Test.TUI.Sim.Shortcuts (runTests) where
 
@@ -15,11 +16,11 @@ runTests = do
         [ testCtrlNOpensNewConn
         , testEscapeClosesDialog
         , testEscapeNoOpWithoutDialog
-        , testF1OpensFile
+        , testF1OpensHelp
         , testF2OpensContacts
         , testF3OpensChat
         , testF4OpensPrefs
-        , testF5OpensHelp
+        , testF5NoOp
         , testUnknownKeyNoOp
         ]
     pure (and results)
@@ -46,11 +47,11 @@ testEscapeNoOpWithoutDialog = do
     dlg <- readIORef (asDialogMode st)
     assertEq "Escape no-op without dialog" True (isDlgNothing dlg)
 
-testF1OpensFile :: IO Bool
-testF1OpensFile = do
+testF1OpensHelp :: IO Bool
+testF1OpensHelp = do
     st <- mkTestState; handleNormal st KeyF1
     m <- readIORef (asMenuOpen st)
-    assertEq "F1 opens File" (Just MenuFile) m
+    assertEq "F1 opens Help" (Just MenuHelp) m
 
 testF2OpensContacts :: IO Bool
 testF2OpensContacts = do
@@ -70,11 +71,11 @@ testF4OpensPrefs = do
     m <- readIORef (asMenuOpen st)
     assertEq "F4 opens Prefs" (Just MenuPrefs) m
 
-testF5OpensHelp :: IO Bool
-testF5OpensHelp = do
+testF5NoOp :: IO Bool
+testF5NoOp = do
     st <- mkTestState; handleNormal st KeyF5
     m <- readIORef (asMenuOpen st)
-    assertEq "F5 opens Help" (Just MenuHelp) m
+    assertEq "F5 no-op" Nothing m
 
 testUnknownKeyNoOp :: IO Bool
 testUnknownKeyNoOp = do

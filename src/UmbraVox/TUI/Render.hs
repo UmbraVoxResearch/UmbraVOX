@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 module UmbraVox.TUI.Render
     ( render
     , clearScreen, goto, showCursor, hideCursor, withRawMode
@@ -17,6 +18,7 @@ import UmbraVox.TUI.Dialog (showOverlay, renderHelpOverlay, renderKeysOverlay,
     renderSettingsOverlay, renderNewConnOverlay, renderVerifyOverlay,
     renderBrowseOverlay, renderWelcomeOverlay, renderPromptOverlay, renderDropdown)
 import UmbraVox.TUI.Constants
+import UmbraVox.Version (versionFull)
 
 -- | Prefix check — used by Actions.hs for input parsing.
 isPfx :: String -> String -> Bool
@@ -41,7 +43,7 @@ renderMenuBar :: Layout -> Maybe MenuTab -> IO ()
 renderMenuBar lay mOpen = do
     let totalW = lCols lay
         tabs = [minBound..maxBound] :: [MenuTab]
-        brand = " UmbraVOX v0.1"
+        brand = " " ++ versionFull
     goto 1 1; setFg 36; putStr "\x256D"
     mapM_ (\tab -> do
         let label = menuTabLabel tab
@@ -53,10 +55,15 @@ renderMenuBar lay mOpen = do
         putStr "\x2502"
         ) tabs
     let tabsW = sum (map ((\l -> length l + 1) . menuTabLabel) tabs) + 1
-        brandLen = length brand
-        fillW = max 0 (totalW - tabsW - brandLen - 1)
+        -- Available space = totalW - left corner(1) - tabs - right corner(1)
+        availForBrand = totalW - tabsW - 1
+        -- Truncate brand if needed, leave at least 2 chars for fill
+        brandTrunc = if length brand > availForBrand - 2
+                     then take (availForBrand - 2) brand
+                     else brand
+        fillW = max 0 (availForBrand - length brandTrunc)
     resetSGR; setFg 36; putStr (replicate fillW '\x2500')
-    setFg 33; bold; putStr brand; resetSGR; setFg 36
+    setFg 33; bold; putStr brandTrunc; resetSGR; setFg 36
     putStr "\x256E"; resetSGR
 
 -- | Render a single contact row (left pane content)
@@ -97,7 +104,7 @@ renderPaneRow lay entries selSi sel focus scroll' cScroll row = do
                 start = max 0 (min (total - 1) (total - chatH' - scroll'))
                 idx = start + row
             pure $ if idx >= 0 && idx < total then msgs !! idx else ""
-    putStr (padR (rw - 2) (take (rw - 2) msg))
+    putStr (padR (rw - 1) (take (rw - 1) msg))
     -- Right border
     setFg 36; putStr "\x2502"; resetSGR
 
@@ -108,7 +115,7 @@ renderMidBorder lay chatH' = do
         borderRow = chatH' + 2  -- after all content rows
     goto borderRow 1; setFg 36
     putStr $ "\x251C" ++ replicate (lw - 2) '\x2500' ++ "\x253C"
-          ++ replicate (rw - 2) '\x2500' ++ "\x2524"
+          ++ replicate (rw - 1) '\x2500' ++ "\x2524"
     resetSGR
 
 -- | Input row: contact hints on left (removed), input field on right
@@ -123,10 +130,10 @@ renderInputRow lay focus buf chatH' = do
     -- Right pane: input field
     if focus == ChatPane then do
         bold; setFg 32
-        putStr (padR (rw - 2) (" \x25B8 " ++ take (rw - 6) buf ++ "\x2588"))
+        putStr (padR (rw - 1) (" \x25B8 " ++ take (rw - 5) buf ++ "\x2588"))
         resetSGR
     else
-        putStr (padR (rw - 2) (" \x25B8 " ++ take (rw - 6) buf))
+        putStr (padR (rw - 1) (" \x25B8 " ++ take (rw - 5) buf))
     setFg 36; putStr "\x2502"; resetSGR
 
 -- | Bottom border, edge-to-edge
@@ -136,7 +143,7 @@ renderBottomBorder lay chatH' = do
         botRow = chatH' + 4
     goto botRow 1; setFg 36
     putStr $ "\x2570" ++ replicate (lw - 2) '\x2500' ++ "\x2534"
-          ++ replicate (rw - 2) '\x2500' ++ "\x256F"
+          ++ replicate (rw - 1) '\x2500' ++ "\x256F"
     resetSGR
 
 -- | Status bar: absolute last row, full width, inverted colors.

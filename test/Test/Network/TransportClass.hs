@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for UmbraVox.Network.TransportClass
 --
 -- Tests the TransportHandle typeclass, AnyTransport existential wrapper,

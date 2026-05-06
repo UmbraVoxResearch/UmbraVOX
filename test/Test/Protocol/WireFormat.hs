@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | WireFormat test suite.
 --
 -- The WireFormat module currently exports only stub functions

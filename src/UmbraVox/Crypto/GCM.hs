@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | {-# REQ "CRYPTO-001" #-} AES-256-GCM (NIST SP 800-38D)
 --
 -- Galois/Counter Mode authenticated encryption with associated data.

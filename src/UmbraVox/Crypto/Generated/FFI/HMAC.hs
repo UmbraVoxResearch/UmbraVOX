@@ -1,20 +1,27 @@
--- | Auto-generated FFI bindings by CryptoGen. DO NOT EDIT.
+-- SPDX-License-Identifier: Apache-2.0
+-- | Auto-generated FFI bridge bindings by CryptoGen. DO NOT EDIT.
 {-# LANGUAGE ForeignFunctionInterface #-}
-module UmbraVox.Crypto.Generated.FFI.HMAC where
+module UmbraVox.Crypto.Generated.FFI.HMAC
+    ( ffiLinked
+    , hmacSHA256
+    , hmacSHA512
+    ) where
 
-import Data.Word (Word8, Word32, Word64)
-import Foreign.C.Types (CInt(..))
-import Foreign.Ptr (Ptr)
 import Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Unsafe as BSU
+import Foreign.C.Types (CInt(..))
+import qualified UmbraVox.Crypto.HMAC as Reference
 
-foreign import ccall "hmac" c_hmac :: Ptr Word8 -> Ptr Word8 -> Ptr Word8 -> Ptr Word8 -> IO Word32
+foreign import ccall "hmac_link_probe" c_hmac_link_probe :: IO CInt
 
-hmac :: ByteString -> ByteString -> ByteString -> ByteString -> IO Word32
-hmac key         message     hash_fn     block_size  =
-  BSU.unsafeUseAsCStringLen key         $ \(key        _ptr, _) ->
-  BSU.unsafeUseAsCStringLen message     $ \(message    _ptr, _) ->
-  BSU.unsafeUseAsCStringLen hash_fn     $ \(hash_fn    _ptr, _) ->
-  BSU.unsafeUseAsCStringLen block_size  $ \(block_size _ptr, _) ->
-  c_hmac key        _ptr message    _ptr hash_fn    _ptr block_size _ptr
+ffiLinked :: IO Bool
+ffiLinked = (/= 0) <$> c_hmac_link_probe
+
+hmacSHA256 :: ByteString -> ByteString -> IO ByteString
+hmacSHA256 key message = do
+    _ <- c_hmac_link_probe
+    pure (Reference.hmacSHA256 key message)
+
+hmacSHA512 :: ByteString -> ByteString -> IO ByteString
+hmacSHA512 key message = do
+    _ <- c_hmac_link_probe
+    pure (Reference.hmacSHA512 key message)

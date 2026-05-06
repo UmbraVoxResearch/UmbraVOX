@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Account state (flat file + index)
 --
 -- See: doc/spec/storage.md

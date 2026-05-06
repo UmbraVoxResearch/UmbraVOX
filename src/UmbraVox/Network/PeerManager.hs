@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Peer discovery, scoring, banning
 --
 -- See: doc/spec/network.md

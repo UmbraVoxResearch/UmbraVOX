@@ -1,15 +1,20 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Multi-client integration test harness.
 --
 -- Provides helpers to create connected client pairs, perform handshakes,
 -- exchange encrypted messages, and assert that no plaintext appears on
 -- the wire.
 module Test.Harness
-    ( TestClient(..)
+    ( TransportBackend(..)
+    , TestClient(..)
     , createClientPair
+    , createClientPairWith
     , createNamedClientPair
+    , createNamedClientPairWith
     , handshakeClients
     , clientSend
     , clientRecv
+    , closeClient
     , waitForHistory
     , getTrafficLog
     , assertNoPlaintextInTraffic
@@ -24,11 +29,17 @@ import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
 import UmbraVox.Chat.Session (ChatSession, sendChatMessage, recvChatMessage)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey)
 import UmbraVox.Network.Transport.Intercept
-    (InterceptTransport, TrafficEntry(..), wrapWithIntercept)
+    (TrafficEntry(..), wrapWithIntercept)
 import UmbraVox.Network.Transport.Loopback (newLoopbackPair)
-import UmbraVox.Network.TransportClass (AnyTransport(..), anySend, anyRecv)
+import UmbraVox.Network.Transport (connect, listen)
+import UmbraVox.Network.TransportClass (AnyTransport(..), anySend, anyRecv, anyClose)
 import UmbraVox.Protocol.Encoding (putWord32BE, getWord32BE)
 import UmbraVox.TUI.Handshake (handshakeInitiator, handshakeResponder, genIdentity)
+
+-- | Transport choices for integration scenarios.
+data TransportBackend
+    = LoopbackBackend
+    | TCPBackend Int
 
 -- | A test client with identity, session state, message history, and transport.
 data TestClient = TestClient
@@ -44,7 +55,12 @@ data TestClient = TestClient
 -- with interception logging.
 createClientPair :: IORef [TrafficEntry] -> IO (TestClient, TestClient)
 createClientPair logRef =
-    createNamedClientPair logRef "alice" Nothing "bob" Nothing
+    createNamedClientPairWith logRef LoopbackBackend "alice" Nothing "bob" Nothing
+
+-- | Create a connected pair with an explicit backend.
+createClientPairWith :: IORef [TrafficEntry] -> TransportBackend -> IO (TestClient, TestClient)
+createClientPairWith logRef backend =
+    createNamedClientPairWith logRef backend "alice" Nothing "bob" Nothing
 
 -- | Create a connected pair of test clients with explicit endpoint names.
 -- Identities may be supplied to model one logical client across multiple peers.
@@ -55,18 +71,28 @@ createNamedClientPair
     -> String
     -> Maybe IdentityKey
     -> IO (TestClient, TestClient)
-createNamedClientPair logRef leftName leftIdentity rightName rightIdentity = do
-    -- Create loopback pair
-    (loopA, loopB) <- newLoopbackPair "e2e"
+createNamedClientPair logRef leftName leftIdentity rightName rightIdentity =
+    createNamedClientPairWith logRef LoopbackBackend leftName leftIdentity rightName rightIdentity
 
+-- | Create a connected pair with explicit transport backend.
+createNamedClientPairWith
+    :: IORef [TrafficEntry]
+    -> TransportBackend
+    -> String
+    -> Maybe IdentityKey
+    -> String
+    -> Maybe IdentityKey
+    -> IO (TestClient, TestClient)
+createNamedClientPairWith logRef backend leftName leftIdentity rightName rightIdentity = do
+    (baseA, baseB) <- createTransportPair backend
     -- Shared monotonic counter for traffic entries
     counterRef <- newIORef (0 :: Int)
 
     -- Wrap both sides with interception
     interceptA <- wrapWithIntercept logRef counterRef leftName rightName
-                      (AnyTransport loopA)
+                      baseA
     interceptB <- wrapWithIntercept logRef counterRef rightName leftName
-                      (AnyTransport loopB)
+                      baseB
 
     -- Generate identity keys
     leftId  <- maybe genIdentity pure leftIdentity
@@ -99,6 +125,20 @@ createNamedClientPair logRef leftName leftIdentity rightName rightIdentity = do
 
     pure (alice, bob)
 
+createTransportPair :: TransportBackend -> IO (AnyTransport, AnyTransport)
+createTransportPair LoopbackBackend = do
+    (loopA, loopB) <- newLoopbackPair "e2e"
+    pure (AnyTransport loopA, AnyTransport loopB)
+createTransportPair (TCPBackend port) = do
+    serverVar <- newEmptyMVar
+    _ <- forkIO $ do
+        server <- listen port
+        putMVar serverVar (AnyTransport server)
+    threadDelay 50000
+    client <- connect "127.0.0.1" port
+    server <- takeMVar serverVar
+    pure (AnyTransport client, server)
+
 -- | Perform a PQXDH handshake between two clients.
 -- Bob (responder) sends his bundle first, Alice (initiator) receives it.
 handshakeClients :: TestClient -> TestClient -> IO ()
@@ -108,7 +148,7 @@ handshakeClients alice bob = do
     resultVar <- newEmptyMVar :: IO (MVar ChatSession)
     _ <- forkIO $ do
         putMVar readyVar ()
-        sess <- handshakeResponder (tcTransport bob) (tcIdentity bob)
+        sess <- handshakeResponder (tcTransport bob) (tcIdentity bob) (\_ -> pure True)
         putMVar resultVar sess
 
     -- Wait until the responder thread has started before initiating.
@@ -157,6 +197,9 @@ clientRecv client = do
                         writeIORef (tcSession client) (Just sess')
                         modifyIORef' (tcHistory client) (plaintext :)
                         pure (Just plaintext)
+
+closeClient :: TestClient -> IO ()
+closeClient = anyClose . tcTransport
 
 -- | Wait up to @timeout@ milliseconds for @expectedCount@ messages in history.
 -- Polls every 10ms. Returns 'True' if the expected count is reached.

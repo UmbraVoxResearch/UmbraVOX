@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Failure-path / edge-case tests for the PQXDH handshake.
 -- Exercises deserializeBundle with malformed input, transport-level faults,
 -- concurrency isolation, and the recvBundle length-prefix parser.
@@ -130,7 +131,7 @@ testInitiatorSendsGarbage = do
     -- Run the responder in a thread
     done <- newEmptyMVar
     _ <- forkIO $ do
-        r <- try (handshakeResponder tB bobIK) :: IO (Either SomeException ChatSession)
+        r <- try (handshakeResponder tB bobIK (\_ -> pure True)) :: IO (Either SomeException ChatSession)
         putMVar done r
 
     -- Consume the bundle that responder sends (4-byte length prefix + payload)
@@ -293,7 +294,7 @@ testTwoSimultaneousHandshakes = do
 
     -- Handshake 1
     _ <- forkIO $ do
-        r <- try (handshakeResponder tB1 bobIK1) :: IO (Either SomeException ChatSession)
+        r <- try (handshakeResponder tB1 bobIK1 (\_ -> pure True)) :: IO (Either SomeException ChatSession)
         putMVar done1R r
     _ <- forkIO $ do
         r <- try (handshakeInitiator tA1 aliceIK1) :: IO (Either SomeException ChatSession)
@@ -301,7 +302,7 @@ testTwoSimultaneousHandshakes = do
 
     -- Handshake 2
     _ <- forkIO $ do
-        r <- try (handshakeResponder tB2 bobIK2) :: IO (Either SomeException ChatSession)
+        r <- try (handshakeResponder tB2 bobIK2 (\_ -> pure True)) :: IO (Either SomeException ChatSession)
         putMVar done2R r
     _ <- forkIO $ do
         r <- try (handshakeInitiator tA2 aliceIK2) :: IO (Either SomeException ChatSession)

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | TUI simulation tests: runtime integration paths that catch real bugs.
 -- Tests DB persistence, mDNS wiring, session lifecycle, and error handling.
 module Test.TUI.Sim.Runtime (runTests) where

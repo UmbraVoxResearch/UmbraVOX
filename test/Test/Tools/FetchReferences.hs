@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for the reference PDF catalog and fetch-summary logic.
 module Test.Tools.FetchReferences (runTests) where
 

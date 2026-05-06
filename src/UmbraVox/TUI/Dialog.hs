@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 module UmbraVox.TUI.Dialog
     ( showOverlay
     , renderHelpOverlay, renderNewConnOverlay, renderVerifyOverlay
@@ -44,8 +45,8 @@ renderHelpOverlay lay = showOverlay lay "Help"
     , "  Esc         Close dialog / menu"
     , ""
     , "Menus:"
-    , "  F1 File     F2 Contacts   F3 Chat"
-    , "  F4 Prefs    F5 Help"
+    , "  F1 Help     F2 Contacts   F3 Chat"
+    , "  F4 Prefs    Q Quit"
     , "  Arrow keys to navigate, Enter to select"
     , ""
     , "Shortcuts:"
@@ -93,6 +94,8 @@ renderSettingsOverlay lay st = do
     name      <- readIORef (cfgDisplayName (asConfig st))
     mdns      <- readIORef (cfgMDNSEnabled (asConfig st))
     pex       <- readIORef (cfgPEXEnabled (asConfig st))
+    debugLog  <- readIORef (cfgDebugLogging (asConfig st))
+    debugPath <- readIORef (cfgDebugLogPath (asConfig st))
     mDb       <- readIORef (cfgAnthonyDB (asConfig st))
     let tf True = "ON"; tf False = "OFF"
         ephemeral = case mDb of { Nothing -> True; Just _ -> False }
@@ -113,20 +116,33 @@ renderSettingsOverlay lay st = do
                  , "   6. Retention:     " ++ retLabel
                  , "   7. Auto-save msgs: [" ++ tf autoSave ++ "]"
                  , "   8. Clear history..." ]
+    connMode <- readIORef (cfgConnectionMode (asConfig st))
+    let modeLabel = case connMode of
+            Swing       -> "SWING"
+            Promiscuous -> "PROMISCUOUS"
+            Selective   -> "SELECTIVE"
+            Chaste      -> "CHASTE"
+            Chastity    -> "CHASTITY"
     showOverlay lay "Preferences" $
         [ " General"
         , "   1. Listen port:    " ++ show port
         , "   2. Display name:   " ++ name
+        , "   a. Debug logging:  [" ++ tf debugLog ++ "]"
+        , "   b. Log path:       " ++ debugPath
         , ""
         , " Discovery"
         , "   3. mDNS (LAN):    [" ++ tf mdns ++ "]"
         , "   4. Peer Exchange: [" ++ tf pex ++ "]"
+        , ""
+        , " Security"
+        , "   Connection mode:  [" ++ modeLabel ++ "]"
+        , "   (Promiscuous / Selective / Chaste)"
         , "" ] ++ storageLines ++
         [ ""
         , " Identity"
         , "   0. View/regenerate keys"
         , ""
-        , " Press 0-9 to change, Esc to close" ]
+        , " Press 0-9/a/b to change, Esc to close" ]
 
 renderKeysOverlay :: Layout -> AppState -> IO ()
 renderKeysOverlay lay st = do
@@ -171,11 +187,11 @@ renderWelcomeOverlay lay = showOverlay lay "Welcome to UmbraVOX"
     [ " Post-Quantum Encrypted Messaging"
     , ""
     , " Getting started:"
-    , "   Press F2 to open Contacts menu"
+    , "   Press F3 to open Chat menu"
     , "   Select 'New' to start a conversation"
     , ""
     , " Navigation:"
-    , "   F1-F5      Open menus"
+    , "   F1-F4      Open menus"
     , "   Tab        Switch panes"
     , "   Ctrl+N     Quick new connection"
     , "   Ctrl+Q     Quit"

@@ -1,6 +1,7 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Message cost: C_base * ceil(size/1024)
 --
--- See: doc/06-economics.md "Message Cost (Dynamic, EMA-Adjusted)"
+-- See: attic/doc-legacy-2026-04-28/06-economics.md "Message Cost (Dynamic, EMA-Adjusted)"
 module UmbraVox.Economics.Fees
   ( messageFee
   , feeFloorDefault

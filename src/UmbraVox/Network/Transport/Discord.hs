@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Discord transport (stub)
 --
 -- See: doc/spec/network.md

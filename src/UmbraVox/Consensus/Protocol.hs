@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Ouroboros Praos adaptation
 --
 -- See: doc/spec/consensus.md

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Core consensus types: SlotNo, EpochNo, CycleNo, BlockNo
 --
 -- See: doc/spec/consensus.md

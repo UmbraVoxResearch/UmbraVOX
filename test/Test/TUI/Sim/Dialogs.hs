@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | TUI simulation tests: dialog open/close lifecycle and prompt handling
 module Test.TUI.Sim.Dialogs (runTests) where
 

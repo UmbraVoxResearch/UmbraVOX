@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Cross-validation tests: verify different implementations produce
 -- consistent output, round-trip properties hold, and serialization
 -- is lossless.
@@ -9,9 +10,37 @@ import Data.Word (Word32)
 import Data.Bits (shiftR, (.&.))
 
 import Test.Util
-import UmbraVox.Crypto.SHA256 (sha256)
-import UmbraVox.Crypto.Keccak (sha3_256)
+import qualified UmbraVox.Crypto.AES as AES
+import qualified UmbraVox.Crypto.Curve25519 as Curve25519
+import qualified UmbraVox.Crypto.Generated.AES256 as GeneratedAES256
+import qualified UmbraVox.Crypto.Generated.ChaCha20 as GeneratedChaCha20
+import qualified UmbraVox.Crypto.Generated.FFI.AES256 as GeneratedFFIAES256
+import qualified UmbraVox.Crypto.Generated.FFI.ChaCha20 as GeneratedFFIChaCha20
+import qualified UmbraVox.Crypto.Generated.FFI.HKDF as GeneratedFFIHKDF
+import qualified UmbraVox.Crypto.Generated.FFI.HMAC as GeneratedFFIHMAC
+import qualified UmbraVox.Crypto.Generated.FFI.Keccak as GeneratedFFIKeccak
+import qualified UmbraVox.Crypto.Generated.FFI.MLKEM768 as GeneratedFFIMLKEM768
+import qualified UmbraVox.Crypto.Generated.FFI.Poly1305 as GeneratedFFIPoly1305
+import qualified UmbraVox.Crypto.Generated.FFI.SHA256 as GeneratedFFISHA256
+import qualified UmbraVox.Crypto.Generated.FFI.SHA512 as GeneratedFFISHA512
+import qualified UmbraVox.Crypto.Generated.FFI.X25519 as GeneratedFFIX25519
+import qualified UmbraVox.Crypto.Generated.HKDF as GeneratedHKDF
+import qualified UmbraVox.Crypto.Generated.HMAC as GeneratedHMAC
+import qualified UmbraVox.Crypto.Generated.Keccak as GeneratedKeccak
+import qualified UmbraVox.Crypto.Generated.MLKEM768 as GeneratedMLKEM768
+import qualified UmbraVox.Crypto.Generated.Poly1305 as GeneratedPoly1305
+import qualified UmbraVox.Crypto.Generated.SHA256 as GeneratedSHA256
+import qualified UmbraVox.Crypto.Generated.SHA512 as GeneratedSHA512
+import qualified UmbraVox.Crypto.Generated.X25519 as GeneratedX25519
+import qualified UmbraVox.Crypto.HKDF as HKDF
+import qualified UmbraVox.Crypto.HMAC as HMAC
+import qualified UmbraVox.Crypto.Keccak as Keccak
+import qualified UmbraVox.Crypto.MLKEM as MLKEM
 import UmbraVox.Crypto.MLKEM (mlkemKeyGen, MLKEMEncapKey(..))
+import qualified UmbraVox.Crypto.Poly1305 as Poly1305
+import qualified UmbraVox.Crypto.Random as Random
+import qualified UmbraVox.Crypto.SHA256 as SHA256
+import qualified UmbraVox.Crypto.SHA512 as SHA512
 import UmbraVox.Crypto.Signal.PQXDH (PQPreKeyBundle(..))
 import UmbraVox.Crypto.Signal.X3DH
     (IdentityKey(..), generateIdentityKey, generateKeyPair,
@@ -32,7 +61,11 @@ runTests = do
     r4 <- testCBORRoundTrip
     putStrLn "[Equivalence] Running serialization consistency tests..."
     r5 <- testSerializationConsistency
-    let results = [r1, r2, r3, r4, r5]
+    putStrLn "[Equivalence] Running generated SHA-256 wrapper parity checks..."
+    r6 <- testGeneratedSHA256WrapperParity
+    putStrLn "[Equivalence] Running generated FFI bridge parity checks..."
+    r7 <- testGeneratedFFIBridgeParity
+    let results = [r1, r2, r3, r4, r5, r6, r7]
         passed  = length (filter id results)
         total   = length results
     putStrLn $ "[Equivalence] " ++ show passed ++ "/" ++ show total ++ " passed."
@@ -46,17 +79,17 @@ testSHA256vsSHA3 :: IO Bool
 testSHA256vsSHA3 = do
     ok1 <- checkProperty "SHA-256 and SHA3-256 both produce 32 bytes" 100
         (\g -> let (input, _) = nextBytesRange 0 256 g
-               in BS.length (sha256 input) == 32
-                  && BS.length (sha3_256 input) == 32)
+               in BS.length (SHA256.sha256 input) == 32
+                  && BS.length (Keccak.sha3_256 input) == 32)
     ok2 <- checkProperty "SHA-256 and SHA3-256 differ for same input" 100
         (\g -> let (input, _) = nextBytesRange 1 256 g
-               in sha256 input /= sha3_256 input)
+               in SHA256.sha256 input /= Keccak.sha3_256 input)
     ok3 <- checkProperty "SHA-256 is deterministic" 50
         (\g -> let (input, _) = nextBytesRange 0 128 g
-               in sha256 input == sha256 input)
+               in SHA256.sha256 input == SHA256.sha256 input)
     ok4 <- checkProperty "SHA3-256 is deterministic" 50
         (\g -> let (input, _) = nextBytesRange 0 128 g
-               in sha3_256 input == sha3_256 input)
+               in Keccak.sha3_256 input == Keccak.sha3_256 input)
     pure (ok1 && ok2 && ok3 && ok4)
 
 ------------------------------------------------------------------------
@@ -238,3 +271,184 @@ testSerializationConsistency = do
                    Just b  -> pqpkbOneTimePreKey b == Just (kpPublic opk)
                            && pqpkbIdentityKey b == ikX25519Public ik)
     pure (ok1 && ok2)
+
+-- Test 6: Generated wrapper parity
+-- These checks verify that the preserved generated Haskell namespace is
+-- actively wired and callable through the current harness.
+------------------------------------------------------------------------
+
+testGeneratedSHA256WrapperParity :: IO Bool
+testGeneratedSHA256WrapperParity = do
+    ok1 <- assertEq "Generated SHA-256 wrapper matches reference for abc"
+        (SHA256.sha256 (BS.pack [97, 98, 99]))
+        (GeneratedSHA256.sha256 (BS.pack [97, 98, 99]))
+    ok2 <- checkProperty "Generated SHA-256 wrapper matches reference" 20
+        (\g -> let (input, _) = nextBytesRange 0 128 g
+               in SHA256.sha256 input == GeneratedSHA256.sha256 input)
+    ok3 <- checkProperty "Generated SHA-512 wrapper matches reference" 20
+        (\g -> let (input, _) = nextBytesRange 0 128 g
+               in SHA512.sha512 input == GeneratedSHA512.sha512 input)
+    ok4 <- checkProperty "Generated HMAC wrapper matches reference" 20
+        (\g -> let (key, g1) = nextBytesRange 0 96 g
+                   (msg, _) = nextBytesRange 0 128 g1
+               in HMAC.hmacSHA256 key msg == GeneratedHMAC.hmacSHA256 key msg
+                  && HMAC.hmacSHA512 key msg == GeneratedHMAC.hmacSHA512 key msg)
+    ok5 <- checkProperty "Generated HKDF wrapper matches reference" 20
+        (\g -> let (salt, g1) = nextBytesRange 0 32 g
+                   (ikm, g2) = nextBytesRange 0 64 g1
+                   (info, g3) = nextBytesRange 0 32 g2
+                   (lenBs, _) = nextBytes 1 g3
+                   len = fromIntegral (BS.head lenBs) `mod` 96
+               in HKDF.hkdf salt ikm info len == GeneratedHKDF.hkdf salt ikm info len
+                  && HKDF.hkdfSHA256 salt ikm info len == GeneratedHKDF.hkdfSHA256 salt ikm info len)
+    ok6 <- checkProperty "Generated Poly1305 wrapper matches reference" 20
+        (\g -> let (key, g1) = nextBytes 32 g
+                   (msg, _) = nextBytesRange 0 128 g1
+               in Poly1305.poly1305 key msg == GeneratedPoly1305.poly1305 key msg)
+    ok7 <- checkProperty "Generated X25519 wrapper matches reference" 20
+        (\g -> let (scalar, _) = nextBytes 32 g
+               in Curve25519.x25519 scalar Curve25519.x25519Basepoint
+                  == GeneratedX25519.x25519 scalar GeneratedX25519.x25519Basepoint)
+    ok8 <- checkProperty "Generated AES wrapper matches reference" 20
+        (\g -> let (key, g1) = nextBytes 32 g
+                   (block, _) = nextBytes 16 g1
+               in AES.aesEncrypt key block == GeneratedAES256.aesEncrypt key block
+                  && AES.aesDecrypt key block == GeneratedAES256.aesDecrypt key block)
+    ok9 <- checkProperty "Generated ChaCha20 wrapper matches reference" 20
+        (\g -> let (key, g1) = nextBytes 32 g
+                   (nonce, g2) = nextBytes 12 g1
+                   (ctrBs, g3) = nextBytes 4 g2
+                   (pt, _) = nextBytesRange 0 128 g3
+                   ctr = word32FromBytes ctrBs
+               in Random.chacha20Block key nonce ctr == GeneratedChaCha20.chacha20Block key nonce ctr
+                  && Random.chacha20Encrypt key nonce ctr pt == GeneratedChaCha20.chacha20Encrypt key nonce ctr pt)
+    ok10 <- checkProperty "Generated Keccak wrapper matches reference" 20
+        (\g -> let (input, _) = nextBytesRange 0 128 g
+               in Keccak.sha3_256 input == GeneratedKeccak.sha3_256 input
+                  && Keccak.sha3_512 input == GeneratedKeccak.sha3_512 input)
+    ok11 <- checkProperty "Generated MLKEM wrapper matches reference" 10
+        (\g -> let (d, g1) = nextBytes 32 g
+                   (z, g2) = nextBytes 32 g1
+                   (m, _) = nextBytes 32 g2
+                   (ek1, dk1) = MLKEM.mlkemKeyGen d z
+                   (ek2, dk2) = GeneratedMLKEM768.mlkemKeyGen d z
+                   (ct1, ss1) = MLKEM.mlkemEncaps ek1 m
+                   (ct2, ss2) = GeneratedMLKEM768.mlkemEncaps ek2 m
+               in ek1 == ek2
+                  && dk1 == dk2
+                  && ct1 == ct2
+                  && ss1 == ss2
+                  && MLKEM.mlkemDecaps dk1 ct1 == GeneratedMLKEM768.mlkemDecaps dk2 ct2)
+    pure (and [ok1, ok2, ok3, ok4, ok5, ok6, ok7, ok8, ok9, ok10, ok11])
+
+testGeneratedFFIBridgeParity :: IO Bool
+testGeneratedFFIBridgeParity = do
+    linked <- sequence
+        [ GeneratedFFIAES256.ffiLinked
+        , GeneratedFFIChaCha20.ffiLinked
+        , GeneratedFFIHKDF.ffiLinked
+        , GeneratedFFIHMAC.ffiLinked
+        , GeneratedFFIKeccak.ffiLinked
+        , GeneratedFFIMLKEM768.ffiLinked
+        , GeneratedFFIPoly1305.ffiLinked
+        , GeneratedFFISHA256.ffiLinked
+        , GeneratedFFISHA512.ffiLinked
+        , GeneratedFFIX25519.ffiLinked
+        ]
+    ok1 <- assertEq "Generated FFI bridges are linked" True (and linked)
+
+    let shaInput = BS.pack [97, 98, 99]
+    sha256Out <- GeneratedFFISHA256.sha256 shaInput
+    sha512Out <- GeneratedFFISHA512.sha512 shaInput
+    ok2 <- assertEq "Generated FFI SHA256 bridge matches reference"
+        (SHA256.sha256 shaInput) sha256Out
+    ok3 <- assertEq "Generated FFI SHA512 bridge matches reference"
+        (SHA512.sha512 shaInput) sha512Out
+
+    let hmacKey = BS.pack [1 .. 32]
+        hmacMsg = BS.pack [33 .. 96]
+    hmac256Out <- GeneratedFFIHMAC.hmacSHA256 hmacKey hmacMsg
+    hmac512Out <- GeneratedFFIHMAC.hmacSHA512 hmacKey hmacMsg
+    ok4 <- assertEq "Generated FFI HMAC-SHA256 bridge matches reference"
+        (HMAC.hmacSHA256 hmacKey hmacMsg) hmac256Out
+    ok5 <- assertEq "Generated FFI HMAC-SHA512 bridge matches reference"
+        (HMAC.hmacSHA512 hmacKey hmacMsg) hmac512Out
+
+    let hkdfSalt = BS.pack [5 .. 20]
+        hkdfIkm = BS.pack [50 .. 90]
+        hkdfInfo = BS.pack [9, 8, 7, 6]
+        hkdfLen = 42
+    hkdfOut <- GeneratedFFIHKDF.hkdf hkdfSalt hkdfIkm hkdfInfo hkdfLen
+    hkdf256Out <- GeneratedFFIHKDF.hkdfSHA256 hkdfSalt hkdfIkm hkdfInfo hkdfLen
+    ok6 <- assertEq "Generated FFI HKDF bridge matches reference"
+        (HKDF.hkdf hkdfSalt hkdfIkm hkdfInfo hkdfLen) hkdfOut
+    ok7 <- assertEq "Generated FFI HKDF-SHA256 bridge matches reference"
+        (HKDF.hkdfSHA256 hkdfSalt hkdfIkm hkdfInfo hkdfLen) hkdf256Out
+
+    let polyKey = BS.pack [0 .. 31]
+        polyMsg = BS.pack [32 .. 96]
+    polyOut <- GeneratedFFIPoly1305.poly1305 polyKey polyMsg
+    ok8 <- assertEq "Generated FFI Poly1305 bridge matches reference"
+        (Poly1305.poly1305 polyKey polyMsg) polyOut
+
+    let scalar = BS.pack [1 .. 32]
+    x25519Out <- GeneratedFFIX25519.x25519 scalar GeneratedFFIX25519.x25519Basepoint
+    ok9 <- assertEq "Generated FFI X25519 bridge matches reference"
+        (Curve25519.x25519 scalar Curve25519.x25519Basepoint) x25519Out
+
+    let aesKey = BS.pack [0 .. 31]
+        aesBlock = BS.pack [32 .. 47]
+    aesEncOut <- GeneratedFFIAES256.aesEncrypt aesKey aesBlock
+    aesDecOut <- GeneratedFFIAES256.aesDecrypt aesKey aesBlock
+    ok10 <- assertEq "Generated FFI AES encrypt bridge matches reference"
+        (AES.aesEncrypt aesKey aesBlock) aesEncOut
+    ok11 <- assertEq "Generated FFI AES decrypt bridge matches reference"
+        (AES.aesDecrypt aesKey aesBlock) aesDecOut
+
+    let chachaKey = BS.pack [0 .. 31]
+        chachaNonce = BS.pack [0 .. 11]
+        chachaCtr = 7
+        chachaPt = BS.pack [12 .. 75]
+    chachaBlockOut <- GeneratedFFIChaCha20.chacha20Block chachaKey chachaNonce chachaCtr
+    chachaEncOut <- GeneratedFFIChaCha20.chacha20Encrypt chachaKey chachaNonce chachaCtr chachaPt
+    ok12 <- assertEq "Generated FFI ChaCha20 block bridge matches reference"
+        (Random.chacha20Block chachaKey chachaNonce chachaCtr) chachaBlockOut
+    ok13 <- assertEq "Generated FFI ChaCha20 encrypt bridge matches reference"
+        (Random.chacha20Encrypt chachaKey chachaNonce chachaCtr chachaPt) chachaEncOut
+
+    keccak256Out <- GeneratedFFIKeccak.sha3_256 shaInput
+    keccak512Out <- GeneratedFFIKeccak.sha3_512 shaInput
+    shake128Out <- GeneratedFFIKeccak.shake128 shaInput 48
+    shake256Out <- GeneratedFFIKeccak.shake256 shaInput 48
+    ok14 <- assertEq "Generated FFI Keccak-256 bridge matches reference"
+        (Keccak.sha3_256 shaInput) keccak256Out
+    ok15 <- assertEq "Generated FFI Keccak-512 bridge matches reference"
+        (Keccak.sha3_512 shaInput) keccak512Out
+    ok16 <- assertEq "Generated FFI SHAKE-128 bridge matches reference"
+        (Keccak.shake128 shaInput 48) shake128Out
+    ok17 <- assertEq "Generated FFI SHAKE-256 bridge matches reference"
+        (Keccak.shake256 shaInput 48) shake256Out
+
+    let d = BS.pack [10 .. 41]
+        z = BS.pack [42 .. 73]
+        m = BS.pack [74 .. 105]
+    (ffiEk, ffiDk) <- GeneratedFFIMLKEM768.mlkemKeyGen d z
+    let (refEk, refDk) = MLKEM.mlkemKeyGen d z
+    (ffiCt, ffiSs) <- GeneratedFFIMLKEM768.mlkemEncaps ffiEk m
+    let (refCt, refSs) = MLKEM.mlkemEncaps refEk m
+    ffiDec <- GeneratedFFIMLKEM768.mlkemDecaps ffiDk ffiCt
+    ok18 <- assertEq "Generated FFI MLKEM keygen bridge matches reference"
+        (refEk, refDk) (ffiEk, ffiDk)
+    ok19 <- assertEq "Generated FFI MLKEM encaps bridge matches reference"
+        (refCt, refSs) (ffiCt, ffiSs)
+    ok20 <- assertEq "Generated FFI MLKEM decaps bridge matches reference"
+        (MLKEM.mlkemDecaps refDk refCt) ffiDec
+
+    pure (and [ok1, ok2, ok3, ok4, ok5, ok6, ok7, ok8, ok9, ok10, ok11, ok12, ok13, ok14, ok15, ok16, ok17, ok18, ok19, ok20])
+
+word32FromBytes :: ByteString -> Word32
+word32FromBytes bs =
+    fromIntegral (BS.index bs 0) * 16777216
+    + fromIntegral (BS.index bs 1) * 65536
+    + fromIntegral (BS.index bs 2) * 256
+    + fromIntegral (BS.index bs 3)

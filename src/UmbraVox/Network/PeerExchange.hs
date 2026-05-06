@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Peer Exchange (PEX) protocol
 --
 -- After a PQXDH handshake completes, connected peers exchange their

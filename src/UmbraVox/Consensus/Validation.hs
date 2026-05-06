@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Block and transaction validation
 --
 -- See: doc/spec/consensus.md

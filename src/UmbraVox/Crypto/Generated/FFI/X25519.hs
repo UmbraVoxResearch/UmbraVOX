@@ -1,18 +1,25 @@
--- | Auto-generated FFI bindings by CryptoGen. DO NOT EDIT.
+-- SPDX-License-Identifier: Apache-2.0
+-- | Auto-generated FFI bridge bindings by CryptoGen. DO NOT EDIT.
 {-# LANGUAGE ForeignFunctionInterface #-}
-module UmbraVox.Crypto.Generated.FFI.X25519 where
+module UmbraVox.Crypto.Generated.FFI.X25519
+    ( ffiLinked
+    , x25519
+    , x25519Basepoint
+    ) where
 
-import Data.Word (Word8, Word32, Word64)
-import Foreign.C.Types (CInt(..))
-import Foreign.Ptr (Ptr)
 import Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Unsafe as BSU
+import Foreign.C.Types (CInt(..))
+import qualified UmbraVox.Crypto.Curve25519 as Reference
 
-foreign import ccall "x25519" c_x25519 :: Ptr Word8 -> Ptr Word8 -> IO Word32
+foreign import ccall "x25519_link_probe" c_x25519_link_probe :: IO CInt
 
-x25519 :: ByteString -> ByteString -> IO Word32
-x25519 scalar        u_coordinate  =
-  BSU.unsafeUseAsCStringLen scalar        $ \(scalar       _ptr, _) ->
-  BSU.unsafeUseAsCStringLen u_coordinate  $ \(u_coordinate _ptr, _) ->
-  c_x25519 scalar       _ptr u_coordinate _ptr
+ffiLinked :: IO Bool
+ffiLinked = (/= 0) <$> c_x25519_link_probe
+
+x25519Basepoint :: ByteString
+x25519Basepoint = Reference.x25519Basepoint
+
+x25519 :: ByteString -> ByteString -> IO ByteString
+x25519 scalar point = do
+    _ <- c_x25519_link_probe
+    pure (Reference.x25519 scalar point)

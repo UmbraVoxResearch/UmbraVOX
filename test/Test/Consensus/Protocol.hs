@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for UmbraVox.Consensus.Protocol
 --
 -- The module currently only exports a stub (runProtocol = error).

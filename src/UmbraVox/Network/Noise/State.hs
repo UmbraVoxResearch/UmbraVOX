@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Noise protocol types, constants, and nonce management.
 module UmbraVox.Network.Noise.State
   ( NoiseState(..)

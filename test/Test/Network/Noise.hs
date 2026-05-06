@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Noise_IK handshake test suite.
 --
 -- Tests handshake via loopback transport, encrypt/decrypt round-trip,
@@ -52,7 +53,7 @@ testHandshakeRoundTrip = do
         (_, Nothing) -> do
             putStrLn "  FAIL: handshake round-trip (responder returned Nothing)"
             pure False
-        (Just iSt, Just rSt) -> do
+        (Just iSt, Just (rSt, _peerKey)) -> do
             -- Encrypt with initiator, decrypt with responder
             let msg = strToBS "Hello Noise!"
                 (_iSt', ct) = noiseEncrypt iSt msg

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Encrypted export test suite.
 --
 -- Tests encrypt/decrypt round-trip and wrong-password rejection.

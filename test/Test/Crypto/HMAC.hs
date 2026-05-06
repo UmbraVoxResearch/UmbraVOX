@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | HMAC test suite: RFC 4231 KAT vectors + edge cases + property/fuzz tests.
 module Test.Crypto.HMAC (runTests) where
 

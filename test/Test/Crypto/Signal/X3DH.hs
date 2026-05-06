@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | X3DH test suite: key generation, SPK signing, key agreement with/without OPK,
 -- property tests for agreement consistency, and signature rejection.
 module Test.Crypto.Signal.X3DH (runTests) where

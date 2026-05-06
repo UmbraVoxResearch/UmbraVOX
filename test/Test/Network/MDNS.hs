@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for UmbraVox.Network.MDNS parsing helpers.
 --
 -- Does NOT test actual multicast (requires network); only exercises

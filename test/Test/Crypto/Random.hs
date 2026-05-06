@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Random module test suite: CSPRNG output quality, readEntropy sanity,
 -- and randomBytes basic contract tests.
 module Test.Crypto.Random (runTests) where

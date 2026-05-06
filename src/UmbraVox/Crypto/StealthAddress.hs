@@ -1,12 +1,13 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | {-# REQ "HARDENING-03" #-} Dual-Key Stealth Address Protocol (DKSAP)
 --
--- Implements stealth addresses per doc/hardening/03-stealth-addresses.md.
+-- Implements stealth addresses per attic/doc-legacy-2026-04-28/hardening/03-stealth-addresses.md.
 -- Each recipient publishes a scan key (X25519) and spend key (Ed25519).
 -- Senders derive one-time addresses that only the recipient can identify
 -- and spend from.
 --
 -- Pure Haskell reference implementation. NOT constant-time.
--- Production builds use FFI to constant-time C (see doc/03-cryptography.md).
+-- Production builds use FFI to constant-time C (see attic/doc-legacy-2026-04-28/03-cryptography.md).
 module UmbraVox.Crypto.StealthAddress
     ( StealthKeys(..)
     , StealthAddress(..)
@@ -192,4 +193,3 @@ computeSpendingSecret s spendSecret =
         !a = clampScalar (BS.take 32 h)
         !skStealth = (s + a) `mod` groupL
     in encodeLEn 32 skStealth
-

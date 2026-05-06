@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Session test suite: verify module loads and stub function throws as expected.
 -- Signal session state management is not yet implemented.
 module Test.Crypto.Signal.Session (runTests) where

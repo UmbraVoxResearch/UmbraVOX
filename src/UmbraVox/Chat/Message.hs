@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Message chunking and reassembly
 --
 -- For MVP: single-chunk messages (< 64 KB).

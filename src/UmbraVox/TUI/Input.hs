@@ -1,28 +1,35 @@
+-- SPDX-License-Identifier: Apache-2.0
 module UmbraVox.TUI.Input
     ( readKey, readCSI, readSS3, drainSeq
     , eventLoop
     , handleNormal, handleContact, handleChat, handleDialog
     , handleSettingsDlg, handleNewConnDlg
     , strip'
+    , startListenerIfNeeded
+    , acceptLoopTUI
     ) where
 
 import Control.Concurrent (forkIO)
-import Control.Exception (catch, SomeException)
+import Control.Exception (catch, finally, SomeException)
 import Control.Monad (void, when, unless)
+import Data.ByteString (ByteString)
 import Data.List (isPrefixOf)
-import Data.IORef (readIORef, writeIORef, modifyIORef')
+import Data.IORef (IORef, readIORef, writeIORef, modifyIORef')
 import qualified Data.Map.Strict as Map
 import System.IO (stdin, hReady)
+import UmbraVox.App.RuntimeLog (logEvent)
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Render (render, clearScreen)
 import UmbraVox.TUI.Menu (toggleMenu, openMenu, closeMenu, handleMenu)
 import UmbraVox.TUI.Constants (maxInputLen, maxDialogBufLen)
+import UmbraVox.Crypto.ConstantTime (constantEq)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey)
 import UmbraVox.TUI.Actions (startNewConn, startVerify, startExport,
     startSettings, startKeysView, startBrowse, addSecureNotes, showHelp,
     renameContact, sendCurrentMessage, quitApp, setStatus,
     adjustContactScroll, addSession, selectLast, recvLoopTUI)
-import UmbraVox.TUI.Handshake (handshakeInitiator, handshakeResponder, genIdentity)
+import UmbraVox.TUI.Handshake (handshakeInitiator, handshakeResponder,
+    genIdentity, fingerprint)
 import UmbraVox.Network.Transport (listen, connect, connectTryPorts)
 import UmbraVox.Network.TransportClass (AnyTransport(..))
 import UmbraVox.Storage.Anthony (clearConversation)
@@ -113,11 +120,11 @@ handleNormal st key = do
         KeyCtrlN -> startNewConn st
         KeyCtrlQ -> quitApp st
         KeyCtrlD -> quitApp st
-        KeyF1    -> toggleMenu st MenuFile
+        KeyF1    -> toggleMenu st MenuHelp
         KeyF2    -> toggleMenu st MenuContacts
         KeyF3    -> toggleMenu st MenuChat
         KeyF4    -> toggleMenu st MenuPrefs
-        KeyF5    -> toggleMenu st MenuHelp
+        KeyF5    -> pure ()
         KeyEscape -> do
             dlg <- readIORef (asDialogMode st)
             case dlg of
@@ -187,27 +194,53 @@ handleSettingsDlg :: AppState -> InputEvent -> IO ()
 handleSettingsDlg st (KeyChar '1') = do
     writeIORef (asDialogBuf st) ""
     writeIORef (asDialogMode st) (Just (DlgPrompt "Set Port" $ \val ->
-        case reads val of { [(p,_)] -> writeIORef (cfgListenPort (asConfig st)) (p::Int); _ -> pure () }))
+        case reads val of
+            [(p,_)] -> do
+                writeIORef (cfgListenPort (asConfig st)) (p :: Int)
+                logEvent (asConfig st) "settings.listen_port"
+                    [("port", show p), ("restart_required", "true")]
+                setStatus st ("Listen port set to " ++ show p ++ " (restart required)")
+            _ -> pure ()))
 handleSettingsDlg st (KeyChar '2') = do
     writeIORef (asDialogBuf st) ""
     writeIORef (asDialogMode st) (Just (DlgPrompt "Set Display Name" $ \val ->
-        unless (null val) $ writeIORef (cfgDisplayName (asConfig st)) val))
+        unless (null val) $ do
+            writeIORef (cfgDisplayName (asConfig st)) val
+            logEvent (asConfig st) "settings.display_name" [("updated", "true")]
+            ))
 handleSettingsDlg st (KeyChar '3') =
-    modifyIORef' (cfgMDNSEnabled (asConfig st)) not
+    toggleSettingWithStatus st "settings.mdns" (cfgMDNSEnabled (asConfig st))
+        "mDNS enabled (restart required)"
+        "mDNS disabled (restart required)"
 handleSettingsDlg st (KeyChar '4') =
-    modifyIORef' (cfgPEXEnabled (asConfig st)) not
+    toggleSettingWithStatus st "settings.pex" (cfgPEXEnabled (asConfig st))
+        "Peer exchange enabled"
+        "Peer exchange disabled"
 handleSettingsDlg st (KeyChar '5') =
-    modifyIORef' (cfgDBEnabled (asConfig st)) not
+    toggleSettingWithStatus st "settings.db_enabled" (cfgDBEnabled (asConfig st))
+        "Persistent storage enabled (restart required)"
+        "Persistent storage disabled (restart required)"
 handleSettingsDlg st (KeyChar '6') = do
     writeIORef (asDialogBuf st) ""
     writeIORef (asDialogMode st) (Just (DlgPrompt "Set DB Path" $ \val ->
-        unless (null val) $ writeIORef (cfgDBPath (asConfig st)) val))
+        unless (null val) $ do
+            writeIORef (cfgDBPath (asConfig st)) val
+            logEvent (asConfig st) "settings.db_path"
+                [("path", val), ("restart_required", "true")]
+            setStatus st "Database path updated (restart required)"))
 handleSettingsDlg st (KeyChar '7') = do
     writeIORef (asDialogBuf st) ""
     writeIORef (asDialogMode st) (Just (DlgPrompt "Retention (days, 0=forever)" $ \val ->
-        case reads val of { [(d,_)] -> writeIORef (cfgRetentionDays (asConfig st)) (max 0 (d::Int)); _ -> pure () }))
+        case reads val of
+            [(d,_)] -> do
+                let days = max 0 (d :: Int)
+                writeIORef (cfgRetentionDays (asConfig st)) days
+                logEvent (asConfig st) "settings.retention_days" [("days", show days)]
+            _ -> pure () ))
 handleSettingsDlg st (KeyChar '8') =
-    modifyIORef' (cfgAutoSaveMessages (asConfig st)) not
+    toggleSettingWithStatus st "settings.auto_save" (cfgAutoSaveMessages (asConfig st))
+        "Auto-save messages enabled"
+        "Auto-save messages disabled"
 handleSettingsDlg st (KeyChar '9') = do
     writeIORef (asDialogBuf st) ""
     writeIORef (asDialogMode st) (Just (DlgPrompt "Clear history? Type YES to confirm" $ \val ->
@@ -228,7 +261,21 @@ handleSettingsDlg st (KeyChar '9') = do
             when (sel < length entries) $ do
                 let (_, si) = entries !! sel
                 writeIORef (siHistory si) []
+                logEvent (asConfig st) "history.clear" [("selected_index", show sel)]
             ))
+handleSettingsDlg st (KeyChar 'a') =
+    toggleSettingWithStatus st "settings.debug_logging" (cfgDebugLogging (asConfig st))
+        "Runtime debug logging enabled"
+        "Runtime debug logging disabled"
+handleSettingsDlg st (KeyChar 'A') = handleSettingsDlg st (KeyChar 'a')
+handleSettingsDlg st (KeyChar 'b') = do
+    writeIORef (asDialogBuf st) ""
+    writeIORef (asDialogMode st) (Just (DlgPrompt "Set Log Path" $ \val ->
+        unless (null val) $ do
+            writeIORef (cfgDebugLogPath (asConfig st)) val
+            logEvent (asConfig st) "settings.debug_log_path" [("path", val)]
+            setStatus st "Runtime log path updated"))
+handleSettingsDlg st (KeyChar 'B') = handleSettingsDlg st (KeyChar 'b')
 handleSettingsDlg st (KeyChar '0') =
     writeIORef (asDialogMode st) (Just DlgKeys)
 handleSettingsDlg st _ = writeIORef (asDialogMode st) Nothing
@@ -248,15 +295,14 @@ handleNewConnDlg st (KeyChar '2') = do
                     [(n, _)] -> pure (n :: Int)
                     _        -> readIORef (cfgListenPort (asConfig st))
                 _          -> readIORef (cfgListenPort (asConfig st))
-            setStatus st ("Listening on " ++ show port ++ "...")
-            void $ forkIO $ (do
-                ik <- getOrCreateIdentity (asConfig st)
-                acceptLoopTUI st ik port
-                ) `catch` (\(e::SomeException) -> setStatus st ("Failed: "++show e))
+            ik <- getOrCreateIdentity (asConfig st)
+            void (startListenerIfNeeded st ik port "dialog")
         else do
             let (h, mPort) = parseHostPort val
             case mPort of
                 Just port -> do
+                    logEvent (asConfig st) "transport.connect.attempt"
+                        [("host", h), ("port", show port)]
                     setStatus st ("Connecting to " ++ h ++ ":" ++ show port ++ "...")
                     void $ forkIO $ (do
                         ik <- getOrCreateIdentity (asConfig st)
@@ -266,6 +312,8 @@ handleNewConnDlg st (KeyChar '2') = do
                         selectLast st; setStatus st ("Connected #" ++ show sid)
                         ) `catch` (\(e::SomeException) -> setStatus st ("Failed: "++show e))
                 Nothing -> do
+                    logEvent (asConfig st) "transport.connect.attempt_defaults"
+                        [("host", h)]
                     setStatus st ("Connecting to " ++ h ++ " (trying default ports)...")
                     void $ forkIO $ (do
                         ik <- getOrCreateIdentity (asConfig st)
@@ -305,13 +353,65 @@ getOrCreateIdentity cfg = do
 
 acceptLoopTUI :: AppState -> IdentityKey -> Int -> IO ()
 acceptLoopTUI st ik port = do
+    logEvent (asConfig st) "listener.awaiting_connection" [("port", show port)]
     t <- listen port
     let at = AnyTransport t
-    session <- handshakeResponder at ik
+        trustCheck :: ByteString -> IO Bool
+        trustCheck peerKey = do
+            mode <- readIORef (cfgConnectionMode (asConfig st))
+            case mode of
+                Swing       -> do
+                    setStatus st ("Swing: accepted " ++ fingerprint peerKey)
+                    pure True
+                Promiscuous -> pure True
+                Selective   -> do
+                    setStatus st ("Peer: " ++ fingerprint peerKey)
+                    pure True
+                Chaste      -> do
+                    keys <- readIORef (cfgTrustedKeys (asConfig st))
+                    pure (any (constantEq peerKey) keys)
+                Chastity    -> do
+                    keys <- readIORef (cfgTrustedKeys (asConfig st))
+                    pure (any (constantEq peerKey) keys)
+    logEvent (asConfig st) "listener.accepted_connection" [("port", show port)]
+    session <- handshakeResponder at ik trustCheck
     sid <- addSession (asConfig st) at session ("peer:" ++ show port)
     selectLast st
     setStatus st ("Session #" ++ show sid)
     acceptLoopTUI st ik port
+
+startListenerIfNeeded :: AppState -> IdentityKey -> Int -> String -> IO Bool
+startListenerIfNeeded st ik port source = do
+    mTid <- readIORef (cfgListenerThread (asConfig st))
+    case mTid of
+        Just _ -> do
+            logEvent (asConfig st) "listener.start.skipped"
+                [ ("port", show port)
+                , ("source", source)
+                , ("reason", "already_running")
+                ]
+            setStatus st ("Listener already running on " ++ show port)
+            pure False
+        Nothing -> do
+            logEvent (asConfig st) "listener.start"
+                [ ("port", show port)
+                , ("source", source)
+                ]
+            setStatus st ("Listening on " ++ show port ++ "...")
+            tid <- forkIO (listenerWorker st ik port)
+            writeIORef (cfgListenerThread (asConfig st)) (Just tid)
+            pure True
+
+listenerWorker :: AppState -> IdentityKey -> Int -> IO ()
+listenerWorker st ik port =
+    (acceptLoopTUI st ik port
+        `catch` (\(e :: SomeException) -> do
+            logEvent (asConfig st) "listener.stop"
+                [ ("port", show port)
+                , ("reason", show e)
+                ]
+            setStatus st ("Listener stopped: " ++ show e)))
+    `finally` writeIORef (cfgListenerThread (asConfig st)) Nothing
 
 connectGroupPeers :: AppState -> IdentityKey -> [String] -> Int -> IO Int
 connectGroupPeers _ _ [] successes = pure successes
@@ -327,3 +427,10 @@ connectGroupPeers st ik (p:ps) successes =
         void $ addSession (asConfig st) at session peer
         connectGroupPeers st ik ps (successes + 1)
         ) `catch` (\(_ :: SomeException) -> connectGroupPeers st ik ps successes))
+
+toggleSettingWithStatus :: AppState -> String -> IORef Bool -> String -> String -> IO ()
+toggleSettingWithStatus st eventName ref enabledMsg disabledMsg = do
+    modifyIORef' ref not
+    enabled <- readIORef ref
+    logEvent (asConfig st) eventName [("enabled", show enabled)]
+    setStatus st (if enabled then enabledMsg else disabledMsg)

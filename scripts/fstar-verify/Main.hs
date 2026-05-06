@@ -2,20 +2,20 @@ module Main (main) where
 
 import System.Environment (getArgs, lookupEnv)
 import System.Exit (exitFailure, exitSuccess)
+import System.IO (BufferMode(LineBuffering), hSetBuffering, stdout, stderr)
 
 import UmbraVox.Tools.FStarVerify
 
 main :: IO ()
 main = do
+    hSetBuffering stdout LineBuffering
+    hSetBuffering stderr LineBuffering
     args <- getArgs
-
-    -- Determine spec directory (script location equivalent)
-    let specDir = "test/evidence/formal-proofs/fstar"
+    specDir <- resolveSpecDir
 
     -- Build config from environment or defaults
     fstarExe <- maybe "fstar.exe" id <$> lookupEnv "FSTAR_EXE"
     z3Exe    <- maybe "z3"        id <$> lookupEnv "Z3_EXE"
-
     let cfg = (defaultConfig specDir)
             { vcFstarExe = fstarExe
             , vcZ3Exe    = z3Exe
@@ -72,7 +72,27 @@ main = do
 printResult :: VerifyResult -> IO ()
 printResult (Passed name) =
     putStrLn $ "\x1b[32m[PASS]\x1b[0m  " ++ name
-printResult (Failed name _err) =
+printResult (Failed name err) = do
     putStrLn $ "\x1b[31m[FAIL]\x1b[0m  " ++ name
+    case firstUsefulLine err of
+        Just line -> putStrLn $ "        " ++ line
+        Nothing -> pure ()
 printResult (NotFound name) =
     putStrLn $ "\x1b[31m[FAIL]\x1b[0m  " ++ name ++ " -- file not found"
+
+firstUsefulLine :: String -> Maybe String
+firstUsefulLine =
+    firstNonEmpty . map strip . lines
+  where
+    firstNonEmpty [] = Nothing
+    firstNonEmpty (x:xs)
+        | null x = firstNonEmpty xs
+        | otherwise = Just x
+    strip = reverse . dropWhile (== ' ') . reverse . dropWhile (== ' ')
+
+resolveSpecDir :: IO FilePath
+resolveSpecDir = do
+    mRoot <- lookupEnv "UMBRAVOX_ROOT"
+    case mRoot of
+        Just root -> pure (root ++ "/test/evidence/formal-proofs/fstar")
+        Nothing -> fail "UMBRAVOX_ROOT is not set; run inside nix-shell"

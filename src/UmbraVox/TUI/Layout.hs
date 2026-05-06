@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 module UmbraVox.TUI.Layout
     ( clampSize, sizeValid, calcLayout, dropdownCol
     ) where

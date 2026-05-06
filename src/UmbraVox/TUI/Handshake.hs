@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 module UmbraVox.TUI.Handshake
     ( handshakeInitiator, handshakeResponder
     , genIdentity, genSignedPreKey, genPQPreKey
@@ -11,6 +12,7 @@ import Data.Bits (shiftL, shiftR, (.&.))
 import Data.Word (Word32)
 import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (formatTime, defaultTimeLocale)
+import Control.Monad (unless)
 import UmbraVox.Chat.Session (ChatSession, initChatSession, initChatSessionBob)
 import UmbraVox.Crypto.MLKEM (mlkemKeyGen,
     MLKEMEncapKey(..), MLKEMDecapKey(..), MLKEMCiphertext(..))
@@ -104,12 +106,14 @@ handshakeInitiator t aliceIK = do
     initChatSession (pqxdhSharedSecret result)
                     (ikX25519Secret aliceIK) (pqpkbSignedPreKey bundle)
 
-handshakeResponder :: AnyTransport -> IdentityKey -> IO ChatSession
-handshakeResponder t bobIK = do
+handshakeResponder :: AnyTransport -> IdentityKey -> (BS.ByteString -> IO Bool) -> IO ChatSession
+handshakeResponder t bobIK trustCheck = do
     (spk, spkSig) <- genSignedPreKey bobIK
     (pqEK, pqDK) <- genPQPreKey
     anySend t . encodeMessage $ serializeBundle bobIK (kpPublic spk) spkSig pqEK Nothing
     (aliceIKPub, aliceEKPub, pqCt) <- recvInitialMessage t
+    trusted <- trustCheck aliceIKPub
+    unless trusted $ fail "Connection rejected: peer not trusted"
     let !shared = pqxdhRespond bobIK (kpSecret spk) Nothing pqDK
                                aliceIKPub aliceEKPub pqCt
     initChatSessionBob shared (kpSecret spk)

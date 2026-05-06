@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | {-# REQ "CRYPTO-011" #-} Poly1305 one-time authenticator (RFC 8439)
 --
 -- Pure Haskell reference implementation using Integer arithmetic. NOT constant-time.

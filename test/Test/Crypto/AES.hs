@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | AES-256 test suite: NIST KAT vectors + edge cases + property/fuzz tests.
 module Test.Crypto.AES (runTests) where
 

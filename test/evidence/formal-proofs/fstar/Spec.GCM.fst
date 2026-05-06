@@ -114,14 +114,23 @@ val ghash : h:Spec.GaloisField.gf128
 let ghash (h : Spec.GaloisField.gf128)
           (input : seq UInt8.t{Seq.length input % 16 = 0})
     : Spec.GaloisField.gf128 =
-  let blocks = split_blocks input in
-  let step (y : Spec.GaloisField.gf128) (xi_bytes : seq UInt8.t)
-      : Spec.GaloisField.gf128 =
-    assume (Seq.length xi_bytes = 16);
-    let xi = Spec.GaloisField.bs_to_gf xi_bytes in
-    Spec.GaloisField.gf_mul (Spec.GaloisField.gf_xor y xi) h
+  (* NOTE: split_blocks returns blocks that may be shorter than 16 bytes.
+   * For GHASH, the input is required to be a multiple of 16 bytes, so we use
+   * an explicit 16-byte slicing loop to preserve the refinement required by
+   * Spec.GaloisField.bs_to_gf. *)
+  let rec go (off:nat{off <= Seq.length input})
+             (y:Spec.GaloisField.gf128)
+             : Tot Spec.GaloisField.gf128 (decreases (Seq.length input - off)) =
+    if off = Seq.length input then y
+    else
+      let _ = assume (off + 16 <= Seq.length input) in
+      let xi_bytes : (s:seq UInt8.t{Seq.length s = 16}) =
+        Seq.slice input off (off + 16) in
+      let xi = Spec.GaloisField.bs_to_gf xi_bytes in
+      let y' = Spec.GaloisField.gf_mul (Spec.GaloisField.gf_xor y xi) h in
+      go (off + 16) y'
   in
-  List.Tot.fold_left step Spec.GaloisField.gf_zero blocks
+  go 0 Spec.GaloisField.gf_zero
 
 (** -------------------------------------------------------------------- **)
 (** SP 800-38D Section 6.5 -- GCTR                                       **)

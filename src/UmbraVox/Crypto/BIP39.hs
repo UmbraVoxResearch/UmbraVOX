@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | BIP39 passphrase generation for encrypted exports.
 --
 -- Uses the full 2048 words of the BIP39 English wordlist (11 bits per word).

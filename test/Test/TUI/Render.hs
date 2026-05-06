@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for UmbraVox.TUI.Render pure functions:
 -- esc, padR, isPfx, clampSize, sizeValid, calcLayout
 module Test.TUI.Render (runTests) where

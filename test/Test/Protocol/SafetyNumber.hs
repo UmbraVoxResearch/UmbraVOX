@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Safety number test suite.
 --
 -- Tests determinism, symmetry, and distinctness of generateSafetyNumber.

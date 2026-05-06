@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | F* formal verification runner for UmbraVOX.
 --
 -- Verifies cryptographic primitive specifications against their
@@ -59,6 +60,7 @@ defaultConfig specDir = VerifyConfig
     , vcSpecDir  = specDir
     , vcFlags    = [ "--cache_checked_modules"
                    , "--already_cached", "Prims,FStar"
+                   , "--include", specDir
                    , "--odir", specDir </> "_output"
                    , "--cache_dir", specDir </> "_cache"
                    ]
@@ -118,8 +120,15 @@ runVerification cfg explicitModules = do
     modules <- if null explicitModules
         then discoverModules (vcSpecDir cfg)
         else pure explicitModules
-    results <- mapM (verifyModule cfg) modules
+    let total = length modules
+    results <- mapM (verifyWithProgress total) (zip [(1 :: Int)..] modules)
     pure (verifySummary results)
+  where
+    verifyWithProgress total (idx, modName) = do
+        putStrLn $ "[RUN]  " ++ progressLabel idx total ++ " " ++ modName
+        result <- verifyModule cfg modName
+        putStrLn $ resultLabel result ++ " " ++ modName
+        pure result
 
 ------------------------------------------------------------------------
 -- Helpers
@@ -139,3 +148,11 @@ sort' (x:xs) = insert' x (sort' xs)
     insert' y (z:zs)
         | y <= z    = y : z : zs
         | otherwise = z : insert' y zs
+
+progressLabel :: Int -> Int -> String
+progressLabel idx total = "[" ++ show idx ++ "/" ++ show total ++ "]"
+
+resultLabel :: VerifyResult -> String
+resultLabel (Passed _)    = "[PASS]"
+resultLabel (Failed _ _)  = "[FAIL]"
+resultLabel (NotFound _)  = "[FAIL]"

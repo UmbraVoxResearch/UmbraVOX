@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# OPTIONS_GHC -Wno-partial-type-signatures #-}

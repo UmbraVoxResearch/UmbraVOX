@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | AES-256-GCM test suite: NIST KAT + edge cases + property/fuzz + tag tamper.
 module Test.Crypto.GCM (runTests) where
 

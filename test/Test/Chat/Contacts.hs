@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for UmbraVox.Chat.Contacts.
 --
 -- emptyContacts returns the ContactList nullary constructor.

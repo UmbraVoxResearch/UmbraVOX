@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Token supply and distribution (11B MTK)
 --
 -- See: doc/spec/economics.md
