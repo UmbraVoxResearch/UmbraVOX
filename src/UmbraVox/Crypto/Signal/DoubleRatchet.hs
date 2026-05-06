@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | {-# REQ "SIGNAL-002" #-} Signal Double Ratchet Algorithm
 --
 -- Implements the Double Ratchet Algorithm for forward-secure end-to-end
@@ -5,7 +6,7 @@
 -- and Diffie-Hellman ratchet steps, providing forward secrecy and
 -- break-in recovery.
 --
--- See: doc/03-cryptography.md
+-- See: attic/doc-legacy-2026-04-28/03-cryptography.md
 module UmbraVox.Crypto.Signal.DoubleRatchet
     ( RatchetState(..)
     , RatchetHeader(..)

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | In-process loopback transport for testing and secure notes
 --
 -- See: doc/spec/network.md

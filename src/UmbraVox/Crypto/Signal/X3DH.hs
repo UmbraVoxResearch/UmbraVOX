@@ -1,7 +1,8 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | {-# REQ "SIGNAL-001" #-} X3DH (Extended Triple Diffie-Hellman)
 --
 -- Classical Signal X3DH key agreement protocol (Phase 1).
--- See: doc/03-cryptography.md
+-- See: attic/doc-legacy-2026-04-28/03-cryptography.md
 module UmbraVox.Crypto.Signal.X3DH
     ( KeyPair(..)
     , IdentityKey(..)

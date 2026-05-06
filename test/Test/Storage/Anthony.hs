@@ -1,15 +1,16 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for UmbraVox.Storage.Anthony
 --
--- If the anthony binary is not available on PATH, all tests are
+-- If anthony cannot be bootstrapped, all tests are
 -- gracefully skipped (prints SKIP and returns True).
 module Test.Storage.Anthony (runTests) where
 
 import Control.Exception (SomeException, catch)
-import System.Directory (findExecutable, removeFile, getTemporaryDirectory)
+import System.Directory (getTemporaryDirectory, removeFile)
 import System.FilePath ((</>))
 import Test.Util (assertEq)
 import UmbraVox.Storage.Anthony
-    ( openDB, closeDB
+    ( closeDB, openDB
     , savePeer, loadPeers
     , saveSetting, loadSetting
     , saveMessage, loadMessages
@@ -18,12 +19,12 @@ import UmbraVox.Storage.Anthony
 runTests :: IO Bool
 runTests = do
     putStrLn "Storage.Anthony"
-    found <- findExecutable "anthony"
-    case found of
+    ready <- hasAnthony
+    case ready of
         Nothing -> do
-            putStrLn "  SKIP: anthony binary not available"
+            putStrLn "  SKIP: anthony bootstrap unavailable"
             pure True
-        Just _  -> runAllTests
+        Just () -> runAllTests
 
 runAllTests :: IO Bool
 runAllTests = do
@@ -92,3 +93,16 @@ runWithDB dbFile = do
 cleanup :: FilePath -> IO ()
 cleanup path = removeFile path
     `catch` (\(_ :: SomeException) -> pure ())
+
+hasAnthony :: IO (Maybe ())
+hasAnthony = do
+    tmpDir <- getTemporaryDirectory
+    let dbFile = tmpDir </> "umbravox-anthony-probe.db"
+    result <- ((do
+        db <- openDB dbFile
+        saveSetting db "__probe__" "ok"
+        closeDB db
+        pure (Just ()))
+        `catch` \(_ :: SomeException) -> pure Nothing)
+    cleanup dbFile
+    pure result

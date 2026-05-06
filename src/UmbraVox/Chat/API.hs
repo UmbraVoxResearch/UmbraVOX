@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | JSON-RPC API for UI clients
 --
 -- See: doc/spec/chat.md

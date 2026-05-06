@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Group messaging sender keys
 --
 -- See: doc/spec/signal-protocol.md

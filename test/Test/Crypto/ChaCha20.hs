@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | ChaCha20 test suite: RFC 8439 KAT vectors + edge cases + property/fuzz tests.
 module Test.Crypto.ChaCha20 (runTests) where
 

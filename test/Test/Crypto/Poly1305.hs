@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Poly1305 test suite: RFC 8439 Section 2.5.2 KAT vector.
 module Test.Crypto.Poly1305 (runTests) where
 

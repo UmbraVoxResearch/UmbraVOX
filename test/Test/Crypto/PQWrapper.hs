@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | PQWrapper test suite: verify module loads and stub functions throw as expected.
 -- Post-quantum outer encryption layer is not yet implemented.
 module Test.Crypto.PQWrapper (runTests) where

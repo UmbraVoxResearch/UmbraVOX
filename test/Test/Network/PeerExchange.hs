@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Peer Exchange (PEX) test suite.
 --
 -- Tests encodePeerList/decodePeerList round-trip, empty list,

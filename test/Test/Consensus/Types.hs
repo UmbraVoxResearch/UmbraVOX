@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for UmbraVox.Consensus.Types
 --
 -- Tests the newtype wrappers SlotNo, EpochNo, CycleNo, BlockNo

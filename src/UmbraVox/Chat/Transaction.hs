@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Chat message -> blockchain transaction
 --
 -- See: doc/spec/chat.md

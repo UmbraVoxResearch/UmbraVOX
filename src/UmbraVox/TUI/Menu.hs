@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 module UmbraVox.TUI.Menu
     ( toggleMenu, openMenu, closeMenu
     , handleMenu, moveMenuTab, activateMenuItem, executeMenuItem
@@ -8,6 +9,7 @@ import UmbraVox.TUI.Types
 import UmbraVox.TUI.Actions (startNewConn, startSettings, startExport,
     startImport, startKeysView, startVerify, startBrowse, showHelp,
     renameContact, sendCurrentMessage, quitApp, setStatus)
+import UmbraVox.Version (versionFull)
 
 -- Menu handling -----------------------------------------------------------
 
@@ -43,11 +45,11 @@ handleMenu st key = case key of
             Nothing -> pure ()
     KeyEnter   -> activateMenuItem st
     -- F-keys switch directly to that tab
-    KeyF1      -> openMenu st MenuFile
+    KeyF1      -> openMenu st MenuHelp
     KeyF2      -> openMenu st MenuContacts
     KeyF3      -> openMenu st MenuChat
     KeyF4      -> openMenu st MenuPrefs
-    KeyF5      -> openMenu st MenuHelp
+    KeyF5      -> pure ()
     -- Ctrl shortcuts pass through
     KeyCtrlQ   -> closeMenu st >> quitApp st
     KeyCtrlD   -> closeMenu st >> quitApp st
@@ -86,18 +88,18 @@ activateMenuItem st = do
 -- | Execute a menu action based on tab and item index.
 -- Every menu item is wired to a real action.
 executeMenuItem :: AppState -> MenuTab -> Int -> IO ()
--- File menu
-executeMenuItem st MenuFile 0     = startExport st       -- Export
-executeMenuItem st MenuFile 1     = startImport st       -- Import
-executeMenuItem st MenuFile 2     = quitApp st           -- Quit
+-- Help menu
+executeMenuItem st MenuHelp 0     = showHelp st          -- Help
+executeMenuItem st MenuHelp 1     =                      -- About
+    setStatus st (versionFull ++ " \x2014 Post-Quantum Encrypted Messaging")
 -- Contacts menu
-executeMenuItem st MenuContacts 0 = startNewConn st      -- New
-executeMenuItem st MenuContacts 1 = renameContact st     -- Rename
-executeMenuItem st MenuContacts 2 = startBrowse st       -- Browse
-executeMenuItem st MenuContacts 3 = startVerify st       -- Verify
+executeMenuItem st MenuContacts 0 = startBrowse st       -- Browse
+executeMenuItem st MenuContacts 1 = startVerify st       -- Verify
 -- Chat menu
-executeMenuItem st MenuChat 0     = sendCurrentMessage st -- Send
-executeMenuItem st MenuChat 1     = do                   -- Clear Input
+executeMenuItem st MenuChat 0     = startNewConn st      -- New
+executeMenuItem st MenuChat 1     = renameContact st     -- Rename
+executeMenuItem st MenuChat 2     = sendCurrentMessage st -- Send
+executeMenuItem st MenuChat 3     = do                   -- Clear Input
     writeIORef (asInputBuf st) ""
     setStatus st "Input cleared"
 -- Prefs menu
@@ -107,8 +109,8 @@ executeMenuItem st MenuPrefs 2    = do                   -- mDNS Toggle
     modifyIORef' (cfgMDNSEnabled (asConfig st)) not
     on <- readIORef (cfgMDNSEnabled (asConfig st))
     setStatus st ("mDNS: " ++ if on then "ON" else "OFF")
--- Help menu
-executeMenuItem st MenuHelp 0     = showHelp st          -- Help
-executeMenuItem st MenuHelp 1     =                      -- About
-    setStatus st "UmbraVOX v0.1 — Post-Quantum Encrypted Messaging"
+executeMenuItem st MenuPrefs 3    = startExport st       -- Export Chat
+executeMenuItem st MenuPrefs 4    = startImport st       -- Import Chat
+-- Quit menu
+executeMenuItem st MenuQuit 0     = quitApp st           -- Quit
 executeMenuItem _  _        _     = pure ()

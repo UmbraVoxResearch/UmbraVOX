@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Edge-case tests for the UmbraVOX wire format (Chat.Wire).
 --
 -- Covers: empty input, boundary sizes, round-trips at various ciphertext

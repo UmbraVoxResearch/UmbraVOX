@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | SHA-256 test suite: NIST KAT vectors + edge cases + property/fuzz tests.
 module Test.Crypto.SHA256 (runTests) where
 
@@ -38,7 +39,13 @@ katVectors =
     , ("Single 'a'", BS.singleton 0x61, "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb")
     , ("55 bytes 'a'", BS.replicate 55 0x61, "9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318")
     , ("56 bytes 'a'", BS.replicate 56 0x61, "b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a")
+    , ("63 bytes 'a'", BS.replicate 63 0x61, "7d3e74a05d7db15bce4ad9ec0658ea98e3f06eeecf16b4c6fff2da457ddc2f34")
     , ("64 bytes 'a'", BS.replicate 64 0x61, "ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb")
+    , ("65 bytes 'a'", BS.replicate 65 0x61, "635361c48bb9eab14198e76ea8ab7f1a41685d6ad62aa9146d301d4f17eb0ae0")
+    , ("127 bytes 'a'", BS.replicate 127 0x61, "c57e9278af78fa3cab38667bef4ce29d783787a2f731d4e12200270f0c32320a")
+    , ("128 bytes 'a'", BS.replicate 128 0x61, "6836cf13bac400e9105071cd6af47084dfacad4e5e302c94bfed24e013afb73e")
+    , ("Irregular multi-block alnum mix", strToBS "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq0123456789ABCDEFfedcba9876543210", "338e05f58bf13c597fe7e30d5a5c7e52ced54a9da1235017c7699dd930b1084b")
+    , ("Irregular multi-block sentence mix", strToBS "TheQuickBrownFoxJumpsOverTheLazyDog0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", "47ec3aed51c12fbaa7e83bdc4ab0043eb8c6b86511655e37d43df24289490084")
     , ("FIPS B.3: 896-bit", strToBS "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu", "cf5b16a778af8380036ce59e7b0492370b249b11e8f07a51afac45037afee9d1")
     ]
 

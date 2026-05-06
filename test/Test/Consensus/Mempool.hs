@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for UmbraVox.Consensus.Mempool
 --
 -- The module currently only exports a stub (emptyMempool = error).

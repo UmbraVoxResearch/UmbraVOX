@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Edge-case robustness tests for the UmbraVOX transport layer.
 --
 -- Tests partial reads, buffering, empty operations, large payloads,

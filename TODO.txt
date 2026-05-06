@@ -2,7 +2,313 @@ UmbraVOX Implementation TODO
 =============================
 Status: [ ] = pending, [~] = in progress, [x] = done, [!] = blocked
 
-Last updated: 2026-04-23
+Last updated: 2026-04-30
+
+================================================================================
+TOP PRIORITY: POST-MERGE MESSAGING MVP HARDENING + COMPLETION (ACTIVE)
+================================================================================
+
+Goal: finish the direct messaging MVP on `main` with a comprehensive hardening
+harness, preserve all deferred blockchain/design work in code and docs, keep
+codegen as a first-class source of truth, and treat F* verification as
+critical.
+
+Immediate assurance priority:
+
+1. Restore a fully green F* verification gate.
+2. Fix restored-session and persistence confidentiality issues without
+   weakening the active messaging MVP.
+3. Only then broaden the generated C/FFI path from linkage participation into
+   a semantically real assurance surface.
+
+--- MP.0: Branch Recovery + Merge Hygiene ---
+
+[x] MP.0.1  Archive messy worktree on `broken`
+[x] MP.0.2  Reset to clean `origin/main` baseline
+[x] MP.0.3  Build recovery work on fresh branch
+[x] MP.0.4  Merge recovery branch back into `main`
+[ ] MP.0.5  Push/sync `main` once current local work is stable
+
+--- MP.1: Tiered Messaging Hardening Harness ---
+
+[x] MP.1.1  Replace flat aggregate runner with tiered suite entrypoints
+  [x] MP.1.1.1  `required` fast gate
+  [x] MP.1.1.2  `core` deterministic suite
+  [x] MP.1.1.3  `tcp` real localhost TCP suite
+  [x] MP.1.1.4  `fault` adversarial hardening suite
+  [x] MP.1.1.5  `recovery` persistence/restart suite
+  [x] MP.1.1.6  `soak` long-running stress suite
+  [x] MP.1.1.7  `deferred` explicit preserved-stub suite
+
+[x] MP.1.2  Add real TCP hardening scenarios
+  [x] MP.1.2.1  handshake + round-trip
+  [x] MP.1.2.2  bidirectional send/recv
+  [x] MP.1.2.3  reconnect with stable identities
+  [x] MP.1.2.4  large payload round-trip
+
+[x] MP.1.3  Add adversarial fault scenarios
+  [x] MP.1.3.1  duplicate frame / replay rejection
+  [x] MP.1.3.2  corrupted frame rejection
+  [x] MP.1.3.3  reordering behavior
+  [x] MP.1.3.4  disconnect-after-send behavior
+
+[x] MP.1.4  Add soak/stress suite
+  [x] MP.1.4.1  repeated connection churn
+  [x] MP.1.4.2  long message stream
+  [x] MP.1.4.3  expand soak into larger multi-peer longevity runs
+  [x] MP.1.4.4  add bounded-resource assertions during soak
+
+[x] MP.1.5  Add toggleable runtime troubleshooting logs
+  [x] MP.1.5.1  config + env toggle for runtime event logging
+  [x] MP.1.5.2  metadata-only send/recv/listener/persistence log events
+  [x] MP.1.5.3  automated runtime test asserting log file emission
+  [ ] MP.1.5.4  harden runtime logging for operational assurance
+    [ ] MP.1.5.4.1  redact or suppress peer labels, host/port targets, attachment paths, DB paths, and restore counts from durable logs
+    [ ] MP.1.5.4.2  distinguish pre-auth transport arrival from post-auth trusted session establishment
+    [ ] MP.1.5.4.3  stop using pre-auth listener events as success evidence in tests
+    [x] MP.1.5.4.4  ensure log file creation uses restrictive permissions and single-writer discipline
+    [ ] MP.1.5.4.5  document runtime logging as sensitive metadata collection, not production-safe default telemetry
+
+--- MP.2: Recovery + Restart Coverage ---
+
+[x] MP.2.1  Add local identity persistence support
+  [x] MP.2.1.1  save identity to default path
+  [x] MP.2.1.2  load identity from default path
+  [x] MP.2.1.3  add path-specific helpers for tests
+
+[x] MP.2.2  Extract startup recovery helpers from `app/Main.hs`
+  [x] MP.2.2.1  identity resolution helper
+  [x] MP.2.2.2  persistent-state restore helper
+  [x] MP.2.2.3  wire helpers back into application startup
+
+[x] MP.2.3  Add startup-level recovery tests
+  [x] MP.2.3.1  identity remains stable across resolve/reload
+  [x] MP.2.3.2  startup restore tests compile into recovery suite
+  [x] MP.2.3.3  Anthony-backed session restore assertions when `anthony` is available
+  [x] MP.2.3.4  trusted-key restore assertions when `anthony` is available
+  [x] MP.2.3.5  process-level restart test around app boot path
+
+[x] MP.2.4  Extend recovery hardening toward real app lifecycle
+  [x] MP.2.4.1  verify restored conversations appear with expected history
+  [x] MP.2.4.2  verify restart preserves local identity fingerprint
+  [x] MP.2.4.3  verify restart plus reconnect path
+  [x] MP.2.4.4  verify graceful fallback to ephemeral mode when DB unavailable
+[x] MP.2.4.5  eliminate restored-session local loopback risk
+    [x] MP.2.4.5.1  prevent restored sessions with `siTransport = Nothing` from being treated as live-sendable peers
+    [x] MP.2.4.5.2  require explicit reconnect or outbound re-establishment before send becomes available after restore
+    [x] MP.2.4.5.3  add regression coverage proving restored disconnected sessions cannot self-deliver or falsely persist remote sends
+    [x] MP.2.4.5.4  review restart UX/status text so disconnected restored sessions are clearly marked as offline
+
+[~] MP.2.5  Protect persistent message storage without breaking testability
+  [~] MP.2.5.1  define the MVP at-rest assurance model for local message history and trusted-key storage
+    [ ] MP.2.5.1.1  keep SQLite page format ordinary SQLite; do not claim SQLCipher compatibility
+    [ ] MP.2.5.1.2  treat application-layer AEAD around persisted payloads as the MVP confidentiality boundary
+    [ ] MP.2.5.1.3  keep Haskell runtime crypto as the active semantic path; do not route persistence confidentiality through the generated C/FFI bridge
+    [ ] MP.2.5.1.4  bind persistence confidentiality to a dedicated storage-key domain, not directly to transport/session ratchet state
+  [ ] MP.2.5.2  add application-layer encryption for persisted message bodies and sensitive peer/session metadata
+    [ ] MP.2.5.2.1  add a persistence-crypto helper module reusing AES-256-GCM + HKDF patterns from `src/UmbraVox/Crypto/Export.hs`
+    [ ] MP.2.5.2.2  encrypt `messages.content` before `saveMessage` and decrypt on `loadMessages`
+    [ ] MP.2.5.2.3  decide whether `messages.sender` remains plaintext for UX/query simplicity or moves inside the encrypted payload
+    [ ] MP.2.5.2.4  keep `conversation_id` and `timestamp` plaintext for MVP query/recovery behavior unless a broader schema migration is justified
+    [ ] MP.2.5.2.5  decide whether `conversations.name` should remain plaintext display metadata or gain optional encrypted storage later
+  [ ] MP.2.5.3  support deterministic test/development key injection so automated persistence tests remain reproducible
+    [ ] MP.2.5.3.1  derive a storage master key from a configured secret plus per-record or per-blob salt with explicit domain separation
+    [ ] MP.2.5.3.2  add a non-production deterministic test-key path for startup/recovery and storage tests
+    [ ] MP.2.5.3.3  ensure the deterministic test-key path is explicit and cannot silently become the production default
+  [ ] MP.2.5.4  verify plaintext no longer appears in SQLite message rows under normal persistent mode
+    [ ] MP.2.5.4.1  add direct DB-row assertions proving stored `messages.content` is ciphertext, not plaintext
+    [ ] MP.2.5.4.2  add restart/recovery assertions proving decrypted history still renders correctly in the TUI
+    [ ] MP.2.5.4.3  add mixed old/new-row handling tests during migration
+  [ ] MP.2.5.5  add operator-facing recovery/error handling for missing, rotated, or corrupt persistence keys
+    [ ] MP.2.5.5.1  fail closed on decryption/authentication failure for persisted rows
+    [ ] MP.2.5.5.2  surface clear status text for unreadable encrypted history without crashing startup
+    [ ] MP.2.5.5.3  define behavior for legacy plaintext rows after migration is enabled
+  [ ] MP.2.5.6  document what remains intentionally unencrypted, if anything, and why
+    [ ] MP.2.5.6.1  document residual metadata leakage: file existence, file size, row counts, conversation ids, timestamps, peer labels if left plaintext
+    [ ] MP.2.5.6.2  document runtime logging implications once persistence encryption lands
+    [ ] MP.2.5.6.3  reconcile `src/UmbraVox/Crypto/KeyStore.hs` comments with actual at-rest behavior
+  [ ] MP.2.5.7  implement the smallest safe schema migration for encrypted message rows
+    [ ] MP.2.5.7.1  choose between in-place tagged ciphertext in `messages.content` vs additive encrypted columns
+    [ ] MP.2.5.7.2  support one-time migration of existing plaintext message rows
+    [ ] MP.2.5.7.3  ensure startup recovery tolerates pre-migration, migrated, and corrupt rows deterministically
+
+--- MP.3: Deferred Surface Preservation ---
+
+[x] MP.3.1  Populate `deferred` suite in the test runner
+  [x] MP.3.1.1  chat transaction packaging stub tests
+  [x] MP.3.1.2  chain/state/index/checkpoint storage stub tests
+  [x] MP.3.1.3  consensus stub/type tests
+  [x] MP.3.1.4  economics tests outside the messaging fast gate
+
+[x] MP.3.2  Add `make test-deferred`
+[x] MP.3.3  Update docs to point at the explicit deferred suite once wired
+[ ] MP.3.4  Keep deferred modules compiling without reintroducing them into `make test`
+
+--- MP.4: Codegen Preservation + Heavier Generated Coverage ---
+
+[x] MP.4.1  Preserve existing codegen pipeline while refactoring tests
+[~] MP.4.2  Keep generated/reference behavior visible in the active harness
+  [x] MP.4.2.1  confirm `Codegen` suite remains in `core`
+  [x] MP.4.2.2  expand generated/reference parity checks where useful
+  [x] MP.4.2.3  keep generated coverage separate from deferred blockchain scope
+  [x] MP.4.2.4  wire preserved generated Haskell wrapper namespace into `UmbraVox.cabal`
+  [x] MP.4.2.5  link preserved generated FFI/C artifacts into the active graph with truthful bridge wrappers
+
+[~] MP.4.3  Increase generated-test leverage where it makes sense
+  [x] MP.4.3.1  generated/reference equivalence organization cleanup
+  [ ] MP.4.3.2  generated crypto hardening scenarios review
+  [~] MP.4.3.3  document active codegen guarantees vs future generator work
+    [ ] MP.4.3.3.1  document linkage-smoke-test vs wrapper-parity vs semantic-diversity categories
+    [ ] MP.4.3.3.2  document current generated C/FFI bridge as build/link participation only
+    [ ] MP.4.3.3.3  document the target proof-linked or equivalence-tested C path
+  [ ] MP.4.3.4  review generated C/FFI bridge assurance against life-critical expectations
+    [ ] MP.4.3.4.1  remove or narrow any claim that wrapper/link-probe parity equals independent generated implementation assurance
+    [ ] MP.4.3.4.2  add malformed-input, ownership/lifetime, concurrency, and error-propagation tests for active FFI entrypoints
+    [ ] MP.4.3.4.3  decide whether the current generated C/FFI bridge can remain enabled in MVP builds under DO-style assurance claims
+    [ ] MP.4.3.4.4  if kept enabled, define the exact bounded assurance statement for the bridge layer
+    [ ] MP.4.3.4.5  if not supportable, gate bridge exposure behind an explicit non-assurance flag until stronger evidence exists
+    [ ] MP.4.3.4.6  replace probe-only generated C outputs with real semantic implementations
+    [ ] MP.4.3.4.7  switch generated FFI wrappers from `Reference.*` delegation to real foreign crypto calls
+    [ ] MP.4.3.4.8  add Haskell-vs-C differential testing at scale once the C path is semantically real
+    [ ] MP.4.3.4.9  add side-channel and key-handling evidence before broadening production claims
+
+Current codegen focus:
+  [x] Generated Haskell wrappers are regenerated from `CryptoGen.hs`
+      and promoted into the active library/test graph.
+  [x] Generated C/FFI artifacts are linked into the active build graph
+      through truthful bridge wrappers plus compile/link probes.
+  [~] Remaining generator work is about stronger emitted semantics and
+      marshaling, not basic build-graph integration.
+
+Future / planned codegen work:
+  [ ] Replace bridge-style generated FFI wrappers with fully emitted marshaling/signature generation
+  [ ] Upgrade generated C emitters from link-probe stubs to truthful algorithm implementations when the emitter is trustworthy
+  [ ] Expand generated-surface validation beyond wrapper parity once generator semantics improve
+  [ ] Post-MVP refactor: evaluate a KaRaMeL/Low* extraction track for selected primitives so F* can become an active C-generation path rather than a spec-only assurance layer
+  [ ] Post-MVP refactor: compare `.spec -> generated C` against `F* -> KaRaMeL/Low* -> C` for traceability, constant-time discipline, and equivalence-testing fit
+  [ ] Post-MVP refactor: if the extraction path is viable, keep Haskell as the oracle and use extracted C as the semantically real low-level differential target
+
+--- MP.5: Quality Gates + Verification ---
+
+[x] MP.5.1  `make test` fast gate passes
+[x] MP.5.2  `make soak` passes and writes artifact report
+[x] MP.5.3  `make complexity` passes
+[x] MP.5.4  `make verify` / F* verification
+  [x] MP.5.4.1  keep verification running after merges/refactors
+  [x] MP.5.4.2  improve verification observability in `fstar-verify` and `make verify`
+  [~] MP.5.4.3  investigate current F* failures
+    [x] MP.5.4.3.1  reproduce full verification run with live module-by-module progress
+    [x] MP.5.4.3.2  isolate failing modules: `Spec.GCM`, `Spec.HKDF`, `Spec.HMAC`
+    [x] MP.5.4.3.3  capture first failing proof locations
+      [x] `Spec.GCM.fst(111,14-111,30)`
+      [x] `Spec.HKDF.fst(105,15-105,24)`
+      [x] `Spec.HMAC.fst(94,7-94,18)`
+    [x] MP.5.4.3.4  compare failing proof regions against previous tags
+      [x] `v0.0.2` matches current in the failing regions
+      [x] `v0.0.1` matches current in the failing regions checked
+      [x] conclude this is likely toolchain drift or a latent proof issue, not a recent mistaken correction
+    [x] MP.5.4.3.5  inspect the failing proof obligations in the three `.fst` modules
+    [x] MP.5.4.3.6  decide whether each failure is due to F* version drift, Z3 behavior drift, or proof/spec regression
+    [x] MP.5.4.3.7  patch `Spec.GCM.fst` proof(s) until green
+    [x] MP.5.4.3.8  patch `Spec.HKDF.fst` proof(s) until green
+    [x] MP.5.4.3.9  patch `Spec.HMAC.fst` proof(s) until green
+    [x] MP.5.4.3.10 rerun targeted verification for `Spec.GCM`
+    [x] MP.5.4.3.11 rerun targeted verification for `Spec.HKDF`
+    [x] MP.5.4.3.12 rerun targeted verification for `Spec.HMAC`
+    [x] MP.5.4.3.13 investigate the current full-run stall or extreme solver cost at `Spec.SHA256`
+      [x] compare the isolated `Spec.SHA256` run against the old full-run stall point
+      [x] remove impossible schedule-prefix assumptions from `Spec.SHA256`
+      [x] add explicit padded-block extraction to reduce repeated slice-length reasoning
+      [x] replace fixed-size `schedule` recursion with explicit 4-word chunk expansion
+      [x] replace fixed-size `rounds` recursion with explicit 4-round chunk expansion
+      [x] simplify `process_blocks` to recurse on the remaining padded tail instead of indexed block arithmetic
+      [x] reduce repeated `Seq.index` expansion in `compress` / `hash_to_bytes`
+      [x] expand SHA256 runtime boundary vectors to cover 63/65/127/128-byte block transitions
+      [x] add irregular multi-block SHA256 runtime vectors beyond repeated-byte inputs
+      [x] rerun `make test-core` and confirm the expanded SHA256 suite is green
+      [x] confirm whether the updated proof now completes in isolation
+      [x] if still silent, isolate the next hotspot without weakening formal linkage
+    [x] MP.5.4.3.14 determine whether `Spec.SHA256` is a verifier-cost issue, a new proof obligation issue, or a runner/timeout issue
+    [x] MP.5.4.3.15 apply the same safe explicit-prefix/chunked-round cleanup pattern to `Spec.SHA512`
+    [x] MP.5.4.3.16 confirm `Spec.SHA512` passes in isolation
+  [x] MP.5.4.4  record successful full `make verify` result after all targeted failing and latent stalled modules are fixed
+  [~] MP.5.4.5  update docs and active status text after verification is green again
+  [x] MP.5.4.6  treat F* completion as a blocker for any stronger publication-grade assurance statement
+
+[~] MP.5.5  Re-run full `make quality` immediately after F* verification is green
+  [x] MP.5.5.1  rerun `make quality`
+  [~] MP.5.5.2  confirm blocking gates (`build`, `test`, `verify`, `complexity`, `license`) are green
+  [ ] MP.5.5.3  review advisory output from `lint` and `format-check`
+[ ] MP.5.6  Decide whether to commit/report soak artifacts or keep them ephemeral only
+[~] MP.5.7  Reconcile assurance claims with MVP reality before publication
+  [~] MP.5.7.1  audit all DO-178C / DAL / life-critical wording in package metadata, README, QUICKSTART, and overview docs
+  [ ] MP.5.7.2  ensure no publication claim exceeds the evidence provided by tests, F* status, and generated-bridge coverage
+  [~] MP.5.7.3  either produce missing evidence for each assurance claim or narrow the claim text before release
+  [ ] MP.5.7.4  explicitly document any non-production or research-only surfaces that remain enabled for developer testing
+  [ ] MP.5.7.5  review whether current active dependencies and foreign-code exposure are compatible with stated DO-level goals
+  [ ] MP.5.7.6  define the exact bounded MVP assurance statement for the current Haskell-first runtime
+  [ ] MP.5.7.7  define the stronger post-MVP assurance statement for the real C/FFI production path
+  [ ] MP.5.7.8  keep the triple-check target explicit: F* spec + Haskell oracle + real C implementation
+  [x] MP.5.7.9  add an explicit assurance/equivalence matrix documenting standards targets, active implementations, generated surfaces, tests, and assumption gaps
+  [ ] MP.5.7.10 update the matrix after every material verifier, codegen, or assurance-model change
+  [ ] MP.5.7.11 use the matrix as the hard limit for README, AGENTS, package metadata, and formal-doc wording
+
+--- MP.6: Documentation Alignment ---
+
+[x] MP.6.1  Update README for tiered hardening workflow
+[x] MP.6.2  Update QUICKSTART commands
+[x] MP.6.3  Update overview to describe tiered harness
+[x] MP.6.4  Rewrite MVP plan around current messaging MVP state
+[x] MP.6.5  Preserve unfinished blockchain/design documentation instead of deleting it
+[x] MP.6.6  Update docs again after deferred suite is explicitly wired
+[x] MP.6.7  Move legacy docs into `attic/` and start a fresh active `doc/`
+[x] MP.6.8  Reconcile any remaining top-level references to the fresh doc tree
+[ ] MP.6.9  Update docs again after F* verification result is confirmed
+  [ ] MP.6.9.1  update README verification claims
+  [ ] MP.6.9.2  update `test/evidence/formal-proofs/fstar/README.md`
+  [ ] MP.6.9.3  update AGENTS/overview status text if verification state changes
+[~] MP.6.10 Keep assurance documentation truthful while preserving the target bar
+  [x] MP.6.10.1  add a dedicated assurance roadmap document
+  [x] MP.6.10.2  add top-level README and docs-index pointers to the assurance roadmap
+  [x] MP.6.10.3  record exact generated C/FFI bridge assurance scope and exclusions
+  [x] MP.6.10.4  record the current F* status honestly and update it when the full verifier gate changes
+  [ ] MP.6.10.5  record runtime logging sensitivity and recommended operator defaults
+  [ ] MP.6.10.6  record active persistence confidentiality model once storage encryption is implemented
+  [ ] MP.6.10.7  align publication-facing wording with the actual evidence package
+  [ ] MP.6.10.8  add an assurance taxonomy section covering linkage smoke tests, wrapper parity, semantic diversity, and proof-linked production paths
+  [ ] MP.6.10.9  add a docs note that the triple encryption runtime path remains the active protection model
+
+--- MP.7: Next Implementation Order (after this TODO update) ---
+
+[x] MP.7.1  Finish explicit deferred suite wiring
+[x] MP.7.2  Add `make test-deferred`
+[x] MP.7.3  Deepen Anthony-backed startup restore tests when environment supports it
+[x] MP.7.4  Continue app-level restart/reconnect recovery scenarios
+[~] MP.7.5  Keep polling/validating F* verification until green
+  [x] MP.7.5.1  make verifier progress visible in non-interactive runs
+  [x] MP.7.5.1.1  add a shared suite lock so concurrent `make test*`, `make soak`, and `make verify` invocations fail fast instead of spawning duplicate CPU-heavy runs
+  [x] MP.7.5.2  complete the three failing proof repairs
+  [x] MP.7.5.3  rerun the full verifier to green
+  [x] MP.7.5.4  rerun the full quality pipeline
+[x] MP.7.6  Replace broken anthony CLI dependency with temporary sqlite3 shell backend
+[~] MP.7.7  Assurance-driven MVP closeout
+[x] MP.7.7.1  fix restored-session send integrity before any further publication claims
+  [ ] MP.7.7.2  encrypt persistent history while keeping deterministic automated tests possible
+  [ ] MP.7.7.3  harden runtime logs to avoid creating a new durable metadata leak
+  [ ] MP.7.7.4  decide whether current generated C/FFI bridge evidence is sufficient for MVP assurance claims
+  [x] MP.7.7.5  clear the formal verification blockers and keep `make verify` green
+  [ ] MP.7.7.6  rerun full gates and capture a publication evidence bundle
+  [ ] MP.7.7.7  keep Haskell as the active semantic oracle until the C path is semantically real and differential tests are green
+  [ ] MP.7.7.8  promote the C path only after FFI hardening, malformed-input coverage, and boundary evidence are in place
+  [ ] MP.7.7.9  publish the final bounded MVP assurance statement and the stronger target assurance statement side by side
+
+Priority order from here:
+  [ ] P1  Implement persistence confidentiality at rest
+  [ ] P2  Harden runtime logging so troubleshooting does not weaken assurance
+  [x] P3  Track listener ownership explicitly and prevent duplicate background accept loops
+  [ ] P4  Capture a publication evidence bundle from the current green gates
+  [ ] P5  Convert generated C/FFI from linkage-only coverage into a real semantic path
+  [ ] Post-MVP future refactor  Evaluate whether selected primitives should move to an `F* -> KaRaMeL/Low* -> C` extraction path after the MVP assurance bar is met
 
 ================================================================================
 PHASE 0: CRYPTOGRAPHIC PRIMITIVES + CODE GENERATOR (Weeks 1-10)
@@ -12,7 +318,7 @@ PHASE 0: CRYPTOGRAPHIC PRIMITIVES + CODE GENERATOR (Weeks 1-10)
 
 [ ] 0a.1  Project scaffolding
   [ ] 0a.1.1  Create UmbraVox.cabal with all modules, flags (-fpure-haskell, -fprofiling, -fcoverage)
-  [ ] 0a.1.2  Create directory structure per doc/02-language-and-structure.md
+  [ ] 0a.1.2  Create directory structure per attic/doc-legacy-2026-04-28/02-language-and-structure.md
   [ ] 0a.1.3  Create app/Main.hs entry point (stub)
   [ ] 0a.1.4  Verify nix-shell builds empty project (cabal build)
   [ ] 0a.1.5  Set up CI pipeline skeleton (commit hook: build + test)
@@ -74,9 +380,11 @@ cryptographic primitive. No primitive is considered complete without:
   1. F* specification matching the NIST/RFC standard
   2. KAT vector lemmas (assumed, validated by Haskell test suite)
   3. Structural correctness lemmas (output length, roundtrip, etc.)
-  4. Correspondence proof: F* spec ↔ Haskell implementation
+  4. An explicit correspondence/refinement story between the F* model and the
+     active Haskell implementation
 
-Current F* status (17 total, all verified):
+Current F* status (17 total; current full `make verify` run is green under the
+active toolchain):
   [x] Spec.SHA256.fst       (FIPS 180-4)    — 3 KAT vectors, structural lemmas
   [x] Spec.SHA512.fst       (FIPS 180-4)    — 2 KAT vectors, structural lemmas
   [x] Spec.HMAC.fst         (RFC 2104/4231) — 2 KAT vectors, PRF axiom
@@ -496,7 +804,7 @@ PHASE 7: INTEGRATION + HARDENING + DO-178C V&V (Weeks 48-67)
 --- 7c: DO-178C V&V Evidence (Weeks 58-62) ---
 
 [ ] 7c.1  MC/DC structural coverage (100% all DAL A modules)
-[ ] 7c.2  Requirements traceability matrix completion (doc/requirements-trace.md)
+[ ] 7c.2  Requirements traceability matrix completion (attic/doc-legacy-2026-04-28/requirements-trace.md)
 [ ] 7c.3  Formal proof evidence packaging (TLA+, Coq)
 [ ] 7c.4  scripts/gen-trace.hs (reads REQ annotations → test ID mapping)
 [ ] 7c.5  Configuration index + quality assurance records
@@ -526,7 +834,7 @@ STORAGE SUBSYSTEM (Phase 3-4 dependency)
 NODE ARCHITECTURE (Phase 5-6 dependency)
 ================================================================================
 
-[ ] N.1  app/Main.hs: boot sequence (per doc/11-node-architecture.md)
+[ ] N.1  app/Main.hs: boot sequence (per attic/doc-legacy-2026-04-28/future/11-node-architecture.md)
 [ ] N.2  Component initialization order
 [ ] N.3  Graceful shutdown
 [ ] N.4  Configuration management (chain revisions)
@@ -1053,7 +1361,7 @@ FULL PROJECT AUDIT (2026-04-26) — 11 PARALLEL AGENTS
 
 --- Critical (unfixed — see also BUG-016, BUG-017 above) ---
 
-[ ] AUDIT-007 CSPRNG thread safety: globalCSPRNG uses plain IORef
+[x] AUDIT-007 CSPRNG thread safety: globalCSPRNG moved off plain IORef onto synchronized state
     Fix: use atomicModifyIORef' or MVar
     File: src/UmbraVox/Crypto/Random.hs:274-281
     (Same as BUG-015 but more specific)

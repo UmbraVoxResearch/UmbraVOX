@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | HKDF test suite: RFC 5869 KAT vectors + edge cases + property/fuzz tests.
 module Test.Crypto.HKDF (runTests) where
 

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Chat session state wrapping the Signal Double Ratchet
 --
 -- See: doc/spec/chat.md

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | {-# REQ "CRYPTO-010" #-} ChaCha20 stream cipher (RFC 8439)
 --
 -- Pure Haskell reference implementation. NOT constant-time.

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | TUI simulation tests: Tab cycling and focus management
 module Test.TUI.Sim.Focus (runTests) where
 

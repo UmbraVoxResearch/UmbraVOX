@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Contact/identity management
 --
 -- See: doc/spec/chat.md

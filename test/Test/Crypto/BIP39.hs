@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | BIP39 passphrase generation test suite.
 --
 -- Tests passphrase length, wordlist membership, and determinism.

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Ed25519 test suite: RFC 8032 KAT vectors + edge cases + property/fuzz tests.
 module Test.Crypto.Ed25519 (runTests) where
 

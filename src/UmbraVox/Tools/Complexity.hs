@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Cyclomatic complexity checker for Haskell source files.
 --
 -- Measures decision points per top-level function:

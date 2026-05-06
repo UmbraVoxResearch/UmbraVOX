@@ -1,5 +1,6 @@
 # Build artifacts
 dist-newstyle/
+build/
 *.hi
 *.o
 *.dyn_hi

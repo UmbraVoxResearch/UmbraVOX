@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | ECVRF-ED25519-SHA512 (RFC 9381)
 --
 -- See: doc/spec/crypto.md

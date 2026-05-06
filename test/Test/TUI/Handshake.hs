@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for UmbraVox.TUI.Handshake pure functions:
 -- bsSlice, putW32BE, getW32BE, fingerprint, serializeBundle, deserializeBundle
 module Test.TUI.Handshake (runTests) where

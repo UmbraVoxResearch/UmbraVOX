@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for UmbraVox.Storage.ChainDB
 --
 -- ChainDB is currently a stub module. openChainDB calls @error@.

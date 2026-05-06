@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for the cyclomatic complexity checker.
 --
 -- Covers all exported predicates, extractors, and the main

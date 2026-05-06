@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | SHA-512 test suite: NIST KAT vectors + edge cases + property/fuzz tests.
 module Test.Crypto.SHA512 (runTests) where
 

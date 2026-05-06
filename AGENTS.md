@@ -4,43 +4,43 @@ This file is a reference index only. All authoritative project information lives
 
 ## Project Status
 
-MVP is functional. 238 tests across 23 suites. 17 F* formal specifications. 10 .spec files generating 30 Haskell + C + FFI outputs.
+MVP is functional. The fast messaging gate is green. 17 F* formal
+specifications are present, and the current full `make verify` run is green.
+10 `.spec` files generate 30 Haskell + C + FFI outputs.
+
+Current assurance model:
+
+- The active cryptographic protection path is the layered runtime path in
+  `README.md`: Signal Double Ratchet, PQ outer wrapping, and Noise transport.
+- Generated Haskell modules are active as wrappers over the handwritten Haskell
+  crypto implementations.
+- Generated C artifacts are currently link-probe stubs, not active crypto
+  implementations.
+- Generated FFI modules currently call the C link probes and then delegate back
+  to handwritten Haskell crypto; they are not yet an independently assured C
+  execution path.
+- The F* specifications are handwritten formal models, not generated from NIST
+  or RFC text. They remain assurance-critical and the current full verifier run
+  is green, but that does not constitute a machine-checked refinement proof
+  from the handwritten models to the active Haskell runtime.
 
 ## Source of Truth
 
-### Top-Level
+### Active Documentation
 
-- [README.md](README.md) — Project overview, current status, quick numbers
-- [TODO.txt](TODO.txt) — Implementation tracking (phases 0-7, bugs, F* specs, MVP plan)
-- [doc/mvp-plan.md](doc/mvp-plan.md) — MVP plan: codegen pipeline, P2P messaging, TUI/discovery (all phases complete)
+- [README.md](README.md) — project overview and active workflow
+- [TODO.txt](TODO.txt) — implementation tracking and current priorities
+- [doc/README.md](doc/README.md) — active documentation index
+- [doc/QUICKSTART.md](doc/QUICKSTART.md) — active build, run, and test commands
+- [doc/01-overview.md](doc/01-overview.md) — current MVP scope and verification model
+- [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md) — active runtime and test architecture
+- [doc/mvp-plan.md](doc/mvp-plan.md) — current messaging MVP hardening plan
+- [doc/assurance-roadmap.md](doc/assurance-roadmap.md) — current assurance boundary and stronger target model
+- [doc/assurance-matrix.md](doc/assurance-matrix.md) — current evidence ledger for standards, implementations, tests, and trust gaps
 
-### Design Specifications
+### Legacy Documentation Archive
 
-- [doc/01-overview.md](doc/01-overview.md) — System overview, core principles, architecture, DO-178C designation
-- [doc/02-language-and-structure.md](doc/02-language-and-structure.md) — Language choice, project structure, code generation toolchain
-- [doc/03-cryptography.md](doc/03-cryptography.md) — Cryptographic primitives, Signal protocol, PQ wrapper, side-channel mitigation
-- [doc/04-consensus.md](doc/04-consensus.md) — PoS consensus, VRF leader election, fork choice, formal BFT proofs
-- [doc/05-truncation.md](doc/05-truncation.md) — 11-day chain truncation, early truncation, crash recovery, replay prevention
-- [doc/06-economics.md](doc/06-economics.md) — Token economics v3 (Universe Cycle Model), adaptive controller, fees, rewards, penalties, onboarding
-- [doc/07-message-format.md](doc/07-message-format.md) — Wire format, block layout, CBOR serialization
-- [doc/08-dandelion.md](doc/08-dandelion.md) — Dandelion++ IP obfuscation, cover traffic, anonymity quantification
-- [doc/09-network.md](doc/09-network.md) — P2P networking, peer scoring, version negotiation, Noise_IK transport
-- [doc/10-security.md](doc/10-security.md) — Threat model, adversary classes, supply depletion attack, formal methods requirements
-- [doc/11-node-architecture.md](doc/11-node-architecture.md) — Node internals, storage, WAL, API, boot sequence
-- [doc/12-development-phases.md](doc/12-development-phases.md) — 62-67 week timeline, quality gates, verification pipeline
-- [doc/13-do178c-assurance.md](doc/13-do178c-assurance.md) — DO-178C DAL A plan, objectives, tool qualification
-- [doc/14-code-generation.md](doc/14-code-generation.md) — Code generation strategy, TQL-1 qualification, targets
-- [doc/15-economic-model-v3.md](doc/15-economic-model-v3.md) — Economic model v3 (Universe Cycle), formal invariants, simulation parameters
-- [doc/16-verification-plan.md](doc/16-verification-plan.md) — Test pyramid, MC/DC coverage, continuous pipeline, audit schedule
-- [doc/17-related-work.md](doc/17-related-work.md) — Comparative analysis vs Signal, Matrix, Session, Status, Nym
-- [doc/18-performance-analysis.md](doc/18-performance-analysis.md) — Throughput, latency, storage, bandwidth analysis
-- [doc/19-game-theory.md](doc/19-game-theory.md) — Nash equilibria, spam/Sybil/collusion/depletion attack profitability
-- [doc/20-economic-analysis.md](doc/20-economic-analysis.md) — Universe Cycle economic analysis, modeling, adaptive controller convergence
-- [doc/requirements-trace.md](doc/requirements-trace.md) — DO-178C DAL A bidirectional traceability matrix (60 requirements)
-
-### Hardening Specifications
-
-- [doc/hardening/23-treasury-governance.md](doc/hardening/23-treasury-governance.md) — Treasury governance: safety bounds, anti-capture, spending categories, formal invariants 13-15
+- `attic/doc-legacy-2026-04-28/` — preserved prior design, hardening, future-planning, and reference material
 
 ### Legal
 

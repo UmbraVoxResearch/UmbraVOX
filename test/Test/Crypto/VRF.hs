@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | VRF test suite: verify module loads and stub functions throw as expected.
 -- ECVRF-ED25519-SHA512 (RFC 9381) is not yet implemented.
 module Test.Crypto.VRF (runTests) where

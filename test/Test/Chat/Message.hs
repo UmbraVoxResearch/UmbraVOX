@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for UmbraVox.Chat.Message chunking and reassembly.
 module Test.Chat.Message (runTests) where
 

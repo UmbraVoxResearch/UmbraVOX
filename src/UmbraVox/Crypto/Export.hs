@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Encrypted conversation export with AES-256-GCM and HKDF key derivation.
 --
 -- Wire format: salt (32) || nonce (12) || ciphertext || tag (16)

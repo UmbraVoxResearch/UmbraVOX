@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for UmbraVox.Storage.Checkpoint
 --
 -- Checkpoint is currently a stub module. saveCheckpoint calls @error@.

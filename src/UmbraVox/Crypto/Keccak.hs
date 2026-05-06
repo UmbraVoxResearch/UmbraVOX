@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | {-# REQ "CRYPTO-PQ-001" #-} SHA-3 (FIPS 202) — Keccak sponge construction
 --
 -- Pure Haskell reference implementation of Keccak-f[1600] permutation

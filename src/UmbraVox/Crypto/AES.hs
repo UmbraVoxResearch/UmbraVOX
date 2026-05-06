@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | {-# REQ "CRYPTO-001" #-} AES-256 block cipher (FIPS 197)
 --
 -- Pure Haskell reference implementation. NOT constant-time.

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for UmbraVox.Economics.Cycle
 module Test.Economics.Cycle (runTests) where
 

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Cryptographic integrity verification tests.
 --
 -- End-to-end encrypt-decrypt integrity tests covering round-trip fidelity,

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for UmbraVox.TUI.Types and related layout logic.
 module Test.TUI.Types (runTests) where
 
@@ -80,20 +81,20 @@ testMenuTabEnum = do
 -- | Each MenuTab has at least one item.
 testMenuTabItems :: IO Bool
 testMenuTabItems = do
-    let tabs = [MenuFile, MenuContacts, MenuChat, MenuPrefs, MenuHelp]
+    let tabs = [MenuHelp, MenuContacts, MenuChat, MenuPrefs, MenuQuit]
         allNonEmpty = all (\t -> not (null (menuTabItems t))) tabs
     assertEq "all MenuTab items non-empty" True allNonEmpty
 
 -- | Each MenuTab has a non-empty label.
 testMenuTabLabel :: IO Bool
 testMenuTabLabel = do
-    let tabs = [MenuFile, MenuContacts, MenuChat, MenuPrefs, MenuHelp]
+    let tabs = [MenuHelp, MenuContacts, MenuChat, MenuPrefs, MenuQuit]
         allNonEmpty = all (\t -> not (null (menuTabLabel t))) tabs
     a <- assertEq "all MenuTab labels non-empty" True allNonEmpty
     -- Verify specific labels contain expected F-key references
-    b <- assertEq "MenuFile label contains F1" True ("F1" `isIn` menuTabLabel MenuFile)
+    b <- assertEq "MenuHelp label contains F1" True ("F1" `isIn` menuTabLabel MenuHelp)
     c <- assertEq "MenuPrefs label contains F4" True ("F4" `isIn` menuTabLabel MenuPrefs)
-    d <- assertEq "MenuHelp label contains F5" True ("F5" `isIn` menuTabLabel MenuHelp)
+    d <- assertEq "MenuQuit label contains Q" True ("Q" `isIn` menuTabLabel MenuQuit)
     pure (a && b && c && d)
   where
     isIn needle haystack = any (\i -> take (length needle) (drop i haystack) == needle)

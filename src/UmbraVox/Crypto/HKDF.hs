@@ -1,8 +1,9 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | {-# REQ "CRYPTO-006" #-} HKDF (RFC 5869)
 --
 -- HMAC-based Extract-and-Expand Key Derivation Function.
 -- UmbraVox uses HKDF-SHA-512 for all protocol key derivation
--- (see doc/03-cryptography.md).
+-- (see attic/doc-legacy-2026-04-28/03-cryptography.md).
 module UmbraVox.Crypto.HKDF
     ( hkdfExtract
     , hkdfExpand

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | MessageFormat test suite.
 --
 -- The MessageFormat module currently exports only stub functions

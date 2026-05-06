@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for UmbraVox.TUI.Input pure functions: splitOn, strip'
 -- Note: Most Input functions are IO-heavy (terminal reading, event loops).
 -- We test the exported pure helpers and the key-mapping logic indirectly.

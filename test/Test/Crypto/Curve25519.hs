@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | X25519 test suite: RFC 7748 KAT vectors + edge cases + property/fuzz tests.
 module Test.Crypto.Curve25519 (runTests) where
 

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 module UmbraVox.TUI.Actions
     ( -- * Re-exports from submodules
       module UmbraVox.TUI.Actions.Session
@@ -94,6 +95,9 @@ setStatus st msg = writeIORef (asStatusMsg st) msg
 quitApp :: AppState -> IO ()
 quitApp st = do
     writeIORef (asRunning st) False
+    mListenerTid <- readIORef (cfgListenerThread (asConfig st))
+    maybe (pure ()) killThread mListenerTid
+    writeIORef (cfgListenerThread (asConfig st)) Nothing
     sessions <- readIORef (cfgSessions (asConfig st))
     forM_ (Map.elems sessions) $ \si -> do
         maybe (pure ()) killThread (siRecvTid si)

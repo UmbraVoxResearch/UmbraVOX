@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Shared encoding utilities for big-endian serialization,
 -- string splitting, and safe port parsing.
 --

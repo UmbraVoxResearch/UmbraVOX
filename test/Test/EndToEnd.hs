@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | End-to-end integration test suite.
 --
 -- Tests full client lifecycle: handshake, encrypted messaging,

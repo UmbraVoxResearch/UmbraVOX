@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | CBOR (length-prefixed serialization) test suite.
 --
 -- Tests encode/decode round-trip, empty message handling,

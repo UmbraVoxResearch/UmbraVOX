@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Double Ratchet test suite: init + encrypt/decrypt, bidirectional,
 -- out-of-order, property tests, and tamper rejection.
 module Test.Crypto.Signal.DoubleRatchet (runTests) where

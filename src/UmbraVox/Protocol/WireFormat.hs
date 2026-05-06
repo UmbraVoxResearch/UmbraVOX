@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Network message envelope
 --
 -- See: doc/spec/protocol.md

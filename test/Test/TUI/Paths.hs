@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | TUI simulation test orchestrator.
 -- Delegates to modular test suites in Test.TUI.Sim.*
 module Test.TUI.Paths (runTests) where

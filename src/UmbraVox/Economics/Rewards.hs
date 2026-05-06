@@ -1,6 +1,7 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Uptime-weighted stake multiplier rewards
 --
--- See: doc/06-economics.md "Reward Formula"
+-- See: attic/doc-legacy-2026-04-28/06-economics.md "Reward Formula"
 module UmbraVox.Economics.Rewards
   ( computeReward
   , stakeMultiplier

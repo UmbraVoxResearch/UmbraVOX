@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 module UmbraVox.TUI.Actions.Session
     ( addSession, addLoopbackSession, recvLoopTUI
     , sendToSession, sendCurrentMessage
@@ -14,6 +15,7 @@ import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
 import qualified Data.Map.Strict as Map
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import System.Directory (doesFileExist)
+import UmbraVox.App.RuntimeLog (logEvent)
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Render (isPfx)
 import UmbraVox.Chat.Session
@@ -25,13 +27,16 @@ import UmbraVox.Protocol.CBOR (encodeMessage)
 import UmbraVox.Storage.Anthony (saveMessage, saveConversation)
 import UmbraVox.TUI.Handshake (getW32BE, timestamp)
 
+data SendResult = SendDelivered | SendStoredLocal | SendUnavailable
+    deriving stock (Eq, Show)
+
 -- | Add a new remote session with a transport and chat session.
 addSession :: AppConfig -> AnyTransport -> ChatSession -> String -> IO SessionId
 addSession cfg t session peerName = do
     sid <- readIORef (cfgNextId cfg); writeIORef (cfgNextId cfg) (sid+1)
     ref <- newIORef session; histRef <- newIORef []; stRef <- newIORef Online
     lock <- newMVar ()
-    tid <- forkIO (recvLoopTUI t ref lock histRef)
+    tid <- forkIO (recvLoopTUI cfg sid peerName t ref lock histRef)
     let si = SessionInfo (Just t) ref lock (Just tid) peerName histRef stRef
     modifyIORef' (cfgSessions cfg) (Map.insert sid si)
     -- Persist conversation to DB (graceful on failure)
@@ -42,6 +47,10 @@ addSession cfg t session peerName = do
             saveConversation db sid "" peerName now
             ) `catch` (\(_ :: SomeException) -> pure ())
         Nothing -> pure ()
+    logEvent cfg "session.add.remote"
+        [ ("session_id", show sid)
+        , ("peer", peerName)
+        ]
     pure sid
 
 -- | Add a local-only loopback session (e.g. Secure Notes).
@@ -62,32 +71,42 @@ addLoopbackSession cfg label = do
             saveConversation db sid "" label now
             ) `catch` (\(_ :: SomeException) -> pure ())
         Nothing -> pure ()
+    logEvent cfg "session.add.local"
+        [ ("session_id", show sid)
+        , ("peer", label)
+        ]
     pure sid
 
 -- | Send a bytestring to a session (remote or loopback).
-sendToSession :: SessionInfo -> BS.ByteString -> IO ()
+sendToSession :: SessionInfo -> BS.ByteString -> IO SendResult
 sendToSession si msg = do
     withMVar (siSessionLock si) $ \_ -> do
         session <- readIORef (siSession si)
         (session', wire) <- sendChatMessage session msg
         writeIORef (siSession si) session'
         case siTransport si of
-            Just t  -> anySend t (encodeMessage wire)
+            Just t  -> anySend t (encodeMessage wire) >> pure SendDelivered
             Nothing -> do
-                session2 <- readIORef (siSession si)
-                result <- recvChatMessage session2 wire
-                case result of
-                    Just (session3, _pt) -> writeIORef (siSession si) session3
-                    Nothing -> pure ()
-                ts <- timestamp
-                modifyIORef' (siHistory si) ((ts++" [saved] "++BC.unpack msg):)
+                status <- readIORef (siStatus si)
+                case status of
+                    Local -> do
+                        session2 <- readIORef (siSession si)
+                        result <- recvChatMessage session2 wire
+                        case result of
+                            Just (session3, _pt) -> writeIORef (siSession si) session3
+                            Nothing -> pure ()
+                        ts <- timestamp
+                        modifyIORef' (siHistory si) ((ts++" [saved] "++BC.unpack msg):)
+                        pure SendStoredLocal
+                    _ -> pure SendUnavailable
 
 -- | Send the current input buffer as a message.
 sendCurrentMessage :: AppState -> IO ()
 sendCurrentMessage st = do
     buf <- readIORef (asInputBuf st)
     unless (null buf) $ do
-        sessions <- readIORef (cfgSessions (asConfig st))
+        let cfg = asConfig st
+        sessions <- readIORef (cfgSessions cfg)
         sel <- readIORef (asSelected st)
         let entries = Map.toList sessions
         when (sel < length entries) $ do
@@ -97,27 +116,40 @@ sendCurrentMessage st = do
                 exists <- doesFileExist path
                 if exists then do
                     contents <- BS.readFile path
-                    sendToSession si (BC.pack ("/file:"++path++":") <> contents)
-                    now <- timestamp
-                    modifyIORef' (siHistory si)
-                        (("["++now++"] You: [sent file "++path++"]"):)
+                    result <- sendToSession si (BC.pack ("/file:"++path++":") <> contents)
+                    case result of
+                        SendUnavailable ->
+                            setStatusLocal st ("Session offline; reconnect required for " ++ siPeerName si)
+                        _ -> do
+                            now <- timestamp
+                            modifyIORef' (siHistory si)
+                                (("["++now++"] You: [sent file "++path++"]"):)
+                            logEvent cfg "message.send.file"
+                                [ ("session_id", show sid)
+                                , ("peer", siPeerName si)
+                                , ("path", path)
+                                , ("bytes", show (BS.length contents))
+                                ]
+                            writeIORef (asInputBuf st) ""
+                            writeIORef (asChatScroll st) 0
+                            persistMessageIfEnabled cfg sid "You" buf
                 else setStatusLocal st "File not found"
             else do
-                sendToSession si (BC.pack buf)
-                now <- timestamp
-                modifyIORef' (siHistory si) (("["++now++"] You: "++buf):)
-            writeIORef (asInputBuf st) ""
-            writeIORef (asChatScroll st) 0
-            -- Auto-save to Anthony DB if enabled
-            autoSave <- readIORef (cfgAutoSaveMessages (asConfig st))
-            when autoSave $ do
-                mDb <- readIORef (cfgAnthonyDB (asConfig st))
-                case mDb of
-                    Just db -> (do
-                        t <- round <$> getPOSIXTime
-                        saveMessage db sid "You" buf t
-                        ) `catch` (\(_ :: SomeException) -> pure ())
-                    Nothing -> pure ()
+                result <- sendToSession si (BC.pack buf)
+                case result of
+                    SendUnavailable ->
+                        setStatusLocal st ("Session offline; reconnect required for " ++ siPeerName si)
+                    _ -> do
+                        now <- timestamp
+                        modifyIORef' (siHistory si) (("["++now++"] You: "++buf):)
+                        logEvent cfg "message.send"
+                            [ ("session_id", show sid)
+                            , ("peer", siPeerName si)
+                            , ("bytes", show (length buf))
+                            ]
+                        writeIORef (asInputBuf st) ""
+                        writeIORef (asChatScroll st) 0
+                        persistMessageIfEnabled cfg sid "You" buf
 
 -- | Add a "Secure Notes" loopback session.
 addSecureNotes :: AppState -> IO ()
@@ -126,12 +158,20 @@ addSecureNotes st = do
     selectLastLocal st; setStatusLocal st ("Secure Notes #" ++ show sid)
 
 -- | Background receive loop for a remote transport.
-recvLoopTUI :: AnyTransport -> IORef ChatSession -> MVar () -> IORef [String] -> IO ()
-recvLoopTUI t ref lock histRef = go `catch` handler where
+recvLoopTUI
+    :: AppConfig
+    -> SessionId
+    -> String
+    -> AnyTransport
+    -> IORef ChatSession
+    -> MVar ()
+    -> IORef [String]
+    -> IO ()
+recvLoopTUI cfg sid peerName t ref lock histRef = go `catch` handler where
     go = do
         lenBs <- anyRecv t 4
         if BS.length lenBs < 4
-            then modifyIORef' histRef ("  [Peer disconnected]":)
+            then markDisconnected "transport.peer_disconnected" "  [Peer disconnected]"
             else do
                 let !len = fromIntegral (getW32BE lenBs)
                 payload <- anyRecv t len
@@ -147,12 +187,45 @@ recvLoopTUI t ref lock histRef = go `catch` handler where
                     Nothing -> modifyIORef' histRef ("  [Decryption failed]":) >> go
                     Just plaintext -> do
                         now <- timestamp
-                        modifyIORef' histRef (("["++now++"] Peer: "++BC.unpack plaintext):)
+                        let content = BC.unpack plaintext
+                        modifyIORef' histRef (("["++now++"] Peer: "++content):)
+                        logEvent cfg "message.recv"
+                            [ ("session_id", show sid)
+                            , ("peer", peerName)
+                            , ("bytes", show (BS.length plaintext))
+                            ]
+                        persistMessageIfEnabled cfg sid peerName content
                         go
     handler :: SomeException -> IO ()
-    handler _ = modifyIORef' histRef ("  [Connection lost]":)
+    handler _ = markDisconnected "transport.connection_lost" "  [Connection lost]"
+
+    markDisconnected :: String -> String -> IO ()
+    markDisconnected eventName banner = do
+        markSessionOffline cfg sid
+        logEvent cfg eventName
+            [ ("session_id", show sid)
+            , ("peer", peerName)
+            ]
+        modifyIORef' histRef (banner:)
 
 -- Internal helpers (duplicated to avoid circular imports) -----------------
+
+persistMessageIfEnabled :: AppConfig -> SessionId -> String -> String -> IO ()
+persistMessageIfEnabled cfg sid sender content = do
+    autoSave <- readIORef (cfgAutoSaveMessages cfg)
+    when autoSave $ do
+        mDb <- readIORef (cfgAnthonyDB cfg)
+        case mDb of
+            Just db -> (do
+                t <- round <$> getPOSIXTime
+                saveMessage db sid sender content t
+                logEvent cfg "persistence.message_saved"
+                    [ ("session_id", show sid)
+                    , ("sender", sender)
+                    , ("bytes", show (length content))
+                    ]
+                ) `catch` (\(_ :: SomeException) -> pure ())
+            Nothing -> pure ()
 
 setStatusLocal :: AppState -> String -> IO ()
 setStatusLocal st msg = writeIORef (asStatusMsg st) msg
@@ -163,3 +236,13 @@ selectLastLocal st = do
     writeIORef (asSelected st) (max 0 (n-1))
     writeIORef (asFocus st) ChatPane
     writeIORef (asChatScroll st) 0
+
+markSessionOffline :: AppConfig -> SessionId -> IO ()
+markSessionOffline cfg sid = do
+    sessions <- readIORef (cfgSessions cfg)
+    case Map.lookup sid sessions of
+        Nothing -> pure ()
+        Just si -> do
+            writeIORef (siStatus si) Offline
+            let si' = si { siTransport = Nothing, siRecvTid = Nothing }
+            writeIORef (cfgSessions cfg) (Map.insert sid si' sessions)

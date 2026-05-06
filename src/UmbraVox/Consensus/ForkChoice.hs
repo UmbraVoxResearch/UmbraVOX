@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Longest chain + density rule
 --
 -- See: doc/spec/consensus.md

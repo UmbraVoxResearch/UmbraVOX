@@ -4,6 +4,12 @@
 
 The network layer currently implements TCP transport, loopback transport for testing, intercept middleware for traffic capture, Noise_IK encrypted handshake, mDNS peer discovery, and peer exchange (PEX). Higher-level protocols (gossip, Dandelion++, chain sync, peer scoring) exist as stub modules that raise "not implemented" errors.
 
+## Auto-Listen on Startup
+
+UmbraVOX automatically begins listening for incoming TCP connections at startup. The application probes the default port sequence (7853, 7854, 7855, ...) and binds to the first available port. A background thread (`acceptLoopTUI`) then accepts incoming connections according to the active trust mode. This means there is no need for the user to manually type "listen" -- the node is reachable as soon as it launches.
+
+The auto-listen behavior is defined in `app/Main.hs`. If the chosen port is unavailable (e.g., another UmbraVOX instance is already running), the accept loop fails gracefully and the node operates in outbound-only mode.
+
 ## Transport
 
 ### Transport Abstraction
@@ -146,6 +152,34 @@ Implemented. After a handshake completes, connected peers exchange known peer li
 
 - Peers received via PEX are marked as indirect and are never re-forwarded (1-hop maximum)
 - Provides: `encodePeerList`, `decodePeerList`, `exchangePeers`
+
+## Connection Trust Modes
+
+UmbraVox defines five connection trust modes in `TUI.Types.ConnectionMode`. The active mode determines how the node behaves during and after the Noise_IK handshake, and whether mDNS and PEX subsystems are enabled.
+
+| Mode | Accept | mDNS | PEX | DB | Behavior |
+|------|--------|------|-----|-----|----------|
+| **Swing** | All | On | Auto | On | Most open -- shares peer lists automatically |
+| **Promiscuous** | All | On | Manual | On | Accept anyone silently |
+| **Selective** | Confirm | On | Off | On | Shows fingerprint, user decides (default) |
+| **Chaste** | Trusted only | Off | Off | On | Silent reject indistinguishable from MAC failure |
+| **Chastity** | Trusted only | Off | Off | Off | Chaste + no persistence (fully ephemeral) |
+
+### Effect on the Noise Handshake
+
+In **Swing** and **Promiscuous** modes, the Noise_IK handshake completes unconditionally for any peer. In **Selective** mode, the handshake completes but the session is paused until the user confirms the peer's fingerprint in a dialog. In **Chaste** and **Chastity** modes, the node checks the initiator's static public key (transmitted encrypted in the first Noise_IK message `-> e, es, s, ss`) against `cfgTrustedKeys`. If the key is not in the trusted list, the responder silently closes the connection. The failure is designed to be indistinguishable from a MAC verification failure, so an untrusted peer cannot determine whether the node exists, is offline, or rejected the connection.
+
+### Effect on mDNS
+
+In **Swing**, **Promiscuous**, and **Selective** modes, mDNS announcements are sent and received on `_umbravox._tcp.local`. In **Chaste** and **Chastity** modes, mDNS is disabled entirely: no announcements are sent and no multicast listener is active. This prevents the node from being discoverable on the LAN.
+
+### Effect on Peer Exchange (PEX)
+
+In **Swing** mode, peer exchange happens automatically after every successful handshake. In **Promiscuous** mode, PEX data is accepted if offered but not automatically initiated. In **Selective**, **Chaste**, and **Chastity** modes, PEX is disabled -- no peer lists are sent or accepted.
+
+### Effect on Persistence
+
+In all modes except **Chastity**, conversations, contacts, peer information, and settings are persisted to Anthony DB. In **Chastity** mode, `cfgDBEnabled` is set to `False` and no database file is opened. All state exists only in memory and is lost when the application exits.
 
 ## Not Implemented
 

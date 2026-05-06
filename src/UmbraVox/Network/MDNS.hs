@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | mDNS/DNS-SD LAN peer discovery
 --
 -- Announces our presence on the local network via UDP multicast and

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | VRF-based slot leader selection
 --
 -- See: doc/spec/consensus.md

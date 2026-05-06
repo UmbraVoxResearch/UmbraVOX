@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Post-quantum outer encryption layer
 --
 -- See: doc/spec/crypto.md

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | {-# REQ "CRYPTO-006" #-} HMAC (RFC 2104)
 --
 -- Keyed-Hash Message Authentication Code.

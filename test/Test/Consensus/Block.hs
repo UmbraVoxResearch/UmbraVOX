@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for UmbraVox.Consensus.Block
 --
 -- Tests BlockHeader and Block construction, Eq, Show, and field accessors.

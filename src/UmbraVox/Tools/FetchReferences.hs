@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Reference PDF downloader for UmbraVOX documentation.
 --
 -- Downloads freely available reference PDFs (NIST standards, IETF RFCs,

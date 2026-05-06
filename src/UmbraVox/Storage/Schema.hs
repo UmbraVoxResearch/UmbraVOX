@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Database schema definitions for SQLite persistence
 --
 -- Table creation statements and schema version constants.
@@ -26,4 +27,6 @@ schemaStatements =
       <> "(id INTEGER PRIMARY KEY, "
       <> "conversation_id INTEGER, sender TEXT, "
       <> "content TEXT, timestamp INTEGER)"
+    , "CREATE TABLE IF NOT EXISTS trusted_keys "
+      <> "(pubkey TEXT PRIMARY KEY, label TEXT, added INTEGER)"
     ]

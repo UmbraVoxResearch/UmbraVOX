@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Transaction pool (50K cap, fee-priority)
 --
 -- See: doc/spec/consensus.md

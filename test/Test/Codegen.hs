@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for the CryptoGen spec parser.
 module Test.Codegen (runTests) where
 

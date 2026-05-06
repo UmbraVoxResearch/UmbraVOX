@@ -1,6 +1,7 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | New user token bootstrap
 --
--- See: doc/06-economics.md "New User Onboarding (Recycling Faucet)"
+-- See: attic/doc-legacy-2026-04-28/06-economics.md "New User Onboarding (Recycling Faucet)"
 module UmbraVox.Economics.Onboarding
   ( bootstrapUser
   , faucetGrant

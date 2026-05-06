@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Signal session state management
 --
 -- See: doc/spec/signal-protocol.md

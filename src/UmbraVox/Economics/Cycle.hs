@@ -1,6 +1,7 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | 11-day Universe Cycle reset logic
 --
--- See: doc/06-economics.md "Universe Cycle Model"
+-- See: attic/doc-legacy-2026-04-28/06-economics.md "Universe Cycle Model"
 module UmbraVox.Economics.Cycle
   ( cycleReset
   , supplyRestoration

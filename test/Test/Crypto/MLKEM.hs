@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | ML-KEM-768 test suite: self-consistency tests, NTT round-trips,
 -- polynomial arithmetic, property/fuzz tests, and FIPS 203 KAT vectors.
 --

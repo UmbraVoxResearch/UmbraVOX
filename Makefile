@@ -3,16 +3,34 @@
 # DO-178C DAL A compliant build pipeline with quality gates.
 #
 # Usage:
-#   make              - Build all (library + executables)
-#   make test         - Run full test suite (733+ tests)
-#   make verify       - Run F* formal verification (11 modules)
-#   make quality      - Run all quality gates (tests + verify + complexity)
+#   make              - Build + run the full pipeline (build, test, verify, complexity, lint, license, format-check)
+#   make build        - Build library + executables only
+#   make run          - Run UmbraVOX TUI application
+#   make test         - Run the fast messaging-MVP hardening gate
+#   make test-core    - Run the core deterministic messaging suite
+#   make test-tcp     - Run real TCP hardening scenarios
+#   make test-fault   - Run adversarial fault-injection scenarios
+#   make test-recovery - Run persistence and recovery scenarios
+#   make test-tui-sim - Run TUI simulation coverage
+#   make test-integrity - Run wire/integrity coverage
+#   make test-deferred - Run preserved deferred blockchain/economics suites
+#   make soak         - Run the long soak suite and write an artifact report
+#   make verify       - Run F* formal verification (17 modules)
 #   make complexity   - Check cyclomatic complexity (<= 8 for all functions)
+#   make lint         - Check code formatting and style
+#   make license      - Check SPDX license headers in source files
+#   make license-fix  - Add missing SPDX headers automatically
+#   make format-check - Check for tabs and trailing whitespace
+#   make codegen      - Generate Haskell + C + FFI from .spec files
+#   make quality      - Run the full pipeline (same as make)
 #   make clean        - Remove build artifacts
+#   make cleandb      - Remove local database
+#   make cleanall     - Remove everything (build + DB + tools)
+#   make help         - Show help
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build run test verify complexity quality lint codegen clean help
+.PHONY: all build run test test-core test-tcp test-fault test-recovery test-tui-sim test-integrity test-deferred soak verify complexity quality lint license license-fix format-check codegen clean help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -41,11 +59,18 @@ YELLOW := \033[1;33m
 BLUE   := \033[0;34m
 NC     := \033[0m
 
+TEST_ARTIFACT_DIR := build/test-artifacts
+SUITE_LOCK := ./scripts/with-suite-lock.sh suite-gate
+
 # --------------------------------------------------------------------------
 # Targets
 # --------------------------------------------------------------------------
 
-all: build
+all: build test verify complexity lint license format-check
+	@echo ""
+	@echo -e "$(GREEN)========================================$(NC)"
+	@echo -e "$(GREEN)  ALL CHECKS PASSED$(NC)"
+	@echo -e "$(GREEN)========================================$(NC)"
 
 help:
 	@echo ""
@@ -53,23 +78,39 @@ help:
 	@echo -e "$(BLUE)  =====================$(NC)"
 	@echo ""
 	@echo "  Build & Run:"
-	@echo "    make build       Build library + executables"
+	@echo "    make             Build + run the full pipeline (build, test, verify, complexity, lint, license, format-check)"
+	@echo "    make build       Build library + executables only"
 	@echo "    make run         Run UmbraVOX TUI application"
-	@echo "    make test        Run Haskell test suite (733+ tests)"
+	@echo "    make test        Run fast messaging-MVP hardening gate"
+	@echo "    make test-core   Run core deterministic messaging suite"
+	@echo "    make test-tcp    Run real TCP hardening suite"
+	@echo "    make test-fault  Run adversarial fault-injection suite"
+	@echo "    make test-recovery Run persistence and recovery suite"
+	@echo "    make test-tui-sim Run TUI simulation suite"
+	@echo "    make test-integrity Run wire/integrity suite"
+	@echo "    make test-deferred Run preserved deferred blockchain/economics suites"
+	@echo "    make soak        Run long soak suite and write artifact report"
 	@echo "    make codegen     Generate Haskell + C + FFI from .spec files"
 	@echo ""
-	@echo "  Quality Gates (DO-178C DAL A):"
-	@echo "    make verify      Run F* formal verification (all modules)"
+	@echo "  Quality Gates:"
+	@echo "    make verify      Run F* formal verification (17 modules)"
 	@echo "    make complexity  Check cyclomatic complexity (<= $(MAX_COMPLEXITY))"
 	@echo "    make lint        Check code formatting and style"
-	@echo "    make quality     Run ALL quality gates"
+	@echo "    make license     Check SPDX license headers in source files"
+	@echo "    make license-fix Add missing SPDX headers automatically"
+	@echo "    make format-check Check for tabs and trailing whitespace"
+	@echo "    make quality     Same as make (lint/format-check are non-blocking)"
 	@echo ""
 	@echo "  Maintenance:"
-	@echo "    make clean       Remove build artifacts"
+	@echo "    make clean       Remove build artifacts + dist-newstyle"
+	@echo "    make cleandb     Remove local database"
+	@echo "    make cleanall    Remove everything (build + DB + tools)"
 	@echo "    make help        Show this help"
 	@echo ""
 	@echo "  Quality Gate Requirements:"
-	@echo "    - All 733+ Haskell tests pass (KAT, fuzz, security, integration)"
+	@echo "    - Fast gate passes: core + TCP + fault + recovery suites"
+	@echo "    - Deferred blockchain/economics suites stay explicit and separate"
+	@echo "    - Soak suite available as a separate target with artifacts"
 	@echo "    - All F* specifications verify (auto-discovered)"
 	@echo "    - Cyclomatic complexity <= $(MAX_COMPLEXITY) for all functions"
 	@echo "    - 10 .spec files generate 30 Haskell + C + FFI outputs"
@@ -100,14 +141,56 @@ build:
 # --------------------------------------------------------------------------
 
 test: build
-	@echo -e "$(BLUE)[TEST]$(NC) Running Haskell test suite..."
-	@cabal test 2>&1 | tee /tmp/umbravox-test-output.txt | grep -E "passed|FAILED|All tests"
-	@if grep -q "All tests passed" /tmp/umbravox-test-output.txt; then \
+	@echo -e "$(BLUE)[TEST]$(NC) Running fast messaging-MVP hardening gate..."
+	@$(SUITE_LOCK) bash -c 'mkdir -p $(TEST_ARTIFACT_DIR); \
+	log_file=$$(mktemp "$(TEST_ARTIFACT_DIR)/test-required.XXXXXX.log"); \
+	echo -e "$(BLUE)[TEST]$(NC) Log: $$log_file"; \
+	set -o pipefail; \
+	cabal test umbravox-test --test-options="required" 2>&1 | tee "$$log_file"; \
+	status=$${PIPESTATUS[0]}; \
+	if [ $$status -ne 0 ]; then \
+		echo -e "$(RED)[TEST]$(NC) Gate command failed. See $$log_file"; \
+		exit $$status; \
+	fi; \
+	if grep -q "All tests passed\\." "$$log_file"; then \
 		echo -e "$(GREEN)[TEST]$(NC) All tests passed."; \
 	else \
-		echo -e "$(RED)[TEST]$(NC) TESTS FAILED."; \
+		echo -e "$(RED)[TEST]$(NC) Success marker missing. See $$log_file"; \
 		exit 1; \
-	fi
+	fi'
+
+test-core: build
+	@echo -e "$(BLUE)[TEST-CORE]$(NC) Running core deterministic suite..."
+	@$(SUITE_LOCK) cabal test umbravox-test --test-options="core"
+
+test-tcp: build
+	@echo -e "$(BLUE)[TEST-TCP]$(NC) Running real TCP suite..."
+	@$(SUITE_LOCK) cabal test umbravox-test --test-options="tcp"
+
+test-fault: build
+	@echo -e "$(BLUE)[TEST-FAULT]$(NC) Running fault-injection suite..."
+	@$(SUITE_LOCK) cabal test umbravox-test --test-options="fault"
+
+test-recovery: build
+	@echo -e "$(BLUE)[TEST-RECOVERY]$(NC) Running recovery suite..."
+	@$(SUITE_LOCK) cabal test umbravox-test --test-options="recovery"
+
+test-tui-sim: build
+	@echo -e "$(BLUE)[TEST-TUI-SIM]$(NC) Running TUI simulation suite..."
+	@$(SUITE_LOCK) cabal test umbravox-test --test-options="tui-sim"
+
+test-integrity: build
+	@echo -e "$(BLUE)[TEST-INTEGRITY]$(NC) Running wire/integrity suite..."
+	@$(SUITE_LOCK) cabal test umbravox-test --test-options="integrity"
+
+test-deferred: build
+	@echo -e "$(BLUE)[TEST-DEFERRED]$(NC) Running preserved deferred suite..."
+	@$(SUITE_LOCK) cabal test umbravox-test --test-options="deferred"
+
+soak: build
+	@echo -e "$(BLUE)[SOAK]$(NC) Running soak suite..."
+	@$(SUITE_LOCK) bash -c 'mkdir -p $(TEST_ARTIFACT_DIR); \
+	cabal test umbravox-test --test-options="soak" 2>&1 | tee $(TEST_ARTIFACT_DIR)/soak-report.txt'
 
 # --------------------------------------------------------------------------
 # F* Formal Verification
@@ -115,13 +198,22 @@ test: build
 
 verify:
 	@echo -e "$(BLUE)[VERIFY]$(NC) Running F* formal verification (all modules)..."
-	@cabal run fstar-verify 2>&1 | tee /tmp/umbravox-verify-output.txt | grep -E "PASS|FAIL|Summary" --color=never
-	@if grep -q "All modules verified" /tmp/umbravox-verify-output.txt; then \
+	@$(SUITE_LOCK) bash -c 'mkdir -p $(TEST_ARTIFACT_DIR); \
+	log_file=$$(mktemp "$(TEST_ARTIFACT_DIR)/verify.XXXXXX.log"); \
+	echo -e "$(BLUE)[VERIFY]$(NC) Log: $$log_file"; \
+	set -o pipefail; \
+	cabal run fstar-verify 2>&1 | tee "$$log_file"; \
+	status=$${PIPESTATUS[0]}; \
+	if [ $$status -ne 0 ]; then \
+		echo -e "$(RED)[VERIFY]$(NC) Verification command failed. See $$log_file"; \
+		exit $$status; \
+	fi; \
+	if grep -q "All modules verified" "$$log_file"; then \
 		echo -e "$(GREEN)[VERIFY]$(NC) All F* modules verified."; \
 	else \
-		echo -e "$(RED)[VERIFY]$(NC) F* VERIFICATION FAILED."; \
+		echo -e "$(RED)[VERIFY]$(NC) Success marker missing. See $$log_file"; \
 		exit 1; \
-	fi
+	fi'
 
 # --------------------------------------------------------------------------
 # Cyclomatic Complexity
@@ -181,6 +273,65 @@ lint:
 	fi
 
 # --------------------------------------------------------------------------
+# SPDX License Headers
+# --------------------------------------------------------------------------
+
+SPDX_ID := SPDX-License-Identifier: Apache-2.0
+
+license:
+	@echo -e "$(BLUE)[LICENSE]$(NC) Checking SPDX headers in source files..."
+	@missing=0; total=0; \
+	for f in $(SRC_FILES); do \
+		total=$$((total + 1)); \
+		if ! head -5 "$$f" | grep -q "SPDX-License-Identifier" 2>/dev/null; then \
+			echo -e "$(RED)[LICENSE]$(NC) Missing SPDX header: $$f"; \
+			missing=$$((missing + 1)); \
+		fi; \
+	done; \
+	if [ $$missing -gt 0 ]; then \
+		echo -e "$(RED)[LICENSE]$(NC) $$missing of $$total files missing SPDX header."; \
+		echo "  Run 'make license-fix' to add headers automatically."; \
+		exit 1; \
+	else \
+		echo -e "$(GREEN)[LICENSE]$(NC) All $$total files have SPDX headers."; \
+	fi
+
+license-fix:
+	@echo -e "$(BLUE)[LICENSE]$(NC) Adding SPDX headers to source files..."
+	@fixed=0; \
+	for f in $(SRC_FILES); do \
+		if ! head -5 "$$f" | grep -q "SPDX-License-Identifier" 2>/dev/null; then \
+			sed -i '1s/^/-- $(SPDX_ID)\n/' "$$f"; \
+			echo "  Added header: $$f"; \
+			fixed=$$((fixed + 1)); \
+		fi; \
+	done; \
+	echo -e "$(GREEN)[LICENSE]$(NC) Fixed $$fixed file(s)."
+
+# --------------------------------------------------------------------------
+# Code Formatting Check
+# --------------------------------------------------------------------------
+
+format-check:
+	@echo -e "$(BLUE)[FORMAT]$(NC) Checking code formatting..."
+	@violations=0; \
+	for f in $(SRC_FILES); do \
+		if grep -Pn '\t' "$$f" > /dev/null 2>&1; then \
+			echo -e "$(YELLOW)[FORMAT]$(NC) Tabs found: $$f"; \
+			violations=$$((violations + 1)); \
+		fi; \
+		if grep -Pn '\s$$' "$$f" > /dev/null 2>&1; then \
+			echo -e "$(YELLOW)[FORMAT]$(NC) Trailing whitespace: $$f"; \
+			violations=$$((violations + 1)); \
+		fi; \
+	done; \
+	if [ $$violations -gt 0 ]; then \
+		echo -e "$(YELLOW)[FORMAT]$(NC) $$violations formatting issue(s) found (non-blocking)."; \
+	else \
+		echo -e "$(GREEN)[FORMAT]$(NC) All files pass formatting check."; \
+	fi
+
+# --------------------------------------------------------------------------
 # Code Generation
 # --------------------------------------------------------------------------
 
@@ -193,11 +344,7 @@ codegen: build
 # Quality Gate (all checks)
 # --------------------------------------------------------------------------
 
-quality: test verify complexity lint
-	@echo ""
-	@echo -e "$(GREEN)========================================$(NC)"
-	@echo -e "$(GREEN)  ALL QUALITY GATES PASSED$(NC)"
-	@echo -e "$(GREEN)========================================$(NC)"
+quality: all
 
 # --------------------------------------------------------------------------
 # Clean
@@ -206,8 +353,8 @@ quality: test verify complexity lint
 clean:
 	@echo -e "$(BLUE)[CLEAN]$(NC) Removing build artifacts..."
 	@cabal clean 2>/dev/null || true
+	@rm -rf dist-newstyle
 	@rm -rf $(FSTAR_DIR)/_cache $(FSTAR_DIR)/_output
-	@rm -f /tmp/umbravox-test-output.txt /tmp/umbravox-verify-output.txt
 	@echo -e "$(GREEN)[CLEAN]$(NC) Done."
 
 cleandb:

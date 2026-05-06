@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | TUI simulation tests: contact pane navigation
 module Test.TUI.Sim.Contacts (runTests) where
 

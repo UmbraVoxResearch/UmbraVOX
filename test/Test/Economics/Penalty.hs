@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tests for UmbraVox.Economics.Penalty
 module Test.Economics.Penalty (runTests) where
 

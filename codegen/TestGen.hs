@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | TestGen: Generates test harnesses from .spec, .fsm, and .schema files.

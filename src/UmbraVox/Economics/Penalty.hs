@@ -1,6 +1,7 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Tiered punitive multipliers
 --
--- See: doc/06-economics.md "Punitive Multipliers (Tiered)"
+-- See: attic/doc-legacy-2026-04-28/06-economics.md "Punitive Multipliers (Tiered)"
 module UmbraVox.Economics.Penalty
   ( computePenalty
   , applyTier1

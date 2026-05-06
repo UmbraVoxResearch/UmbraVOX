@@ -1,32 +1,25 @@
 module Main (main) where
 
 import Control.Concurrent (forkIO, threadDelay)
-import Control.Concurrent.MVar (newMVar, readMVar)
+import Control.Concurrent.MVar (readMVar)
 import Control.Exception (SomeException, catch)
-import Control.Monad (when, forever, forM_, void)
+import Control.Monad (when, forever)
 import qualified Data.ByteString as BS
-import Data.IORef (newIORef, readIORef, writeIORef, modifyIORef')
-import Data.List (isPrefixOf)
-import qualified Data.Map.Strict as Map
-import System.Directory (getHomeDirectory, createDirectoryIfMissing)
-import System.FilePath (takeDirectory)
+import Data.IORef (newIORef, readIORef, writeIORef)
 import System.IO (hSetBuffering, hSetEncoding, hFlush, stdout, utf8, BufferMode(..))
 import System.Posix.Signals (installHandler, Handler(Catch))
 import Foreign.C.Types (CInt(..))
+import UmbraVox.App.RuntimeLog (logEvent, runtimeLoggingEnabled)
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Render (getTermSize, clampSize, calcLayout, clearScreen,
                             withRawMode, render)
-import UmbraVox.TUI.Input (eventLoop)
-import UmbraVox.Crypto.BIP39 (generatePassphrase)
+import UmbraVox.TUI.Input (eventLoop, startListenerIfNeeded)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 import UmbraVox.Network.MDNS (startMDNS)
-import qualified Network.Socket as NS
-import Control.Monad (forM_)
-import UmbraVox.Protocol.Encoding (defaultPorts)
-import UmbraVox.Storage.Anthony (openDB, loadConversations, loadMessages)
-import UmbraVox.Chat.Session (initChatSession)
-import UmbraVox.Crypto.Random (randomBytes)
-import UmbraVox.TUI.Handshake (genIdentity)
+import UmbraVox.App.Startup
+    ( newDefaultAppConfig, initializeLocalIdentity, applyPersistenceAnswer
+    , resolvePersistencePreference
+    )
 
 -- SIGWINCH = 28 on Linux/macOS (not exported by all versions of System.Posix.Signals)
 sigWINCH :: CInt
@@ -37,29 +30,8 @@ main = do
     -- Ensure stdout handles UTF-8 for Unicode box-drawing characters
     hSetEncoding stdout utf8
     hSetBuffering stdout (BlockBuffering (Just 8192))
-    -- Generate random display name from BIP39 wordlist
-    randomName <- generatePassphrase 1
-    -- Find available listen port
-    listenPort <- findAvailablePort defaultPorts
-    cfg <- AppConfig
-        <$> newIORef listenPort  -- listen port (first available)
-        <*> newIORef randomName  -- display name (random BIP39 word)
-        <*> newIORef Nothing     -- identity key
-        <*> newIORef Map.empty   -- sessions
-        <*> newIORef 1           -- next session ID
-        -- Discovery settings (off by default)
-        <*> newIORef True        -- mDNS enabled by default
-        <*> newIORef False       -- PEX disabled
-        <*> newIORef True        -- DB persistence enabled
-        <*> newIORef "~/.umbravox/umbravox.db"  -- DB path
-        -- Discovery state
-        <*> newIORef Nothing     -- mDNS thread
-        <*> newIORef []          -- mDNS discovered peers
-        -- Retention settings
-        <*> newIORef 30          -- retention days (0 = forever)
-        <*> newIORef True        -- auto-save messages to DB
-        <*> newIORef Nothing     -- Anthony DB handle
-        <*> newIORef False       -- trusted contacts only (off by default)
+    cfg <- newDefaultAppConfig
+    debugLogging <- runtimeLoggingEnabled cfg
     (initRows, initCols) <- getTermSize
     let (r0, c0) = clampSize initRows initCols
     termRef <- newIORef (initRows, initCols)
@@ -72,9 +44,8 @@ main = do
                        <*> pure termRef
                        <*> newIORef Nothing  -- asMenuOpen
                        <*> newIORef 0        -- asMenuIndex
-    -- Generate a stable local identity before network services advertise us.
-    identity <- genIdentity
-    writeIORef (cfgIdentity cfg) (Just identity)
+    identity <- initializeLocalIdentity cfg
+    when debugLogging $ logEvent cfg "app.start" []
     -- Wire mDNS discovery if enabled (graceful if multicast unavailable)
     mdnsOn <- readIORef (cfgMDNSEnabled cfg)
     when mdnsOn $ (do
@@ -83,89 +54,47 @@ main = do
         let pubkey = maybe BS.empty ikX25519Public mIk
         (peersRef, tid) <- startMDNS port pubkey
         writeIORef (cfgMDNSThread cfg) (Just tid)
+        logEvent cfg "mdns.start" [("port", show port)]
         -- Poll mDNS peer list into cfgMDNSPeers every 5 seconds
         _ <- forkIO $ forever $ do
             threadDelay 5000000  -- 5 seconds
             peers <- readMVar peersRef
             writeIORef (cfgMDNSPeers cfg) peers
         pure ()
-        ) `catch` (\(_ :: SomeException) -> pure ())  -- mDNS unavailable
+        ) `catch` (\(_ :: SomeException) -> logEvent cfg "mdns.unavailable" [])  -- mDNS unavailable
     -- Ask user about persistence mode before attempting DB download
     putStrLn ""
     putStrLn "  UmbraVOX - Post-Quantum Encrypted Messaging"
     putStrLn ""
-    putStr "  Enable persistent storage? (requires 'anthony' DB tool) [y/N]: "
-    hFlush stdout
-    answer <- getLine
-    if answer `elem` ["y", "Y", "yes", "Yes", "YES"]
-        then (do
-            dbPath <- readIORef (cfgDBPath cfg)
-            home <- getHomeDirectory
-            let path = if "~/" `isPrefixOf` dbPath
-                       then home ++ drop 1 dbPath else dbPath
-            createDirectoryIfMissing True (takeDirectory path)
+    persistedPreference <- resolvePersistencePreference cfg
+    case persistedPreference of
+        Just True -> do
             putStrLn "  Initializing database..."
-            db <- openDB path
-            writeIORef (cfgAnthonyDB cfg) (Just db)
-            -- Restore saved conversations and their messages
-            convs <- loadConversations db
-            forM_ convs $ \(convId, _pubkey, name, _created) -> do
-                -- Create a loopback session for each saved conversation
-                chatSec <- randomBytes 32
-                dhSec   <- randomBytes 32
-                dhPub   <- randomBytes 32
-                session <- initChatSession chatSec dhSec dhPub
-                sessRef <- newIORef session
-                lockRef <- newMVar ()
-                histRef <- newIORef []
-                statRef <- newIORef Offline
-                let si = SessionInfo
-                        { siTransport = Nothing
-                        , siSession   = sessRef
-                        , siSessionLock = lockRef
-                        , siRecvTid   = Nothing
-                        , siPeerName  = name
-                        , siHistory   = histRef
-                        , siStatus    = statRef
-                        }
-                -- Load saved messages into history
-                msgs <- loadMessages db convId 500
-                let formatted = map (\(sender, content, _ts) ->
-                        sender ++ ": " ++ content) msgs
-                writeIORef histRef formatted
-                -- Add to sessions map
-                sid <- readIORef (cfgNextId cfg)
-                writeIORef (cfgNextId cfg) (sid + 1)
-                modifyIORef' (cfgSessions cfg) (Map.insert sid si)
-            nRestored <- Map.size <$> readIORef (cfgSessions cfg)
-            putStrLn $ "  Storage: persistent mode (" ++ show nRestored ++ " conversations restored)"
-            ) `catch` (\(_ :: SomeException) -> do
-                putStrLn "  Storage: ephemeral mode (DB unavailable)"
-                writeIORef (cfgDBEnabled cfg) False
-                )
-        else do
+            nRestored <- applyPersistenceAnswer cfg "yes"
+            dbEnabled <- readIORef (cfgDBEnabled cfg)
+            if dbEnabled
+                then putStrLn $ "  Storage: persistent mode (" ++ show nRestored ++ " conversations restored)"
+                else putStrLn "  Storage: ephemeral mode (DB unavailable)"
+        Just False -> do
+            _ <- applyPersistenceAnswer cfg "no"
             putStrLn "  Storage: ephemeral mode"
-            writeIORef (cfgDBEnabled cfg) False
+        Nothing -> do
+            putStr "  Enable persistent storage? (requires sqlite3 from nix-shell) [y/N]: "
+            hFlush stdout
+            answer <- getLine
+            if answer `elem` ["y", "Y", "yes", "Yes", "YES"]
+                then do
+                    putStrLn "  Initializing database..."
+                    nRestored <- applyPersistenceAnswer cfg answer
+                    dbEnabled <- readIORef (cfgDBEnabled cfg)
+                    if dbEnabled
+                        then putStrLn $ "  Storage: persistent mode (" ++ show nRestored ++ " conversations restored)"
+                        else putStrLn "  Storage: ephemeral mode (DB unavailable)"
+                else do
+                    _ <- applyPersistenceAnswer cfg answer
+                    putStrLn "  Storage: ephemeral mode"
     _ <- installHandler sigWINCH (Catch $ getTermSize >>= writeIORef (asTermSize st)) Nothing
+    -- Auto-start listening for incoming connections in background
+    activeListenPort <- readIORef (cfgListenPort cfg)
+    _ <- startListenerIfNeeded st identity activeListenPort "startup"
     withRawMode $ clearScreen >> render st >> eventLoop st
-
--- | Try each port in order, return the first one that can be bound.
--- Tests by briefly binding and closing a TCP socket.
-findAvailablePort :: [Int] -> IO Int
-findAvailablePort [] = pure 1111  -- fallback
-findAvailablePort (p:ps) = do
-    ok <- tryBindPort p
-    if ok then pure p else findAvailablePort ps
-
-tryBindPort :: Int -> IO Bool
-tryBindPort port = (do
-    let hints = NS.defaultHints { NS.addrFlags = [NS.AI_PASSIVE]
-                                , NS.addrSocketType = NS.Stream
-                                , NS.addrFamily = NS.AF_INET }
-    addr : _ <- NS.getAddrInfo (Just hints) (Just "0.0.0.0") (Just (show port))
-    sock <- NS.openSocket addr
-    NS.setSocketOption sock NS.ReuseAddr 1
-    NS.bind sock (NS.addrAddress addr)
-    NS.close sock
-    pure True
-    ) `catch` (\(_ :: SomeException) -> pure False)

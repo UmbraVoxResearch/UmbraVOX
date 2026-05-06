@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Shared test utilities for TUI simulation tests.
 -- Provides mock state construction and dialog mode helpers.
 module Test.TUI.Sim.Util
@@ -47,16 +48,20 @@ mkTestConfig =
         <*> newIORef Nothing     -- cfgIdentity
         <*> newIORef Map.empty   -- cfgSessions
         <*> newIORef 1           -- cfgNextId
+        <*> newIORef False       -- cfgDebugLogging
+        <*> newIORef "build/test-runtime.log" -- cfgDebugLogPath
         <*> newIORef False       -- cfgMDNSEnabled
         <*> newIORef False       -- cfgPEXEnabled
         <*> newIORef False       -- cfgDBEnabled
         <*> newIORef ""          -- cfgDBPath
+        <*> newIORef Nothing     -- cfgListenerThread
         <*> newIORef Nothing     -- cfgMDNSThread
         <*> newIORef []          -- cfgMDNSPeers
         <*> newIORef 30          -- cfgRetentionDays
         <*> newIORef False       -- cfgAutoSaveMessages
         <*> newIORef Nothing     -- cfgAnthonyDB
-        <*> newIORef False       -- cfgTrustedOnly
+        <*> newIORef Promiscuous -- cfgConnectionMode
+        <*> newIORef []          -- cfgTrustedKeys
 
 -- | Add a loopback session with empty history.
 addTestSession :: AppConfig -> String -> IO SessionId

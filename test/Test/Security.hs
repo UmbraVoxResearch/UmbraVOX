@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Security invariant tests: constant-time comparison, nonce uniqueness,
 -- forward secrecy, key independence, implicit rejection, tag tampering,
 -- stealth unlinkability, CSPRNG non-determinism, fork safety, Poly1305 key reuse.

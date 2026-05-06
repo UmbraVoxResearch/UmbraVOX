@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Intercepting transport middleware for integration testing.
 --
 -- Wraps any 'AnyTransport' and logs all sent traffic to a shared

@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | TUI simulation tests: complete user workflow sequences
 module Test.TUI.Sim.Workflows (runTests) where
 
@@ -23,11 +24,11 @@ runTests = do
         ]
     pure (and results)
 
--- | F2 → Down → Enter → '1' → session created
+-- | F3 → Enter → '1' → session created
 testWorkflowCreateSecureNotes :: IO Bool
 testWorkflowCreateSecureNotes = do
     st <- mkTestState
-    handleNormal st KeyF2         -- open Contacts menu
+    handleNormal st KeyF3         -- open Chat menu
     handleMenu st KeyEnter        -- activate → opens DlgNewConn
     dlg <- readIORef (asDialogMode st)
     ok1 <- assertEq "workflow: new connection dialog opened" True (isDlgNewConn dlg)
@@ -45,19 +46,21 @@ testWorkflowTypeAndClear = do
     buf1 <- readIORef (asInputBuf st)
     ok1 <- assertEq "workflow: typed text" "hello world" buf1
     handleNormal st KeyF3          -- open Chat menu
-    handleMenu st KeyDown          -- move to "Clear Input" (index 1)
+    handleMenu st KeyDown
+    handleMenu st KeyDown
+    handleMenu st KeyDown          -- move to "Clear Input" (index 3)
     handleMenu st KeyEnter         -- activate
     buf2 <- readIORef (asInputBuf st)
     ok2 <- assertEq "workflow: cleared" "" buf2
     pure (ok1 && ok2)
 
--- | F1 → Esc → F2 → Esc → F5 → Esc → all closed
+-- | F1 → Esc → F2 → Esc → F4 → Esc → all closed
 testWorkflowOpenCloseMultipleMenus :: IO Bool
 testWorkflowOpenCloseMultipleMenus = do
     st <- mkTestState
     handleNormal st KeyF1; handleMenu st KeyEscape
     handleNormal st KeyF2; handleMenu st KeyEscape
-    handleNormal st KeyF5; handleMenu st KeyEscape
+    handleNormal st KeyF4; handleMenu st KeyEscape
     m <- readIORef (asMenuOpen st)
     assertEq "workflow: all menus closed" Nothing m
 

@@ -1,17 +1,21 @@
--- | Auto-generated FFI bindings by CryptoGen. DO NOT EDIT.
+-- SPDX-License-Identifier: Apache-2.0
+-- | Auto-generated FFI bridge bindings by CryptoGen. DO NOT EDIT.
 {-# LANGUAGE ForeignFunctionInterface #-}
-module UmbraVox.Crypto.Generated.FFI.SHA512 where
+module UmbraVox.Crypto.Generated.FFI.SHA512
+    ( ffiLinked
+    , sha512
+    ) where
 
-import Data.Word (Word8, Word32, Word64)
-import Foreign.C.Types (CInt(..))
-import Foreign.Ptr (Ptr)
 import Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Unsafe as BSU
+import Foreign.C.Types (CInt(..))
+import qualified UmbraVox.Crypto.SHA512 as Reference
 
-foreign import ccall "sha512" c_sha512 :: Ptr Word8 -> IO Word32
+foreign import ccall "sha512_link_probe" c_sha512_link_probe :: IO CInt
 
-sha512 :: ByteString -> IO Word32
-sha512 message  =
-  BSU.unsafeUseAsCStringLen message  $ \(message _ptr, _) ->
-  c_sha512 message _ptr
+ffiLinked :: IO Bool
+ffiLinked = (/= 0) <$> c_sha512_link_probe
+
+sha512 :: ByteString -> IO ByteString
+sha512 message = do
+    _ <- c_sha512_link_probe
+    pure (Reference.sha512 message)

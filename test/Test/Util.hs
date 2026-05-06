@@ -1,8 +1,9 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Shared test utilities: deterministic PRNG, property-based test runner,
 -- hex encoding/decoding, and common helpers.
 --
 -- The PRNG uses a 64-bit LCG (Knuth constants) with seed=42 for
--- reproducible property tests per doc/14-code-generation.md.
+-- reproducible property tests per attic/doc-legacy-2026-04-28/14-code-generation.md.
 module Test.Util
     ( -- * Hex helpers
       hexEncode

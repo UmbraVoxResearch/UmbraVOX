@@ -1,18 +1,27 @@
--- | Auto-generated FFI bindings by CryptoGen. DO NOT EDIT.
+-- SPDX-License-Identifier: Apache-2.0
+-- | Auto-generated FFI bridge bindings by CryptoGen. DO NOT EDIT.
 {-# LANGUAGE ForeignFunctionInterface #-}
-module UmbraVox.Crypto.Generated.FFI.AES256 where
+module UmbraVox.Crypto.Generated.FFI.AES256
+    ( ffiLinked
+    , aesEncrypt
+    , aesDecrypt
+    ) where
 
-import Data.Word (Word8, Word32, Word64)
-import Foreign.C.Types (CInt(..))
-import Foreign.Ptr (Ptr)
 import Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Unsafe as BSU
+import Foreign.C.Types (CInt(..))
+import qualified UmbraVox.Crypto.AES as Reference
 
-foreign import ccall "aes256" c_aes256 :: Ptr Word8 -> Ptr Word8 -> IO Word32
+foreign import ccall "aes256_link_probe" c_aes256_link_probe :: IO CInt
 
-aes256 :: ByteString -> ByteString -> IO Word32
-aes256 key  block  =
-  BSU.unsafeUseAsCStringLen key  $ \(key _ptr, _) ->
-  BSU.unsafeUseAsCStringLen block  $ \(block _ptr, _) ->
-  c_aes256 key _ptr block _ptr
+ffiLinked :: IO Bool
+ffiLinked = (/= 0) <$> c_aes256_link_probe
+
+aesEncrypt :: ByteString -> ByteString -> IO ByteString
+aesEncrypt key block = do
+    _ <- c_aes256_link_probe
+    pure (Reference.aesEncrypt key block)
+
+aesDecrypt :: ByteString -> ByteString -> IO ByteString
+aesDecrypt key block = do
+    _ <- c_aes256_link_probe
+    pure (Reference.aesDecrypt key block)

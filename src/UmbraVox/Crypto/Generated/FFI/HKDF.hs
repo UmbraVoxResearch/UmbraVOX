@@ -1,20 +1,27 @@
--- | Auto-generated FFI bindings by CryptoGen. DO NOT EDIT.
+-- SPDX-License-Identifier: Apache-2.0
+-- | Auto-generated FFI bridge bindings by CryptoGen. DO NOT EDIT.
 {-# LANGUAGE ForeignFunctionInterface #-}
-module UmbraVox.Crypto.Generated.FFI.HKDF where
+module UmbraVox.Crypto.Generated.FFI.HKDF
+    ( ffiLinked
+    , hkdf
+    , hkdfSHA256
+    ) where
 
-import Data.Word (Word8, Word32, Word64)
-import Foreign.C.Types (CInt(..))
-import Foreign.Ptr (Ptr)
 import Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Unsafe as BSU
+import Foreign.C.Types (CInt(..))
+import qualified UmbraVox.Crypto.HKDF as Reference
 
-foreign import ccall "hkdf" c_hkdf :: Ptr Word8 -> Ptr Word8 -> Ptr Word8 -> Ptr Word8 -> IO Word32
+foreign import ccall "hkdf_link_probe" c_hkdf_link_probe :: IO CInt
 
-hkdf :: ByteString -> ByteString -> ByteString -> ByteString -> IO Word32
-hkdf salt    ikm     info    length  =
-  BSU.unsafeUseAsCStringLen salt    $ \(salt   _ptr, _) ->
-  BSU.unsafeUseAsCStringLen ikm     $ \(ikm    _ptr, _) ->
-  BSU.unsafeUseAsCStringLen info    $ \(info   _ptr, _) ->
-  BSU.unsafeUseAsCStringLen length  $ \(length _ptr, _) ->
-  c_hkdf salt   _ptr ikm    _ptr info   _ptr length _ptr
+ffiLinked :: IO Bool
+ffiLinked = (/= 0) <$> c_hkdf_link_probe
+
+hkdf :: ByteString -> ByteString -> ByteString -> Int -> IO ByteString
+hkdf salt ikm info len = do
+    _ <- c_hkdf_link_probe
+    pure (Reference.hkdf salt ikm info len)
+
+hkdfSHA256 :: ByteString -> ByteString -> ByteString -> Int -> IO ByteString
+hkdfSHA256 salt ikm info len = do
+    _ <- c_hkdf_link_probe
+    pure (Reference.hkdfSHA256 salt ikm info len)

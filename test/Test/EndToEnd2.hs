@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 -- | Multi-connection and group communication test suite.
 --
 -- Tests sequential connections, message isolation, disconnect resilience,
