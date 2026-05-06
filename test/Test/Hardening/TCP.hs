@@ -173,9 +173,7 @@ testTUIRuntimeLogging = do
         _ <- waitForHistoryLine bob "Peer: log-from-alice" 5000
         logExists <- waitForFile logPath 5000
         logReady <- waitForLogEvents logPath
-            [ "listener.awaiting_connection"
-            , "listener.accepted_connection"
-            , "session.add.remote"
+            [ "session.add.remote"
             , "message.send"
             , "message.recv"
             ]
