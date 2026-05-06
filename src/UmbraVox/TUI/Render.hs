@@ -12,7 +12,7 @@ module UmbraVox.TUI.Render
     , showOverlay
     ) where
 
-import Control.Exception (catch, SomeException, bracket_)
+import Control.Exception (catch, SomeException, throw)
 import Control.Monad (forM_, when, void)
 import Data.IORef (readIORef, writeIORef)
 import qualified Data.Map.Strict as Map
@@ -44,19 +44,25 @@ isPfx [] _ = True; isPfx _ [] = False
 isPfx (x:xs) (y:ys) = x == y && isPfx xs ys
 
 withRawMode :: IO a -> IO a
-withRawMode = bracket_
-    (do hSetBuffering stdin NoBuffering
-        hSetEcho stdin False
-        hideCursor
-        -- Disable XON/XOFF flow control so Ctrl+Q/Ctrl+S reach the app
-        void (readProcess "stty" ["-ixon", "-ixoff"] "" `catch`
-              (\(_ :: SomeException) -> pure "")))
-    (do hSetBuffering stdin LineBuffering
+withRawMode act = do
+    -- Disable XON/XOFF BEFORE entering raw mode (uses /dev/tty explicitly)
+    void (readProcess "stty" ["-F", "/dev/tty", "-ixon", "-ixoff", "raw", "-echo"] "" `catch`
+          (\(_ :: SomeException) -> pure ""))
+    hideCursor
+    hSetBuffering stdin NoBuffering
+    hSetEcho stdin False
+    result <- act `catch` (\(e :: SomeException) -> do
+        cleanup
+        throw e)
+    cleanup
+    pure result
+  where
+    cleanup = do
+        hSetBuffering stdin LineBuffering
         hSetEcho stdin True
         showCursor
-        -- Restore flow control
-        void (readProcess "stty" ["ixon"] "" `catch`
-              (\(_ :: SomeException) -> pure "")))
+        void (readProcess "stty" ["-F", "/dev/tty", "ixon", "sane"] "" `catch`
+              (\(_ :: SomeException) -> pure ""))
 
 -- Terminal size detection -------------------------------------------------
 getTermSize :: IO (Int, Int)  -- (rows, cols)
