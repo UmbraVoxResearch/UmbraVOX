@@ -16,6 +16,8 @@ import Data.List (isPrefixOf)
 import Data.IORef (readIORef, writeIORef, modifyIORef')
 import qualified Data.Map.Strict as Map
 import System.IO (stdin, hReady)
+import UmbraVox.BuildProfile
+    ( BuildPluginId(..), pluginEnabled, pluginUnavailableStatus )
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Render (render)
 import UmbraVox.TUI.Menu (toggleMenu, handleMenu, openMenu, closeMenu, executeMenuItem)
@@ -475,18 +477,24 @@ handleSettingsDlg st (KeyChar '4') =
 handleSettingsDlg st (KeyChar '5') =
     runRuntimeCommand st CmdTogglePersistentStorage
 handleSettingsDlg st (KeyChar '6') = do
-    writeIORef (asDialogBuf st) ""
-    writeIORef (asDialogMode st) (Just (DlgPrompt "Set DB Path" $ \val ->
-        unless (null val) $
-            runRuntimeCommand st (CmdSetDBPath val)))
+    if not (pluginEnabled PluginPersistentStorage)
+        then setStatus st (pluginUnavailableStatus PluginPersistentStorage)
+        else do
+            writeIORef (asDialogBuf st) ""
+            writeIORef (asDialogMode st) (Just (DlgPrompt "Set DB Path" $ \val ->
+                unless (null val) $
+                    runRuntimeCommand st (CmdSetDBPath val)))
 handleSettingsDlg st (KeyChar '7') = do
-    writeIORef (asDialogBuf st) ""
-    writeIORef (asDialogMode st) (Just (DlgPrompt "Retention (days, 0=forever)" $ \val ->
-        case reads val of
-            [(d,_)] -> do
-                let days = max 0 (d :: Int)
-                runRuntimeCommand st (CmdSetRetentionDays days)
-            _ -> pure () ))
+    if not (pluginEnabled PluginPersistentStorage)
+        then setStatus st (pluginUnavailableStatus PluginPersistentStorage)
+        else do
+            writeIORef (asDialogBuf st) ""
+            writeIORef (asDialogMode st) (Just (DlgPrompt "Retention (days, 0=forever)" $ \val ->
+                case reads val of
+                    [(d,_)] -> do
+                        let days = max 0 (d :: Int)
+                        runRuntimeCommand st (CmdSetRetentionDays days)
+                    _ -> pure () ))
 handleSettingsDlg st (KeyChar '8') =
     runRuntimeCommand st CmdToggleAutoSave
 handleSettingsDlg st (KeyChar '9') = do
@@ -498,10 +506,13 @@ handleSettingsDlg st (KeyChar 'a') =
     runRuntimeCommand st CmdToggleDebugLogging
 handleSettingsDlg st (KeyChar 'A') = handleSettingsDlg st (KeyChar 'a')
 handleSettingsDlg st (KeyChar 'b') = do
-    writeIORef (asDialogBuf st) ""
-    writeIORef (asDialogMode st) (Just (DlgPrompt "Set Log Path" $ \val ->
-        unless (null val) $
-            runRuntimeCommand st (CmdSetDebugLogPath val)))
+    if not (pluginEnabled PluginRuntimeLogging)
+        then setStatus st (pluginUnavailableStatus PluginRuntimeLogging)
+        else do
+            writeIORef (asDialogBuf st) ""
+            writeIORef (asDialogMode st) (Just (DlgPrompt "Set Log Path" $ \val ->
+                unless (null val) $
+                    runRuntimeCommand st (CmdSetDebugLogPath val)))
 handleSettingsDlg st (KeyChar 'B') = handleSettingsDlg st (KeyChar 'b')
 handleSettingsDlg st (KeyChar 'c') = runRuntimeCommand st CmdCycleConnectionMode
 handleSettingsDlg st (KeyChar 'C') = handleSettingsDlg st (KeyChar 'c')

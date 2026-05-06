@@ -590,7 +590,9 @@ testSettingsTabMouseSwitchesOverlay = do
     ok1 <- assertEq "settings mouse switches to advanced tab" 4 tabIx
     ok2 <- assertEq "settings advanced tab shows debug logging control" True
         (hasLine "   a. Debug logging:")
-    pure (ok1 && ok2)
+    ok3 <- assertEq "settings advanced tab shows packaged plugin artifact status" True
+        (any ("artifact-missing" `isIn`) updated)
+    pure (ok1 && ok2 && ok3)
 
 testStartSettingsResetsTab :: IO Bool
 testStartSettingsResetsTab = do

@@ -34,6 +34,8 @@ make test-integrity    # Wire/integrity suite
 make test-mdns         # Exact mDNS/discovery suite
 make test-deferred     # Preserved deferred blockchain/economics suites
 make soak              # Longer soak/stress run with artifact report
+make release-linux     # Portable Linux x86_64 terminal bundle
+make release           # Build all defined release artifacts
 make                   # Full pipeline: build + test + verify + complexity + lint + license + format-check
 make quality           # Same full pipeline as make; lint/format-check are advisory, license is blocking
 ````
@@ -52,9 +54,29 @@ make quality           # Same full pipeline as make; lint/format-check are advis
 
 See [`doc/QUICKSTART.md`](doc/QUICKSTART.md) for the active command set and
 [`doc/README.md`](doc/README.md) for the fresh documentation index.
+See [`doc/RELEASES.md`](doc/RELEASES.md) for the current release-target matrix
+and packaging behavior.
 
 For the current cryptographic assurance boundary and the planned path toward
 a stronger model, see [`doc/assurance-roadmap.md`](doc/assurance-roadmap.md).
+
+## Release Targets
+
+UmbraVOX now has explicit release targets:
+
+```sh
+make release-linux
+make release-windows-cli
+make release-macos-terminal
+make release-bsd-terminal
+make release-freedos
+make release
+```
+
+Important: the raw Cabal binary under `dist-newstyle/.../umbravox` is not a
+portable release artifact. On Linux it is Nix/glibc-path bound unless it is
+repackaged through the release target. The release docs describe which targets
+currently emit native binaries and which emit platform-specific source bundles.
 
 ## Current MVP Security Model
 

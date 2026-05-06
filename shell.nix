@@ -25,6 +25,9 @@ let
   # Documentation and analysis
   graphviz = pkgs.graphviz;  # dependency graphs
   jq = pkgs.jq;              # JSON processing for test evidence
+  patchelf = pkgs.patchelf;
+  file = pkgs.file;
+  zip = pkgs.zip;
 
   # Build essentials
   gnumake = pkgs.gnumake;
@@ -65,6 +68,9 @@ in pkgs.mkShell {
     # Utilities
     graphviz
     jq
+    patchelf
+    file
+    zip
     gnumake
     git
     pkg-config

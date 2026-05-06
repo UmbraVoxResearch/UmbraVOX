@@ -1,0 +1,11 @@
+id=image-sharing
+api=uvx-plugin-v1
+name=Image Sharing
+source=premium-packaged
+tier=premium-ready
+category=ux
+status=planned
+host=ipc-stdio
+entrypoint=exec:generated/image-sharing-plugin
+encryption=end-to-end
+notes=Future packaged module for encrypted image transfer.

@@ -1,0 +1,11 @@
+id=file-sharing
+api=uvx-plugin-v1
+name=File Sharing
+source=premium-packaged
+tier=premium-ready
+category=ux
+status=planned
+host=ipc-stdio
+entrypoint=exec:generated/file-sharing-plugin
+encryption=end-to-end
+notes=Future packaged module for encrypted file transfer.

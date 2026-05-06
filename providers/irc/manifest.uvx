@@ -1,0 +1,12 @@
+id=irc
+api=uvx-provider-v1
+name=IRC
+class=open-bridge
+status=planned
+endpoint=nick@server:port/#channel
+inherits=tcp
+capabilities=connect,bridge,group
+host=ipc-stdio
+entrypoint=exec:generated/irc-provider
+encryption=bridge-adapted
+notes=Metadata stub for bridging chat flows over IRC semantics.

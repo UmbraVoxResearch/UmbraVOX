@@ -19,13 +19,26 @@ import Data.IORef (readIORef, writeIORef)
 import UmbraVox.App.RuntimeLog (logEvent)
 import UmbraVox.Crypto.ConstantTime (constantEq)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
-import UmbraVox.Network.Transport (listen, connect, connectTryPorts)
-import UmbraVox.Network.TransportClass (AnyTransport(..))
+import UmbraVox.Network.ProviderCatalog (TransportProviderId, providerIdLabel)
+import UmbraVox.Network.ProviderRuntime
+    ( activeRuntimeProvider, connectWithProvider, connectWithProviderTryPorts
+    , listenWithProvider
+    )
 import UmbraVox.Protocol.Encoding (defaultPorts, parseHostPort)
-import UmbraVox.TUI.Actions (addSession, selectLast, setStatus)
+import UmbraVox.TUI.Actions (addSession, selectLast)
 import UmbraVox.TUI.Handshake (genIdentity, fingerprint, handshakeInitiator, handshakeResponder)
+import UmbraVox.TUI.RuntimeEvent (RuntimeEvent(..), applyRuntimeEvents)
 import UmbraVox.TUI.RuntimeSettings (restartMDNS)
 import UmbraVox.TUI.Types
+
+emitStatus :: AppState -> String -> IO ()
+emitStatus st msg = applyRuntimeEvents st [EventSetStatus msg]
+
+runtimeProvider :: TransportProviderId
+runtimeProvider = activeRuntimeProvider
+
+runtimeProviderLabel :: String
+runtimeProviderLabel = providerIdLabel runtimeProvider
 
 getOrCreateIdentity :: AppConfig -> IO IdentityKey
 getOrCreateIdentity cfg = do
@@ -44,24 +57,24 @@ applyListenPort st p = do
     _ <- restartListener st ik p
     mdnsOn <- readIORef (cfgMDNSEnabled (asConfig st))
     when mdnsOn (restartMDNS st)
-    logEvent (asConfig st) "settings.listen_port" [("port", show p)]
-    setStatus st ("Listen port set to " ++ show p ++ " and applied")
+    logEvent (asConfig st) "settings.listen_port" [("port", show p), ("provider", runtimeProviderLabel)]
+    emitStatus st ("Listen port set to " ++ show p ++ " and applied via " ++ runtimeProviderLabel)
 
 acceptLoopTUI :: AppState -> IdentityKey -> Int -> IO ()
 acceptLoopTUI st ik port = do
     logEvent (asConfig st) "listener.awaiting_transport" [("port", show port)]
-    t <- listen port
-    let at = AnyTransport t
+    at <- listenWithProvider runtimeProvider port
+    let providerTag = runtimeProviderLabel
         trustCheck :: ByteString -> IO Bool
         trustCheck peerKey = do
             mode <- readIORef (cfgConnectionMode (asConfig st))
             case mode of
                 Swing       -> do
-                    setStatus st ("Swing: accepted " ++ fingerprint peerKey)
+                    emitStatus st ("Swing: accepted " ++ fingerprint peerKey)
                     pure True
                 Promiscuous -> pure True
                 Selective   -> do
-                    setStatus st ("Peer: " ++ fingerprint peerKey)
+                    emitStatus st ("Peer: " ++ fingerprint peerKey)
                     pure True
                 Chaste      -> do
                     keys <- readIORef (cfgTrustedKeys (asConfig st))
@@ -69,11 +82,11 @@ acceptLoopTUI st ik port = do
                 Chastity    -> do
                     keys <- readIORef (cfgTrustedKeys (asConfig st))
                     pure (any (constantEq peerKey) keys)
-    logEvent (asConfig st) "transport.accepted.pre_auth" [("port", show port)]
+    logEvent (asConfig st) "transport.accepted.pre_auth" [("port", show port), ("provider", providerTag)]
     session <- handshakeResponder at ik trustCheck
     sid <- addSession (asConfig st) at session ("peer:" ++ show port)
     selectLast st
-    setStatus st ("Session #" ++ show sid)
+    emitStatus st ("Session #" ++ show sid)
     acceptLoopTUI st ik port
 
 connectToPeer :: AppState -> String -> Maybe Int -> IO ()
@@ -81,30 +94,28 @@ connectToPeer st h mPort =
     case mPort of
         Just port -> do
             logEvent (asConfig st) "transport.connect.attempt"
-                [("host", h), ("port", show port)]
-            setStatus st ("Connecting to " ++ h ++ ":" ++ show port ++ "...")
+                [("host", h), ("port", show port), ("provider", runtimeProviderLabel)]
+            emitStatus st ("Connecting via " ++ runtimeProviderLabel ++ " to " ++ h ++ ":" ++ show port ++ "...")
             void $ forkIO $ (do
                 ik <- getOrCreateIdentity (asConfig st)
-                t <- connect h port
-                let at = AnyTransport t
+                at <- connectWithProvider runtimeProvider h port
                 session <- handshakeInitiator at ik
                 sid <- addSession (asConfig st) at session (h ++ ":" ++ show port)
                 selectLast st
-                setStatus st ("Connected #" ++ show sid)
-                ) `catch` (\(e :: SomeException) -> setStatus st ("Failed: " ++ show e))
+                emitStatus st ("Connected #" ++ show sid)
+                ) `catch` (\(e :: SomeException) -> emitStatus st ("Failed: " ++ show e))
         Nothing -> do
             logEvent (asConfig st) "transport.connect.attempt_defaults"
-                [("host", h)]
-            setStatus st ("Connecting to " ++ h ++ " (trying default ports)...")
+                [("host", h), ("provider", runtimeProviderLabel)]
+            emitStatus st ("Connecting via " ++ runtimeProviderLabel ++ " to " ++ h ++ " (trying default ports)...")
             void $ forkIO $ (do
                 ik <- getOrCreateIdentity (asConfig st)
-                t <- connectTryPorts h defaultPorts
-                let at = AnyTransport t
+                at <- connectWithProviderTryPorts runtimeProvider h defaultPorts
                 session <- handshakeInitiator at ik
                 sid <- addSession (asConfig st) at session h
                 selectLast st
-                setStatus st ("Connected #" ++ show sid)
-                ) `catch` (\(e :: SomeException) -> setStatus st ("Failed: " ++ show e))
+                emitStatus st ("Connected #" ++ show sid)
+                ) `catch` (\(e :: SomeException) -> emitStatus st ("Failed: " ++ show e))
 
 startListenerIfNeeded :: AppState -> IdentityKey -> Int -> String -> IO Bool
 startListenerIfNeeded st ik port source = do
@@ -116,14 +127,15 @@ startListenerIfNeeded st ik port source = do
                 , ("source", source)
                 , ("reason", "already_running")
                 ]
-            setStatus st ("Listener already running on " ++ show port)
+            emitStatus st ("Listener already running on " ++ show port)
             pure False
         Nothing -> do
             logEvent (asConfig st) "listener.start"
                 [ ("port", show port)
                 , ("source", source)
+                , ("provider", runtimeProviderLabel)
                 ]
-            setStatus st ("Listening on " ++ show port ++ "...")
+            emitStatus st ("Listening via " ++ runtimeProviderLabel ++ " on " ++ show port ++ "...")
             tid <- forkIO (listenerWorker st ik port)
             writeIORef (cfgListenerThread (asConfig st)) (Just tid)
             pure True
@@ -146,9 +158,10 @@ listenerWorker st ik port =
         `catch` (\(e :: SomeException) -> do
             logEvent (asConfig st) "listener.stop"
                 [ ("port", show port)
+                , ("provider", runtimeProviderLabel)
                 , ("reason", show e)
                 ]
-            setStatus st ("Listener stopped: " ++ show e)))
+            emitStatus st ("Listener stopped: " ++ show e)))
     `finally` writeIORef (cfgListenerThread (asConfig st)) Nothing
 
 connectGroupPeers :: AppState -> IdentityKey -> [String] -> Int -> IO Int
@@ -157,10 +170,9 @@ connectGroupPeers st ik (p:ps) successes =
     ((do
         let peer = dropWhile (== ' ') p
             (h, mPort) = parseHostPort peer
-        t <- case mPort of
-            Just port -> connect h port
-            Nothing   -> connectTryPorts h defaultPorts
-        let at = AnyTransport t
+        at <- case mPort of
+            Just port -> connectWithProvider runtimeProvider h port
+            Nothing   -> connectWithProviderTryPorts runtimeProvider h defaultPorts
         session <- handshakeInitiator at ik
         void $ addSession (asConfig st) at session peer
         connectGroupPeers st ik ps (successes + 1)
@@ -169,9 +181,9 @@ connectGroupPeers st ik (p:ps) successes =
 connectGroupTargets :: AppState -> [String] -> IO ()
 connectGroupTargets st peers = do
     let peers' = filter (not . null) (map (dropWhile (== ' ')) peers)
-    setStatus st ("Connecting to " ++ show (length peers') ++ " peers...")
+    emitStatus st ("Connecting via " ++ runtimeProviderLabel ++ " to " ++ show (length peers') ++ " peers...")
     void $ forkIO $ do
         ik <- getOrCreateIdentity (asConfig st)
         successes <- connectGroupPeers st ik peers' 0
         when (successes > 0) $ selectLast st
-        setStatus st ("Group connected: " ++ show successes ++ "/" ++ show (length peers'))
+        emitStatus st ("Group connected: " ++ show successes ++ "/" ++ show (length peers'))

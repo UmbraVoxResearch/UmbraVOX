@@ -18,6 +18,11 @@ import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.List (isInfixOf)
 import qualified Data.ByteString as BS
 import qualified Data.Map.Strict as Map
+import UmbraVox.BuildProfile (loadPackagedPluginCatalog, loadPackagedPluginRuntimeCatalog)
+import UmbraVox.Network.ProviderCatalog
+    ( loadTransportProviderCatalog
+    , loadTransportProviderRuntimeCatalog
+    )
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Layout (calcLayout)
 import UmbraVox.Chat.Session (initChatSession)
@@ -52,7 +57,11 @@ calcTestLayout :: Layout
 calcTestLayout = calcLayout 40 120
 
 mkTestConfig :: IO AppConfig
-mkTestConfig =
+mkTestConfig = do
+    packagedPluginCatalog <- loadPackagedPluginCatalog
+    packagedPluginRuntimeCatalog <- loadPackagedPluginRuntimeCatalog
+    transportProviderCatalog <- loadTransportProviderCatalog
+    transportProviderRuntimeCatalog <- loadTransportProviderRuntimeCatalog
     AppConfig
         <$> newIORef 1111        -- cfgListenPort
         <*> newIORef "testuser"  -- cfgDisplayName
@@ -65,6 +74,11 @@ mkTestConfig =
         <*> newIORef False       -- cfgPEXEnabled
         <*> newIORef False       -- cfgDBEnabled
         <*> newIORef ""          -- cfgDBPath
+        <*> newIORef Nothing     -- cfgPersistencePreference
+        <*> newIORef packagedPluginCatalog -- cfgPackagedPluginCatalog
+        <*> newIORef packagedPluginRuntimeCatalog -- cfgPackagedPluginRuntimeCatalog
+        <*> newIORef transportProviderCatalog -- cfgTransportProviderCatalog
+        <*> newIORef transportProviderRuntimeCatalog -- cfgTransportProviderRuntimeCatalog
         <*> newIORef Nothing     -- cfgListenerThread
         <*> newIORef Nothing     -- cfgMDNSThread
         <*> newIORef []          -- cfgMDNSPeers

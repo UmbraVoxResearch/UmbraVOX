@@ -10,6 +10,7 @@ import System.IO (hSetBuffering, hSetEncoding, hFlush, stdout, stdin, utf8, Buff
 import System.Posix.Signals (installHandler, Handler(Catch))
 import Foreign.C.Types (CInt(..))
 import UmbraVox.App.RuntimeLog (logEvent, runtimeLoggingEnabled)
+import UmbraVox.BuildProfile (buildProfileName, buildSupportsDiscovery, buildSupportsPersistentStorage)
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Render (getTermSize, clampSize, calcLayout, clearScreen,
                             withRawMode, render)
@@ -54,7 +55,7 @@ main = do
     when debugLogging $ logEvent cfg "app.start" []
     -- Wire mDNS discovery if enabled (graceful if multicast unavailable)
     mdnsOn <- readIORef (cfgMDNSEnabled cfg)
-    when mdnsOn $ (do
+    when (buildSupportsDiscovery && mdnsOn) $ (do
         port <- readIORef (cfgListenPort cfg)
         name <- readIORef (cfgDisplayName cfg)
         mIk <- readIORef (cfgIdentity cfg)
@@ -73,33 +74,37 @@ main = do
     putStrLn ""
     putStrLn "  UmbraVOX - Post-Quantum Encrypted Messaging"
     putStrLn ""
-    persistedPreference <- resolvePersistencePreference cfg
-    case persistedPreference of
-        Just True -> do
-            putStrLn "  Initializing database..."
-            nRestored <- applyPersistenceAnswer cfg "yes"
-            dbEnabled <- readIORef (cfgDBEnabled cfg)
-            if dbEnabled
-                then putStrLn $ "  Storage: persistent mode (" ++ show nRestored ++ " conversations restored)"
-                else putStrLn "  Storage: ephemeral mode (DB unavailable)"
-        Just False -> do
-            _ <- applyPersistenceAnswer cfg "no"
-            putStrLn "  Storage: ephemeral mode"
-        Nothing -> do
-            putStr "  Enable persistent storage? (requires sqlite3 from nix-shell) [y/N]: "
-            hFlush stdout
-            answer <- getLine
-            if persistenceAnswerEnables answer
-                then do
+    putStrLn $ "  Build profile: " ++ buildProfileName
+    if not buildSupportsPersistentStorage
+        then putStrLn "  Storage: ephemeral mode (compile-time locked)"
+        else do
+            persistedPreference <- resolvePersistencePreference cfg
+            case persistedPreference of
+                Just True -> do
                     putStrLn "  Initializing database..."
-                    nRestored <- applyPersistenceAnswer cfg answer
+                    nRestored <- applyPersistenceAnswer cfg "yes"
                     dbEnabled <- readIORef (cfgDBEnabled cfg)
                     if dbEnabled
                         then putStrLn $ "  Storage: persistent mode (" ++ show nRestored ++ " conversations restored)"
                         else putStrLn "  Storage: ephemeral mode (DB unavailable)"
-                else do
-                    _ <- applyPersistenceAnswer cfg answer
+                Just False -> do
+                    _ <- applyPersistenceAnswer cfg "no"
                     putStrLn "  Storage: ephemeral mode"
+                Nothing -> do
+                    putStr "  Enable persistent storage? (requires sqlite3 from nix-shell) [y/N]: "
+                    hFlush stdout
+                    answer <- getLine
+                    if persistenceAnswerEnables answer
+                        then do
+                            putStrLn "  Initializing database..."
+                            nRestored <- applyPersistenceAnswer cfg answer
+                            dbEnabled <- readIORef (cfgDBEnabled cfg)
+                            if dbEnabled
+                                then putStrLn $ "  Storage: persistent mode (" ++ show nRestored ++ " conversations restored)"
+                                else putStrLn "  Storage: ephemeral mode (DB unavailable)"
+                        else do
+                            _ <- applyPersistenceAnswer cfg answer
+                            putStrLn "  Storage: ephemeral mode"
     _ <- installHandler sigWINCH (Catch $ getTermSize >>= writeIORef (asTermSize st)) Nothing
     -- Auto-start listening for incoming connections in background
     activeListenPort <- readIORef (cfgListenPort cfg)

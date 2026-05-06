@@ -1,0 +1,11 @@
+id=location-sharing
+api=uvx-plugin-v1
+name=Location Sharing
+source=premium-packaged
+tier=premium-ready
+category=networking
+status=planned
+host=ipc-stdio
+entrypoint=exec:generated/location-sharing-plugin
+encryption=end-to-end
+notes=Future packaged module for live and pinned encrypted location exchange.

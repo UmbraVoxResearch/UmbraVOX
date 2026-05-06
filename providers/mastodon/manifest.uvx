@@ -1,0 +1,12 @@
+id=mastodon
+api=uvx-provider-v1
+name=Mastodon
+class=open-bridge
+status=planned
+endpoint=@user@instance
+inherits=tcp
+capabilities=connect,bridge,media
+host=ipc-stdio
+entrypoint=exec:generated/mastodon-provider
+encryption=bridge-adapted
+notes=Federated social bridge stub for future provider-host experimentation.

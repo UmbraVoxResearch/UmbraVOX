@@ -1,0 +1,12 @@
+id=signal-server
+api=uvx-provider-v1
+name=Signal Server
+class=closed-bridge
+status=planned
+endpoint=server:port/account
+inherits=tcp
+capabilities=connect,bridge,group
+host=ipc-stdio
+entrypoint=exec:generated/signal-server-provider
+encryption=bridge-adapted
+notes=Signal Server substrate stub for service-backed message transport.

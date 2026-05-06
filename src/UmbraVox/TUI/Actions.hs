@@ -22,6 +22,7 @@ import System.Process (readProcess)
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Render (clearScreen, goto, showCursor)
 import UmbraVox.TUI.Handshake (genIdentity)
+import UmbraVox.TUI.RuntimeEvent (RuntimeEvent(..), applyRuntimeEvents)
 import UmbraVox.Network.TransportClass (anyClose)
 
 -- Re-export submodules for backward compatibility
@@ -31,31 +32,28 @@ import UmbraVox.TUI.Actions.Export
 -- Dialog openers ----------------------------------------------------------
 
 startNewConn :: AppState -> IO ()
-startNewConn st = writeIORef (asDialogMode st) (Just DlgNewConn)
+startNewConn st = applyRuntimeEvents st [EventSetDialog (Just DlgNewConn)]
 
 showHelp :: AppState -> IO ()
-showHelp st = writeIORef (asDialogMode st) (Just DlgHelp)
+showHelp st = applyRuntimeEvents st [EventSetDialog (Just DlgHelp)]
 
 showAbout :: AppState -> IO ()
-showAbout st = writeIORef (asDialogMode st) (Just DlgAbout)
+showAbout st = applyRuntimeEvents st [EventSetDialog (Just DlgAbout)]
 
 startSettings :: AppState -> IO ()
-startSettings st = do
-    writeIORef (asDialogTab st) 0
-    writeIORef (asDialogMode st) (Just DlgSettings)
+startSettings st =
+    applyRuntimeEvents st [EventSetDialogTab 0, EventSetDialog (Just DlgSettings)]
 
 startBrowse :: AppState -> IO ()
-startBrowse st = do
-    writeIORef (asBrowsePage st) 0
-    writeIORef (asBrowseFilter st) ""
-    writeIORef (asDialogMode st) (Just DlgBrowse)
+startBrowse st =
+    applyRuntimeEvents st [EventResetBrowse, EventSetDialog (Just DlgBrowse)]
 
 startVerify :: AppState -> IO ()
-startVerify st = writeIORef (asDialogMode st) (Just DlgVerify)
+startVerify st = applyRuntimeEvents st [EventSetDialog (Just DlgVerify)]
 
 startKeysView :: AppState -> IO ()
 startKeysView st = do
-    writeIORef (asDialogMode st) (Just DlgKeys)
+    applyRuntimeEvents st [EventSetDialog (Just DlgKeys)]
     mIk <- readIORef (cfgIdentity (asConfig st))
     case mIk of
         Nothing -> do
@@ -72,13 +70,15 @@ renameContact st = do
     let entries = Map.toList sessions
     when (sel < length entries) $ do
         let (sid, si) = entries !! sel
-        writeIORef (asDialogBuf st) ""
-        writeIORef (asDialogMode st) (Just (DlgPrompt ("Rename: " ++ siPeerName si) $ \val ->
-            unless (null val) $ do
-                let si' = si { siPeerName = val }
-                modifyIORef' (cfgSessions (asConfig st)) (Map.insert sid si')
-                setStatus st ("Renamed to: " ++ val)
-            ))
+        applyRuntimeEvents st
+            [ EventSetInput ""
+            , EventSetDialog (Just (DlgPrompt ("Rename: " ++ siPeerName si) $ \val ->
+                unless (null val) $ do
+                    let si' = si { siPeerName = val }
+                    modifyIORef' (cfgSessions (asConfig st)) (Map.insert sid si')
+                    setStatus st ("Renamed to: " ++ val)
+                ))
+            ]
 
 selectLast :: AppState -> IO ()
 selectLast st = do

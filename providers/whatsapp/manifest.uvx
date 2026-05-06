@@ -1,0 +1,12 @@
+id=whatsapp
+api=uvx-provider-v1
+name=WhatsApp
+class=closed-bridge
+status=planned
+endpoint=e164-or-handle
+inherits=tcp
+capabilities=connect,bridge,group,media
+host=ipc-stdio
+entrypoint=exec:generated/whatsapp-provider
+encryption=bridge-adapted
+notes=Closed-platform bridge stub with no active runtime path.

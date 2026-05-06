@@ -6,6 +6,10 @@ module UmbraVox.TUI.RuntimeCommand
     ) where
 
 import UmbraVox.TUI.Types
+import UmbraVox.BuildProfile
+    ( BuildPluginId(..), pluginEnabled
+    , pluginUnavailableStatus
+    )
 import UmbraVox.TUI.Actions
     ( startExport, startImport, renameContact
     , sendCurrentMessage, quitApp
@@ -22,6 +26,10 @@ import UmbraVox.TUI.RuntimeSettings
     )
 import UmbraVox.TUI.RuntimeNetwork
     ( applyListenPort, connectGroupTargets, connectToPeer, startListenerOnPort )
+import UmbraVox.App.Startup
+    ( refreshPackagedPluginCatalog
+    , refreshTransportProviderCatalog
+    )
 
 data RuntimeCommand
     = CmdOpenNewConversation
@@ -63,13 +71,22 @@ commandForMenuItem MenuChat 0     = Just CmdOpenNewConversation
 commandForMenuItem MenuChat 1     = Just CmdRenameContact
 commandForMenuItem MenuChat 2     = Just CmdSendCurrentMessage
 commandForMenuItem MenuChat 3     = Just CmdClearInput
-commandForMenuItem MenuPrefs 0    = Just CmdOpenSettings
-commandForMenuItem MenuPrefs 1    = Just CmdOpenKeys
-commandForMenuItem MenuPrefs 2    = Just CmdToggleMDNS
-commandForMenuItem MenuPrefs 3    = Just CmdExportChat
-commandForMenuItem MenuPrefs 4    = Just CmdImportChat
+commandForMenuItem MenuPrefs idx  = case menuPrefsCommands !!? idx of
+    Just cmd -> Just cmd
+    Nothing -> Nothing
 commandForMenuItem MenuQuit 0     = Just CmdQuit
 commandForMenuItem _ _            = Nothing
+
+menuPrefsCommands :: [RuntimeCommand]
+menuPrefsCommands =
+    [CmdOpenSettings, CmdOpenKeys]
+    ++ (if pluginEnabled PluginDiscovery then [CmdToggleMDNS] else [])
+    ++ (if pluginEnabled PluginChatTransfer then [CmdExportChat, CmdImportChat] else [])
+
+(!!?) :: [a] -> Int -> Maybe a
+(!!?) [] _ = Nothing
+(!!?) (x:_) 0 = Just x
+(!!?) (_:xs) n = (!!?) xs (n - 1)
 
 runRuntimeCommand :: AppState -> RuntimeCommand -> IO ()
 runRuntimeCommand st cmd =
@@ -84,7 +101,9 @@ runRuntimeCommand st cmd =
             applyRuntimeEvents st [EventSetDialog (Just DlgHelp)]
         CmdShowAbout           ->
             applyRuntimeEvents st [EventSetDialog (Just DlgAbout)]
-        CmdOpenSettings        ->
+        CmdOpenSettings        -> do
+            refreshPackagedPluginCatalog (asConfig st)
+            refreshTransportProviderCatalog (asConfig st)
             applyRuntimeEvents st [EventSetDialogTab 0, EventSetDialog (Just DlgSettings)]
         CmdOpenKeys            -> do
             mIk <- readIORef (cfgIdentity (asConfig st))
@@ -109,21 +128,33 @@ runRuntimeCommand st cmd =
         CmdClearSelectedHistory -> clearSelectedHistoryConfirmed st
         CmdToggleMDNS          -> toggleMDNSSetting st
         CmdTogglePEX           ->
-            toggleSettingWithStatus st "settings.pex" (cfgPEXEnabled (asConfig st))
-                "Peer exchange enabled"
-                "Peer exchange disabled"
+            if not (pluginEnabled PluginPeerExchange)
+                then applyRuntimeEvents st [EventSetStatus (pluginUnavailableStatus PluginPeerExchange)]
+                else toggleSettingWithStatus st "settings.pex" (cfgPEXEnabled (asConfig st))
+                    "Peer exchange enabled"
+                    "Peer exchange disabled"
         CmdTogglePersistentStorage ->
-            togglePersistentStorage st
+            if not (pluginEnabled PluginPersistentStorage)
+                then applyRuntimeEvents st [EventSetStatus (pluginUnavailableStatus PluginPersistentStorage)]
+                else togglePersistentStorage st
         CmdToggleAutoSave      ->
-            toggleSettingWithStatus st "settings.auto_save" (cfgAutoSaveMessages (asConfig st))
-                "Auto-save messages enabled"
-                "Auto-save messages disabled"
+            if not (pluginEnabled PluginPersistentStorage)
+                then applyRuntimeEvents st [EventSetStatus (pluginUnavailableStatus PluginPersistentStorage)]
+                else toggleSettingWithStatus st "settings.auto_save" (cfgAutoSaveMessages (asConfig st))
+                    "Auto-save messages enabled"
+                    "Auto-save messages disabled"
         CmdToggleDebugLogging  ->
-            toggleSettingWithStatus st "settings.debug_logging" (cfgDebugLogging (asConfig st))
-                "Runtime debug logging enabled"
-                "Runtime debug logging disabled"
+            if not (pluginEnabled PluginRuntimeLogging)
+                then applyRuntimeEvents st [EventSetStatus (pluginUnavailableStatus PluginRuntimeLogging)]
+                else toggleSettingWithStatus st "settings.debug_logging" (cfgDebugLogging (asConfig st))
+                    "Runtime debug logging enabled"
+                    "Runtime debug logging disabled"
         CmdCycleConnectionMode ->
             cycleConnectionMode st
-        CmdExportChat          -> startExport st
-        CmdImportChat          -> startImport st
+        CmdExportChat
+            | pluginEnabled PluginChatTransfer -> startExport st
+            | otherwise -> applyRuntimeEvents st [EventSetStatus (pluginUnavailableStatus PluginChatTransfer)]
+        CmdImportChat
+            | pluginEnabled PluginChatTransfer -> startImport st
+            | otherwise -> applyRuntimeEvents st [EventSetStatus (pluginUnavailableStatus PluginChatTransfer)]
         CmdQuit                -> quitApp st

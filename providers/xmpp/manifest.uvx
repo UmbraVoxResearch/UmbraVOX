@@ -1,0 +1,12 @@
+id=xmpp
+api=uvx-provider-v1
+name=XMPP
+class=open-bridge
+status=planned
+endpoint=jid/resource
+inherits=tcp
+capabilities=connect,bridge,group,media
+host=ipc-stdio
+entrypoint=exec:generated/xmpp-provider
+encryption=bridge-adapted
+notes=Federated bridge stub reserved for later provider-host integration.

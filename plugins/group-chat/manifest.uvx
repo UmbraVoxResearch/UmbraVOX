@@ -1,0 +1,11 @@
+id=group-chat
+api=uvx-plugin-v1
+name=Group Chat
+source=packaged
+tier=premium-ready
+category=ux
+status=planned
+host=ipc-stdio
+entrypoint=exec:generated/group-chat-plugin
+encryption=sealed-sender
+notes=Future packaged module for sealed-sender group messaging.

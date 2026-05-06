@@ -1,0 +1,12 @@
+id=signal
+api=uvx-provider-v1
+name=Signal
+class=closed-bridge
+status=planned
+endpoint=e164-or-username
+inherits=signal-server
+capabilities=connect,bridge,group,media
+host=ipc-stdio
+entrypoint=exec:generated/signal-provider
+encryption=bridge-adapted
+notes=Signal bridge stub layered over a Signal Server provider.
