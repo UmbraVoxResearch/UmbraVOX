@@ -99,7 +99,7 @@ testPortChangeSetsRestartStatus = do
     handleSettingsDlg st (KeyChar '1')
     feedPrompt st "8081"
     status <- readIORef (asStatusMsg st)
-    assertEq "port change status applied immediately" "Listen port set to 8081 and applied" status
+    assertEq "port change status applied immediately" "Listen port set to 8081 and applied via tcp" status
 
 ------------------------------------------------------------------------
 -- Name change (option '2')
