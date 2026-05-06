@@ -139,5 +139,4 @@ This is a statement of project values, not a technical restriction. The software
 ## Additional Resources
 
 - [Security Notice](../README.md#security-notice) — current audit and review status
-- [Export Control Compliance Process](legal-process.md) — EAR notification requirements
 - [Legal Notice](../LEGAL-NOTICE.md) — full legal terms and compliance advisories
