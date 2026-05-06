@@ -22,6 +22,7 @@ import qualified Test.Equivalence as Equivalence
 import qualified Test.Network.Transport as Transport
 import qualified Test.Network.TransportClass as TransportClass
 import qualified Test.Network.Transport.Loopback as Loopback
+import qualified Test.Network.TransportEdge as TransportEdge
 import qualified Test.Protocol.CBOR as CBOR
 import qualified Test.Crypto.BIP39 as BIP39
 import qualified Test.Crypto.Export as Export
@@ -56,6 +57,7 @@ import qualified Test.TUI.Types as TUITypes
 import qualified Test.TUI.Render as TUIRender
 import qualified Test.TUI.Input as TUIInput
 import qualified Test.TUI.Handshake as TUIHandshake
+import qualified Test.TUI.HandshakeEdge as TUIHandshakeEdge
 import qualified Test.TUI.Actions as TUIActions
 import qualified Test.TUI.Paths as TUIPaths
 import qualified Test.Tools.Complexity as ToolsComplexity
@@ -78,6 +80,7 @@ import qualified Test.Economics.Penalty as EconPenalty
 import qualified Test.Economics.Cycle as EconCycle
 import qualified Test.Economics.Onboarding as EconOnboarding
 import qualified Test.EndToEnd as EndToEnd
+import qualified Test.EndToEnd2 as EndToEnd2
 
 main :: IO ()
 main = do
@@ -126,6 +129,8 @@ main = do
     transportClassPass <- TransportClass.runTests
     putStrLn ""
     loopbackPass <- Loopback.runTests
+    putStrLn ""
+    transportEdgePass <- TransportEdge.runTests
     putStrLn ""
     cborPass <- CBOR.runTests
     putStrLn ""
@@ -195,6 +200,8 @@ main = do
     putStrLn ""
     tuiHandshakePass <- TUIHandshake.runTests
     putStrLn ""
+    tuiHandshakeEdgePass <- TUIHandshakeEdge.runTests
+    putStrLn ""
     tuiActionsPass <- TUIActions.runTests
     putStrLn ""
     tuiPathsPass <- TUIPaths.runTests
@@ -238,9 +245,11 @@ main = do
     econOnboardingPass <- EconOnboarding.runTests
     putStrLn ""
     endToEndPass <- EndToEnd.runTests
+    putStrLn ""
+    endToEnd2Pass <- EndToEnd2.runTests
 
     putStrLn ""
-    let allPass = sha256Pass && sha512Pass && hmacPass && hkdfPass && aesPass && gcmPass && curve25519Pass && ed25519Pass && chacha20Pass && x3dhPass && doubleRatchetPass && mlkemPass && keccakPass && poly1305Pass && securityPass && fuzzPass && integrationPass && equivalencePass && transportPass && transportClassPass && loopbackPass && cborPass && bip39Pass && exportPass && qrcodePass && noisePass && chatSessionPass && stealthPass && pexPass && safetyNumPass && msgFmtPass && wireFmtPass && pqxdhPass && randomPass && vrfPass && pqWrapperPass && keyStorePass && senderKeysPass && sessionPass && anthonyPass && chainDBPass && stateDBPass && storageIndexPass && checkpointPass && mdnsPass && protocolPass && chatMsgPass && chatTxPass && chatContactsPass && chatAPIPass && codegenPass && tuiTypesPass && tuiRenderPass && tuiInputPass && tuiHandshakePass && tuiActionsPass && tuiPathsPass && toolsComplexityPass && toolsFStarVerifyPass && toolsFetchReferencesPass && consensusTypesPass && consensusBlockPass && consensusLedgerPass && consensusMempoolPass && consensusValidationPass && consensusForkChoicePass && consensusNoncePass && consensusLeaderElectionPass && consensusProtocolPass && consensusTruncationPass && econTokenPass && econFeesPass && econRewardsPass && econPenaltyPass && econCyclePass && econOnboardingPass && endToEndPass
+    let allPass = sha256Pass && sha512Pass && hmacPass && hkdfPass && aesPass && gcmPass && curve25519Pass && ed25519Pass && chacha20Pass && x3dhPass && doubleRatchetPass && mlkemPass && keccakPass && poly1305Pass && securityPass && fuzzPass && integrationPass && equivalencePass && transportPass && transportClassPass && loopbackPass && transportEdgePass && cborPass && bip39Pass && exportPass && qrcodePass && noisePass && chatSessionPass && stealthPass && pexPass && safetyNumPass && msgFmtPass && wireFmtPass && pqxdhPass && randomPass && vrfPass && pqWrapperPass && keyStorePass && senderKeysPass && sessionPass && anthonyPass && chainDBPass && stateDBPass && storageIndexPass && checkpointPass && mdnsPass && protocolPass && chatMsgPass && chatTxPass && chatContactsPass && chatAPIPass && codegenPass && tuiTypesPass && tuiRenderPass && tuiInputPass && tuiHandshakePass && tuiHandshakeEdgePass && tuiActionsPass && tuiPathsPass && toolsComplexityPass && toolsFStarVerifyPass && toolsFetchReferencesPass && consensusTypesPass && consensusBlockPass && consensusLedgerPass && consensusMempoolPass && consensusValidationPass && consensusForkChoicePass && consensusNoncePass && consensusLeaderElectionPass && consensusProtocolPass && consensusTruncationPass && econTokenPass && econFeesPass && econRewardsPass && econPenaltyPass && econCyclePass && econOnboardingPass && endToEndPass && endToEnd2Pass
     if allPass
         then do
             putStrLn "All tests passed."
