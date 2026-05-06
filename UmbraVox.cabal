@@ -167,6 +167,7 @@ test-suite umbravox-test
     Test.Crypto.HKDF
     Test.Crypto.AES
     Test.Crypto.GCM
+    Test.Crypto.Curve25519
   build-depends:
     base         >= 4.18  && < 5,
     bytestring   >= 0.11  && < 0.13,
