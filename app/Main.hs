@@ -13,6 +13,7 @@ import Data.Word (Word32)
 import System.Directory (doesFileExist)
 import System.IO (hFlush, stdout, stdin, hSetBuffering, BufferMode(..),
                    hSetEcho, hReady)
+import System.Process (readProcess)
 import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (formatTime, defaultTimeLocale)
 import UmbraVox.Chat.Session
@@ -30,7 +31,8 @@ import UmbraVox.Crypto.Signal.X3DH
 import UmbraVox.Network.Transport
     (Transport(..), listen, connect, send, recv, close)
 import UmbraVox.Protocol.CBOR (encodeMessage)
-import UmbraVox.Protocol.QRCode (generateSafetyNumber, renderSafetyNumber, renderFingerprint)
+import UmbraVox.Protocol.QRCode (generateSafetyNumber, renderSafetyNumber, renderFingerprint,
+                                    generateQRCode, renderQRCode)
 -- Types -------------------------------------------------------------------
 type SessionId = Int
 data ContactStatus = Online | Offline | Local | Group deriving stock (Eq)
@@ -48,7 +50,9 @@ data AppState = AppState
     , asInputBuf :: IORef String, asDialogBuf :: IORef String
     , asChatScroll :: IORef Int
     , asStatusMsg :: IORef String, asRunning :: IORef Bool
-    , asDialogMode :: IORef (Maybe DialogMode) }
+    , asDialogMode :: IORef (Maybe DialogMode)
+    , asLayout :: IORef Layout
+    , asContactScroll :: IORef Int }
 data DialogMode = DlgHelp | DlgSettings | DlgVerify | DlgNewConn
     | DlgKeys | DlgPrompt String (String -> IO ())
 data AppConfig = AppConfig
@@ -56,9 +60,37 @@ data AppConfig = AppConfig
     , cfgIdentity :: IORef (Maybe IdentityKey)
     , cfgSessions :: IORef (Map SessionId SessionInfo)
     , cfgNextId :: IORef SessionId }
--- Layout constants --------------------------------------------------------
-leftW, rightW, totalW, chatH :: Int
-leftW = 20; rightW = 60; totalW = leftW + rightW; chatH = 17
+
+data Layout = Layout
+    { lCols :: Int, lRows :: Int
+    , lLeftW :: Int, lRightW :: Int, lChatH :: Int }
+    deriving stock (Eq)
+
+-- Terminal size detection -------------------------------------------------
+getTermSize :: IO (Int, Int)  -- (rows, cols)
+getTermSize = do
+    result <- readProcess "stty" ["-F", "/dev/tty", "size"] ""
+              `catch` (\(_ :: SomeException) -> pure "24 80")
+    let cleaned = filter (\c -> (c >= '0' && c <= '9') || c == ' ') result
+        ws = words cleaned
+    case ws of
+        [r, c] -> pure (read r, read c)
+        _      -> pure (24, 80)
+
+clampSize :: Int -> Int -> (Int, Int)
+clampSize rows cols = (clamp 24 100 rows, clamp 80 300 cols)
+  where clamp lo hi v = max lo (min hi v)
+
+sizeValid :: Int -> Int -> Bool
+sizeValid rows cols = rows >= 24 && rows <= 100 && cols >= 80 && cols <= 300
+
+calcLayout :: Int -> Int -> Layout
+calcLayout rows cols = Layout
+    { lCols = cols, lRows = rows
+    , lLeftW = max 18 (cols `div` 4)
+    , lRightW = cols - max 18 (cols `div` 4)
+    , lChatH = rows - 6
+    }
 -- ANSI / helpers ----------------------------------------------------------
 esc :: String -> String; esc code = "\ESC[" ++ code
 csi :: String -> IO (); csi s = putStr (esc s)
@@ -79,92 +111,150 @@ withRawMode = bracket_
     (hSetBuffering stdin NoBuffering >> hSetEcho stdin False >> hideCursor)
     (hSetBuffering stdin LineBuffering >> hSetEcho stdin True >> showCursor)
 -- Rendering ---------------------------------------------------------------
-render :: AppState -> IO ()
-render st = do
-    csi "H"
-    focus <- readIORef (asFocus st); sel <- readIORef (asSelected st)
-    sessions <- readIORef (cfgSessions (asConfig st))
-    buf <- readIORef (asInputBuf st); scroll <- readIORef (asChatScroll st)
-    status <- readIORef (asStatusMsg st)
-    let entries = Map.toList sessions
-        selSi = if sel < length entries
-                then Map.lookup (fst (entries !! sel)) sessions else Nothing
-        peer  = maybe "(no contact)" siPeerName selSi
-    -- top border (ASCII-safe)
+renderSizeWarning :: Int -> Int -> IO ()
+renderSizeWarning rows cols = do
+    csi "2J"; csi "H"
+    let msg1 = "Terminal size: " ++ show cols ++ "x" ++ show rows ++ "."
+        msg2 = "Required: min 80x24, max 300x100. Please resize."
+        r1 = max 1 (rows `div` 2 - 1)
+        c1a = max 1 ((cols - length msg1) `div` 2)
+        c1b = max 1 ((cols - length msg2) `div` 2)
+    goto r1 c1a; setFg 31; bold; putStr msg1; resetSGR
+    goto (r1+1) c1b; setFg 31; bold; putStr msg2; resetSGR
+    hFlush stdout
+
+renderTopBorder :: Layout -> String -> IO ()
+renderTopBorder lay peer = do
+    let lw = lLeftW lay; rw = lRightW lay
+        peerTrunc = take (rw - 11) peer
+        chatLabel = "+-Chat: " ++ peerTrunc ++ " "
+        rightFill = max 0 (rw - 9 - length peerTrunc)
     goto 1 1; setFg 36
-    putStr $ "+-Contacts-" ++ replicate (leftW - 12) '-'
-        ++ "+-Chat: " ++ take (rightW - 11) peer ++ " "
-        ++ replicate (max 0 (rightW - 9 - length (take (rightW-11) peer))) '-'
-        ++ "+"; resetSGR
-    -- panes
-    forM_ [0..chatH-1] $ \row -> do
-        goto (row+2) 1
-        -- contact cell
-        setFg 36; putStr "|"; resetSGR
-        if row < length entries then do
-            let (_,si) = entries !! row
-            tag <- statusTag <$> readIORef (siStatus si)
-            let mk = if row==sel then " > " else "   "
-                nm = take (leftW-8) (siPeerName si)
-                cell = mk ++ padR (leftW-7-length tag) nm ++ tag
-            when (row==sel) $ if focus==ContactPane then bold>>setFg 32 else bold
-            putStr (take (leftW-2) cell); resetSGR
-        else putStr (replicate (leftW-2) ' ')
-        -- separator between panes (single pipe)
-        setFg 36; putStr "|"; resetSGR
-        msg <- case selSi of
-            Nothing -> pure ""
-            Just si -> do
-                hist <- readIORef (siHistory si)
-                let msgs = reverse hist; total = length msgs
-                    start = max 0 (total - chatH - scroll)
-                    idx = start + row
-                pure $ if idx >= 0 && idx < total then msgs !! idx else ""
-        putStr (padR (rightW-2) (take (rightW-2) msg))
-        setFg 36; putStr "|"; resetSGR
-    -- middle border
-    goto (chatH+2) 1; setFg 36
-    putStr $ "+" ++ replicate (leftW-2) '-' ++ "+"
-        ++ replicate (rightW-2) '-' ++ "+"; resetSGR
-    -- bottom panes
-    goto (chatH+3) 1; setFg 36; putStr "|"; resetSGR
-    setFg 33; putStr (padR (leftW-2) " [N]ew [R]ename"); resetSGR
+    putStr $ "+-Contacts-" ++ replicate (lw - 12) '-'
+          ++ chatLabel ++ replicate rightFill '-' ++ "+"
+    resetSGR
+
+renderContactRow :: Layout -> [(SessionId, SessionInfo)] -> Int -> Pane -> Int -> Int -> IO ()
+renderContactRow lay entries sel focus cScroll row = do
+    let lw = lLeftW lay
+        idx = row + cScroll  -- offset by contact scroll
     setFg 36; putStr "|"; resetSGR
-    -- Green cursor when chat is focused
+    if idx < length entries then do
+        let (_, si) = entries !! idx
+        tag <- statusTag <$> readIORef (siStatus si)
+        let mk = if idx == sel then " > " else "   "
+            nm = take (lw - 8) (siPeerName si)
+            cell = mk ++ padR (lw - 7 - length tag) nm ++ tag
+        when (idx == sel) $ if focus == ContactPane then bold >> setFg 32 else bold
+        putStr (take (lw - 2) cell); resetSGR
+    else putStr (replicate (lw - 2) ' ')
+
+renderPaneRow :: Layout -> [(SessionId, SessionInfo)] -> Maybe SessionInfo
+              -> Int -> Pane -> Int -> Int -> Int -> Int -> IO ()
+renderPaneRow lay entries selSi sel focus scroll' chatH' cScroll row = do
+    let rw = lRightW lay
+    goto (row + 2) 1
+    renderContactRow lay entries sel focus cScroll row
+    setFg 36; putStr "|"; resetSGR
+    msg <- case selSi of
+        Nothing -> pure ""
+        Just si -> do
+            hist <- readIORef (siHistory si)
+            let msgs = reverse hist; total = length msgs
+                start = max 0 (total - chatH' - scroll')
+                idx = start + row
+            pure $ if idx >= 0 && idx < total then msgs !! idx else ""
+    putStr (padR (rw - 2) (take (rw - 2) msg))
+    setFg 36; putStr "|"; resetSGR
+
+renderMidBorder :: Layout -> Int -> IO ()
+renderMidBorder lay chatH' = do
+    let lw = lLeftW lay; rw = lRightW lay
+    goto (chatH' + 2) 1; setFg 36
+    putStr $ "+" ++ replicate (lw - 2) '-' ++ "+"
+          ++ replicate (rw - 2) '-' ++ "+"
+    resetSGR
+
+renderInputRow :: Layout -> Pane -> String -> Int -> IO ()
+renderInputRow lay focus buf chatH' = do
+    let lw = lLeftW lay; rw = lRightW lay
+    goto (chatH' + 3) 1; setFg 36; putStr "|"; resetSGR
+    setFg 33; putStr (padR (lw - 2) " [N]ew [R]ename"); resetSGR
+    setFg 36; putStr "|"; resetSGR
     if focus == ChatPane then do
         bold; setFg 32
-        putStr (padR (rightW-2) (" > " ++ take (rightW-6) buf ++ "_"))
+        putStr (padR (rw - 2) (" > " ++ take (rw - 6) buf ++ "_"))
         resetSGR
     else
-        putStr (padR (rightW-2) (" > " ++ take (rightW-6) buf))
+        putStr (padR (rw - 2) (" > " ++ take (rw - 6) buf))
     setFg 36; putStr "|"; resetSGR
-    goto (chatH+4) 1; setFg 36; putStr "|"; resetSGR
-    setFg 33; putStr (padR (leftW-2) " [K]eys [S]elf"); resetSGR
+
+renderHintRow :: Layout -> Int -> IO ()
+renderHintRow lay chatH' = do
+    let lw = lLeftW lay; rw = lRightW lay
+    goto (chatH' + 4) 1; setFg 36; putStr "|"; resetSGR
+    setFg 33; putStr (padR (lw - 2) " [K]eys [S]elf"); resetSGR
     setFg 36; putStr "|"; resetSGR
-    putStr (replicate (rightW-2) ' '); setFg 36; putStr "|"; resetSGR
-    -- bottom border
-    goto (chatH+5) 1; setFg 36
-    putStr $ "+" ++ replicate (leftW-2) '-' ++ "+"
-        ++ replicate (rightW-2) '-' ++ "+"; resetSGR
-    -- status bar
-    goto (chatH+6) 1; setFg 30; csi "47m"
+    putStr (replicate (rw - 2) ' '); setFg 36; putStr "|"; resetSGR
+
+renderBottomBorder :: Layout -> Int -> IO ()
+renderBottomBorder lay chatH' = do
+    let lw = lLeftW lay; rw = lRightW lay
+    goto (chatH' + 5) 1; setFg 36
+    putStr $ "+" ++ replicate (lw - 2) '-' ++ "+"
+          ++ replicate (rw - 2) '-' ++ "+"
+    resetSGR
+
+renderStatusBar :: Layout -> String -> Int -> IO ()
+renderStatusBar lay status chatH' = do
+    let totalW' = lCols lay
+    goto (chatH' + 6) 1; setFg 30; csi "47m"
     let bar = " ^N:New ^R:Verify ^X:Export ^P:Prefs ^Q:Quit | Tab:Switch"
         full = if null status then bar
-               else bar ++ " | " ++ take (totalW - length bar - 4) status
-    putStr (padR totalW full); resetSGR
-    -- Redraw active dialog overlay on top of main UI
-    dlg <- readIORef (asDialogMode st)
-    case dlg of
-        Just DlgHelp     -> renderHelpOverlay
-        Just DlgKeys     -> renderKeysOverlay st
-        Just DlgSettings -> renderSettingsOverlay st
-        Just DlgNewConn  -> renderNewConnOverlay
-        Just DlgVerify   -> renderVerifyOverlay st
-        Just (DlgPrompt title _) -> do
-            buf' <- readIORef (asDialogBuf st)
-            renderPromptOverlay title buf'
-        Nothing -> pure ()
-    hFlush stdout
+               else bar ++ " | " ++ take (totalW' - length bar - 4) status
+    putStr (padR totalW' full); resetSGR
+
+render :: AppState -> IO ()
+render st = do
+    (rawRows, rawCols) <- getTermSize
+    if not (sizeValid rawRows rawCols) then
+        renderSizeWarning rawRows rawCols
+    else do
+        let (rows, cols) = clampSize rawRows rawCols
+            lay = calcLayout rows cols
+        writeIORef (asLayout st) lay
+        csi "H"
+        focus <- readIORef (asFocus st); sel <- readIORef (asSelected st)
+        sessions <- readIORef (cfgSessions (asConfig st))
+        buf <- readIORef (asInputBuf st); scroll <- readIORef (asChatScroll st)
+        status <- readIORef (asStatusMsg st)
+        cScroll <- readIORef (asContactScroll st)
+        let entries = Map.toList sessions
+            chatH' = lChatH lay
+            selSi = if sel < length entries
+                    then Map.lookup (fst (entries !! sel)) sessions else Nothing
+            peer  = maybe "(no contact)" siPeerName selSi
+        renderTopBorder lay peer
+        forM_ [0..chatH'-1] $ \row ->
+            renderPaneRow lay entries selSi sel focus scroll chatH' cScroll row
+        renderMidBorder lay chatH'
+        renderInputRow lay focus buf chatH'
+        renderHintRow lay chatH'
+        renderBottomBorder lay chatH'
+        renderStatusBar lay status chatH'
+        -- Redraw active dialog overlay on top of main UI
+        dlg <- readIORef (asDialogMode st)
+        case dlg of
+            Just DlgHelp     -> renderHelpOverlay lay
+            Just DlgKeys     -> renderKeysOverlay lay st
+            Just DlgSettings -> renderSettingsOverlay lay st
+            Just DlgNewConn  -> renderNewConnOverlay lay
+            Just DlgVerify   -> renderVerifyOverlay lay st
+            Just (DlgPrompt title _) -> do
+                buf' <- readIORef (asDialogBuf st)
+                renderPromptOverlay lay title buf'
+            Nothing -> pure ()
+        hFlush stdout
 -- Input handling ----------------------------------------------------------
 -- Ctrl key codes: Ctrl+A=0x01..Ctrl+Z=0x1A
 -- Avoiding conflicts: Ctrl+H=0x08=backspace, Ctrl+I=0x09=tab, Ctrl+M=0x0D=enter
@@ -223,10 +313,14 @@ main = do
     hSetBuffering stdout (BlockBuffering (Just 8192))
     cfg <- AppConfig <$> newIORef 9999 <*> newIORef "User"
                      <*> newIORef Nothing <*> newIORef Map.empty <*> newIORef 1
+    (initRows, initCols) <- getTermSize
+    let (r0, c0) = clampSize initRows initCols
     st <- AppState cfg <$> newIORef 0 <*> newIORef ContactPane
                        <*> newIORef "" <*> newIORef ""
                        <*> newIORef 0 <*> newIORef ""
                        <*> newIORef True <*> newIORef Nothing
+                       <*> newIORef (calcLayout r0 c0)
+                       <*> newIORef 0
     withRawMode $ clearScreen >> render st >> eventLoop st
 
 eventLoop :: AppState -> IO ()
@@ -261,9 +355,15 @@ handleNormal st key = do
 handleContact :: AppState -> InputEvent -> IO ()
 handleContact st key = do
     n <- Map.size <$> readIORef (cfgSessions (asConfig st))
+    lay <- readIORef (asLayout st)
+    let visRows = lChatH lay
     case key of
-        KeyUp    -> modifyIORef' (asSelected st) (\i -> max 0 (i-1))
-        KeyDown  -> modifyIORef' (asSelected st) (\i -> min (n-1) (i+1))
+        KeyUp    -> do
+            modifyIORef' (asSelected st) (\i -> max 0 (i-1))
+            adjustContactScroll st visRows
+        KeyDown  -> do
+            modifyIORef' (asSelected st) (\i -> min (n-1) (i+1))
+            adjustContactScroll st visRows
         KeyEnter -> writeIORef (asFocus st) ChatPane >> writeIORef (asChatScroll st) 0
         KeyChar 'n' -> startNewConn st; KeyChar 'N' -> startNewConn st
         KeyChar 'g' -> setStatus st "Group: add peers with N, msgs go to all"
@@ -274,16 +374,27 @@ handleContact st key = do
         KeyChar '?' -> showHelp st
         _ -> pure ()
 
+adjustContactScroll :: AppState -> Int -> IO ()
+adjustContactScroll st visRows = do
+    sel <- readIORef (asSelected st)
+    cScroll <- readIORef (asContactScroll st)
+    when (sel < cScroll) $ writeIORef (asContactScroll st) sel
+    when (sel >= cScroll + visRows) $
+        writeIORef (asContactScroll st) (sel - visRows + 1)
+
 handleChat :: AppState -> InputEvent -> IO ()
-handleChat st key = case key of
-    KeyChar c    -> modifyIORef' (asInputBuf st) (++[c])
-    KeyBackspace -> modifyIORef' (asInputBuf st) (\s -> if null s then s else init s)
-    KeyEnter     -> sendCurrentMessage st
-    KeyUp        -> modifyIORef' (asChatScroll st) (+1)
-    KeyDown      -> modifyIORef' (asChatScroll st) (\s -> max 0 (s-1))
-    KeyPageUp    -> modifyIORef' (asChatScroll st) (+chatH)
-    KeyPageDown  -> modifyIORef' (asChatScroll st) (\s -> max 0 (s-chatH))
-    _            -> pure ()
+handleChat st key = do
+    lay <- readIORef (asLayout st)
+    let ch = lChatH lay
+    case key of
+        KeyChar c    -> modifyIORef' (asInputBuf st) (++[c])
+        KeyBackspace -> modifyIORef' (asInputBuf st) (\s -> if null s then s else init s)
+        KeyEnter     -> sendCurrentMessage st
+        KeyUp        -> modifyIORef' (asChatScroll st) (+1)
+        KeyDown      -> modifyIORef' (asChatScroll st) (\s -> max 0 (s-1))
+        KeyPageUp    -> modifyIORef' (asChatScroll st) (+ch)
+        KeyPageDown  -> modifyIORef' (asChatScroll st) (\s -> max 0 (s-ch))
+        _            -> pure ()
 
 sendCurrentMessage :: AppState -> IO ()
 sendCurrentMessage st = do
@@ -331,10 +442,12 @@ handleDialog st key = do
             _ -> pure ()
         _ -> writeIORef (asDialogMode st) Nothing
 
-showOverlay :: String -> [String] -> IO ()
-showOverlay title lns = do
-    let w = 50; h = length lns + 2; r0 = max 2 ((24-h) `div` 2)
-        c0 = max 1 ((totalW-w) `div` 2)
+showOverlay :: Layout -> String -> [String] -> IO ()
+showOverlay lay title lns = do
+    let w = min 60 (lCols lay - 4)
+        h = length lns + 2
+        r0 = max 2 ((lRows lay - h) `div` 2)
+        c0 = max 1 ((lCols lay - w) `div` 2)
         top = "+-" ++ take (w-6) title ++ " "
               ++ replicate (max 0 (w-5-length (take (w-6) title))) '-' ++ "+"
         bot = "+" ++ replicate (w-2) '-' ++ "+"
@@ -343,8 +456,8 @@ showOverlay title lns = do
         goto (r0+i) c0 >> setFg 36 >> bold >> putStr line >> resetSGR
     hFlush stdout
 
-renderHelpOverlay :: IO ()
-renderHelpOverlay = showOverlay "Help - UmbraVOX"
+renderHelpOverlay :: Layout -> IO ()
+renderHelpOverlay lay = showOverlay lay "Help - UmbraVOX"
     [ "Tab         Switch pane focus"
     , "Up/Down     Navigate / scroll"
     , "Enter       Send message / select"
@@ -362,14 +475,14 @@ renderHelpOverlay = showOverlay "Help - UmbraVOX"
     , "  Ctrl+Q  Quit"
     , "", "Press Esc to close" ]
 
-renderNewConnOverlay :: IO ()
-renderNewConnOverlay = showOverlay "New Connection"
+renderNewConnOverlay :: Layout -> IO ()
+renderNewConnOverlay lay = showOverlay lay "New Connection"
     ["1. Connect to peer (enter host:port)"
     ,"2. Listen for peer"
     ,"3. Loopback test (self)", "", "Press 1/2/3, Esc to cancel"]
 
-renderVerifyOverlay :: AppState -> IO ()
-renderVerifyOverlay st = do
+renderVerifyOverlay :: Layout -> AppState -> IO ()
+renderVerifyOverlay lay st = do
     sessions <- readIORef (cfgSessions (asConfig st))
     sel <- readIORef (asSelected st)
     mIk <- readIORef (cfgIdentity (asConfig st))
@@ -377,44 +490,46 @@ renderVerifyOverlay st = do
     if sel < length entries then do
         let (_,si) = entries !! sel
         case mIk of
-            Nothing -> showOverlay "Verify Keys"
+            Nothing -> showOverlay lay "Verify Keys"
                 ["No identity generated yet.", "", "Press K to generate keys first.", "Press Esc to close"]
             Just ik -> do
                 let ourKey  = ikX25519Public ik
-                    -- Use peer name as stand-in; real peer key would come from session
                     peerKey = BC.pack (siPeerName si)
                     safetyNum = generateSafetyNumber ourKey peerKey
                     rows = renderSafetyNumber safetyNum
-                showOverlay "Verify Keys" $
+                    qrMatrix = generateQRCode safetyNum
+                    qrLines  = renderQRCode qrMatrix
+                showOverlay lay "Verify Keys" $
                     ["Peer: " ++ siPeerName si, "", "Safety Number:"] ++ rows ++
+                    ["", "QR Code:"] ++ map ("  " ++) qrLines ++
                     ["", "Compare via a separate channel.", "Press Esc to close"]
-    else showOverlay "Verify Keys"
+    else showOverlay lay "Verify Keys"
         ["No contact selected", "", "Press Esc to close"]
 
-renderSettingsOverlay :: AppState -> IO ()
-renderSettingsOverlay st = do
+renderSettingsOverlay :: Layout -> AppState -> IO ()
+renderSettingsOverlay lay st = do
     port <- readIORef (cfgListenPort (asConfig st))
     name <- readIORef (cfgDisplayName (asConfig st))
-    showOverlay "Settings"
+    showOverlay lay "Settings"
         [ "1. Listen port: " ++ show port
         , "2. Display name: " ++ name, ""
         , "Press 1/2 to change, Esc to close" ]
 
-renderKeysOverlay :: AppState -> IO ()
-renderKeysOverlay st = do
+renderKeysOverlay :: Layout -> AppState -> IO ()
+renderKeysOverlay lay st = do
     mIk <- readIORef (cfgIdentity (asConfig st))
     case mIk of
-        Nothing -> showOverlay "Identity & Keys" ["No identity generated yet.", "Press Esc to close"]
+        Nothing -> showOverlay lay "Identity & Keys" ["No identity generated yet.", "Press Esc to close"]
         Just ik -> do
             let x25519Lines  = renderFingerprint (ikX25519Public ik)
                 ed25519Lines = renderFingerprint (ikEd25519Public ik)
-            showOverlay "Identity & Keys" $
+            showOverlay lay "Identity & Keys" $
                 [ "X25519 fingerprint:" ] ++ x25519Lines ++
                 [ "", "Ed25519 fingerprint:" ] ++ ed25519Lines ++
                 [ "", "Press Esc to close" ]
 
-renderPromptOverlay :: String -> String -> IO ()
-renderPromptOverlay title buf = showOverlay title
+renderPromptOverlay :: Layout -> String -> String -> IO ()
+renderPromptOverlay lay title buf = showOverlay lay title
     ["Enter value:", "> " ++ buf ++ "_", "", "Press Enter to confirm, Esc to cancel"]
 
 showHelp :: AppState -> IO ()
