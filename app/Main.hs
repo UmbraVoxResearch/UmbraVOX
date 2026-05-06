@@ -8,7 +8,7 @@ import Data.List (isPrefixOf)
 import qualified Data.Map.Strict as Map
 import System.Directory (getHomeDirectory, createDirectoryIfMissing)
 import System.FilePath (takeDirectory)
-import System.IO (hSetBuffering, stdout, BufferMode(..))
+import System.IO (hSetBuffering, hFlush, stdout, BufferMode(..))
 import System.Posix.Signals (installHandler, Handler(Catch))
 import Foreign.C.Types (CInt(..))
 import UmbraVox.TUI.Types
@@ -69,17 +69,31 @@ main = do
         (_peersRef, tid) <- startMDNS port pubkey
         writeIORef (cfgMDNSThread cfg) (Just tid)
         ) `catch` (\(_ :: SomeException) -> pure ())  -- mDNS unavailable
-    -- Wire Anthony DB persistence if enabled (graceful fallback if anthony unavailable)
-    dbOn <- readIORef (cfgDBEnabled cfg)
-    when dbOn $ (do
-        dbPath <- readIORef (cfgDBPath cfg)
-        home <- getHomeDirectory
-        let path = if "~/" `isPrefixOf` dbPath
-                   then home ++ drop 1 dbPath else dbPath
-        createDirectoryIfMissing True (takeDirectory path)
-        db <- openDB path
-        writeIORef (cfgAnthonyDB cfg) (Just db)
-        ) `catch` (\(_ :: SomeException) -> pure ())  -- DB unavailable, continue without
+    -- Ask user about persistence mode before attempting DB download
+    putStrLn ""
+    putStrLn "  UmbraVOX - Post-Quantum Encrypted Messaging"
+    putStrLn ""
+    putStr "  Enable persistent storage? (requires 'anthony' DB tool) [y/N]: "
+    hFlush stdout
+    answer <- getLine
+    if answer `elem` ["y", "Y", "yes", "Yes", "YES"]
+        then (do
+            dbPath <- readIORef (cfgDBPath cfg)
+            home <- getHomeDirectory
+            let path = if "~/" `isPrefixOf` dbPath
+                       then home ++ drop 1 dbPath else dbPath
+            createDirectoryIfMissing True (takeDirectory path)
+            putStrLn "  Initializing database..."
+            db <- openDB path
+            writeIORef (cfgAnthonyDB cfg) (Just db)
+            putStrLn "  Storage: persistent mode"
+            ) `catch` (\(_ :: SomeException) -> do
+                putStrLn "  Storage: ephemeral mode (DB unavailable)"
+                writeIORef (cfgDBEnabled cfg) False
+                )
+        else do
+            putStrLn "  Storage: ephemeral mode"
+            writeIORef (cfgDBEnabled cfg) False
     _ <- installHandler sigWINCH (Catch $ getTermSize >>= writeIORef (asTermSize st)) Nothing
     withRawMode $ clearScreen >> render st >> eventLoop st
 

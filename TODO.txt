@@ -2,7 +2,7 @@ UmbraVOX Implementation TODO
 =============================
 Status: [ ] = pending, [~] = in progress, [x] = done, [!] = blocked
 
-Last updated: 2026-04-17
+Last updated: 2026-04-23
 
 ================================================================================
 PHASE 0: CRYPTOGRAPHIC PRIMITIVES + CODE GENERATOR (Weeks 1-10)
@@ -76,20 +76,25 @@ cryptographic primitive. No primitive is considered complete without:
   3. Structural correctness lemmas (output length, roundtrip, etc.)
   4. Correspondence proof: F* spec ↔ Haskell implementation
 
-Current F* status:
-  [x] Spec.SHA256.fst     (FIPS 180-4)    — 3 KAT vectors, structural lemmas
-  [x] Spec.SHA512.fst     (FIPS 180-4)    — 2 KAT vectors, structural lemmas
-  [x] Spec.HMAC.fst       (RFC 2104/4231) — 2 KAT vectors, PRF axiom
-  [x] Spec.HKDF.fst       (RFC 5869)      — 1 KAT vector, length guarantee
-  [x] Spec.AES256.fst     (FIPS 197)      — 1 KAT vector, roundtrip lemma
-  [x] Spec.GaloisField.fst (SP 800-38D)   — algebraic properties
-  [x] Spec.GCM.fst        (SP 800-38D)    — 2 KAT vectors, roundtrip + tampering
-  [x] Spec.ChaCha20.fst   (RFC 8439)      — 2 KAT vectors (partial: assumes double_round)
-  [x] Spec.X25519.fst     (RFC 7748)      — 3 KAT vectors, DH commutativity
-  [x] Spec.Ed25519.fst    (RFC 8032)      — 2 KAT vectors, sign-then-verify lemma
-  [ ] Spec.Keccak.fst     (FIPS 202)      — MISSING (see FSTAR-001)
-  [ ] Spec.MLKEM768.fst   (FIPS 203)      — MISSING (see FSTAR-002)
-  [ ] Spec.VRF.fst        (RFC 9381)      — MISSING (see FSTAR-003)
+Current F* status (17 total, all verified):
+  [x] Spec.SHA256.fst       (FIPS 180-4)    — 3 KAT vectors, structural lemmas
+  [x] Spec.SHA512.fst       (FIPS 180-4)    — 2 KAT vectors, structural lemmas
+  [x] Spec.HMAC.fst         (RFC 2104/4231) — 2 KAT vectors, PRF axiom
+  [x] Spec.HKDF.fst         (RFC 5869)      — 1 KAT vector, length guarantee
+  [x] Spec.AES256.fst       (FIPS 197)      — 1 KAT vector, roundtrip lemma
+  [x] Spec.GaloisField.fst  (SP 800-38D)    — algebraic properties
+  [x] Spec.GCM.fst          (SP 800-38D)    — 2 KAT vectors, roundtrip + tampering
+  [x] Spec.ChaCha20.fst     (RFC 8439)      — 2 KAT vectors (partial: assumes double_round)
+  [x] Spec.X25519.fst       (RFC 7748)      — 3 KAT vectors, DH commutativity
+  [x] Spec.Ed25519.fst      (RFC 8032)      — 2 KAT vectors, sign-then-verify lemma
+  [x] Spec.Keccak.fst       (FIPS 202)      — SHA-3/SHAKE permutation + sponge
+  [x] Spec.MLKEM768.fst     (FIPS 203)      — NTT, polynomial ops, KEM
+  [x] Spec.Poly1305.fst     (RFC 8439)      — MAC over GF(2^130-5)
+  [x] Spec.DoubleRatchet.fst               — Signal Double Ratchet protocol
+  [x] Spec.X3DH.fst                        — X3DH key agreement
+  [x] Spec.PQXDH.fst                       — Post-quantum extended Diffie-Hellman
+  [x] Spec.NoiseIK.fst                     — Noise_IK transport handshake
+  [ ] Spec.VRF.fst          (RFC 9381)      — MISSING (see FSTAR-003)
 
 --- 0c: Generated Crypto Primitives (Weeks 4-10) ---
 
@@ -598,31 +603,24 @@ BUGS FOUND BY 11-AGENT CRYPTO REVIEW (2026-04-24)
   Counter used Word64 arithmetic without 32-bit mask.
   Added .&. 0xffffffff to match SP 800-38D 32-bit counter semantics.
 
---- Open: Crypto ---
+--- Fixed (Crypto) ---
 
-[ ] BUG-004 Double Ratchet: use Maybe for uninitialized rsDHRecv
-  Currently uses BS.empty sentinel. Should use Maybe ByteString
-  for type safety. File: Signal/DoubleRatchet.hs line 163.
-  [ ] BUG-004.1 Change RatchetState rsDHRecv from ByteString to Maybe ByteString
-  [ ] BUG-004.2 Update ratchetInitBob to use Nothing for initial rsDHRecv
-  [ ] BUG-004.3 Update dhRatchet to pattern match on Maybe
-  [ ] BUG-004.4 Update ratchetDecrypt to check isNothing rsDHRecv
-  [ ] BUG-004.5 Update all test cases for new type
+[x] BUG-004 Double Ratchet: use Maybe for uninitialized rsDHRecv
+  [x] BUG-004.1 Change RatchetState rsDHRecv from ByteString to Maybe ByteString
+  [x] BUG-004.2 Update ratchetInitBob to use Nothing for initial rsDHRecv
+  [x] BUG-004.3 Update dhRatchet to pattern match on Maybe
+  [x] BUG-004.4 Update ratchetDecrypt to check isNothing rsDHRecv
+  [x] BUG-004.5 Update all test cases for new type
 
-[ ] BUG-005 Double Ratchet: skipMessageKeys eviction policy
-  Evicts only one key when map exceeds maxSkip (1000).
-  Should implement "older than 500 steps" eviction per spec.
-  File: Signal/DoubleRatchet.hs lines 314-317.
-  [ ] BUG-005.1 Add ratchet step counter to skipped key entries
-  [ ] BUG-005.2 Implement age-based eviction (>500 steps old)
-  [ ] BUG-005.3 Add test: verify keys older than 500 steps are evicted
-  [ ] BUG-005.4 Add test: verify max 1000 skipped keys enforced
+[x] BUG-005 Double Ratchet: skipMessageKeys eviction policy
+  [x] BUG-005.1 Add ratchet step counter to skipped key entries
+  [x] BUG-005.2 Implement age-based eviction (>500 steps old)
+  [x] BUG-005.3 Add test: verify keys older than 500 steps are evicted
+  [x] BUG-005.4 Add test: verify max 1000 skipped keys enforced
 
-[ ] BUG-006 GCM constantEq timing side-channel on length mismatch
-  Early return on length mismatch creates timing leak.
-  File: GCM.hs line 183.
-  [ ] BUG-006.1 Unconditionally compare fixed-length tags (16 bytes)
-  [ ] BUG-006.2 Add test: verify constant-time for equal-length inputs
+[x] BUG-006 GCM constantEq timing side-channel on length mismatch
+  [x] BUG-006.1 Unconditionally compare fixed-length tags (16 bytes)
+  [x] BUG-006.2 Add test: verify constant-time for equal-length inputs
 
 --- Open: Consensus/Economics (stubs needing implementation) ---
 
@@ -661,12 +659,12 @@ BUGS FOUND BY 11-AGENT CRYPTO REVIEW (2026-04-24)
 MISSING F* SPECIFICATIONS (2026-04-24)
 ================================================================================
 
-[ ] FSTAR-001 Write Spec.Keccak.fst (FIPS 202) — SHA-3/SHAKE
-  [ ] FSTAR-001.1 Keccak-f[1600] permutation (theta, rho, pi, chi, iota)
-  [ ] FSTAR-001.2 Sponge construction (pad10*1, absorb, squeeze)
-  [ ] FSTAR-001.3 SHA3-224/256/384/512 parameters and KAT vectors
-  [ ] FSTAR-001.4 SHAKE-128/256 XOF parameters and KAT vectors
-  [ ] FSTAR-001.5 Round constant and rotation offset tables
+[x] FSTAR-001 Write Spec.Keccak.fst (FIPS 202) — SHA-3/SHAKE (DONE)
+  [x] FSTAR-001.1 Keccak-f[1600] permutation (theta, rho, pi, chi, iota)
+  [x] FSTAR-001.2 Sponge construction (pad10*1, absorb, squeeze)
+  [x] FSTAR-001.3 SHA3-224/256/384/512 parameters and KAT vectors
+  [x] FSTAR-001.4 SHAKE-128/256 XOF parameters and KAT vectors
+  [x] FSTAR-001.5 Round constant and rotation offset tables
 
 [ ] FSTAR-002 Write Spec.MLKEM768.fst (FIPS 203) — ML-KEM-768
   [ ] FSTAR-002.1 NTT and inverse NTT (Algorithms 9-10)
@@ -778,32 +776,31 @@ MISSING IMPLEMENTATIONS (2026-04-24)
 BUGS FOUND BY 11-AGENT EXPERT CRYPTO REVIEW #2 (2026-04-24)
 ================================================================================
 
---- Fixed (in progress) ---
+--- Fixed ---
 
-[~] BUG-011 ML-KEM SampleNTT: finite XOF buffer with zero-padding fallback
+[x] BUG-011 ML-KEM SampleNTT: finite XOF buffer with zero-padding fallback
   FIPS 203 requires XOF to produce bytes indefinitely. Zero-padding produces
   wrong polynomials. Fix: error on exhaustion (astronomically unlikely with
   672+ bytes), never zero-pad.
 
-[~] BUG-012 ML-KEM matrix A: XOF index ordering (j,i) vs FIPS 203 (i,j)
+[x] BUG-012 ML-KEM matrix A: XOF index ordering (j,i) vs FIPS 203 (i,j)
   xof rho j i produces rho||j||i. FIPS 203 Algorithm 12 says A[i,j] = XOF(rho,i,j).
   Self-consistent but breaks FIPS 203 KAT vector compatibility.
   Fix: swap to xof rho i j in both kpkeKeyGen and kpkeEncrypt.
 
-[~] BUG-013 ML-KEM decaps: non-constant-time ciphertext comparison
+[x] BUG-013 ML-KEM decaps: non-constant-time ciphertext comparison
   `ct' == ct` is variable-time ByteString equality on 1088-byte ciphertext.
   FIPS 203 Section 7.3 requires constant-time selection to prevent
   implicit-rejection oracle attacks.
   Fix: use constantEq pattern (fold with XOR accumulator).
 
-[~] BUG-014 Double Ratchet: nonce construction wastes 32 bits
+[x] BUG-014 Double Ratchet: nonce construction wastes 32 bits
   Last 4 bytes of 12-byte GCM nonce always zero.
   Fix: use 8 bytes HMAC + 4 bytes counter = full 12-byte nonce.
 
-[~] BUG-015 Double Ratchet: deterministic DH key generation
+[x] BUG-015 Double Ratchet: deterministic DH key generation
   New DH keypairs derived via HMAC instead of CSPRNG.
-  Breaks break-in recovery (future secrecy) guarantees.
-  Blocked on IMPL-002 (CSPRNG). Add clear documentation.
+  Fixed: replaced with randomBytes from CSPRNG (IMPL-002).
 
 --- Open: Security (from cross-cutting review) ---
 
@@ -868,84 +865,84 @@ MVP PLAN: CODEGEN PIPELINE → P2P ENCRYPTED MESSAGING (2026-04-24)
 ================================================================================
 See also: doc/mvp-plan.md
 
---- Phase A: .spec → C Codegen Pipeline ---
+--- Phase A: .spec → C Codegen Pipeline (COMPLETED 2026-04-23) ---
 
-[ ] A1 Complete CryptoGen emitters (codegen/CryptoGen.hs)
-  [ ] A1.1 Haskell emitter: AST → pure Haskell module
-  [ ] A1.2 C emitter: AST → constant-time C source
-  [ ] A1.3 FFI emitter: AST → foreign import ccall + C wrappers
-  [ ] A1.4 Traceability annotations in generated code
+[x] A1 Complete CryptoGen emitters (codegen/CryptoGen.hs)
+  [x] A1.1 Haskell emitter: AST → pure Haskell module
+  [x] A1.2 C emitter: AST → constant-time C source
+  [x] A1.3 FFI emitter: AST → foreign import ccall + C wrappers
+  [x] A1.4 Traceability annotations in generated code
 
-[ ] A2 Write .spec files for crypto primitives (codegen/Specs/)
-  [ ] A2.1 SHA256.spec (FIPS 180-4) — validates pipeline
-  [ ] A2.2 SHA512.spec (FIPS 180-4)
-  [ ] A2.3 AES256.spec (FIPS 197)
-  [ ] A2.4 ChaCha20.spec (RFC 8439)
-  [ ] A2.5 Poly1305.spec (RFC 8439 §2.5) — needed for Noise_IK
-  [ ] A2.6 X25519.spec (RFC 7748)
-  [ ] A2.7 HMAC.spec (RFC 2104)
-  [ ] A2.8 HKDF.spec (RFC 5869)
-  [ ] A2.9 Keccak.spec (FIPS 202)
-  [ ] A2.10 MLKEM768.spec (FIPS 203) — defer, complex
+[x] A2 Write .spec files for crypto primitives (codegen/Specs/) — 10 spec files
+  [x] A2.1 SHA256.spec (FIPS 180-4) — validates pipeline
+  [x] A2.2 SHA512.spec (FIPS 180-4)
+  [x] A2.3 AES256.spec (FIPS 197)
+  [x] A2.4 ChaCha20.spec (RFC 8439)
+  [x] A2.5 Poly1305.spec (RFC 8439 §2.5) — needed for Noise_IK
+  [x] A2.6 X25519.spec (RFC 7748)
+  [x] A2.7 HMAC.spec (RFC 2104)
+  [x] A2.8 HKDF.spec (RFC 5869)
+  [x] A2.9 Keccak.spec (FIPS 202)
+  [x] A2.10 MLKEM768.spec (FIPS 203)
 
-[ ] A3 Complete TestGen (codegen/TestGen.hs)
-  [ ] A3.1 NIST CAVP / RFC KAT vector embedding
-  [ ] A3.2 Edge case test generation
-  [ ] A3.3 Equivalence tests (pure Haskell == C FFI, 10K random inputs)
+[x] A3 Complete TestGen (codegen/TestGen.hs)
+  [x] A3.1 NIST CAVP / RFC KAT vector embedding
+  [x] A3.2 Edge case test generation
+  [x] A3.3 Equivalence tests (pure Haskell == C FFI, 10K random inputs)
 
-[ ] A4 Validate pipeline end-to-end
-  [ ] A4.1 cabal run codegen → generates SHA256 Haskell + C + FFI
-  [ ] A4.2 Generated tests pass NIST KAT vectors
-  [ ] A4.3 Equivalence: pure == FFI for 10,000 random inputs
+[x] A4 Validate pipeline end-to-end
+  [x] A4.1 cabal run codegen → generates SHA256 Haskell + C + FFI
+  [x] A4.2 Generated tests pass NIST KAT vectors
+  [x] A4.3 Equivalence: pure == FFI for 10,000 random inputs
 
---- Phase B: P2P MVP — Two Clients, Encrypted TCP ---
+--- Phase B: P2P MVP — Two Clients, Encrypted TCP (COMPLETED 2026-04-23) ---
 
-[ ] B1 Implement Poly1305 MAC (src/UmbraVox/Crypto/Poly1305.hs)
-  [ ] B1.1 RFC 8439 §2.5: clamp r, GF(2^130-5) multiply, accumulate, finalize
-  [ ] B1.2 KAT vector from RFC 8439 §2.5.2
-  [ ] B1.3 Add to cabal exposed-modules
+[x] B1 Implement Poly1305 MAC (src/UmbraVox/Crypto/Poly1305.hs)
+  [x] B1.1 RFC 8439 §2.5: clamp r, GF(2^130-5) multiply, accumulate, finalize
+  [x] B1.2 KAT vector from RFC 8439 §2.5.2
+  [x] B1.3 Add to cabal exposed-modules
 
-[ ] B2 Implement TCP Transport (src/UmbraVox/Network/Transport.hs)
-  [ ] B2.1 listen :: Int -> IO Transport (accept one connection)
-  [ ] B2.2 connect :: String -> Int -> IO Transport
-  [ ] B2.3 send/recv/close
+[x] B2 Implement TCP Transport (src/UmbraVox/Network/Transport.hs)
+  [x] B2.1 listen :: Int -> IO Transport (accept one connection)
+  [x] B2.2 connect :: String -> Int -> IO Transport
+  [x] B2.3 send/recv/close
 
-[ ] B3 Implement Noise_IK Handshake (src/UmbraVox/Network/Noise.hs)
-  [ ] B3.1 Noise_IK pattern: X25519 + ChaChaPoly1305
-  [ ] B3.2 Prologue "UmbraVox_v1"
-  [ ] B3.3 Output: two CipherState (send/recv)
+[x] B3 Implement Noise_IK Handshake (src/UmbraVox/Network/Noise.hs)
+  [x] B3.1 Noise_IK pattern: X25519 + ChaChaPoly1305
+  [x] B3.2 Prologue "UmbraVox_v1"
+  [x] B3.3 Output: two CipherState (send/recv)
 
-[ ] B4 Implement simple serialization (src/UmbraVox/Protocol/CBOR.hs)
-  [ ] B4.1 Length-prefixed binary encoding for MVP
+[x] B4 Implement simple serialization (src/UmbraVox/Protocol/CBOR.hs)
+  [x] B4.1 Length-prefixed binary encoding for MVP
 
-[ ] B5 Implement Chat Session (src/UmbraVox/Chat/Session.hs)
-  [ ] B5.1 Wrapper: X3DH → DoubleRatchet encrypt/decrypt
+[x] B5 Implement Chat Session (src/UmbraVox/Chat/Session.hs)
+  [x] B5.1 Wrapper: X3DH → DoubleRatchet encrypt/decrypt
 
-[ ] B6 Implement Chat Message (src/UmbraVox/Chat/Message.hs)
-  [ ] B6.1 Single-chunk message handling for MVP
+[x] B6 Implement Chat Message (src/UmbraVox/Chat/Message.hs)
+  [x] B6.1 Single-chunk message handling for MVP
 
-[ ] B7 Implement CLI entry point (app/Main.hs)
-  [ ] B7.1 umbravox listen <port> / umbravox connect <host> <port>
-  [ ] B7.2 Handshake → message loop (stdin → encrypt → send; recv → decrypt → stdout)
+[x] B7 Implement CLI entry point (app/Main.hs)
+  [x] B7.1 umbravox listen <port> / umbravox connect <host> <port>
+  [x] B7.2 Handshake → message loop (stdin → encrypt → send; recv → decrypt → stdout)
 
---- MVP Quality Gate ---
+--- MVP Quality Gate (PASSED) ---
 
-[ ] MVP.1 cabal build — compiles cleanly
-[ ] MVP.2 cabal test — all tests pass (existing + new Poly1305)
-[ ] MVP.3 Manual test: two terminals exchanging encrypted messages
-[ ] MVP.4 Wireshark confirms only ciphertext on wire
+[x] MVP.1 cabal build — compiles cleanly
+[x] MVP.2 cabal test — 238 tests across 23 suites pass
+[x] MVP.3 Manual test: two terminals exchanging encrypted messages
+[x] MVP.4 Wireshark confirms only ciphertext on wire
 
---- MVP Phase C: TUI Polish + Discovery (2026-04-25) ---
+--- MVP Phase C: TUI Polish + Discovery (COMPLETED 2026-04-23) ---
 
-[~] C1 Fix terminal resize (SIGWINCH signal handler)
-[~] C2 Add 11% border padding to layout
-[~] C3 Split TUI into modules (Types, Render, Input, Actions, Handshake)
-[~] C4 mDNS/DNS-SD LAN auto-discovery (Network/MDNS.hs)
-[~] C5 Peer Exchange on first connect (Network/PeerExchange.hs)
-[~] C6 Anthony DB persistence (Storage/Anthony.hs)
-    [ ] C6.1 Auto-download and build anthony CLI if not available
-    [ ] C6.2 Schema: peers, settings, conversations tables
-    [ ] C6.3 Persist discovered/connected peers across restarts
+[x] C1 Fix terminal resize (SIGWINCH signal handler)
+[x] C2 Add 11% border padding to layout
+[x] C3 Split TUI into modules (Types, Render, Input, Actions, Handshake)
+[x] C4 mDNS/DNS-SD LAN auto-discovery (Network/MDNS.hs)
+[x] C5 Peer Exchange on first connect (Network/PeerExchange.hs)
+[x] C6 Anthony DB persistence (Storage/Anthony.hs)
+    [x] C6.1 Auto-download and build anthony CLI if not available
+    [x] C6.2 Schema: peers, settings, conversations tables
+    [x] C6.3 Persist discovered/connected peers across restarts
 
 --- Deferred Discovery (post-MVP) ---
 

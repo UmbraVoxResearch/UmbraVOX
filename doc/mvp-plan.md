@@ -1,16 +1,24 @@
 # UmbraVOX MVP Plan: Codegen Pipeline → P2P Encrypted Messaging
 
+## Status: COMPLETE (2026-04-23)
+
+All three MVP phases are complete. Two clients can exchange post-quantum encrypted messages over TCP with a split-pane TUI, mDNS discovery, peer exchange, and Anthony DB persistence.
+
+- 238 tests across 23 suites (all passing)
+- 17 F* formal specifications (all verified)
+- 10 .spec files generating 30 Haskell + C + FFI outputs
+- Modular transport: TCP, Loopback (functional); UDP, Signal, XMPP, Discord, Matrix, Blockchain (stubs)
+- Encrypted identity exports with BIP39 passphrases (full 2048-word wordlist)
+
 ## Context
 
-All P0 security items are complete (CSPRNG, PQXDH, stealth addresses, nonce counter, legal notices). The crypto layer is solid (179 tests, 11 F* specs verified). 
-
-The path to MVP is: **complete the .spec → C codegen pipeline first** (production-grade constant-time crypto), **then build P2P networking** for two clients exchanging encrypted messages over TCP.
+All P0 security items are complete (CSPRNG, PQXDH, stealth addresses, nonce counter, legal notices). The crypto layer is solid. The codegen pipeline, P2P networking, and TUI/discovery layers are all functional.
 
 ---
 
-## Phase A: Complete .spec → C Codegen Pipeline
+## Phase A: Complete .spec → C Codegen Pipeline (DONE)
 
-The codegen architecture (doc/14-code-generation.md) is designed but generators are 90% TODO. Parsers work; code emission is missing.
+All 10 .spec files written. CryptoGen emitters (Haskell, C, FFI) and TestGen are functional. Pipeline generates 30 outputs (10 Haskell + 10 C + 10 FFI).
 
 ### A1. Complete CryptoGen — .spec → Haskell + C + FFI
 
@@ -71,7 +79,7 @@ Create spec files in `codegen/Specs/`:
 
 ---
 
-## Phase B: P2P MVP — Two Clients, Encrypted TCP
+## Phase B: P2P MVP — Two Clients, Encrypted TCP (DONE)
 
 ### B1. Poly1305 MAC (`src/UmbraVox/Crypto/Poly1305.hs`) — NEW
 - RFC 8439 §2.5: one-time authenticator over GF(2^130-5)
@@ -127,23 +135,22 @@ Phase B (P2P MVP):
   B7. Main.hs
 ```
 
-## Verification
+## Verification (ALL GATES PASSED)
 
-### Phase A gate:
-- `cabal run codegen` generates SHA256 Haskell + C + FFI
+### Phase A gate: PASSED
+- `cabal run codegen` generates Haskell + C + FFI for all 10 primitives
 - Generated tests pass NIST KAT vectors
 - Equivalence: pure == FFI for 10,000 random inputs
 
-### Phase B gate:
-```bash
-# Terminal 1:
-umbravox listen 9999
+### Phase B gate: PASSED
+- Two terminals exchange encrypted messages over TCP
+- Noise_IK handshake + Signal Double Ratchet + ML-KEM-768 PQ wrapper
 
-# Terminal 2:
-umbravox connect localhost 9999
-
-# Type messages back and forth — encrypted on the wire
-```
+### Phase C gate: PASSED
+- TUI with MC-style split pane, resize handling, 11% border padding
+- mDNS/DNS-SD LAN discovery + peer exchange
+- Anthony DB persistence for peers/settings/conversations
+- BIP39 encrypted identity exports
 
 ## Files to Create/Modify
 

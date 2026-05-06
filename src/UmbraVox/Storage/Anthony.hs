@@ -55,10 +55,9 @@ schemaStatements =
       <> "(id INTEGER PRIMARY KEY, peer_pubkey TEXT, "
       <> "name TEXT, created INTEGER)"
     , "CREATE TABLE IF NOT EXISTS messages "
-      <> "(id INTEGER PRIMARY KEY AUTOINCREMENT, "
+      <> "(id INTEGER PRIMARY KEY, "
       <> "conversation_id INTEGER, sender TEXT, "
-      <> "content TEXT, timestamp INTEGER, "
-      <> "FOREIGN KEY (conversation_id) REFERENCES conversations(id))"
+      <> "content TEXT, timestamp INTEGER)"
     ]
 
 ------------------------------------------------------------------------
