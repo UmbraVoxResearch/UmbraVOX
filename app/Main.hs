@@ -15,8 +15,10 @@ import UmbraVox.TUI.Types
 import UmbraVox.TUI.Render (getTermSize, clampSize, calcLayout, clearScreen,
                             withRawMode, render)
 import UmbraVox.TUI.Input (eventLoop)
+import UmbraVox.Crypto.BIP39 (generatePassphrase)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 import UmbraVox.Network.MDNS (startMDNS)
+import qualified Network.Socket as NS
 import UmbraVox.Storage.Anthony (openDB)
 
 -- SIGWINCH = 28 on Linux/macOS (not exported by all versions of System.Posix.Signals)
@@ -26,15 +28,19 @@ sigWINCH = 28
 main :: IO ()
 main = do
     hSetBuffering stdout (BlockBuffering (Just 8192))
+    -- Generate random display name from BIP39 wordlist
+    randomName <- generatePassphrase 1
+    -- Find available listen port
+    listenPort <- findAvailablePort [1111, 2222, 4747, 8383, 3838, 3008]
     cfg <- AppConfig
-        <$> newIORef 9999        -- listen port
-        <*> newIORef "User"      -- display name
+        <$> newIORef listenPort  -- listen port (first available)
+        <*> newIORef randomName  -- display name (random BIP39 word)
         <*> newIORef Nothing     -- identity key
         <*> newIORef Map.empty   -- sessions
         <*> newIORef 1           -- next session ID
-        -- Discovery settings
-        <*> newIORef True        -- mDNS enabled
-        <*> newIORef True        -- PEX enabled
+        -- Discovery settings (off by default)
+        <*> newIORef False       -- mDNS disabled
+        <*> newIORef False       -- PEX disabled
         <*> newIORef True        -- DB persistence enabled
         <*> newIORef "~/.umbravox/umbravox.db"  -- DB path
         -- Discovery state
@@ -76,3 +82,24 @@ main = do
         ) `catch` (\(_ :: SomeException) -> pure ())  -- DB unavailable, continue without
     _ <- installHandler sigWINCH (Catch $ getTermSize >>= writeIORef (asTermSize st)) Nothing
     withRawMode $ clearScreen >> render st >> eventLoop st
+
+-- | Try each port in order, return the first one that can be bound.
+-- Tests by briefly binding and closing a TCP socket.
+findAvailablePort :: [Int] -> IO Int
+findAvailablePort [] = pure 1111  -- fallback
+findAvailablePort (p:ps) = do
+    ok <- tryBindPort p
+    if ok then pure p else findAvailablePort ps
+
+tryBindPort :: Int -> IO Bool
+tryBindPort port = (do
+    let hints = NS.defaultHints { NS.addrFlags = [NS.AI_PASSIVE]
+                                , NS.addrSocketType = NS.Stream
+                                , NS.addrFamily = NS.AF_INET }
+    addr : _ <- NS.getAddrInfo (Just hints) (Just "0.0.0.0") (Just (show port))
+    sock <- NS.openSocket addr
+    NS.setSocketOption sock NS.ReuseAddr 1
+    NS.bind sock (NS.addrAddress addr)
+    NS.close sock
+    pure True
+    ) `catch` (\(_ :: SomeException) -> pure False)
