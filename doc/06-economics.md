@@ -333,7 +333,7 @@ At cycle boundary: all spendable balances → 0. New balance = calculated reward
 - **Trigger**: traffic > 2x median in a cycle
 - **Application**: `P_carryover = P_carryover * 0.9` (immediate 10% reduction)
 - **Recovery**: each subsequent clean cycle: `P_carryover = 0.3 + 0.7 * P_carryover`
-- **Timeline**: from P=0.9, reaches P>0.95 in ~3 cycles (33 days)
+- **Timeline**: from P=0.9, reaches P>0.95 in ~2 cycles (22 days)
 - **Example**: P=1.0 → violation → P=0.9 → clean → P=0.93 → clean → P=0.951 → clean → P=0.966
 
 ### Tier 2 (Moderate: flood > 5x median OR 3+ Tier 1 violations in 5 cycles)

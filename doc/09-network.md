@@ -110,7 +110,7 @@ Truncation:  TRUNCATION_CHECKPOINT, GET_CHECKPOINT, CHECKPOINT_RESPONSE
 
 **Message size limits**:
 
-- Max message size per stream: 5 MB
+- Max message size per stream: 6 MiB
 - `INV` message: array of `(type: uint8, hash: 32 bytes)`, max 500 entries
 - `GET_DATA`: same format as `INV`
 
