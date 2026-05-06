@@ -14,7 +14,7 @@ module UmbraVox.Network.MDNS
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as C8
-import Data.IORef (IORef, newIORef, readIORef, modifyIORef')
+import Control.Concurrent.MVar (MVar, newMVar, readMVar, modifyMVar_)
 import Data.Word (Word8, Word32)
 import Control.Concurrent (ThreadId, forkIO, killThread, threadDelay)
 import Control.Exception (SomeException, catch)
@@ -81,9 +81,9 @@ ipAddMembership = 35
 -- 2. Listens for peer announcements and updates the peer list.
 --
 -- Returns the discovered-peer list reference and the thread identifier.
-startMDNS :: Int -> ByteString -> IO (IORef [MDNSPeer], ThreadId)
+startMDNS :: Int -> ByteString -> IO (MVar [MDNSPeer], ThreadId)
 startMDNS ourPort ourPubkey = do
-    peersRef <- newIORef []
+    peersRef <- newMVar []
     tid <- forkIO (runMDNS ourPort ourPubkey peersRef)
     pure (peersRef, tid)
 
@@ -92,15 +92,15 @@ stopMDNS :: ThreadId -> IO ()
 stopMDNS = killThread
 
 -- | Read the current list of discovered peers.
-getDiscoveredPeers :: IORef [MDNSPeer] -> IO [MDNSPeer]
-getDiscoveredPeers = readIORef
+getDiscoveredPeers :: MVar [MDNSPeer] -> IO [MDNSPeer]
+getDiscoveredPeers = readMVar
 
 ------------------------------------------------------------------------
 -- Internal — mDNS event loop
 ------------------------------------------------------------------------
 
 -- | Main mDNS loop: announce and listen on a shared UDP multicast socket.
-runMDNS :: Int -> ByteString -> IORef [MDNSPeer] -> IO ()
+runMDNS :: Int -> ByteString -> MVar [MDNSPeer] -> IO ()
 runMDNS ourPort ourPubkey peersRef = do
     sock <- openMulticastSocket
     -- Spawn a separate thread for periodic announcements.
@@ -163,7 +163,7 @@ multicastDest =
 ------------------------------------------------------------------------
 
 -- | Listen for mDNS announcements and update the peer list.
-listenLoop :: NS.Socket -> IORef [MDNSPeer] -> IO ()
+listenLoop :: NS.Socket -> MVar [MDNSPeer] -> IO ()
 listenLoop sock peersRef = forever $ do
     (payload, srcAddr) <- NSB.recvFrom sock 1500
     case parseAnnouncement payload srcAddr of
@@ -185,7 +185,7 @@ parseAnnouncement payload srcAddr = do
             Just MDNSPeer
                 { mdnsPubkey   = pubkey
                 , mdnsIP       = ip
-                , mdnsPort     = read (C8.unpack port)
+                , mdnsPort     = safeReadPort (C8.unpack port)
                 , mdnsLastSeen = 0  -- Caller should stamp with current time
                 }
 
@@ -210,8 +210,8 @@ parseHexField key body = do
 -- | Insert or update a peer in the list.
 --
 -- Deduplicates by public key fingerprint.
-updatePeerList :: IORef [MDNSPeer] -> MDNSPeer -> IO ()
-updatePeerList ref peer = modifyIORef' ref $ \peers ->
+updatePeerList :: MVar [MDNSPeer] -> MDNSPeer -> IO ()
+updatePeerList ref peer = modifyMVar_ ref $ \peers -> pure $
     let others = filter (\p -> mdnsPubkey p /= mdnsPubkey peer) peers
     in  peer : others
 
@@ -244,6 +244,12 @@ fromHex bs
         | w >= 0x61 && w <= 0x66 = w - 0x57
         | w >= 0x41 && w <= 0x46 = w - 0x37
         | otherwise              = 0
+
+-- | Safely parse a port string, returning 0 on malformed input.
+safeReadPort :: String -> Int
+safeReadPort s = case reads s of
+    [(n, "")] -> n
+    _         -> 0
 
 -- | Extract an IPv4 address string from a 'SockAddr'.
 addrToIP :: NS.SockAddr -> String

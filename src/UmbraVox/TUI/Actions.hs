@@ -23,8 +23,8 @@ import UmbraVox.Chat.Session
 import UmbraVox.Crypto.BIP39 (generatePassphrase)
 import UmbraVox.Crypto.Export (encryptExport, decryptExport)
 import UmbraVox.Crypto.Random (randomBytes)
-import UmbraVox.Network.Transport
-    (Transport, send, recv, close)
+import UmbraVox.Network.TransportClass
+    (AnyTransport, anySend, anyRecv, anyClose)
 import UmbraVox.Protocol.CBOR (encodeMessage)
 import UmbraVox.Storage.Anthony (saveMessage)
 import UmbraVox.TUI.Handshake (getW32BE, genIdentity, timestamp)
@@ -191,11 +191,11 @@ quitApp st = do
     sessions <- readIORef (cfgSessions (asConfig st))
     forM_ (Map.elems sessions) $ \si -> do
         maybe (pure ()) killThread (siRecvTid si)
-        maybe (pure ()) close (siTransport si)
+        maybe (pure ()) anyClose (siTransport si)
     clearScreen; goto 1 1; showCursor; putStrLn "Goodbye."; hFlush stdout
 
 -- Session management ------------------------------------------------------
-addSession :: AppConfig -> Transport -> ChatSession -> String -> IO SessionId
+addSession :: AppConfig -> AnyTransport -> ChatSession -> String -> IO SessionId
 addSession cfg t session peerName = do
     sid <- readIORef (cfgNextId cfg); writeIORef (cfgNextId cfg) (sid+1)
     ref <- newIORef session; histRef <- newIORef []; stRef <- newIORef Online
@@ -218,7 +218,7 @@ sendToSession si msg = do
     (session', wire) <- sendChatMessage session msg
     writeIORef (siSession si) session'
     case siTransport si of
-        Just t  -> send t (encodeMessage wire)
+        Just t  -> anySend t (encodeMessage wire)
         Nothing -> do
             session2 <- readIORef (siSession si)
             result <- recvChatMessage session2 wire
@@ -229,15 +229,15 @@ sendToSession si msg = do
             modifyIORef' (siHistory si) ((ts++" [saved] "++BC.unpack msg):)
 
 -- Receive loop (background thread) ----------------------------------------
-recvLoopTUI :: Transport -> IORef ChatSession -> IORef [String] -> IO ()
+recvLoopTUI :: AnyTransport -> IORef ChatSession -> IORef [String] -> IO ()
 recvLoopTUI t ref histRef = go `catch` handler where
     go = do
-        lenBs <- recv t 4
+        lenBs <- anyRecv t 4
         if BS.length lenBs < 4
             then modifyIORef' histRef ("  [Peer disconnected]":)
             else do
                 let !len = fromIntegral (getW32BE lenBs)
-                payload <- recv t len
+                payload <- anyRecv t len
                 session <- readIORef ref
                 result <- recvChatMessage session payload
                 case result of

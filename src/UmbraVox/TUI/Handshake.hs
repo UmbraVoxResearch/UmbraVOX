@@ -20,7 +20,7 @@ import UmbraVox.Crypto.Signal.PQXDH
 import UmbraVox.Crypto.Signal.X3DH
     (KeyPair(..), IdentityKey(..), generateIdentityKey, generateKeyPair,
      signPreKey)
-import UmbraVox.Network.Transport (Transport, send, recv)
+import UmbraVox.Network.TransportClass (AnyTransport, anySend, anyRecv)
 import UmbraVox.Protocol.CBOR (encodeMessage)
 
 -- Helpers -----------------------------------------------------------------
@@ -90,7 +90,7 @@ deserializeBundle bs
                , pqpkbOneTimePreKey   = decOpk rest }
 
 -- PQXDH Handshake ---------------------------------------------------------
-handshakeInitiator :: Transport -> IO ChatSession
+handshakeInitiator :: AnyTransport -> IO ChatSession
 handshakeInitiator t = do
     aliceIK <- genIdentity; bundle <- recvBundle t
     ekRand <- randomBytes 32; mlkemRand <- randomBytes 32
@@ -98,35 +98,35 @@ handshakeInitiator t = do
         Nothing -> fail "PQXDH: SPK signature verification failed"
         Just r  -> pure r
     let MLKEMCiphertext ctBS = pqxdhPQCiphertext result
-    send t . encodeMessage $ BS.concat
+    anySend t . encodeMessage $ BS.concat
         [ ikX25519Public aliceIK, pqxdhEphemeralKey result
         , putW32BE (fromIntegral (BS.length ctBS)), ctBS ]
     initChatSession (pqxdhSharedSecret result)
                     (ikX25519Secret aliceIK) (pqpkbSignedPreKey bundle)
 
-handshakeResponder :: Transport -> IO ChatSession
+handshakeResponder :: AnyTransport -> IO ChatSession
 handshakeResponder t = do
     bobIK <- genIdentity
     (spk, spkSig) <- genSignedPreKey bobIK
     (pqEK, pqDK) <- genPQPreKey
-    send t . encodeMessage $ serializeBundle bobIK (kpPublic spk) spkSig pqEK Nothing
+    anySend t . encodeMessage $ serializeBundle bobIK (kpPublic spk) spkSig pqEK Nothing
     (aliceIKPub, aliceEKPub, pqCt) <- recvInitialMessage t
     let !shared = pqxdhRespond bobIK (kpSecret spk) Nothing pqDK
                                aliceIKPub aliceEKPub pqCt
     initChatSession shared (kpSecret spk) aliceEKPub
 
-recvBundle :: Transport -> IO PQPreKeyBundle
+recvBundle :: AnyTransport -> IO PQPreKeyBundle
 recvBundle t = do
-    lenBs <- recv t 4
-    payload <- recv t (fromIntegral (getW32BE lenBs))
+    lenBs <- anyRecv t 4
+    payload <- anyRecv t (fromIntegral (getW32BE lenBs))
     case deserializeBundle payload of
         Nothing     -> fail "PQXDH: malformed prekey bundle"
         Just bundle -> pure bundle
 
-recvInitialMessage :: Transport -> IO (BS.ByteString, BS.ByteString, MLKEMCiphertext)
+recvInitialMessage :: AnyTransport -> IO (BS.ByteString, BS.ByteString, MLKEMCiphertext)
 recvInitialMessage t = do
-    lenBs <- recv t 4
-    payload <- recv t (fromIntegral (getW32BE lenBs))
+    lenBs <- anyRecv t 4
+    payload <- anyRecv t (fromIntegral (getW32BE lenBs))
     let !ctLen = fromIntegral (getW32BE (bsSlice 64 4 payload)) :: Int
     pure (bsSlice 0 32 payload, bsSlice 32 32 payload,
           MLKEMCiphertext (bsSlice 68 ctLen payload))

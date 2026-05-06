@@ -19,6 +19,7 @@ import UmbraVox.TUI.Actions (startNewConn, startVerify, startExport,
     addSession, selectLast, recvLoopTUI)
 import UmbraVox.TUI.Handshake (handshakeInitiator, handshakeResponder)
 import UmbraVox.Network.Transport (listen, connect)
+import UmbraVox.Network.TransportClass (AnyTransport(..))
 import UmbraVox.Storage.Anthony (clearConversation)
 
 -- Input handling ----------------------------------------------------------
@@ -210,8 +211,9 @@ handleNewConnDlg st (KeyChar '2') = do
             port <- readIORef (cfgListenPort (asConfig st))
             setStatus st ("Listening on " ++ show port ++ "...")
             void $ forkIO $ (do
-                t <- listen port; session <- handshakeResponder t
-                sid <- addSession (asConfig st) t session ("peer:" ++ show port)
+                t <- listen port; let at = AnyTransport t
+                session <- handshakeResponder at
+                sid <- addSession (asConfig st) at session ("peer:" ++ show port)
                 selectLast st; setStatus st ("Session #" ++ show sid)
                 ) `catch` (\(e::SomeException) -> setStatus st ("Failed: "++show e))
         else do
@@ -220,8 +222,9 @@ handleNewConnDlg st (KeyChar '2') = do
                 h = if null host then "127.0.0.1" else host
             setStatus st ("Connecting to " ++ h ++ ":" ++ show port ++ "...")
             void $ forkIO $ (do
-                t <- connect h port; session <- handshakeInitiator t
-                sid <- addSession (asConfig st) t session (h ++ ":" ++ show port)
+                t <- connect h port; let at = AnyTransport t
+                session <- handshakeInitiator at
+                sid <- addSession (asConfig st) at session (h ++ ":" ++ show port)
                 selectLast st; setStatus st ("Connected #" ++ show sid)
                 ) `catch` (\(e::SomeException) -> setStatus st ("Failed: "++show e))
         ))
@@ -235,8 +238,9 @@ handleNewConnDlg st (KeyChar '3') = do
             let (host, portStr) = break (==':') (strip' p)
                 port = if null portStr then 9999 else read (drop 1 portStr) :: Int
                 h = if null host then "127.0.0.1" else host
-            t <- connect h port; session <- handshakeInitiator t
-            void $ addSession (asConfig st) t session (h ++ ":" ++ show port)
+            t <- connect h port; let at = AnyTransport t
+            session <- handshakeInitiator at
+            void $ addSession (asConfig st) at session (h ++ ":" ++ show port)
             ) `catch` (\(e::SomeException) -> setStatus st ("Failed: "++show e))
             ) peers
         selectLast st; setStatus st ("Group with " ++ show (length peers) ++ " peers")

@@ -17,8 +17,7 @@ import Data.Bits (shiftL, shiftR, (.&.))
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 
-import UmbraVox.Network.Transport (Transport)
-import qualified UmbraVox.Network.Transport as T
+import UmbraVox.Network.TransportClass (AnyTransport, anySend, anyRecv)
 
 ------------------------------------------------------------------------
 -- Types
@@ -72,16 +71,16 @@ decodePeerList bs
 --
 -- Sends our (direct) peer list, then receives the remote peer list.
 -- Returns the combined set of new peers received from the remote.
-exchangePeers :: Transport -> [PeerInfo] -> IO [PeerInfo]
+exchangePeers :: AnyTransport -> [PeerInfo] -> IO [PeerInfo]
 exchangePeers tr ours = do
     let !encoded = encodePeerList ours
     -- Send length-prefixed payload.
     let !lenPrefix = putBE16 (BS.length encoded)
-    T.send tr (lenPrefix <> encoded)
+    anySend tr (lenPrefix <> encoded)
     -- Receive remote peer list.
-    lenBytes <- T.recv tr 2
+    lenBytes <- anyRecv tr 2
     let payloadLen = getBE16 lenBytes 0
-    payload <- T.recv tr payloadLen
+    payload <- anyRecv tr payloadLen
     pure (decodePeerList payload)
 
 ------------------------------------------------------------------------

@@ -228,8 +228,31 @@ cloneRepo dest = callProcess "git"
 ------------------------------------------------------------------------
 
 -- | Wrap a string in single quotes, escaping embedded quotes.
+-- Rejects strings containing semicolons or dangerous SQL keywords.
 quote :: String -> String
-quote s = "'" <> escapeQuotes s <> "'"
+quote s
+    | containsDangerousSQL s = error "quote: input rejected (dangerous SQL content)"
+    | otherwise = "'" <> escapeQuotes s <> "'"
+
+-- | Check if a string contains semicolons or dangerous SQL keywords.
+containsDangerousSQL :: String -> Bool
+containsDangerousSQL s =
+    let upper = map toUpperChar s
+    in ';' `elem` s
+       || containsWord "DROP " upper
+       || containsWord "DELETE " upper
+       || containsWord "UPDATE " upper
+       || containsWord "INSERT " upper
+       || containsWord "ALTER " upper
+       || containsWord "EXEC " upper
+  where
+    toUpperChar c
+        | c >= 'a' && c <= 'z' = toEnum (fromEnum c - 32)
+        | otherwise             = c
+    containsWord _ [] = False
+    containsWord w str
+        | take (length w) str == w = True
+        | otherwise                = containsWord w (tail str)
 
 -- | Escape single quotes by doubling them (SQL standard).
 escapeQuotes :: String -> String

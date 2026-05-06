@@ -16,7 +16,7 @@ import Data.IORef (IORef)
 import Data.Map.Strict (Map)
 import UmbraVox.Chat.Session (ChatSession)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey)
-import UmbraVox.Network.Transport (Transport)
+import UmbraVox.Network.TransportClass (AnyTransport)
 import UmbraVox.Network.MDNS (MDNSPeer)
 import UmbraVox.Storage.Anthony (AnthonyDB)
 
@@ -34,7 +34,7 @@ statusTag LAN     = "[LAN]"
 statusTag PEX     = "[PEX]"
 
 data SessionInfo = SessionInfo
-    { siTransport :: Maybe Transport, siSession :: IORef ChatSession
+    { siTransport :: Maybe AnyTransport, siSession :: IORef ChatSession
     , siRecvTid :: Maybe ThreadId, siPeerName :: String
     , siHistory :: IORef [String], siStatus :: IORef ContactStatus }
 
