@@ -8,6 +8,7 @@ import qualified Test.Crypto.HKDF as HKDF
 import qualified Test.Crypto.AES as AES
 import qualified Test.Crypto.GCM as GCM
 import qualified Test.Crypto.Curve25519 as Curve25519
+import qualified Test.Crypto.Ed25519 as Ed25519
 
 main :: IO ()
 main = do
@@ -28,9 +29,11 @@ main = do
     gcmPass <- GCM.runTests
     putStrLn ""
     curve25519Pass <- Curve25519.runTests
+    putStrLn ""
+    ed25519Pass <- Ed25519.runTests
 
     putStrLn ""
-    let allPass = sha256Pass && sha512Pass && hmacPass && hkdfPass && aesPass && gcmPass && curve25519Pass
+    let allPass = sha256Pass && sha512Pass && hmacPass && hkdfPass && aesPass && gcmPass && curve25519Pass && ed25519Pass
     if allPass
         then do
             putStrLn "All tests passed."
