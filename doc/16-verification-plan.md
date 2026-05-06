@@ -94,10 +94,10 @@ QuickCheck property tests run alongside MC/DC structural coverage:
 
 | Phase | Timing | Duration | Scope |
 |-------|--------|----------|-------|
-| Crypto audit | Weeks 60-62 | 3 weeks | All crypto primitives, constant-time C code, key management |
-| Protocol audit | Weeks 62-65 | 3 weeks | Signal+PQ composition, consensus, Dandelion++ |
-| Remediation | Weeks 65-68 | 3 weeks | Address all findings, re-verify affected modules |
-| Re-audit (critical findings only) | Weeks 68-69 | 1 week | Verify remediation of critical/high findings |
+| Crypto audit | Weeks 55-57 | 3 weeks | All crypto primitives, constant-time C code, key management |
+| Protocol audit | Weeks 57-60 | 3 weeks | Signal+PQ composition, consensus, Dandelion++ |
+| Remediation | Weeks 60-64 | 4 weeks | Address all findings, re-verify affected modules |
+| Re-audit (critical findings only) | Weeks 64-65 | 1 week | Verify remediation of critical/high findings |
 
 Audit reports and remediation evidence stored in `test/evidence/external-audit/`.
 

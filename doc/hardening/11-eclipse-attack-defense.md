@@ -281,7 +281,7 @@ Checkpoints are trusted because they are embedded in the software binary, which 
 Note: With f = 0.20 and 3,927 slots/epoch, the probability of 55 consecutive empty slots under honest conditions is:
 
 ```
-Pr[55 consecutive empty slots] = (1 - f)^55 = 0.80^55 ~ 1.8 * 10^{-6}
+Pr[55 consecutive empty slots] = (1 - f)^55 = 0.80^55 ~ 4.7 * 10^{-6}
 ```
 
 A gap of 55 slots without a block is overwhelmingly indicative of eclipse, partition, or catastrophic network failure.

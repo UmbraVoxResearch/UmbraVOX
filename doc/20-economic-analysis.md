@@ -197,20 +197,23 @@ For growth exceeding this rate, validator faucets and treasury-funded grants
 
 ### Controller Definition
 
-At each cycle boundary, the adaptive controller updates parameters:
+At each cycle boundary, the adaptive controller updates parameters in two steps (clamp first, then dampen):
 
 ```
-param(N+1) = param(N) + DAMPING * (target(N) - param(N))
+-- Step 1: Compute raw target (clamped to parameter bounds)
+target_raw(N) = clamp(param(N) * duration_ratio, param_min, param_max)
+
+-- Step 2: Apply 50% damping toward clamped target
+param(N+1) = param(N) + DAMPING * (target_raw(N) - param(N))
 ```
 
 where:
 
 ```
-target(N) = param(N) * duration_ratio
 duration_ratio = actual_cycle_duration / target_cycle_duration
 ```
 
-and `DAMPING = 0.50`.
+and `DAMPING = 0.50`. This two-step formulation matches the authoritative specification in `doc/06-economics.md` lines 151-162.
 
 ### Convergence Proof Sketch
 
