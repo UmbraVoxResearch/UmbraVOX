@@ -15,6 +15,10 @@ import qualified Test.Crypto.Signal.DoubleRatchet as DoubleRatchet
 import qualified Test.Crypto.Keccak as Keccak
 import qualified Test.Crypto.MLKEM as MLKEM
 import qualified Test.Crypto.Poly1305 as Poly1305
+import qualified Test.Security as Security
+import qualified Test.Fuzz as Fuzz
+import qualified Test.Integration as Integration
+import qualified Test.Equivalence as Equivalence
 
 main :: IO ()
 main = do
@@ -49,9 +53,17 @@ main = do
     keccakPass <- Keccak.runTests
     putStrLn ""
     poly1305Pass <- Poly1305.runTests
+    putStrLn ""
+    securityPass <- Security.runTests
+    putStrLn ""
+    fuzzPass <- Fuzz.runTests
+    putStrLn ""
+    integrationPass <- Integration.runTests
+    putStrLn ""
+    equivalencePass <- Equivalence.runTests
 
     putStrLn ""
-    let allPass = sha256Pass && sha512Pass && hmacPass && hkdfPass && aesPass && gcmPass && curve25519Pass && ed25519Pass && chacha20Pass && x3dhPass && doubleRatchetPass && mlkemPass && keccakPass && poly1305Pass
+    let allPass = sha256Pass && sha512Pass && hmacPass && hkdfPass && aesPass && gcmPass && curve25519Pass && ed25519Pass && chacha20Pass && x3dhPass && doubleRatchetPass && mlkemPass && keccakPass && poly1305Pass && securityPass && fuzzPass && integrationPass && equivalencePass
     if allPass
         then do
             putStrLn "All tests passed."
