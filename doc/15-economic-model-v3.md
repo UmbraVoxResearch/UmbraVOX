@@ -109,6 +109,7 @@ The non-burn fee split (producer, treasury, rebate) is proportional. If burn rat
 If circulating supply drops below a threshold, the cycle terminates early to prevent network stall.
 
 - **Threshold**: 15% of INITIAL_SUPPLY (1.65B MTK). Adaptive range: [5%, 25%].
+- **Full-capacity note**: At sustained maximum throughput (~6.98M msgs/day) with the burn floor (0.20), early truncation fires approximately every ~6 cycles. This is intentional design — the adaptive controller responds by reducing burn rate and raising fees, stabilizing cycle duration. Frequent early truncation at full capacity reflects a network operating at its throughput limit, not a system deficiency.
 - **Check frequency**: Evaluated at every epoch boundary.
 - **Trigger**: When `sum(spendable_balances) < threshold`, the snapshot phase begins immediately.
 - **Effect**: The cycle ends, supply is restored per the Universe Cycle model, and the adaptive controller records the shortened duration for next-cycle parameter adjustment.
@@ -116,6 +117,8 @@ If circulating supply drops below a threshold, the cycle terminates early to pre
 ## Treasury Cap
 
 The treasury is capped at 10% of INITIAL_SUPPLY (1.1B MTK). When the treasury reaches its cap, any additional treasury-bound fees overflow into the pool, increasing available rewards and rebates for the current or next cycle. This prevents concentration while maintaining a sustainable operations fund. Treasury parameters are updated via chain revisions (see below), not on-chain governance.
+
+For complete treasury governance specification — including safety bounds (`TREASURY_FLOOR = 55M MTK`, `MAX_TREASURY_SPEND_RATE = 0.05`), anti-capture protections, and the process for adding future spending categories — see `doc/hardening/23-treasury-governance.md`.
 
 ## Chain Revisions
 

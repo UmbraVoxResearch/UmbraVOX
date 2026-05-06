@@ -39,12 +39,16 @@ Record AdaptiveParams := mkAdaptive {
 
 Definition INITIAL_SUPPLY := 11000000000.
 Definition TREASURY_CAP   := 1100000000.
+Definition TREASURY_FLOOR  := 55000000.          (* 0.5% of supply, doc/hardening/23 §3 *)
+Definition MAX_TREASURY_SPEND_RATE := 5 (* percent, i.e. 0.05 *).  (* doc/hardening/23 §3 *)
 Definition MIN_REWARD      := 5000.
 
 Definition total (s : State) : nat :=
   sum (balances s) + pool s + staked s + reserve s + treasury s
   + burned s + rebate_accum s.
 ```
+
+**Treasury governance constants.** `TREASURY_FLOOR` and `MAX_TREASURY_SPEND_RATE` constrain treasury spending but do not affect the conservation equation. All treasury spending operations are term transfers (treasury → balances), preserving `total`. See `doc/hardening/23-treasury-governance.md` §7 for the conservation compatibility argument.
 
 ---
 

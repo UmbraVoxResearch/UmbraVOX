@@ -87,7 +87,7 @@ Plaintext
 | Assurance level | DO-178C DAL A (all core features) |
 | Compact block relay | Enabled (mandatory at 4,444 msgs/block) |
 | Global throughput | ~80.8 msg/sec (~6.98M/day) |
-| Full block size | ~4.44 MB (4,550,656 bytes) |
+| Full block size | ~4.55 MB (4,550,656 bytes) |
 | Compact block size | ~50-130 KB (95%+ mempool hit rate) |
 | Timeline | 62-67 weeks |
 

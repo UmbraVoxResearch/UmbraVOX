@@ -4,6 +4,8 @@
 
 This document provides bidirectional traceability between system requirements, source modules, test cases, and verification evidence as required by DO-178C DAL A (Section 6.3.4). Every high-level requirement traces forward to implementation modules and test cases, and every module traces backward to the requirement(s) it satisfies.
 
+**Status:** All entries are Pending — implementation has not begun. This matrix is populated at each phase gate per `doc/12-development-phases.md`.
+
 ## Traceability Structure
 
 - **Format**: REQ-\<area\>-\<number\> → Module → Test → Evidence

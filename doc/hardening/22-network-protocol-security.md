@@ -230,7 +230,7 @@ plaintext_frame:
 
 | Constraint | Limit | Rationale |
 |------------|-------|-----------|
-| Maximum frame length | 6 MiB (6,291,456 bytes) | Largest valid block body (~4.44 MB payload + CBOR overhead) |
+| Maximum frame length | 6 MiB (6,291,456 bytes) | Largest valid block body (~4.55 MB payload + CBOR overhead) |
 | Maximum plaintext message body | 6 MiB - 25 bytes (header overhead) | After subtracting framing |
 | Maximum GOSSIP_TX body | 64 KiB (65,536 bytes) | Single transaction upper bound |
 | Maximum HEADERS batch | 2,000 headers | Prevents memory exhaustion during sync |

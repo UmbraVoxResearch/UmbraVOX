@@ -106,7 +106,7 @@ All major design documentation lives in [`doc/`](doc/):
 |-----------|-------|
 | Slot duration | 11 seconds |
 | Cycle length | 11 days (22 epochs × 12 hours) |
-| Message block size | ~4.44 MB (4,444 × 1,024 = 4,550,656 bytes per block) |
+| Message block size | ~4.55 MB (4,444 × 1,024 = 4,550,656 bytes per block) |
 | Messages per block | 4,444 |
 | Global throughput | ~80.8 msg/sec (~6.98M/day) |
 | Message cost | Dynamic (10 to 10,000 MTK, EMA-adjusted) |
