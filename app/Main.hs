@@ -1,14 +1,19 @@
 module Main (main) where
 
-import Control.Concurrent (forkIO)
-import Control.Monad (void)
+import Control.Concurrent (forkIO, threadDelay, killThread, ThreadId)
+import Control.Exception (catch, SomeException)
+import Control.Monad (void, when, forM_, unless)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BC
 import Data.Bits (shiftL, shiftR, (.&.))
-import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
 import Data.Word (Word32)
-import System.Environment (getArgs)
+import System.Directory (doesFileExist)
 import System.IO (hFlush, stdout, stdin, hSetBuffering, BufferMode(..), hIsEOF)
+import Data.Time.Clock (getCurrentTime)
+import Data.Time.Format (formatTime, defaultTimeLocale)
 
 import UmbraVox.Chat.Session
     (ChatSession, initChatSession, sendChatMessage, recvChatMessage)
@@ -20,312 +25,537 @@ import UmbraVox.Crypto.Signal.PQXDH
 import UmbraVox.Crypto.Signal.X3DH
     (KeyPair(..), IdentityKey(..), generateIdentityKey, generateKeyPair,
      signPreKey)
-import UmbraVox.Network.Transport (Transport, listen, connect, send, recv)
+import UmbraVox.Network.Transport
+    (Transport(..), listen, connect, send, recv, close)
 import UmbraVox.Protocol.CBOR (encodeMessage)
+
+-- Types -------------------------------------------------------------------
+
+type SessionId = Int
+
+data SessionInfo = SessionInfo
+    { siTransport :: Transport
+    , siSession   :: IORef ChatSession
+    , siRecvTid   :: ThreadId
+    , siPeerName  :: String
+    , siHistory   :: IORef [String]
+    }
+
+data AppConfig = AppConfig
+    { cfgListenPort  :: IORef Int
+    , cfgDisplayName :: IORef String
+    , cfgIdentity    :: IORef (Maybe IdentityKey)
+    , cfgSessions    :: IORef (Map SessionId SessionInfo)
+    , cfgNextId      :: IORef SessionId
+    }
+
+-- ANSI helpers ------------------------------------------------------------
+
+esc :: String -> String
+esc code = "\ESC[" ++ code
+
+clearScreen :: IO ()
+clearScreen = putStr (esc "2J" ++ esc "H") >> hFlush stdout
+
+setColor :: Int -> IO ()
+setColor c = putStr (esc (show c ++ "m"))
+
+resetColor :: IO ()
+resetColor = putStr (esc "0m")
+
+-- Box drawing -------------------------------------------------------------
+
+drawBox :: String -> [String] -> Int -> IO ()
+drawBox title rows w = do
+    let pad s = s ++ replicate (w - 2 - length s) ' '
+    putStrLn $ "\x2554" ++ replicate (w - 2) '\x2550' ++ "\x2557"
+    putStrLn $ "\x2551" ++ pad ("  " ++ title) ++ "\x2551"
+    putStrLn $ "\x2560" ++ replicate (w - 2) '\x2550' ++ "\x2563"
+    forM_ rows $ \r ->
+        putStrLn $ "\x2551" ++ pad ("  " ++ r) ++ "\x2551"
+    putStrLn $ "\x255A" ++ replicate (w - 2) '\x2550' ++ "\x255D"
+
+drawMenu :: String -> [String] -> IO Int
+drawMenu title items = do
+    clearScreen
+    setColor 36
+    drawBox title (zipWith (\i s -> show i ++ ". " ++ s) [(1::Int)..] items) 46
+    resetColor
+    putStr "\n  Select: "
+    hFlush stdout
+    line <- getLine
+    case reads line of
+        [(n, _)] | n >= 1 && n <= length items -> pure n
+        _ -> drawMenu title items
+
+-- Main / menu loop --------------------------------------------------------
 
 main :: IO ()
 main = do
     hSetBuffering stdout LineBuffering
-    args <- getArgs
-    case args of
-        ["listen", port]        -> runServer (read port)
-        ["connect", host, port] -> runClient host (read port)
-        _                       -> printUsage
+    hSetBuffering stdin LineBuffering
+    cfg <- AppConfig <$> newIORef 9999 <*> newIORef "User"
+                     <*> newIORef Nothing <*> newIORef Map.empty <*> newIORef 1
+    mainLoop cfg
 
-printUsage :: IO ()
-printUsage = putStrLn "Usage: umbravox listen <port> | umbravox connect <host> <port>"
+mainLoop :: AppConfig -> IO ()
+mainLoop cfg = do
+    n <- drawMenu "U M B R A V O X  --  Post-Quantum Encrypted Messaging"
+        [ "New Conversation", "Active Conversations", "Group Conversations"
+        , "File Transfer", "Identity & Keys", "Import/Export"
+        , "Settings", "Quit" ]
+    case n of
+        1 -> newConversation cfg   >> mainLoop cfg
+        2 -> activeConversations cfg >> mainLoop cfg
+        3 -> groupConversations cfg  >> mainLoop cfg
+        4 -> fileTransfer cfg      >> mainLoop cfg
+        5 -> identityKeys cfg      >> mainLoop cfg
+        6 -> importExport cfg      >> mainLoop cfg
+        7 -> settings cfg          >> mainLoop cfg
+        8 -> quitApp cfg
+        _ -> mainLoop cfg
 
-------------------------------------------------------------------------
--- Server (responder / Bob)
-------------------------------------------------------------------------
+quitApp :: AppConfig -> IO ()
+quitApp cfg = do
+    sessions <- readIORef (cfgSessions cfg)
+    forM_ (Map.elems sessions) $ \si -> do
+        killThread (siRecvTid si)
+        close (siTransport si)
+    clearScreen
+    putStrLn "Goodbye."
 
-runServer :: Int -> IO ()
-runServer port = do
-    putStrLn $ "Listening on port " ++ show port ++ "..."
-    t <- listen port
-    putStrLn "Peer connected. Performing PQXDH handshake..."
-    session <- handshakeResponder t
-    putStrLn "Session established. Type messages below."
-    messageLoop t session
+-- 1. New Conversation -----------------------------------------------------
 
-------------------------------------------------------------------------
--- Client (initiator / Alice)
-------------------------------------------------------------------------
+newConversation :: AppConfig -> IO ()
+newConversation cfg = do
+    clearScreen
+    setColor 36; putStrLn "--- New Conversation ---"; resetColor
+    putStr "  Mode (1=Connect, 2=Listen): "; hFlush stdout
+    mode <- getLine
+    case mode of
+        "1" -> do
+            putStr "  Host: "; hFlush stdout; host <- getLine
+            putStr "  Port: "; hFlush stdout; portS <- getLine
+            putStrLn $ "  Connecting to " ++ host ++ ":" ++ portS ++ "..."
+            t <- connect host (read portS)
+            putStrLn "  Running PQXDH handshake..."
+            session <- handshakeInitiator t
+            sid <- addSession cfg t session (host ++ ":" ++ portS)
+            putStrLn "  Session established!"
+            threadDelay 500000
+            chatWindow cfg sid
+        "2" -> do
+            lp <- readIORef (cfgListenPort cfg)
+            putStr $ "  Port [" ++ show lp ++ "]: "; hFlush stdout
+            portS <- getLine
+            let port = if null portS then lp else read portS
+            putStrLn $ "  Listening on port " ++ show port ++ "..."
+            t <- listen port
+            putStrLn "  Peer connected. Running PQXDH handshake..."
+            session <- handshakeResponder t
+            sid <- addSession cfg t session ("peer:" ++ show port)
+            putStrLn "  Session established!"
+            threadDelay 500000
+            chatWindow cfg sid
+        _ -> pure ()
 
-runClient :: String -> Int -> IO ()
-runClient host port = do
-    putStrLn $ "Connecting to " ++ host ++ ":" ++ show port ++ "..."
+addSession :: AppConfig -> Transport -> ChatSession -> String -> IO SessionId
+addSession cfg t session peerName = do
+    sid <- readIORef (cfgNextId cfg)
+    writeIORef (cfgNextId cfg) (sid + 1)
+    ref <- newIORef session
+    histRef <- newIORef []
+    tid <- forkIO (recvLoopTUI t ref histRef)
+    let si = SessionInfo t ref tid peerName histRef
+    modifyIORef' (cfgSessions cfg) (Map.insert sid si)
+    pure sid
+
+-- 2. Active Conversations -------------------------------------------------
+
+activeConversations :: AppConfig -> IO ()
+activeConversations cfg = do
+    sessions <- readIORef (cfgSessions cfg)
+    if Map.null sessions
+        then promptWait "  No active conversations."
+        else do
+            let entries = Map.toList sessions
+                items = map (\(sid, si) -> "#" ++ show sid ++ " - " ++ siPeerName si) entries
+            choice <- drawMenu "Active Conversations" (items ++ ["Back"])
+            when (choice <= length entries) $ do
+                let (sid, _) = entries !! (choice - 1)
+                chatWindow cfg sid
+
+-- 3. Group Conversations --------------------------------------------------
+
+groupConversations :: AppConfig -> IO ()
+groupConversations cfg = do
+    clearScreen
+    setColor 36; putStrLn "--- Group Conversation ---"; resetColor
+    putStrLn "  Enter peer addresses (host:port), empty line to finish."
+    peers <- readPeers
+    unless (null peers) $ do
+        sids <- mapM (connectPeer cfg) peers
+        groupChatLoop cfg sids
+
+readPeers :: IO [(String, Int)]
+readPeers = do
+    putStr "  > "; hFlush stdout
+    line <- getLine
+    if null line then pure []
+    else case break (== ':') line of
+        (host, ':':portS) -> ((host, read portS) :) <$> readPeers
+        _ -> putStrLn "  Invalid format. Use host:port" >> readPeers
+
+connectPeer :: AppConfig -> (String, Int) -> IO SessionId
+connectPeer cfg (host, port) = do
+    putStrLn $ "  Connecting to " ++ host ++ ":" ++ show port ++ "..."
     t <- connect host port
-    putStrLn "Connected. Performing PQXDH handshake..."
     session <- handshakeInitiator t
-    putStrLn "Session established. Type messages below."
-    messageLoop t session
+    addSession cfg t session (host ++ ":" ++ show port)
 
-------------------------------------------------------------------------
--- PQXDH key material generation
-------------------------------------------------------------------------
+groupChatLoop :: AppConfig -> [SessionId] -> IO ()
+groupChatLoop cfg sids = do
+    clearScreen
+    setColor 36; putStrLn $ "--- Group Chat (" ++ show (length sids) ++ " peers) ---"
+    resetColor; putStrLn "  Type messages. /back to return.\n"
+    go
+  where
+    go = do
+        putStr "> "; hFlush stdout; line <- getLine
+        case line of
+            "/back" -> pure ()
+            _ -> do
+                sessions <- readIORef (cfgSessions cfg)
+                forM_ sids $ \sid -> case Map.lookup sid sessions of
+                    Nothing -> pure ()
+                    Just si -> sendToSession si (BC.pack line)
+                go
 
--- | Generate a full identity key (Ed25519 + X25519) from fresh randomness.
+-- 4. File Transfer --------------------------------------------------------
+
+fileTransfer :: AppConfig -> IO ()
+fileTransfer cfg = do
+    clearScreen
+    setColor 36; putStrLn "--- File Transfer ---"; resetColor
+    sessions <- readIORef (cfgSessions cfg)
+    if Map.null sessions
+        then promptWait "  No active sessions. Start a conversation first."
+        else do
+            let entries = Map.toList sessions
+            forM_ entries $ \(sid, si) ->
+                putStrLn $ "  " ++ show sid ++ ". " ++ siPeerName si
+            putStr "  Session #: "; hFlush stdout; sidS <- getLine
+            case Map.lookup (read sidS) sessions of
+                Nothing -> promptWait "  Invalid session."
+                Just si -> do
+                    putStr "  File path: "; hFlush stdout; path <- getLine
+                    exists <- doesFileExist path
+                    if exists then do
+                        contents <- BS.readFile path
+                        sendToSession si (BC.pack ("/file:" ++ path ++ ":") <> contents)
+                        promptWait $ "  Sent " ++ show (BS.length contents) ++ " bytes."
+                    else promptWait "  File not found."
+
+-- 5. Identity & Keys ------------------------------------------------------
+
+identityKeys :: AppConfig -> IO ()
+identityKeys cfg = do
+    clearScreen
+    setColor 36; putStrLn "--- Identity & Keys ---"; resetColor
+    mIk <- readIORef (cfgIdentity cfg)
+    ik <- case mIk of
+        Just ik -> pure ik
+        Nothing -> do
+            ik <- genIdentity
+            writeIORef (cfgIdentity cfg) (Just ik)
+            pure ik
+    putStrLn $ "  X25519 public:  " ++ fingerprint (ikX25519Public ik)
+    putStrLn $ "  Ed25519 public: " ++ fingerprint (ikEd25519Public ik)
+    putStr "\n  Regenerate keys? (y/N): "; hFlush stdout
+    ans <- getLine
+    when (ans == "y" || ans == "Y") $ do
+        ik' <- genIdentity
+        writeIORef (cfgIdentity cfg) (Just ik')
+        putStrLn "  Keys regenerated."
+    promptWait ""
+
+fingerprint :: BS.ByteString -> String
+fingerprint bs = concatMap hex2 (BS.unpack (BS.take 8 bs))
+  where
+    hex2 w = [hexC (w `shiftR` 4), hexC (w .&. 0x0f), ':']
+    hexC n | n < 10    = toEnum (fromEnum '0' + fromIntegral n)
+           | otherwise = toEnum (fromEnum 'a' + fromIntegral n - 10)
+
+-- 6. Import/Export --------------------------------------------------------
+
+importExport :: AppConfig -> IO ()
+importExport cfg = do
+    n <- drawMenu "Import/Export"
+        ["Export conversation history", "Import conversation history", "Back"]
+    case n of { 1 -> exportHistory cfg; 2 -> importHistory; _ -> pure () }
+
+exportHistory :: AppConfig -> IO ()
+exportHistory cfg = do
+    sessions <- readIORef (cfgSessions cfg)
+    if Map.null sessions then promptWait "  No sessions to export."
+    else do
+        let entries = Map.toList sessions
+        forM_ entries $ \(sid, si) ->
+            putStrLn $ "  " ++ show sid ++ ". " ++ siPeerName si
+        putStr "  Session #: "; hFlush stdout; sidS <- getLine
+        case Map.lookup (read sidS) sessions of
+            Nothing -> promptWait "  Invalid session."
+            Just si -> do
+                putStr "  Output file: "; hFlush stdout; path <- getLine
+                hist <- readIORef (siHistory si)
+                writeFile path (unlines (reverse hist))
+                promptWait $ "  Exported " ++ show (length hist) ++ " messages."
+
+importHistory :: IO ()
+importHistory = do
+    putStr "  Input file: "; hFlush stdout; path <- getLine
+    exists <- doesFileExist path
+    if exists then do
+        contents <- readFile path
+        let lns = lines contents
+        putStrLn $ "  Read " ++ show (length lns) ++ " messages."
+        forM_ (take 20 lns) $ \l -> putStrLn $ "    " ++ l
+        when (length lns > 20) $ putStrLn "    ..."
+    else putStrLn "  File not found."
+    promptWait ""
+
+-- 7. Settings -------------------------------------------------------------
+
+settings :: AppConfig -> IO ()
+settings cfg = do
+    port <- readIORef (cfgListenPort cfg)
+    name <- readIORef (cfgDisplayName cfg)
+    n <- drawMenu ("Settings  [Port: " ++ show port ++ "  Name: " ++ name ++ "]")
+        ["Change listen port", "Change display name", "Back"]
+    case n of
+        1 -> do putStr "  New port: "; hFlush stdout
+                writeIORef (cfgListenPort cfg) . read =<< getLine
+                settings cfg
+        2 -> do putStr "  New name: "; hFlush stdout; nm <- getLine
+                unless (null nm) $ writeIORef (cfgDisplayName cfg) nm
+                settings cfg
+        _ -> pure ()
+
+-- Chat Window -------------------------------------------------------------
+
+chatWindow :: AppConfig -> SessionId -> IO ()
+chatWindow cfg sid = do
+    sessions <- readIORef (cfgSessions cfg)
+    case Map.lookup sid sessions of
+        Nothing -> putStrLn "  Session not found."
+        Just si -> chatInputLoop cfg sid si
+
+drawChatHeader :: String -> IO ()
+drawChatHeader peer = do
+    clearScreen; setColor 36
+    let w = 46; bar = replicate (w - 2) '\x2500'
+    putStrLn $ "\x250C\x2500 " ++ peer ++ " " ++ drop (length peer + 2) bar ++ "\x2510"
+    resetColor
+
+drawChatFooter :: IO ()
+drawChatFooter = do
+    setColor 36
+    let w = 46
+    putStrLn $ "\x251C" ++ replicate (w - 2) '\x2500' ++ "\x2524"
+    putStrLn $ "\x2502 > Type message... (/back to return)" ++ replicate 7 ' ' ++ "\x2502"
+    putStrLn $ "\x2514" ++ replicate (w - 2) '\x2500' ++ "\x2518"
+    resetColor
+
+redrawChat :: SessionInfo -> IO ()
+redrawChat si = do
+    drawChatHeader (siPeerName si)
+    hist <- readIORef (siHistory si)
+    forM_ (reverse (take 15 hist)) $ \msg -> do
+        setColor 37; putStrLn $ "\x2502 " ++ msg
+    resetColor
+    drawChatFooter
+
+chatInputLoop :: AppConfig -> SessionId -> SessionInfo -> IO ()
+chatInputLoop cfg sid si = do
+    redrawChat si
+    putStr "> "; hFlush stdout
+    eof <- hIsEOF stdin
+    if eof then pure ()
+    else do
+        line <- getLine
+        case line of
+            "/back" -> pure ()
+            "/quit" -> quitApp cfg
+            "/verify" -> do
+                putStrLn "  [Key verification not yet available for peer]"
+                threadDelay 1000000
+                chatInputLoop cfg sid si
+            _ | isPfx "/file " line -> do
+                    let path = drop 6 line
+                    exists <- doesFileExist path
+                    if exists then do
+                        contents <- BS.readFile path
+                        sendToSession si (BC.pack ("/file:" ++ path ++ ":") <> contents)
+                        now <- timestamp
+                        modifyIORef' (siHistory si)
+                            (("[" ++ now ++ "] You: [sent file " ++ path ++ "]") :)
+                    else modifyIORef' (siHistory si) ("  [File not found]" :)
+                    chatInputLoop cfg sid si
+              | null line -> chatInputLoop cfg sid si
+              | otherwise -> do
+                    sendToSession si (BC.pack line)
+                    now <- timestamp
+                    modifyIORef' (siHistory si) (("[" ++ now ++ "] You: " ++ line) :)
+                    chatInputLoop cfg sid si
+
+-- Helpers -----------------------------------------------------------------
+
+isPfx :: String -> String -> Bool
+isPfx [] _         = True
+isPfx _ []         = False
+isPfx (x:xs) (y:ys) = x == y && isPfx xs ys
+
+sendToSession :: SessionInfo -> BS.ByteString -> IO ()
+sendToSession si msg = do
+    session <- readIORef (siSession si)
+    (session', wire) <- sendChatMessage session msg
+    writeIORef (siSession si) session'
+    send (siTransport si) (encodeMessage wire)
+
+timestamp :: IO String
+timestamp = formatTime defaultTimeLocale "%H:%M" <$> getCurrentTime
+
+promptWait :: String -> IO ()
+promptWait msg = do
+    unless (null msg) $ putStrLn msg
+    putStr "  Press Enter..."; hFlush stdout; void getLine
+
+-- Receive loop (background thread) ----------------------------------------
+
+recvLoopTUI :: Transport -> IORef ChatSession -> IORef [String] -> IO ()
+recvLoopTUI t ref histRef = go `catch` handler
+  where
+    go = do
+        lenBs <- recv t 4
+        if BS.length lenBs < 4
+            then modifyIORef' histRef ("  [Peer disconnected]" :)
+            else do
+                let !len = fromIntegral (getW32BE lenBs)
+                payload <- recv t len
+                session <- readIORef ref
+                result <- recvChatMessage session payload
+                case result of
+                    Nothing -> modifyIORef' histRef ("  [Decryption failed]" :) >> go
+                    Just (session', plaintext) -> do
+                        writeIORef ref session'
+                        now <- timestamp
+                        modifyIORef' histRef (("[" ++ now ++ "] Peer: " ++ BC.unpack plaintext) :)
+                        go
+    handler :: SomeException -> IO ()
+    handler _ = modifyIORef' histRef ("  [Connection lost]" :)
+
+-- PQXDH key material generation -------------------------------------------
+
 genIdentity :: IO IdentityKey
 genIdentity = do
-    edSec <- randomBytes 32
-    xSec  <- randomBytes 32
+    edSec <- randomBytes 32; xSec <- randomBytes 32
     pure $! generateIdentityKey edSec xSec
 
--- | Generate an X25519 signed prekey and its Ed25519 signature.
 genSignedPreKey :: IdentityKey -> IO (KeyPair, BS.ByteString)
 genSignedPreKey ik = do
     spkSec <- randomBytes 32
-    let !spk = generateKeyPair spkSec
-    let !sig = signPreKey ik (kpPublic spk)
+    let !spk = generateKeyPair spkSec; !sig = signPreKey ik (kpPublic spk)
     pure (spk, sig)
 
--- | Generate an ML-KEM-768 keypair from fresh randomness.
 genPQPreKey :: IO (MLKEMEncapKey, MLKEMDecapKey)
 genPQPreKey = do
-    d <- randomBytes 32
-    z <- randomBytes 32
+    d <- randomBytes 32; z <- randomBytes 32
     pure $! mlkemKeyGen d z
 
-------------------------------------------------------------------------
--- Prekey bundle wire format (length-prefixed fields)
-------------------------------------------------------------------------
+-- Prekey bundle wire format -----------------------------------------------
 
--- | Serialize a prekey bundle for transmission.
---
--- Format: IK_x25519 (32) | IK_ed25519 (32) | SPK_pub (32) | SPK_sig (64)
---       | len(PQPK) as Word32 BE | PQPK (variable) | OPK flag+data (1+0 or 1+32)
 serializeBundle :: IdentityKey -> BS.ByteString -> BS.ByteString
                 -> MLKEMEncapKey -> Maybe BS.ByteString -> BS.ByteString
-serializeBundle ik spkPub spkSig (MLKEMEncapKey pqpk) mOpk =
-    BS.concat
-        [ ikX25519Public ik
-        , ikEd25519Public ik
-        , spkPub
-        , spkSig
-        , putW32BE (fromIntegral (BS.length pqpk))
-        , pqpk
-        , encodeOptionalKey mOpk
-        ]
+serializeBundle ik spkPub spkSig (MLKEMEncapKey pqpk) mOpk = BS.concat
+    [ ikX25519Public ik, ikEd25519Public ik, spkPub, spkSig
+    , putW32BE (fromIntegral (BS.length pqpk)), pqpk
+    , maybe (BS.singleton 0x00) (\k -> BS.singleton 0x01 <> k) mOpk ]
 
--- | Encode an optional one-time prekey: 0x01 + key, or 0x00.
-encodeOptionalKey :: Maybe BS.ByteString -> BS.ByteString
-encodeOptionalKey Nothing  = BS.singleton 0x00
-encodeOptionalKey (Just k) = BS.singleton 0x01 <> k
-
--- | Deserialize a prekey bundle received from the wire.
--- Returns Nothing if the data is malformed.
 deserializeBundle :: BS.ByteString -> Maybe PQPreKeyBundle
 deserializeBundle bs
-    | BS.length bs < 165 = Nothing  -- 32+32+32+64+4+1 minimum
-    | otherwise = parseBundleFields bs
+    | BS.length bs < 165 = Nothing
+    | otherwise =
+        let !pqLen = fromIntegral (getW32BE (bsSlice 160 4 bs)) :: Int
+            !rest  = BS.drop (164 + pqLen) bs
+            decOpk r | BS.null r          = Nothing
+                     | BS.index r 0 == 1  = Just (BS.take 32 (BS.drop 1 r))
+                     | otherwise          = Nothing
+        in if BS.length bs < 164 + pqLen + 1 then Nothing
+           else Just PQPreKeyBundle
+               { pqpkbIdentityKey     = bsSlice 0  32 bs
+               , pqpkbIdentityEd25519 = bsSlice 32 32 bs
+               , pqpkbSignedPreKey    = bsSlice 64 32 bs
+               , pqpkbSPKSignature    = bsSlice 96 64 bs
+               , pqpkbPQPreKey        = MLKEMEncapKey (bsSlice 164 pqLen bs)
+               , pqpkbOneTimePreKey   = decOpk rest }
 
--- | Parse the individual fields of a serialized prekey bundle.
-parseBundleFields :: BS.ByteString -> Maybe PQPreKeyBundle
-parseBundleFields bs =
-    let !ikX   = bsSlice 0  32 bs
-        !ikEd  = bsSlice 32 32 bs
-        !spkP  = bsSlice 64 32 bs
-        !sig   = bsSlice 96 64 bs
-        !pqLen = fromIntegral (getW32BE (bsSlice 160 4 bs)) :: Int
-        !rest  = BS.drop (164 + pqLen) bs
-    in if BS.length bs < 164 + pqLen + 1
-       then Nothing
-       else Just PQPreKeyBundle
-           { pqpkbIdentityKey     = ikX
-           , pqpkbIdentityEd25519 = ikEd
-           , pqpkbSignedPreKey    = spkP
-           , pqpkbSPKSignature    = sig
-           , pqpkbPQPreKey        = MLKEMEncapKey (bsSlice 164 pqLen bs)
-           , pqpkbOneTimePreKey   = decodeOptionalKey rest
-           }
+-- PQXDH Handshake ---------------------------------------------------------
 
--- | Decode an optional key from the wire: 0x01 + 32 bytes, or 0x00.
-decodeOptionalKey :: BS.ByteString -> Maybe BS.ByteString
-decodeOptionalKey bs
-    | BS.null bs           = Nothing
-    | BS.index bs 0 == 0x01 = Just (BS.take 32 (BS.drop 1 bs))
-    | otherwise            = Nothing
-
-------------------------------------------------------------------------
--- PQXDH Handshake — Initiator (Alice)
-------------------------------------------------------------------------
-
--- | Alice: generate keys, receive Bob's bundle, run PQXDH, send initial
--- message, and establish the Double Ratchet session.
 handshakeInitiator :: Transport -> IO ChatSession
 handshakeInitiator t = do
-    -- Step 1-3: Generate Alice's key material
-    aliceIK  <- genIdentity
-    -- Step 4: Receive Bob's prekey bundle
-    bundle   <- recvBundle t
-    -- Step 5: Run PQXDH initiation
-    result   <- initiatePQXDH aliceIK bundle
-    -- Step 6: Send Alice's identity + ephemeral + PQ ciphertext to Bob
-    sendInitialMessage t aliceIK result
-    -- Step 7: Initialize Double Ratchet
-    initChatSession (pqxdhSharedSecret result)
-                    (ikX25519Secret aliceIK)
-                    (pqpkbSignedPreKey bundle)
-
--- | Run pqxdhInitiate with fresh randomness; abort on SPK verify failure.
-initiatePQXDH :: IdentityKey -> PQPreKeyBundle -> IO PQXDHResult
-initiatePQXDH aliceIK bundle = do
-    ekRand     <- randomBytes 32
-    mlkemRand  <- randomBytes 32
-    case pqxdhInitiate aliceIK bundle ekRand mlkemRand of
-        Nothing     -> fail "PQXDH: SPK signature verification failed"
-        Just result -> pure result
-
--- | Send Alice's initial message: her IK pub (X25519), ephemeral pub,
--- and ML-KEM ciphertext, all length-prefixed.
-sendInitialMessage :: Transport -> IdentityKey -> PQXDHResult -> IO ()
-sendInitialMessage t aliceIK result = do
+    aliceIK <- genIdentity
+    bundle  <- recvBundle t
+    ekRand  <- randomBytes 32; mlkemRand <- randomBytes 32
+    result  <- case pqxdhInitiate aliceIK bundle ekRand mlkemRand of
+        Nothing -> fail "PQXDH: SPK signature verification failed"
+        Just r  -> pure r
     let MLKEMCiphertext ctBS = pqxdhPQCiphertext result
-    let !msg = BS.concat
-            [ ikX25519Public aliceIK
-            , pqxdhEphemeralKey result
-            , putW32BE (fromIntegral (BS.length ctBS))
-            , ctBS
-            ]
-    send t (encodeMessage msg)
+    send t . encodeMessage $ BS.concat
+        [ ikX25519Public aliceIK, pqxdhEphemeralKey result
+        , putW32BE (fromIntegral (BS.length ctBS)), ctBS ]
+    initChatSession (pqxdhSharedSecret result)
+                    (ikX25519Secret aliceIK) (pqpkbSignedPreKey bundle)
 
-------------------------------------------------------------------------
--- PQXDH Handshake — Responder (Bob)
-------------------------------------------------------------------------
-
--- | Bob: generate keys, send prekey bundle, receive Alice's initial
--- message, run PQXDH respond, and establish the Double Ratchet session.
 handshakeResponder :: Transport -> IO ChatSession
 handshakeResponder t = do
-    -- Step 1-3: Generate Bob's key material
-    bobIK           <- genIdentity
-    (spk, spkSig)   <- genSignedPreKey bobIK
-    (pqEK, pqDK)    <- genPQPreKey
-    -- Step 4: Send prekey bundle to Alice
-    sendBundle t bobIK (kpPublic spk) spkSig pqEK
-    -- Step 5: Receive Alice's initial message
+    bobIK         <- genIdentity
+    (spk, spkSig) <- genSignedPreKey bobIK
+    (pqEK, pqDK)  <- genPQPreKey
+    send t . encodeMessage $ serializeBundle bobIK (kpPublic spk) spkSig pqEK Nothing
     (aliceIKPub, aliceEKPub, pqCt) <- recvInitialMessage t
-    -- Step 6: Derive shared secret
     let !shared = pqxdhRespond bobIK (kpSecret spk) Nothing pqDK
                                aliceIKPub aliceEKPub pqCt
-    -- Step 7: Initialize Double Ratchet
     initChatSession shared (kpSecret spk) aliceEKPub
 
-------------------------------------------------------------------------
--- Bundle send/receive helpers
-------------------------------------------------------------------------
+-- Bundle send/receive helpers ---------------------------------------------
 
--- | Send a serialized prekey bundle over the transport.
-sendBundle :: Transport -> IdentityKey -> BS.ByteString -> BS.ByteString
-           -> MLKEMEncapKey -> IO ()
-sendBundle t ik spkPub spkSig pqEK =
-    send t (encodeMessage (serializeBundle ik spkPub spkSig pqEK Nothing))
-
--- | Receive and deserialize a prekey bundle from the transport.
 recvBundle :: Transport -> IO PQPreKeyBundle
 recvBundle t = do
     lenBs <- recv t 4
-    let !len = getW32BE lenBs
-    payload <- recv t (fromIntegral len)
+    payload <- recv t (fromIntegral (getW32BE lenBs))
     case deserializeBundle payload of
         Nothing     -> fail "PQXDH: malformed prekey bundle"
         Just bundle -> pure bundle
 
--- | Receive Alice's initial message: IK pub + EK pub + ML-KEM ciphertext.
-recvInitialMessage :: Transport
-                   -> IO (BS.ByteString, BS.ByteString, MLKEMCiphertext)
+recvInitialMessage :: Transport -> IO (BS.ByteString, BS.ByteString, MLKEMCiphertext)
 recvInitialMessage t = do
     lenBs <- recv t 4
-    let !len = getW32BE lenBs
-    payload <- recv t (fromIntegral len)
-    pure $! parseInitialMessage payload
+    payload <- recv t (fromIntegral (getW32BE lenBs))
+    let !ctLen = fromIntegral (getW32BE (bsSlice 64 4 payload)) :: Int
+    pure (bsSlice 0 32 payload, bsSlice 32 32 payload, MLKEMCiphertext (bsSlice 68 ctLen payload))
 
--- | Parse the fields of Alice's initial message.
-parseInitialMessage :: BS.ByteString
-                    -> (BS.ByteString, BS.ByteString, MLKEMCiphertext)
-parseInitialMessage bs =
-    let !ikPub  = bsSlice 0  32 bs
-        !ekPub  = bsSlice 32 32 bs
-        !ctLen  = fromIntegral (getW32BE (bsSlice 64 4 bs)) :: Int
-        !ct     = bsSlice 68 ctLen bs
-    in (ikPub, ekPub, MLKEMCiphertext ct)
+-- ByteString / Word32 helpers ---------------------------------------------
 
-------------------------------------------------------------------------
--- ByteString / Word32 helpers
-------------------------------------------------------------------------
-
--- | Slice a ByteString: take @len@ bytes starting at @off@.
 bsSlice :: Int -> Int -> BS.ByteString -> BS.ByteString
 bsSlice off len = BS.take len . BS.drop off
 
--- | Encode a Word32 as 4 big-endian bytes.
 putW32BE :: Word32 -> BS.ByteString
 putW32BE w = BS.pack
-    [ fromIntegral (w `shiftR` 24 .&. 0xff)
-    , fromIntegral (w `shiftR` 16 .&. 0xff)
-    , fromIntegral (w `shiftR`  8 .&. 0xff)
-    , fromIntegral (w             .&. 0xff)
-    ]
+    [ fromIntegral (w `shiftR` 24 .&. 0xff), fromIntegral (w `shiftR` 16 .&. 0xff)
+    , fromIntegral (w `shiftR`  8 .&. 0xff), fromIntegral (w             .&. 0xff) ]
 
--- | Decode a big-endian Word32 from 4 bytes.
 getW32BE :: BS.ByteString -> Word32
-getW32BE bs =
-    (fromIntegral (BS.index bs 0) `shiftL` 24)
+getW32BE bs = (fromIntegral (BS.index bs 0) `shiftL` 24)
     + (fromIntegral (BS.index bs 1) `shiftL` 16)
     + (fromIntegral (BS.index bs 2) `shiftL` 8)
     + fromIntegral (BS.index bs 3)
-
-------------------------------------------------------------------------
--- Bidirectional message loop
-------------------------------------------------------------------------
-
--- | Run two threads: one for sending (stdin), one for receiving.
-messageLoop :: Transport -> ChatSession -> IO ()
-messageLoop t session0 = do
-    ref <- newIORef session0
-    -- Receive thread: read from transport, decrypt, print
-    void $ forkIO (recvLoop t ref)
-    -- Send thread (main): read stdin, encrypt, send
-    sendLoop t ref
-
--- | Read lines from stdin, encrypt, and send over the transport.
-sendLoop :: Transport -> IORef ChatSession -> IO ()
-sendLoop t ref = do
-    putStr "> "
-    hFlush stdout
-    eof <- hIsEOF stdin
-    if eof
-        then putStrLn "[EOF on stdin, exiting]"
-        else do
-            line <- BC.getLine
-            if BS.null line
-                then sendLoop t ref
-                else do
-                    session <- readIORef ref
-                    (session', wire) <- sendChatMessage session line
-                    writeIORef ref session'
-                    send t (encodeMessage wire)
-                    sendLoop t ref
-
--- | Receive messages from the transport, decrypt, and print.
-recvLoop :: Transport -> IORef ChatSession -> IO ()
-recvLoop t ref = do
-    lenBs <- recv t 4
-    if BS.length lenBs < 4
-        then putStrLn "\n[Peer disconnected]"
-        else do
-            let !len = fromIntegral (getW32BE lenBs)
-            payload <- recv t len
-            session <- readIORef ref
-            result <- recvChatMessage session payload
-            case result of
-                Nothing -> do
-                    putStrLn "\n[Decryption failed]"
-                    recvLoop t ref
-                Just (session', plaintext) -> do
-                    writeIORef ref session'
-                    BC.putStrLn $ "\r< " <> plaintext
-                    putStr "> "
-                    hFlush stdout
-                    recvLoop t ref
