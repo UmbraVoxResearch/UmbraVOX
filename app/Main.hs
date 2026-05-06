@@ -31,6 +31,10 @@ main = do
         -- Discovery state
         <*> newIORef Nothing     -- mDNS thread
         <*> newIORef []          -- mDNS discovered peers
+        -- Retention settings
+        <*> newIORef 30          -- retention days (0 = forever)
+        <*> newIORef True        -- auto-save messages to DB
+        <*> newIORef Nothing     -- Anthony DB handle
     (initRows, initCols) <- getTermSize
     let (r0, c0) = clampSize initRows initCols
     termRef <- newIORef (initRows, initCols)

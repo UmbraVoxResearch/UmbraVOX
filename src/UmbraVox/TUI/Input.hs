@@ -8,7 +8,7 @@ module UmbraVox.TUI.Input
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Exception (catch, SomeException)
 import Control.Monad (void, when, unless)
-import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
+import Data.IORef (newIORef, readIORef, writeIORef, modifyIORef')
 import qualified Data.Map.Strict as Map
 import System.IO (stdin, hReady)
 import UmbraVox.TUI.Types
@@ -19,6 +19,7 @@ import UmbraVox.TUI.Actions (startNewConn, startVerify, startExport,
     addSession, selectLast, recvLoopTUI)
 import UmbraVox.TUI.Handshake (handshakeInitiator, handshakeResponder)
 import UmbraVox.Network.Transport (listen, connect)
+import UmbraVox.Storage.Anthony (clearConversation)
 
 -- Input handling ----------------------------------------------------------
 readKey :: IO InputEvent
@@ -170,7 +171,29 @@ handleSettingsDlg st (KeyChar '6') = do
     writeIORef (asDialogBuf st) ""
     writeIORef (asDialogMode st) (Just (DlgPrompt "Set DB Path" $ \val ->
         unless (null val) $ writeIORef (cfgDBPath (asConfig st)) val))
-handleSettingsDlg st (KeyChar '7') =
+handleSettingsDlg st (KeyChar '7') = do
+    writeIORef (asDialogBuf st) ""
+    writeIORef (asDialogMode st) (Just (DlgPrompt "Retention (days, 0=forever)" $ \val ->
+        case reads val of { [(d,_)] -> writeIORef (cfgRetentionDays (asConfig st)) (max 0 (d::Int)); _ -> pure () }))
+handleSettingsDlg st (KeyChar '8') =
+    modifyIORef' (cfgAutoSaveMessages (asConfig st)) not
+handleSettingsDlg st (KeyChar '9') = do
+    writeIORef (asDialogBuf st) ""
+    writeIORef (asDialogMode st) (Just (DlgPrompt "Clear history? Type YES to confirm" $ \val ->
+        when (val == "YES") $ do
+            mDb <- readIORef (cfgAnthonyDB (asConfig st))
+            sel <- readIORef (asSelected st)
+            case mDb of
+                Just db -> clearConversation db sel
+                Nothing -> pure ()
+            -- Also clear the in-memory history for the selected session
+            sessions <- readIORef (cfgSessions (asConfig st))
+            let entries = Map.toList sessions
+            when (sel < length entries) $ do
+                let (_, si) = entries !! sel
+                writeIORef (siHistory si) []
+            ))
+handleSettingsDlg st (KeyChar '0') =
     writeIORef (asDialogMode st) (Just DlgKeys)
 handleSettingsDlg st _ = writeIORef (asDialogMode st) Nothing
 
