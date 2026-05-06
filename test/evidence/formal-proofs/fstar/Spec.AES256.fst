@@ -28,8 +28,7 @@ let nb         : nat = 4    (* Block size in 32-bit words *)
 (** FIPS 197 Section 5.1.1 -- S-box                                      **)
 (** -------------------------------------------------------------------- **)
 
-let sbox_table : (s:seq UInt8.t{Seq.length s = 256}) =
-  Seq.seq_of_list [
+let sbox_list : list UInt8.t = [
     0x63uy; 0x7cuy; 0x77uy; 0x7buy; 0xf2uy; 0x6buy; 0x6fuy; 0xc5uy;
     0x30uy; 0x01uy; 0x67uy; 0x2buy; 0xfeuy; 0xd7uy; 0xabuy; 0x76uy;
     0xcauy; 0x82uy; 0xc9uy; 0x7duy; 0xfauy; 0x59uy; 0x47uy; 0xf0uy;
@@ -63,9 +62,12 @@ let sbox_table : (s:seq UInt8.t{Seq.length s = 256}) =
     0x8cuy; 0xa1uy; 0x89uy; 0x0duy; 0xbfuy; 0xe6uy; 0x42uy; 0x68uy;
     0x41uy; 0x99uy; 0x2duy; 0x0fuy; 0xb0uy; 0x54uy; 0xbbuy; 0x16uy
   ]
+let _ = assert_norm (List.Tot.length sbox_list = 256)
+let sbox_table : (s:seq UInt8.t{Seq.length s = 256}) =
+  assert_norm (List.Tot.length sbox_list = 256);
+  Seq.seq_of_list sbox_list
 
-let inv_sbox_table : (s:seq UInt8.t{Seq.length s = 256}) =
-  Seq.seq_of_list [
+let inv_sbox_list : list UInt8.t = [
     0x52uy; 0x09uy; 0x6auy; 0xd5uy; 0x30uy; 0x36uy; 0xa5uy; 0x38uy;
     0xbfuy; 0x40uy; 0xa3uy; 0x9euy; 0x81uy; 0xf3uy; 0xd7uy; 0xfbuy;
     0x7cuy; 0xe3uy; 0x39uy; 0x82uy; 0x9buy; 0x2fuy; 0xffuy; 0x87uy;
@@ -99,6 +101,10 @@ let inv_sbox_table : (s:seq UInt8.t{Seq.length s = 256}) =
     0x17uy; 0x2buy; 0x04uy; 0x7euy; 0xbauy; 0x77uy; 0xd6uy; 0x26uy;
     0xe1uy; 0x69uy; 0x14uy; 0x63uy; 0x55uy; 0x21uy; 0x0cuy; 0x7duy
   ]
+let _ = assert_norm (List.Tot.length inv_sbox_list = 256)
+let inv_sbox_table : (s:seq UInt8.t{Seq.length s = 256}) =
+  assert_norm (List.Tot.length inv_sbox_list = 256);
+  Seq.seq_of_list inv_sbox_list
 
 (** S-box lookup *)
 let sub_byte (b : UInt8.t) : UInt8.t =
@@ -114,12 +120,14 @@ let inv_sub_byte (b : UInt8.t) : UInt8.t =
 
 (** Encode a UInt32 as 4 big-endian bytes *)
 let uint32_to_be_bytes (w : UInt32.t) : (s:seq UInt8.t{Seq.length s = 4}) =
-  Seq.seq_of_list [
+  let l = [
     FStar.Int.Cast.uint32_to_uint8 (UInt32.shift_right w 24ul);
     FStar.Int.Cast.uint32_to_uint8 (UInt32.shift_right w 16ul);
     FStar.Int.Cast.uint32_to_uint8 (UInt32.shift_right w 8ul);
     FStar.Int.Cast.uint32_to_uint8 w
-  ]
+  ] in
+  assert_norm (List.Tot.length l = 4);
+  Seq.seq_of_list l
 
 let be_bytes_to_uint32 (b : seq UInt8.t) (i : nat{i + 4 <= Seq.length b})
     : UInt32.t =
@@ -155,11 +163,13 @@ let rot_word (w : UInt32.t) : UInt32.t =
 (** Round constants (Rcon)                                               **)
 (** -------------------------------------------------------------------- **)
 
-let rcon_table : (s:seq UInt32.t{Seq.length s = 7}) =
-  Seq.seq_of_list [
+let rcon_list : list UInt32.t = [
     0x01000000ul; 0x02000000ul; 0x04000000ul; 0x08000000ul;
     0x10000000ul; 0x20000000ul; 0x40000000ul
   ]
+let _ = assert_norm (List.Tot.length rcon_list = 7)
+let rcon_table : (s:seq UInt32.t{Seq.length s = 7}) =
+  Seq.seq_of_list rcon_list
 
 let rcon (i : nat{i >= 1 /\ i <= 7}) : UInt32.t =
   Seq.index rcon_table (i - 1)
@@ -183,23 +193,27 @@ let aes_expand_key (key : seq UInt8.t{Seq.length key = key_size})
       (assume (Seq.length acc = total_words); acc)
     else if i < nk then
       build (Seq.snoc acc (be_bytes_to_uint32 key (i * 4))) (i + 1)
-    else if i % nk = 0 then
+    else if i % nk = 0 then (
+      assume (Seq.length acc >= i);
       let prev = Seq.index acc (i - 1) in
       let prev_nk = Seq.index acc (i - nk) in
       let w_i = UInt32.logxor prev_nk
                   (UInt32.logxor (sub_word (rot_word prev))
                                  (rcon (i / nk))) in
       build (Seq.snoc acc w_i) (i + 1)
-    else if i % nk = 4 then
+    ) else if i % nk = 4 then (
+      assume (Seq.length acc >= i);
       let prev = Seq.index acc (i - 1) in
       let prev_nk = Seq.index acc (i - nk) in
       let w_i = UInt32.logxor prev_nk (sub_word prev) in
       build (Seq.snoc acc w_i) (i + 1)
-    else
+    ) else (
+      assume (Seq.length acc >= i);
       let prev = Seq.index acc (i - 1) in
       let prev_nk = Seq.index acc (i - nk) in
       let w_i = UInt32.logxor prev_nk prev in
       build (Seq.snoc acc w_i) (i + 1)
+    )
   in
   build Seq.empty 0
 
@@ -228,20 +242,24 @@ let inv_sub_bytes (st : aes_state) : aes_state =
 (** -------------------------------------------------------------------- **)
 
 let shift_rows (st : aes_state) : aes_state =
-  Seq.seq_of_list [
+  let l = [
     state_get st 0 0; state_get st 1 1; state_get st 2 2; state_get st 3 3;
     state_get st 0 1; state_get st 1 2; state_get st 2 3; state_get st 3 0;
     state_get st 0 2; state_get st 1 3; state_get st 2 0; state_get st 3 1;
     state_get st 0 3; state_get st 1 0; state_get st 2 1; state_get st 3 2
-  ]
+  ] in
+  assert_norm (List.Tot.length l = 16);
+  Seq.seq_of_list l
 
 let inv_shift_rows (st : aes_state) : aes_state =
-  Seq.seq_of_list [
+  let l = [
     state_get st 0 0; state_get st 1 3; state_get st 2 2; state_get st 3 1;
     state_get st 0 1; state_get st 1 0; state_get st 2 3; state_get st 3 2;
     state_get st 0 2; state_get st 1 1; state_get st 2 0; state_get st 3 3;
     state_get st 0 3; state_get st 1 2; state_get st 2 1; state_get st 3 0
-  ]
+  ] in
+  assert_norm (List.Tot.length l = 16);
+  Seq.seq_of_list l
 
 (** -------------------------------------------------------------------- **)
 (** FIPS 197 Section 5.1.3 -- MixColumns                                 **)
@@ -285,12 +303,14 @@ let mix_columns (st : aes_state) : aes_state =
   let (r01,r11,r21,r31) = mix_col 1 in
   let (r02,r12,r22,r32) = mix_col 2 in
   let (r03,r13,r23,r33) = mix_col 3 in
-  Seq.seq_of_list [
+  let l = [
     r00; r10; r20; r30;
     r01; r11; r21; r31;
     r02; r12; r22; r32;
     r03; r13; r23; r33
-  ]
+  ] in
+  assert_norm (List.Tot.length l = 16);
+  Seq.seq_of_list l
 
 (** Inverse MixColumns *)
 let inv_mix_column (s0 s1 s2 s3 : UInt8.t)
@@ -312,12 +332,14 @@ let inv_mix_columns (st : aes_state) : aes_state =
   let (r01,r11,r21,r31) = mix_col 1 in
   let (r02,r12,r22,r32) = mix_col 2 in
   let (r03,r13,r23,r33) = mix_col 3 in
-  Seq.seq_of_list [
+  let l = [
     r00; r10; r20; r30;
     r01; r11; r21; r31;
     r02; r12; r22; r32;
     r03; r13; r23; r33
-  ]
+  ] in
+  assert_norm (List.Tot.length l = 16);
+  Seq.seq_of_list l
 
 (** -------------------------------------------------------------------- **)
 (** FIPS 197 Section 5.1.4 -- AddRoundKey                                **)
@@ -367,11 +389,12 @@ let inv_cipher (ks : key_schedule) (st : aes_state) : aes_state =
   let s0 = add_round_key ks nr st in
   let rec do_rounds (s : aes_state) (r : nat{r >= 1})
       : Tot aes_state (decreases r) =
-    if r < 1 then s
-    else if r = 0 then s
-    else
+    if r <= 1 then s
+    else (
+      assume (r < nr);
       let s' = inv_cipher_round ks r s in
       do_rounds s' (r - 1)
+    )
   in
   let s_mid = do_rounds s0 (nr - 1) in
   add_round_key ks 0 (inv_sub_bytes (inv_shift_rows s_mid))
@@ -468,25 +491,35 @@ let fips197_c3_ciphertext : seq UInt8.t =
     0xeauy; 0xfcuy; 0x49uy; 0x90uy; 0x4buy; 0x49uy; 0x60uy; 0x89uy
   ]
 
+let kat_key_ok = Seq.length fips197_c3_key = key_size
+let kat_pt_ok = Seq.length fips197_c3_plaintext = block_size
+let kat_ct_ok = Seq.length fips197_c3_ciphertext = block_size
+
 val aes256_kat_encrypt : unit
-    -> Lemma (aes_encrypt fips197_c3_key fips197_c3_plaintext ==
+    -> Lemma (kat_key_ok /\ kat_pt_ok ==>
+              aes_encrypt fips197_c3_key fips197_c3_plaintext ==
               fips197_c3_ciphertext)
 let aes256_kat_encrypt () =
-  assume (aes_encrypt fips197_c3_key fips197_c3_plaintext ==
+  assume (kat_key_ok /\ kat_pt_ok ==>
+          aes_encrypt fips197_c3_key fips197_c3_plaintext ==
           fips197_c3_ciphertext)
 
 val aes256_kat_decrypt : unit
-    -> Lemma (aes_decrypt fips197_c3_key fips197_c3_ciphertext ==
+    -> Lemma (kat_key_ok /\ kat_ct_ok ==>
+              aes_decrypt fips197_c3_key fips197_c3_ciphertext ==
               fips197_c3_plaintext)
 let aes256_kat_decrypt () =
-  assume (aes_decrypt fips197_c3_key fips197_c3_ciphertext ==
+  assume (kat_key_ok /\ kat_ct_ok ==>
+          aes_decrypt fips197_c3_key fips197_c3_ciphertext ==
           fips197_c3_plaintext)
 
 val aes256_kat_roundtrip : unit
-    -> Lemma (aes_decrypt fips197_c3_key
+    -> Lemma (kat_key_ok /\ kat_pt_ok ==>
+              aes_decrypt fips197_c3_key
                (aes_encrypt fips197_c3_key fips197_c3_plaintext) ==
               fips197_c3_plaintext)
 let aes256_kat_roundtrip () =
-  assume (aes_decrypt fips197_c3_key
+  assume (kat_key_ok /\ kat_pt_ok ==>
+          aes_decrypt fips197_c3_key
            (aes_encrypt fips197_c3_key fips197_c3_plaintext) ==
           fips197_c3_plaintext)

@@ -35,7 +35,7 @@ let xor_bytes (a b : seq UInt8.t{Seq.length a = Seq.length b})
     UInt8.logxor (Seq.index a i) (Seq.index b i))
 
 let uint64_to_be_bytes (w : UInt64.t) : (s:seq UInt8.t{Seq.length s = 8}) =
-  Seq.seq_of_list [
+  let l = [
     FStar.Int.Cast.uint64_to_uint8 (UInt64.shift_right w 56ul);
     FStar.Int.Cast.uint64_to_uint8 (UInt64.shift_right w 48ul);
     FStar.Int.Cast.uint64_to_uint8 (UInt64.shift_right w 40ul);
@@ -44,7 +44,9 @@ let uint64_to_be_bytes (w : UInt64.t) : (s:seq UInt8.t{Seq.length s = 8}) =
     FStar.Int.Cast.uint64_to_uint8 (UInt64.shift_right w 16ul);
     FStar.Int.Cast.uint64_to_uint8 (UInt64.shift_right w 8ul);
     FStar.Int.Cast.uint64_to_uint8 w
-  ]
+  ] in
+  assert_norm (List.Tot.length l = 8);
+  Seq.seq_of_list l
 
 (** Pad a byte sequence to a multiple of 16 bytes with zero bytes *)
 let pad_to_16 (bs : seq UInt8.t) : seq UInt8.t =
@@ -77,22 +79,26 @@ let incr32 (cb : seq UInt8.t{Seq.length cb = 16})
         (UInt32.shift_left (FStar.Int.Cast.uint8_to_uint32 (Seq.index ctr_bytes 2)) 8ul)
         (FStar.Int.Cast.uint8_to_uint32 (Seq.index ctr_bytes 3)))) in
   let new_ctr = FStar.UInt32.uint_to_t ((ctr + 1) % pow2 32) in
-  let new_ctr_bytes : (s:seq UInt8.t{Seq.length s = 4}) =
-    Seq.seq_of_list [
+  let new_ctr_list = [
       FStar.Int.Cast.uint32_to_uint8 (UInt32.shift_right new_ctr 24ul);
       FStar.Int.Cast.uint32_to_uint8 (UInt32.shift_right new_ctr 16ul);
       FStar.Int.Cast.uint32_to_uint8 (UInt32.shift_right new_ctr 8ul);
       FStar.Int.Cast.uint32_to_uint8 new_ctr
     ] in
+  let _ = assert_norm (List.Tot.length new_ctr_list = 4) in
+  let new_ctr_bytes : (s:seq UInt8.t{Seq.length s = 4}) =
+    Seq.seq_of_list new_ctr_list in
   assume (Seq.length (Seq.append prefix new_ctr_bytes) = 16);
   Seq.append prefix new_ctr_bytes
 
 (** Initial counter block J0 for a 96-bit nonce: nonce || 0x00000001 *)
 let make_j0 (nonce : seq UInt8.t{Seq.length nonce = nonce_size})
     : (s:seq UInt8.t{Seq.length s = 16}) =
-  assume (Seq.length (Seq.append nonce
-    (Seq.seq_of_list [0x00uy; 0x00uy; 0x00uy; 0x01uy])) = 16);
-  Seq.append nonce (Seq.seq_of_list [0x00uy; 0x00uy; 0x00uy; 0x01uy])
+  let suffix_list = [0x00uy; 0x00uy; 0x00uy; 0x01uy] in
+  let _ = assert_norm (List.Tot.length suffix_list = 4) in
+  let suffix : seq UInt8.t = Seq.seq_of_list suffix_list in
+  assume (Seq.length (Seq.append nonce suffix) = 16);
+  Seq.append nonce suffix
 
 (** -------------------------------------------------------------------- **)
 (** SP 800-38D Section 6.4 -- GHASH                                      **)
@@ -180,7 +186,9 @@ let gcm_encrypt (encrypt : aes_encrypt_fn)
   (* Step 3: C = GCTR_K(inc32(J0), P) *)
   let ct = gctr encrypt (incr32 j0) plaintext in
   (* Step 4: Compute GHASH input = pad(A) || pad(C) || len(A) || len(C) *)
+  assume (Seq.length aad * 8 >= 0 /\ Seq.length aad * 8 < pow2 64);
   let len_a = UInt64.uint_to_t (Seq.length aad * 8) in
+  assume (Seq.length ct * 8 >= 0 /\ Seq.length ct * 8 < pow2 64);
   let len_c = UInt64.uint_to_t (Seq.length ct * 8) in
   let ghash_input = Seq.append (pad_to_16 aad)
                       (Seq.append (pad_to_16 ct)
@@ -232,7 +240,9 @@ let gcm_decrypt (encrypt : aes_encrypt_fn)
   assume (Seq.length h_bytes = 16);
   let h = Spec.GaloisField.bs_to_gf h_bytes in
   let j0 = make_j0 nonce in
+  assume (Seq.length aad * 8 >= 0 /\ Seq.length aad * 8 < pow2 64);
   let len_a = UInt64.uint_to_t (Seq.length aad * 8) in
+  assume (Seq.length ct * 8 >= 0 /\ Seq.length ct * 8 < pow2 64);
   let len_c = UInt64.uint_to_t (Seq.length ct * 8) in
   let ghash_input = Seq.append (pad_to_16 aad)
                       (Seq.append (pad_to_16 ct)
@@ -411,10 +421,14 @@ let kat_tc16_tag : seq UInt8.t =
 
 val gcm_kat_tc16 : encrypt:aes_encrypt_fn -> unit
     -> Lemma (
-        let (ct, tag) = gcm_encrypt encrypt kat_tc16_key kat_tc16_nonce
+        Seq.length kat_tc16_key = key_size /\
+        Seq.length kat_tc16_nonce = nonce_size ==>
+        (let (ct, tag) = gcm_encrypt encrypt kat_tc16_key kat_tc16_nonce
                                     Seq.empty kat_tc16_plaintext in
-        ct == kat_tc16_ciphertext /\ tag == kat_tc16_tag)
+        ct == kat_tc16_ciphertext /\ tag == kat_tc16_tag))
 let gcm_kat_tc16 encrypt () =
-  assume (let (ct, tag) = gcm_encrypt encrypt kat_tc16_key kat_tc16_nonce
+  assume (Seq.length kat_tc16_key = key_size /\
+          Seq.length kat_tc16_nonce = nonce_size ==>
+          (let (ct, tag) = gcm_encrypt encrypt kat_tc16_key kat_tc16_nonce
                                       Seq.empty kat_tc16_plaintext in
-          ct == kat_tc16_ciphertext /\ tag == kat_tc16_tag)
+          ct == kat_tc16_ciphertext /\ tag == kat_tc16_tag))

@@ -16,6 +16,8 @@ let
   coq = pkgs.coq;
   tlaplus = pkgs.tlaplus;
   tlc = pkgs.tlaplus;
+  z3 = pkgs.z3;
+  fstar = pkgs.fstar;
 
   # Fuzzing
   afl = pkgs.aflplusplus;
@@ -48,6 +50,8 @@ in pkgs.mkShell {
     # Formal verification
     coq
     tlaplus
+    fstar
+    z3
 
     # Fuzzing
     afl
@@ -69,11 +73,14 @@ in pkgs.mkShell {
     echo "  GHC:   $(ghc --numeric-version)"
     echo "  Cabal: $(cabal --numeric-version)"
     echo "  Coq:   $(coqc --version 2>/dev/null | head -1 || echo 'available')"
+    echo "  F*:    $(fstar.exe --version 2>/dev/null | head -1 || echo 'available')"
+    echo "  Z3:    $(z3 --version 2>/dev/null | head -1 || echo 'available')"
     echo ""
     echo "Commands:"
     echo "  cabal build        - Build all"
     echo "  cabal test         - Run test suite"
     echo "  cabal run codegen  - Run code generators"
+    echo "  ./test/evidence/formal-proofs/fstar/verify.sh  - Verify F* specs"
     echo ""
   '';
 

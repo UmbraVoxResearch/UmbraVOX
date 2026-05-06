@@ -5,3 +5,5 @@ dist-newstyle/
 *.dyn_hi
 *.dyn_o
 test-runner
+test/evidence/formal-proofs/fstar/_cache/
+test/evidence/formal-proofs/fstar/_output/
