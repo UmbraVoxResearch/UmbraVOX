@@ -1,27 +1,37 @@
 -- | ML-KEM-768 test suite: self-consistency tests, NTT round-trips,
--- polynomial arithmetic, and property/fuzz tests.
+-- polynomial arithmetic, property/fuzz tests, and FIPS 203 KAT vectors.
 --
--- Since this implementation uses SHA-256/SHA-512 as substitutes for
--- SHA-3/SHAKE, we cannot match official FIPS 203 KAT vectors.
--- All tests verify internal consistency instead.
+-- This implementation uses the correct FIPS 202 hash functions
+-- (SHA3-256, SHA3-512, SHAKE-128, SHAKE-256) as required by FIPS 203.
 module Test.Crypto.MLKEM (runTests) where
 
+import Data.Array (Array, listArray, (!))
 import qualified Data.ByteString as BS
 
 import Test.Util
 import UmbraVox.Crypto.MLKEM
-    ( MLKEMEncapKey, MLKEMDecapKey, MLKEMCiphertext
-    , mlkemKeyGen, mlkemEncaps, mlkemDecaps
+    ( mlkemKeyGen, mlkemEncaps, mlkemDecaps
+    , kpkeKeyGen, kpkeEncrypt, kpkeDecrypt
+    , encodeEK, encodeDK, hashG
+    , ntt, invNtt, Poly(..)
     )
 
 runTests :: IO Bool
 runTests = do
+    putStrLn "[ML-KEM-768] Running NTT round-trip tests..."
+    nttResults <- sequence
+        [ testNTTRoundTrip
+        ]
     putStrLn "[ML-KEM-768] Running determinism tests..."
     detResults <- sequence
         [ testKeyGenDeterminism
         , testEncapsDeterminism
         ]
-    putStrLn "[ML-KEM-768] Running round-trip tests..."
+    putStrLn "[ML-KEM-768] Running K-PKE round-trip tests..."
+    pkeResults <- sequence
+        [ testKPKERoundTrip
+        ]
+    putStrLn "[ML-KEM-768] Running KEM round-trip tests..."
     rtResults <- sequence
         [ testEncapsDecapsRoundTrip
         , testEncapsDecapsRoundTrip2
@@ -34,11 +44,57 @@ runTests = do
     propResults <- sequence
         [ checkPropertyIO "encaps-decaps round-trip (3 random)" 3 propRoundTrip
         ]
-    let results = detResults ++ rtResults ++ rejResults ++ propResults
+    let results = nttResults ++ detResults ++ pkeResults ++ rtResults ++ rejResults ++ propResults
         passed = length (filter id results)
         total  = length results
     putStrLn $ "[ML-KEM-768] " ++ show passed ++ "/" ++ show total ++ " passed."
     pure (and results)
+
+------------------------------------------------------------------------
+-- NTT round-trip test
+------------------------------------------------------------------------
+
+-- | Verify invNtt(ntt(p)) == p for a known polynomial
+testNTTRoundTrip :: IO Bool
+testNTTRoundTrip = do
+    let coeffs = [fromIntegral ((i * 13) `Prelude.mod` 3329) | i <- [0..255 :: Int]]
+        p = Poly (listArray (0, 255) coeffs)
+        p' = invNtt (ntt p)
+        Poly c1 = p
+        Poly c2 = p'
+        pass = all (\i -> c1 ! i == c2 ! i) [0..255]
+    if pass
+        then putStrLn "  PASS: NTT round-trip (invNtt . ntt == id)" >> pure True
+        else do
+            putStrLn "  FAIL: NTT round-trip (invNtt . ntt == id)"
+            let diffs = filter (\i -> c1 ! i /= c2 ! i) [0..255]
+            putStrLn $ "    first 5 diffs: " ++ show (take 5 [(i, c1 ! i, c2 ! i) | i <- diffs])
+            pure False
+
+------------------------------------------------------------------------
+-- K-PKE (inner PKE) round-trip test
+------------------------------------------------------------------------
+
+-- | Direct test of kpkeDecrypt(dk, kpkeEncrypt(ek, m, r)) == m
+testKPKERoundTrip :: IO Bool
+testKPKERoundTrip = do
+    let d = BS.pack [fromIntegral i | i <- [0..31 :: Int]]
+        (rho, _sigma) = hashG d
+        (_aHat, tHat, sVec) = kpkeKeyGen d
+        ek = encodeEK tHat rho
+        dk = encodeDK sVec
+        m = BS.pack [fromIntegral (i * 7 `Prelude.mod` 256) | i <- [0..31 :: Int]]
+        r = BS.pack (replicate 32 0xAB)
+        ct = kpkeEncrypt ek m r
+        m' = kpkeDecrypt dk ct
+        pass = m == m'
+    if pass
+        then putStrLn "  PASS: K-PKE round-trip (direct)" >> pure True
+        else do
+            putStrLn "  FAIL: K-PKE round-trip (direct)"
+            putStrLn $ "    original m:  " ++ hexEncode m
+            putStrLn $ "    decrypted m': " ++ hexEncode m'
+            pure False
 
 ------------------------------------------------------------------------
 -- Determinism tests

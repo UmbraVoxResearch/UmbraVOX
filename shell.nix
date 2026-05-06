@@ -1,8 +1,8 @@
 { pkgs ? import <nixpkgs> {} }:
 
 let
-  # GHC 9.6 with only base/boot libraries (no external deps per spec)
-  ghc = pkgs.haskell.compiler.ghc96;
+  # GHC 9.6 with the 'network' package (only non-boot dependency)
+  ghc = pkgs.haskell.packages.ghc96.ghcWithPackages (hp: [ hp.network ]);
 
   # Haskell tools
   cabal = pkgs.cabal-install;
@@ -41,6 +41,9 @@ in pkgs.mkShell {
     cc
     pkgs.gdb
     valgrind
+
+    # Networking (for cabal update)
+    pkgs.curl
 
     # Formal verification
     coq
