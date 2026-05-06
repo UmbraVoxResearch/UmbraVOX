@@ -132,8 +132,15 @@ Design and specification phase. No production release yet.
 
 See [LICENSE](LICENSE).
 
-## Legal and Publishing Notes
+## Compliance Advisory
 
-For the legal framing of this repository and its status as an expressive
-and research work, see [LEGAL-NOTICE.md](LEGAL-NOTICE.md) and
-[PUBLISHING-NOTE.md](PUBLISHING-NOTE.md).
+This project implements strong cryptography and decentralized communications
+technology. Operators deploying this software must independently assess
+compliance with applicable laws in their jurisdiction, including but not
+limited to cryptography export controls, telecommunications regulations,
+lawful intercept requirements, and data retention obligations.
+
+See [LEGAL-NOTICE.md](LEGAL-NOTICE.md) for detailed legal information
+including export controls, telecommunications, data retention, and token
+economics notices. See [PUBLISHING-NOTE.md](PUBLISHING-NOTE.md) for the
+expressive and research framing of this work.

@@ -55,6 +55,57 @@ Accordingly, any person or entity who:
 is solely responsible for compliance with all applicable laws,
 regulations, licensing regimes, reporting obligations, and restrictions.
 
+### Cryptography Export Controls
+
+This repository contains implementations of strong cryptographic
+algorithms including AES-256, SHA-3, ML-KEM-768, Ed25519, X25519,
+and related primitives. These may be subject to export controls under
+the U.S. Export Administration Regulations (EAR), Category 5 Part 2,
+or equivalent controls in other jurisdictions.
+
+Persons intending to distribute this software outside their home
+jurisdiction must independently determine whether an export license,
+notification, or exception (such as the publicly available source code
+provisions of 15 CFR 734.3(b)(3)) applies to their specific circumstances.
+
+### Telecommunications and Lawful Intercept
+
+This system implements end-to-end encryption with no central server
+and protocol-level message destruction (11-day chain truncation). These
+design properties may be incompatible with lawful intercept requirements
+(including but not limited to CALEA in the United States, the Online
+Safety Act 2023 in the United Kingdom, and equivalent regulations in
+other jurisdictions).
+
+Operators deploying this software as a communications service must
+independently assess their obligations regarding lawful interception,
+data retention, and cooperation with law enforcement in their operating
+jurisdiction. The authors do not operate any communications service
+based on this software.
+
+### Data Retention
+
+The protocol's 11-day chain truncation destroys message records at
+the protocol level. Node operators in jurisdictions with mandatory data
+retention requirements (including legal hold obligations under civil
+litigation rules) must ensure their deployment complies with applicable
+retention laws. Protocol-level truncation does not override legal
+retention obligations that may apply to an operator.
+
+### Token Economics
+
+The MTK token described in this project's specifications is distributed
+by the protocol to validators and users as a utility credit for messaging.
+MTK is not offered for sale by the authors or any affiliated entity.
+No representation is made regarding the legal classification of MTK as
+a security, commodity, virtual asset, or other regulated instrument in
+any jurisdiction.
+
+Persons acquiring, holding, transferring, or using MTK tokens must
+independently determine whether securities laws, virtual asset
+regulations, anti-money laundering requirements, or sanctions apply
+to their activities in their jurisdiction.
+
 ## No Inducement
 
 This repository is provided for lawful research, study, criticism,
@@ -94,6 +145,11 @@ LIABLE FOR ANY CLAIM, DAMAGE, LOSS, COST, OR OTHER LIABILITY, WHETHER IN
 CONTRACT, TORT, STRICT LIABILITY, OR OTHERWISE, ARISING OUT OF OR RELATED
 TO USE, MISUSE, INABILITY TO USE, DISTRIBUTION, DEPLOYMENT, OR OPERATION
 OF THIS WORK OR ANY DERIVATIVE OF IT.
+
+This limitation of liability is a civil contractual provision. It does not
+purport to limit, waive, or affect any obligations, penalties, or
+liabilities arising under criminal law, regulatory statutes, or other
+non-waivable legal requirements in any jurisdiction.
 
 ## Reservation
 
