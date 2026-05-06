@@ -272,7 +272,10 @@ testParseHostPortEdgeCases = do
     ok6 <- assertEq "parseHostPort \"192.168.1.1:8080\"" ("192.168.1.1", Just 8080) (parseHostPort "192.168.1.1:8080")
     -- "localhost:0" -> ("localhost", Just 0)
     ok7 <- assertEq "parseHostPort \"localhost:0\"" ("localhost", Just 0) (parseHostPort "localhost:0")
-    pure (ok1 && ok2 && ok3 && ok4 && ok5 && ok6 && ok7)
+    -- whitespace should be trimmed before host/port use
+    ok8 <- assertEq "parseHostPort trims host whitespace" ("example.com", Nothing :: Maybe Int) (parseHostPort "  example.com  ")
+    ok9 <- assertEq "parseHostPort trims port whitespace" ("example.com", Just 7853) (parseHostPort " example.com : 7853 ")
+    pure (ok1 && ok2 && ok3 && ok4 && ok5 && ok6 && ok7 && ok8 && ok9)
 
 ------------------------------------------------------------------------
 -- 6. Encoding round-trip: putWord32BE / getWord32BE

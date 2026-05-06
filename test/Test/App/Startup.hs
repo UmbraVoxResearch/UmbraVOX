@@ -6,12 +6,13 @@ module Test.App.Startup
     , runStartupProcessChild
     ) where
 
-import Control.Exception (SomeException, catch)
+import Control.Exception (SomeException, catch, finally)
 import qualified Data.ByteString as BS
 import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.Maybe (isNothing)
 import qualified Data.Map.Strict as Map
-import Data.List (find, isInfixOf, isPrefixOf, sort)
+import Data.List (find, isInfixOf, isPrefixOf, sort, stripPrefix)
+import qualified Network.Socket as NS
 import System.Directory
     ( createDirectoryIfMissing, findExecutable, getTemporaryDirectory
     , removeDirectoryRecursive, removeFile
@@ -19,9 +20,11 @@ import System.Directory
 import System.Environment (getEnvironment, getExecutablePath)
 import System.Exit (ExitCode(..))
 import System.FilePath ((</>))
+import System.IO (Handle, hClose, hGetChar, hWaitForInput)
 import System.Process
-    ( CreateProcess(env), proc, readCreateProcessWithExitCode
-    , readProcessWithExitCode
+    ( CreateProcess(env, std_in, std_out, std_err), ProcessHandle, StdStream(CreatePipe)
+    , createProcess, proc, readCreateProcessWithExitCode
+    , readProcessWithExitCode, terminateProcess, waitForProcess
     )
 import System.Timeout (timeout)
 
@@ -67,6 +70,7 @@ runTests = do
             , testRestorePersistentStateTrustedKeys
             , testRestartPreservesIdentityAndHistory
             , testProcessRestartAroundBootPath
+            , testPromptWaitStartsListenerFirst
             , testLiveTerminalBootPath
             , testRestorePersistentStateFailureDisablesPersistence
             ]
@@ -366,6 +370,37 @@ testProcessRestartAroundBootPath = do
             pure (and [ok1, ok2, ok3, ok4, ok5])
         _ -> pure False
 
+testPromptWaitStartsListenerFirst :: IO Bool
+testPromptWaitStartsListenerFirst = do
+    binaryPath <- locateUmbravoxBinary
+    env0 <- getEnvironment
+    tmp <- getTemporaryDirectory
+    let homeDir = tmp </> "umbravox-startup-prompt-home"
+        dataDir = homeDir </> ".umbravox"
+        childEnv = ("HOME", homeDir) : filter ((/= "HOME") . fst) env0
+        cp = (proc binaryPath [])
+            { env = Just childEnv
+            , std_in = CreatePipe
+            , std_out = CreatePipe
+            , std_err = CreatePipe
+            }
+    createDirectoryIfMissing True dataDir
+    result <- withPromptProcess cp $ \stdoutH ph -> do
+        stdoutText <- readUntilContains stdoutH "Enable persistent storage?" (8 * 1000000)
+        let mPort = parseStartupListenPort stdoutText
+        reachable <- maybe (pure False) canConnectLocalListener mPort
+        ok1 <- assertEq "startup prompt still appears" True
+            ("Enable persistent storage?" `isInfixOf` stdoutText)
+        ok2 <- assertEq "startup announces listener before prompt" True
+            (listenerAppearsBeforePrompt stdoutText)
+        ok3 <- assertEq "startup prompt listener port parsed" True (maybe False (> 0) mPort)
+        ok4 <- assertEq "startup listener reachable before prompt answer" True reachable
+        terminateProcess ph
+        _ <- waitForProcess ph
+        pure (and [ok1, ok2, ok3, ok4])
+    cleanupDir homeDir
+    pure result
+
 testLiveTerminalBootPath :: IO Bool
 testLiveTerminalBootPath = do
     scriptPath <- findExecutable "script"
@@ -521,6 +556,83 @@ parseStartupChild output = do
         ["STARTUP_CHILD", fp, restoredText, dbText] ->
             Just (fp, read restoredText, read dbText)
         _ -> Nothing
+
+withPromptProcess
+    :: CreateProcess
+    -> (Handle -> ProcessHandle -> IO Bool)
+    -> IO Bool
+withPromptProcess cp action = do
+    (mIn, mOut, mErr, ph) <- createProcess cp
+    case (mIn, mOut, mErr) of
+        (Just stdinH, Just stdoutH, Just stderrH) ->
+            action stdoutH ph `finally` do
+                hClose stdinH `catch` \(_ :: SomeException) -> pure ()
+                hClose stdoutH `catch` \(_ :: SomeException) -> pure ()
+                hClose stderrH `catch` \(_ :: SomeException) -> pure ()
+                terminateProcess ph `catch` \(_ :: SomeException) -> pure ()
+                _ <- waitForProcess ph `catch` \(_ :: SomeException) -> pure ExitSuccess
+                pure ()
+        _ -> pure False
+
+readUntilContains :: Handle -> String -> Int -> IO String
+readUntilContains h needle micros = do
+    result <- timeout micros (loop "")
+    pure (maybe "" id result)
+  where
+    loop acc
+        | needle `isInfixOf` acc = pure acc
+        | otherwise = do
+            ready <- hWaitForInput h 100
+            if ready
+                then do
+                    ch <- hGetChar h
+                    loop (acc ++ [ch])
+                else loop acc
+
+parseStartupListenPort :: String -> Maybe Int
+parseStartupListenPort output = do
+    line <- find ("  Network: starting tcp listener on " `isPrefixOf`) (lines output)
+    rest <- stripPrefix "  Network: starting tcp listener on " line
+    case words rest of
+        (portText:_) ->
+            case reads portText of
+                [(port, "")] -> Just port
+                _ -> Nothing
+        _ -> Nothing
+
+listenerAppearsBeforePrompt :: String -> Bool
+listenerAppearsBeforePrompt output =
+    case (findIndexOf "  Network: starting tcp listener on " output,
+          findIndexOf "Enable persistent storage?" output) of
+        (Just listenerIx, Just promptIx) -> listenerIx < promptIx
+        _ -> False
+
+findIndexOf :: String -> String -> Maybe Int
+findIndexOf needle = go 0
+  where
+    go _ [] = if null needle then Just 0 else Nothing
+    go ix rest
+        | needle `isPrefixOf` rest = Just ix
+        | otherwise =
+            case rest of
+                (_:xs) -> go (ix + 1) xs
+                [] -> Nothing
+
+canConnectLocalListener :: Int -> IO Bool
+canConnectLocalListener port = do
+    let hints = NS.defaultHints
+            { NS.addrSocketType = NS.Stream
+            , NS.addrFamily = NS.AF_INET
+            }
+    addrs <- NS.getAddrInfo (Just hints) (Just "127.0.0.1") (Just (show port))
+    case addrs of
+        [] -> pure False
+        (addr:_) -> do
+            sock <- NS.openSocket addr
+            result <- ((timeout (2 * 1000000) (NS.connect sock (NS.addrAddress addr)))
+                `catch` \(_ :: SomeException) -> pure Nothing)
+            NS.close sock `catch` \(_ :: SomeException) -> pure ()
+            pure (result == Just ())
 
 locateUmbravoxBinary :: IO FilePath
 locateUmbravoxBinary = do
