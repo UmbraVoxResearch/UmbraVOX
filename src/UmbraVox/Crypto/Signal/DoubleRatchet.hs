@@ -20,12 +20,13 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-import Data.Word (Word32)
+import Data.Word (Word32, Word64)
 
 import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
 import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
 import UmbraVox.Crypto.HKDF (hkdfExtract, hkdfExpand)
 import UmbraVox.Crypto.HMAC (hmacSHA256)
+import UmbraVox.Crypto.Random (randomBytes)
 
 ------------------------------------------------------------------------
 -- Types
@@ -51,6 +52,12 @@ data RatchetState = RatchetState
       -- ^ Previous sending chain length (sent in header)
     , rsSkippedKeys :: !(Map (ByteString, Word32) ByteString)
       -- ^ Skipped message keys indexed by (DH public key, counter)
+    , rsNonceCounter :: !Word64
+      -- ^ Monotonic counter incremented on every encrypt, for auditing.
+      -- Note: nonce uniqueness is already guaranteed by the chain ratchet —
+      -- each msgKey is derived from a unique chain key via kdfCK and is used
+      -- exactly once, so the 8-byte HMAC prefix in makeNonce is unique per
+      -- message.  This counter exists for monitoring / replay detection only.
     } deriving stock (Show, Eq)
 
 -- | Header attached to each ratchet message.
@@ -145,7 +152,8 @@ ratchetInitAlice sharedSecret bobSPK aliceDHSecret =
         , rsSendN       = 0
         , rsRecvN       = 0
         , rsPrevChainN  = 0
-        , rsSkippedKeys = Map.empty
+        , rsSkippedKeys  = Map.empty
+        , rsNonceCounter = 0
         }
 
 -- | Initialize Double Ratchet state for Bob (the responder).
@@ -167,7 +175,8 @@ ratchetInitBob sharedSecret bobSPKSecret =
         , rsSendN       = 0
         , rsRecvN       = 0
         , rsPrevChainN  = 0
-        , rsSkippedKeys = Map.empty
+        , rsSkippedKeys  = Map.empty
+        , rsNonceCounter = 0
         }
 
 ------------------------------------------------------------------------
@@ -177,9 +186,11 @@ ratchetInitBob sharedSecret bobSPKSecret =
 -- | Encrypt a plaintext message, advancing the sending ratchet.
 --
 -- Returns the updated state, header, ciphertext, and 16-byte GCM tag.
+-- Runs in IO because the DH ratchet step (triggered on decrypt) requires
+-- CSPRNG-generated ephemeral keys.
 ratchetEncrypt :: RatchetState
                -> ByteString          -- ^ Plaintext
-               -> (RatchetState, RatchetHeader, ByteString, ByteString)
+               -> IO (RatchetState, RatchetHeader, ByteString, ByteString)
 ratchetEncrypt st plaintext =
     let -- Derive message key from sending chain
         !(newChainKey, msgKey) = kdfCK (rsSendChain st)
@@ -196,33 +207,35 @@ ratchetEncrypt st plaintext =
         !(ct, tag) = gcmEncrypt msgKey nonce aad plaintext
         -- Update state
         !st' = st
-            { rsSendChain = newChainKey
-            , rsSendN     = rsSendN st + 1
+            { rsSendChain    = newChainKey
+            , rsSendN        = rsSendN st + 1
+            , rsNonceCounter = rsNonceCounter st + 1
             }
-    in (st', header, ct, tag)
+    in pure (st', header, ct, tag)
 
 ------------------------------------------------------------------------
 -- Decryption
 ------------------------------------------------------------------------
 
 -- | Decrypt a received message. Returns Nothing if authentication fails.
+-- Runs in IO because a DH ratchet step may generate a new keypair via CSPRNG.
 ratchetDecrypt :: RatchetState
                -> RatchetHeader       -- ^ Message header
                -> ByteString          -- ^ Ciphertext
                -> ByteString          -- ^ GCM tag (16 bytes)
-               -> Maybe (RatchetState, ByteString)
+               -> IO (Maybe (RatchetState, ByteString))
 ratchetDecrypt st header ct tag =
     -- Try skipped keys first
     case trySkippedKeys st header ct tag of
-        Just result -> Just result
-        Nothing ->
+        Just result -> pure (Just result)
+        Nothing -> do
             -- If header DH key differs from our stored peer key, do DH ratchet
-            let !st1 = case rsDHRecv st of
-                           Nothing    -> dhRatchet st header
-                           Just peer
-                               | rhDHPublic header /= peer -> dhRatchet st header
-                               | otherwise                 -> Just st
-            in case st1 of
+            st1 <- case rsDHRecv st of
+                       Nothing    -> dhRatchet st header
+                       Just peer
+                           | rhDHPublic header /= peer -> dhRatchet st header
+                           | otherwise                 -> pure (Just st)
+            pure $ case st1 of
                 Nothing -> Nothing  -- Too many skipped keys
                 Just st2 ->
                     -- Skip any missed messages in current receiving chain
@@ -247,12 +260,13 @@ ratchetDecrypt st header ct tag =
 ------------------------------------------------------------------------
 
 -- | Perform a DH ratchet step when receiving a new peer DH public key.
-dhRatchet :: RatchetState -> RatchetHeader -> Maybe RatchetState
+-- Uses CSPRNG to generate ephemeral DH keypairs for break-in recovery.
+dhRatchet :: RatchetState -> RatchetHeader -> IO (Maybe RatchetState)
 dhRatchet st header =
     -- Skip any remaining messages in old receiving chain
     case skipMessageKeys st (rhPrevChainN header) of
-        Nothing -> Nothing
-        Just st1 ->
+        Nothing -> pure Nothing
+        Just st1 -> do
             let -- Store the previous chain length
                 !st2 = st1
                     { rsPrevChainN = rsSendN st1
@@ -266,21 +280,13 @@ dhRatchet st header =
                     Nothing -> error "dhRatchet: impossible: rsDHRecv is Nothing after assignment"
                 !dhOutput1 = dh (rsDHSend st2) peerPub
                 !(rootKey1, recvChain) = kdfRK (rsRootKey st2) dhOutput1
-                -- Generate new sending keypair
-                -- TEMPORARY (IMPL-002): DH secret is derived deterministically
-                -- from the root key because randomBytes / CSPRNG is not yet
-                -- implemented.  This deterministic derivation still provides
-                -- forward secrecy within the session (each step's keys are
-                -- deleted), but does NOT provide break-in recovery: an
-                -- attacker who compromises the current root key can predict
-                -- all future DH keypairs.  Production MUST replace this with
-                -- CSPRNG-generated ephemeral keys (see IMPL-002).
-                !newDHSecret = hmacSHA256 rootKey1 (snd (rsDHSend st2))
-                !newDHKP = generateDH newDHSecret
+            -- Generate new sending keypair from CSPRNG
+            newDHSecret <- randomBytes 32
+            let !newDHKP = generateDH newDHSecret
                 -- Derive new sending chain
                 !dhOutput2 = dh newDHKP peerPub
                 !(rootKey2, sendChain) = kdfRK rootKey1 dhOutput2
-            in Just st2
+            pure $ Just st2
                 { rsDHSend    = newDHKP
                 , rsRootKey   = rootKey2
                 , rsSendChain = sendChain
