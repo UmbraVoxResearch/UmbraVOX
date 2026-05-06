@@ -14,7 +14,6 @@ import UmbraVox.TUI.Render (getTermSize, clampSize, calcLayout, clearScreen,
 import UmbraVox.TUI.Input (eventLoop)
 import UmbraVox.TUI.RuntimeNetwork (startListenerIfNeeded)
 import UmbraVox.TUI.RuntimeSettings (restartMDNS)
-import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 import UmbraVox.App.Startup
     ( newDefaultAppConfig, initializeLocalIdentity, applyPersistenceAnswer
     , resolvePersistencePreference, persistenceAnswerEnables

@@ -5,6 +5,7 @@ module Test.TUI.Sim.Menu (runTests) where
 import Data.IORef (readIORef, writeIORef)
 import Test.Util (assertEq)
 import Test.TUI.Sim.Util
+import UmbraVox.TUI.Actions (startBrowse)
 import UmbraVox.TUI.Dialog (browseOverlayLines, overlayBounds, settingsOverlayLines)
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Menu (handleMenu, toggleMenu, openMenu, executeMenuItem)
@@ -277,16 +278,16 @@ testMouseClickBrowsePeerSelection :: IO Bool
 testMouseClickBrowsePeerSelection = do
     st <- mkTestState
     seedBrowsePeers st 1
+    startBrowse st
     lines' <- browseOverlayLines st
-    let peerLine = findLinePrefix "  0. peer-0" lines'
-        (r0, c0, _, _) = overlayBounds calcTestLayout (length lines')
-    writeIORef (asDialogMode st) (Just DlgBrowse)
-    handleNormal st (KeyMouseLeft (r0 + peerLine + 1) (c0 + 3))
+    let (r0, c0, _, _) = overlayBounds calcTestLayout (length lines')
+        firstPeerContentLine = 5
+    handleNormal st (KeyMouseLeft (r0 + 1 + firstPeerContentLine) (c0 + 4))
     dlg <- readIORef (asDialogMode st)
     status <- readIORef (asStatusMsg st)
     ok1 <- assertEq "mouse click browse peer closes dialog" True (isDlgNothing dlg)
     ok2 <- assertEq "mouse click browse peer starts connect" True
-        ("Connecting to 127.0.0.1:3000" `prefixOf` status)
+        ("Connecting via tcp to 127.0.0.1:3000" `prefixOf` status)
     pure (ok1 && ok2)
 
 testMouseClickSettingsOption :: IO Bool
@@ -311,12 +312,4 @@ findLineIndex needle = go 0
     go _ [] = 0
     go n (line:rest)
         | line == needle = n
-        | otherwise = go (n + 1) rest
-
-findLinePrefix :: String -> [String] -> Int
-findLinePrefix needle = go 0
-  where
-    go _ [] = 0
-    go n (line:rest)
-        | prefixOf needle line = n
         | otherwise = go (n + 1) rest
