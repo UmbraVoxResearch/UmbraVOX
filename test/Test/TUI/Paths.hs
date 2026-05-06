@@ -8,8 +8,10 @@ import qualified Test.TUI.Sim.Focus as Focus
 import qualified Test.TUI.Sim.Shortcuts as Shortcuts
 import qualified Test.TUI.Sim.Menu as Menu
 import qualified Test.TUI.Sim.Dialogs as Dialogs
+import qualified Test.TUI.Sim.SettingsEdge as SettingsEdge
 import qualified Test.TUI.Sim.Workflows as Workflows
 import qualified Test.TUI.Sim.Runtime as Runtime
+import qualified Test.TUI.Sim.MessageFlow as MessageFlow
 
 runTests :: IO Bool
 runTests = do
@@ -20,7 +22,9 @@ runTests = do
     f <- Focus.runTests;     putStrLn ""
     s <- Shortcuts.runTests; putStrLn ""
     m <- Menu.runTests;      putStrLn ""
-    d <- Dialogs.runTests;   putStrLn ""
-    w <- Workflows.runTests; putStrLn ""
-    r <- Runtime.runTests
-    pure (c && h && f && s && m && d && w && r)
+    d <- Dialogs.runTests;       putStrLn ""
+    se <- SettingsEdge.runTests; putStrLn ""
+    w <- Workflows.runTests;     putStrLn ""
+    r <- Runtime.runTests;       putStrLn ""
+    mf <- MessageFlow.runTests
+    pure (c && h && f && s && m && d && se && w && r && mf)
