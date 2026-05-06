@@ -34,7 +34,7 @@ incr32 :: ByteString -> ByteString
 incr32 !cb =
     let !prefix = BS.take 12 cb
         !ctr    = getW32 cb 12
-    in prefix <> putW32 (ctr + 1)
+    in prefix <> putW32 ((ctr + 1) .&. 0xffffffff)
   where
     getW32 bs i =
         (fromIntegral (BS.index bs i) `shiftL` 24) .|.

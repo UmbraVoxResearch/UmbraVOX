@@ -556,11 +556,74 @@ DOCUMENTATION & EVIDENCE
 [ ] D.11 test/coverage/codegen/               — Generator coverage
 
 ================================================================================
+BUGS FOUND BY CRYPTO REVIEW (2026-04-24)
+================================================================================
+
+[x] BUG-001 invNTT butterfly sign error in ML-KEM-768 (CRITICAL — FIXED)
+  FIPS 203 Algorithm 10: f[j+len] = zeta*(f[j+len]-f[j])
+  Was incorrectly: zeta*(f[j]-f[j+len]). Masked by SHA-256 substitutes,
+  exposed by SHA-3/SHAKE integration. Fixed in commit 5ab1f89.
+
+[x] BUG-002 HKDF-Expand dead code condition (FIXED)
+  hkdfExpand line 60: BS.length (BS.concat []) >= 0 && counter > n
+  Nonsensical always-true clause. Simplified to: counter > n.
+
+[x] BUG-003 GCM incr32 counter wrap at 2^32 (FIXED)
+  Counter used Word64 arithmetic without 32-bit mask.
+  Added .&. 0xffffffff to match SP 800-38D 32-bit counter semantics.
+
+[ ] BUG-004 Double Ratchet: use Maybe for uninitialized rsDHRecv
+  Currently uses BS.empty sentinel. Should use Maybe ByteString
+  for type safety. File: Signal/DoubleRatchet.hs line 163.
+
+[ ] BUG-005 Double Ratchet: skipMessageKeys eviction policy
+  Evicts only one key when map exceeds maxSkip (1000).
+  Should implement "older than 500 steps" eviction per spec.
+  File: Signal/DoubleRatchet.hs lines 314-317.
+
+[ ] BUG-006 Consensus Block.hs: incomplete BlockHeader
+  Missing 6 required fields: bhBlockNo, bhIssuerVK, bhVRFProof,
+  bhVRFOutput, bhSignature, bhHeartbeat. File: Consensus/Block.hs.
+
+[ ] BUG-007 Consensus LeaderElection.hs: wrong type signature
+  Takes ByteString -> Word64 -> Bool. Should take stake ratio,
+  VRF output, and active slot coefficient. Missing 128-bit
+  fixed-point (64.64) arithmetic for threshold computation.
+
+================================================================================
+MISSING F* SPECIFICATIONS (2026-04-24)
+================================================================================
+
+[ ] FSTAR-001 Write Spec.Keccak.fst (FIPS 202) — SHA-3/SHAKE
+[ ] FSTAR-002 Write Spec.MLKEM768.fst (FIPS 203) — ML-KEM-768
+[ ] FSTAR-003 Write Spec.VRF.fst (RFC 9381) — ECVRF-ED25519-SHA512
+
+================================================================================
+MISSING IMPLEMENTATIONS (2026-04-24)
+================================================================================
+
+[ ] IMPL-001 VRF: full RFC 9381 implementation (Elligator2, DLEQ proofs,
+    cofactor handling, output derivation). Currently stub only.
+
+[ ] IMPL-002 CSPRNG: stateful wrapper around ChaCha20 (entropy sourcing
+    from /dev/urandom, reseed every 2^20 outputs, fork safety via PID,
+    VM clone detection). ChaCha20 core is correct.
+
+[ ] IMPL-003 Code generators: CryptoGen/FSMGen/CBORGen/TestGen all 90-100%
+    TODO. Parsers work, but no code generation implemented.
+    codegen/Specs/ directory is empty — no spec files created.
+
+================================================================================
 IMMEDIATE NEXT ACTIONS
 ================================================================================
 
-[ ] Create UmbraVox.cabal
-[ ] Create full directory structure
-[ ] Create app/Main.hs stub
-[ ] Begin codegen/CryptoGen.hs — spec DSL parser
-[ ] Write first .spec file (SHA256.spec from FIPS 180-4)
+[x] Complete FIPS 202: add SHA3-224, SHA3-384 to Keccak module
+[x] Complete FIPS 203: integrate SHA-3/SHAKE into ML-KEM-768
+[x] Fix invNTT butterfly sign bug
+[x] Fix HKDF dead code condition
+[x] Fix GCM counter wrap
+[ ] Write F* spec for Keccak/SHA-3 (Spec.Keccak.fst)
+[ ] Write F* spec for ML-KEM-768 (Spec.MLKEM768.fst)
+[ ] Implement VRF (RFC 9381) — blocks consensus Phase 3
+[ ] Implement CSPRNG wrapper — blocks Dandelion++ Phase 5
+[ ] Begin codegen implementation — spec→Haskell code generation
