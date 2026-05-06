@@ -160,44 +160,70 @@ handleSettingsDlg st (KeyChar '2') = do
     writeIORef (asDialogBuf st) ""
     writeIORef (asDialogMode st) (Just (DlgPrompt "Set Display Name" $ \val ->
         unless (null val) $ writeIORef (cfgDisplayName (asConfig st)) val))
+handleSettingsDlg st (KeyChar '3') =
+    modifyIORef' (cfgMDNSEnabled (asConfig st)) not
+handleSettingsDlg st (KeyChar '4') =
+    modifyIORef' (cfgPEXEnabled (asConfig st)) not
+handleSettingsDlg st (KeyChar '5') =
+    modifyIORef' (cfgDBEnabled (asConfig st)) not
+handleSettingsDlg st (KeyChar '6') = do
+    writeIORef (asDialogBuf st) ""
+    writeIORef (asDialogMode st) (Just (DlgPrompt "Set DB Path" $ \val ->
+        unless (null val) $ writeIORef (cfgDBPath (asConfig st)) val))
+handleSettingsDlg st (KeyChar '7') =
+    writeIORef (asDialogMode st) (Just DlgKeys)
 handleSettingsDlg st _ = writeIORef (asDialogMode st) Nothing
 
 handleNewConnDlg :: AppState -> InputEvent -> IO ()
+-- 1 = Private (secure notes, local only)
 handleNewConnDlg st (KeyChar '1') = do
-    writeIORef (asDialogBuf st) ""
-    writeIORef (asDialogMode st) (Just (DlgPrompt "Connect (host:port)" $ \val -> do
-        let (host, portStr) = break (==':') val
-            port = if null portStr then 9999 else read (drop 1 portStr) :: Int
-            h = if null host then "127.0.0.1" else host
-        setStatus st ("Connecting to " ++ h ++ ":" ++ show port ++ "...")
-        void $ forkIO $ (do
-            t <- connect h port
-            session <- handshakeInitiator t
-            sid <- addSession (asConfig st) t session (h ++ ":" ++ show port)
-            selectLast st; setStatus st ("Connected #" ++ show sid)
-            ) `catch` (\(e::SomeException) -> setStatus st ("Failed: "++show e))
-        ))
+    writeIORef (asDialogMode st) Nothing
+    addSecureNotes st
+-- 2 = Single (connect to one peer via host:port or listen)
 handleNewConnDlg st (KeyChar '2') = do
-    writeIORef (asDialogMode st) Nothing
-    port <- readIORef (cfgListenPort (asConfig st))
-    setStatus st ("Listening on " ++ show port ++ "...")
-    void $ forkIO $ (do
-        t <- listen port; session <- handshakeResponder t
-        sid <- addSession (asConfig st) t session ("peer:"++show port)
-        selectLast st; setStatus st ("Session #" ++ show sid ++ " established")
-        ) `catch` (\(e::SomeException) -> setStatus st ("Failed: "++show e))
+    writeIORef (asDialogBuf st) ""
+    writeIORef (asDialogMode st) (Just (DlgPrompt "host:port (or 'listen')" $ \val ->
+        if val == "listen" then do
+            port <- readIORef (cfgListenPort (asConfig st))
+            setStatus st ("Listening on " ++ show port ++ "...")
+            void $ forkIO $ (do
+                t <- listen port; session <- handshakeResponder t
+                sid <- addSession (asConfig st) t session ("peer:" ++ show port)
+                selectLast st; setStatus st ("Session #" ++ show sid)
+                ) `catch` (\(e::SomeException) -> setStatus st ("Failed: "++show e))
+        else do
+            let (host, portStr) = break (==':') val
+                port = if null portStr then 9999 else read (drop 1 portStr) :: Int
+                h = if null host then "127.0.0.1" else host
+            setStatus st ("Connecting to " ++ h ++ ":" ++ show port ++ "...")
+            void $ forkIO $ (do
+                t <- connect h port; session <- handshakeInitiator t
+                sid <- addSession (asConfig st) t session (h ++ ":" ++ show port)
+                selectLast st; setStatus st ("Connected #" ++ show sid)
+                ) `catch` (\(e::SomeException) -> setStatus st ("Failed: "++show e))
+        ))
+-- 3 = Group (multiple peers)
 handleNewConnDlg st (KeyChar '3') = do
-    writeIORef (asDialogMode st) Nothing
-    setStatus st "Starting loopback..."
-    void $ forkIO $ (do
-        let port = 19999
-        void $ forkIO $ do
-            tS <- listen port; sB <- handshakeResponder tS
-            rB <- newIORef sB; hB <- newIORef []
-            recvLoopTUI tS rB hB
-        threadDelay 500000
-        tC <- connect "127.0.0.1" port; sA <- handshakeInitiator tC
-        sid <- addSession (asConfig st) tC sA ("loopback:"++show port)
-        selectLast st; setStatus st ("Loopback #" ++ show sid ++ " ready")
-        ) `catch` (\(e::SomeException) -> setStatus st ("Failed: "++show e))
+    writeIORef (asDialogBuf st) ""
+    writeIORef (asDialogMode st) (Just (DlgPrompt "Group: host:port (comma-separated)" $ \val -> do
+        let peers = filter (not . null) $ splitOn ',' val
+        setStatus st ("Connecting to " ++ show (length peers) ++ " peers...")
+        void $ forkIO $ mapM_ (\p -> (do
+            let (host, portStr) = break (==':') (strip' p)
+                port = if null portStr then 9999 else read (drop 1 portStr) :: Int
+                h = if null host then "127.0.0.1" else host
+            t <- connect h port; session <- handshakeInitiator t
+            void $ addSession (asConfig st) t session (h ++ ":" ++ show port)
+            ) `catch` (\(e::SomeException) -> setStatus st ("Failed: "++show e))
+            ) peers
+        selectLast st; setStatus st ("Group with " ++ show (length peers) ++ " peers")
+        ))
 handleNewConnDlg st _ = writeIORef (asDialogMode st) Nothing
+
+splitOn :: Char -> String -> [String]
+splitOn _ [] = []
+splitOn c s = let (w, rest) = break (== c) s
+              in w : case rest of { [] -> []; (_:r) -> splitOn c r }
+
+strip' :: String -> String
+strip' = dropWhile (== ' ')

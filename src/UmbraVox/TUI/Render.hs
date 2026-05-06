@@ -260,10 +260,12 @@ renderHelpOverlay lay = showOverlay lay "Help - UmbraVOX"
     , "", "Press Esc to close" ]
 
 renderNewConnOverlay :: Layout -> IO ()
-renderNewConnOverlay lay = showOverlay lay "New Connection"
-    ["1. Connect to peer (enter host:port)"
-    ,"2. Listen for peer"
-    ,"3. Loopback test (self)", "", "Press 1/2/3, Esc to cancel"]
+renderNewConnOverlay lay = showOverlay lay "New Conversation"
+    [" 1. Private (secure notes, local only)"
+    ," 2. Single  (connect to one peer)"
+    ," 3. Group   (connect to multiple peers)"
+    ,""
+    ," Press 1/2/3, Esc to cancel"]
 
 renderVerifyOverlay :: Layout -> AppState -> IO ()
 renderVerifyOverlay lay st = do
@@ -292,12 +294,30 @@ renderVerifyOverlay lay st = do
 
 renderSettingsOverlay :: Layout -> AppState -> IO ()
 renderSettingsOverlay lay st = do
-    port <- readIORef (cfgListenPort (asConfig st))
-    name <- readIORef (cfgDisplayName (asConfig st))
-    showOverlay lay "Settings"
-        [ "1. Listen port: " ++ show port
-        , "2. Display name: " ++ name, ""
-        , "Press 1/2 to change, Esc to close" ]
+    port   <- readIORef (cfgListenPort (asConfig st))
+    name   <- readIORef (cfgDisplayName (asConfig st))
+    mdns   <- readIORef (cfgMDNSEnabled (asConfig st))
+    pex    <- readIORef (cfgPEXEnabled (asConfig st))
+    db     <- readIORef (cfgDBEnabled (asConfig st))
+    dbPath <- readIORef (cfgDBPath (asConfig st))
+    let tf True = "ON"; tf False = "OFF"
+    showOverlay lay "Preferences"
+        [ " General"
+        , "   1. Listen port:    " ++ show port
+        , "   2. Display name:   " ++ name
+        , ""
+        , " Discovery"
+        , "   3. mDNS (LAN):    [" ++ tf mdns ++ "]"
+        , "   4. Peer Exchange: [" ++ tf pex ++ "]"
+        , ""
+        , " Storage"
+        , "   5. Persistence:   [" ++ tf db ++ "]"
+        , "   6. DB path:       " ++ dbPath
+        , ""
+        , " Identity"
+        , "   7. View/regenerate keys"
+        , ""
+        , " Press 1-7 to change, Esc to close" ]
 
 renderKeysOverlay :: Layout -> AppState -> IO ()
 renderKeysOverlay lay st = do
