@@ -614,9 +614,8 @@ findIndexOf needle = go 0
     go ix rest
         | needle `isPrefixOf` rest = Just ix
         | otherwise =
-            case rest of
-                (_:xs) -> go (ix + 1) xs
-                [] -> Nothing
+            let (_:xs) = rest
+            in go (ix + 1) xs
 
 canConnectLocalListener :: Int -> IO Bool
 canConnectLocalListener port = do
