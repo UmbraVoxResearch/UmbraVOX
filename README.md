@@ -1,38 +1,95 @@
 # UmbraVox
 
-A decentralized communications research project and technical manuscript.
+A decentralized, post-quantum encrypted messaging system.
 
-UmbraVox is a protocol design, writing project, and reference implementation effort focused on censorship resistance, privacy-preserving communication, and durable freedom of thought and expression in the digital age.
+UmbraVox is a peer-to-peer encrypted chat application where each participant runs a full node. It combines end-to-end encryption using the Signal protocol with a post-quantum protective layer (ML-KEM-768), Noise_IK transport security, and mDNS peer discovery on local networks.
 
-This repository is published as both a technical artifact and an expressive work.
+## Current Status
 
-## Overview
+**MVP functional.** Two clients can exchange post-quantum encrypted messages over TCP with Noise_IK transport security and Signal Double Ratchet + ML-KEM-768 encryption.
 
-UmbraVox proposes a decentralized communications system in which participants operate peer nodes rather than relying on centralized service providers. The design combines end-to-end encryption, post-quantum protective layers, network-level origin obfuscation, and short-lived ledger retention to study how lawful private communication systems may be described, analyzed, and implemented in modern computing environments.
+| Metric | Value |
+|--------|-------|
+| Tests | 1,082 across 70+ test modules |
+| F* formal specifications | 17 (all verified) |
+| Codegen spec files | 10 generating 30 Haskell + C + FFI outputs |
+| Transport backends | TCP, Loopback (functional); UDP, Signal, XMPP, Discord, Matrix, Blockchain (stubs) |
 
-This repository is part technical specification and part expressive work. It is intended to function simultaneously as:
+### Implemented Features
 
-- a written argument
-- a systems design
-- a reference architecture
-- a proof-oriented software artifact
-- the foundation for a longer book-length treatment of the subject
+- **TUI**: Split-pane terminal interface with F1-F5 menu system (File, Contacts, Chat, Prefs, Help)
+- **E2E encryption**: Signal Double Ratchet with PQXDH key agreement (X3DH + ML-KEM-768)
+- **Post-quantum wrapper**: AES-256-GCM with ML-KEM-768-derived keys over Signal ciphertext
+- **Transport security**: Noise_IK handshake (X25519 + ChaChaPoly1305)
+- **Discovery**: mDNS/DNS-SD LAN auto-discovery + peer exchange protocol
+- **Persistence**: Anthony DB for peers, settings, conversations, and message history
+- **Identity export**: Encrypted identity exports with BIP39 passphrases
+- **Modular transport**: Pluggable transport abstraction (`TransportClass`) with multiple backends
+- **Codegen pipeline**: 10 `.spec` files drive generation of pure Haskell, constant-time C, and FFI bindings
+- **Formal verification**: 17 F* specifications covering all cryptographic primitives and protocols
 
-## Preface
+### Key Modules
 
-Hello everyone,
+```
+src/UmbraVox/
+  Crypto/          Cryptographic primitives (SHA-256/512, AES-GCM, X25519,
+                   Ed25519, ML-KEM-768, Keccak/SHA-3, Poly1305, HKDF, VRF)
+  Crypto/Signal/   Signal protocol (X3DH, PQXDH, Double Ratchet, SenderKeys, Session)
+  Network/         Transport (TCP, Loopback, stubs), Noise_IK, MDNS, PeerExchange,
+                   PeerManager, Gossip, Dandelion, Protocol, Sync
+  Chat/            Session management, Wire format, Message, Contacts, API
+  Storage/         Anthony DB, ChainDB, StateDB, Index, Checkpoint, Schema
+  Protocol/        Encoding, CBOR framing, QRCode, MessageFormat, WireFormat
+  TUI/             Terminal UI (Types, Constants, Terminal, Layout, Render,
+                   Dialog, Menu, Input, Actions, Handshake)
+  Economics/       Token model, Fees, Rewards, Penalty, Cycle, Onboarding (stubs)
+  Consensus/       Block, Ledger, Protocol, LeaderElection, Validation,
+                   ForkChoice, Nonce, Truncation, Mempool (stubs)
+  Tools/           Complexity checker, F* verifier, Reference fetcher
+```
 
-I would like to announce the beginning of a new project.
+## Build Instructions
 
-For too long, coercion against freedom of conscience, freedom of inquiry, and freedom of expression has been tolerated in one form or another throughout human history. What is at stake is not merely secrecy for its own sake, but the preservation of one of mankind’s most important endowments: the freedom of self-direction in thought, belief, communication, and association.
+UmbraVox builds with GHC and Cabal inside a Nix shell. Only GHC boot libraries are used as dependencies (no third-party crypto libraries).
 
-Across time, religious, philosophical, and intellectual traditions have developed methods of guarded transmission to preserve meaning under conditions of hostility, censorship, persecution, or institutional corruption. These methods have taken many forms, including symbolic language, restricted commentary, encoded notation, disciplined oral transmission, and other practices intended to preserve truth, protect communities, and maintain continuity across generations.
+```bash
+# Enter the development environment
+nix-shell
 
-UmbraVox is an attempt to describe a modern technical analogue to that broader human tradition. Just as texts were once preserved in caves, monasteries, remote communities, and hidden archives, this work explores whether cryptography, distributed systems, and formally reasoned software can help preserve lawful private discourse against censorship, mass surveillance, and unjust suppression.
+# Build the project
+cabal build
 
-This project is intended to be the first in a series. Its purpose is not only to describe a system in theory, but also to present a reference implementation strategy and a body of reasoning expressed through computer science, mathematics, and software construction. In that sense, UmbraVox is meant to be both descriptive and demonstrative: a technical manuscript, a design proposal, and an implementation-oriented proof artifact.
+# Run the test suite
+cabal test
 
-It is offered in the spirit of intellectual liberty, freedom of conscience, scientific inquiry, and the enduring right of human beings to preserve and share ideas without unjust interference.
+# Run the application
+cabal run umbravox
+```
+
+Additional build targets:
+
+```bash
+# Run F* formal verification (requires F* and Z3)
+make verify
+
+# Check cyclomatic complexity
+make complexity
+
+# Run all quality gates
+make quality
+```
+
+## Encryption Pipeline
+
+Each message passes through multiple encryption layers:
+
+```
+Plaintext
+  |-> Signal Double Ratchet encrypt (AES-256-GCM + HMAC-SHA256)
+  |-> PQ Outer Wrapper encrypt (ML-KEM-768 derived key -> AES-256-GCM)
+  |-> Noise_IK transport encryption (X25519 + ChaChaPoly1305)
+  |-> TCP transmission
+```
 
 ## Expression and Legal Notice
 
@@ -49,101 +106,6 @@ Accordingly:
 
 If you reduce any portion of this work to practice in executable form, distribute binaries, provide hosted services, or operate derived systems in the real world, you are responsible for determining and satisfying all legal, regulatory, licensing, and compliance obligations that apply where you live or operate.
 
-## What UmbraVox Is
-
-UmbraVox is a proposed decentralized chat and communications protocol in which each participant runs a full node. The system is designed around the following research goals:
-
-- end-to-end confidentiality
-- forward secrecy and post-compromise resilience
-- post-quantum protective wrapping
-- resistance to centralized censorship
-- resistance to long-term mass retention
-- network-level sender obfuscation
-- formal reasoning about system behavior
-- minimal dependency assumptions in the reference implementation
-
-## Key Properties
-
-- **End-to-end encrypted**: Signal Double Ratchet with an ML-KEM-768 post-quantum outer layer
-- **Decentralized**: No central servers; consensus is maintained among participating nodes
-- **Ephemeral by design**: 11-day chain truncation minimizes long-term message retention at the protocol level
-- **Deniable**: Message content is designed without asymmetric signatures on payload content, preserving deniability properties
-- **Spam-resistant**: Token-based participation costs and rewards help regulate abuse
-- **Self-renewing**: Each 11-day cycle restores full token supply under the current economic model
-- **IP-obfuscating**: Dandelion++ style propagation for on-chain messages and Noise_IK encrypted direct P2P sessions reduce origin-linkability
-- **Self-contained reference approach**: Pure Haskell verification-oriented implementations with FFI into constant-time C for production targets, avoiding third-party library dependency assumptions in core design goals
-
-## Dual-Mode Architecture
-
-UmbraVox supports two transport modes:
-
-- **On-chain (primary)**: Messages are broadcast via Dandelion++ and included in blocks. Provides strong censorship resistance with full metadata protection (stealth addresses, encrypted headers, fixed fees, uniform blocks). Propagation latency: ~370-530ms; block confirmation: ~55 seconds average.
-- **Direct P2P (preserved)**: Established Signal sessions can exchange messages directly over TCP + Noise_IK. Provides low latency (~50-150ms) but weaker censorship resistance. IP visible to peer unless using Tor.
-
-## Documentation
-
-All major design documentation lives in [`doc/`](doc/):
-
-| Document | Description |
-|----------|-------------|
-| [01 - Overview](doc/01-overview.md) | System overview, architecture, encryption pipeline |
-| [02 - Language & Structure](doc/02-language-and-structure.md) | Haskell, project layout, no-external-libraries constraint |
-| [03 - Cryptography](doc/03-cryptography.md) | Primitives, Signal protocol, post-quantum wrapper, key registry |
-| [04 - Consensus](doc/04-consensus.md) | Ouroboros Praos adaptation, VRF, block structure, stake |
-| [05 - Truncation](doc/05-truncation.md) | 11-day cycle, snapshots, epoch genesis, state transitions |
-| [06 - Economics](doc/06-economics.md) | Token supply, message costs, rewards, penalties, adaptive controller, Universe Cycle model |
-| [07 - Message Format](doc/07-message-format.md) | Message block layout, block capacity (4,444 msgs), CBOR serialization, transaction envelope |
-| [08 - Dandelion++](doc/08-dandelion.md) | IP obfuscation parameters, algorithm, failsafes |
-| [09 - Network](doc/09-network.md) | P2P topology, transport security, discovery, peer scoring |
-| [10 - Security](doc/10-security.md) | Threat model, adversary classes, deniability architecture |
-| [11 - Node Architecture](doc/11-node-architecture.md) | Concurrency, storage layout, resource estimates, API |
-| [12 - Development Phases](doc/12-development-phases.md) | Development roadmap and verification strategy |
-| [20 - Economic Analysis](doc/20-economic-analysis.md) | Universe Cycle economic model analysis |
-
-## Quick Numbers
-
-| Parameter | Value |
-|-----------|-------|
-| Slot duration | 11 seconds |
-| Cycle length | 11 days (22 epochs × 12 hours) |
-| Message block size | ~4.55 MB (4,444 × 1,024 = 4,550,656 bytes per block) |
-| Messages per block | 4,444 |
-| Global throughput | ~80.8 msg/sec (~6.98M/day) |
-| Message cost | Dynamic (10 to 10,000 MTK, EMA-adjusted) |
-| Total supply | 11,000,000,000 MTK (restored each cycle) |
-| Economic model | Universe Cycle |
-| Send-to-display latency | ~370 to 530 ms |
-| Settlement depth | k = 11/22 (message tier ~10 min, value tier ~20 min) |
-| Compact block relay | Enabled (mandatory) |
-| Minimum bandwidth | ~400 KB/s |
-
-## Known Limitations (v1)
-
-- **Steady-state storage**: ~80 GB steady-state storage requirement (commodity SSD territory)
-- **Archival node risk**: Protocol-level truncation does not automatically prevent malicious archival retention
-- **Offline message loss**: Users offline for a full cycle may lose messages permanently
-- **Compression deferred**: Wire-level payload compression is not part of v1
-
-## Current Status
-
-**MVP functional.** Two clients can exchange post-quantum encrypted messages over TCP with Noise_IK transport security and Signal Double Ratchet + ML-KEM-768 encryption.
-
-| Metric | Value |
-|--------|-------|
-| Tests | 238 across 23 suites |
-| F* formal specifications | 17 (all verified) |
-| .spec files | 10 generating 30 Haskell + C + FFI outputs |
-| Transport backends | TCP, Loopback (functional); UDP, Signal, XMPP, Discord, Matrix, Blockchain (stubs) |
-
-### Implemented Features
-
-- **TUI**: Midnight Commander-style split pane interface with resize handling
-- **Discovery**: mDNS/DNS-SD LAN auto-discovery + peer exchange protocol
-- **Persistence**: Anthony DB for peers, settings, and conversations
-- **Identity export**: Encrypted exports with BIP39 passphrases (full 2048-word wordlist)
-- **Modular transport**: Pluggable transport abstraction (`TransportClass`) with multiple backend implementations
-- **Codegen pipeline**: 10 `.spec` files drive generation of pure Haskell, constant-time C, and FFI bindings
-
 ## Security Notice
 
 **THIS SOFTWARE HAS NOT BEEN INDEPENDENTLY PEER-REVIEWED OR AUDITED.**
@@ -154,20 +116,41 @@ communications until an independent security audit has been completed.
 
 Use at your own risk. See [LEGAL-NOTICE.md](LEGAL-NOTICE.md) for full terms.
 
-## Future Development
+## Documentation
 
-- FIPS 140-3 validated encryption modules for use by the Defense Industrial Base
-- Independent third-party security audit of all cryptographic implementations
-
-## Additional Documentation
+All major design documentation lives in [`doc/`](doc/):
 
 | Document | Description |
 |----------|-------------|
-| [Use Cases](doc/use-cases.md) | Usage guide by organization type: churches, schools, fraternal organizations, non-profits, businesses, and public institutions |
+| [01 - Overview](doc/01-overview.md) | System overview and architecture |
+| [02 - Language & Structure](doc/02-language-and-structure.md) | Haskell, project layout, dependency policy |
+| [03 - Cryptography](doc/03-cryptography.md) | Primitives, Signal protocol, post-quantum wrapper |
+| [04 - Consensus](doc/04-consensus.md) | Ouroboros Praos adaptation (design, not yet implemented) |
+| [05 - Truncation](doc/05-truncation.md) | 11-day cycle design (not yet implemented) |
+| [06 - Economics](doc/06-economics.md) | Token economics design (stubs only) |
+| [07 - Message Format](doc/07-message-format.md) | Message block layout, CBOR serialization |
+| [08 - Dandelion++](doc/08-dandelion.md) | IP obfuscation design (not yet implemented) |
+| [09 - Network](doc/09-network.md) | P2P topology, transport security, discovery |
+| [10 - Security](doc/10-security.md) | Threat model, adversary classes, deniability |
+| [11 - Node Architecture](doc/11-node-architecture.md) | Concurrency, storage layout, resource estimates |
+| [12 - Development Phases](doc/12-development-phases.md) | Development roadmap and verification strategy |
+| [ARCHITECTURE](doc/ARCHITECTURE.md) | Module map and codebase structure |
 
-## License
+## Known Limitations
 
-See [LICENSE](LICENSE).
+- Pure Haskell crypto implementations are not constant-time (GHC lazy evaluation, GC). C FFI backends are planned but not yet implemented.
+- No key material zeroing in Haskell (GC limitation). `SecureByteString` with FFI `explicit_bzero` is planned.
+- Consensus, blockchain transport, and token economics modules are stubs/design only.
+- The CSPRNG (`globalCSPRNG`) uses a plain `IORef` and is not thread-safe.
+- No independent security audit has been performed.
+
+## Future Development
+
+- Constant-time C FFI backends for all cryptographic primitives
+- Full consensus implementation (Ouroboros Praos adaptation)
+- On-chain message transport with Dandelion++ IP obfuscation
+- Independent third-party security audit
+- FIPS 140-3 validated encryption modules
 
 ## Compliance Advisory
 
@@ -181,3 +164,7 @@ See [LEGAL-NOTICE.md](LEGAL-NOTICE.md) for detailed legal information
 including export controls, telecommunications, data retention, and token
 economics notices. See [PUBLISHING-NOTE.md](PUBLISHING-NOTE.md) for the
 expressive and research framing of this work.
+
+## License
+
+See [LICENSE](LICENSE).

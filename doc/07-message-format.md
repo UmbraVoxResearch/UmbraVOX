@@ -1,136 +1,100 @@
 # Message Format
 
-## Serialization Convention
+## Implementation Status
 
-All multi-byte integers are big-endian (network byte order). All byte strings are raw (no length prefix in fixed-size fields).
+The wire format for chat messages is implemented in `Chat.Wire`. Protocol-level serialization helpers are in `Protocol.Encoding` and `Protocol.CBOR`. The full 1024-byte block format described in earlier design documents is not yet implemented -- the current wire format is a simplified ratchet-header + ciphertext + tag layout used by the Double Ratchet.
 
-## Single Message Block Layout (1024 bytes)
+## Chat Wire Format (`Chat.Wire`)
+
+On-the-wire message framing: header || ciphertext || GCM tag.
+
+### Constants
+
+```haskell
+headerSize  = 40   -- bytes
+tagSize     = 16   -- bytes (AES-256-GCM authentication tag)
+minWireSize = 56   -- headerSize + tagSize (zero-length ciphertext)
+```
+
+### Header Layout (40 bytes)
 
 | Offset | Size | Field |
 |--------|------|-------|
-| 0 | 1 | version |
-| 1 | 1 | msg_type (bit 7 reserved for compression in v2; must be 0 in v1) |
-| 2 | 20 | sender_id — SHA-256(Ed25519_pubkey)[0..20], 20-byte truncated hash of sender's identity public key |
-| 22 | 20 | recipient_id — SHA-256(Ed25519_pubkey)[0..20], 20-byte truncated hash of recipient's identity public key |
-| 42 | 6 | timestamp (48-bit ms since epoch) |
-| 48 | 2 | sequence_num |
-| 50 | 8 | message_id (truncated SHA-256) |
-| 58 | 32 | Signal ratchet pubkey — sender's current ephemeral X25519 DH ratchet public key; used by recipient to advance their receiving chain |
-| 90 | 4 | prev_chain_length — number of messages sent on the previous sending chain before the DH ratchet step; used by recipient to compute skipped message keys |
-| 94 | 4 | msg_number |
-| 98 | 4 | signal_session_tag |
-| 102 | 4 | reserved — reserved for future protocol extensions (e.g., group messaging flags, priority hints); must be set to 0x00 in v1; receivers must ignore non-zero values for forward compatibility |
-| 106 | 12 | PQ wrapper nonce |
-| 118 | 16 | PQ wrapper GCM auth tag |
-| 134 | 2 | total_blocks |
-| 136 | 2 | block_index |
-| 138 | 2 | payload_length |
-| 140 | 798 | payload (encrypted content) |
-| 938 | 32 | HMAC-SHA256 — keyed with HKDF-Expand(message_key, info="UmbraVox_HMAC_v1", length=32); separate from encryption key to prevent key reuse |
-| 970 | 54 | padding (random) |
+| 0 | 32 | DH public key -- sender's current X25519 ratchet public key |
+| 32 | 4 | prevChainN -- number of messages in previous sending chain (big-endian Word32) |
+| 36 | 4 | msgN -- message number in current chain (big-endian Word32) |
 
-**Overhead**: 226 bytes. **Usable plaintext**: ~782 bytes per block (after Signal's 16-byte GCM tag).
+The header corresponds to the `RatchetHeader` type from `Crypto.Signal.DoubleRatchet`:
 
-## Block Capacity
-
-Each consensus block contains up to **4,444 message transactions**:
-
-| Parameter | Value |
-|-----------|-------|
-| Messages per block | 4,444 |
-| Message size | 1,024 bytes |
-| Full block size | 4,444 × 1,024 = 4,550,656 bytes (~4.55 MB) |
-| Compact block size | ~50-130 KB (with 95%+ mempool hit rate) |
-| Block rate | ~1 block per 55 seconds (f=0.20, 11s slots) |
-| Global throughput | ~80.8 messages/second (~6.98M/day) |
-
-Compact block relay is mandatory at this block size. Without it, full ~4.55 MB blocks cannot propagate within the 11-second slot. See `doc/09-network.md` for the compact block relay protocol.
-
-## Message Types
-
-```
-0x00  TEXT              -- UTF-8 text message
-0x01  BINARY            -- File/binary transfer
-0x02  KEY_EXCHANGE      -- PQXDH initial key exchange
-0x03  PREKEY_BUNDLE     -- Publish prekey bundle to chain
-0x04  RATCHET_REFRESH   -- PQ ratchet key refresh (~every 50 messages)
-0x05  ACK               -- Delivery acknowledgment
-0x06  CONTROL           -- Channel control (group management, etc.)
-0xFF  DUMMY             -- Cover traffic dummy message (Dandelion++)
+```haskell
+data RatchetHeader = RatchetHeader
+    { rhDHPublic   :: !ByteString   -- 32 bytes
+    , rhPrevChainN :: !Word32
+    , rhMsgN       :: !Word32
+    }
 ```
 
-Bit 7 (0x80) is reserved for the compression flag (v2). In v1, bit 7 must be 0; receivers must ignore it for forward compatibility.
-
-## Multi-Block Messages
-
-Blocks belonging to the same message share the same `message_id`. The `total_blocks` and `block_index` fields enable ordered reassembly.
-
-- Max blocks per message: 65,535 (uint16)
-- Practical protocol cap: 1,024 blocks (~802 KB)
-- Cost: each 1,024-byte message block pays a uniform `base_fee` (dynamic, 10-10,000 MTK, EMA-adjusted per doc/06). Multi-block messages pay `base_fee * total_blocks`. All blocks pay identical per-block fees in V1 for metadata privacy — external observers cannot distinguish message sizes from fee amounts.
-- **Reassembly timeout**: recipient waits max 30 seconds for all blocks of a multi-block message. Missing blocks after timeout: discard all received blocks, log error. Sender may retry.
-
-## Serialization: CBOR (hand-implemented)
-
-CBOR arrays with positional semantics (no field names). ~15-20 bytes structural overhead per message.
-
-## Transaction Envelope
+### Wire Message Layout
 
 ```
-Transaction = CBOR [tx_header, tx_body, tx_witness]
-  tx_header: [version, chain_revision, tx_hash, fee, ttl]
-  tx_body:   [sender_addr, nonce, msg_blocks[], dandelion_stem]
-  tx_witness: [ed25519_signature]
+[  32 bytes: DH public key  ]
+[   4 bytes: prevChainN     ]
+[   4 bytes: msgN           ]
+[   N bytes: ciphertext     ]   -- variable length, may be 0
+[  16 bytes: GCM auth tag   ]
 ```
 
-`chain_revision` (uint16) identifies the epoch genesis revision the transaction targets. Nodes reject transactions whose `chain_revision` does not match the current epoch. This prevents replay of transactions across truncation boundaries.
+Total size: 56 + N bytes, where N is the ciphertext length.
 
-**V1 Metadata Protection**: The `msg_type`, `timestamp`, `signal_ratchet_pubkey`, `msg_number`, and `total_blocks` fields are encrypted inside the payload in V1. On-chain, all message blocks appear as uniform-sized, uniform-fee encrypted data with one-time stealth addresses. See `doc/hardening/14-metadata-minimization.md`.
+### Encoding/Decoding API
 
-Single-block message on wire: ~1,198 bytes total.
+- **`encodeWire :: RatchetHeader -> ByteString -> ByteString -> ByteString`** -- Serialize header, ciphertext, and GCM tag into wire bytes.
+- **`decodeWire :: ByteString -> Maybe (RatchetHeader, ByteString, ByteString)`** -- Deserialize wire bytes into (header, ciphertext, tag). Returns `Nothing` if input is shorter than `minWireSize` or if the payload is shorter than `tagSize`.
+- **`encodeHeader :: RatchetHeader -> ByteString`** -- Encode just the 40-byte header.
 
-## PQ Ciphertext Transmission
+## Serialization Convention
 
-KEY_EXCHANGE (0x02) messages carry ML-KEM ciphertext (~1,088 bytes) across 2 blocks:
+All multi-byte integers are big-endian (network byte order).
 
-- **Block 0**: header (226 bytes) + first 782 bytes of PQ ciphertext + 16 bytes padding
-- **Block 1**: remaining 306 bytes of PQ ciphertext + padding
+### Protocol.Encoding
 
-RATCHET_REFRESH (0x04) uses the same 2-block format for fresh ML-KEM encapsulation.
+Shared encoding utilities in `Protocol.Encoding`:
 
-Normal TEXT/BINARY messages incur only 28-byte PQ overhead (nonce + GCM tag in header).
+| Function | Description |
+|----------|-------------|
+| `putWord32BE :: Word32 -> ByteString` | Encode Word32 as 4 big-endian bytes |
+| `getWord32BE :: ByteString -> Word32` | Decode 4 big-endian bytes to Word32 (returns 0 if input < 4 bytes) |
+| `putWord64BE :: Word64 -> ByteString` | Encode Word64 as 8 big-endian bytes |
+| `splitOn :: Char -> String -> [String]` | Split a string on a delimiter character |
+| `parseHostPort :: String -> (String, Maybe Int)` | Parse `"host:port"` into (host, Maybe port); defaults host to `"127.0.0.1"` if empty |
+| `safeReadPort :: String -> Int` | Parse a port string, falling back to 7853 (first default port) on failure |
+| `defaultPorts :: [Int]` | `[7853, 7854, 7855, 9999, 7856, 7857, 7858, 7859, 7860]` |
 
-## Compression (deferred to v2)
+### Protocol.CBOR
 
-Per-message DEFLATE compression is deferred to v2. V1 sends all payloads uncompressed. The design intent for v2:
+Despite the module name, `Protocol.CBOR` implements **simple length-prefixed framing**, not actual CBOR encoding. Each message is framed as:
 
-- **Algorithm**: DEFLATE (RFC 1951, hand-implemented, no external libraries)
-- **Application order**: compress plaintext BEFORE encryption (compress, then encrypt)
-- **Flag**: bit 7 of `msg_type` set when payload is compressed
-- **Length**: `payload_length` reflects compressed size
-- **Bypass**: if compressed size >= uncompressed size, send uncompressed (bit 7 = 0)
-- **Context**: compression context reset per message (no shared dictionary)
+```
+[  4 bytes: big-endian payload length (Word32)  ]
+[  N bytes: payload                              ]
+```
 
-## Nonce Collision Prevention
+API:
 
-- **PQ wrapper nonce** (12 bytes) = `HKDF(pq_chain_key, "nonce" || message_counter)`
-- `message_counter` is a 64-bit monotonic counter (uint64) per-session and never resets within a session
-- At 1 message/second, overflow in ~585 billion years. If overflow ever occurs, session must be re-established.
-- On PQ ratchet refresh: counter continues from its prior value (no reset)
-- **Collision probability**: negligible (12-byte nonce + monotonic counter)
+- **`encodeMessage :: ByteString -> ByteString`** -- Prepend 4-byte big-endian length header to payload.
+- **`decodeMessage :: ByteString -> Maybe (ByteString, ByteString)`** -- Decode a length-prefixed message. Returns `Just (payload, remaining)` on success, `Nothing` if input is too short.
 
-## CBOR Code Generation
+This framing is used by the Noise handshake (`Network.Noise.Handshake.sendFrame`/`recvFrame`) for length-prefixed message exchange over transport, with a 64 KiB maximum frame size.
 
-- Message format schema defined declaratively in `codegen/Specs/MessageFormat.schema`
-- CBOR encoder/decoder generated from schema (eliminates hand-coding bugs)
-- Round-trip property: `decode(encode(msg)) == msg` for all valid messages
-- Canonical encoding enforced (deterministic for hashing)
-- Fuzz targets auto-generated: malformed CBOR leads to graceful rejection, never crash
+## Not Implemented
 
-## Standard References
+The following message format features from the design documents are not yet implemented in code:
 
-- RFC 8949 — Concise Binary Object Representation (CBOR)
-- RFC 1951 — DEFLATE Compressed Data Format Specification
-- RFC 5869 — HMAC-based Extract-and-Expand Key Derivation Function (HKDF)
-- NIST SP 800-38D — Recommendation for Block Cipher Modes of Operation: Galois/Counter Mode (AES-GCM)
-- FIPS 203 — Module-Lattice-Based Key-Encapsulation Mechanism Standard (ML-KEM-768)
+- Full 1024-byte block layout (version, msg_type, sender_id, recipient_id, timestamp, sequence_num, etc.)
+- Message types (TEXT, BINARY, KEY_EXCHANGE, RATCHET_REFRESH, ACK, CONTROL, DUMMY)
+- Multi-block message reassembly
+- PQ wrapper nonce/tag fields in the header
+- HMAC-SHA256 trailer
+- Random padding
+- Transaction envelope (CBOR-encoded tx_header, tx_body, tx_witness)
+- Actual CBOR serialization (the CBOR module uses length-prefixed framing only)
