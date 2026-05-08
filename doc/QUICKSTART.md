@@ -5,6 +5,8 @@
 - [Nix](https://nixos.org/download.html)
 
 All build and verification tooling is provided through `nix-shell`.
+Flake commands are also supported in this environment, but currently require:
+`nix --extra-experimental-features 'nix-command flakes' ...`
 
 The repository preserves 30 generated artifacts from 10 `.spec` files. In the
 active build/test graph, generated coverage is currently limited to the parser
@@ -41,6 +43,7 @@ make release-macos-terminal
 make release-bsd-terminal
 make release-freedos
 make release
+nix --extra-experimental-features 'nix-command flakes' flake show --no-write-lock-file
 ```
 
 ## What Each Test Target Does
@@ -71,6 +74,11 @@ make release
 - `make release-bsd-terminal` writes a BSD terminal source-release tarball with native build instructions.
 - `make release-freedos` writes a FreeDOS research/source release zip with an explicit unsupported-runtime note.
 - `make release` builds every currently defined release artifact under `build/releases/`.
+- Flake parity commands are available through `flake.nix` apps/checks/packages.
+  In this environment, use `--extra-experimental-features 'nix-command flakes'`.
+- Release packaging now fails by default on dirty or untagged commits.
+  CI/local overrides are explicit: `UMBRAVOX_ALLOW_DIRTY_RELEASE=1` and
+  `UMBRAVOX_ALLOW_UNTAGGED_RELEASE=1`.
 - `license` is blocking; `lint` and `format-check` are advisory/non-blocking in the current pipeline.
 
 ## First Run
