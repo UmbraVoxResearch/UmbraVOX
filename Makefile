@@ -30,6 +30,7 @@
 #   make codegen      - Generate Haskell + C + FFI from .spec files
 #   make quality      - Run the full pipeline (same as make)
 #   make release-linux - Build a portable Linux x86_64 terminal bundle
+#   make release-smoke-linux - Run isolated Linux bundle smoke check (podman/docker if available)
 #   make release-windows-cli - Build a Windows CLI source release zip
 #   make release-macos-terminal - Build a macOS terminal source release tarball
 #   make release-bsd-terminal - Build a BSD terminal source release tarball
@@ -43,7 +44,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build run test test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify complexity quality evidence lint license license-fix format-check codegen release release-linux release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source clean cleandb cleanall help
+.PHONY: all build run test test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify complexity quality evidence lint license license-fix format-check codegen release release-linux release-smoke-linux release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -115,6 +116,7 @@ help:
 	@echo "    make codegen     Generate Haskell + C + FFI from .spec files"
 	@echo "    make evidence    Run quality and write a publication evidence bundle"
 	@echo "    make release-linux Build portable Linux x86_64 terminal bundle"
+	@echo "    make release-smoke-linux Run isolated Linux bundle smoke check"
 	@echo "    make release-windows-cli Build Windows CLI source release zip"
 	@echo "    make release-macos-terminal Build macOS terminal source release tarball"
 	@echo "    make release-bsd-terminal Build BSD terminal source release tarball"
@@ -412,6 +414,10 @@ release-source:
 release-linux:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Building Linux x86_64 portable bundle..."
 	@./scripts/release-package.sh linux
+
+release-smoke-linux:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Running isolated Linux release smoke check..."
+	@./scripts/release-smoke-linux.sh
 
 release-windows-cli:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Building Windows CLI source release..."
