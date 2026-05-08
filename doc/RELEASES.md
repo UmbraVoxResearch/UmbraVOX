@@ -38,6 +38,17 @@ It is dynamically linked and points at a Nix store loader path.
 This is still a Linux terminal release, not a static binary. Kernel/ABI
 compatibility still matters.
 
+Current minimum compatibility policy for Linux release artifacts:
+
+- Architecture: `x86_64`
+- Minimum kernel ABI target: `3.10`
+- Minimum glibc target: `2.31`
+
+These values are recorded in each artifact `RELEASE-MANIFEST.txt` and may be
+overridden for controlled CI release lanes via:
+`UMBRAVOX_RELEASE_ABI_ARCH`, `UMBRAVOX_RELEASE_ABI_KERNEL_MIN`,
+`UMBRAVOX_RELEASE_ABI_GLIBC_MIN`.
+
 ## Non-Linux Targets
 
 The current repository does not ship cross-compilers or platform-native CI
