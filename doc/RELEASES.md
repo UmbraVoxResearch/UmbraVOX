@@ -15,6 +15,11 @@ UmbraVOX now defines explicit release targets instead of treating
 | `make release` | mixed | Builds every target above |
 
 Artifacts are written under `build/releases/`.
+Each staged release artifact also includes:
+
+- `RELEASE-MANIFEST.txt` with policy and build metadata
+- `CONTENTS.SHA256` for in-package file integrity
+- `RELEASE-SCRIPT.SHA256` identifying the packaging script revision
 
 ## Linux Binary Portability
 

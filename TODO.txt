@@ -81,7 +81,7 @@ Exit criteria
   [x] M2.2.2 Resolve full transitive runtime closure (not only shallow `ldd` deps).
   [x] M2.2.3 Add clean-room smoke run in isolated Linux VM/container.
   [x] M2.2.4 Define and document minimum glibc/ABI compatibility policy.
-  [ ] M2.2.5 Add deterministic manifest fields and artifact digest verification.
+  [x] M2.2.5 Add deterministic manifest fields and artifact digest verification.
 
 [ ] M2.3 Linux single-file track (experimental)
   [ ] M2.3.1 Add AppImage target and smoke validation.
