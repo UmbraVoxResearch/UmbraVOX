@@ -67,6 +67,10 @@ Current command behavior:
   and checks basic launch/linkage files.
 - `make release-lane-qemu` and `make release-lane-firecracker` only verify
   host prerequisites and print the next implementation step.
-- `scripts/release-smoke-microvm.sh <qemu|firecracker>` only verifies a Linux
-  artifact exists, checks host prerequisites, and prints the next
-  implementation step.
+- `scripts/release-smoke-microvm.sh <qemu|firecracker>` verifies artifact +
+  host prerequisites and executes in-guest smoke only when a runner command is
+  provided via `UMBRAVOX_QEMU_SMOKE_RUNNER` or
+  `UMBRAVOX_FIRECRACKER_SMOKE_RUNNER`; otherwise it remains scaffold-only.
+- QEMU mode also supports a pinned-boot path via
+  `UMBRAVOX_QEMU_KERNEL` + `UMBRAVOX_QEMU_INITRD` +
+  `UMBRAVOX_QEMU_ROOTFS` + `UMBRAVOX_QEMU_APPEND`.
