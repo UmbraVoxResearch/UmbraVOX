@@ -28,8 +28,15 @@ microVM entrypoints that now support direct pinned boot for both VMMs:
 
 - `make release-smoke-linux` runs today and performs an isolated Linux bundle
   smoke check with `podman` or `docker` when available.
-- `./scripts/release-smoke-microvm.sh qemu`
-- `./scripts/release-smoke-microvm.sh firecracker`
+- `make release-smoke-qemu` runs the QEMU microVM smoke entrypoint.
+- `make release-smoke-qemu-profile` runs the QEMU microVM smoke entrypoint
+  with `QEMU_SMOKE_PROFILE=bundle-basic` unless overridden.
+- `make release-smoke-firecracker` runs the Firecracker microVM smoke
+  entrypoint.
+- `make release-smoke-firecracker-pinned` runs the Firecracker microVM smoke
+  entrypoint with the pinned-input variables passed through from `Makefile`.
+- `make release-lane-readiness` runs the aggregate native runner readiness
+  checks for Linux x86_64, Linux arm64, macOS, Windows, and BSD.
 
 The microVM smoke script always does these baseline checks first:
 
@@ -50,6 +57,9 @@ After those checks:
 4. Firecracker can invoke `firecracker --config-file` when
    `UMBRAVOX_FIRECRACKER_KERNEL`, `UMBRAVOX_FIRECRACKER_ROOTFS`, and
    `UMBRAVOX_FIRECRACKER_CONFIG` are supplied
+5. `make release-lane-qemu` and `make release-lane-firecracker` remain
+   prerequisite-only checks
+6. `make platform-sanity` and `make sanity` only verify helper wiring
 
 What is still not claimed here:
 
@@ -118,6 +128,11 @@ That keeps the release surface explicit:
 nix-shell
 make release-linux
 make release-smoke-linux
+make release-smoke-qemu
+make release-smoke-qemu-profile
+make release-smoke-firecracker
+make release-smoke-firecracker-pinned
+make release-lane-readiness
 UMBRAVOX_QEMU_PROFILE=bundle-basic \
 UMBRAVOX_QEMU_KERNEL=/path/to/bzImage \
 UMBRAVOX_QEMU_INITRD=/path/to/initrd \

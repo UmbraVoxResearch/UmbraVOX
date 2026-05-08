@@ -44,9 +44,14 @@ make release-freedos
 make release
 make release-smoke-linux
 make release-smoke-qemu
+make release-smoke-qemu-profile
 make release-smoke-firecracker
+make release-smoke-firecracker-pinned
 make release-lane-qemu
 make release-lane-firecracker
+make release-lane-readiness
+make platform-sanity
+make sanity
 scripts/nix-flake.sh flake show --no-write-lock-file
 ```
 
@@ -83,13 +88,24 @@ scripts/nix-flake.sh flake show --no-write-lock-file
   it checks artifact + host prerequisites, then either executes a runner hook
   (`UMBRAVOX_QEMU_SMOKE_RUNNER`) or invokes a direct pinned-input boot path
   from `UMBRAVOX_QEMU_*` inputs.
+- `make release-smoke-qemu-profile` is the deterministic wrapper for the QEMU
+  microVM smoke entrypoint and sets `QEMU_SMOKE_PROFILE=bundle-basic` unless
+  overridden.
 - `make release-smoke-firecracker` runs the Firecracker microVM smoke entrypoint:
   it checks artifact + host prerequisites, then either executes a runner hook
   (`UMBRAVOX_FIRECRACKER_SMOKE_RUNNER`) or invokes a direct pinned-input boot
   path from `UMBRAVOX_FIRECRACKER_*` inputs.
+- `make release-smoke-firecracker-pinned` is the pinned-input wrapper for the
+  Firecracker microVM smoke entrypoint and passes the `Makefile` variables
+  through to the script.
 - `make release-lane-qemu` and `make release-lane-firecracker` are still
   host-prerequisite scaffolds for future in-guest release execution; they do
   not yet run the release graph inside a guest.
+- `make release-lane-readiness` aggregates the current native runner readiness
+  checks and treats Linux x86_64 as required while Linux arm64, macOS,
+  Windows, and BSD remain informational.
+- `make platform-sanity` and `make sanity` check that the helper scripts and
+  lane wiring are still present in the tree.
 - Only the QEMU microVM path currently has a documented deterministic
   command-line smoke profile helper:
   `scripts/release-smoke-qemu-profile.sh bundle-basic`.
