@@ -13,6 +13,15 @@ native host builds available.
 - `native-macos`: macOS native runner for source/native validation.
 - `native-windows`: Windows native runner for source/native validation.
 
+Current implementation note:
+
+- `linux-hosted-fast` is exercised by the active `nix-shell` + `make` workflow.
+- `linux-kvm-integration` and `linux-kvm-release` have repo-owned scaffold
+  entrypoints and microVM smoke hooks, but not yet a maintained guest image or
+  authoritative in-guest release graph.
+- `native-macos` and `native-windows` are runner-class placeholders only today;
+  this repository does not yet ship repo-owned native CI/release lanes for them.
+
 ## Lane Model
 
 1. `fast` lane
@@ -38,7 +47,7 @@ native host builds available.
   prerequisites for the selected VMM.
 - runner-hook execution is available now for both QEMU and Firecracker via
   `UMBRAVOX_QEMU_SMOKE_RUNNER` / `UMBRAVOX_FIRECRACKER_SMOKE_RUNNER`.
-- direct pinned-input boot paths are also wired:
+- direct pinned-input boot paths are also wired and invocable:
   QEMU via `UMBRAVOX_QEMU_*` inputs, Firecracker via
   `UMBRAVOX_FIRECRACKER_*` inputs.
 - only the QEMU path currently has a documented deterministic command-line
@@ -53,14 +62,69 @@ native host builds available.
   `podman` or `docker`; it is not the microVM smoke lane.
 - QEMU and Firecracker release-lane entrypoints remain host-prerequisite
   scaffolds only.
-- The microVM smoke entrypoint is partially wired beyond scaffold status:
+- The microVM smoke entrypoint is implemented beyond scaffold status:
   it can dispatch host runner hooks for both VMMs, QEMU can invoke a pinned
-  boot command line directly, and Firecracker can invoke a pinned config file
-  directly when all required inputs are supplied.
+  boot command line directly, and Firecracker can invoke a pinned
+  `firecracker --config-file` boot directly when all required inputs are
+  supplied.
 - None of that is a claim that UmbraVOX currently ships a maintained guest
   image, performs artifact handoff into a guest automatically, or proves the
   booted guest executes bundle checks end-to-end by default.
 - non-Linux targets remain source releases until native artifact lanes are fully operational.
+
+## Aggregate Readiness Checks
+
+Current repo-owned readiness checks across the release lanes are:
+
+- `fast`: `make build`, `make test`, and `make verify`, with `make quality`
+  aggregating the active host-side release gate.
+- Linux artifact packaging: `make release-linux` plus the manifest/digest
+  outputs recorded in each staged release artifact.
+- Linux smoke validation: `make release-smoke-linux` for the current
+  container-based isolated bundle launch/linkage check.
+- microVM readiness baseline: `make release-smoke-qemu` and
+  `make release-smoke-firecracker` verify artifact presence, selected VMM
+  availability, and `/dev/kvm` before any runner hook or pinned boot path.
+- microVM direct invocation readiness: QEMU and Firecracker can both execute
+  caller-supplied runner hooks or pinned boot inputs when those inputs are
+  provided explicitly.
+
+Remaining gaps before these lanes become authoritative release evidence:
+
+- no maintained repo-owned guest image/rootfs currently performs bundle
+  verification in-guest by default
+- no authoritative Firecracker/QEMU in-guest release graph currently produces
+  the final Linux artifact inside the guest
+- Linux x86_64 still lacks dedicated repo-owned native runner evidence beyond
+  the host packaging workflow
+- macOS, Windows, BSD, and Linux arm64 do not yet have repo-owned native lanes
+- cross-target parity evidence is still missing for any future non-native or
+  cross-built artifact claims
+
+## Platform Lane Posture
+
+| Target | Intended lane / builder class | Current repo-owned state | Current artifact posture |
+| --- | --- | --- | --- |
+| Linux x86_64 | `linux-hosted-fast` now; `linux-kvm-integration` / `linux-kvm-release` later | Native host packaging works now; QEMU/Firecracker lane entrypoints are scaffolded only | Native Linux terminal bundle is the only current prebuilt artifact |
+| Linux arm64 | future native Linux arm64 runner | no repo-owned lane yet | no current release artifact |
+| macOS terminal | `native-macos` | runner class reserved only; no repo-owned native lane yet | source release with native build instructions |
+| Windows CLI | `native-windows` | runner class reserved only; no repo-owned native lane yet | source release with native build instructions |
+| BSD terminal | future BSD-native runner | no repo-owned lane yet | source release with native build instructions |
+| FreeDOS research | no supported native runtime lane planned in current MVP | no native lane | research/source release only; unsupported runtime |
+
+## Cross-Target Policy
+
+- A target is authoritative only when the artifact is produced and validated on
+  its intended native or isolated release lane.
+- The current repository does not claim cross-built Windows, macOS, BSD, or
+  FreeDOS binaries as release-quality native artifacts.
+- Until native parity evidence exists, any future cross-built artifacts remain
+  non-authoritative and must not be presented as equivalent to native-built
+  outputs.
+- Current non-Linux release targets therefore stay explicit source releases
+  instead of shipping unverified cross-built binaries.
+- The future authoritative Linux lane is the in-guest Firecracker/QEMU release
+  path described above; that execution model is not complete yet.
 
 ## Local Commands
 
@@ -94,5 +158,8 @@ Current command behavior:
 - Firecracker mode accepts pinned inputs via
   `UMBRAVOX_FIRECRACKER_KERNEL` + `UMBRAVOX_FIRECRACKER_ROOTFS` +
   `UMBRAVOX_FIRECRACKER_CONFIG`.
+- Firecracker currently relies on the caller to supply a maintained kernel,
+  rootfs, and config that actually perform in-guest bundle verification; the
+  repo does not yet define or ship those inputs.
 - The default path for both VMMs is still messaging plus prerequisite checks
   unless one of those execution hooks/inputs is explicitly provided.

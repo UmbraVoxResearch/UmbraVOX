@@ -93,12 +93,41 @@ scripts/nix-flake.sh flake show --no-write-lock-file
 - Only the QEMU microVM path currently has a documented deterministic
   command-line smoke profile helper:
   `scripts/release-smoke-qemu-profile.sh bundle-basic`.
+- The Firecracker microVM path can boot from pinned caller-supplied inputs, but
+  the repo still does not define a maintained Firecracker guest image/config
+  that performs bundle verification in-guest by default.
 - Flake parity commands are available through `flake.nix` apps/checks/packages.
   Use `scripts/nix-flake.sh ...` to avoid repeating feature flags.
 - Release packaging now fails by default on dirty or untagged commits.
   CI/local overrides are explicit: `UMBRAVOX_ALLOW_DIRTY_RELEASE=1` and
   `UMBRAVOX_ALLOW_UNTAGGED_RELEASE=1`.
 - `license` is blocking; `lint` and `format-check` are advisory/non-blocking in the current pipeline.
+
+## Aggregate Readiness Check
+
+- Use `make quality` as the current aggregate host-side readiness gate
+  (`build + test + verify + complexity + lint + license + format-check`).
+- Use `make release-linux` to stage the only current prebuilt native artifact.
+- Use `make release-smoke-linux` to run the current isolated Linux bundle smoke
+  check.
+- Use `make release-smoke-qemu` or `make release-smoke-firecracker` to confirm
+  microVM prerequisites and then exercise either runner-hook or pinned-boot
+  smoke inputs when those are supplied.
+- Remaining readiness gaps are unchanged: no maintained repo-owned guest image
+  performs in-guest bundle verification by default, no authoritative in-guest
+  release graph exists yet, and non-Linux targets remain source releases until
+  native lanes and parity evidence exist.
+
+## Release Target Posture
+
+- Linux x86_64 is the only current prebuilt native artifact lane.
+- Windows CLI, macOS terminal, and BSD terminal currently remain explicit
+  source releases until repo-owned native builders and parity evidence exist.
+- FreeDOS remains a research/source release with an unsupported-runtime note.
+- QEMU and Firecracker entrypoints are release-lane scaffolding plus smoke-path
+  hooks; they are not yet authoritative in-guest release execution.
+- If cross-built artifacts are introduced later, they should be treated as
+  non-authoritative until native parity evidence exists.
 
 ## First Run
 

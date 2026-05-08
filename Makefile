@@ -34,13 +34,20 @@
 #   make release-smoke-qemu - Run QEMU microVM Linux bundle smoke scaffold
 #   make release-smoke-qemu-profile - Run QEMU microVM smoke using UMBRAVOX_QEMU_PROFILE (default: bundle-basic)
 #   make release-smoke-firecracker - Run Firecracker microVM Linux bundle smoke scaffold
+#   make release-smoke-firecracker-pinned - Run Firecracker microVM smoke using pinned-input variables
 #   make release-windows-cli - Build a Windows CLI source release zip
 #   make release-macos-terminal - Build a macOS terminal source release tarball
 #   make release-bsd-terminal - Build a BSD terminal source release tarball
 #   make release-freedos - Build a FreeDOS research/source release zip
 #   make release      - Build all release artifacts
+#   make platform-lane-qemu - Run the QEMU release-lane host prerequisite script
+#   make platform-lane-firecracker - Run the Firecracker release-lane host prerequisite script
+#   make platform-smoke-qemu-profile - Print the deterministic QEMU smoke append profile
+#   make platform-sanity - Check Makefile wiring for platform lane scripts/helpers
 #   make release-lane-qemu - Validate QEMU/KVM release-lane host prerequisites
 #   make release-lane-firecracker - Validate Firecracker release-lane host prerequisites
+#   make release-lane-readiness - Run aggregate native release-lane readiness checks
+#   make sanity       - Check Makefile wiring for release smoke/microVM helpers
 #   make evidence     - Run quality and write a publication evidence bundle
 #   make clean        - Remove build artifacts, build/, and dist-newstyle
 #   make cleandb      - Remove local database
@@ -49,7 +56,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build run test test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify complexity quality evidence lint license license-fix format-check codegen release release-linux release-smoke-linux release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-lane-qemu release-lane-firecracker release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source clean cleandb cleanall help
+.PHONY: all build run test test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify complexity quality evidence lint license license-fix format-check codegen release release-linux release-smoke-linux release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -84,6 +91,9 @@ RELEASE_DIR := build/releases
 SUITE_LOCK := ./scripts/with-suite-lock.sh suite-gate
 TEST_REQUIRED_TIMEOUT ?= 25m
 QEMU_SMOKE_PROFILE ?= bundle-basic
+FIRECRACKER_SMOKE_KERNEL ?=
+FIRECRACKER_SMOKE_ROOTFS ?=
+FIRECRACKER_SMOKE_CONFIG ?=
 
 # --------------------------------------------------------------------------
 # Targets
@@ -126,8 +136,13 @@ help:
 	@echo "    make release-smoke-qemu Run QEMU microVM Linux bundle smoke scaffold"
 	@echo "    make release-smoke-qemu-profile Run QEMU microVM smoke with deterministic profile (QEMU_SMOKE_PROFILE=$(QEMU_SMOKE_PROFILE))"
 	@echo "    make release-smoke-firecracker Run Firecracker microVM Linux bundle smoke scaffold"
+	@echo "    make release-smoke-firecracker-pinned Run Firecracker microVM smoke with pinned inputs"
+	@echo "    make platform-lane-qemu Run QEMU release-lane prerequisite script"
+	@echo "    make platform-lane-firecracker Run Firecracker release-lane prerequisite script"
+	@echo "    make platform-smoke-qemu-profile Print deterministic QEMU smoke profile append"
 	@echo "    make release-lane-qemu Validate QEMU/KVM release-lane prerequisites"
 	@echo "    make release-lane-firecracker Validate Firecracker release-lane prerequisites"
+	@echo "    make release-lane-readiness Run aggregate native release-lane readiness checks"
 	@echo "    make release-windows-cli Build Windows CLI source release zip"
 	@echo "    make release-macos-terminal Build macOS terminal source release tarball"
 	@echo "    make release-bsd-terminal Build BSD terminal source release tarball"
@@ -147,6 +162,8 @@ help:
 	@echo "    make clean       Remove build artifacts + build/ + dist-newstyle"
 	@echo "    make cleandb     Remove local database"
 	@echo "    make cleanall    Remove everything (build + DB + tools)"
+	@echo "    make platform-sanity Check Makefile wiring for platform lane scripts/helpers"
+	@echo "    make sanity      Check Makefile wiring for release smoke/microVM helpers"
 	@echo "    make help        Show this help"
 	@echo ""
 	@echo "  Quality Gate Requirements:"
@@ -442,6 +459,25 @@ release-smoke-firecracker:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Running Firecracker microVM release smoke check..."
 	@./scripts/release-smoke-microvm.sh firecracker
 
+release-smoke-firecracker-pinned:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Running Firecracker microVM release smoke check with pinned inputs..."
+	@UMBRAVOX_FIRECRACKER_KERNEL="$(FIRECRACKER_SMOKE_KERNEL)" \
+	UMBRAVOX_FIRECRACKER_ROOTFS="$(FIRECRACKER_SMOKE_ROOTFS)" \
+	UMBRAVOX_FIRECRACKER_CONFIG="$(FIRECRACKER_SMOKE_CONFIG)" \
+	./scripts/release-smoke-microvm.sh firecracker
+
+platform-lane-qemu:
+	@echo -e "$(BLUE)[PLATFORM]$(NC) Running QEMU release-lane prerequisite script..."
+	@./scripts/release-lane-qemu.sh
+
+platform-lane-firecracker:
+	@echo -e "$(BLUE)[PLATFORM]$(NC) Running Firecracker release-lane prerequisite script..."
+	@./scripts/release-lane-firecracker.sh
+
+platform-smoke-qemu-profile:
+	@echo -e "$(BLUE)[PLATFORM]$(NC) Printing deterministic QEMU smoke profile '$(QEMU_SMOKE_PROFILE)'..."
+	@./scripts/release-smoke-qemu-profile.sh "$(QEMU_SMOKE_PROFILE)"
+
 release-lane-qemu:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Checking QEMU/KVM release-lane prerequisites..."
 	@./scripts/release-lane-qemu.sh
@@ -449,6 +485,23 @@ release-lane-qemu:
 release-lane-firecracker:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Checking Firecracker release-lane prerequisites..."
 	@./scripts/release-lane-firecracker.sh
+
+release-lane-readiness:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Running aggregate native release-lane readiness checks..."
+	@status=0; \
+	for script in \
+		./scripts/release-lane-readiness-linux-x86_64.sh \
+		./scripts/release-lane-readiness-linux-arm64.sh \
+		./scripts/release-lane-readiness-macos.sh \
+		./scripts/release-lane-readiness-windows.sh \
+		./scripts/release-lane-readiness-bsd.sh; do \
+		echo ""; \
+		echo -e "$(BLUE)[READINESS]$(NC) $$script"; \
+		if ! "$$script"; then \
+			status=1; \
+		fi; \
+	done; \
+	exit $$status
 
 release-windows-cli:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Building Windows CLI source release..."
@@ -492,6 +545,43 @@ evidence:
 	} > "$$out/manifest.txt"; \
 	ln -sfn "$$ts" "$(EVIDENCE_DIR)/latest"; \
 	echo -e "$(GREEN)[EVIDENCE]$(NC) Bundle complete: $$out"
+
+platform-sanity:
+	@echo -e "$(BLUE)[SANITY]$(NC) Checking Makefile platform lane wiring..."
+	@test -f ./scripts/release-smoke-linux.sh
+	@test -f ./scripts/release-smoke-microvm.sh
+	@test -f ./scripts/release-smoke-qemu-profile.sh
+	@test -f ./scripts/release-lane-qemu.sh
+	@test -f ./scripts/release-lane-firecracker.sh
+	@test -f ./scripts/release-lane-readiness-lib.sh
+	@test -f ./scripts/release-lane-readiness-linux-x86_64.sh
+	@test -f ./scripts/release-lane-readiness-linux-arm64.sh
+	@test -f ./scripts/release-lane-readiness-macos.sh
+	@test -f ./scripts/release-lane-readiness-windows.sh
+	@test -f ./scripts/release-lane-readiness-bsd.sh
+	@echo "QEMU_SMOKE_PROFILE=$(QEMU_SMOKE_PROFILE)"
+	@echo "FIRECRACKER_SMOKE_KERNEL=$(if $(strip $(FIRECRACKER_SMOKE_KERNEL)),$(FIRECRACKER_SMOKE_KERNEL),<unset>)"
+	@echo "FIRECRACKER_SMOKE_ROOTFS=$(if $(strip $(FIRECRACKER_SMOKE_ROOTFS)),$(FIRECRACKER_SMOKE_ROOTFS),<unset>)"
+	@echo "FIRECRACKER_SMOKE_CONFIG=$(if $(strip $(FIRECRACKER_SMOKE_CONFIG)),$(FIRECRACKER_SMOKE_CONFIG),<unset>)"
+	@echo -e "$(GREEN)[SANITY]$(NC) Platform lane targets/helpers are wired."
+
+sanity:
+	@echo -e "$(BLUE)[SANITY]$(NC) Checking Makefile release smoke/microVM wiring..."
+	@test -f ./scripts/release-smoke-linux.sh
+	@test -f ./scripts/release-smoke-microvm.sh
+	@test -f ./scripts/release-lane-qemu.sh
+	@test -f ./scripts/release-lane-firecracker.sh
+	@test -f ./scripts/release-lane-readiness-lib.sh
+	@test -f ./scripts/release-lane-readiness-linux-x86_64.sh
+	@test -f ./scripts/release-lane-readiness-linux-arm64.sh
+	@test -f ./scripts/release-lane-readiness-macos.sh
+	@test -f ./scripts/release-lane-readiness-windows.sh
+	@test -f ./scripts/release-lane-readiness-bsd.sh
+	@echo "QEMU_SMOKE_PROFILE=$(QEMU_SMOKE_PROFILE)"
+	@echo "FIRECRACKER_SMOKE_KERNEL=$(if $(strip $(FIRECRACKER_SMOKE_KERNEL)),$(FIRECRACKER_SMOKE_KERNEL),<unset>)"
+	@echo "FIRECRACKER_SMOKE_ROOTFS=$(if $(strip $(FIRECRACKER_SMOKE_ROOTFS)),$(FIRECRACKER_SMOKE_ROOTFS),<unset>)"
+	@echo "FIRECRACKER_SMOKE_CONFIG=$(if $(strip $(FIRECRACKER_SMOKE_CONFIG)),$(FIRECRACKER_SMOKE_CONFIG),<unset>)"
+	@echo -e "$(GREEN)[SANITY]$(NC) Release smoke/microVM targets are wired."
 
 # --------------------------------------------------------------------------
 # Clean

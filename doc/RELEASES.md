@@ -24,7 +24,7 @@ Each staged release artifact also includes:
 ## Smoke Validation Status
 
 Current smoke coverage is split between a working container-based check and
-partially wired microVM entrypoints:
+microVM entrypoints that now support direct pinned boot for both VMMs:
 
 - `make release-smoke-linux` runs today and performs an isolated Linux bundle
   smoke check with `podman` or `docker` when available.
@@ -58,6 +58,9 @@ What is still not claimed here:
   or pinned inputs are provided.
 - Firecracker does not yet have the same documented deterministic smoke-profile
   helper that QEMU has via `scripts/release-smoke-qemu-profile.sh`.
+- Firecracker pinned boot is an invocation path, not yet a repository-owned
+  maintained guest/config profile that proves in-guest bundle verification by
+  default.
 - These entrypoints are not yet evidence that release packaging is executed
   end-to-end inside a guest by default.
 
