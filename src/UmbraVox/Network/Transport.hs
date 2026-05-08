@@ -11,6 +11,7 @@ module UmbraVox.Network.Transport
   , closeListener
   , connect
   , connectTryPorts
+  , connectTryPortsWithProgress
   , send
   , recv
   , close
@@ -119,9 +120,16 @@ connectWithTimeoutUs timeoutUs host port = do
 -- | Try connecting to a host on a sequence of ports, returning the first success.
 -- Throws the last error if all ports fail.
 connectTryPorts :: String -> [Int] -> IO TCPTransport
-connectTryPorts host [] = connectWithTimeoutUs connectTryPortTimeoutUs host 7853  -- fallback to primary default
-connectTryPorts host [p] = connectWithTimeoutUs connectTryPortTimeoutUs host p
-connectTryPorts host (p:ps) = do
+connectTryPorts host ports = connectTryPortsWithProgress host ports (\_ -> pure ())
+
+connectTryPortsWithProgress :: String -> [Int] -> (Int -> IO ()) -> IO TCPTransport
+connectTryPortsWithProgress host [] reportPort = do
+    reportPort 7853
+    connectWithTimeoutUs connectTryPortTimeoutUs host 7853
+connectTryPortsWithProgress host [p] reportPort = do
+    reportPort p
+    connectWithTimeoutUs connectTryPortTimeoutUs host p
+connectTryPortsWithProgress host (p:ps) reportPort = do
     go [] (p:ps)
   where
     go errs [] =
@@ -134,6 +142,7 @@ connectTryPorts host (p:ps) = do
                     ++ ": " ++ show lastErr
                     ++ " (verify the remote listener is running and reachable, or try an explicit port)"))
     go errs (port:rest) = do
+        reportPort port
         result <- try (connectWithTimeoutUs connectTryPortTimeoutUs host port) :: IO (Either SomeException TCPTransport)
         case result of
             Right t -> pure t
