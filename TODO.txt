@@ -72,7 +72,9 @@ Exit criteria
     [x] M2.1.2.b Add explicit package outputs for release artifacts (Linux bundle + source releases).
     [x] M2.1.2.c Add deterministic release metadata inputs (tag/commit cleanliness guard paths).
   [x] M2.1.3 Fail release on dirty worktree and non-tagged release attempts.
-  [ ] M2.1.4 Keep `nix-shell` developer workflow compatible with new flake outputs.
+  [~] M2.1.4 Keep `nix-shell` developer workflow compatible with new flake outputs.
+    [x] M2.1.4.a Document flake command usage/flags while preserving `nix-shell` as primary workflow.
+    [ ] M2.1.4.b Add helper wrappers for flake commands to avoid repeated feature flags.
 
 [~] M2.2 Linux native dynamic bundle hardening (default supported artifact)
   [x] M2.2.1 Replace invalid interpreter patch approach with loader-wrapper launch.
