@@ -21,6 +21,25 @@ Each staged release artifact also includes:
 - `CONTENTS.SHA256` for in-package file integrity
 - `RELEASE-SCRIPT.SHA256` identifying the packaging script revision
 
+## Smoke Validation Status
+
+Current smoke coverage is split between a working container-based check and
+scaffolded microVM entrypoints:
+
+- `make release-smoke-linux` runs today and performs an isolated Linux bundle
+  smoke check with `podman` or `docker` when available.
+- `./scripts/release-smoke-microvm.sh qemu`
+- `./scripts/release-smoke-microvm.sh firecracker`
+
+The microVM smoke script currently does three things only:
+
+1. confirms a Linux release artifact exists under `build/releases/`
+2. checks the selected VMM binary is installed
+3. checks `/dev/kvm` is present
+
+After those checks it prints the next implementation step. It does not yet boot
+a guest VM or microVM, and it does not yet execute bundle checks in-guest.
+
 ## Linux Binary Portability
 
 The raw executable produced by:
@@ -75,5 +94,7 @@ That keeps the release surface explicit:
 nix-shell
 make release-linux
 make release-smoke-linux
+./scripts/release-smoke-microvm.sh qemu
+./scripts/release-smoke-microvm.sh firecracker
 make release
 ```

@@ -95,7 +95,8 @@ Exit criteria
     [x] M2.4.2.a Add Firecracker release-lane scaffold entrypoint and host prerequisite checks.
   [~] M2.4.3 Define runner classes, isolation model, and artifact handoff mounts.
     [x] M2.4.3.a Add `doc/RELEASE-LANES.md` with runner-class and lane model baseline.
-  [ ] M2.4.4 Add smoke microVM lane validating produced Linux artifacts in isolation.
+  [~] M2.4.4 Add smoke microVM lane validating produced Linux artifacts in isolation.
+    [x] M2.4.4.a Add microVM smoke scaffold entrypoint for isolated Linux artifact validation.
 
 ================================================================================
 MILESTONE M3: NATIVE PER-HOST BUILD SUPPORT + CROSS-TARGET POLICY

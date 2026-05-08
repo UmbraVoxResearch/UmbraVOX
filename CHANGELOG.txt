@@ -12,6 +12,7 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - Added runtime troubleshooting logging toggles, metadata-focused event emission, and associated regression coverage.
 - Added generated/codegen wiring for preserved Haskell wrappers and generated FFI/C bridge participation in active build/test graphs.
 - Added transport fallback progress/status reporting and expanded network hardening assertions for fallback endpoint behavior.
+- Added release-lane microVM smoke scaffolding for isolated validation of produced Linux artifacts.
 
 ### Changed
 - Reworked messaging MVP hardening flow into explicit fast-gate and targeted suite runs with artifact logging.
