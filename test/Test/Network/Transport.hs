@@ -8,12 +8,14 @@ module Test.Network.Transport (runTests) where
 import Control.Exception (SomeException, catch, finally, try)
 import Control.Concurrent (forkIO, threadDelay)
 import qualified Data.ByteString as BS
+import Data.IORef (newIORef, modifyIORef', readIORef)
 import Data.List (isInfixOf)
 import qualified Network.Socket as NS
 
 import Test.Util
 import UmbraVox.Network.Transport
-    ( TCPTransport, accept, close, closeListener, connect, connectTryPorts, listen, listenOn, recv, send )
+    ( TCPTransport, accept, close, closeListener, connect, connectTryPorts
+    , connectTryPortsWithProgress, listen, listenOn, recv, send )
 import UmbraVox.Network.TransportClass (thInfo)
 
 runTests :: IO Bool
@@ -27,6 +29,8 @@ runTests = do
         , testPersistentListenerSequentialAccepts
         , testDefaultPortFallbackConnectsSecondPort
         , testDefaultPortFallbackFailureMessage
+        , testDefaultPortFallbackReportsProgressOnSuccess
+        , testDefaultPortFallbackReportsProgressOnFailure
         ]
     let passed = length (filter id results)
         total  = length results
@@ -190,6 +194,45 @@ testDefaultPortFallbackFailureMessage = do
         Right transport -> do
             close transport
             assertEq "default port fallback failure should fail" True False
+
+testDefaultPortFallbackReportsProgressOnSuccess :: IO Bool
+testDefaultPortFallbackReportsProgressOnSuccess = do
+    let closedPort = 19210
+        openPort = 19211
+        payload = strToBS "progress callback payload"
+    seenRef <- newIORef []
+    _ <- forkIO $ do
+        server <- listen openPort
+        msg <- recv server (BS.length payload)
+        send server msg
+        close server
+    threadDelay 50000
+    client <- connectTryPortsWithProgress "127.0.0.1" [closedPort, openPort] $ \port ->
+        modifyIORef' seenRef (++ [port])
+    send client payload
+    response <- recv client (BS.length payload)
+    close client
+    seen <- readIORef seenRef
+    a <- assertEq "default port fallback progress success order" [closedPort, openPort] seen
+    b <- assertEq "default port fallback progress success payload" payload response
+    pure (a && b)
+
+testDefaultPortFallbackReportsProgressOnFailure :: IO Bool
+testDefaultPortFallbackReportsProgressOnFailure = do
+    let ports = [19212, 19213]
+    seenRef <- newIORef []
+    result <- try
+        (connectTryPortsWithProgress "127.0.0.1" ports $ \port ->
+            modifyIORef' seenRef (++ [port]))
+        :: IO (Either IOError TCPTransport)
+    seen <- readIORef seenRef
+    a <- assertEq "default port fallback progress failure order" ports seen
+    b <- case result of
+        Left _ -> assertEq "default port fallback progress failure returns error" True True
+        Right transport -> do
+            close transport
+            assertEq "default port fallback progress failure should fail" True False
+    pure (a && b)
 
 ipv6LoopbackAvailable :: IO Bool
 ipv6LoopbackAvailable =
