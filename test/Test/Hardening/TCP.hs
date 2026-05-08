@@ -256,6 +256,7 @@ testTUIRuntimeLoggingFallbackProgress = do
         feedPrompt bob "127.0.0.1"
         connectedAlice <- waitForSessionCount alice 1 5000
         connectedBob <- waitForSessionCount bob 1 5000
+        finalStatus <- waitForStatusLine bob "Connected #" 5000
         logReady <- waitForLogEvents logPath
             [ "transport.connect.attempt_defaults"
             , "transport.connect.try_port"
@@ -265,9 +266,11 @@ testTUIRuntimeLoggingFallbackProgress = do
         redactionOk <- runtimeLogRedactionOk logPath
         okConnectedAlice <- assertEq "tui runtime fallback alice connected" True connectedAlice
         okConnectedBob <- assertEq "tui runtime fallback bob connected" True connectedBob
+        okFinalStatus <- assertEq "tui runtime fallback final status shows resolved endpoint" True
+            ("127.0.0.1:7854" `isInfixOf` finalStatus)
         okLogReady <- assertEq "tui runtime fallback log events" True logReady
         okRedaction <- assertEq "tui runtime fallback metadata redacted" True redactionOk
-        pure (okConnectedAlice && okConnectedBob && okLogReady && okRedaction)
+        pure (okConnectedAlice && okConnectedBob && okFinalStatus && okLogReady && okRedaction)
 
 testTUIListenerSingleOwner :: IO Bool
 testTUIListenerSingleOwner = do
@@ -381,6 +384,15 @@ waitForSessionCount st expected timeoutMs
         if Map.size sessions >= expected
             then pure True
             else threadDelay 10000 >> waitForSessionCount st expected (timeoutMs - 10)
+
+waitForStatusLine :: AppState -> String -> Int -> IO String
+waitForStatusLine st needle timeoutMs
+    | timeoutMs <= 0 = readIORef (asStatusMsg st)
+    | otherwise = do
+        status <- readIORef (asStatusMsg st)
+        if needle `isInfixOf` status
+            then pure status
+            else threadDelay 10000 >> waitForStatusLine st needle (timeoutMs - 10)
 
 waitForHistoryLine :: AppState -> String -> Int -> IO Bool
 waitForHistoryLine st needle timeoutMs
