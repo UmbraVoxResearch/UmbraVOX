@@ -42,6 +42,18 @@ ensure_clean_tree() {
     fi
 }
 
+ensure_tagged_release() {
+    if [[ "${UMBRAVOX_ALLOW_UNTAGGED_RELEASE:-0}" == "1" ]]; then
+        return
+    fi
+    local tag=""
+    tag="$(git describe --tags --exact-match HEAD 2>/dev/null || true)"
+    if [[ -z "$tag" ]]; then
+        echo "refusing release from untagged commit; tag HEAD or set UMBRAVOX_ALLOW_UNTAGGED_RELEASE=1" >&2
+        exit 1
+    fi
+}
+
 stage_source_tree() {
     local stage="$1"
     mkdir -p "$stage"
@@ -261,6 +273,7 @@ main() {
     require_cmd sha256sum
     mkdir -p "$OUT_DIR"
     ensure_clean_tree
+    ensure_tagged_release
 
     case "$TARGET" in
         linux)
