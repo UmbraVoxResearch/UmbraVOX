@@ -5,14 +5,15 @@
 -- Verifies exact byte preservation for send/recv operations.
 module Test.Network.Transport (runTests) where
 
-import Control.Exception (SomeException, catch, finally)
+import Control.Exception (SomeException, catch, finally, try)
 import Control.Concurrent (forkIO, threadDelay)
 import qualified Data.ByteString as BS
+import Data.List (isInfixOf)
 import qualified Network.Socket as NS
 
 import Test.Util
 import UmbraVox.Network.Transport
-    ( accept, close, closeListener, connect, connectTryPorts, listen, listenOn, recv, send )
+    ( TCPTransport, accept, close, closeListener, connect, connectTryPorts, listen, listenOn, recv, send )
 
 runTests :: IO Bool
 runTests = do
@@ -24,6 +25,7 @@ runTests = do
         , testIPv6LoopbackRoundTrip
         , testPersistentListenerSequentialAccepts
         , testDefaultPortFallbackConnectsSecondPort
+        , testDefaultPortFallbackFailureMessage
         ]
     let passed = length (filter id results)
         total  = length results
@@ -169,6 +171,22 @@ testDefaultPortFallbackConnectsSecondPort = do
     response <- recv client (BS.length payload)
     close client
     assertEq "default port fallback connects on second port" payload response
+
+testDefaultPortFallbackFailureMessage :: IO Bool
+testDefaultPortFallbackFailureMessage = do
+    let host = "127.0.0.1"
+        ports = [19208, 19209]
+    result <- try (connectTryPorts host ports) :: IO (Either IOError TCPTransport)
+    case result of
+        Left err -> do
+            let rendered = show err
+            a <- assertEq "default port fallback failure mentions host" True (("connect failed to " ++ host) `isInfixOf` rendered)
+            b <- assertEq "default port fallback failure mentions ports" True (show ports `isInfixOf` rendered)
+            c <- assertEq "default port fallback failure includes operator hint" True ("verify the remote listener is running and reachable" `isInfixOf` rendered)
+            pure (a && b && c)
+        Right transport -> do
+            close transport
+            assertEq "default port fallback failure should fail" True False
 
 ipv6LoopbackAvailable :: IO Bool
 ipv6LoopbackAvailable =
