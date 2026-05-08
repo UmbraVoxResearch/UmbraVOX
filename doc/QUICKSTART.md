@@ -42,6 +42,11 @@ make release-macos-terminal
 make release-bsd-terminal
 make release-freedos
 make release
+make release-smoke-linux
+make release-smoke-qemu
+make release-smoke-firecracker
+make release-lane-qemu
+make release-lane-firecracker
 scripts/nix-flake.sh flake show --no-write-lock-file
 ```
 
@@ -73,6 +78,21 @@ scripts/nix-flake.sh flake show --no-write-lock-file
 - `make release-bsd-terminal` writes a BSD terminal source-release tarball with native build instructions.
 - `make release-freedos` writes a FreeDOS research/source release zip with an explicit unsupported-runtime note.
 - `make release` builds every currently defined release artifact under `build/releases/`.
+- `make release-smoke-linux` runs the working container-based Linux bundle smoke check.
+- `make release-smoke-qemu` runs the QEMU microVM smoke entrypoint:
+  it checks artifact + host prerequisites, then either executes a runner hook
+  (`UMBRAVOX_QEMU_SMOKE_RUNNER`) or invokes a direct pinned-input boot path
+  from `UMBRAVOX_QEMU_*` inputs.
+- `make release-smoke-firecracker` runs the Firecracker microVM smoke entrypoint:
+  it checks artifact + host prerequisites, then either executes a runner hook
+  (`UMBRAVOX_FIRECRACKER_SMOKE_RUNNER`) or invokes a direct pinned-input boot
+  path from `UMBRAVOX_FIRECRACKER_*` inputs.
+- `make release-lane-qemu` and `make release-lane-firecracker` are still
+  host-prerequisite scaffolds for future in-guest release execution; they do
+  not yet run the release graph inside a guest.
+- Only the QEMU microVM path currently has a documented deterministic
+  command-line smoke profile helper:
+  `scripts/release-smoke-qemu-profile.sh bundle-basic`.
 - Flake parity commands are available through `flake.nix` apps/checks/packages.
   Use `scripts/nix-flake.sh ...` to avoid repeating feature flags.
 - Release packaging now fails by default on dirty or untagged commits.

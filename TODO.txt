@@ -101,7 +101,9 @@ Exit criteria
     [~] M2.4.4.c Implement pinned guest image boot and in-guest bundle verification without external runner hooks.
       [x] M2.4.4.c.1 Add QEMU pinned-boot execution path via `UMBRAVOX_QEMU_*` inputs.
       [x] M2.4.4.c.2 Add deterministic in-guest command profile for bundle launch + manifest checks.
-      [ ] M2.4.4.c.3 Add Firecracker pinned-boot path once guest image/machine config inputs are defined.
+      [~] M2.4.4.c.3 Add Firecracker pinned-input boot invocation path and document the remaining guest-image/config gap.
+        [x] M2.4.4.c.3.a Accept `UMBRAVOX_FIRECRACKER_KERNEL`, `UMBRAVOX_FIRECRACKER_ROOTFS`, and `UMBRAVOX_FIRECRACKER_CONFIG`.
+        [ ] M2.4.4.c.3.b Define maintained Firecracker guest-image/config inputs that actually perform bundle verification in-guest.
 
 ================================================================================
 MILESTONE M3: NATIVE PER-HOST BUILD SUPPORT + CROSS-TARGET POLICY
