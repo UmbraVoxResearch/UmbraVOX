@@ -155,14 +155,37 @@ It is not a static binary and it is not a Windows, BSD, macOS, or DOS binary."
         } | sort -u
     )
 
-    for dep in "${deps[@]}"; do
+    copy_dep() {
+        local dep="$1"
         local dep_base
         dep_base="$(basename "$dep")"
         if [[ -e "$stage/lib/$dep_base" ]]; then
-            continue
+            return
         fi
         cp -L "$dep" "$stage/lib/$dep_base"
         chmod u+w "$stage/lib/$dep_base" 2>/dev/null || true
+    }
+
+    # Seed closure from binary direct deps.
+    for dep in "${deps[@]}"; do
+        copy_dep "$dep"
+    done
+
+    # Expand transitive ELF closure for copied libs.
+    local changed=1
+    while [[ "$changed" -eq 1 ]]; do
+        changed=0
+        while IFS= read -r libpath; do
+            mapfile -t transitive < <(ldd "$libpath" 2>/dev/null | awk '{for (i = 1; i <= NF; i++) if ($i ~ /^\//) print $i}' | sort -u)
+            for tdep in "${transitive[@]}"; do
+                local tbase
+                tbase="$(basename "$tdep")"
+                if [[ ! -e "$stage/lib/$tbase" ]]; then
+                    copy_dep "$tdep"
+                    changed=1
+                fi
+            done
+        done < <(find "$stage/lib" -maxdepth 1 -type f)
     done
 
     cat >"$stage/run-umbravox.sh" <<'EOF'
