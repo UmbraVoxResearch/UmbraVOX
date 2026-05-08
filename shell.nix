@@ -66,6 +66,7 @@ in pkgs.mkShell {
     afl
 
     # Utilities
+    pkgs.nix
     graphviz
     jq
     patchelf
