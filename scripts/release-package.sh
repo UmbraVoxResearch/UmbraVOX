@@ -20,6 +20,7 @@ usage: scripts/release-package.sh <target>
 targets:
   source
   linux
+  appimage
   windows-cli
   macos-terminal
   bsd-terminal
@@ -221,6 +222,75 @@ EOF
     echo "$artifact"
 }
 
+build_appimage_scaffold() {
+    require_cmd cabal
+    require_cmd sha256sum
+    require_cmd tar
+
+    local linux_artifact
+    local linux_stage
+    local linux_dir
+    local pkg="umbravox-${VERSION}-linux-x86_64-appimage-scaffold"
+    local stage="$OUT_DIR/$pkg"
+    local artifact="$OUT_DIR/$pkg.tar.gz"
+
+    linux_artifact="$(build_linux_release)"
+
+    linux_stage="$(mktemp -d "${TMPDIR:-/tmp}/umbravox-appimage-src.XXXXXX")"
+    tar -xzf "$linux_artifact" -C "$linux_stage"
+    linux_dir="$(find "$linux_stage" -maxdepth 1 -mindepth 1 -type d | head -n1)"
+    if [[ -z "$linux_dir" ]]; then
+        echo "unable to unpack Linux release artifact for AppImage scaffold" >&2
+        exit 1
+    fi
+
+    rm -rf "$stage"
+    mkdir -p "$stage/AppDir"
+    cp -a "$linux_dir/." "$stage/AppDir/"
+
+    cat >"$stage/AppDir/AppRun" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+exec "$HERE/run-umbravox.sh" "$@"
+EOF
+    chmod +x "$stage/AppDir/AppRun"
+
+    cat >"$stage/AppDir/umbravox.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=UmbraVOX
+Exec=AppRun
+Icon=umbravox
+Terminal=true
+Categories=Network;Chat;
+Comment=Experimental AppImage scaffold for UmbraVOX
+EOF
+
+    write_manifest "$stage" "linux-x86_64" "experimental-appimage-scaffold"
+    write_target_note "$stage/APPIMAGE-PLACEHOLDER.txt" \
+"UmbraVOX experimental AppImage scaffold
+
+This package is a non-authoritative AppImage track scaffold.
+It packages the current Linux bundle contents into an AppDir-style layout,
+but it does not yet claim the status of a maintained, supported AppImage
+release artifact.
+
+Smoke validation against this target is intentionally placeholder-only until
+the AppImage support policy and parity evidence are proven."
+
+    (cd "$stage" && find AppDir -type f | sort | xargs sha256sum > CONTENTS.SHA256)
+    sha256sum "$ROOT/scripts/release-package.sh" > "$stage/RELEASE-SCRIPT.SHA256"
+    cat >>"$stage/RELEASE-MANIFEST.txt" <<EOF
+artifact_kind_note=experimental_appimage_scaffold
+contents_sha256_file=CONTENTS.SHA256
+release_script_sha256_file=RELEASE-SCRIPT.SHA256
+EOF
+
+    archive_tgz "$stage" "$artifact"
+    echo "$artifact"
+}
+
 build_source_release() {
     local target="$1"
     local package_suffix="$2"
@@ -335,6 +405,9 @@ main() {
             ;;
         source)
             build_source_release "source" "source" "tgz"
+            ;;
+        appimage)
+            build_appimage_scaffold
             ;;
         *)
             usage >&2

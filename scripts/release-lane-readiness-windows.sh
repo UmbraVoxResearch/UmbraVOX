@@ -27,4 +27,5 @@ lane_finish \
   "not ready for the current Windows source-lane scaffold" \
   "run make release-windows-cli from the Windows Bash environment for the current source artifact" \
   "run make build and make test on the same host if you want native CLI parity evidence" \
+  "capture dedicated native Windows CLI evidence for M3.1.4.b with build, test, and release logs from the intended runner" \
   "add native Windows packaging and PowerShell smoke coverage before promoting this lane beyond source release"

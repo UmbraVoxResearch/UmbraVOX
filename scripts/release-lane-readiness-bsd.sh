@@ -24,4 +24,5 @@ lane_finish \
   "not ready for the current BSD source-lane scaffold" \
   "run the GNU Make release target for the current source artifact, for example gmake release-bsd-terminal" \
   "run GNU Make build and test targets on the same host if you want BSD-native parity evidence" \
+  "capture BSD-native evidence only after a repo-owned BSD runner exists, then record build/test/release logs for future parity review" \
   "keep BSD source-only until native builder and smoke policy are defined"
