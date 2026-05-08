@@ -79,7 +79,7 @@ Exit criteria
 [~] M2.2 Linux native dynamic bundle hardening (default supported artifact)
   [x] M2.2.1 Replace invalid interpreter patch approach with loader-wrapper launch.
   [x] M2.2.2 Resolve full transitive runtime closure (not only shallow `ldd` deps).
-  [ ] M2.2.3 Add clean-room smoke run in isolated Linux VM/container.
+  [x] M2.2.3 Add clean-room smoke run in isolated Linux VM/container.
   [ ] M2.2.4 Define and document minimum glibc/ABI compatibility policy.
   [ ] M2.2.5 Add deterministic manifest fields and artifact digest verification.
 
