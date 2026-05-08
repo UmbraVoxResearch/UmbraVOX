@@ -20,17 +20,33 @@ native host builds available.
 - no VM requirement.
 
 2. `integration` lane (QEMU/KVM)
-- validates release scripts and bundle behavior in an isolated Linux VM.
-- debug-first lane for VM/runtime issues.
+- current scaffold validates host prerequisites for the planned QEMU/KVM lane.
+- intended next step is a reproducible guest image running the release workflow
+  in-guest.
+- debug-first lane for VM/runtime issues once guest boot is implemented.
 
 3. `authoritative-release` lane (Firecracker preferred, QEMU fallback)
-- builds release artifacts from pinned inputs.
-- publishes manifests/checksums/SBOM/license artifacts.
-- runs isolated smoke checks against produced bundles.
+- current scaffold validates host prerequisites for the planned Firecracker
+  authoritative lane.
+- intended next step is booting a pinned builder microVM and executing the
+  release graph inside the guest.
+- artifact publication and in-guest smoke execution are target behavior, not
+  current behavior.
+
+4. `microvm-smoke` lane (QEMU or Firecracker)
+- current scaffold checks for a built Linux release artifact plus host
+  prerequisites for the selected VMM.
+- intended next step is booting a smoke guest and running bundle
+  launch/manifest checks in-guest.
+- no full VM or microVM boot is implemented yet.
 
 ## Current Scope
 
 - Linux release artifacts are executable bundles.
+- `make release-smoke-linux` performs the current isolated smoke check with
+  `podman` or `docker`; it is not the microVM smoke lane.
+- QEMU, Firecracker, and microVM smoke entrypoints are scaffolds with host
+  capability checks and next-step messaging only.
 - non-Linux targets remain source releases until native artifact lanes are fully operational.
 
 ## Local Commands
@@ -41,7 +57,16 @@ make release-linux
 make release-smoke-linux
 make release-lane-qemu
 make release-lane-firecracker
+./scripts/release-smoke-microvm.sh qemu
+./scripts/release-smoke-microvm.sh firecracker
 ```
 
-The `release-lane-*` commands are scaffolding entrypoints that currently check
-host capability and print required environment/setup constraints.
+Current command behavior:
+
+- `make release-smoke-linux` extracts the latest Linux bundle in a container
+  and checks basic launch/linkage files.
+- `make release-lane-qemu` and `make release-lane-firecracker` only verify
+  host prerequisites and print the next implementation step.
+- `scripts/release-smoke-microvm.sh <qemu|firecracker>` only verifies a Linux
+  artifact exists, checks host prerequisites, and prints the next
+  implementation step.

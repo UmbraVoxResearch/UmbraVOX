@@ -31,6 +31,8 @@
 #   make quality      - Run the full pipeline (same as make)
 #   make release-linux - Build a portable Linux x86_64 terminal bundle
 #   make release-smoke-linux - Run isolated Linux bundle smoke check (podman/docker if available)
+#   make release-smoke-qemu - Run QEMU microVM Linux bundle smoke scaffold
+#   make release-smoke-firecracker - Run Firecracker microVM Linux bundle smoke scaffold
 #   make release-windows-cli - Build a Windows CLI source release zip
 #   make release-macos-terminal - Build a macOS terminal source release tarball
 #   make release-bsd-terminal - Build a BSD terminal source release tarball
@@ -46,7 +48,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build run test test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify complexity quality evidence lint license license-fix format-check codegen release release-linux release-smoke-linux release-lane-qemu release-lane-firecracker release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source clean cleandb cleanall help
+.PHONY: all build run test test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify complexity quality evidence lint license license-fix format-check codegen release release-linux release-smoke-linux release-smoke-qemu release-smoke-firecracker release-lane-qemu release-lane-firecracker release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -119,6 +121,8 @@ help:
 	@echo "    make evidence    Run quality and write a publication evidence bundle"
 	@echo "    make release-linux Build portable Linux x86_64 terminal bundle"
 	@echo "    make release-smoke-linux Run isolated Linux bundle smoke check"
+	@echo "    make release-smoke-qemu Run QEMU microVM Linux bundle smoke scaffold"
+	@echo "    make release-smoke-firecracker Run Firecracker microVM Linux bundle smoke scaffold"
 	@echo "    make release-lane-qemu Validate QEMU/KVM release-lane prerequisites"
 	@echo "    make release-lane-firecracker Validate Firecracker release-lane prerequisites"
 	@echo "    make release-windows-cli Build Windows CLI source release zip"
@@ -422,6 +426,14 @@ release-linux:
 release-smoke-linux:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Running isolated Linux release smoke check..."
 	@./scripts/release-smoke-linux.sh
+
+release-smoke-qemu:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Running QEMU microVM release smoke check..."
+	@./scripts/release-smoke-microvm.sh qemu
+
+release-smoke-firecracker:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Running Firecracker microVM release smoke check..."
+	@./scripts/release-smoke-microvm.sh firecracker
 
 release-lane-qemu:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Checking QEMU/KVM release-lane prerequisites..."
