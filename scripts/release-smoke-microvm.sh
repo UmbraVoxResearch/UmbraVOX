@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="${UMBRAVOX_ROOT:-$(pwd)}"
 mode="${1:-qemu}"
+FIRECRACKER_TEMP_CONFIG=""
 
 die() {
   echo "error: $*" >&2
@@ -20,6 +21,27 @@ require_file() {
   local label="$2"
   [[ -f "$path" ]] || die "$label not found: $path"
 }
+
+require_readable_file() {
+  local path="$1"
+  local label="$2"
+  require_file "$path" "$label"
+  [[ -r "$path" ]] || die "$label not readable: $path"
+}
+
+require_command() {
+  local command_name="$1"
+  local error_message="$2"
+  command -v "$command_name" >/dev/null 2>&1 || die "$error_message"
+}
+
+cleanup_temp_files() {
+  if [[ -n "${FIRECRACKER_TEMP_CONFIG:-}" ]] && [[ -e "$FIRECRACKER_TEMP_CONFIG" ]]; then
+    rm -f -- "$FIRECRACKER_TEMP_CONFIG"
+  fi
+}
+
+trap cleanup_temp_files EXIT
 
 require_dir "$ROOT" "UMBRAVOX_ROOT"
 cd "$ROOT"
@@ -86,14 +108,57 @@ qemu_boot_smoke() {
 }
 
 firecracker_boot_smoke() {
-  : "${UMBRAVOX_FIRECRACKER_KERNEL:?set UMBRAVOX_FIRECRACKER_KERNEL to a Linux kernel image path}"
-  : "${UMBRAVOX_FIRECRACKER_ROOTFS:?set UMBRAVOX_FIRECRACKER_ROOTFS to a rootfs image path}"
-  : "${UMBRAVOX_FIRECRACKER_CONFIG:?set UMBRAVOX_FIRECRACKER_CONFIG to a Firecracker config JSON path}"
-  require_file "$UMBRAVOX_FIRECRACKER_KERNEL" "Firecracker kernel image"
-  require_file "$UMBRAVOX_FIRECRACKER_ROOTFS" "Firecracker rootfs image"
-  require_file "$UMBRAVOX_FIRECRACKER_CONFIG" "Firecracker config"
+  local missing=()
+  local root_drive_count=""
+  local root_drive_index=""
 
-  firecracker --config-file "$UMBRAVOX_FIRECRACKER_CONFIG"
+  [[ -n "${UMBRAVOX_FIRECRACKER_KERNEL:-}" ]] || missing+=("UMBRAVOX_FIRECRACKER_KERNEL")
+  [[ -n "${UMBRAVOX_FIRECRACKER_ROOTFS:-}" ]] || missing+=("UMBRAVOX_FIRECRACKER_ROOTFS")
+  [[ -n "${UMBRAVOX_FIRECRACKER_CONFIG:-}" ]] || missing+=("UMBRAVOX_FIRECRACKER_CONFIG")
+  if ((${#missing[@]} > 0)); then
+    die "incomplete Firecracker pinned-boot inputs: missing ${missing[*]}; set all of UMBRAVOX_FIRECRACKER_KERNEL, UMBRAVOX_FIRECRACKER_ROOTFS, and UMBRAVOX_FIRECRACKER_CONFIG, or unset them all to keep scaffold behavior"
+  fi
+
+  require_readable_file "$UMBRAVOX_FIRECRACKER_KERNEL" "Firecracker kernel image"
+  require_readable_file "$UMBRAVOX_FIRECRACKER_ROOTFS" "Firecracker rootfs image"
+  require_readable_file "$UMBRAVOX_FIRECRACKER_CONFIG" "Firecracker config"
+  require_command jq "jq not available; install jq to validate and pin Firecracker config inputs"
+
+  if ! jq -e 'type == "object"' "$UMBRAVOX_FIRECRACKER_CONFIG" >/dev/null; then
+    die "Firecracker config is not a valid JSON object: $UMBRAVOX_FIRECRACKER_CONFIG"
+  fi
+  if ! jq -e 'has("boot-source") and (.["boot-source"] | type == "object")' "$UMBRAVOX_FIRECRACKER_CONFIG" >/dev/null; then
+    die "Firecracker config must contain an object-valued \"boot-source\" entry: $UMBRAVOX_FIRECRACKER_CONFIG"
+  fi
+  if ! jq -e 'has("drives") and (.drives | type == "array") and (.drives | length > 0)' "$UMBRAVOX_FIRECRACKER_CONFIG" >/dev/null; then
+    die "Firecracker config must contain a non-empty \"drives\" array: $UMBRAVOX_FIRECRACKER_CONFIG"
+  fi
+
+  root_drive_count="$(jq -r '[.drives[] | select(.is_root_device == true)] | length' "$UMBRAVOX_FIRECRACKER_CONFIG")" || die "unable to inspect Firecracker root drive entries: $UMBRAVOX_FIRECRACKER_CONFIG"
+  if [[ "$root_drive_count" != "1" ]]; then
+    die "Firecracker config must mark exactly one drive with is_root_device=true; found $root_drive_count in $UMBRAVOX_FIRECRACKER_CONFIG"
+  fi
+
+  root_drive_index="$(jq -er '.drives | to_entries | map(select(.value.is_root_device == true)) | .[0].key' "$UMBRAVOX_FIRECRACKER_CONFIG")" || die "unable to resolve Firecracker root drive index: $UMBRAVOX_FIRECRACKER_CONFIG"
+  if ! jq -e --argjson root_drive_index "$root_drive_index" '.drives[$root_drive_index].drive_id | type == "string" and length > 0' "$UMBRAVOX_FIRECRACKER_CONFIG" >/dev/null; then
+    die "Firecracker root drive entry must define a non-empty drive_id: $UMBRAVOX_FIRECRACKER_CONFIG"
+  fi
+
+  FIRECRACKER_TEMP_CONFIG="$(mktemp "${TMPDIR:-/tmp}/umbravox-firecracker-config.XXXXXX.json")" || die "unable to create temporary Firecracker config"
+  if ! jq \
+    --arg kernel "$UMBRAVOX_FIRECRACKER_KERNEL" \
+    --arg rootfs "$UMBRAVOX_FIRECRACKER_ROOTFS" \
+    --argjson root_drive_index "$root_drive_index" \
+    '."boot-source".kernel_image_path = $kernel
+     | .drives[$root_drive_index].path_on_host = $rootfs' \
+    "$UMBRAVOX_FIRECRACKER_CONFIG" >"$FIRECRACKER_TEMP_CONFIG"; then
+    die "unable to render pinned Firecracker config from $UMBRAVOX_FIRECRACKER_CONFIG"
+  fi
+
+  echo "using Firecracker base config: $UMBRAVOX_FIRECRACKER_CONFIG"
+  echo "pinned Firecracker kernel: $UMBRAVOX_FIRECRACKER_KERNEL"
+  echo "pinned Firecracker rootfs: $UMBRAVOX_FIRECRACKER_ROOTFS"
+  firecracker --config-file "$FIRECRACKER_TEMP_CONFIG"
 }
 
 case "$mode" in
