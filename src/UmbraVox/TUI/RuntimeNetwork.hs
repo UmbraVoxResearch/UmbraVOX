@@ -126,9 +126,10 @@ connectToPeer st h mPort =
                 ik <- getOrCreateIdentity (asConfig st)
                 at <- connectWithProvider runtimeProvider h port
                 session <- handshakeInitiator at ik
-                sid <- addSession (asConfig st) at session (renderHostPort h port)
+                let endpoint = transportPeerLabel (anyInfo at)
+                sid <- addSession (asConfig st) at session endpoint
                 selectLast st
-                emitStatus st ("Connected #" ++ show sid)
+                emitStatus st ("Connected #" ++ show sid ++ " via " ++ endpoint)
                 ) `catch` (\(e :: SomeException) -> emitStatus st ("Failed: " ++ renderRuntimeError e))
         Nothing -> do
             logEvent (asConfig st) "transport.connect.attempt_defaults"
@@ -222,7 +223,8 @@ connectGroupPeers st ik (p:ps) successes =
             Just port -> connectWithProvider runtimeProvider h port
             Nothing   -> connectWithProviderTryPorts runtimeProvider h defaultPorts
         session <- handshakeInitiator at ik
-        void $ addSession (asConfig st) at session peer
+        let endpoint = transportPeerLabel (anyInfo at)
+        void $ addSession (asConfig st) at session endpoint
         connectGroupPeers st ik ps (successes + 1)
         ) `catch` (\(_ :: SomeException) -> connectGroupPeers st ik ps successes))
 
