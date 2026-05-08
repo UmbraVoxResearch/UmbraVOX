@@ -26,5 +26,6 @@ lane_finish \
   "ready for the current Linux arm64 host-validation scaffold" \
   "not ready for the current Linux arm64 host-validation scaffold" \
   "run make build, make test, and make verify on the native arm64 host to establish parity evidence" \
+  "capture dedicated native Linux arm64 evidence for M3.1.2 with the build, test, verify, and release logs from the intended runner" \
   "define a native release-linux-arm64 packaging target before promoting this lane to artifact production" \
   "add an arm64 smoke step once the native packaging target exists"

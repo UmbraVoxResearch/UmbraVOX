@@ -31,4 +31,6 @@ lane_finish \
   "not ready for the current Linux x86_64 lane scaffold" \
   "enter nix-shell if you want the pinned developer environment, then run make release-linux" \
   "run make release-smoke-linux after the bundle build to verify the artifact in isolation" \
+  "capture dedicated native Linux x86_64 evidence for M3.1.1.b by running make build, make test, and make verify on the intended runner" \
+  "retain the build, test, verify, and release logs as runner evidence before promoting this lane beyond host packaging" \
   "wire this host class into CI only after native lane promotion rules are documented"

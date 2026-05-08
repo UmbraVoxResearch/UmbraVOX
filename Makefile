@@ -26,11 +26,16 @@
 #   make lint         - Check code formatting and style
 #   make license      - Check SPDX license headers in source files
 #   make license-fix  - Add missing SPDX headers automatically
+#   make release-compliance - Run placeholder SBOM/license compliance gates
+#   make release-sbom - Check SBOM tooling presence for future artifact generation
+#   make release-license-bundle - Check license-bundle tooling presence for future artifact generation
 #   make format-check - Check for tabs and trailing whitespace
 #   make codegen      - Generate Haskell + C + FFI from .spec files
 #   make quality      - Run the full pipeline (same as make)
 #   make release-linux - Build a portable Linux x86_64 terminal bundle
+#   make release-appimage - Build an experimental Linux AppImage scaffold
 #   make release-smoke-linux - Run isolated Linux bundle smoke check (podman/docker if available)
+#   make release-smoke-appimage - Run non-authoritative AppImage scaffold smoke placeholder
 #   make release-smoke-qemu - Run QEMU microVM Linux bundle smoke scaffold
 #   make release-smoke-qemu-profile - Run QEMU microVM smoke using UMBRAVOX_QEMU_PROFILE (default: bundle-basic)
 #   make release-smoke-firecracker - Run Firecracker microVM Linux bundle smoke scaffold
@@ -56,7 +61,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build run test test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify complexity quality evidence lint license license-fix format-check codegen release release-linux release-smoke-linux release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity clean cleandb cleanall help
+.PHONY: all build run test test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -132,7 +137,9 @@ help:
 	@echo "    make codegen     Generate Haskell + C + FFI from .spec files"
 	@echo "    make evidence    Run quality and write a publication evidence bundle"
 	@echo "    make release-linux Build portable Linux x86_64 terminal bundle"
+	@echo "    make release-appimage Build experimental Linux AppImage scaffold"
 	@echo "    make release-smoke-linux Run isolated Linux bundle smoke check"
+	@echo "    make release-smoke-appimage Run non-authoritative AppImage scaffold smoke placeholder"
 	@echo "    make release-smoke-qemu Run QEMU microVM Linux bundle smoke scaffold"
 	@echo "    make release-smoke-qemu-profile Run QEMU microVM smoke with deterministic profile (QEMU_SMOKE_PROFILE=$(QEMU_SMOKE_PROFILE))"
 	@echo "    make release-smoke-firecracker Run Firecracker microVM Linux bundle smoke scaffold"
@@ -155,6 +162,9 @@ help:
 	@echo "    make lint        Check code formatting and style"
 	@echo "    make license     Check SPDX license headers in source files"
 	@echo "    make license-fix Add missing SPDX headers automatically"
+	@echo "    make release-compliance Run placeholder SBOM/license compliance gates"
+	@echo "    make release-sbom Check SBOM tooling presence for future generation"
+	@echo "    make release-license-bundle Check license-bundle tooling presence for future generation"
 	@echo "    make format-check Check for tabs and trailing whitespace"
 	@echo "    make quality     Same as make (lint/format-check are non-blocking)"
 	@echo ""
@@ -397,6 +407,34 @@ license-fix:
 	echo -e "$(GREEN)[LICENSE]$(NC) Fixed $$fixed file(s)."
 
 # --------------------------------------------------------------------------
+# SBOM / License Bundle Placeholder Gates
+# --------------------------------------------------------------------------
+
+SBOM_TOOL ?= syft
+LICENSE_BUNDLE_TOOL ?= reuse
+
+release-compliance: release-sbom release-license-bundle
+	@echo -e "$(GREEN)[COMPLIANCE]$(NC) Placeholder compliance gates passed; no SBOM or license bundle artifact was generated."
+
+release-sbom:
+	@echo -e "$(BLUE)[COMPLIANCE]$(NC) Checking SBOM gate prerequisites..."
+	@if ! command -v $(SBOM_TOOL) >/dev/null 2>&1; then \
+		echo -e "$(RED)[COMPLIANCE]$(NC) Missing required tool: $(SBOM_TOOL)"; \
+		echo "  Add $(SBOM_TOOL) to the nix-shell or dev environment before enabling SBOM generation."; \
+		exit 1; \
+	fi
+	@echo -e "$(GREEN)[COMPLIANCE]$(NC) SBOM gate is placeholder-only for now; no artifact emitted."
+
+release-license-bundle:
+	@echo -e "$(BLUE)[COMPLIANCE]$(NC) Checking license-bundle gate prerequisites..."
+	@if ! command -v $(LICENSE_BUNDLE_TOOL) >/dev/null 2>&1; then \
+		echo -e "$(RED)[COMPLIANCE]$(NC) Missing required tool: $(LICENSE_BUNDLE_TOOL)"; \
+		echo "  Add $(LICENSE_BUNDLE_TOOL) to the nix-shell or dev environment before enabling license-bundle generation."; \
+		exit 1; \
+	fi
+	@echo -e "$(GREEN)[COMPLIANCE]$(NC) License-bundle gate is placeholder-only for now; no artifact emitted."
+
+# --------------------------------------------------------------------------
 # Code Formatting Check
 # --------------------------------------------------------------------------
 
@@ -443,9 +481,17 @@ release-linux:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Building Linux x86_64 portable bundle..."
 	@./scripts/release-package.sh linux
 
+release-appimage:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Building experimental Linux AppImage scaffold..."
+	@./scripts/release-package.sh appimage
+
 release-smoke-linux:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Running isolated Linux release smoke check..."
 	@./scripts/release-smoke-linux.sh
+
+release-smoke-appimage:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Running non-authoritative AppImage scaffold smoke placeholder..."
+	@./scripts/release-smoke-appimage.sh
 
 release-smoke-qemu:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Running QEMU microVM release smoke check..."
@@ -549,6 +595,7 @@ evidence:
 platform-sanity:
 	@echo -e "$(BLUE)[SANITY]$(NC) Checking Makefile platform lane wiring..."
 	@test -f ./scripts/release-smoke-linux.sh
+	@test -f ./scripts/release-smoke-appimage.sh
 	@test -f ./scripts/release-smoke-microvm.sh
 	@test -f ./scripts/release-smoke-qemu-profile.sh
 	@test -f ./scripts/release-lane-qemu.sh
@@ -568,6 +615,7 @@ platform-sanity:
 sanity:
 	@echo -e "$(BLUE)[SANITY]$(NC) Checking Makefile release smoke/microVM wiring..."
 	@test -f ./scripts/release-smoke-linux.sh
+	@test -f ./scripts/release-smoke-appimage.sh
 	@test -f ./scripts/release-smoke-microvm.sh
 	@test -f ./scripts/release-lane-qemu.sh
 	@test -f ./scripts/release-lane-firecracker.sh

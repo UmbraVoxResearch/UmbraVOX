@@ -8,6 +8,7 @@ UmbraVOX now defines explicit release targets instead of treating
 | Target | Artifact | Current result |
 | --- | --- | --- |
 | `make release-linux` | `.tar.gz` | Native Linux x86_64 terminal bundle with patched local loader and copied shared libraries |
+| `make release-appimage` | `.tar.gz` | Experimental AppDir-style AppImage scaffold derived from the Linux bundle |
 | `make release-windows-cli` | `.zip` | Windows CLI source release with native build instructions |
 | `make release-macos-terminal` | `.tar.gz` | macOS terminal source release with native build instructions |
 | `make release-bsd-terminal` | `.tar.gz` | BSD terminal source release with native build instructions |
@@ -28,6 +29,8 @@ microVM entrypoints that now support direct pinned boot for both VMMs:
 
 - `make release-smoke-linux` runs today and performs an isolated Linux bundle
   smoke check with `podman` or `docker` when available.
+- `make release-smoke-appimage` runs the experimental AppImage scaffold smoke
+  placeholder and only checks the scaffold layout.
 - `make release-smoke-qemu` runs the QEMU microVM smoke entrypoint.
 - `make release-smoke-qemu-profile` runs the QEMU microVM smoke entrypoint
   with `QEMU_SMOKE_PROFILE=bundle-basic` unless overridden.
@@ -37,6 +40,21 @@ microVM entrypoints that now support direct pinned boot for both VMMs:
   entrypoint with the pinned-input variables passed through from `Makefile`.
 - `make release-lane-readiness` runs the aggregate native runner readiness
   checks for Linux x86_64, Linux arm64, macOS, Windows, and BSD.
+
+## Compliance Placeholder Gates
+
+The repository now exposes non-authoritative compliance placeholders for
+future SBOM and third-party license bundle generation:
+
+- `make release-compliance` runs both placeholder gates in sequence.
+- `make release-sbom` checks for `syft` and prints a no-artifact status when
+  the tool is present.
+- `make release-license-bundle` checks for `reuse` and prints a no-artifact
+  status when the tool is present.
+
+These targets are intentionally minimal. They do not emit SBOM files or license
+bundles yet, and they fail with actionable messages if the required tools are
+absent from the current environment.
 
 The microVM smoke script always does these baseline checks first:
 
@@ -70,7 +88,9 @@ What is still not claimed here:
   helper that QEMU has via `scripts/release-smoke-qemu-profile.sh`.
 - Firecracker pinned boot is an invocation path, not yet a repository-owned
   maintained guest/config profile that proves in-guest bundle verification by
-  default.
+  default, and the M2.4.4.c.4 guest-image/config evidence task remains open.
+- The AppImage track is scaffold-only and does not yet claim a maintained,
+  supported single-file release artifact.
 - These entrypoints are not yet evidence that release packaging is executed
   end-to-end inside a guest by default.
 
@@ -127,7 +147,9 @@ That keeps the release surface explicit:
 ```sh
 nix-shell
 make release-linux
+make release-appimage
 make release-smoke-linux
+make release-smoke-appimage
 make release-smoke-qemu
 make release-smoke-qemu-profile
 make release-smoke-firecracker
