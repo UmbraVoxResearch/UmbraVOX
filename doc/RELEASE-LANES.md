@@ -34,19 +34,32 @@ native host builds available.
   current behavior.
 
 4. `microvm-smoke` lane (QEMU or Firecracker)
-- current scaffold checks for a built Linux release artifact plus host
+- current entrypoint checks for a built Linux release artifact plus host
   prerequisites for the selected VMM.
-- intended next step is booting a smoke guest and running bundle
-  launch/manifest checks in-guest.
-- no full VM or microVM boot is implemented yet.
+- runner-hook execution is available now for both QEMU and Firecracker via
+  `UMBRAVOX_QEMU_SMOKE_RUNNER` / `UMBRAVOX_FIRECRACKER_SMOKE_RUNNER`.
+- direct pinned-input boot paths are also wired:
+  QEMU via `UMBRAVOX_QEMU_*` inputs, Firecracker via
+  `UMBRAVOX_FIRECRACKER_*` inputs.
+- only the QEMU path currently has a documented deterministic command-line
+  profile helper for in-guest smoke intent.
+- this is not yet the authoritative release lane, and this document does not
+  claim a maintained guest image or proven end-to-end in-guest boot workflow.
 
 ## Current Scope
 
 - Linux release artifacts are executable bundles.
 - `make release-smoke-linux` performs the current isolated smoke check with
   `podman` or `docker`; it is not the microVM smoke lane.
-- QEMU, Firecracker, and microVM smoke entrypoints are scaffolds with host
-  capability checks and next-step messaging only.
+- QEMU and Firecracker release-lane entrypoints remain host-prerequisite
+  scaffolds only.
+- The microVM smoke entrypoint is partially wired beyond scaffold status:
+  it can dispatch host runner hooks for both VMMs, QEMU can invoke a pinned
+  boot command line directly, and Firecracker can invoke a pinned config file
+  directly when all required inputs are supplied.
+- None of that is a claim that UmbraVOX currently ships a maintained guest
+  image, performs artifact handoff into a guest automatically, or proves the
+  booted guest executes bundle checks end-to-end by default.
 - non-Linux targets remain source releases until native artifact lanes are fully operational.
 
 ## Local Commands
@@ -68,12 +81,18 @@ Current command behavior:
 - `make release-lane-qemu` and `make release-lane-firecracker` only verify
   host prerequisites and print the next implementation step.
 - `scripts/release-smoke-microvm.sh <qemu|firecracker>` verifies artifact +
-  host prerequisites and executes in-guest smoke only when a runner command is
-  provided via `UMBRAVOX_QEMU_SMOKE_RUNNER` or
-  `UMBRAVOX_FIRECRACKER_SMOKE_RUNNER`; otherwise it remains scaffold-only.
+  host prerequisites and can then either:
+  run a host-provided runner hook via `UMBRAVOX_QEMU_SMOKE_RUNNER` or
+  `UMBRAVOX_FIRECRACKER_SMOKE_RUNNER`, or
+  invoke a direct pinned-input boot path for the selected VMM.
 - QEMU mode also supports a pinned-boot path via
   `UMBRAVOX_QEMU_KERNEL` + `UMBRAVOX_QEMU_INITRD` +
   `UMBRAVOX_QEMU_ROOTFS` + `UMBRAVOX_QEMU_APPEND`.
 - For deterministic command-line profiles, use
   `scripts/release-smoke-qemu-profile.sh bundle-basic` and pass the output as
   `UMBRAVOX_QEMU_APPEND`, or set `UMBRAVOX_QEMU_PROFILE=bundle-basic`.
+- Firecracker mode accepts pinned inputs via
+  `UMBRAVOX_FIRECRACKER_KERNEL` + `UMBRAVOX_FIRECRACKER_ROOTFS` +
+  `UMBRAVOX_FIRECRACKER_CONFIG`.
+- The default path for both VMMs is still messaging plus prerequisite checks
+  unless one of those execution hooks/inputs is explicitly provided.
