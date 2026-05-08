@@ -48,6 +48,7 @@ runTests = do
         , testTUIBidirectionalRuntime
         , testTUIUtf8Runtime
         , testTUIRuntimeLogging
+        , testTUIRuntimeLoggingFallbackProgress
         , testTUIListenerSingleOwner
         , testTUIDisconnectMarksOffline
         , testTCPReconnectWithStableIdentities
@@ -224,6 +225,49 @@ testTUIRuntimeLogging = do
             ( okConnectedAlice && okConnectedBob
            && okLogExists && okPerms && okRedaction && okLogReady
             )
+
+testTUIRuntimeLoggingFallbackProgress :: IO Bool
+testTUIRuntimeLoggingFallbackProgress = do
+    let logPath = "build/test-runtime-fallback-events.log"
+    createDirectoryIfMissing True "build"
+    exists <- doesFileExist logPath
+    whenExists exists (removeFile logPath)
+    alice <- mkTestState
+    bob <- mkTestState
+    writeIORef (cfgDebugLogging (asConfig alice)) True
+    writeIORef (cfgDebugLogging (asConfig bob)) True
+    writeIORef (cfgDebugLogPath (asConfig alice)) logPath
+    writeIORef (cfgDebugLogPath (asConfig bob)) logPath
+    aliceIk <- genIdentity
+    bobIk <- genIdentity
+    writeIORef (cfgIdentity (asConfig alice)) (Just aliceIk)
+    writeIORef (cfgIdentity (asConfig bob)) (Just bobIk)
+    writeIORef (cfgListenPort (asConfig alice)) 7854
+    listenerTid <- forkIO (acceptLoopTUI alice aliceIk 7854)
+    let cleanup = do
+            cleanupSessions alice
+            cleanupSessions bob
+            killThread listenerTid `catch` ignoreError
+            threadDelay 50000
+    (`finally` cleanup) $ do
+        threadDelay 50000
+        writeIORef (asDialogMode bob) (Just DlgNewConn)
+        handleNewConnDlg bob (KeyChar '2')
+        feedPrompt bob "127.0.0.1"
+        connectedAlice <- waitForSessionCount alice 1 5000
+        connectedBob <- waitForSessionCount bob 1 5000
+        logReady <- waitForLogEvents logPath
+            [ "transport.connect.attempt_defaults"
+            , "transport.connect.try_port"
+            , "session.established.remote"
+            ]
+            5000
+        redactionOk <- runtimeLogRedactionOk logPath
+        okConnectedAlice <- assertEq "tui runtime fallback alice connected" True connectedAlice
+        okConnectedBob <- assertEq "tui runtime fallback bob connected" True connectedBob
+        okLogReady <- assertEq "tui runtime fallback log events" True logReady
+        okRedaction <- assertEq "tui runtime fallback metadata redacted" True redactionOk
+        pure (okConnectedAlice && okConnectedBob && okLogReady && okRedaction)
 
 testTUIListenerSingleOwner :: IO Bool
 testTUIListenerSingleOwner = do

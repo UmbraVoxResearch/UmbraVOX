@@ -130,7 +130,10 @@ connectToPeer st h mPort =
                 sid <- addSession (asConfig st) at session endpoint
                 selectLast st
                 emitStatus st ("Connected #" ++ show sid ++ " via " ++ endpoint)
-                ) `catch` (\(e :: SomeException) -> emitStatus st ("Failed: " ++ renderRuntimeError e))
+                ) `catch` (\(e :: SomeException) -> do
+                    logEvent (asConfig st) "transport.connect.failed"
+                        [("host", h), ("port", show port), ("provider", runtimeProviderLabel), ("reason", renderRuntimeError e)]
+                    emitStatus st ("Failed: " ++ renderRuntimeError e))
         Nothing -> do
             logEvent (asConfig st) "transport.connect.attempt_defaults"
                 [("host", h), ("provider", runtimeProviderLabel)]
@@ -140,13 +143,19 @@ connectToPeer st h mPort =
             void $ forkIO $ (do
                 ik <- getOrCreateIdentity (asConfig st)
                 at <- connectWithProviderTryPortsProgress runtimeProvider h defaultPorts $ \port ->
-                    emitStatus st ("Trying " ++ runtimeProviderLabel ++ " " ++ renderHostPort h port ++ "...")
+                    do
+                        logEvent (asConfig st) "transport.connect.try_port"
+                            [("host", h), ("port", show port), ("provider", runtimeProviderLabel)]
+                        emitStatus st ("Trying " ++ runtimeProviderLabel ++ " " ++ renderHostPort h port ++ "...")
                 session <- handshakeInitiator at ik
                 let endpoint = transportPeerLabel (anyInfo at)
                 sid <- addSession (asConfig st) at session endpoint
                 selectLast st
                 emitStatus st ("Connected #" ++ show sid ++ " via " ++ endpoint)
-                ) `catch` (\(e :: SomeException) -> emitStatus st ("Failed: " ++ renderRuntimeError e))
+                ) `catch` (\(e :: SomeException) -> do
+                    logEvent (asConfig st) "transport.connect.failed"
+                        [("host", h), ("provider", runtimeProviderLabel), ("reason", renderRuntimeError e)]
+                    emitStatus st ("Failed: " ++ renderRuntimeError e))
 
 startListenerIfNeeded :: AppState -> IdentityKey -> Int -> String -> IO Bool
 startListenerIfNeeded st ik port source = do

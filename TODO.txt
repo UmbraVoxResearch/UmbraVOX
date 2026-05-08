@@ -471,6 +471,7 @@ Priority order from here:
           [x] P6.11.8.10  preserve brief failed-peer context in final group-connect status instead of collapsing all partial failures into a bare success count
           [x] P6.11.8.11  surface per-port progress during default-port scans so direct connect attempts are observable while fallback is in flight
           [x] P6.11.8.12  prove fallback progress callbacks report attempted ports in order for both success and failure paths
+          [x] P6.11.8.13  emit and cover runtime-log evidence for default-port fallback attempts so live troubleshooting can distinguish tried ports from final failures
       [~] P6.12  Seed built-in and external-service provider stubs without overstating assurance
         [x] P6.12.1  add direct carrier descriptors for TCP and UDP
         [x] P6.12.2  add overlay carrier descriptors for Tor and WireGuard with explicit inheritance metadata
