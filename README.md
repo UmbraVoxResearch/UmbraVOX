@@ -36,9 +36,10 @@ make test-deferred     # Preserved deferred blockchain/economics suites
 make soak              # Longer soak/stress run with artifact report
 make release-linux     # Portable Linux x86_64 terminal bundle
 make release           # Build all defined release artifacts
+nix --extra-experimental-features 'nix-command flakes' flake show --no-write-lock-file
 make                   # Full pipeline: build + test + verify + complexity + lint + license + format-check
 make quality           # Same full pipeline as make; lint/format-check are advisory, license is blocking
-````
+```
 
 ### First Launch
 
@@ -77,6 +78,9 @@ Important: the raw Cabal binary under `dist-newstyle/.../umbravox` is not a
 portable release artifact. On Linux it is Nix/glibc-path bound unless it is
 repackaged through the release target. The release docs describe which targets
 currently emit native binaries and which emit platform-specific source bundles.
+Release packaging fails by default on dirty or untagged commits. For controlled
+CI/local override paths, set `UMBRAVOX_ALLOW_DIRTY_RELEASE=1` and/or
+`UMBRAVOX_ALLOW_UNTAGGED_RELEASE=1`.
 
 ## Current MVP Security Model
 
