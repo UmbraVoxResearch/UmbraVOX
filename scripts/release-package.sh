@@ -210,6 +210,12 @@ EOF
 
     "$stage/lib/$interp_base" --list "$wrapped_bin" >"$stage/LINKAGE.txt"
     file "$wrapped_bin" >"$stage/FILE.txt"
+    (cd "$stage" && find . -type f | sort | xargs sha256sum > CONTENTS.SHA256)
+    sha256sum "$ROOT/scripts/release-package.sh" > "$stage/RELEASE-SCRIPT.SHA256"
+    cat >>"$stage/RELEASE-MANIFEST.txt" <<EOF
+contents_sha256_file=CONTENTS.SHA256
+release_script_sha256_file=RELEASE-SCRIPT.SHA256
+EOF
 
     archive_tgz "$stage" "$artifact"
     echo "$artifact"
@@ -285,6 +291,13 @@ build/test/release commands."
             exit 1
             ;;
     esac
+
+    (cd "$stage" && find . -type f | sort | xargs sha256sum > CONTENTS.SHA256)
+    sha256sum "$ROOT/scripts/release-package.sh" > "$stage/RELEASE-SCRIPT.SHA256"
+    cat >>"$stage/RELEASE-MANIFEST.txt" <<EOF
+contents_sha256_file=CONTENTS.SHA256
+release_script_sha256_file=RELEASE-SCRIPT.SHA256
+EOF
 
     if [[ "$archive_kind" == "zip" ]]; then
         require_cmd zip
