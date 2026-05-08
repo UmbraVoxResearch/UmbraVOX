@@ -31,8 +31,8 @@ It is dynamically linked and points at a Nix store loader path.
 
 1. locating the built `umbravox` executable
 2. copying the executable into a release staging directory
-3. copying the ELF interpreter and direct shared-library dependencies into a local `lib/`
-4. patching the executable to use the bundled loader and RPATH
+3. copying the ELF interpreter and shared-library closure into a local `lib/`
+4. launching through a bundled loader wrapper (`run-umbravox.sh`)
 5. archiving the result as a portable Linux x86_64 terminal bundle
 
 This is still a Linux terminal release, not a static binary. Kernel/ABI
@@ -58,5 +58,6 @@ That keeps the release surface explicit:
 ```sh
 nix-shell
 make release-linux
+make release-smoke-linux
 make release
 ```
