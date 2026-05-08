@@ -20,7 +20,13 @@ qemu_boot_smoke() {
   : "${UMBRAVOX_QEMU_KERNEL:?set UMBRAVOX_QEMU_KERNEL to a Linux kernel image path}"
   : "${UMBRAVOX_QEMU_INITRD:?set UMBRAVOX_QEMU_INITRD to an initrd path}"
   : "${UMBRAVOX_QEMU_ROOTFS:?set UMBRAVOX_QEMU_ROOTFS to a rootfs image path}"
-  : "${UMBRAVOX_QEMU_APPEND:?set UMBRAVOX_QEMU_APPEND to kernel cmdline (include console=ttyS0 and one-shot smoke command)}"
+  if [[ -z "${UMBRAVOX_QEMU_APPEND:-}" ]]; then
+    if [[ -n "${UMBRAVOX_QEMU_PROFILE:-}" ]]; then
+      UMBRAVOX_QEMU_APPEND="$("$ROOT/scripts/release-smoke-qemu-profile.sh" "$UMBRAVOX_QEMU_PROFILE")"
+    else
+      : "${UMBRAVOX_QEMU_APPEND:?set UMBRAVOX_QEMU_APPEND, or set UMBRAVOX_QEMU_PROFILE to a deterministic profile}"
+    fi
+  fi
 
   local accel="tcg"
   if [[ -e /dev/kvm ]]; then
@@ -59,7 +65,7 @@ case "$mode" in
       bash -lc "$UMBRAVOX_QEMU_SMOKE_RUNNER"
       exit 0
     fi
-    if [[ -n "${UMBRAVOX_QEMU_KERNEL:-}" ]] || [[ -n "${UMBRAVOX_QEMU_INITRD:-}" ]] || [[ -n "${UMBRAVOX_QEMU_ROOTFS:-}" ]] || [[ -n "${UMBRAVOX_QEMU_APPEND:-}" ]]; then
+    if [[ -n "${UMBRAVOX_QEMU_KERNEL:-}" ]] || [[ -n "${UMBRAVOX_QEMU_INITRD:-}" ]] || [[ -n "${UMBRAVOX_QEMU_ROOTFS:-}" ]] || [[ -n "${UMBRAVOX_QEMU_APPEND:-}" ]] || [[ -n "${UMBRAVOX_QEMU_PROFILE:-}" ]]; then
       echo "running QEMU pinned-boot smoke path from UMBRAVOX_QEMU_* inputs"
       qemu_boot_smoke
       exit 0
@@ -69,6 +75,7 @@ QEMU microVM smoke scaffold
 - prerequisites satisfied
 - to execute in-guest checks now, set UMBRAVOX_QEMU_SMOKE_RUNNER to a host-specific boot-and-check command
 - or set UMBRAVOX_QEMU_KERNEL, UMBRAVOX_QEMU_INITRD, UMBRAVOX_QEMU_ROOTFS, and UMBRAVOX_QEMU_APPEND for pinned-boot execution
+- optional deterministic profile path: set UMBRAVOX_QEMU_PROFILE (uses scripts/release-smoke-qemu-profile.sh)
 - default behavior remains scaffold-only until pinned guest boot wiring is configured
 EOF
     ;;

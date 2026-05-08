@@ -74,3 +74,6 @@ Current command behavior:
 - QEMU mode also supports a pinned-boot path via
   `UMBRAVOX_QEMU_KERNEL` + `UMBRAVOX_QEMU_INITRD` +
   `UMBRAVOX_QEMU_ROOTFS` + `UMBRAVOX_QEMU_APPEND`.
+- For deterministic command-line profiles, use
+  `scripts/release-smoke-qemu-profile.sh bundle-basic` and pass the output as
+  `UMBRAVOX_QEMU_APPEND`, or set `UMBRAVOX_QEMU_PROFILE=bundle-basic`.
