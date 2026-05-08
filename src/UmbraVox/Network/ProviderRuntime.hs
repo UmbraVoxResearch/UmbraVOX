@@ -1,23 +1,39 @@
 -- SPDX-License-Identifier: Apache-2.0
 module UmbraVox.Network.ProviderRuntime
     ( activeRuntimeProvider
-    , listenWithProvider
+    , ProviderListener
+    , bindListenerWithProvider
+    , acceptWithProvider
+    , closeProviderListener
     , connectWithProvider
     , connectWithProviderTryPorts
     ) where
 
 import UmbraVox.Network.ProviderCatalog (TransportProviderId(..))
-import UmbraVox.Network.Transport (connect, connectTryPorts, listen)
+import UmbraVox.Network.Transport
+    ( TCPListener, accept, closeListener, connect, connectTryPorts, listenOn )
 import UmbraVox.Network.TransportClass (AnyTransport(..))
 
 activeRuntimeProvider :: TransportProviderId
 activeRuntimeProvider = ProviderTCP
 
-listenWithProvider :: TransportProviderId -> Int -> IO AnyTransport
-listenWithProvider providerId port =
+data ProviderListener = ProviderListenerTCP TCPListener
+
+bindListenerWithProvider :: TransportProviderId -> Int -> IO ProviderListener
+bindListenerWithProvider providerId port =
     case providerId of
-        ProviderTCP -> AnyTransport <$> listen port
+        ProviderTCP -> ProviderListenerTCP <$> listenOn port
         _ -> failUnsupported providerId "listen"
+
+acceptWithProvider :: ProviderListener -> IO AnyTransport
+acceptWithProvider listener =
+    case listener of
+        ProviderListenerTCP tcpListener -> AnyTransport <$> accept tcpListener
+
+closeProviderListener :: ProviderListener -> IO ()
+closeProviderListener listener =
+    case listener of
+        ProviderListenerTCP tcpListener -> closeListener tcpListener
 
 connectWithProvider :: TransportProviderId -> String -> Int -> IO AnyTransport
 connectWithProvider providerId host port =

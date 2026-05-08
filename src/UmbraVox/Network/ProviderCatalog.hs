@@ -31,10 +31,12 @@ module UmbraVox.Network.ProviderCatalog
     , providerLoadStatusLabel
     ) where
 
-import Data.Char (isDigit, toLower)
+import Data.Char (toLower)
 import Data.List (isPrefixOf, sortOn)
 import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
 import System.FilePath ((</>), isAbsolute, takeDirectory)
+
+import UmbraVox.Protocol.Encoding (parseHostPort, renderHostPort)
 
 data TransportProviderId
     = ProviderTCP
@@ -431,9 +433,9 @@ providerIdLabel providerId =
 providerEndpointSchema :: TransportProviderId -> String
 providerEndpointSchema providerId =
     case providerId of
-        ProviderTCP -> "host:port"
-        ProviderUDP -> "host:port"
-        ProviderTor -> "onion:port"
+        ProviderTCP -> "host:port or [ipv6]:port"
+        ProviderUDP -> "host:port or [ipv6]:port"
+        ProviderTor -> "onion:port or [ipv6]:port"
         ProviderWireGuard -> "peer@host:port"
         ProviderIRC -> "nick@server:port/#channel"
         ProviderAIM -> "screenname@server"
@@ -448,34 +450,34 @@ providerEndpointSchema providerId =
 renderProviderEndpoint :: TransportProviderId -> String -> Int -> String
 renderProviderEndpoint providerId host port =
     case providerId of
-        ProviderTCP -> host ++ ":" ++ show port
-        ProviderUDP -> "udp://" ++ host ++ ":" ++ show port
-        ProviderTor -> host ++ ":" ++ show port ++ " via tor"
-        ProviderWireGuard -> "wg://" ++ host ++ ":" ++ show port
-        ProviderIRC -> "irc://" ++ host ++ ":" ++ show port
+        ProviderTCP -> renderHostPort host port
+        ProviderUDP -> "udp://" ++ renderHostPort host port
+        ProviderTor -> renderHostPort host port ++ " via tor"
+        ProviderWireGuard -> "wg://" ++ renderHostPort host port
+        ProviderIRC -> "irc://" ++ renderHostPort host port
         ProviderAIM -> host ++ " via aim"
         ProviderXMPP -> host ++ " via xmpp"
         ProviderMastodon -> host ++ " via mastodon"
         ProviderFacebook -> host ++ " via facebook"
         ProviderInstagram -> host ++ " via instagram"
-        ProviderWhatsApp -> host ++ ":" ++ show port ++ " via whatsapp"
-        ProviderSignal -> host ++ ":" ++ show port ++ " via signal"
-        ProviderSignalServer -> host ++ ":" ++ show port ++ " via signal-server"
+        ProviderWhatsApp -> renderHostPort host port ++ " via whatsapp"
+        ProviderSignal -> renderHostPort host port ++ " via signal"
+        ProviderSignalServer -> renderHostPort host port ++ " via signal-server"
 
 parseProviderEndpoint :: TransportProviderId -> String -> Maybe String
 parseProviderEndpoint providerId raw =
     case providerId of
-        ProviderTCP -> parseHostPort normalized
-        ProviderUDP -> parseHostPort normalized
-        ProviderTor -> parseHostPort normalized
+        ProviderTCP -> parseRequiredHostPort normalized
+        ProviderUDP -> parseRequiredHostPort normalized
+        ProviderTor -> parseRequiredHostPort normalized
         ProviderWireGuard -> do
             (peer, hostPort) <- splitOnce '@' normalized
-            hostPort' <- parseHostPort hostPort
+            hostPort' <- parseRequiredHostPort hostPort
             pure (peer ++ "@" ++ hostPort')
         ProviderIRC -> do
             (nick, serverRest) <- splitOnce '@' normalized
             (serverPort, channel) <- splitOnce '/' serverRest
-            serverPort' <- parseHostPort serverPort
+            serverPort' <- parseRequiredHostPort serverPort
             if validToken channel
                 then pure (nick ++ "@" ++ serverPort' ++ "/" ++ channel)
                 else Nothing
@@ -501,19 +503,18 @@ parseProviderEndpoint providerId raw =
         ProviderSignal -> parseAccount normalized
         ProviderSignalServer -> do
             (serverPort, account) <- splitOnce '/' normalized
-            serverPort' <- parseHostPort serverPort
+            serverPort' <- parseRequiredHostPort serverPort
             if validToken account
                 then pure (serverPort' ++ "/" ++ account)
                 else Nothing
   where
     normalized = trim raw
 
-    parseHostPort input = do
-        (host, portRaw) <- splitOnce ':' input
-        port <- parsePort portRaw
-        if validToken host
-            then pure (host ++ ":" ++ show port)
-            else Nothing
+    parseRequiredHostPort input =
+        case parseHostPort input of
+            (host, Just port)
+                | validToken host -> Just (renderHostPort host port)
+            _ -> Nothing
 
     parseAccount input =
         if validToken input
@@ -525,16 +526,6 @@ parseProviderEndpoint providerId raw =
     stripLeading _ _ = Nothing
 
     validToken = not . null . trim
-
-    parsePort portRaw =
-        let digits = trim portRaw
-        in if not (null digits) && all isDigit digits
-            then
-                let port = read digits :: Int
-                in if port > 0 && port <= 65535
-                    then Just port
-                    else Nothing
-            else Nothing
 
     splitOnce ch input =
         case break (== ch) input of

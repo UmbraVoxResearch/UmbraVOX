@@ -4,7 +4,11 @@
 -- See: doc/spec/network.md
 module UmbraVox.Network.Transport
   ( TCPTransport(..)
+  , TCPListener
   , listen
+  , listenOn
+  , accept
+  , closeListener
   , connect
   , connectTryPorts
   , send
@@ -12,9 +16,12 @@ module UmbraVox.Network.Transport
   , close
   ) where
 
+import Control.Concurrent (ThreadId, forkIO, killThread)
+import Control.Concurrent.MVar (MVar, newEmptyMVar, takeMVar, tryPutMVar)
 import qualified Data.ByteString as BS
 import Data.ByteString (ByteString)
-import Control.Exception (SomeException, onException, try)
+import Control.Exception (SomeException, catch, onException, throwIO, try)
+import Control.Monad (forM, void, when)
 import qualified Network.Socket as NS
 import qualified Network.Socket.ByteString as NSB
 import System.Timeout (timeout)
@@ -24,10 +31,17 @@ import UmbraVox.Network.TransportClass (TransportHandle(..))
 connectTimeoutUs :: Int
 connectTimeoutUs = 8 * 1000000
 
+connectTryPortTimeoutUs :: Int
+connectTryPortTimeoutUs = 2 * 1000000
+
 -- | A TCP transport handle.
 data TCPTransport = TCPTransport
   { tSocket :: !NS.Socket
   , tAddr   :: !NS.SockAddr
+  }
+
+data TCPListener = TCPListener
+  { tlSockets :: ![NS.Socket]
   }
 
 instance TransportHandle TCPTransport where
@@ -39,48 +53,90 @@ instance TransportHandle TCPTransport where
 -- | Listen on the given port and accept one incoming connection.
 listen :: Int -> IO TCPTransport
 listen port = do
+    listener <- listenOn port
+    flip onException (closeListener listener) $ do
+        transport <- accept listener
+        closeListener listener
+        pure transport
+
+listenOn :: Int -> IO TCPListener
+listenOn port = do
     let hints = NS.defaultHints
           { NS.addrFlags      = [NS.AI_PASSIVE]
           , NS.addrSocketType = NS.Stream
-          , NS.addrFamily     = NS.AF_INET
+          , NS.addrFamily     = NS.AF_UNSPEC
           }
-    addr : _ <- NS.getAddrInfo (Just hints) (Just "0.0.0.0") (Just (show port))
-    sock <- NS.openSocket addr
-    flip onException (NS.close sock) $ do
-        NS.setSocketOption sock NS.ReuseAddr 1
-        NS.bind sock (NS.addrAddress addr)
-        NS.listen sock 1
-        (conn, peer) <- NS.accept sock
-        NS.close sock
+    addrs <- NS.getAddrInfo (Just hints) Nothing (Just (show port))
+    listeners <- openListeningSockets addrs
+    case listeners of
+        [] -> ioError (userError ("unable to bind tcp listener on port " ++ show port))
+        _ -> pure TCPListener { tlSockets = listeners }
+
+accept :: TCPListener -> IO TCPTransport
+accept listener = do
+    accepted <- newEmptyMVar
+    tids <- forM (tlSockets listener) (forkAccept accepted)
+    flip onException (mapM_ killThread tids) $ do
+        (conn, peer) <- takeMVar accepted
+        mapM_ killThread tids
         pure TCPTransport { tSocket = conn, tAddr = peer }
+
+closeListener :: TCPListener -> IO ()
+closeListener = closeSockets . tlSockets
 
 -- | Establish a TCP connection to the given host and port.
 connect :: String -> Int -> IO TCPTransport
-connect host port = do
+connect = connectWithTimeoutUs connectTimeoutUs
+
+connectWithTimeoutUs :: Int -> String -> Int -> IO TCPTransport
+connectWithTimeoutUs timeoutUs host port = do
     let hints = NS.defaultHints
           { NS.addrSocketType = NS.Stream
-          , NS.addrFamily     = NS.AF_INET
+          , NS.addrFamily     = NS.AF_UNSPEC
           }
-    addr : _ <- NS.getAddrInfo (Just hints) (Just host) (Just (show port))
-    sock <- NS.openSocket addr
-    result <- timeout connectTimeoutUs (NS.connect sock (NS.addrAddress addr)) `onException` NS.close sock
-    case result of
-        Just () ->
-            pure TCPTransport { tSocket = sock, tAddr = NS.addrAddress addr }
-        Nothing -> do
-            NS.close sock
-            ioError (userError ("connect timeout to " ++ host ++ ":" ++ show port))
+    addrs <- NS.getAddrInfo (Just hints) (Just host) (Just (show port))
+    tryConnectAddrs addrs Nothing
+  where
+    tryConnectAddrs [] Nothing =
+        ioError (userError ("no address candidates for " ++ host ++ ":" ++ show port))
+    tryConnectAddrs [] (Just err) = throwIO err
+    tryConnectAddrs (addr:rest) _ = do
+        result <- try (connectAddr addr) :: IO (Either SomeException TCPTransport)
+        case result of
+            Right transport -> pure transport
+            Left err -> tryConnectAddrs rest (Just err)
+
+    connectAddr addr = do
+        sock <- NS.openSocket addr
+        result <- timeout timeoutUs (NS.connect sock (NS.addrAddress addr)) `onException` NS.close sock
+        case result of
+            Just () ->
+                pure TCPTransport { tSocket = sock, tAddr = NS.addrAddress addr }
+            Nothing -> do
+                NS.close sock
+                ioError (userError ("connect timeout to " ++ host ++ ":" ++ show port))
 
 -- | Try connecting to a host on a sequence of ports, returning the first success.
 -- Throws the last error if all ports fail.
 connectTryPorts :: String -> [Int] -> IO TCPTransport
-connectTryPorts host [] = connect host 7853  -- fallback to primary default
-connectTryPorts host [p] = connect host p
+connectTryPorts host [] = connectWithTimeoutUs connectTryPortTimeoutUs host 7853  -- fallback to primary default
+connectTryPorts host [p] = connectWithTimeoutUs connectTryPortTimeoutUs host p
 connectTryPorts host (p:ps) = do
-    result <- try (connect host p) :: IO (Either SomeException TCPTransport)
-    case result of
-        Right t -> pure t
-        Left _  -> connectTryPorts host ps
+    go [] (p:ps)
+  where
+    go errs [] =
+        case reverse errs of
+            [] -> connect host 7853
+            (lastErr:_) ->
+                ioError (userError
+                    ("connect failed to " ++ host ++ " on ports "
+                    ++ show (reverse (map fst errs))
+                    ++ ": " ++ show lastErr))
+    go errs (port:rest) = do
+        result <- try (connectWithTimeoutUs connectTryPortTimeoutUs host port) :: IO (Either SomeException TCPTransport)
+        case result of
+            Right t -> pure t
+            Left err -> go ((port, err) : errs) rest
 
 -- | Send all bytes over the transport.
 send :: TCPTransport -> ByteString -> IO ()
@@ -100,3 +156,38 @@ recv t n = go n []
 -- | Close the transport connection.
 close :: TCPTransport -> IO ()
 close t = NS.gracefulClose (tSocket t) 5000
+
+openListeningSockets :: [NS.AddrInfo] -> IO [NS.Socket]
+openListeningSockets = go []
+  where
+    go opened [] = pure (reverse opened)
+    go opened (addr:rest) = do
+        mSock <- openListeningSocket addr
+        case mSock of
+            Just sock -> go (sock : opened) rest
+            Nothing -> go opened rest
+
+openListeningSocket :: NS.AddrInfo -> IO (Maybe NS.Socket)
+openListeningSocket addr =
+    (do
+        sock <- NS.openSocket addr
+        when (NS.addrFamily addr == NS.AF_INET6) $
+            NS.setSocketOption sock NS.IPv6Only 1 `catch` \(_ :: SomeException) -> pure ()
+        (do
+            NS.setSocketOption sock NS.ReuseAddr 1
+            NS.bind sock (NS.addrAddress addr)
+            NS.listen sock 16
+            pure (Just sock)
+            ) `onException` NS.close sock
+        ) `catch` \(_ :: SomeException) -> pure Nothing
+
+forkAccept :: MVar (NS.Socket, NS.SockAddr) -> NS.Socket -> IO ThreadId
+forkAccept accepted sock =
+    forkIO $ do
+        result <- try (NS.accept sock) :: IO (Either SomeException (NS.Socket, NS.SockAddr))
+        case result of
+            Right pair -> void (tryPutMVar accepted pair)
+            Left _ -> pure ()
+
+closeSockets :: [NS.Socket] -> IO ()
+closeSockets = mapM_ (\sock -> NS.close sock `catch` \(_ :: SomeException) -> pure ())

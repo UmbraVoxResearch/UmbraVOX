@@ -11,6 +11,7 @@ module UmbraVox.Protocol.Encoding
   , safeReadPort
   , defaultPorts
   , parseHostPort
+  , renderHostPort
   ) where
 
 import Data.Bits (shiftL, shiftR, (.&.), (.|.))
@@ -72,16 +73,57 @@ defaultPorts = [7853, 7854, 7855, 9999, 7856, 7857, 7858, 7859, 7860]
 -- If no port is given, returns Nothing so the caller can try the default sequence.
 parseHostPort :: String -> (String, Maybe Int)
 parseHostPort val =
-    let (host, portStr) = break (== ':') val
-        hRaw = trim host
-        h = if null hRaw then "127.0.0.1" else hRaw
-        mPort = case portStr of
-            []      -> Nothing
-            (':':p) -> case reads (trim p) of
-                [(port, _)] -> Just port
-                _           -> Nothing
-            _       -> Nothing
-    in (h, mPort)
+    case trim val of
+        '[':rest ->
+            case break (== ']') rest of
+                (host, ']':portStr) ->
+                    let h = normalizeHost host
+                    in case portStr of
+                        []      -> (h, Nothing)
+                        (':':p) -> (h, readPortMaybe p)
+                        _       -> (h, Nothing)
+                _ -> fallbackHostOnly rest
+        raw ->
+            case countChar ':' raw of
+                0 -> (normalizeHost raw, Nothing)
+                1 ->
+                    let (host, portStr) = break (== ':') raw
+                    in case portStr of
+                        []      -> (normalizeHost host, Nothing)
+                        (':':p) -> (normalizeHost host, readPortMaybe p)
+                        _       -> (normalizeHost host, Nothing)
+                _ -> (normalizeHost raw, Nothing)
+
+renderHostPort :: String -> Int -> String
+renderHostPort host port = renderHost host ++ ":" ++ show port
+
+renderHost :: String -> String
+renderHost host
+    | needsBrackets trimmed = "[" ++ trimmed ++ "]"
+    | otherwise = trimmed
+  where
+    trimmed = trim host
+
+needsBrackets :: String -> Bool
+needsBrackets host =
+    countChar ':' host > 1 || (':' `elem` host && '%' `elem` host)
+
+normalizeHost :: String -> String
+normalizeHost raw =
+    let host = trim raw
+    in if null host then "127.0.0.1" else host
+
+readPortMaybe :: String -> Maybe Int
+readPortMaybe raw =
+    case reads (trim raw) of
+        [(port, _)] -> Just port
+        _           -> Nothing
+
+fallbackHostOnly :: String -> (String, Maybe Int)
+fallbackHostOnly raw = (normalizeHost raw, Nothing)
+
+countChar :: Char -> String -> Int
+countChar ch = length . filter (== ch)
 
 trim :: String -> String
 trim = dropWhileEnd isSpace . dropWhile isSpace

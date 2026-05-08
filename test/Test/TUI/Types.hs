@@ -304,23 +304,31 @@ testTransportProviderRegistry = do
         (providerLoadStatusLabel (ctpLoadStatus (head runtimeCatalog)))
     k <- assertEq "runtime catalog contains signal artifact gap" True
         (any isSignalArtifactMissing runtimeCatalog)
-    l <- assertEq "tcp endpoint schema" "host:port"
+    l <- assertEq "tcp endpoint schema" "host:port or [ipv6]:port"
         (providerEndpointSchema ProviderTCP)
     m <- assertEq "tcp endpoint render" "127.0.0.1:7853"
         (renderProviderEndpoint ProviderTCP "127.0.0.1" 7853)
+    m2 <- assertEq "tcp endpoint render ipv6" "[::1]:7853"
+        (renderProviderEndpoint ProviderTCP "::1" 7853)
     n <- assertEq "signal endpoint render" "chat.example:443 via signal"
         (renderProviderEndpoint ProviderSignal "chat.example" 443)
     o <- assertEq "tcp endpoint parse" (Just "127.0.0.1:7853")
         (parseProviderEndpoint ProviderTCP "127.0.0.1:7853")
+    o2 <- assertEq "tcp endpoint parse ipv6" (Just "[::1]:7853")
+        (parseProviderEndpoint ProviderTCP "[::1]:7853")
     p <- assertEq "wireguard endpoint parse" (Just "peer@wg.example:51820")
         (parseProviderEndpoint ProviderWireGuard "peer@wg.example:51820")
+    p2 <- assertEq "wireguard endpoint parse ipv6" (Just "peer@[::1]:51820")
+        (parseProviderEndpoint ProviderWireGuard "peer@[::1]:51820")
     q <- assertEq "signal endpoint parse" (Just "+15551234567")
         (parseProviderEndpoint ProviderSignal "+15551234567")
     r <- assertEq "signal server endpoint parse" (Just "server.example:443/account")
         (parseProviderEndpoint ProviderSignalServer "server.example:443/account")
+    r2 <- assertEq "signal server endpoint parse ipv6" (Just "[::1]:443/account")
+        (parseProviderEndpoint ProviderSignalServer "[::1]:443/account")
     s <- assertEq "invalid tcp endpoint parse" Nothing
         (parseProviderEndpoint ProviderTCP "127.0.0.1")
-    pure (a && b && c && d && e && f && g && h && i && j && k && l && m && n && o && p && q && r && s)
+    pure (a && b && c && d && e && f && g && h && i && j && k && l && m && m2 && n && o && o2 && p && p2 && q && r && r2 && s)
   where
     isSignalArtifactMissing entry =
         tpId (ctpProvider entry) == ProviderSignal
