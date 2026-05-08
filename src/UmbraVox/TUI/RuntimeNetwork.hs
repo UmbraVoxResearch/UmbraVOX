@@ -213,9 +213,9 @@ listenerWorker st ik port started = do
                     emitStatus st ("Listener stopped: " ++ renderRuntimeError e)))
                 `finally` writeIORef (cfgListenerThread (asConfig st)) Nothing
 
-connectGroupPeers :: AppState -> IdentityKey -> [String] -> Int -> IO Int
-connectGroupPeers _ _ [] successes = pure successes
-connectGroupPeers st ik (p:ps) successes =
+connectGroupPeers :: AppState -> IdentityKey -> [String] -> Int -> [String] -> IO (Int, [String])
+connectGroupPeers _ _ [] successes failures = pure (successes, reverse failures)
+connectGroupPeers st ik (p:ps) successes failures =
     ((do
         let peer = dropWhile (== ' ') p
             (h, mPort) = parseHostPort peer
@@ -225,8 +225,8 @@ connectGroupPeers st ik (p:ps) successes =
         session <- handshakeInitiator at ik
         let endpoint = transportPeerLabel (anyInfo at)
         void $ addSession (asConfig st) at session endpoint
-        connectGroupPeers st ik ps (successes + 1)
-        ) `catch` (\(_ :: SomeException) -> connectGroupPeers st ik ps successes))
+        connectGroupPeers st ik ps (successes + 1) failures
+        ) `catch` (\(_ :: SomeException) -> connectGroupPeers st ik ps successes (groupFailureLabel p : failures)))
 
 connectGroupTargets :: AppState -> [String] -> IO ()
 connectGroupTargets st peers = do
@@ -234,9 +234,9 @@ connectGroupTargets st peers = do
     emitStatus st ("Connecting via " ++ runtimeProviderLabel ++ " to " ++ show (length peers') ++ " peers...")
     void $ forkIO $ do
         ik <- getOrCreateIdentity (asConfig st)
-        successes <- connectGroupPeers st ik peers' 0
+        (successes, failures) <- connectGroupPeers st ik peers' 0 []
         when (successes > 0) $ selectLast st
-        emitStatus st ("Group connected: " ++ show successes ++ "/" ++ show (length peers'))
+        emitStatus st (formatGroupConnectStatus successes (length peers') failures)
 
 defaultPortListLabel :: String
 defaultPortListLabel = intercalate ", " (map show defaultPorts)
@@ -245,3 +245,22 @@ renderHostOnly :: String -> String
 renderHostOnly host
     | ':' `elem` host = "[" ++ host ++ "]"
     | otherwise = host
+
+groupFailureLabel :: String -> String
+groupFailureLabel raw =
+    let trimmed = dropWhile (== ' ') raw
+    in if null trimmed then "<empty>" else trimmed
+
+formatGroupConnectStatus :: Int -> Int -> [String] -> String
+formatGroupConnectStatus successes total failures =
+    "Group connected: " ++ show successes ++ "/" ++ show total ++ failureSuffix
+  where
+    failureSuffix =
+        case failures of
+            [] -> ""
+            _ ->
+                " failed: " ++ intercalate ", " shown
+                    ++ if length failures > maxShown then ", ..." else ""
+
+    maxShown = 3
+    shown = take maxShown failures
