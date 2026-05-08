@@ -26,7 +26,7 @@ import UmbraVox.Network.ProviderCatalog (TransportProviderId, providerIdLabel)
 import UmbraVox.Network.ProviderRuntime
     ( ProviderListener, activeRuntimeProvider, acceptWithProvider
     , bindListenerWithProvider, closeProviderListener, connectWithProvider
-    , connectWithProviderTryPorts
+    , connectWithProviderTryPorts, connectWithProviderTryPortsProgress
     )
 import UmbraVox.Network.TransportClass (anyInfo)
 import UmbraVox.Protocol.Encoding (defaultPorts, parseHostPort, renderHostPort)
@@ -139,7 +139,8 @@ connectToPeer st h mPort =
                     ++ " (trying default ports: " ++ defaultPortListLabel ++ ")...")
             void $ forkIO $ (do
                 ik <- getOrCreateIdentity (asConfig st)
-                at <- connectWithProviderTryPorts runtimeProvider h defaultPorts
+                at <- connectWithProviderTryPortsProgress runtimeProvider h defaultPorts $ \port ->
+                    emitStatus st ("Trying " ++ runtimeProviderLabel ++ " " ++ renderHostPort h port ++ "...")
                 session <- handshakeInitiator at ik
                 let endpoint = transportPeerLabel (anyInfo at)
                 sid <- addSession (asConfig st) at session endpoint

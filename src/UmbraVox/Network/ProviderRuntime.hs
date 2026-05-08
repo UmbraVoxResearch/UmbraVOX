@@ -7,11 +7,13 @@ module UmbraVox.Network.ProviderRuntime
     , closeProviderListener
     , connectWithProvider
     , connectWithProviderTryPorts
+    , connectWithProviderTryPortsProgress
     ) where
 
 import UmbraVox.Network.ProviderCatalog (TransportProviderId(..))
 import UmbraVox.Network.Transport
-    ( TCPListener, accept, closeListener, connect, connectTryPorts, listenOn )
+    ( TCPListener, accept, closeListener, connect
+    , connectTryPortsWithProgress, listenOn )
 import UmbraVox.Network.TransportClass (AnyTransport(..))
 
 activeRuntimeProvider :: TransportProviderId
@@ -43,8 +45,12 @@ connectWithProvider providerId host port =
 
 connectWithProviderTryPorts :: TransportProviderId -> String -> [Int] -> IO AnyTransport
 connectWithProviderTryPorts providerId host ports =
+    connectWithProviderTryPortsProgress providerId host ports (\_ -> pure ())
+
+connectWithProviderTryPortsProgress :: TransportProviderId -> String -> [Int] -> (Int -> IO ()) -> IO AnyTransport
+connectWithProviderTryPortsProgress providerId host ports reportPort =
     case providerId of
-        ProviderTCP -> AnyTransport <$> connectTryPorts host ports
+        ProviderTCP -> AnyTransport <$> connectTryPortsWithProgress host ports reportPort
         _ -> failUnsupported providerId "connect-default-ports"
 
 failUnsupported :: TransportProviderId -> String -> IO a
