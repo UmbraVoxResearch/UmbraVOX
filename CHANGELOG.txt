@@ -7,6 +7,7 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 ## [Unreleased]
 
 ### Added
+- Added consolidated tracking hygiene so completed release-lane and readiness-scaffold work is moved out of `TODO.txt` and only active items remain there.
 - Added explicit release-target packaging workflow with Linux bundle and source-release targets for Windows CLI, macOS terminal, BSD terminal, and FreeDOS research packaging.
 - Added tiered test harness entrypoints (`required`, `core`, `tcp`, `fault`, `recovery`, `soak`, `deferred`) and expanded deterministic suite segmentation.
 - Added runtime troubleshooting logging toggles, metadata-focused event emission, and associated regression coverage.

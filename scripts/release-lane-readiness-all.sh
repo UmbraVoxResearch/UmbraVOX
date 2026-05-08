@@ -19,7 +19,7 @@ run_lane() {
   local mode="$2"
   local script_name="$3"
   local script_path="$SCRIPT_DIR/$script_name"
-  local status=""
+  local status="ready"
   local exit_code=0
 
   printf '=== %s ===\n' "$label"
@@ -29,6 +29,7 @@ run_lane() {
     printf '[missing] aggregate entrypoint script (%s)\n' "$script_name"
     if [[ "$mode" == "required" ]]; then
       REQUIRED_FAILURES+=("$label: missing $script_name")
+      status="blocked (missing script)"
     fi
     printf '\n'
     return 0

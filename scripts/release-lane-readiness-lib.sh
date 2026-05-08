@@ -9,6 +9,10 @@ fi
 ROOT="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 READINESS_FAILURES=()
 
+escape_ere() {
+  printf '%s' "$1" | sed 's/[][\\.^$*+?(){}|/]/\\&/g'
+}
+
 lane_header() {
   local title="$1"
   local summary="$2"
@@ -70,7 +74,9 @@ require_make_target() {
   local target="$1"
   local detail="$2"
   local next_action="$3"
-  if grep -Eq "^[[:space:]]*${target}:" "$ROOT/Makefile"; then
+  local escaped_target
+  escaped_target="$(escape_ere "$target")"
+  if grep -Eq "^[[:space:]]*${escaped_target}:" "$ROOT/Makefile"; then
     check_ok "$detail ($target)"
   else
     check_fail "$detail ($target)" "$next_action"
