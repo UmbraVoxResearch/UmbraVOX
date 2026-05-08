@@ -36,7 +36,7 @@ make test-deferred     # Preserved deferred blockchain/economics suites
 make soak              # Longer soak/stress run with artifact report
 make release-linux     # Portable Linux x86_64 terminal bundle
 make release           # Build all defined release artifacts
-nix --extra-experimental-features 'nix-command flakes' flake show --no-write-lock-file
+scripts/nix-flake.sh flake show --no-write-lock-file
 make                   # Full pipeline: build + test + verify + complexity + lint + license + format-check
 make quality           # Same full pipeline as make; lint/format-check are advisory, license is blocking
 ```
