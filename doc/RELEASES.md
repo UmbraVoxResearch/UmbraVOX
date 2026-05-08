@@ -24,21 +24,42 @@ Each staged release artifact also includes:
 ## Smoke Validation Status
 
 Current smoke coverage is split between a working container-based check and
-scaffolded microVM entrypoints:
+partially wired microVM entrypoints:
 
 - `make release-smoke-linux` runs today and performs an isolated Linux bundle
   smoke check with `podman` or `docker` when available.
 - `./scripts/release-smoke-microvm.sh qemu`
 - `./scripts/release-smoke-microvm.sh firecracker`
 
-The microVM smoke script currently does three things only:
+The microVM smoke script always does these baseline checks first:
 
 1. confirms a Linux release artifact exists under `build/releases/`
 2. checks the selected VMM binary is installed
 3. checks `/dev/kvm` is present
 
-After those checks it prints the next implementation step. It does not yet boot
-a guest VM or microVM, and it does not yet execute bundle checks in-guest.
+After those checks:
+
+1. QEMU can run a host-supplied smoke command via
+   `UMBRAVOX_QEMU_SMOKE_RUNNER`
+2. Firecracker can run a host-supplied smoke command via
+   `UMBRAVOX_FIRECRACKER_SMOKE_RUNNER`
+3. QEMU can invoke a direct pinned-input boot path from
+   `UMBRAVOX_QEMU_KERNEL`, `UMBRAVOX_QEMU_INITRD`,
+   `UMBRAVOX_QEMU_ROOTFS`, and either `UMBRAVOX_QEMU_APPEND` or
+   `UMBRAVOX_QEMU_PROFILE`
+4. Firecracker can invoke `firecracker --config-file` when
+   `UMBRAVOX_FIRECRACKER_KERNEL`, `UMBRAVOX_FIRECRACKER_ROOTFS`, and
+   `UMBRAVOX_FIRECRACKER_CONFIG` are supplied
+
+What is still not claimed here:
+
+- UmbraVOX does not yet ship a maintained guest image/rootfs for these paths.
+- The default microVM smoke command remains scaffold-only when no runner hook
+  or pinned inputs are provided.
+- Firecracker does not yet have the same documented deterministic smoke-profile
+  helper that QEMU has via `scripts/release-smoke-qemu-profile.sh`.
+- These entrypoints are not yet evidence that release packaging is executed
+  end-to-end inside a guest by default.
 
 ## Linux Binary Portability
 
@@ -94,7 +115,14 @@ That keeps the release surface explicit:
 nix-shell
 make release-linux
 make release-smoke-linux
+UMBRAVOX_QEMU_PROFILE=bundle-basic \
+UMBRAVOX_QEMU_KERNEL=/path/to/bzImage \
+UMBRAVOX_QEMU_INITRD=/path/to/initrd \
+UMBRAVOX_QEMU_ROOTFS=/path/to/rootfs.img \
 ./scripts/release-smoke-microvm.sh qemu
+UMBRAVOX_FIRECRACKER_KERNEL=/path/to/vmlinux \
+UMBRAVOX_FIRECRACKER_ROOTFS=/path/to/rootfs.img \
+UMBRAVOX_FIRECRACKER_CONFIG=/path/to/firecracker.json \
 ./scripts/release-smoke-microvm.sh firecracker
 make release
 ```

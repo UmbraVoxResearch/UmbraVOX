@@ -13,11 +13,13 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - Added generated/codegen wiring for preserved Haskell wrappers and generated FFI/C bridge participation in active build/test graphs.
 - Added transport fallback progress/status reporting and expanded network hardening assertions for fallback endpoint behavior.
 - Added release-lane microVM smoke scaffolding for isolated validation of produced Linux artifacts.
+- Added documented microVM smoke execution hooks for host-provided QEMU/Firecracker runner commands, plus pinned-input entrypoints for QEMU and Firecracker smoke invocation.
 
 ### Changed
 - Reworked messaging MVP hardening flow into explicit fast-gate and targeted suite runs with artifact logging.
 - Updated Linux release launch mechanics to use bundled-loader invocation instead of invalid interpreter patching assumptions.
 - Improved TUI interaction model with richer simulation coverage for dialogs, menus, browse pagination/search, and runtime status flows.
+- Clarified release docs to distinguish working Linux container smoke, QEMU pinned-profile smoke wiring, and Firecracker pinned-input scaffolding from not-yet-proven end-to-end guest boot verification.
 
 ### Fixed
 - Fixed host-only peer connect flow to try default port lists with clearer diagnostics and endpoint reporting.
