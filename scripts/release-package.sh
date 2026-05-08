@@ -9,6 +9,9 @@ TARGET="${1:-}"
 VERSION="${UMBRAVOX_RELEASE_VERSION:-$(git describe --tags --always 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 COMMIT="${UMBRAVOX_RELEASE_COMMIT:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
 STAMP="${UMBRAVOX_RELEASE_STAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
+ABI_ARCH="${UMBRAVOX_RELEASE_ABI_ARCH:-x86_64}"
+ABI_KERNEL_MIN="${UMBRAVOX_RELEASE_ABI_KERNEL_MIN:-3.10}"
+ABI_GLIBC_MIN="${UMBRAVOX_RELEASE_ABI_GLIBC_MIN:-2.31}"
 
 usage() {
     cat <<'EOF'
@@ -72,6 +75,9 @@ version=$VERSION
 commit=$COMMIT
 timestamp_utc=$STAMP
 builder=$(uname -srm)
+abi_arch=$ABI_ARCH
+abi_kernel_min=$ABI_KERNEL_MIN
+abi_glibc_min=$ABI_GLIBC_MIN
 EOF
 }
 
