@@ -89,9 +89,12 @@ Exit criteria
   [ ] M2.3.3 Keep single-file track experimental until parity and support policy are proven.
 
 [~] M2.4 VM-executed release lanes
-  [ ] M2.4.1 QEMU/KVM lane for image bring-up, debug, and compatibility validation.
-  [ ] M2.4.2 Firecracker lane as authoritative Linux release executor where practical.
-  [ ] M2.4.3 Define runner classes, isolation model, and artifact handoff mounts.
+  [~] M2.4.1 QEMU/KVM lane for image bring-up, debug, and compatibility validation.
+    [x] M2.4.1.a Add QEMU/KVM release-lane scaffold entrypoint and host prerequisite checks.
+  [~] M2.4.2 Firecracker lane as authoritative Linux release executor where practical.
+    [x] M2.4.2.a Add Firecracker release-lane scaffold entrypoint and host prerequisite checks.
+  [~] M2.4.3 Define runner classes, isolation model, and artifact handoff mounts.
+    [x] M2.4.3.a Add `doc/RELEASE-LANES.md` with runner-class and lane model baseline.
   [ ] M2.4.4 Add smoke microVM lane validating produced Linux artifacts in isolation.
 
 ================================================================================
