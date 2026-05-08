@@ -48,7 +48,7 @@ instance TransportHandle TCPTransport where
     thSend  = send
     thRecv  = recv
     thClose = close
-    thInfo t = "tcp:" ++ show (tAddr t)
+    thInfo t = "tcp:" ++ renderSockAddr (tAddr t)
 
 -- | Listen on the given port and accept one incoming connection.
 listen :: Int -> IO TCPTransport
@@ -157,6 +157,43 @@ recv t n = go n []
 -- | Close the transport connection.
 close :: TCPTransport -> IO ()
 close t = NS.gracefulClose (tSocket t) 5000
+
+renderSockAddr :: NS.SockAddr -> String
+renderSockAddr addr =
+    case addr of
+        NS.SockAddrInet port host ->
+            renderIPv4 host ++ ":" ++ showPort port
+        NS.SockAddrInet6 port _ host _ ->
+            "[" ++ renderIPv6 host ++ "]:" ++ showPort port
+        _ ->
+            show addr
+  where
+    showPort :: NS.PortNumber -> String
+    showPort = show . (fromIntegral :: NS.PortNumber -> Int)
+
+renderIPv4 :: NS.HostAddress -> String
+renderIPv4 host =
+    case NS.hostAddressToTuple host of
+        (a, b, c, d) ->
+            show a ++ "." ++ show b ++ "." ++ show c ++ "." ++ show d
+
+renderIPv6 :: NS.HostAddress6 -> String
+renderIPv6 host =
+    case NS.hostAddress6ToTuple host of
+        (a, b, c, d, e, f, g, h) ->
+            joinColon (map renderWord16 [a, b, c, d, e, f, g, h])
+  where
+    renderWord16 w = showHex4 (fromIntegral w :: Int)
+
+    showHex4 value =
+        let digits = "0123456789abcdef"
+            step :: Int -> Char
+            step shift = digits !! ((value `div` (16 ^ shift)) `mod` 16)
+        in [step 3, step 2, step 1, step 0]
+
+    joinColon [] = ""
+    joinColon [x] = x
+    joinColon (x:xs) = x ++ ":" ++ joinColon xs
 
 openListeningSockets :: [NS.AddrInfo] -> IO [NS.Socket]
 openListeningSockets = go []

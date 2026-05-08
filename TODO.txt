@@ -467,6 +467,7 @@ Priority order from here:
           [x] P6.11.8.6  add dual-stack transport and parsing coverage for bracketed IPv6 endpoints and IPv6 loopback when available
           [x] P6.11.8.7  add a persistent-listener regression proving one bound listener can accept sequential sessions without rebinding
           [x] P6.11.8.8  keep host-only default-port scans bounded and prove fallback succeeds when the first candidate port is closed
+          [x] P6.11.8.9  expose the actual connected transport endpoint after default-port fallback so the chosen port is visible in logs and UI status
       [~] P6.12  Seed built-in and external-service provider stubs without overstating assurance
         [x] P6.12.1  add direct carrier descriptors for TCP and UDP
         [x] P6.12.2  add overlay carrier descriptors for Tor and WireGuard with explicit inheritance metadata
