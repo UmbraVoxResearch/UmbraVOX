@@ -17,7 +17,7 @@ import Control.Exception (SomeException, bracket, catch, displayException, final
 import Control.Monad (void, when)
 import Data.ByteString (ByteString)
 import Data.IORef (readIORef, writeIORef)
-import Data.List (intercalate)
+import Data.List (intercalate, stripPrefix)
 import System.IO.Error (isUserError, ioeGetErrorString)
 import UmbraVox.App.RuntimeLog (logEvent)
 import UmbraVox.Crypto.ConstantTime (constantEq)
@@ -28,6 +28,7 @@ import UmbraVox.Network.ProviderRuntime
     , bindListenerWithProvider, closeProviderListener, connectWithProvider
     , connectWithProviderTryPorts
     )
+import UmbraVox.Network.TransportClass (anyInfo)
 import UmbraVox.Protocol.Encoding (defaultPorts, parseHostPort, renderHostPort)
 import UmbraVox.TUI.Actions (addSession, selectLast)
 import UmbraVox.TUI.Handshake (genIdentity, fingerprint, handshakeInitiator, handshakeResponder)
@@ -45,6 +46,12 @@ renderRuntimeError err =
             | isUserError ioErr -> ioeGetErrorString ioErr
             | otherwise -> displayException ioErr
         Nothing -> displayException err
+
+transportPeerLabel :: String -> String
+transportPeerLabel info =
+    case stripPrefix (runtimeProviderLabel ++ ":") info of
+        Just label | not (null label) -> label
+        _ -> info
 
 runtimeProvider :: TransportProviderId
 runtimeProvider = activeRuntimeProvider
@@ -133,9 +140,10 @@ connectToPeer st h mPort =
                 ik <- getOrCreateIdentity (asConfig st)
                 at <- connectWithProviderTryPorts runtimeProvider h defaultPorts
                 session <- handshakeInitiator at ik
-                sid <- addSession (asConfig st) at session h
+                let endpoint = transportPeerLabel (anyInfo at)
+                sid <- addSession (asConfig st) at session endpoint
                 selectLast st
-                emitStatus st ("Connected #" ++ show sid)
+                emitStatus st ("Connected #" ++ show sid ++ " via " ++ endpoint)
                 ) `catch` (\(e :: SomeException) -> emitStatus st ("Failed: " ++ renderRuntimeError e))
 
 startListenerIfNeeded :: AppState -> IdentityKey -> Int -> String -> IO Bool

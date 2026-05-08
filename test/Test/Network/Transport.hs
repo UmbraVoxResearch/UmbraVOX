@@ -14,6 +14,7 @@ import qualified Network.Socket as NS
 import Test.Util
 import UmbraVox.Network.Transport
     ( TCPTransport, accept, close, closeListener, connect, connectTryPorts, listen, listenOn, recv, send )
+import UmbraVox.Network.TransportClass (thInfo)
 
 runTests :: IO Bool
 runTests = do
@@ -169,8 +170,10 @@ testDefaultPortFallbackConnectsSecondPort = do
     client <- connectTryPorts "127.0.0.1" [closedPort, openPort]
     send client payload
     response <- recv client (BS.length payload)
+    infoOk <- assertEq "default port fallback info shows chosen port" True (("127.0.0.1:" ++ show openPort) `isInfixOf` thInfo client)
     close client
-    assertEq "default port fallback connects on second port" payload response
+    msgOk <- assertEq "default port fallback connects on second port" payload response
+    pure (infoOk && msgOk)
 
 testDefaultPortFallbackFailureMessage :: IO Bool
 testDefaultPortFallbackFailureMessage = do
