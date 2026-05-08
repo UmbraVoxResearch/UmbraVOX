@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-source "$(dirname "$0")/release-lane-readiness-lib.sh"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/release-lane-readiness-lib.sh"
 
 lane_header \
   "Linux arm64 lane readiness" \

@@ -37,6 +37,8 @@ Current implementation note:
 3. `authoritative-release` lane (Firecracker preferred, QEMU fallback)
 - current scaffold validates host prerequisites for the planned Firecracker
   authoritative lane.
+- `make release-lane-readiness` now aggregates the repo-owned native runner
+  readiness scripts for Linux x86_64, Linux arm64, macOS, Windows, and BSD.
 - intended next step is booting a pinned builder microVM and executing the
   release graph inside the guest.
 - artifact publication and in-guest smoke execution are target behavior, not
@@ -60,13 +62,19 @@ Current implementation note:
 - Linux release artifacts are executable bundles.
 - `make release-smoke-linux` performs the current isolated smoke check with
   `podman` or `docker`; it is not the microVM smoke lane.
-- QEMU and Firecracker release-lane entrypoints remain host-prerequisite
-  scaffolds only.
-- The microVM smoke entrypoint is implemented beyond scaffold status:
-  it can dispatch host runner hooks for both VMMs, QEMU can invoke a pinned
-  boot command line directly, and Firecracker can invoke a pinned
-  `firecracker --config-file` boot directly when all required inputs are
-  supplied.
+- `make release-smoke-qemu` and `make release-smoke-firecracker` are the
+  microVM smoke entrypoints.
+- `make release-smoke-qemu-profile` adds the deterministic QEMU profile
+  wrapper around `make release-smoke-qemu`.
+- `make release-smoke-firecracker-pinned` adds the pinned-input wrapper around
+  `make release-smoke-firecracker`.
+- `make release-lane-qemu` and `make release-lane-firecracker` remain
+  host-prerequisite scaffolds only.
+- `make release-lane-readiness` runs the aggregate native runner readiness
+  scripts and reports the Linux x86_64 lane as required while the Linux arm64,
+  macOS, Windows, and BSD lanes remain informational.
+- `make platform-sanity` and `make sanity` only verify that the related lane
+  scripts/helpers are wired into the tree.
 - None of that is a claim that UmbraVOX currently ships a maintained guest
   image, performs artifact handoff into a guest automatically, or proves the
   booted guest executes bundle checks end-to-end by default.
@@ -132,10 +140,15 @@ Remaining gaps before these lanes become authoritative release evidence:
 nix-shell
 make release-linux
 make release-smoke-linux
+make release-smoke-qemu
+make release-smoke-qemu-profile
+make release-smoke-firecracker
+make release-smoke-firecracker-pinned
 make release-lane-qemu
 make release-lane-firecracker
-./scripts/release-smoke-microvm.sh qemu
-./scripts/release-smoke-microvm.sh firecracker
+make release-lane-readiness
+make platform-sanity
+make sanity
 ```
 
 Current command behavior:
@@ -144,6 +157,10 @@ Current command behavior:
   and checks basic launch/linkage files.
 - `make release-lane-qemu` and `make release-lane-firecracker` only verify
   host prerequisites and print the next implementation step.
+- `make release-lane-readiness` runs the aggregate native runner readiness
+  checks and exits non-zero if the Linux x86_64 lane is blocked.
+- `make platform-sanity` and `make sanity` verify Makefile wiring for the
+  helper scripts and current lane targets.
 - `scripts/release-smoke-microvm.sh <qemu|firecracker>` verifies artifact +
   host prerequisites and can then either:
   run a host-provided runner hook via `UMBRAVOX_QEMU_SMOKE_RUNNER` or
