@@ -97,6 +97,11 @@ Exit criteria
     [x] M2.4.3.a Add `doc/RELEASE-LANES.md` with runner-class and lane model baseline.
   [~] M2.4.4 Add smoke microVM lane validating produced Linux artifacts in isolation.
     [x] M2.4.4.a Add microVM smoke scaffold entrypoint for isolated Linux artifact validation.
+    [x] M2.4.4.b Add runner-hook execution path for host-specific in-guest smoke commands (QEMU/Firecracker).
+    [~] M2.4.4.c Implement pinned guest image boot and in-guest bundle verification without external runner hooks.
+      [x] M2.4.4.c.1 Add QEMU pinned-boot execution path via `UMBRAVOX_QEMU_*` inputs.
+      [ ] M2.4.4.c.2 Add deterministic in-guest command profile for bundle launch + manifest checks.
+      [ ] M2.4.4.c.3 Add Firecracker pinned-boot path once guest image/machine config inputs are defined.
 
 ================================================================================
 MILESTONE M3: NATIVE PER-HOST BUILD SUPPORT + CROSS-TARGET POLICY
