@@ -101,11 +101,14 @@ Remaining gaps before these lanes become authoritative release evidence:
 
 - no maintained repo-owned guest image/rootfs currently performs bundle
   verification in-guest by default
+- no maintained Firecracker guest-image/config pair currently defines the
+  in-guest verification command for M2.4.4.c.4
 - no authoritative Firecracker/QEMU in-guest release graph currently produces
   the final Linux artifact inside the guest
 - Linux x86_64 still lacks dedicated repo-owned native runner evidence beyond
-  the host packaging workflow
+  the host packaging workflow, including runner logs for build/test/verify
 - macOS, Windows, BSD, and Linux arm64 do not yet have repo-owned native lanes
+  with recorded build/test/release evidence
 - cross-target parity evidence is still missing for any future non-native or
   cross-built artifact claims
 

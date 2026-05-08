@@ -26,4 +26,5 @@ lane_finish \
   "not ready for the current macOS source-lane scaffold" \
   "run make release-macos-terminal on the native macOS host for the current source artifact" \
   "run make build and make test on the same host if you want native runtime evidence alongside the source release" \
+  "capture dedicated native macOS evidence for M3.1.3.b with build, test, and release logs from the intended runner" \
   "add native macOS artifact packaging and smoke coverage before calling this an authoritative release lane"

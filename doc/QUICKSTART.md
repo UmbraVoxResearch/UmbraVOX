@@ -37,12 +37,14 @@ make verify
 make quality
 make evidence
 make release-linux
+make release-appimage
 make release-windows-cli
 make release-macos-terminal
 make release-bsd-terminal
 make release-freedos
 make release
 make release-smoke-linux
+make release-smoke-appimage
 make release-smoke-qemu
 make release-smoke-qemu-profile
 make release-smoke-firecracker
@@ -78,12 +80,14 @@ scripts/nix-flake.sh flake show --no-write-lock-file
 - `make quality` runs the full build pipeline and is equivalent to `make` (`build + test + verify + complexity + lint + license + format-check`).
 - `make evidence` runs `make quality` and writes a timestamped publication evidence bundle under `build/evidence/` with logs, git metadata, and copied test artifacts.
 - `make release-linux` builds a portable Linux x86_64 terminal bundle with a patched local loader/lib set.
+- `make release-appimage` builds an experimental AppDir-style scaffold derived from the Linux bundle and does not yet claim a supported single-file artifact.
 - `make release-windows-cli` writes a Windows CLI source-release zip with native build instructions.
 - `make release-macos-terminal` writes a macOS terminal source-release tarball with native build instructions.
 - `make release-bsd-terminal` writes a BSD terminal source-release tarball with native build instructions.
 - `make release-freedos` writes a FreeDOS research/source release zip with an explicit unsupported-runtime note.
 - `make release` builds every currently defined release artifact under `build/releases/`.
 - `make release-smoke-linux` runs the working container-based Linux bundle smoke check.
+- `make release-smoke-appimage` runs the non-authoritative AppImage scaffold smoke placeholder and only checks scaffold layout.
 - `make release-smoke-qemu` runs the QEMU microVM smoke entrypoint:
   it checks artifact + host prerequisites, then either executes a runner hook
   (`UMBRAVOX_QEMU_SMOKE_RUNNER`) or invokes a direct pinned-input boot path
@@ -133,6 +137,8 @@ scripts/nix-flake.sh flake show --no-write-lock-file
   performs in-guest bundle verification by default, no authoritative in-guest
   release graph exists yet, and non-Linux targets remain source releases until
   native lanes and parity evidence exist.
+- The AppImage track is intentionally experimental and scaffold-only until
+  support policy and parity evidence are proven.
 
 ## Release Target Posture
 
