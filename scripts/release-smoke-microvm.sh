@@ -16,6 +16,31 @@ check_artifact() {
   echo "artifact: $latest"
 }
 
+qemu_boot_smoke() {
+  : "${UMBRAVOX_QEMU_KERNEL:?set UMBRAVOX_QEMU_KERNEL to a Linux kernel image path}"
+  : "${UMBRAVOX_QEMU_INITRD:?set UMBRAVOX_QEMU_INITRD to an initrd path}"
+  : "${UMBRAVOX_QEMU_ROOTFS:?set UMBRAVOX_QEMU_ROOTFS to a rootfs image path}"
+  : "${UMBRAVOX_QEMU_APPEND:?set UMBRAVOX_QEMU_APPEND to kernel cmdline (include console=ttyS0 and one-shot smoke command)}"
+
+  local accel="tcg"
+  if [[ -e /dev/kvm ]]; then
+    accel="kvm"
+  fi
+
+  qemu-system-x86_64 \
+    -machine q35,accel="${accel}" \
+    -cpu max \
+    -m "${UMBRAVOX_QEMU_MEM_MB:-1024}" \
+    -smp "${UMBRAVOX_QEMU_CPUS:-2}" \
+    -nographic \
+    -nodefaults \
+    -no-reboot \
+    -kernel "$UMBRAVOX_QEMU_KERNEL" \
+    -initrd "$UMBRAVOX_QEMU_INITRD" \
+    -append "$UMBRAVOX_QEMU_APPEND" \
+    -drive "if=virtio,format=raw,file=${UMBRAVOX_QEMU_ROOTFS},readonly=on"
+}
+
 case "$mode" in
   qemu)
     if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
@@ -27,10 +52,24 @@ case "$mode" in
       exit 1
     fi
     check_artifact
+    if [[ -n "${UMBRAVOX_QEMU_SMOKE_RUNNER:-}" ]]; then
+      echo "running QEMU smoke runner command from UMBRAVOX_QEMU_SMOKE_RUNNER"
+      # Intended usage: provide a host-specific command that boots a prepared
+      # guest image and performs in-guest bundle checks.
+      bash -lc "$UMBRAVOX_QEMU_SMOKE_RUNNER"
+      exit 0
+    fi
+    if [[ -n "${UMBRAVOX_QEMU_KERNEL:-}" ]] || [[ -n "${UMBRAVOX_QEMU_INITRD:-}" ]] || [[ -n "${UMBRAVOX_QEMU_ROOTFS:-}" ]] || [[ -n "${UMBRAVOX_QEMU_APPEND:-}" ]]; then
+      echo "running QEMU pinned-boot smoke path from UMBRAVOX_QEMU_* inputs"
+      qemu_boot_smoke
+      exit 0
+    fi
     cat <<'EOF'
 QEMU microVM smoke scaffold
 - prerequisites satisfied
-- next step: boot smoke VM image and run bundle launch/manifest checks in-guest
+- to execute in-guest checks now, set UMBRAVOX_QEMU_SMOKE_RUNNER to a host-specific boot-and-check command
+- or set UMBRAVOX_QEMU_KERNEL, UMBRAVOX_QEMU_INITRD, UMBRAVOX_QEMU_ROOTFS, and UMBRAVOX_QEMU_APPEND for pinned-boot execution
+- default behavior remains scaffold-only until pinned guest boot wiring is configured
 EOF
     ;;
   firecracker)
@@ -43,10 +82,16 @@ EOF
       exit 1
     fi
     check_artifact
+    if [[ -n "${UMBRAVOX_FIRECRACKER_SMOKE_RUNNER:-}" ]]; then
+      echo "running Firecracker smoke runner command from UMBRAVOX_FIRECRACKER_SMOKE_RUNNER"
+      bash -lc "$UMBRAVOX_FIRECRACKER_SMOKE_RUNNER"
+      exit 0
+    fi
     cat <<'EOF'
 Firecracker microVM smoke scaffold
 - prerequisites satisfied
-- next step: boot smoke microVM and run bundle launch/manifest checks in-guest
+- to execute in-guest checks now, set UMBRAVOX_FIRECRACKER_SMOKE_RUNNER to a host-specific boot-and-check command
+- default behavior remains scaffold-only until pinned microVM boot wiring is configured
 EOF
     ;;
   *)
