@@ -1,0 +1,37 @@
+# Changelog
+
+All notable changes to UmbraVOX are documented in this file.
+
+The format is based on Keep a Changelog 1.1.0 and this project aims to follow Semantic Versioning.
+
+## [Unreleased]
+
+### Added
+- Added explicit release-target packaging workflow with Linux bundle and source-release targets for Windows CLI, macOS terminal, BSD terminal, and FreeDOS research packaging.
+- Added tiered test harness entrypoints (`required`, `core`, `tcp`, `fault`, `recovery`, `soak`, `deferred`) and expanded deterministic suite segmentation.
+- Added runtime troubleshooting logging toggles, metadata-focused event emission, and associated regression coverage.
+- Added generated/codegen wiring for preserved Haskell wrappers and generated FFI/C bridge participation in active build/test graphs.
+- Added transport fallback progress/status reporting and expanded network hardening assertions for fallback endpoint behavior.
+
+### Changed
+- Reworked messaging MVP hardening flow into explicit fast-gate and targeted suite runs with artifact logging.
+- Updated Linux release launch mechanics to use bundled-loader invocation instead of invalid interpreter patching assumptions.
+- Improved TUI interaction model with richer simulation coverage for dialogs, menus, browse pagination/search, and runtime status flows.
+
+### Fixed
+- Fixed host-only peer connect flow to try default port lists with clearer diagnostics and endpoint reporting.
+- Fixed non-deterministic test-run behavior by adding explicit fast-gate timeout control and timeout failure reporting in `make test`.
+- Fixed restoration/send safety by preventing disconnected restored sessions from being treated as live-sendable peers without reconnect.
+
+### Security
+- Strengthened session restore safety boundaries to avoid local loopback/self-delivery risk after persistence restore.
+- Tightened logging assurance posture through redaction/scope controls and separation of pre-auth transport arrival vs trusted session establishment semantics.
+- Restored full green formal verification gate (17 F* specs) and retained verification as a hard quality gate.
+
+## [0.0.6] - 2026-05-08
+
+### Added
+- Tagged release baseline `v0.0.6` and stabilized active MVP hardening branch state.
+
+[Unreleased]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.0.6...HEAD
+[0.0.6]: https://github.com/UmbraVoxResearch/UmbraVOX/releases/tag/v0.0.6
