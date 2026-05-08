@@ -104,6 +104,7 @@ build_linux_release() {
     local bin_path
     local interp
     local interp_base
+    local wrapped_bin
 
     rm -rf "$stage"
     mkdir -p "$stage/bin" "$stage/lib"
@@ -119,7 +120,8 @@ It is intended for Linux terminal use on compatible x86_64 systems.
 It is not a static binary and it is not a Windows, BSD, macOS, or DOS binary."
 
     bin_path="$(resolve_bin)"
-    cp "$bin_path" "$stage/bin/umbravox"
+    cp "$bin_path" "$stage/bin/umbravox.bin"
+    wrapped_bin="$stage/bin/umbravox.bin"
 
     interp="$(patchelf --print-interpreter "$bin_path")"
     interp_base="$(basename "$interp")"
@@ -141,22 +143,22 @@ It is not a static binary and it is not a Windows, BSD, macOS, or DOS binary."
         chmod u+w "$stage/lib/$dep_base" 2>/dev/null || true
     done
 
-    patchelf \
-        --set-interpreter "\$ORIGIN/../lib/$interp_base" \
-        --force-rpath \
-        --set-rpath "\$ORIGIN/../lib" \
-        "$stage/bin/umbravox"
-
     cat >"$stage/run-umbravox.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-exec "$HERE/bin/umbravox" "$@"
+LOADER="$(find "$HERE/lib" -maxdepth 1 -type f \( -name 'ld-linux*.so*' -o -name 'ld-musl-*.so*' \) | head -n1)"
+if [[ -z "${LOADER:-}" ]]; then
+  echo "missing bundled dynamic loader under $HERE/lib" >&2
+  exit 127
+fi
+exec "$LOADER" --library-path "$HERE/lib" "$HERE/bin/umbravox.bin" "$@"
 EOF
     chmod +x "$stage/run-umbravox.sh"
+    ln -sf run-umbravox.sh "$stage/umbravox"
 
-    "$stage/lib/$interp_base" --list "$stage/bin/umbravox" >"$stage/LINKAGE.txt"
-    file "$stage/bin/umbravox" >"$stage/FILE.txt"
+    "$stage/lib/$interp_base" --list "$wrapped_bin" >"$stage/LINKAGE.txt"
+    file "$wrapped_bin" >"$stage/FILE.txt"
 
     archive_tgz "$stage" "$artifact"
     echo "$artifact"

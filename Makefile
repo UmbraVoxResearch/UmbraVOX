@@ -76,6 +76,7 @@ TEST_ARTIFACT_DIR := build/test-artifacts
 EVIDENCE_DIR := build/evidence
 RELEASE_DIR := build/releases
 SUITE_LOCK := ./scripts/with-suite-lock.sh suite-gate
+TEST_REQUIRED_TIMEOUT ?= 25m
 
 # --------------------------------------------------------------------------
 # Targets
@@ -173,9 +174,14 @@ test: build
 	@$(SUITE_LOCK) bash -c 'mkdir -p $(TEST_ARTIFACT_DIR); \
 	log_file=$$(mktemp "$(TEST_ARTIFACT_DIR)/test-required.XXXXXX.log"); \
 	echo -e "$(BLUE)[TEST]$(NC) Log: $$log_file"; \
+	echo -e "$(BLUE)[TEST]$(NC) Timeout: $(TEST_REQUIRED_TIMEOUT)"; \
 	set -o pipefail; \
-	cabal test umbravox-test --test-options="required" 2>&1 | tee "$$log_file"; \
+	timeout --foreground $(TEST_REQUIRED_TIMEOUT) cabal test umbravox-test --test-options="required" 2>&1 | tee "$$log_file"; \
 	status=$${PIPESTATUS[0]}; \
+	if [ $$status -eq 124 ]; then \
+		echo -e "$(RED)[TEST]$(NC) Gate timed out after $(TEST_REQUIRED_TIMEOUT). See $$log_file"; \
+		exit 124; \
+	fi; \
 	if [ $$status -ne 0 ]; then \
 		echo -e "$(RED)[TEST]$(NC) Gate command failed. See $$log_file"; \
 		exit $$status; \
