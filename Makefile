@@ -36,6 +36,8 @@
 #   make release-bsd-terminal - Build a BSD terminal source release tarball
 #   make release-freedos - Build a FreeDOS research/source release zip
 #   make release      - Build all release artifacts
+#   make release-lane-qemu - Validate QEMU/KVM release-lane host prerequisites
+#   make release-lane-firecracker - Validate Firecracker release-lane host prerequisites
 #   make evidence     - Run quality and write a publication evidence bundle
 #   make clean        - Remove build artifacts, build/, and dist-newstyle
 #   make cleandb      - Remove local database
@@ -44,7 +46,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build run test test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify complexity quality evidence lint license license-fix format-check codegen release release-linux release-smoke-linux release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source clean cleandb cleanall help
+.PHONY: all build run test test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify complexity quality evidence lint license license-fix format-check codegen release release-linux release-smoke-linux release-lane-qemu release-lane-firecracker release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -117,6 +119,8 @@ help:
 	@echo "    make evidence    Run quality and write a publication evidence bundle"
 	@echo "    make release-linux Build portable Linux x86_64 terminal bundle"
 	@echo "    make release-smoke-linux Run isolated Linux bundle smoke check"
+	@echo "    make release-lane-qemu Validate QEMU/KVM release-lane prerequisites"
+	@echo "    make release-lane-firecracker Validate Firecracker release-lane prerequisites"
 	@echo "    make release-windows-cli Build Windows CLI source release zip"
 	@echo "    make release-macos-terminal Build macOS terminal source release tarball"
 	@echo "    make release-bsd-terminal Build BSD terminal source release tarball"
@@ -418,6 +422,14 @@ release-linux:
 release-smoke-linux:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Running isolated Linux release smoke check..."
 	@./scripts/release-smoke-linux.sh
+
+release-lane-qemu:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Checking QEMU/KVM release-lane prerequisites..."
+	@./scripts/release-lane-qemu.sh
+
+release-lane-firecracker:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Checking Firecracker release-lane prerequisites..."
+	@./scripts/release-lane-firecracker.sh
 
 release-windows-cli:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Building Windows CLI source release..."

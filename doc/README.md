@@ -11,6 +11,8 @@ messaging MVP.
 - [mvp-plan.md](mvp-plan.md) — current MVP hardening and completion priorities
 - [assurance-roadmap.md](assurance-roadmap.md) — current assurance boundary and target assurance model
 - [assurance-matrix.md](assurance-matrix.md) — evidence ledger for standards targets, implementations, tests, and trust gaps
+- [RELEASES.md](RELEASES.md) — release artifact types, portability constraints, and integrity files
+- [RELEASE-LANES.md](RELEASE-LANES.md) — QEMU/KVM and Firecracker execution-lane model
 
 ## Legacy Docs
 
