@@ -131,7 +131,8 @@ connectTryPorts host (p:ps) = do
                 ioError (userError
                     ("connect failed to " ++ host ++ " on ports "
                     ++ show (reverse (map fst errs))
-                    ++ ": " ++ show lastErr))
+                    ++ ": " ++ show lastErr
+                    ++ " (verify the remote listener is running and reachable, or try an explicit port)"))
     go errs (port:rest) = do
         result <- try (connectWithTimeoutUs connectTryPortTimeoutUs host port) :: IO (Either SomeException TCPTransport)
         case result of
