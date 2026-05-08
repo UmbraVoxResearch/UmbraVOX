@@ -65,7 +65,8 @@ Exit criteria
 [~] M2.1 Nix as release source-of-truth
   [~] M2.1.1 Add `flake.nix` + `flake.lock` with pinned inputs.
     [x] M2.1.1.a Add initial `flake.nix` with devShell + build/test/verify/release app entrypoints.
-    [!] M2.1.1.b Generate and commit `flake.lock` (blocked: `nix` CLI unavailable in current `nix-shell`; requires shell/tooling update or host `nix` invocation path).
+    [x] M2.1.1.b Generate and commit `flake.lock`.
+    [x] M2.1.1.c Document/standardize required flake invocation flags in this environment (`--extra-experimental-features 'nix-command flakes'`).
   [~] M2.1.2 Model build/test/verify/quality/release outputs as Nix derivations/checks.
     [x] M2.1.2.a Add shared check runner and wire build/test/verify/quality checks in `flake.nix`.
     [x] M2.1.2.b Add explicit package outputs for release artifacts (Linux bundle + source releases).
