@@ -98,12 +98,13 @@ Exit criteria
   [~] M2.4.4 Add smoke microVM lane validating produced Linux artifacts in isolation.
     [x] M2.4.4.a Add microVM smoke scaffold entrypoint for isolated Linux artifact validation.
     [x] M2.4.4.b Add runner-hook execution path for host-specific in-guest smoke commands (QEMU/Firecracker).
+    [x] M2.4.4.b.1 Document aggregate readiness checks and baseline prerequisites for host/container/microVM release validation.
     [~] M2.4.4.c Implement pinned guest image boot and in-guest bundle verification without external runner hooks.
       [x] M2.4.4.c.1 Add QEMU pinned-boot execution path via `UMBRAVOX_QEMU_*` inputs.
       [x] M2.4.4.c.2 Add deterministic in-guest command profile for bundle launch + manifest checks.
-      [~] M2.4.4.c.3 Add Firecracker pinned-input boot invocation path and document the remaining guest-image/config gap.
+      [x] M2.4.4.c.3 Add Firecracker pinned-input boot invocation path and document the remaining guest-image/config gap.
         [x] M2.4.4.c.3.a Accept `UMBRAVOX_FIRECRACKER_KERNEL`, `UMBRAVOX_FIRECRACKER_ROOTFS`, and `UMBRAVOX_FIRECRACKER_CONFIG`.
-        [ ] M2.4.4.c.3.b Define maintained Firecracker guest-image/config inputs that actually perform bundle verification in-guest.
+      [ ] M2.4.4.c.4 Define maintained Firecracker guest-image/config inputs that actually perform bundle verification in-guest.
 
 ================================================================================
 MILESTONE M3: NATIVE PER-HOST BUILD SUPPORT + CROSS-TARGET POLICY
@@ -114,16 +115,23 @@ Goal
 - Keep native builds first-class while using VM lanes for deterministic release production.
 
 [~] M3.1 Platform lanes
-  [ ] M3.1.1 Linux x86_64 native runner lane.
+  [~] M3.1.1 Linux x86_64 native runner lane.
+    [x] M3.1.1.a Document current Linux x86_64 release as the only repo-owned prebuilt native artifact lane.
+    [ ] M3.1.1.b Add dedicated native Linux x86_64 runner evidence beyond local/host packaging workflow.
   [ ] M3.1.2 Linux arm64 native runner lane.
-  [ ] M3.1.3 macOS native runner lane (hosted/native).
-  [ ] M3.1.4 Windows native runner lane (CLI).
+  [~] M3.1.3 macOS native runner lane (hosted/native).
+    [x] M3.1.3.a Reserve/document the `native-macos` runner class while keeping the artifact source-release only.
+    [ ] M3.1.3.b Add an actual repo-owned native macOS runner lane and smoke evidence.
+  [~] M3.1.4 Windows native runner lane (CLI).
+    [x] M3.1.4.a Reserve/document the `native-windows` runner class while keeping the artifact source-release only.
+    [ ] M3.1.4.b Add an actual repo-owned native Windows CLI runner lane and smoke evidence.
   [ ] M3.1.5 BSD remains source-only until native builders are available.
 
-[ ] M3.2 Cross-compilation policy
-  [ ] M3.2.1 Treat cross-built artifacts as non-authoritative until native parity evidence exists.
+[~] M3.2 Cross-compilation policy
+  [x] M3.2.1 Treat cross-built artifacts as non-authoritative until native parity evidence exists.
   [ ] M3.2.2 Add behavior-parity checks for cross-built vs native-built artifacts.
-  [ ] M3.2.3 Publish explicit support matrix by target, builder class, and confidence tier.
+  [x] M3.2.3 Publish explicit support matrix by target, builder class, and confidence tier.
+  [x] M3.2.4 Document aggregate release-readiness posture and explicit remaining native-lane gaps by target.
 
 ================================================================================
 MILESTONE M4: RELEASE COMPLIANCE, LICENSE, AND PROVENANCE GATES
