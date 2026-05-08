@@ -6,9 +6,9 @@ cd "$ROOT"
 
 OUT_DIR="$ROOT/build/releases"
 TARGET="${1:-}"
-VERSION="$(git describe --tags --always --dirty 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-COMMIT="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
-STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+VERSION="${UMBRAVOX_RELEASE_VERSION:-$(git describe --tags --always 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
+COMMIT="${UMBRAVOX_RELEASE_COMMIT:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
+STAMP="${UMBRAVOX_RELEASE_STAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
 
 usage() {
     cat <<'EOF'
@@ -28,6 +28,16 @@ require_cmd() {
     local cmd="$1"
     if ! command -v "$cmd" >/dev/null 2>&1; then
         echo "missing required command: $cmd" >&2
+        exit 1
+    fi
+}
+
+ensure_clean_tree() {
+    if [[ "${UMBRAVOX_ALLOW_DIRTY_RELEASE:-0}" == "1" ]]; then
+        return
+    fi
+    if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
+        echo "refusing release from dirty worktree; commit or stash changes, or set UMBRAVOX_ALLOW_DIRTY_RELEASE=1" >&2
         exit 1
     fi
 }
@@ -250,6 +260,7 @@ main() {
     require_cmd tar
     require_cmd sha256sum
     mkdir -p "$OUT_DIR"
+    ensure_clean_tree
 
     case "$TARGET" in
         linux)
