@@ -12,7 +12,10 @@ import Data.List (isInfixOf)
 
 import Test.Util
 import UmbraVox.Network.ProviderCatalog (TransportProviderId(..))
-import UmbraVox.Network.ProviderRuntime (connectWithProvider, connectWithProviderTryPorts, listenWithProvider)
+import UmbraVox.Network.ProviderRuntime
+    ( ProviderListener, bindListenerWithProvider, connectWithProvider
+    , connectWithProviderTryPorts
+    )
 import UmbraVox.Network.TransportClass
     ( TransportHandle(..)
     , AnyTransport(..)
@@ -109,15 +112,24 @@ testUnsupportedProviderFailureMatrix = do
             (connectWithProvider ProviderUDP "127.0.0.1" 9000)
         , assertUnsupported "tor connect unsupported" "ProviderTor" "connect"
             (connectWithProvider ProviderTor "127.0.0.1" 9050)
-        , assertUnsupported "irc listen unsupported" "ProviderIRC" "listen"
-            (listenWithProvider ProviderIRC 6667)
         , assertUnsupported "signal-server default ports unsupported" "ProviderSignalServer" "connect-default-ports"
             (connectWithProviderTryPorts ProviderSignalServer "127.0.0.1" [443])
+        , assertUnsupportedListener "irc listen unsupported" "ProviderIRC" "listen"
+            (bindListenerWithProvider ProviderIRC 6667)
         ]
     pure (and results)
   where
     assertUnsupported label providerName action ioAction = do
         result <- try ioAction :: IO (Either IOError AnyTransport)
+        case result of
+            Left err -> do
+                ok1 <- assertEq (label ++ " mentions provider") True (providerName `isInfixOf` show err)
+                ok2 <- assertEq (label ++ " mentions action") True (action `isInfixOf` show err)
+                pure (ok1 && ok2)
+            Right _ ->
+                assertEq (label ++ " should fail") True False
+    assertUnsupportedListener label providerName action ioAction = do
+        result <- try ioAction :: IO (Either IOError ProviderListener)
         case result of
             Left err -> do
                 ok1 <- assertEq (label ++ " mentions provider") True (providerName `isInfixOf` show err)

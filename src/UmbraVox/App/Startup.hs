@@ -320,12 +320,24 @@ tryBindPort port = (do
     let hints = NS.defaultHints
             { NS.addrFlags = [NS.AI_PASSIVE]
             , NS.addrSocketType = NS.Stream
-            , NS.addrFamily = NS.AF_INET
+            , NS.addrFamily = NS.AF_UNSPEC
             }
-    addr : _ <- NS.getAddrInfo (Just hints) (Just "0.0.0.0") (Just (show port))
-    sock <- NS.openSocket addr
-    NS.setSocketOption sock NS.ReuseAddr 1
-    NS.bind sock (NS.addrAddress addr)
-    NS.close sock
-    pure True
+    addrs <- NS.getAddrInfo (Just hints) Nothing (Just (show port)) :: IO [NS.AddrInfo]
+    results <- mapM tryBindAddr addrs
+    pure (or results)
     ) `catch` \(_ :: SomeException) -> pure False
+
+tryBindAddr :: NS.AddrInfo -> IO Bool
+tryBindAddr addr =
+    (do
+        sock <- NS.openSocket addr
+        when (NS.addrFamily addr == NS.AF_INET6) $
+            NS.setSocketOption sock NS.IPv6Only 1 `catch` \(_ :: SomeException) -> pure ()
+        result <- ((do
+            NS.setSocketOption sock NS.ReuseAddr 1
+            NS.bind sock (NS.addrAddress addr)
+            pure True
+            ) `catch` \(_ :: SomeException) -> pure False)
+        NS.close sock `catch` \(_ :: SomeException) -> pure ()
+        pure result
+        ) `catch` \(_ :: SomeException) -> pure False

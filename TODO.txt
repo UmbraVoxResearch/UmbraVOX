@@ -454,6 +454,9 @@ Priority order from here:
           [x] P6.11.6.2  add provider-aware endpoint rendering in browse/settings while discovery remains TCP-shaped underneath
           [ ] P6.11.6.3  extend discovery metadata beyond the current TCP-shaped peer labels before exposing non-TCP provider selection
           [x] P6.11.6.4  start the TCP listener before the startup persistence prompt and move discovery startup behind the bound-listener path
+          [x] P6.11.6.5  make TCP runtime endpoint parsing and rendering bracket-aware for IPv6 while preserving IPv4 behavior
+          [x] P6.11.6.6  keep the TCP listener bound across sequential accepts so public nodes do not drop back to a closed listen socket between sessions
+          [x] P6.11.6.7  report default-port attempts and bind failures with provider-aware status text so public-connect failures are diagnosable from the TUI
         [x] P6.11.7  keep provider selection internal/defaulted to TCP until runtime event and network seams are narrower
         [x] P6.11.8  add a provider test matrix for registry lookup, endpoint parsing, launch-contract validation, and failure behavior
           [x] P6.11.8.1  add pure endpoint parsing/normalization helpers for provider-shaped user input
@@ -461,6 +464,9 @@ Priority order from here:
           [x] P6.11.8.3  expand runtime failure-behavior coverage across unsupported provider ids beyond the current TCP-only executor
           [x] P6.11.8.4  make host-only peer entry explicit in the TUI and keep default-port fallback covered in tests
           [x] P6.11.8.5  add a startup-process regression proving the public listener is reachable while the app is still waiting on the storage prompt
+          [x] P6.11.8.6  add dual-stack transport and parsing coverage for bracketed IPv6 endpoints and IPv6 loopback when available
+          [x] P6.11.8.7  add a persistent-listener regression proving one bound listener can accept sequential sessions without rebinding
+          [x] P6.11.8.8  keep host-only default-port scans bounded and prove fallback succeeds when the first candidate port is closed
       [~] P6.12  Seed built-in and external-service provider stubs without overstating assurance
         [x] P6.12.1  add direct carrier descriptors for TCP and UDP
         [x] P6.12.2  add overlay carrier descriptors for Tor and WireGuard with explicit inheritance metadata

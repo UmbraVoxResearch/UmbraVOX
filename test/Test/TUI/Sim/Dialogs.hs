@@ -671,7 +671,7 @@ testNewConnSingleHostOnlyUsesDefaultPorts = do
             callback "198.51.100.20"
             status <- readIORef (asStatusMsg st)
             assertEq "newconn host-only uses default ports" True
-                ("Connecting via tcp to 198.51.100.20 (trying default ports)..." `prefixOf` status)
+                ("Connecting via tcp to 198.51.100.20 (trying default ports: 7853, 7854, 7855, 9999, 7856, 7857, 7858, 7859, 7860)..." `prefixOf` status)
         _ ->
             assertEq "newconn host-only prompt missing" True False
 

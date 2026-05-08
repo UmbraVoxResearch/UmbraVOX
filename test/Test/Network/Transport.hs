@@ -5,13 +5,14 @@
 -- Verifies exact byte preservation for send/recv operations.
 module Test.Network.Transport (runTests) where
 
+import Control.Exception (SomeException, catch, finally)
 import Control.Concurrent (forkIO, threadDelay)
-import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import qualified Data.ByteString as BS
-import Data.ByteString (ByteString)
+import qualified Network.Socket as NS
 
 import Test.Util
-import UmbraVox.Network.Transport (TCPTransport, listen, connect, send, recv, close)
+import UmbraVox.Network.Transport
+    ( accept, close, closeListener, connect, connectTryPorts, listen, listenOn, recv, send )
 
 runTests :: IO Bool
 runTests = do
@@ -20,6 +21,9 @@ runTests = do
         [ testLoopbackRoundTrip
         , testExactBytes
         , testMultipleMessages
+        , testIPv6LoopbackRoundTrip
+        , testPersistentListenerSequentialAccepts
+        , testDefaultPortFallbackConnectsSecondPort
         ]
     let passed = length (filter id results)
         total  = length results
@@ -31,7 +35,6 @@ testLoopbackRoundTrip :: IO Bool
 testLoopbackRoundTrip = do
     let port = 19201
         payload = strToBS "Hello, UmbraVox!"
-    result <- newEmptyMVar
     -- Server thread: listen, recv, echo back, close
     _ <- forkIO $ do
         server <- listen port
@@ -52,7 +55,6 @@ testExactBytes = do
     let port = 19202
         -- 256 bytes: every byte value from 0x00 to 0xFF
         payload = BS.pack [0..255]
-    result <- newEmptyMVar
     _ <- forkIO $ do
         server <- listen port
         msg <- recv server 256
@@ -95,3 +97,99 @@ testMultipleMessages = do
     r2 <- assertEq "multi-message 2" msg2 resp2
     r3 <- assertEq "multi-message 3" msg3 resp3
     pure (r1 && r2 && r3)
+
+testIPv6LoopbackRoundTrip :: IO Bool
+testIPv6LoopbackRoundTrip = do
+    supported <- ipv6LoopbackAvailable
+    if not supported
+        then do
+            putStrLn "  SKIP: IPv6 loopback unavailable"
+            pure True
+        else do
+            let port = 19204
+                payload = strToBS "Hello over IPv6!"
+            _ <- forkIO $ do
+                server <- listen port
+                msg <- recv server (BS.length payload)
+                send server msg
+                close server
+            threadDelay 50000
+            client <- connect "::1" port
+            send client payload
+            response <- recv client (BS.length payload)
+            close client
+            assertEq "ipv6 loopback round-trip" payload response
+
+testPersistentListenerSequentialAccepts :: IO Bool
+testPersistentListenerSequentialAccepts = do
+    let port = 19205
+        payload1 = strToBS "first persistent listener payload"
+        payload2 = strToBS "second persistent listener payload"
+    listener <- listenOn port
+    flip finally (closeListener listener) $ do
+        _ <- forkIO $ do
+            server <- accept listener
+            msg <- recv server (BS.length payload1)
+            send server msg
+            close server
+        threadDelay 50000
+        client1 <- connect "127.0.0.1" port
+        send client1 payload1
+        response1 <- recv client1 (BS.length payload1)
+        close client1
+
+        _ <- forkIO $ do
+            server <- accept listener
+            msg <- recv server (BS.length payload2)
+            send server msg
+            close server
+        threadDelay 50000
+        client2 <- connect "127.0.0.1" port
+        send client2 payload2
+        response2 <- recv client2 (BS.length payload2)
+        close client2
+
+        ok1 <- assertEq "persistent listener round-trip 1" payload1 response1
+        ok2 <- assertEq "persistent listener round-trip 2" payload2 response2
+        pure (ok1 && ok2)
+
+testDefaultPortFallbackConnectsSecondPort :: IO Bool
+testDefaultPortFallbackConnectsSecondPort = do
+    let closedPort = 19206
+        openPort = 19207
+        payload = strToBS "default port fallback payload"
+    _ <- forkIO $ do
+        server <- listen openPort
+        msg <- recv server (BS.length payload)
+        send server msg
+        close server
+    threadDelay 50000
+    client <- connectTryPorts "127.0.0.1" [closedPort, openPort]
+    send client payload
+    response <- recv client (BS.length payload)
+    close client
+    assertEq "default port fallback connects on second port" payload response
+
+ipv6LoopbackAvailable :: IO Bool
+ipv6LoopbackAvailable =
+    (do
+        let hints = NS.defaultHints
+                { NS.addrSocketType = NS.Stream
+                , NS.addrFamily = NS.AF_INET6
+                }
+        addrs <- NS.getAddrInfo (Just hints) (Just "::1") (Just "0")
+        case addrs of
+            [] -> pure False
+            (addr:_) -> do
+                sock <- NS.openSocket addr
+                ((do
+                    NS.bind sock (NS.addrAddress addr)
+                    pure True
+                    ) `catch` \(_ :: SomeException) -> pure False)
+                    `finallyClose` sock
+        ) `catch` \(_ :: SomeException) -> pure False
+  where
+    finallyClose action sock = do
+        result <- action
+        NS.close sock `catch` \(_ :: SomeException) -> pure ()
+        pure result

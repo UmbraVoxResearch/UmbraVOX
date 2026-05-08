@@ -275,7 +275,10 @@ testParseHostPortEdgeCases = do
     -- whitespace should be trimmed before host/port use
     ok8 <- assertEq "parseHostPort trims host whitespace" ("example.com", Nothing :: Maybe Int) (parseHostPort "  example.com  ")
     ok9 <- assertEq "parseHostPort trims port whitespace" ("example.com", Just 7853) (parseHostPort " example.com : 7853 ")
-    pure (ok1 && ok2 && ok3 && ok4 && ok5 && ok6 && ok7 && ok8 && ok9)
+    ok10 <- assertEq "parseHostPort bracketed ipv6 with port" ("::1", Just 7853) (parseHostPort "[::1]:7853")
+    ok11 <- assertEq "parseHostPort bracketed ipv6 host only" ("2001:db8::1", Nothing :: Maybe Int) (parseHostPort "[2001:db8::1]")
+    ok12 <- assertEq "parseHostPort raw ipv6 host only" ("2001:db8::1", Nothing :: Maybe Int) (parseHostPort "2001:db8::1")
+    pure (ok1 && ok2 && ok3 && ok4 && ok5 && ok6 && ok7 && ok8 && ok9 && ok10 && ok11 && ok12)
 
 ------------------------------------------------------------------------
 -- 6. Encoding round-trip: putWord32BE / getWord32BE
