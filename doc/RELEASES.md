@@ -239,6 +239,23 @@ That keeps the release surface explicit:
 - FreeDOS gets an explicit research/source bundle marked unsupported for
   native runtime use with the current Haskell implementation.
 
+### BSD Source-Only Policy (M3.1.5)
+
+BSD targets (FreeBSD, OpenBSD, NetBSD) remain source-only releases until
+repo-owned native BSD builders are available. This means:
+
+- `make release-bsd-terminal` produces a source tarball with build
+  instructions, not a prebuilt binary.
+- No BSD-specific CI lane exists. Build and test evidence must come from
+  a native BSD machine.
+- The BSD source release includes the same `nix-shell`-based build
+  instructions as other source targets. Users with a working Nix
+  installation on BSD can build from source using the same workflow.
+- Cross-building BSD binaries from Linux is not attempted. If it were,
+  those artifacts would be treated as non-authoritative per M3.2.1.
+- This policy will be revisited when a repo-owned BSD builder is
+  available and can produce native build/test/release evidence.
+
 ## Examples
 
 ```sh
