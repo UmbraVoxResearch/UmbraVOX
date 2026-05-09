@@ -195,20 +195,69 @@ BLOCKED (EXTERNAL DEPENDENCIES)
   [x] X3.1 M1.1.3 Anthony.hs encryption integration — deferred pending upstream patches.
 
 ================================================================================
-FUTURE PLANNED (POST-MVP) — NOW ACTIVE
+MILESTONE M6: INDEPENDENT C CRYPTO + DIFFERENTIAL TESTING + FORMAL ASSURANCE
+================================================================================
+Note: This is the MVP extension. Everything marked "deferred" above is
+outside the MVP and stays deferred until external dependencies are met.
+
+[~] M6.1 Real C code generation from .spec files (F1)
+  [x] M6.1.1 Enable real C backend in CryptoGen (remove cProbeSpec gate).
+  [x] M6.1.2 Fix expression parser: tokenizer, recursive descent, operator precedence.
+  [x] M6.1.3 Fix strip() to trim trailing whitespace (helper name matching).
+  [x] M6.1.4 Emit helper definitions (ch, maj, bsig0, etc.) as C #define macros.
+  [~] M6.1.5 Emit preprocessing stubs for pad(), block[], getLE32() as C functions.
+  [ ] M6.1.6 Add per-spec helper lists (AES: SubBytes, ShiftRows, etc.).
+  [ ] M6.1.7 Emit proper function signatures with input/output buffer parameters.
+  [ ] M6.1.8 All 10 generated C files compile without errors.
+  [ ] M6.1.9 Update FFI wrappers to call real C functions instead of link probes.
+  [ ] M6.1.10 make codegen && make build succeeds with real C implementations.
+
+[ ] M6.2 Differential testing: C output vs Haskell oracle (F2)
+  [ ] M6.2.1 Add differential test harness: run C function, run Haskell function, compare output.
+  [ ] M6.2.2 Test all 10 primitives against NIST/RFC test vectors via both C and Haskell.
+  [ ] M6.2.3 Add property-based fuzzing: random inputs, compare C vs Haskell output.
+  [ ] M6.2.4 Add boundary/edge case tests: empty input, max-length, single byte, alignment.
+  [ ] M6.2.5 Add standard cryptography checks per primitive:
+    [ ] SHA-256/512: NIST CAVP vectors, multi-block, padding edge cases.
+    [ ] AES-256: FIPS 197 test vectors, key schedule verification.
+    [ ] ChaCha20: RFC 8439 test vectors, counter rollover.
+    [ ] Poly1305: RFC 8439 vectors, key clamping verification.
+    [ ] X25519: RFC 7748 test vectors, low-order point rejection.
+    [ ] HMAC: RFC 4231 test vectors.
+    [ ] HKDF: RFC 5869 test vectors.
+    [ ] Keccak: NIST SHA-3 test vectors, SHAKE output lengths.
+    [ ] GCM: NIST SP 800-38D test vectors, tag verification.
+    [ ] ML-KEM-768: FIPS 203 test vectors, encaps/decaps round-trip.
+  [ ] M6.2.6 Add make test-differential target.
+  [ ] M6.2.7 Integrate differential tests into required test gate.
+
+[ ] M6.3 Formal assurance: F* refinement proofs (F3)
+  [x] M6.3.1 Document KaRaMeL evaluation (doc/karamel-evaluation.md).
+  [ ] M6.3.2 Reduce assume-based trust in F* specs (GCM, HMAC, HKDF).
+  [ ] M6.3.3 Add explicit equivalence lemmas for SHA-256/512 round-state transitions.
+  [ ] M6.3.4 Add F*-to-Haskell refinement proof for at least one primitive (SHA-256).
+  [ ] M6.3.5 Evaluate HACL* adoption for primitives with existing verified C.
+  [ ] M6.3.6 Add F*-to-C correspondence argument (generated C matches spec semantics).
+  [ ] M6.3.7 Update assurance matrix with new evidence levels.
+
+================================================================================
+OUTSIDE MVP (DEFERRED)
 ================================================================================
 
-[~] F1 Promote generated C/FFI from bridge/probe surfaces to semantically real implementations.
-  Note: Deferred pending F3 evaluation. If KaRaMeL extraction is viable, hand-written C may not be needed.
-[ ] F2 Add large-scale Haskell-vs-C differential testing once C path is semantically real.
-  Note: Blocked by F1/F3. Build differential test framework once real C implementations exist.
-[~] F3 Evaluate KaRaMeL/Low* extraction track as post-MVP refactor.
-  [x] F3.1 Document KaRaMeL evaluation with extractability assessment per spec category.
-  [ ] F3.2 Attempt extraction of simplest spec (Spec.Poly1305) if prerequisites met.
-  [ ] F3.3 Add KaRaMeL tooling to nix-shell if evaluation is positive.
-[~] F4 Expand transport/provider plugin ecosystem after core release pipeline is stable.
-  [~] F4.1 Implement real UDP transport with reliability layer.
-  [x] F4.2 Create transport provider documentation (doc/transport-providers.md).
-  [~] F4.3 Implement SOCKS5 proxy transport for TCP-over-Tor.
-  [ ] F4.4 Implement WireGuard transport endpoint.
-  [ ] F4.5 Add provider hot-reload and IPC hosting.
+[!] Transport plugin ecosystem (F4 — deferred, infrastructure built)
+  [~] F4.1 UDP transport with reliability layer (implemented, needs testing).
+  [x] F4.2 Transport provider documentation.
+  [~] F4.3 SOCKS5 proxy transport (implemented, needs testing).
+  [ ] F4.4 WireGuard transport endpoint.
+  [ ] F4.5 Provider hot-reload and IPC hosting.
+
+[!] Platform runner evidence (needs hardware)
+  [ ] M3.1.1.b Linux x86_64 dedicated runner evidence.
+  [ ] M3.1.2 Linux arm64 native runner lane.
+
+[!] Provenance signing and attestation (needs policy)
+  [ ] M4.2.2 Sign manifest/checksums.
+  [ ] M4.2.3 Reproducibility rebuild-and-compare lane.
+
+[!] Persistence integration (needs upstream)
+  [ ] M1.1.3 Anthony.hs encryption integration.
