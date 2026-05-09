@@ -26,6 +26,7 @@ import qualified Test.Crypto.AES as AES
 import qualified Test.Crypto.BIP39 as BIP39
 import qualified Test.Crypto.ChaCha20 as ChaCha20
 import qualified Test.Crypto.Curve25519 as Curve25519
+import qualified Test.Crypto.Differential as Differential
 import qualified Test.Crypto.Ed25519 as Ed25519
 import qualified Test.Crypto.Export as Export
 import qualified Test.Crypto.GCM as GCM
@@ -138,6 +139,8 @@ runSuiteArg suiteArg =
         "tui-sim" -> runSuiteGroup "UmbraVox TUI Simulation Suite" tuiSimSuites
         "integrity" -> runSuiteGroup "UmbraVox Integrity Suite" integritySuites
         "soak" -> runSuiteGroup "UmbraVox Soak Suite" soakSuites
+        "differential" -> runSuiteGroup "UmbraVox Differential C vs Haskell Suite"
+            [Suite "differential" Differential.runTests]
         "deferred" -> runSuiteGroup "UmbraVox Deferred Stub Suite" deferredSuites
         "all" -> runSuiteGroup "UmbraVox Full Test Matrix"
             (requiredSuites ++ tuiSimSuites ++ integritySuites ++ soakSuites ++ deferredSuites)
@@ -251,6 +254,7 @@ coreCryptoSuites =
     , Suite "sender-keys" SenderKeys.runTests
     , Suite "signal-session" Session.runTests
     , Suite "security" Security.runTests
+    , Suite "differential" Differential.runTests
     ]
 
 coreNetworkSuites :: [Suite]
@@ -385,5 +389,5 @@ validSuiteArgs :: [String]
 validSuiteArgs =
     [ "required", "core", "core-crypto", "core-network", "core-chat"
     , "core-tui", "core-tools", "tcp", "fault", "recovery", "tui-sim"
-    , "integrity", "soak", "deferred", "all"
+    , "integrity", "soak", "deferred", "differential", "all"
     ]

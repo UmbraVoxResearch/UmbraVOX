@@ -22,6 +22,7 @@
 #   make test-integrity - Run wire/integrity coverage
 #   make test-mdns    - Run the exact mDNS/discovery suite
 #   make test-deferred - Run preserved deferred blockchain/economics suites
+#   make test-differential - Run differential C vs Haskell tests
 #   make soak         - Run the long soak suite and write an artifact report
 #   make verify       - Run F* formal verification (17 modules)
 #   make verify-haskell - Opt-in bridge wrapper for Haskell verification orchestration
@@ -65,7 +66,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify verify-haskell complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity vm-smoke vm-image-build vm-image-clean image-clean firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic clean cleandb cleanall help
+.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak verify verify-haskell complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity vm-smoke vm-image-build vm-image-clean image-clean firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -162,6 +163,7 @@ help:
 	@echo "    make test-integrity Run wire/integrity suite"
 	@echo "    make test-mdns   Run exact mDNS/discovery suite"
 	@echo "    make test-deferred Run preserved deferred blockchain/economics suites"
+	@echo "    make test-differential Run differential C vs Haskell tests"
 	@echo "    make soak        Run long soak suite and write artifact report"
 	@echo "    make codegen     Generate Haskell + C + FFI from .spec files"
 	@echo "    make evidence    Run quality and write a publication evidence bundle"
@@ -348,6 +350,10 @@ test-mdns: build
 test-deferred: build
 	@echo -e "$(BLUE)[TEST-DEFERRED]$(NC) Running preserved deferred suite..."
 	@$(SUITE_LOCK) $(call run_test_suite,deferred)
+
+test-differential: build
+	@echo -e "$(BLUE)[TEST-DIFF]$(NC) Running differential C vs Haskell tests..."
+	@$(SUITE_LOCK) $(call run_test_suite,differential)
 
 soak: build
 	@echo -e "$(BLUE)[SOAK]$(NC) Running soak suite..."
