@@ -78,6 +78,7 @@ in pkgs.mkShell {
 
     # Image building
     pkgs.genext2fs
+    pkgs.e2fsprogs
 
     # VM smoke testing
     pkgs.qemu_kvm

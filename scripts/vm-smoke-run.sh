@@ -118,6 +118,21 @@ else
     FAIL=$((FAIL + 1))
 fi
 
+# Write F* cache to output disk (/dev/vdc) if present.
+# This is used by the two-stage image build to extract .checked files.
+if [ -b /dev/vdc ]; then
+    echo "  writing F* cache to /dev/vdc..."
+    mkdir -p /mnt/cache-out
+    mount /dev/vdc /mnt/cache-out 2>/dev/null || true
+    if mountpoint -q /mnt/cache-out; then
+        cp test/evidence/formal-proofs/fstar/_cache/*.checked /mnt/cache-out/ 2>/dev/null || true
+        sync
+        CACHE_COUNT=$(ls /mnt/cache-out/*.checked 2>/dev/null | wc -l)
+        echo "  wrote $CACHE_COUNT .checked files to /dev/vdc"
+        umount /mnt/cache-out
+    fi
+fi
+
 # Step 4: Complexity check (run binary directly per source file)
 if [ -n "$COMPLEXITY_BIN" ] && [ -x "$COMPLEXITY_BIN" ]; then
     run_step "complexity" bash -c '
