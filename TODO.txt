@@ -251,7 +251,8 @@ outside the MVP and stays deferred until external dependencies are met.
   [~] F4.3 SOCKS5 proxy transport (implemented, needs testing).
   [x] F4.4 WireGuard transport endpoint.
     Note: TCP over WireGuard interface — no special transport needed, just network configuration.
-  [ ] F4.5 Provider hot-reload and IPC hosting.
+  [x] F4.5 Provider hot-reload and IPC hosting.
+    Note: reloadProviders re-scans manifests at runtime; IPCTransport implements TransportHandle over stdin/stdout with line-based hex protocol.
 
 ================================================================================
 OUTSIDE MVP (DEFERRED)
