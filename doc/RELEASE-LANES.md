@@ -68,6 +68,10 @@ Current implementation note:
   wrapper around `make release-smoke-qemu`.
 - `make release-smoke-firecracker-pinned` adds the pinned-input wrapper around
   `make release-smoke-firecracker`.
+- pinned microVM runs now require an explicit in-guest verification command
+  template via `UMBRAVOX_QEMU_VERIFY_CMD` or
+  `UMBRAVOX_FIRECRACKER_VERIFY_CMD`; the repo still does not ship the
+  maintained guest image that executes that command by default.
 - `make release-lane-qemu` and `make release-lane-firecracker` remain
   host-prerequisite scaffolds only.
 - `make release-lane-readiness` runs the aggregate native runner readiness
@@ -171,15 +175,17 @@ Current command behavior:
   invoke a direct pinned-input boot path for the selected VMM.
 - QEMU mode also supports a pinned-boot path via
   `UMBRAVOX_QEMU_KERNEL` + `UMBRAVOX_QEMU_INITRD` +
-  `UMBRAVOX_QEMU_ROOTFS` + `UMBRAVOX_QEMU_APPEND`.
+  `UMBRAVOX_QEMU_ROOTFS` + `UMBRAVOX_QEMU_APPEND` +
+  `UMBRAVOX_QEMU_VERIFY_CMD`.
 - For deterministic command-line profiles, use
   `scripts/release-smoke-qemu-profile.sh bundle-basic` and pass the output as
   `UMBRAVOX_QEMU_APPEND`, or set `UMBRAVOX_QEMU_PROFILE=bundle-basic`.
 - Firecracker mode accepts pinned inputs via
   `UMBRAVOX_FIRECRACKER_KERNEL` + `UMBRAVOX_FIRECRACKER_ROOTFS` +
-  `UMBRAVOX_FIRECRACKER_CONFIG`.
+  `UMBRAVOX_FIRECRACKER_CONFIG` + `UMBRAVOX_FIRECRACKER_VERIFY_CMD`.
 - Firecracker currently relies on the caller to supply a maintained kernel,
-  rootfs, and config that actually perform in-guest bundle verification; the
-  repo does not yet define or ship those inputs.
+  rootfs, config, and explicit in-guest verification command template that
+  actually perform in-guest bundle verification; the repo does not yet define
+  or ship those inputs.
 - The default path for both VMMs is still messaging plus prerequisite checks
   unless one of those execution hooks/inputs is explicitly provided.
