@@ -7,6 +7,10 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 ## [Unreleased]
 
 ### Added
+- Added real UDP transport with sequence-number reliability layer (F4.1).
+- Added SOCKS5 proxy transport for TCP-over-Tor connectivity (F4.3).
+- Added transport provider plugin documentation (`doc/transport-providers.md`) covering manifest format, TransportHandle interface, plugin host modes, and provider lifecycle (F4.2).
+- Added KaRaMeL/Low* extraction evaluation document (`doc/karamel-evaluation.md`) assessing extractability of all 17 F* specs (F3.1).
 - Added arm64 NixOS VM image stub (`nix/vm-image-aarch64.nix`) for cross-architecture testing via QEMU system emulation (M5.5.1).
 - Added cross-architecture test matrix documentation in `doc/runner-classes.md` (M5.5.2).
 - Added TAP+bridge dual-LAN network setup script (`scripts/vm-network-setup.sh`) for privileged integration testing with pcap capture (M5.3.3).

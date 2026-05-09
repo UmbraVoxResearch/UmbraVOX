@@ -139,6 +139,7 @@ library
     UmbraVox.Network.Transport.XMPP
     UmbraVox.Network.Transport.Discord
     UmbraVox.Network.Transport.Matrix
+    UmbraVox.Network.Transport.Socks5
     UmbraVox.Network.ProviderCatalog
     UmbraVox.Network.ProviderRuntime
     UmbraVox.Network.Noise
