@@ -21,5 +21,9 @@ static const uint32_t zeta_3 = 0x00000239;
 
 __attribute__((noinline))
 uint32_t mlkem768(const uint8_t* seed_d, const uint8_t* seed_z, const uint8_t* message) {
-    return result;
+    return 0; /* placeholder */
+}
+
+int mlkem768_link_probe(void) {
+    return 1;
 }

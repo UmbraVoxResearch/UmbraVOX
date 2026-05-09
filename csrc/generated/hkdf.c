@@ -8,42 +8,46 @@
 
 __attribute__((noinline))
 uint32_t hkdf(const uint8_t* salt, const uint8_t* ikm, const uint8_t* info, const uint8_t* length) {
-    uint32_t salt_prepared = IF;
-    uint32_t prk = HMAC(salt_prepared, ikm);
-    uint32_t N = ceil(length);
-    uint32_t T_0 = empty;
-    uint32_t T_1 = HMAC(prk, ((((T_0 | 0) | info) | 0) | 0x01));
-    uint32_t T_2 = HMAC(prk, ((((T_1 | 0) | info) | 0) | 0x02));
-    uint32_t T_3 = HMAC(prk, ((((T_2 | 0) | info) | 0) | 0x03));
-    uint32_t T_4 = HMAC(prk, ((((T_3 | 0) | info) | 0) | 0x04));
-    uint32_t T_5 = HMAC(prk, ((((T_4 | 0) | info) | 0) | 0x05));
-    uint32_t T_6 = HMAC(prk, ((((T_5 | 0) | info) | 0) | 0x06));
-    uint32_t T_7 = HMAC(prk, ((((T_6 | 0) | info) | 0) | 0x07));
-    uint32_t T_8 = HMAC(prk, ((((T_7 | 0) | info) | 0) | 0x08));
-    uint32_t T_9 = HMAC(prk, ((((T_8 | 0) | info) | 0) | 0x09));
-    uint32_t T_10 = HMAC(prk, ((((T_9 | 0) | info) | 0) | 0x0A));
-    uint32_t T_11 = HMAC(prk, ((((T_10 | 0) | info) | 0) | 0x0B));
-    uint32_t T_12 = HMAC(prk, ((((T_11 | 0) | info) | 0) | 0x0C));
-    uint32_t T_13 = HMAC(prk, ((((T_12 | 0) | info) | 0) | 0x0D));
-    uint32_t T_14 = HMAC(prk, ((((T_13 | 0) | info) | 0) | 0x0E));
-    uint32_t T_15 = HMAC(prk, ((((T_14 | 0) | info) | 0) | 0x0F));
-    uint32_t T_16 = HMAC(prk, ((((T_15 | 0) | info) | 0) | 0x10));
-    uint32_t T_17 = HMAC(prk, ((((T_16 | 0) | info) | 0) | 0x11));
-    uint32_t T_18 = HMAC(prk, ((((T_17 | 0) | info) | 0) | 0x12));
-    uint32_t T_19 = HMAC(prk, ((((T_18 | 0) | info) | 0) | 0x13));
-    uint32_t T_20 = HMAC(prk, ((((T_19 | 0) | info) | 0) | 0x14));
-    uint32_t T_21 = HMAC(prk, ((((T_20 | 0) | info) | 0) | 0x15));
-    uint32_t T_22 = HMAC(prk, ((((T_21 | 0) | info) | 0) | 0x16));
-    uint32_t T_23 = HMAC(prk, ((((T_22 | 0) | info) | 0) | 0x17));
-    uint32_t T_24 = HMAC(prk, ((((T_23 | 0) | info) | 0) | 0x18));
-    uint32_t T_25 = HMAC(prk, ((((T_24 | 0) | info) | 0) | 0x19));
-    uint32_t T_26 = HMAC(prk, ((((T_25 | 0) | info) | 0) | 0x1A));
-    uint32_t T_27 = HMAC(prk, ((((T_26 | 0) | info) | 0) | 0x1B));
-    uint32_t T_28 = HMAC(prk, ((((T_27 | 0) | info) | 0) | 0x1C));
-    uint32_t T_29 = HMAC(prk, ((((T_28 | 0) | info) | 0) | 0x1D));
-    uint32_t T_30 = HMAC(prk, ((((T_29 | 0) | info) | 0) | 0x1E));
-    uint32_t T_31 = HMAC(prk, ((((T_30 | 0) | info) | 0) | 0x1F));
-    uint32_t T_32 = HMAC(prk, ((((T_31 | 0) | info) | 0) | 0x20));
-    uint32_t okm = truncate(((((((T_1 | 0) | T_2) | 0) | 0) | 0) | T_N), length);
-    return result;
+    uint32_t salt_prepared = 0; /* preprocessing: IF */
+    uint32_t prk = 0; /* preprocessing: HMAC(salt_prepared, ikm) */
+    uint32_t N = 0; /* preprocessing: ceil(length) */
+    uint32_t T_0 = 0; /* preprocessing: empty */
+    uint32_t T_1 = 0; /* preprocessing: HMAC(prk, ((((T_0 | 0) | info) | 0) | 0x01)) */
+    uint32_t T_2 = 0; /* preprocessing: HMAC(prk, ((((T_1 | 0) | info) | 0) | 0x02)) */
+    uint32_t T_3 = 0; /* preprocessing: HMAC(prk, ((((T_2 | 0) | info) | 0) | 0x03)) */
+    uint32_t T_4 = 0; /* preprocessing: HMAC(prk, ((((T_3 | 0) | info) | 0) | 0x04)) */
+    uint32_t T_5 = 0; /* preprocessing: HMAC(prk, ((((T_4 | 0) | info) | 0) | 0x05)) */
+    uint32_t T_6 = 0; /* preprocessing: HMAC(prk, ((((T_5 | 0) | info) | 0) | 0x06)) */
+    uint32_t T_7 = 0; /* preprocessing: HMAC(prk, ((((T_6 | 0) | info) | 0) | 0x07)) */
+    uint32_t T_8 = 0; /* preprocessing: HMAC(prk, ((((T_7 | 0) | info) | 0) | 0x08)) */
+    uint32_t T_9 = 0; /* preprocessing: HMAC(prk, ((((T_8 | 0) | info) | 0) | 0x09)) */
+    uint32_t T_10 = 0; /* preprocessing: HMAC(prk, ((((T_9 | 0) | info) | 0) | 0x0A)) */
+    uint32_t T_11 = 0; /* preprocessing: HMAC(prk, ((((T_10 | 0) | info) | 0) | 0x0B)) */
+    uint32_t T_12 = 0; /* preprocessing: HMAC(prk, ((((T_11 | 0) | info) | 0) | 0x0C)) */
+    uint32_t T_13 = 0; /* preprocessing: HMAC(prk, ((((T_12 | 0) | info) | 0) | 0x0D)) */
+    uint32_t T_14 = 0; /* preprocessing: HMAC(prk, ((((T_13 | 0) | info) | 0) | 0x0E)) */
+    uint32_t T_15 = 0; /* preprocessing: HMAC(prk, ((((T_14 | 0) | info) | 0) | 0x0F)) */
+    uint32_t T_16 = 0; /* preprocessing: HMAC(prk, ((((T_15 | 0) | info) | 0) | 0x10)) */
+    uint32_t T_17 = 0; /* preprocessing: HMAC(prk, ((((T_16 | 0) | info) | 0) | 0x11)) */
+    uint32_t T_18 = 0; /* preprocessing: HMAC(prk, ((((T_17 | 0) | info) | 0) | 0x12)) */
+    uint32_t T_19 = 0; /* preprocessing: HMAC(prk, ((((T_18 | 0) | info) | 0) | 0x13)) */
+    uint32_t T_20 = 0; /* preprocessing: HMAC(prk, ((((T_19 | 0) | info) | 0) | 0x14)) */
+    uint32_t T_21 = 0; /* preprocessing: HMAC(prk, ((((T_20 | 0) | info) | 0) | 0x15)) */
+    uint32_t T_22 = 0; /* preprocessing: HMAC(prk, ((((T_21 | 0) | info) | 0) | 0x16)) */
+    uint32_t T_23 = 0; /* preprocessing: HMAC(prk, ((((T_22 | 0) | info) | 0) | 0x17)) */
+    uint32_t T_24 = 0; /* preprocessing: HMAC(prk, ((((T_23 | 0) | info) | 0) | 0x18)) */
+    uint32_t T_25 = 0; /* preprocessing: HMAC(prk, ((((T_24 | 0) | info) | 0) | 0x19)) */
+    uint32_t T_26 = 0; /* preprocessing: HMAC(prk, ((((T_25 | 0) | info) | 0) | 0x1A)) */
+    uint32_t T_27 = 0; /* preprocessing: HMAC(prk, ((((T_26 | 0) | info) | 0) | 0x1B)) */
+    uint32_t T_28 = 0; /* preprocessing: HMAC(prk, ((((T_27 | 0) | info) | 0) | 0x1C)) */
+    uint32_t T_29 = 0; /* preprocessing: HMAC(prk, ((((T_28 | 0) | info) | 0) | 0x1D)) */
+    uint32_t T_30 = 0; /* preprocessing: HMAC(prk, ((((T_29 | 0) | info) | 0) | 0x1E)) */
+    uint32_t T_31 = 0; /* preprocessing: HMAC(prk, ((((T_30 | 0) | info) | 0) | 0x1F)) */
+    uint32_t T_32 = 0; /* preprocessing: HMAC(prk, ((((T_31 | 0) | info) | 0) | 0x20)) */
+    uint32_t okm = 0; /* preprocessing: truncate(((((((T_1 | 0) | T_2) | 0) | 0) | 0) | T_N), length) */
+    return 0; /* placeholder */
+}
+
+int hkdf_link_probe(void) {
+    return 1;
 }
