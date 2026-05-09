@@ -40,6 +40,7 @@ let
       gzip
       iproute2
       iputils
+      netcat-gnu
       procps
       util-linux
       which
