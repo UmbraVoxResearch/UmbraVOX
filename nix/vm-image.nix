@@ -1,0 +1,113 @@
+# NixOS VM disk image for isolated UmbraVOX build/test/release.
+#
+# Contains the full development toolchain (GHC 9.6, cabal, F*, Z3, etc.)
+# with zero external dependencies — no network access needed in-guest.
+#
+# The guest boots, mounts the source tree from /dev/vdb, copies it to a
+# writable tmpfs, runs the pipeline, and shuts down.
+#
+# Build:
+#   nix build .#vm-image            (via flake)
+#   nix-build nix/vm-image.nix      (standalone)
+#
+# The output is a raw disk image: result/nixos.raw
+{ pkgs ? import <nixpkgs> { system = "x86_64-linux"; } }:
+
+let
+  hp = pkgs.haskell.packages.ghc96;
+
+  devToolsPkgs = with pkgs; [
+    (hp.ghcWithPackages (p: [ p.network ]))
+    cabal-install
+    gcc
+    gdb
+    valgrind
+    coq
+    tlaplus
+    fstar
+    z3
+    go
+    sqlite
+    aflplusplus
+    graphviz
+    jq
+    patchelf
+    file
+    zip
+    gnumake
+    git
+    pkg-config
+    genext2fs
+    bashInteractive
+    coreutils
+    findutils
+    gnugrep
+    gnused
+    gnutar
+    gzip
+    which
+    diffutils
+    gnupatch
+  ];
+
+  nixosConfig = { config, lib, modulesPath, pkgs, ... }: {
+    imports = [ (modulesPath + "/profiles/qemu-guest.nix") ];
+
+    boot.loader.grub.device = "/dev/vda";
+    boot.kernelParams = [ "console=ttyS0" "panic=1" ];
+    boot.initrd.availableKernelModules = [
+      "virtio_pci" "virtio_blk" "virtio_scsi" "virtio_net" "ext4"
+    ];
+
+    fileSystems."/" = {
+      device = "/dev/vda1";
+      fsType = "ext4";
+    };
+
+    swapDevices = [];
+    networking.hostName = "umbravox-vm";
+    networking.firewall.enable = false;
+
+    # Serial console — auto-login root
+    systemd.services."serial-getty@ttyS0".enable = true;
+    services.getty.autologinUser = "root";
+
+    # All dev tools pre-installed
+    environment.systemPackages = devToolsPkgs;
+
+    # Writable workspace (tmpfs, sized for build artifacts)
+    fileSystems."/work" = {
+      device = "tmpfs";
+      fsType = "tmpfs";
+      options = [ "size=8G" "mode=1777" ];
+    };
+
+    # Minimize image size
+    documentation.enable = false;
+    programs.command-not-found.enable = false;
+    services.udisks2.enable = false;
+    security.polkit.enable = false;
+    xdg.mime.enable = false;
+    xdg.icons.enable = false;
+    nix.enable = false;
+
+    system.stateVersion = "25.05";
+  };
+
+  nixos = import (pkgs.path + "/nixos") {
+    system = "x86_64-linux";
+    configuration = nixosConfig;
+  };
+
+  image = import (pkgs.path + "/nixos/lib/make-disk-image.nix") {
+    inherit pkgs;
+    lib = pkgs.lib;
+    config = nixos.config;
+    diskSize = "auto";
+    additionalSpace = "1024M";
+    format = "raw";
+    partitionTableType = "legacy";
+    copyChannel = false;
+  };
+
+in image

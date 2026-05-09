@@ -65,7 +65,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify verify-haskell complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity clean cleandb cleanall help
+.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify verify-haskell complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity vm-smoke vm-image-build vm-image-clean image-clean clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -174,6 +174,12 @@ help:
 	@echo "    make format-check Check for tabs and trailing whitespace"
 	@echo "    make release-gate-assurance Run assurance matrix freshness gate"
 	@echo "    make quality     Same as make (lint/format-check are non-blocking)"
+	@echo ""
+	@echo "  VM Smoke (isolated build/test):"
+	@echo "    make vm-smoke       Run full pipeline inside isolated QEMU VM"
+	@echo "    make vm-image-build Build and cache the NixOS VM image"
+	@echo "    make vm-image-clean Remove the cached VM image"
+	@echo "    make image-clean    Alias for vm-image-clean"
 	@echo ""
 	@echo "  Maintenance:"
 	@echo "    make clean       Remove build artifacts + build/ + dist-newstyle"
@@ -543,6 +549,10 @@ release-smoke-firecracker-pinned:
 	UMBRAVOX_FIRECRACKER_CONFIG="$(FIRECRACKER_SMOKE_CONFIG)" \
 	./scripts/release-smoke-microvm.sh firecracker
 
+release-smoke-qemu-nix:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Running Nix-managed QEMU microVM release smoke check..."
+	@./scripts/release-smoke-qemu-nix.sh
+
 platform-lane-qemu:
 	@echo -e "$(BLUE)[PLATFORM]$(NC) Running QEMU release-lane prerequisite script..."
 	@./scripts/release-lane-qemu.sh
@@ -671,6 +681,24 @@ sanity:
 	@echo -e "$(GREEN)[SANITY]$(NC) Release smoke/microVM targets are wired."
 
 # --------------------------------------------------------------------------
+# VM Isolated Smoke Testing
+# --------------------------------------------------------------------------
+
+vm-smoke:
+	@echo -e "$(BLUE)[VM-SMOKE]$(NC) Running isolated VM build/test/release pipeline..."
+	@cabal run umbravox -- vm-smoke
+
+vm-image-build:
+	@echo -e "$(BLUE)[VM-IMAGE]$(NC) Building/caching NixOS VM image..."
+	@cabal run umbravox -- vm-image-build
+
+vm-image-clean:
+	@echo -e "$(BLUE)[VM-IMAGE]$(NC) Removing cached VM image..."
+	@cabal run umbravox -- vm-image-clean
+
+image-clean: vm-image-clean
+
+# --------------------------------------------------------------------------
 # Clean
 # --------------------------------------------------------------------------
 
@@ -680,7 +708,7 @@ clean:
 	@rm -rf build
 	@rm -rf dist-newstyle
 	@rm -rf $(FSTAR_DIR)/_cache $(FSTAR_DIR)/_output
-	@echo -e "$(GREEN)[CLEAN]$(NC) Done."
+	@echo -e "$(GREEN)[CLEAN]$(NC) Done. (VM image not removed; use make image-clean)"
 
 cleandb:
 	@echo -e "$(BLUE)[CLEANDB]$(NC) Removing local database..."

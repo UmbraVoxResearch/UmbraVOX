@@ -56,6 +56,9 @@ make release-lane-qemu
 make release-lane-firecracker
 make release-lane-readiness
 make release-gate-assurance
+make vm-smoke
+make vm-image-build
+make vm-image-clean
 make platform-sanity
 make sanity
 scripts/nix-flake.sh flake show --no-write-lock-file
@@ -132,6 +135,15 @@ scripts/nix-flake.sh flake show --no-write-lock-file
 - The Firecracker microVM path can boot from pinned caller-supplied inputs, but
   the repo still does not define a maintained Firecracker guest image/config
   that performs bundle verification in-guest by default.
+- `make vm-smoke` boots a NixOS QEMU VM with the full development
+  toolchain pre-installed and runs the complete pipeline (build, test,
+  verify, complexity, license, format-check, release-linux) inside the
+  isolated guest. No network access is needed in-guest. The VM image is
+  cached at `build/vm/image` and only rebuilt when `flake.nix` or
+  `flake.lock` change.
+- `make vm-image-build` builds and caches the NixOS VM image without
+  running the smoke pipeline.
+- `make vm-image-clean` removes the cached VM image.
 - Flake parity commands are available through `flake.nix` apps/checks/packages.
   Use `scripts/nix-flake.sh ...` to avoid repeating feature flags.
 - Release packaging now fails by default on dirty or untagged commits.
