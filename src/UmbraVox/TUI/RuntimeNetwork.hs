@@ -14,14 +14,15 @@ module UmbraVox.TUI.RuntimeNetwork
 import Control.Concurrent (forkIO, killThread)
 import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
 import Control.Exception (SomeException, bracket, catch, displayException, finally, fromException, throwIO, try)
-import Control.Monad (void, when)
+import Control.Monad (forM_, void, when)
 import Data.ByteString (ByteString)
+import qualified Data.ByteString as BS
 import Data.IORef (readIORef, writeIORef)
 import Data.List (intercalate, stripPrefix)
 import System.IO.Error (isUserError, ioeGetErrorString)
 import UmbraVox.App.RuntimeLog (logEvent)
 import UmbraVox.BuildProfile (buildSupportsPeerExchange)
-import UmbraVox.Network.PeerExchange (exchangePeers)
+import UmbraVox.Network.PeerExchange (PeerInfo(..), exchangePeers)
 import UmbraVox.Crypto.ConstantTime (constantEq)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 import UmbraVox.Network.ProviderCatalog (TransportProviderId, providerIdLabel)
@@ -94,9 +95,27 @@ tryPEXExchange cfg at =
                     [ ("sent",     "0")
                     , ("received", show (length received))
                     ]
+                -- Log each received peer for diagnostics.
+                -- Auto-connect is future work (requires AppState threading).
+                forM_ received $ \peer -> do
+                    let ip   = ipBytesToString (piIP peer)
+                        port = piPort peer
+                    when (not (null ip) && port > 0) $
+                        logEvent cfg "pex.peer_received"
+                            [ ("ip",   ip)
+                            , ("port", show port)
+                            ]
             ) `catch` (\(e :: SomeException) ->
                 logEvent cfg "pex.exchange.failed"
                     [("reason", renderRuntimeError e)])
+
+-- | Convert raw IPv4 bytes to a dotted-quad string.
+--   Returns empty string for non-IPv4 addresses (IPv6 not yet supported).
+ipBytesToString :: ByteString -> String
+ipBytesToString bs
+    | BS.length bs == 4 =
+        intercalate "." (map (show . fromIntegral) (BS.unpack bs))
+    | otherwise = ""
 
 acceptLoopTUI :: AppState -> IdentityKey -> Int -> IO ()
 acceptLoopTUI st ik port =
