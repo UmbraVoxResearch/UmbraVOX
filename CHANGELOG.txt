@@ -7,6 +7,7 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 ## [Unreleased]
 
 ### Added
+- Added explicit active TODO tasks to keep `Makefile` as a thin wrapper while moving build/release orchestration logic into Haskell entrypoints with `nix-shell` workflow parity.
 - Added an opt-in Haskell readiness bridge (`make release-lane-readiness-haskell`) that shells out to the existing aggregate readiness script while keeping the shell bridge as the source of truth for now.
 - Added a phased release-orchestration migration plan that keeps the current shell bridge honest while tracking the move to Haskell entrypoints.
 - Added an experimental AppImage scaffold target plus a non-authoritative smoke placeholder that validates layout only.

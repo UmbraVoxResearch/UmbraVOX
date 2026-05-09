@@ -107,7 +107,10 @@ MILESTONE M4: RELEASE COMPLIANCE, LICENSE, AND PROVENANCE GATES
 [~] M4.3 Release orchestration migration (shell bridge -> Haskell entrypoints)
   [~] M4.3.1 Define the minimal Haskell CLI boundary for release, readiness, and smoke commands.
   [ ] M4.3.2 Mirror current shell-bridged lane checks in Haskell entrypoints without changing semantics.
-  [ ] M4.3.3 Move `Makefile` and docs wrappers to call Haskell entrypoints where they exist.
+  [ ] M4.3.3 Keep `Makefile` as a thin wrapper and move orchestration logic into Haskell entrypoints (build/release/smoke/readiness) where parity exists.
+  [ ] M4.3.3.a Add Haskell `build`/`test`/`verify` orchestration subcommands with stable exit-code mapping.
+  [ ] M4.3.3.b Switch corresponding `Makefile` targets to call Haskell subcommands in bridge mode.
+  [ ] M4.3.3.c Preserve existing `nix-shell` UX by keeping `make` targets as stable aliases over Haskell orchestration.
   [ ] M4.3.4 Retire shell-specific release logic only after parity, logs, and exit codes match.
 
 ================================================================================
