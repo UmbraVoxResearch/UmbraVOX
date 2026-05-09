@@ -234,13 +234,15 @@ ensureVMImage = do
             when needsFstarCache $ do
                 hPutStrLn stderr "[VM-SMOKE] stage 1b: building F* cache in VM..."
                 buildFstarCacheInVM repoRoot cachePath cacheStage
-            -- Stage 2: Rebuild image with F* cache baked in
+            -- Stage 2: Rebuild image with F* cache baked in.
+            -- Use nix-build (not flake) because flakes don't support --arg.
             hPutStrLn stderr "[VM-SMOKE] stage 2: rebuilding VM image with F* cache..."
-            ec2 <- runScript "nix" [ "build"
-                                   , ".#vm-image"
-                                   , "--arg", "fstarCachePath", cacheStage
-                                   , "--out-link", cachePath
-                                   , "--extra-experimental-features", "nix-command flakes" ]
+            repoRoot' <- getCurrentDirectory
+            let vmImageNix = repoRoot' </> "nix" </> "vm-image.nix"
+            ec2 <- runScript "nix-build" [ vmImageNix
+                                         , "--arg", "fstarCachePath", cacheStage
+                                         , "-A", "qemu"
+                                         , "--out-link", cachePath ]
             case ec2 of
                 ExitSuccess -> do
                     hPutStrLn stderr $ "[VM-SMOKE] stage 2 complete: " ++ cachePath
