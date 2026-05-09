@@ -264,7 +264,7 @@ parseConversationRows s = concatMap parseConvRow (lines s)
 runSQL :: AnthonyDB -> String -> IO ()
 runSQL db sql =
     readProcess (dbAnthony db)
-        ["-batch", "-noheader", "-separator", "|", dbPath db, sql] ""
+        ["-batch", "-noheader", "-separator", "|", "-cmd", ".timeout 5000", dbPath db, sql] ""
         >> pure ()
 
 -- | Execute a SQL statement without the dangerous-SQL check.
@@ -272,14 +272,14 @@ runSQL db sql =
 runSQLUnsafe :: AnthonyDB -> String -> IO ()
 runSQLUnsafe db sql =
     readProcess (dbAnthony db)
-        ["-batch", "-noheader", "-separator", "|", dbPath db, sql] ""
+        ["-batch", "-noheader", "-separator", "|", "-cmd", ".timeout 5000", dbPath db, sql] ""
         >> pure ()
 
 -- | Execute a SQL query and return the raw output.
 querySQL :: AnthonyDB -> String -> IO String
 querySQL db sql =
     readProcess (dbAnthony db)
-        ["-batch", "-noheader", "-separator", "|", dbPath db, sql] ""
+        ["-batch", "-noheader", "-separator", "|", "-cmd", ".timeout 5000", dbPath db, sql] ""
 
 ------------------------------------------------------------------------
 -- Internal — SQL helpers
