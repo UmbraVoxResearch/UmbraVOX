@@ -65,6 +65,7 @@ data Expr
     | BinOp BinaryOp Expr Expr    -- ^ Binary operation
     | UnOp UnaryOp Expr            -- ^ Unary operation
     | Index Expr Expr              -- ^ Array indexing
+    | FunCall String [Expr]        -- ^ Function call, e.g. ch(e, f, g)
     deriving stock (Show, Eq)
 
 -- | Binary operations.
@@ -158,7 +159,7 @@ collectBlock depth (l:rest)
         in (l : more, remaining)
 
 strip :: String -> String
-strip = dropWhile isSpace
+strip = reverse . dropWhile isSpace . reverse . dropWhile isSpace
 
 parseParams :: [String] -> [Param]
 parseParams = mapMaybe parseParam
@@ -182,18 +183,262 @@ parseConstants = mapMaybe parseConst
             _ -> Nothing
 
 parseSteps :: [String] -> [Step]
-parseSteps lns = [Step Nothing (map parseOp lns)]
+parseSteps lns = [Step Nothing (concatMap parseOpLine lns)]
+
+-- | Parse a single line from the steps section.  Some spec files use
+--   semicolons to pack multiple assignments on one line (e.g. ChaCha20).
+parseOpLine :: String -> [Operation]
+parseOpLine l =
+    let parts = splitSemicolons (strip l)
+    in map parseOp parts
+
+-- | Split a line on semicolons that are NOT inside parentheses / brackets.
+splitSemicolons :: String -> [String]
+splitSemicolons = go 0 "" []
+  where
+    go _ acc result [] =
+        let trimmed = strip (reverse acc)
+        in  if null trimmed then reverse result else reverse (trimmed : result)
+    go depth acc result (';':rest) | depth == 0 =
+        let trimmed = strip (reverse acc)
+        in  if null trimmed
+            then go 0 "" result rest
+            else go 0 "" (trimmed : result) rest
+    go depth acc result (c:rest) =
+        let depth' = case c of
+                '(' -> depth + 1
+                '[' -> depth + 1
+                ')' -> max 0 (depth - 1)
+                ']' -> max 0 (depth - 1)
+                _   -> depth
+        in  go depth' (c : acc) result rest
 
 parseOp :: String -> Operation
 parseOp l =
-    case break (== '=') (strip l) of
-        (lhs, '=':rhs) -> Assign (strip lhs) (parseExpr (strip rhs))
-        _ -> Assign (strip l) (Lit "0")
+    case splitAssign (strip l) of
+        Just (lhs, rhs) -> Assign (strip lhs) (parseExpr (strip rhs))
+        Nothing         -> Assign (strip l) (Lit "0")
+
+-- | Split on the FIRST top-level '=' that is not part of >>>= or similar.
+--   We must not split on '=' that is preceded by '<', '>', '!'.
+splitAssign :: String -> Maybe (String, String)
+splitAssign = go ""
+  where
+    go _ []         = Nothing
+    go acc ('=':rest)
+        -- Make sure previous char isn't <, >, !, and next isn't =
+        | not (null acc) && head acc `elem` ("<>!" :: [Char]) = go ('=' : acc) rest
+        | ('=':_) <- rest = go ('=' : acc) rest   -- skip ==
+        | otherwise = Just (reverse acc, rest)
+    go acc (c:rest) = go (c : acc) rest
+
+-- ---------------------------------------------------------------------------
+-- Expression parser: recursive descent
+--
+-- Precedence (lowest to highest):
+--   1. +mod, -mod        (left-assoc)
+--   2. *mod              (left-assoc)
+--   3. ^                 (left-assoc)
+--   4. |                 (left-assoc)
+--   5. &                 (left-assoc)
+--   6. >>>, <<<, >>, <<  (left-assoc)
+--   7. NOT (unary prefix)
+--   8. Atoms: literals, variables, function calls, parens, index
+-- ---------------------------------------------------------------------------
 
 parseExpr :: String -> Expr
-parseExpr s
-    | null s    = Lit "0"
-    | otherwise = Var (strip s)
+parseExpr s =
+    let toks = tokenize (strip s)
+    in  case pExprAddMod toks of
+            (expr, []) -> expr
+            (expr, _)  -> expr  -- best effort; ignore trailing tokens
+
+-- | Token type for the expression lexer.
+data Token
+    = TokIdent String   -- variable/function name
+    | TokNum String     -- numeric literal (decimal or hex)
+    | TokOp String      -- operator: +mod, -mod, *mod, ^, &, |, >>>, <<<, >>, <<, NOT
+    | TokLParen         -- (
+    | TokRParen         -- )
+    | TokLBrack         -- [
+    | TokRBrack         -- ]
+    | TokComma          -- ,
+    deriving stock (Show, Eq)
+
+-- | Tokenize a spec expression string.
+tokenize :: String -> [Token]
+tokenize [] = []
+tokenize s@(c:rest)
+    | isSpace c = tokenize (dropWhile isSpace rest)
+    -- Multi-char operators: must check +mod/-mod/*mod before single +/-/*
+    | "+mod" `isPrefixOf` s = TokOp "+mod" : tokenize (drop 4 s)
+    | "-mod" `isPrefixOf` s = TokOp "-mod" : tokenize (drop 4 s)
+    | "*mod" `isPrefixOf` s = TokOp "*mod" : tokenize (drop 4 s)
+    | ">>>" `isPrefixOf` s  = TokOp ">>>"  : tokenize (drop 3 s)
+    | "<<<" `isPrefixOf` s  = TokOp "<<<"  : tokenize (drop 3 s)
+    | ">>" `isPrefixOf` s   = TokOp ">>"   : tokenize (drop 2 s)
+    | "<<" `isPrefixOf` s   = TokOp "<<"   : tokenize (drop 2 s)
+    | c == '^' = TokOp "^" : tokenize rest
+    | c == '&' = TokOp "&" : tokenize rest
+    | c == '|' = TokOp "|" : tokenize rest
+    | c == '~' = TokOp "NOT" : tokenize rest
+    | c == '(' = TokLParen : tokenize rest
+    | c == ')' = TokRParen : tokenize rest
+    | c == '[' = TokLBrack : tokenize rest
+    | c == ']' = TokRBrack : tokenize rest
+    | c == ',' = TokComma  : tokenize rest
+    -- Hex literals: 0x...
+    | "0x" `isPrefixOf` s || "0X" `isPrefixOf` s =
+        let (hexPart, rest2) = span isHexDigit (drop 2 s)
+        in  TokNum (take 2 s ++ hexPart) : tokenize rest2
+    -- Decimal literals
+    | isDigit c =
+        let (num, rest2) = span isDigit s
+        in  TokNum num : tokenize rest2
+    -- Identifiers (may include NOT as keyword)
+    | isAlpha c || c == '_' =
+        let (ident, rest2) = span (\x -> isAlphaNum x || x == '_') s
+        in  if ident == "NOT"
+            then TokOp "NOT" : tokenize rest2
+            else TokIdent ident : tokenize rest2
+    -- Skip unknown characters
+    | otherwise = tokenize rest
+
+-- | Parse additive level: +mod, -mod (lowest precedence)
+pExprAddMod :: [Token] -> (Expr, [Token])
+pExprAddMod toks =
+    let (lhs, rest) = pExprMulMod toks
+    in  pExprAddModTail lhs rest
+
+pExprAddModTail :: Expr -> [Token] -> (Expr, [Token])
+pExprAddModTail lhs (TokOp "+mod" : rest) =
+    let (rhs, rest2) = pExprMulMod rest
+    in  pExprAddModTail (BinOp OpAddMod lhs rhs) rest2
+pExprAddModTail lhs (TokOp "-mod" : rest) =
+    let (rhs, rest2) = pExprMulMod rest
+    in  pExprAddModTail (BinOp OpSubMod lhs rhs) rest2
+pExprAddModTail lhs rest = (lhs, rest)
+
+-- | Parse multiplicative level: *mod
+pExprMulMod :: [Token] -> (Expr, [Token])
+pExprMulMod toks =
+    let (lhs, rest) = pExprXor toks
+    in  pExprMulModTail lhs rest
+
+pExprMulModTail :: Expr -> [Token] -> (Expr, [Token])
+pExprMulModTail lhs (TokOp "*mod" : rest) =
+    let (rhs, rest2) = pExprXor rest
+    in  pExprMulModTail (BinOp OpMulMod lhs rhs) rest2
+pExprMulModTail lhs rest = (lhs, rest)
+
+-- | Parse XOR level: ^
+pExprXor :: [Token] -> (Expr, [Token])
+pExprXor toks =
+    let (lhs, rest) = pExprOr toks
+    in  pExprXorTail lhs rest
+
+pExprXorTail :: Expr -> [Token] -> (Expr, [Token])
+pExprXorTail lhs (TokOp "^" : rest) =
+    let (rhs, rest2) = pExprOr rest
+    in  pExprXorTail (BinOp OpXor lhs rhs) rest2
+pExprXorTail lhs rest = (lhs, rest)
+
+-- | Parse OR level: |
+pExprOr :: [Token] -> (Expr, [Token])
+pExprOr toks =
+    let (lhs, rest) = pExprAnd toks
+    in  pExprOrTail lhs rest
+
+pExprOrTail :: Expr -> [Token] -> (Expr, [Token])
+pExprOrTail lhs (TokOp "|" : rest) =
+    let (rhs, rest2) = pExprAnd rest
+    in  pExprOrTail (BinOp OpOr lhs rhs) rest2
+pExprOrTail lhs rest = (lhs, rest)
+
+-- | Parse AND level: &
+pExprAnd :: [Token] -> (Expr, [Token])
+pExprAnd toks =
+    let (lhs, rest) = pExprShift toks
+    in  pExprAndTail lhs rest
+
+pExprAndTail :: Expr -> [Token] -> (Expr, [Token])
+pExprAndTail lhs (TokOp "&" : rest) =
+    let (rhs, rest2) = pExprShift rest
+    in  pExprAndTail (BinOp OpAnd lhs rhs) rest2
+pExprAndTail lhs rest = (lhs, rest)
+
+-- | Parse shift/rotate level: >>>, <<<, >>, <<
+pExprShift :: [Token] -> (Expr, [Token])
+pExprShift toks =
+    let (lhs, rest) = pExprUnary toks
+    in  pExprShiftTail lhs rest
+
+pExprShiftTail :: Expr -> [Token] -> (Expr, [Token])
+pExprShiftTail lhs (TokOp ">>>" : rest) =
+    let (rhs, rest2) = pExprUnary rest
+    in  pExprShiftTail (BinOp OpRotR lhs rhs) rest2
+pExprShiftTail lhs (TokOp "<<<" : rest) =
+    let (rhs, rest2) = pExprUnary rest
+    in  pExprShiftTail (BinOp OpRotL lhs rhs) rest2
+pExprShiftTail lhs (TokOp ">>" : rest) =
+    let (rhs, rest2) = pExprUnary rest
+    in  pExprShiftTail (BinOp OpShiftR lhs rhs) rest2
+pExprShiftTail lhs (TokOp "<<" : rest) =
+    let (rhs, rest2) = pExprUnary rest
+    in  pExprShiftTail (BinOp OpShiftL lhs rhs) rest2
+pExprShiftTail lhs rest = (lhs, rest)
+
+-- | Parse unary: NOT
+pExprUnary :: [Token] -> (Expr, [Token])
+pExprUnary (TokOp "NOT" : rest) =
+    let (operand, rest2) = pExprUnary rest
+    in  (UnOp OpNot operand, rest2)
+pExprUnary toks = pExprPostfix toks
+
+-- | Parse postfix: array indexing with [expr]
+pExprPostfix :: [Token] -> (Expr, [Token])
+pExprPostfix toks =
+    let (base, rest) = pExprAtom toks
+    in  pPostfixTail base rest
+
+pPostfixTail :: Expr -> [Token] -> (Expr, [Token])
+pPostfixTail base (TokLBrack : rest) =
+    let (idx, rest2) = pExprAddMod rest
+    in  case rest2 of
+            (TokRBrack : rest3) -> pPostfixTail (Index base idx) rest3
+            _                   -> (Index base idx, rest2)
+pPostfixTail base rest = (base, rest)
+
+-- | Parse atoms: literals, variables, function calls, parenthesized exprs
+pExprAtom :: [Token] -> (Expr, [Token])
+pExprAtom (TokNum n : rest) = (Lit n, rest)
+pExprAtom (TokIdent name : TokLParen : rest) =
+    -- Function call: name(arg1, arg2, ...)
+    let (args, rest2) = pArgList rest
+    in  (FunCall name args, rest2)
+pExprAtom (TokIdent name : rest) = (Var name, rest)
+pExprAtom (TokLParen : rest) =
+    let (expr, rest2) = pExprAddMod rest
+    in  case rest2 of
+            (TokRParen : rest3) -> pPostfixTail expr rest3
+            _                   -> (expr, rest2)
+-- Fallback for empty or unexpected tokens
+pExprAtom toks = (Lit "0", toks)
+
+-- | Parse a comma-separated argument list, consuming the closing ')'.
+pArgList :: [Token] -> ([Expr], [Token])
+pArgList (TokRParen : rest) = ([], rest)  -- empty arg list
+pArgList toks = pArgListInner toks
+
+pArgListInner :: [Token] -> ([Expr], [Token])
+pArgListInner toks =
+    let (arg, rest) = pExprAddMod toks
+    in  case rest of
+            (TokComma : rest2) ->
+                let (moreArgs, rest3) = pArgListInner rest2
+                in  (arg : moreArgs, rest3)
+            (TokRParen : rest2) -> ([arg], rest2)
+            _ -> ([arg], rest)
 
 -- | Process a single .spec file: parse, validate, and generate outputs.
 processSpec :: FilePath -> IO ()
@@ -473,6 +718,7 @@ hsExpr (Lit l)           = l
 hsExpr (BinOp op a b)   = "(" ++ hsBinOp op (hsExpr a) (hsExpr b) ++ ")"
 hsExpr (UnOp op a)       = "(" ++ hsUnOp op ++ " " ++ hsExpr a ++ ")"
 hsExpr (Index arr idx)   = hsExpr arr ++ " !! " ++ hsExpr idx
+hsExpr (FunCall f args)  = f ++ " " ++ unwords (map hsExpr args)
 
 hsBinOp :: BinaryOp -> String -> String -> String
 hsBinOp OpXor    a b = a ++ " `xor` " ++ b
@@ -503,14 +749,20 @@ cSource :: SpecAST -> String -> String
 cSource ast name =
     case cProbeSpec name of
         Just probe -> unlines probe
-        Nothing -> unlines $
-            cHeader
-            ++ [""]
-            ++ cRotateMacros
-            ++ [""]
-            ++ cConstants (specConstants ast)
-            ++ [""]
-            ++ cFunction name (specParams ast) (specSteps ast)
+        Nothing ->
+            let allOps = concatMap stepOps (specSteps ast)
+                (helperOps, bodyOps) = partitionHelpers allOps
+                helperMacros = concatMap cHelperMacro helperOps
+                bodySteps = [Step Nothing bodyOps]
+            in  unlines $
+                    cHeader
+                    ++ [""]
+                    ++ cRotateMacros
+                    ++ (if null helperMacros then [] else "" : helperMacros)
+                    ++ [""]
+                    ++ cConstants (specConstants ast)
+                    ++ [""]
+                    ++ cFunction name (specParams ast) bodySteps
 
 cHeader :: [String]
 cHeader =
@@ -529,6 +781,68 @@ cConstants :: [Constant] -> [String]
 cConstants = map cConst
   where
     cConst c = "static const uint32_t " ++ constName c ++ " = " ++ constValue c ++ ";"
+
+-- | Identify helper definitions: assignments whose RHS only uses generic
+--   parameter names (x, y, z, a, b, c, d) and operators.  These are emitted
+--   as C preprocessor macros rather than inline statements.
+--   Known helpers from SHA-256: ch, maj, bsig0, bsig1, ssig0, ssig1
+--   Known helpers from ChaCha20: qr_*
+partitionHelpers :: [Operation] -> ([Operation], [Operation])
+partitionHelpers = foldr go ([], [])
+  where
+    go op@(Assign lhs expr) (helpers, body)
+        | isHelperDef lhs expr = (op : helpers, body)
+        | otherwise            = (helpers, op : body)
+    go op (helpers, body) = (helpers, op : body)
+
+-- | A step is a "helper definition" if its name is one of the known
+--   helper functions AND its body only references generic parameter variables.
+isHelperDef :: String -> Expr -> Bool
+isHelperDef name _expr =
+    name `elem` knownHelpers
+  where
+    knownHelpers = ["ch", "maj", "bsig0", "bsig1", "ssig0", "ssig1",
+                    "qr_a1", "qr_d1", "qr_c1", "qr_b1",
+                    "qr_a2", "qr_d2", "qr_c2", "qr_b2"]
+
+-- | Check that all variable references in an expression are generic
+--   parameter names (single letters like x, y, z used as macro params).
+allVarsGeneric :: Expr -> Bool
+allVarsGeneric (Var v)          = v `elem` ["x", "y", "z", "a", "b", "c", "d"]
+allVarsGeneric (Lit _)          = True
+allVarsGeneric (BinOp _ l r)    = allVarsGeneric l && allVarsGeneric r
+allVarsGeneric (UnOp _ e)       = allVarsGeneric e
+allVarsGeneric (Index _ _)      = False
+allVarsGeneric (FunCall _ _)    = False
+
+-- | Emit a helper definition as a C preprocessor macro.
+cHelperMacro :: Operation -> [String]
+cHelperMacro (Assign name expr) =
+    let params = collectVarNames expr
+        paramStr = intercalate ", " params
+    in  ["#define " ++ name ++ "(" ++ paramStr ++ ") " ++ cExpr expr]
+cHelperMacro _ = []
+
+-- | Collect unique variable names from an expression in order of appearance.
+collectVarNames :: Expr -> [String]
+collectVarNames = go []
+  where
+    go seen (Var v)
+        | v `elem` seen = seen
+        | otherwise      = seen ++ [v]
+    go seen (Lit _) = seen
+    go seen (BinOp _ l r) = go (go seen l) r
+    go seen (UnOp _ e) = go seen e
+    go seen (Index a i) = go (go seen a) i
+    go seen (FunCall _ args) = foldl' go seen args
+
+-- | Check if an operation is a preprocessing step that cannot be directly
+--   compiled to C (e.g. pad(message), block[N], getLE32(key, N)).
+isPreprocessingOp :: Operation -> Bool
+isPreprocessingOp (Assign _ (FunCall "pad" _))    = True
+isPreprocessingOp (Assign _ (FunCall "getLE32" _)) = True
+isPreprocessingOp (Assign _ (Index (Var "block") _)) = True
+isPreprocessingOp _ = False
 
 cFunction :: String -> [Param] -> [Step] -> [String]
 cFunction name params steps =
@@ -554,8 +868,11 @@ cStep :: String -> Step -> [String]
 cStep indent step = concatMap (cOp indent) (stepOps step)
 
 cOp :: String -> Operation -> [String]
-cOp indent (Assign lhs expr) =
-    [indent ++ "uint32_t " ++ lhs ++ " = " ++ cExpr expr ++ ";"]
+cOp indent op@(Assign lhs expr)
+    | isPreprocessingOp op =
+        [indent ++ "/* TODO: " ++ lhs ++ " = " ++ cExpr expr ++ "; */"]
+    | otherwise =
+        [indent ++ "uint32_t " ++ lhs ++ " = " ++ cExpr expr ++ ";"]
 cOp indent (IfThenElse cond tOps fOps) =
     [indent ++ "if (" ++ cExpr cond ++ ") {"]
     ++ concatMap (cOp (indent ++ "    ")) tOps
@@ -569,6 +886,7 @@ cExpr (Lit l)           = l
 cExpr (BinOp op a b)   = cBinOp op (cExpr a) (cExpr b)
 cExpr (UnOp OpNot a)    = "(~" ++ cExpr a ++ ")"
 cExpr (Index arr idx)   = cExpr arr ++ "[" ++ cExpr idx ++ "]"
+cExpr (FunCall f args)  = f ++ "(" ++ intercalate ", " (map cExpr args) ++ ")"
 
 cBinOp :: BinaryOp -> String -> String -> String
 cBinOp OpXor    a b = "(" ++ a ++ " ^ " ++ b ++ ")"
@@ -582,22 +900,10 @@ cBinOp OpAddMod a b = "(" ++ a ++ " + " ++ b ++ ")"
 cBinOp OpSubMod a b = "(" ++ a ++ " - " ++ b ++ ")"
 cBinOp OpMulMod a b = "(" ++ a ++ " * " ++ b ++ ")"
 
+-- | Previously returned link probe stubs. Now returns Nothing so the
+-- real C code generator (cFunction/cStep/cOp/cExpr) is used instead.
 cProbeSpec :: String -> Maybe [String]
-cProbeSpec name =
-    Just
-        [ "/* Auto-generated by CryptoGen. DO NOT EDIT. */"
-        , "#include <stdint.h>"
-        , ""
-        , "/*"
-        , " * Link probe for generated C artifact " ++ name ++ "."
-        , " * The active semantic surface currently lives in audited Haskell wrappers;"
-        , " * this symbol makes the preserved generated C output participate in"
-        , " * the active build graph and FFI linkage tests."
-        , " */"
-        , "int " ++ toLowerStr name ++ "_link_probe(void) {"
-        , "    return 1;"
-        , "}"
-        ]
+cProbeSpec _ = Nothing
 
 -------------------------------------------------------------------------------
 -- FFI emitter
