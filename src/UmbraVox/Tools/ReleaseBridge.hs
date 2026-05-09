@@ -186,14 +186,18 @@ vmPreflight = do
     pure (hasKVM && not (isNothing qemu) && not (isNothing genext2))
 
 -- | Ensure the VM image is built and cached at build/vm/image.
+-- Two-stage build:
+--   Stage 1: Build base image, boot VM to run F* verify, extract .checked cache.
+--   Stage 2: Rebuild image with F* cache baked in.
 -- Rebuilds only when flake.nix or flake.lock are newer than the cached symlink.
 ensureVMImage :: IO FilePath
 ensureVMImage = do
     repoRoot <- getCurrentDirectory
-    let cacheDir  = repoRoot </> "build" </> "vm"
-        cachePath = cacheDir </> "image"
-        flakeNix  = repoRoot </> "flake.nix"
-        flakeLock = repoRoot </> "flake.lock"
+    let cacheDir   = repoRoot </> "build" </> "vm"
+        cachePath  = cacheDir </> "image"
+        cacheStage = cacheDir </> "fstar-cache"
+        flakeNix   = repoRoot </> "flake.nix"
+        flakeLock  = repoRoot </> "flake.lock"
     cacheExists <- doesDirectoryExist cachePath
     needsRebuild <- if not cacheExists
         then pure True
@@ -207,20 +211,104 @@ ensureVMImage = do
             hPutStrLn stderr $ "[VM-SMOKE] using cached VM image: " ++ cachePath
             pure cachePath
         else do
-            hPutStrLn stderr "[VM-SMOKE] building VM image (this may take a while on first run)..."
             createDirectoryIfMissing True cacheDir
-            ec <- runScript "nix" [ "build", ".#vm-image", "--out-link", cachePath
-                                  , "--extra-experimental-features", "nix-command flakes" ]
-            case ec of
+            -- Stage 1: Build base image (no F* cache)
+            hPutStrLn stderr "[VM-SMOKE] stage 1: building base VM image..."
+            ec1 <- runScript "nix" [ "build", ".#vm-image"
+                                   , "--out-link", cachePath
+                                   , "--extra-experimental-features", "nix-command flakes" ]
+            case ec1 of
+                ExitSuccess -> pure ()
+                _ -> do
+                    hPutStrLn stderr "[VM-SMOKE] stage 1 failed: nix build .#vm-image"
+                    exitWith (ExitFailure 1)
+            -- Stage 1b: Boot base VM and build F* cache
+            fstarCacheExists <- doesDirectoryExist cacheStage
+            needsFstarCache <- if not fstarCacheExists
+                then pure True
+                else do
+                    stageTime <- getModificationTime cacheStage
+                    nixTime'  <- getModificationTime flakeNix
+                    lockTime' <- getModificationTime flakeLock
+                    pure (nixTime' > stageTime || lockTime' > stageTime)
+            when needsFstarCache $ do
+                hPutStrLn stderr "[VM-SMOKE] stage 1b: building F* cache in VM..."
+                buildFstarCacheInVM repoRoot cachePath cacheStage
+            -- Stage 2: Rebuild image with F* cache baked in
+            hPutStrLn stderr "[VM-SMOKE] stage 2: rebuilding VM image with F* cache..."
+            ec2 <- runScript "nix" [ "build"
+                                   , ".#vm-image"
+                                   , "--arg", "fstarCachePath", cacheStage
+                                   , "--out-link", cachePath
+                                   , "--extra-experimental-features", "nix-command flakes" ]
+            case ec2 of
                 ExitSuccess -> do
-                    hPutStrLn stderr $ "[VM-SMOKE] VM image cached at: " ++ cachePath
-                    -- Clean up old nix store paths (keep recent for download cache)
-                    hPutStrLn stderr "[VM-SMOKE] cleaning up old nix store paths..."
+                    hPutStrLn stderr $ "[VM-SMOKE] stage 2 complete: " ++ cachePath
                     _ <- runScript "nix-collect-garbage" ["--delete-older-than", "3d"]
                     pure cachePath
                 _ -> do
-                    hPutStrLn stderr "[VM-SMOKE] nix build .#vm-image failed"
+                    hPutStrLn stderr "[VM-SMOKE] stage 2 failed"
                     exitWith (ExitFailure 1)
+
+-- | Boot the base VM image to run F* verification, then extract .checked files.
+-- Uses a third virtio disk (ext2, 64MB) as a writable cache output medium.
+-- The in-guest script detects /dev/vdc and copies .checked files there.
+-- After VM shutdown, debugfs extracts the files without requiring root.
+buildFstarCacheInVM :: FilePath -> FilePath -> FilePath -> IO ()
+buildFstarCacheInVM _repoRoot imagePath cacheStage = do
+    srcDisk <- createSourceDisk
+    tmpDir <- getTemporaryDirectory
+    let diskImg  = imagePath </> "nixos.img"
+        overlay  = tmpDir </> "umbravox-fstar-cache-overlay.qcow2"
+        cacheImg = tmpDir </> "umbravox-fstar-cache-output.img"
+    -- Create COW overlay on the base image
+    ecOv <- runScript "qemu-img" ["create", "-f", "qcow2", "-b", diskImg, "-F", "raw", overlay]
+    when (ecOv /= ExitSuccess) $ do
+        hPutStrLn stderr "[VM-SMOKE] qemu-img overlay creation failed"
+        exitWith (ExitFailure 1)
+    -- Create empty ext2 image for cache output (64MB)
+    ecDd <- runScript "dd" ["if=/dev/zero", "of=" ++ cacheImg, "bs=1M", "count=64"]
+    when (ecDd /= ExitSuccess) $ do
+        hPutStrLn stderr "[VM-SMOKE] dd (cache image creation) failed"
+        exitWith (ExitFailure 1)
+    ecMk <- runScript "mkfs.ext2" ["-q", cacheImg]
+    when (ecMk /= ExitSuccess) $ do
+        hPutStrLn stderr "[VM-SMOKE] mkfs.ext2 (cache image format) failed"
+        exitWith (ExitFailure 1)
+    -- Boot VM: vda=root (overlay), vdb=source (ro), vdc=cache-output (rw)
+    hPutStrLn stderr "[VM-SMOKE] stage 1b: booting VM for F* cache build..."
+    _ <- runScript "qemu-system-x86_64"
+        [ "-machine", "q35,accel=kvm"
+        , "-cpu", "max"
+        , "-m", "8192"
+        , "-smp", "4"
+        , "-nographic"
+        , "-nodefaults"
+        , "-no-reboot"
+        , "-serial", "stdio"
+        , "-drive", "if=virtio,format=qcow2,file=" ++ overlay
+        , "-drive", "if=virtio,format=raw,file=" ++ srcDisk ++ ",readonly=on"
+        , "-drive", "if=virtio,format=raw,file=" ++ cacheImg
+        ]
+    -- Extract .checked files from the ext2 cache image using debugfs (no root needed)
+    hPutStrLn stderr "[VM-SMOKE] stage 1b: extracting F* cache from output disk..."
+    createDirectoryIfMissing True cacheStage
+    _ <- runScript "bash" ["-c",
+        "debugfs -R 'ls -p /' " ++ cacheImg
+        ++ " 2>/dev/null | grep -oP '(?<=/)[^/]+\\.checked' | while read f; do"
+        ++ " debugfs -R \"cat /$f\" " ++ cacheImg ++ " > " ++ cacheStage ++ "/$f 2>/dev/null;"
+        ++ " done"
+        ]
+    -- Count extracted files and report
+    files <- listDirectory cacheStage
+    let checkedCount = length (filter (".checked" `isSuffixOf`) files)
+    hPutStrLn stderr $ "[VM-SMOKE] stage 1b: extracted " ++ show checkedCount ++ " .checked files"
+    -- Cleanup temp files
+    removeFile srcDisk `catch` \(_ :: IOException) -> pure ()
+    removeFile overlay `catch` \(_ :: IOException) -> pure ()
+    removeFile cacheImg `catch` \(_ :: IOException) -> pure ()
+    when (checkedCount == 0) $
+        hPutStrLn stderr "[VM-SMOKE] WARNING: no .checked files extracted from stage 1 VM"
 
 -- | Create an ext2 disk image from the source tree for passing into the VM.
 -- Uses git archive to export only tracked files (excludes dist-newstyle, build/).
