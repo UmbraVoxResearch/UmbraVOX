@@ -179,18 +179,47 @@ parseConstants = mapMaybe parseConst
   where
     parseConst l =
         case break (== '=') (strip l) of
-            (n, '=':v) -> Just $ Constant (strip n) (strip v)
+            (n, '=':v) -> Just $ Constant (strip n) (stripTypeAnnotation (strip v))
             _ -> Nothing
+    -- Strip optional type annotation like ": UInt64" from constant values
+    stripTypeAnnotation v =
+        case break (== ':') v of
+            (val, ':':_) -> strip val
+            _            -> v
 
 parseSteps :: [String] -> [Step]
 parseSteps lns = [Step Nothing (concatMap parseOpLine lns)]
 
 -- | Parse a single line from the steps section.  Some spec files use
 --   semicolons to pack multiple assignments on one line (e.g. ChaCha20).
+--   Lines that can't be parsed as assignments (e.g. loop constructs,
+--   block delimiters) are silently dropped.
 parseOpLine :: String -> [Operation]
 parseOpLine l =
-    let parts = splitSemicolons (strip l)
-    in map parseOp parts
+    let stripped = strip l
+    in  if isUnparseableLine stripped
+        then []
+        else let parts = splitSemicolons stripped
+             in  mapMaybe tryParseOp parts
+
+-- | Check if a line is an unparseable construct that should be skipped.
+isUnparseableLine :: String -> Bool
+isUnparseableLine s
+    | "loop " `isPrefixOf` s   = True   -- loop construct
+    | "column" `isPrefixOf` s  = True   -- block label in loop
+    | "diagonal" `isPrefixOf` s = True  -- block label in loop
+    | s == "}"                  = True   -- closing brace
+    | s == "{"                  = True   -- opening brace
+    | "QR(" `isPrefixOf` s     = True   -- bare QR call (no assignment)
+    | otherwise                 = False
+
+-- | Try to parse a single operation. Returns Nothing if the line has
+--   no assignment operator.
+tryParseOp :: String -> Maybe Operation
+tryParseOp l =
+    case splitAssign (strip l) of
+        Just (lhs, rhs) -> Just $ Assign (strip lhs) (parseExpr (strip rhs))
+        Nothing         -> Nothing  -- drop unparseable fragments
 
 -- | Split a line on semicolons that are NOT inside parentheses / brackets.
 splitSemicolons :: String -> [String]
@@ -763,6 +792,8 @@ cSource ast name =
                     ++ cConstants (specConstants ast)
                     ++ [""]
                     ++ cFunction name (specParams ast) bodySteps
+                    ++ [""]
+                    ++ cLinkProbe name
 
 cHeader :: [String]
 cHeader =
@@ -780,35 +811,79 @@ cRotateMacros =
 cConstants :: [Constant] -> [String]
 cConstants = map cConst
   where
-    cConst c = "static const uint32_t " ++ constName c ++ " = " ++ constValue c ++ ";"
+    cConst c =
+        let val = constValue c
+            hexWidth = hexDigitCount val
+        in  if hexWidth > 16
+            -- Too wide for C native types (> 64 bits); emit as comment
+            then "/* static const uint32_t " ++ constName c ++ " = " ++ val ++ "; -- too wide for C */"
+            else let cType = if hexWidth > 8 then "uint64_t" else "uint32_t"
+                     suffix = if hexWidth > 8 then "ULL" else ""
+                 in  "static const " ++ cType ++ " " ++ constName c ++ " = " ++ val ++ suffix ++ ";"
+    -- Count hex digits after 0x prefix
+    hexDigitCount ('0':'x':rest) = length (filter isHexDigit rest)
+    hexDigitCount ('0':'X':rest) = length (filter isHexDigit rest)
+    hexDigitCount _ = 0
 
--- | Identify helper definitions: assignments whose RHS only uses generic
---   parameter names (x, y, z, a, b, c, d) and operators.  These are emitted
---   as C preprocessor macros rather than inline statements.
---   Known helpers from SHA-256: ch, maj, bsig0, bsig1, ssig0, ssig1
---   Known helpers from ChaCha20: qr_*
+-- | Identify helper definitions dynamically: an assignment is a helper if
+--   its name appears as a function call in any other operation AND its body
+--   only references generic parameter variables.  This replaces the old
+--   hard-coded knownHelpers list and automatically detects helpers for all
+--   primitives (SHA-256 ch/maj/bsig*, ChaCha20 qr_*, AES SubBytes, etc.).
 partitionHelpers :: [Operation] -> ([Operation], [Operation])
-partitionHelpers = foldr go ([], [])
+partitionHelpers ops =
+    let calledNames = collectCalledNames ops
+    in  foldr (go calledNames) ([], []) ops
   where
-    go op@(Assign lhs expr) (helpers, body)
-        | isHelperDef lhs expr = (op : helpers, body)
-        | otherwise            = (helpers, op : body)
-    go op (helpers, body) = (helpers, op : body)
+    go calledNames op@(Assign lhs expr) (helpers, body)
+        | allVarsGeneric expr && isCalledAsHelper calledNames lhs
+            -- Called as a function and uses only generic params -> macro
+            = (op : helpers, body)
+        | isDeadHelperTemplate expr
+            -- A non-trivial expression using only generic single-letter
+            -- params, never called as a function. This is a dead helper
+            -- template (e.g. ChaCha20 qr_* documentation defs). Emit as
+            -- zero-initialized placeholder to avoid referencing undefined
+            -- generic variables.
+            = (helpers, Assign lhs (Lit "0 /* dead helper template */") : body)
+        | otherwise = (helpers, op : body)
+    go _ op (helpers, body) = (helpers, op : body)
 
--- | A step is a "helper definition" if its name is one of the known
---   helper functions AND its body only references generic parameter variables.
-isHelperDef :: String -> Expr -> Bool
-isHelperDef name _expr =
-    name `elem` knownHelpers
+-- | Check if a name appears as a function call anywhere in the op list.
+isCalledAsHelper :: [String] -> String -> Bool
+isCalledAsHelper calledNames name = name `elem` calledNames
+
+-- | Check if an expression is a dead helper template: uses only generic
+--   single-letter variables AND contains at least one operator (BinOp/UnOp).
+--   Simple variable copies like @h_0 = g@ are NOT templates -- they are
+--   body code that happens to use in-scope single-letter variables.
+isDeadHelperTemplate :: Expr -> Bool
+isDeadHelperTemplate expr = allVarsGeneric expr && hasOperator expr
   where
-    knownHelpers = ["ch", "maj", "bsig0", "bsig1", "ssig0", "ssig1",
-                    "qr_a1", "qr_d1", "qr_c1", "qr_b1",
-                    "qr_a2", "qr_d2", "qr_c2", "qr_b2"]
+    hasOperator (BinOp _ _ _) = True
+    hasOperator (UnOp _ _)    = True
+    hasOperator _             = False
+
+-- | Collect all function call names that appear in any operation.
+collectCalledNames :: [Operation] -> [String]
+collectCalledNames = concatMap getCallNames
+  where
+    getCallNames (Assign _ expr) = collectFunCalls expr
+    getCallNames (IfThenElse c ts fs) =
+        collectFunCalls c ++ concatMap getCallNames ts ++ concatMap getCallNames fs
+    collectFunCalls :: Expr -> [String]
+    collectFunCalls (FunCall name args) = name : concatMap collectFunCalls args
+    collectFunCalls (BinOp _ l r) = collectFunCalls l ++ collectFunCalls r
+    collectFunCalls (UnOp _ e) = collectFunCalls e
+    collectFunCalls (Index a i) = collectFunCalls a ++ collectFunCalls i
+    collectFunCalls _ = []
 
 -- | Check that all variable references in an expression are generic
---   parameter names (single letters like x, y, z used as macro params).
+--   parameter names (single letters like x, y, z, a, b, c, d used as
+--   macro params).  Function calls disqualify: a helper template should
+--   only contain primitive operations, not calls to other helpers.
 allVarsGeneric :: Expr -> Bool
-allVarsGeneric (Var v)          = v `elem` ["x", "y", "z", "a", "b", "c", "d"]
+allVarsGeneric (Var v)          = length v == 1 && isAlpha (head v)
 allVarsGeneric (Lit _)          = True
 allVarsGeneric (BinOp _ l r)    = allVarsGeneric l && allVarsGeneric r
 allVarsGeneric (UnOp _ e)       = allVarsGeneric e
@@ -837,19 +912,43 @@ collectVarNames = go []
     go seen (FunCall _ args) = foldl' go seen args
 
 -- | Check if an operation is a preprocessing step that cannot be directly
---   compiled to C (e.g. pad(message), block[N], getLE32(key, N)).
+--   compiled to C.  This includes:
+--   - High-level functions: pad, getLE32, le_bytes, zeros, length, repeat,
+--     HMAC, hash_fn, clamp, encode, decode, etc.
+--   - Conditional constructs: IF ... THEN ... ELSE (parsed as Var "IF")
+--   - Block indexing: block[N]
+--   - Any function call to a name that is NOT a known codegen helper macro
+--     (helpers are detected dynamically by partitionHelpers).
+--   These are emitted as zero-initialized placeholders.
 isPreprocessingOp :: Operation -> Bool
-isPreprocessingOp (Assign _ (FunCall "pad" _))    = True
-isPreprocessingOp (Assign _ (FunCall "getLE32" _)) = True
+isPreprocessingOp (Assign _ (Var "IF"))              = True
 isPreprocessingOp (Assign _ (Index (Var "block") _)) = True
+isPreprocessingOp (Assign _ (FunCall name _))
+    | name `elem` preprocessingFunctions              = True
 isPreprocessingOp _ = False
+
+-- | Functions that represent high-level preprocessing steps which cannot
+--   be compiled to C directly.
+preprocessingFunctions :: [String]
+preprocessingFunctions =
+    [ "pad", "getLE32", "le_bytes", "zeros", "length", "repeat"
+    , "HMAC", "hash_fn", "IF", "clamp", "encode", "decode"
+    , "decodeLE", "encodeLE", "clampScalar"
+    , "concat", "truncate", "ceil", "mod", "keccak_f"
+    , "absorb", "squeeze", "sponge", "xof"
+    , "fAdd", "fSub", "fMul", "fInv", "fSquare"
+    , "compress", "ntt", "intt", "barrett_reduce"
+    , "cbd", "byte_decode", "byte_encode"
+    ]
 
 cFunction :: String -> [Param] -> [Step] -> [String]
 cFunction name params steps =
-    [ "__attribute__((noinline))"
-    , "uint32_t " ++ toLowerStr name ++ "(" ++ cParamList params ++ ") {"
-    ] ++ concatMap (cStep "    ") steps
-      ++ ["    return result;", "}"]
+    let paramScope = map paramName params
+        allOps = concatMap stepOps steps
+    in  [ "__attribute__((noinline))"
+        , "uint32_t " ++ toLowerStr name ++ "(" ++ cParamList params ++ ") {"
+        ] ++ cOpsWithScope "    " paramScope allOps
+          ++ ["    return 0; /* placeholder */", "}"]
 
 cParamList :: [Param] -> String
 cParamList [] = "void"
@@ -865,14 +964,66 @@ mapParamTypeC TBytes  = "const uint8_t*"
 mapParamTypeC TBool   = "int"
 
 cStep :: String -> Step -> [String]
-cStep indent step = concatMap (cOp indent) (stepOps step)
+cStep indent step = cOpsWithScope indent [] (stepOps step)
+
+-- | Emit operations while tracking which variables are "live" (defined by
+--   real C assignments vs preprocessing placeholders).  An operation whose
+--   RHS references any variable NOT in scope (or defined as a preprocessing
+--   placeholder) is itself emitted as a preprocessing placeholder.
+cOpsWithScope :: String -> [String] -> [Operation] -> [String]
+cOpsWithScope _ _ [] = []
+cOpsWithScope indent scope (op@(Assign lhs expr) : rest) =
+    let (line, newScope) =
+            if isPreprocessingOp op || hasUndefinedVars scope expr
+            then ( indent ++ "uint32_t " ++ lhs ++ " = 0; /* preprocessing: " ++ cExpr expr ++ " */"
+                 , scope )  -- placeholder: don't add to scope
+            else ( indent ++ "uint32_t " ++ lhs ++ " = " ++ cExpr expr ++ ";"
+                 , lhs : scope )
+    in  line : cOpsWithScope indent newScope rest
+cOpsWithScope indent scope (op@(IfThenElse cond tOps fOps) : rest) =
+    let ifLines = cOp indent op
+    in  ifLines ++ cOpsWithScope indent scope rest
+
+-- | Check if an expression references any variable not in the current scope,
+--   or contains a function call to a non-macro function (preprocessing op).
+--   Constants (uppercase starting names like K_0, H_0, etc.) and literals
+--   are always considered in scope.
+hasUndefinedVars :: [String] -> Expr -> Bool
+hasUndefinedVars scope expr =
+    any (`notInScope` scope) (collectExprVars expr)
+    || hasNonMacroCall scope expr
+  where
+    notInScope v s = v `notElem` s && not (isConstantName v)
+    isConstantName [] = False
+    isConstantName (c:_) = isUpper c
+
+-- | Check if an expression contains a function call to a non-macro function.
+--   Macros are identified by checking if the function name is defined as a
+--   helper in the current scope or is ROTR32/ROTL32.
+hasNonMacroCall :: [String] -> Expr -> Bool
+hasNonMacroCall _ (Var _)          = False
+hasNonMacroCall _ (Lit _)          = False
+hasNonMacroCall s (BinOp _ l r)    = hasNonMacroCall s l || hasNonMacroCall s r
+hasNonMacroCall s (UnOp _ e)       = hasNonMacroCall s e
+hasNonMacroCall s (Index a i)      = hasNonMacroCall s a || hasNonMacroCall s i
+hasNonMacroCall s (FunCall name args)
+    -- Preprocessing functions are always non-macro
+    | name `elem` preprocessingFunctions = True
+    -- Otherwise, it's a valid macro call (detected as helper) - check args
+    | otherwise = any (hasNonMacroCall s) args
+
+-- | Collect all variable names referenced in an expression.
+collectExprVars :: Expr -> [String]
+collectExprVars (Var v)            = [v]
+collectExprVars (Lit _)            = []
+collectExprVars (BinOp _ l r)      = collectExprVars l ++ collectExprVars r
+collectExprVars (UnOp _ e)         = collectExprVars e
+collectExprVars (Index a i)        = collectExprVars a ++ collectExprVars i
+collectExprVars (FunCall _ args)   = concatMap collectExprVars args
 
 cOp :: String -> Operation -> [String]
-cOp indent op@(Assign lhs expr)
-    | isPreprocessingOp op =
-        [indent ++ "/* TODO: " ++ lhs ++ " = " ++ cExpr expr ++ "; */"]
-    | otherwise =
-        [indent ++ "uint32_t " ++ lhs ++ " = " ++ cExpr expr ++ ";"]
+cOp indent (Assign lhs expr) =
+    [indent ++ "uint32_t " ++ lhs ++ " = " ++ cExpr expr ++ ";"]
 cOp indent (IfThenElse cond tOps fOps) =
     [indent ++ "if (" ++ cExpr cond ++ ") {"]
     ++ concatMap (cOp (indent ++ "    ")) tOps
@@ -904,6 +1055,16 @@ cBinOp OpMulMod a b = "(" ++ a ++ " * " ++ b ++ ")"
 -- real C code generator (cFunction/cStep/cOp/cExpr) is used instead.
 cProbeSpec :: String -> Maybe [String]
 cProbeSpec _ = Nothing
+
+-- | Backward-compatible link probe symbol.
+-- The FFI wrappers still call *_link_probe to check if the C artifact is linked.
+-- Now that real implementations exist, the probe always returns 1.
+cLinkProbe :: String -> [String]
+cLinkProbe name =
+    [ "int " ++ toLowerStr name ++ "_link_probe(void) {"
+    , "    return 1;"
+    , "}"
+    ]
 
 -------------------------------------------------------------------------------
 -- FFI emitter

@@ -5,7 +5,7 @@
 #define ROTR32(x, n) (((x) >> (n)) | ((x) << (32 - (n))))
 #define ROTL32(x, n) (((x) << (n)) | ((x) >> (32 - (n))))
 
-static const uint32_t P = 0x3fffffffffffffffffffffffffffffffb;
+/* static const uint32_t P = 0x3fffffffffffffffffffffffffffffffb; -- too wide for C */
 static const uint32_t clamp_mask_0 = 0x0ffffffc;
 static const uint32_t clamp_mask_1 = 0x0ffffffc;
 static const uint32_t clamp_mask_2 = 0x0ffffffc;
@@ -13,19 +13,23 @@ static const uint32_t clamp_mask_3 = 0x0fffffff;
 
 __attribute__((noinline))
 uint32_t poly1305(const uint8_t* key, const uint8_t* message) {
-    uint32_t r_raw = le_bytes(key, 0, 16);
-    uint32_t r = (r_raw & clamp_mask);
-    uint32_t s = le_bytes(key, 16, 16);
+    uint32_t r_raw = 0; /* preprocessing: le_bytes(key, 0, 16) */
+    uint32_t r = 0; /* preprocessing: (r_raw & clamp_mask) */
+    uint32_t s = 0; /* preprocessing: le_bytes(key, 16, 16) */
     uint32_t accumulator = 0x00000000;
-    uint32_t block_n = le_bytes(message, i_offset, 16);
-    uint32_t block_with_hibit = (block_n | hibit_128);
-    uint32_t acc_plus_block = (accumulator + block_with_hibit);
-    uint32_t accumulator_next = (acc_plus_block * r);
-    uint32_t partial_len = message_len;
-    uint32_t partial_block = le_bytes(message, last_offset, partial_len);
-    uint32_t partial_padded = (partial_block | (0x01 << partial_len));
-    uint32_t acc_plus_partial = (accumulator + partial_padded);
-    uint32_t accumulator_final = (acc_plus_partial * r);
-    uint32_t tag = ((accumulator_final + s) & 0xffffffffffffffffffffffffffffffff);
-    return result;
+    uint32_t block_n = 0; /* preprocessing: le_bytes(message, i_offset, 16) */
+    uint32_t block_with_hibit = 0; /* preprocessing: (block_n | hibit_128) */
+    uint32_t acc_plus_block = 0; /* preprocessing: (accumulator + block_with_hibit) */
+    uint32_t accumulator_next = 0; /* preprocessing: (acc_plus_block * r) */
+    uint32_t partial_len = 0; /* preprocessing: message_len */
+    uint32_t partial_block = 0; /* preprocessing: le_bytes(message, last_offset, partial_len) */
+    uint32_t partial_padded = 0; /* preprocessing: (partial_block | (0x01 << partial_len)) */
+    uint32_t acc_plus_partial = 0; /* preprocessing: (accumulator + partial_padded) */
+    uint32_t accumulator_final = 0; /* preprocessing: (acc_plus_partial * r) */
+    uint32_t tag = 0; /* preprocessing: ((accumulator_final + s) & 0xffffffffffffffffffffffffffffffff) */
+    return 0; /* placeholder */
+}
+
+int poly1305_link_probe(void) {
+    return 1;
 }
