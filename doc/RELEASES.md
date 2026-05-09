@@ -191,6 +191,34 @@ What is still not claimed here:
 - These entrypoints are not yet evidence that release packaging is executed
   end-to-end inside a guest by default.
 
+## Reproducibility Lane (M4.2.3)
+
+The two-stage VM image build provides the infrastructure for a
+reproducibility rebuild-and-compare lane:
+
+1. **First build**: `make vm-smoke` builds and tests in isolated NixOS VM
+2. **Second build**: Run `make vm-smoke` again from the same commit
+3. **Compare**: SHA-256 of both release artifacts should match
+
+The VM ensures identical build environment (same Nix store, same
+toolchain, no host state leakage). Nix's content-addressing guarantees
+that the same inputs produce the same outputs.
+
+Current status: infrastructure is in place via the two-stage VM build.
+Formal automated comparison (build twice, diff artifacts) is tracked
+as future work.
+
+To verify reproducibility manually:
+```bash
+make vm-smoke  # produces build/releases/umbravox-*.tar.gz
+sha256sum build/releases/umbravox-*-linux-x86_64.tar.gz > /tmp/hash1.txt
+
+make image-clean && make vm-smoke
+sha256sum build/releases/umbravox-*-linux-x86_64.tar.gz > /tmp/hash2.txt
+
+diff /tmp/hash1.txt /tmp/hash2.txt
+```
+
 ## Linux Binary Portability
 
 The raw executable produced by:
