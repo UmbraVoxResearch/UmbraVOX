@@ -167,6 +167,7 @@ library
     UmbraVox.Storage.Index
     UmbraVox.Storage.Checkpoint
     UmbraVox.Storage.Schema
+    UmbraVox.Storage.Encryption
     UmbraVox.Storage.Anthony
     -- Protocol / Serialization
     UmbraVox.Protocol.Encoding
@@ -296,6 +297,7 @@ test-suite umbravox-test
   other-modules:
     Test.Util
     Test.App.Startup
+    Test.App.RuntimeLog
     Test.Harness
     Test.EndToEnd
     Test.EndToEnd2
@@ -347,6 +349,7 @@ test-suite umbravox-test
     Test.Crypto.Signal.SenderKeys
     Test.Crypto.Signal.Session
     Test.Storage.Anthony
+    Test.Storage.Encryption
     Test.Storage.ChainDB
     Test.Storage.StateDB
     Test.Storage.Index

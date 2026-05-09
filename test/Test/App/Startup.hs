@@ -423,6 +423,9 @@ testLiveTerminalBootPath = do
                     createDirectoryIfMissing True dataDir
                     ik1 <- resolveIdentityAt idPath
                     seedPersistentDB dbPath
+                    -- Write the persistence preference file so the binary
+                    -- skips the interactive prompt on boot.
+                    writeFile (dbPath ++ ".pref") "1\n"
                     binaryPath <- locateUmbravoxBinary
                     result <- timeout (20 * 1000000) $
                         readProcessWithExitCode "sh"

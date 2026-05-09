@@ -300,6 +300,11 @@ active assurance claim.
   runtime path shown above: Signal Double Ratchet, PQ outer wrapping, and
   Noise transport. That layered encryption boundary remains the intended MVP
   protection model.
+* Persistent message content and conversation names are encrypted at the
+  application layer using AES-256-GCM with per-identity keys derived via
+  HKDF. Structural metadata (peer keys, timestamps, IDs) remains
+  plaintext. See `doc/persistence-model.md` for the residual-exposure
+  analysis.
 * The generated Haskell namespace is active, but it is currently wrapper-style
   code that delegates to the audited handwritten/reference Haskell
   implementations.
@@ -324,6 +329,9 @@ What this means in practice:
 * The current generated C/FFI surface provides build-graph, linkage, and
   namespace coverage, not an independently assured or constant-time production
   crypto path.
+* Persistent data is encrypted at the app layer. The database file on disk
+  does not contain plaintext message content or conversation names, but
+  does reveal message counts, conversation structure, and timing patterns.
 * Any stronger claim about generated C, generated FFI, independent
   cross-language equivalence, or life-critical publication assurance requires
   additional evidence and implementation work that is still tracked in

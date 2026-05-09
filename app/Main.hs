@@ -3,7 +3,7 @@ module Main (main) where
 import Control.Monad (when)
 import Data.IORef (newIORef, readIORef, writeIORef)
 import System.Environment (getArgs)
-import System.Exit (exitWith)
+import System.Exit (ExitCode(..), exitWith)
 import System.IO (hSetBuffering, hSetEncoding, hFlush, stdout, stdin, utf8, BufferMode(..))
 import System.Posix.Signals (installHandler, Handler(Catch))
 import Foreign.C.Types (CInt(..))
@@ -16,7 +16,7 @@ import UmbraVox.TUI.Render (getTermSize, clampSize, calcLayout, clearScreen,
 import UmbraVox.TUI.Input (eventLoop)
 import UmbraVox.TUI.RuntimeNetwork (startListenerIfNeeded)
 import UmbraVox.TUI.RuntimeSettings (restartMDNS)
-import UmbraVox.Tools.ReleaseBridge (runReleaseBridgeCommand)
+import UmbraVox.Tools.ReleaseBridge (runBridgeCommand)
 import UmbraVox.App.Startup
     ( newDefaultAppConfig, initializeLocalIdentity, applyPersistenceAnswer
     , resolvePersistencePreference, persistenceAnswerEnables
@@ -30,14 +30,23 @@ main :: IO ()
 main = do
     args <- getArgs
     case args of
+        [] -> runUi
+        ("build" : rest) ->
+            exitWith =<< runBridgeCommand "build" rest
+        ("test" : rest) ->
+            exitWith =<< runBridgeCommand "test" rest
+        ("verify" : rest) ->
+            exitWith =<< runBridgeCommand "verify" rest
         ("release-lane-readiness" : rest) ->
-            exitWith =<< runReleaseBridgeCommand "release-lane-readiness" rest
+            exitWith =<< runBridgeCommand "release-lane-readiness" rest
         ("release-lane-readiness-bridge" : rest) ->
-            exitWith =<< runReleaseBridgeCommand "release-lane-readiness" rest
-        ("release-bridge" : cmd : rest)
-            | cmd == "release-lane-readiness" ->
-                exitWith =<< runReleaseBridgeCommand cmd rest
-        _ -> runUi
+            exitWith =<< runBridgeCommand "release-lane-readiness-bridge" rest
+        ("release-bridge" : cmd : rest) ->
+            exitWith =<< runBridgeCommand cmd rest
+        (cmd : _) -> do
+            putStrLn $ "Unknown command: " ++ cmd
+            putStrLn "Try: build, test, verify, release-lane-readiness"
+            exitWith (ExitFailure 64)
 
 runUi :: IO ()
 runUi = do

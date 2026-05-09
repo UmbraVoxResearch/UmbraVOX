@@ -236,7 +236,11 @@ restorePersistentStateAtUnsafe cfg path = do
     trustedPairs <- loadTrustedKeys db
     writeIORef (cfgTrustedKeys cfg) (map fst trustedPairs)
     convs <- loadConversations db
-    mapM_ (restoreConversation cfg db) convs
+    results <- mapM (restoreConversationSafe cfg db) convs
+    let failCount = length (filter not results)
+    when (failCount > 0) $
+        logEvent cfg "persistence.decrypt.failed"
+            [("conversations_failed", show failCount)]
     Map.size <$> readIORef (cfgSessions cfg)
 
 setPersistencePreference :: AppConfig -> Bool -> IO ()
@@ -270,6 +274,11 @@ parsePersistenceFlag raw =
         "no"    -> Just False
         "n"     -> Just False
         _       -> Nothing
+
+restoreConversationSafe :: AppConfig -> AnthonyDB -> (Int, String, String, Int) -> IO Bool
+restoreConversationSafe cfg db conv =
+    (restoreConversation cfg db conv >> pure True)
+    `catch` \(_ :: SomeException) -> pure False
 
 restoreConversation
     :: AppConfig
