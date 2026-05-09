@@ -96,6 +96,9 @@ else
 fi
 
 # Step 3: F* verification (run binary directly)
+# Create F* cache/output dirs (gitignored, so absent after copy)
+mkdir -p test/evidence/formal-proofs/fstar/_cache \
+         test/evidence/formal-proofs/fstar/_output
 if [ -n "$FSTAR_BIN" ] && [ -x "$FSTAR_BIN" ]; then
     run_step "verify" "$FSTAR_BIN"
 else
