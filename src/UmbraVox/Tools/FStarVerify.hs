@@ -63,7 +63,7 @@ defaultConfig specDir = VerifyConfig
                    , "--include", specDir
                    , "--odir", specDir </> "_output"
                    , "--cache_dir", specDir </> "_cache"
-                   , "--z3rlimit", "300"
+                   , "--z3rlimit", "2000"
                    ]
     }
 
