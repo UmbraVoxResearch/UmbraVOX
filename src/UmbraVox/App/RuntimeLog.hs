@@ -14,6 +14,7 @@ module UmbraVox.App.RuntimeLog
     , ensureLogPermissions
     ) where
 
+import Control.Concurrent (threadDelay)
 import Control.Concurrent.MVar (MVar, withMVar, newMVar)
 import Control.Exception (SomeException, catch)
 import Control.Monad (when)
@@ -73,7 +74,9 @@ logEvent cfg name fields = do
 writeLogLine :: FilePath -> String -> IO ()
 writeLogLine path line = do
     createDirectoryIfMissing True (takeDirectory path)
-    appendFile path line
+    appendFile path line `catch` \(_ :: SomeException) ->
+        -- Retry once after a brief delay (handles transient file locks)
+        threadDelay 10000 >> appendFile path line `catch` \(_ :: SomeException) -> pure ()
     -- Enforce restrictive permissions on every write
     ensureLogPermissions path
     -- Single-writer PID tracking
