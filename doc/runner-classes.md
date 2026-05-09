@@ -54,6 +54,39 @@ isolation strength:
 └─────────────────────────────────────────────────────────┘
 ```
 
+### TAP+Bridge Dual-LAN Setup (M5.3.3)
+
+For full L2 isolation testing with pcap capture, the dual-LAN mode
+uses Linux bridges with TAP devices:
+
+```
+Host
+├── br-umbravox-a (10.0.42.0/24)
+│   ├── tap-a0 → Agent 0
+│   ├── tap-a1 → Agent 1
+│   └── tap-a2 → Agent 2
+│
+├── br-umbravox-b (10.0.43.0/24)
+│   ├── tap-b0 → Agent 3
+│   ├── tap-b1 → Agent 4
+│   └── tap-b2 → Agent 5
+│
+└── IP forwarding between bridges
+```
+
+Setup requires `CAP_NET_ADMIN` (sudo):
+```bash
+sudo scripts/vm-network-setup.sh setup 6
+make vm-integration-test-dual-lan
+sudo scripts/vm-network-setup.sh teardown
+```
+
+Traffic capture:
+```bash
+tcpdump -i br-umbravox-a -w build/evidence/lan-a.pcap &
+tcpdump -i br-umbravox-b -w build/evidence/lan-b.pcap &
+```
+
 ## Artifact Handoff
 
 ### VM Runner (Class 2) Artifact Flow
@@ -94,6 +127,43 @@ Firecracker support (M2.4.2) remains scaffold-only. It requires:
 - A Firecracker JSON config template
 
 The QEMU lane is the current authoritative isolated runner.
+
+## Multi-Architecture Emulation (M5.5)
+
+### arm64 via QEMU System Emulation
+
+UmbraVOX can be tested on arm64 via QEMU system emulation on x86_64
+hosts. This is significantly slower than KVM-accelerated VMs (~10-50x)
+because QEMU must emulate the ARM instruction set in software.
+
+| Property | Value |
+|----------|-------|
+| Machine | `virt` |
+| CPU | `cortex-a72` |
+| Serial console | `ttyAMA0` |
+| Bootloader | Direct kernel boot (no GRUB) |
+| KVM acceleration | Not available (cross-arch) |
+| Nix build | Requires aarch64 builder or `binfmt_misc` |
+| Expected build time | ~30-60 min (emulated compilation) |
+| Expected test time | ~10-30 min (emulated execution) |
+
+**Current status**: Stub image definition exists at `nix/vm-image-aarch64.nix`.
+Actual building requires either:
+1. A native aarch64 builder (physical ARM64 machine or cloud instance)
+2. QEMU user-mode emulation via `binfmt_misc` registered on the host
+   (`boot.binfmt.emulatedSystems = [ "aarch64-linux" ];` on NixOS)
+
+### Cross-Architecture Test Matrix (M5.5.2)
+
+| Target | Builder | Runner | Status |
+|--------|---------|--------|--------|
+| x86_64-linux | x86_64 (KVM) | QEMU q35 (KVM) | Functional |
+| aarch64-linux | aarch64 or binfmt | QEMU virt (emulated) | Stub |
+| x86_64-linux (Firecracker) | x86_64 (KVM) | Firecracker | Scaffold |
+
+Native ARM64 testing provides the strongest assurance. Emulated testing
+catches architecture-specific issues (endianness, word size, alignment)
+but at significant performance cost.
 
 ## Cross-Build Parity Checks (M3.2.2)
 

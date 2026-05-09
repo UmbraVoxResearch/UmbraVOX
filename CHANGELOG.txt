@@ -7,6 +7,10 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 ## [Unreleased]
 
 ### Added
+- Added arm64 NixOS VM image stub (`nix/vm-image-aarch64.nix`) for cross-architecture testing via QEMU system emulation (M5.5.1).
+- Added cross-architecture test matrix documentation in `doc/runner-classes.md` (M5.5.2).
+- Added TAP+bridge dual-LAN network setup script (`scripts/vm-network-setup.sh`) for privileged integration testing with pcap capture (M5.3.3).
+- Added reproducibility rebuild-and-compare documentation with manual verification steps in `doc/RELEASES.md` (M4.2.3/X2.2).
 - Added multi-VM integration test orchestrator (`make vm-integration-test`) with configurable agent count, dgram multicast networking, and parallel QEMU boot.
 - Added integration test agent script (`scripts/vm-integration-agent.sh`) with readiness, exchange, and flood scenario support.
 - Added PEX auto-connect: received indirect peers trigger best-effort connection attempts via forked threads.
