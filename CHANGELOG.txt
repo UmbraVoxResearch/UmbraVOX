@@ -7,6 +7,8 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 ## [Unreleased]
 
 ### Added
+- Added differential test harness (`Test.Crypto.Differential`) comparing C/FFI output against Haskell oracle for all 10 primitives with NIST/RFC test vectors and property-based fuzzing (M6.2).
+- Added F* assume reduction plan (`doc/fstar-assume-reduction.md`) categorizing 217 assumes across 17 specs with prioritized reduction strategy (M6.3.2).
 - Added real UDP transport with sequence-number reliability layer (F4.1).
 - Added SOCKS5 proxy transport for TCP-over-Tor connectivity (F4.3).
 - Added transport provider plugin documentation (`doc/transport-providers.md`) covering manifest format, TransportHandle interface, plugin host modes, and provider lifecycle (F4.2).
@@ -68,6 +70,8 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - Tightened the microVM scaffold so pinned QEMU/Firecracker runs require an explicit in-guest verification command template before they proceed.
 
 ### Changed
+- Updated assurance matrix to reflect real C codegen implementations (no longer link probes) and differential testing framework.
+- All 10 generated C files now contain real algorithmic code from .spec files with NIST constants, round functions, and helper macros.
 - Restructured TODO.txt with Known Issues (B1), Blocked (X1-X3), and priority tracking sections.
 - Switched all Makefile orchestration targets from shell scripts to Haskell entrypoints; shell scripts preserved in scripts/ for reference only (M4.3.4 complete).
 - Marked Makefile as thin wrapper over Haskell orchestration (M4.3.3 complete); all new targets route through Haskell entrypoints.
