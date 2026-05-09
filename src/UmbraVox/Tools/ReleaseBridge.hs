@@ -240,15 +240,21 @@ ensureVMImage = do
             when needsFstarCache $ do
                 hPutStrLn stderr "[VM-SMOKE] stage 1b: building F* cache in VM..."
                 buildFstarCacheInVM repoRoot cachePath cacheStage
-            -- Stage 2: Rebuild image with F* cache baked in.
-            -- Use nix-build (not flake) because flakes don't support --arg.
-            hPutStrLn stderr "[VM-SMOKE] stage 2: rebuilding VM image with F* cache..."
+            -- Stage 2: Copy cache into source tree so flake sees it,
+            -- then rebuild with nix build .#vm-image (same nixpkgs pin).
+            hPutStrLn stderr "[VM-SMOKE] stage 2: copying F* cache into source tree..."
             repoRoot' <- getCurrentDirectory
-            let vmImageNix = repoRoot' </> "nix" </> "vm-image.nix"
-            ec2 <- runScript "nix-build" [ vmImageNix
-                                         , "--arg", "fstarCachePath", cacheStage
-                                         , "-A", "qemu"
-                                         , "--out-link", cachePath ]
+            let nixCacheDir = repoRoot' </> "nix" </> "fstar-cache"
+            createDirectoryIfMissing True nixCacheDir
+            -- Copy .checked files from stage 1 output to nix/fstar-cache/
+            cacheFiles <- listDirectory cacheStage
+            let checked = filter (".checked" `isSuffixOf`) cacheFiles
+            mapM_ (\f -> copyFile (cacheStage </> f) (nixCacheDir </> f)) checked
+            hPutStrLn stderr $ "[VM-SMOKE] stage 2: " ++ show (length checked) ++ " .checked files staged"
+            hPutStrLn stderr "[VM-SMOKE] stage 2: rebuilding VM image with F* cache..."
+            ec2 <- runScript "nix" [ "build", ".#vm-image"
+                                   , "--out-link", cachePath
+                                   , "--extra-experimental-features", "nix-command flakes" ]
             case ec2 of
                 ExitSuccess -> do
                     hPutStrLn stderr $ "[VM-SMOKE] stage 2 complete: " ++ cachePath
