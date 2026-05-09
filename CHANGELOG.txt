@@ -7,6 +7,8 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 ## [Unreleased]
 
 ### Added
+- Added Haskell implementations for all remaining shell-orchestrated targets: release-smoke-linux, release-smoke-appimage, release-lane-qemu, release-lane-firecracker, and release-gate-assurance (M4.3.4).
+- Added BSD source-only release policy documentation in doc/RELEASES.md (M3.1.5).
 - Added Firecracker VM smoke lane with Haskell orchestration (`make firecracker-smoke`) and NixOS-based vmlinux + rootfs image (`nix build .#firecracker-image`).
 - Added Haskell parity tracking for Makefile shell targets with documented migration status for M4.3.4 retirement.
 - Added Haskell SBOM generation (`make release-sbom-generate`) listing all dependencies with licenses and sources.
@@ -53,6 +55,7 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - Tightened the microVM scaffold so pinned QEMU/Firecracker runs require an explicit in-guest verification command template before they proceed.
 
 ### Changed
+- Switched all Makefile orchestration targets from shell scripts to Haskell entrypoints; shell scripts preserved in scripts/ for reference only (M4.3.4 complete).
 - Marked Makefile as thin wrapper over Haskell orchestration (M4.3.3 complete); all new targets route through Haskell entrypoints.
 - Replaced placeholder SBOM/license compliance gates with real Haskell implementations that generate actual artifacts.
 - Updated flake.nix to expose vm-image package on x86_64-linux and added QEMU/Firecracker/genext2fs to devTools.

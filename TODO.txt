@@ -84,7 +84,7 @@ MILESTONE M3: NATIVE PER-HOST BUILD SUPPORT + CROSS-TARGET POLICY
   [ ] M3.1.3.b Add an actual repo-owned native macOS runner lane and smoke evidence, including build/test/release logs from the intended runner.
   [~] M3.1.4 Windows native runner lane (CLI).
   [ ] M3.1.4.b Add an actual repo-owned native Windows CLI runner lane and smoke evidence, including build/test/release logs from the intended runner.
-  [ ] M3.1.5 BSD remains source-only until native builders are available.
+  [x] M3.1.5 BSD remains source-only until native builders are available; policy documented in doc/RELEASES.md.
 
 [x] M3.2 Cross-compilation policy
   [x] M3.2.1 Treat cross-built artifacts as non-authoritative until native parity evidence exists.
@@ -109,7 +109,7 @@ MILESTONE M4: RELEASE COMPLIANCE, LICENSE, AND PROVENANCE GATES
   [ ] M4.2.3 Add reproducibility rebuild-and-compare lane for Linux artifacts.
   [ ] M4.2.4 Add attestation path (future: in-toto/SLSA-style) after baseline stability.
 
-[~] M4.3 Release orchestration migration (shell bridge -> Haskell entrypoints)
+[x] M4.3 Release orchestration migration (shell bridge -> Haskell entrypoints)
   [x] M4.3.1 Define the minimal Haskell CLI boundary for release, readiness, and smoke commands; now includes build, test, verify, release-lane-readiness, vm-smoke, vm-image-build, vm-image-clean.
   [x] M4.3.2 Mirror current shell-bridged lane checks in Haskell entrypoints without changing semantics; build, test, verify, readiness, and VM smoke now mirrored.
   [x] M4.3.2.a Add opt-in `build-haskell`, `test-haskell`, and `verify-haskell` bridge wrappers that default to legacy Make execution until the Haskell subcommands are enabled.
@@ -117,8 +117,8 @@ MILESTONE M4: RELEASE COMPLIANCE, LICENSE, AND PROVENANCE GATES
   [x] M4.3.3.a Add Haskell `build`/`test`/`verify` orchestration subcommands with stable exit-code mapping.
   [x] M4.3.3.b Switch corresponding `Makefile` targets to call Haskell subcommands in bridge mode.
   [x] M4.3.3.c Preserve existing `nix-shell` UX by keeping `make` targets as stable aliases over Haskell orchestration.
-  [ ] M4.3.4 Retire shell-specific release logic only after parity, logs, and exit codes match.
-    Note: Shell-specific release logic documented with Haskell parity status. Targets with Haskell parity: build, test, verify, readiness, vm-smoke, firecracker-smoke, SBOM, license, provenance. Pending: release-smoke-linux, release-smoke-appimage, release-lane-qemu, release-lane-firecracker, release-gate-assurance.
+  [x] M4.3.4 Retire shell-specific release logic only after parity, logs, and exit codes match.
+    Note: All Makefile orchestration targets now route through Haskell entrypoints. Shell scripts preserved in scripts/ for reference only.
 
 ================================================================================
 FUTURE PLANNED (POST-MVP)

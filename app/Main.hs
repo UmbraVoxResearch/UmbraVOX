@@ -63,11 +63,21 @@ main = do
             exitWith =<< runBridgeCommand "release-manifest" rest
         ("release-checksums" : rest) ->
             exitWith =<< runBridgeCommand "release-checksums" rest
+        ("smoke-linux" : rest) ->
+            exitWith =<< runBridgeCommand "smoke-linux" rest
+        ("smoke-appimage" : rest) ->
+            exitWith =<< runBridgeCommand "smoke-appimage" rest
+        ("lane-qemu" : rest) ->
+            exitWith =<< runBridgeCommand "lane-qemu" rest
+        ("lane-firecracker" : rest) ->
+            exitWith =<< runBridgeCommand "lane-firecracker" rest
+        ("gate-assurance" : rest) ->
+            exitWith =<< runBridgeCommand "gate-assurance" rest
         ("release-bridge" : cmd : rest) ->
             exitWith =<< runBridgeCommand cmd rest
         (cmd : _) -> do
             putStrLn $ "Unknown command: " ++ cmd
-            putStrLn "Try: build, test, verify, release-lane-readiness, vm-smoke, vm-image-build, vm-image-clean, firecracker-smoke, firecracker-image-build, release-sbom-generate, release-license-bundle-generate, release-license-check, release-linking, release-manifest, release-checksums"
+            putStrLn "Try: build, test, verify, release-lane-readiness, vm-smoke, vm-image-build, vm-image-clean, firecracker-smoke, firecracker-image-build, release-sbom-generate, release-license-bundle-generate, release-license-check, release-linking, release-manifest, release-checksums, smoke-linux, smoke-appimage, lane-qemu, lane-firecracker, gate-assurance"
             exitWith (ExitFailure 64)
 
 runUi :: IO ()

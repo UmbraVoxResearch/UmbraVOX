@@ -539,15 +539,8 @@ codegen: build
 # Release Smoke and Lane Checks
 # --------------------------------------------------------------------------
 # Haskell parity status:
-#   DONE: vm-smoke, firecracker-smoke, release-sbom-generate,
-#         release-license-bundle-generate, release-license-check,
-#         release-linking, release-manifest, release-checksums,
-#         build, test, verify, release-lane-readiness
-#   PENDING: release-smoke-linux, release-smoke-appimage,
-#            release-smoke-qemu, release-lane-qemu,
-#            release-lane-firecracker, release-gate-assurance
-# Shell targets below will be retired when Haskell parity is proven
-# for the remaining items (M4.3.4).
+#   ALL targets now route through Haskell entrypoints.
+#   Shell scripts in scripts/ are preserved for reference only.
 
 # --------------------------------------------------------------------------
 # Release Packaging
@@ -570,11 +563,11 @@ release-appimage:
 
 release-smoke-linux:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Running isolated Linux release smoke check..."
-	@./scripts/release-smoke-linux.sh
+	@cabal run umbravox -- smoke-linux
 
 release-smoke-appimage:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Running non-authoritative AppImage scaffold smoke placeholder..."
-	@./scripts/release-smoke-appimage.sh
+	@cabal run umbravox -- smoke-appimage
 
 release-smoke-qemu:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Running QEMU microVM release smoke check..."
@@ -613,11 +606,11 @@ platform-smoke-qemu-profile:
 
 release-lane-qemu:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Checking QEMU/KVM release-lane prerequisites..."
-	@./scripts/release-lane-qemu.sh
+	@cabal run umbravox -- lane-qemu
 
 release-lane-firecracker:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Checking Firecracker release-lane prerequisites..."
-	@./scripts/release-lane-firecracker.sh
+	@cabal run umbravox -- lane-firecracker
 
 release-lane-readiness:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Running aggregate native release-lane readiness checks..."
@@ -642,7 +635,7 @@ release-lane-readiness-haskell:
 
 release-gate-assurance:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Running assurance matrix release gate..."
-	@./scripts/release-gate-assurance.sh
+	@cabal run umbravox -- gate-assurance
 
 release-windows-cli:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Building Windows CLI source release..."

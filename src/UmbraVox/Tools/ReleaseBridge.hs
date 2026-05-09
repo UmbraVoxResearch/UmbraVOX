@@ -10,21 +10,27 @@ module UmbraVox.Tools.ReleaseBridge
     , ensureVMImage
     , runFirecrackerSmoke
     , ensureFirecrackerImage
+    , runSmokeLinux
+    , runSmokeAppimage
+    , runLaneQemu
+    , runLaneFirecracker
+    , runGateAssurance
     ) where
 
 import Control.Exception (IOException, catch)
 import Control.Monad (when)
+import Data.List (isPrefixOf, isSuffixOf, tails)
 import Data.Maybe (isNothing)
 import System.Directory (doesFileExist, doesDirectoryExist, getModificationTime,
                          createDirectoryIfMissing, removeDirectoryRecursive,
                          removeFile, findExecutable, getTemporaryDirectory,
-                         getCurrentDirectory)
+                         getCurrentDirectory, listDirectory)
 import System.Environment (getEnvironment, lookupEnv)
 import System.Exit (ExitCode(..), exitWith)
 import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr)
 import System.Process (CreateProcess(..), StdStream(Inherit), createProcess,
-                       proc, waitForProcess)
+                       proc, waitForProcess, readProcessWithExitCode)
 import System.Timeout (timeout)
 
 import UmbraVox.Tools.Compliance (generateSBOM, generateLicenseBundle, checkLicensePolicy, analyzeLinkingObligations)
@@ -57,6 +63,11 @@ runBridgeCommand "release-license-check" _ = checkLicensePolicy
 runBridgeCommand "release-linking" _ = analyzeLinkingObligations
 runBridgeCommand "release-manifest" _ = generateReleaseManifest
 runBridgeCommand "release-checksums" _ = emitReleaseChecksums
+runBridgeCommand "smoke-linux" args = runSmokeLinux args
+runBridgeCommand "smoke-appimage" args = runSmokeAppimage args
+runBridgeCommand "lane-qemu" args = runLaneQemu args
+runBridgeCommand "lane-firecracker" args = runLaneFirecracker args
+runBridgeCommand "gate-assurance" args = runGateAssurance args
 runBridgeCommand cmd _ = do
     hPutStrLn stderr $ "Unknown orchestration bridge command: " ++ cmd
     pure (ExitFailure 64)
@@ -332,3 +343,173 @@ generateFirecrackerConfig kernel rootfs srcDisk = do
         , "}"
         ]
     pure configPath
+
+-- | Haskell implementation of release-smoke-linux.sh
+-- Finds latest Linux artifact, runs it in a container (podman/docker).
+runSmokeLinux :: [String] -> IO ExitCode
+runSmokeLinux _ = do
+    hPutStrLn stderr "[SMOKE-LINUX] checking for Linux release artifact..."
+    repoRoot <- getCurrentDirectory
+    let relDir = repoRoot </> "build" </> "releases"
+    artifacts <- findArtifacts relDir "linux-x86_64.tar.gz"
+    case artifacts of
+        [] -> do
+            hPutStrLn stderr "[SMOKE-LINUX] no Linux release artifact found; run make release-linux first"
+            pure (ExitFailure 1)
+        (latest:_) -> do
+            hPutStrLn stderr $ "[SMOKE-LINUX] artifact: " ++ latest
+            runtime <- findContainerRuntime
+            case runtime of
+                Nothing -> do
+                    hPutStrLn stderr "[SMOKE-LINUX] no container runtime (podman/docker) available"
+                    pure (ExitFailure 127)
+                Just rt -> do
+                    hPutStrLn stderr $ "[SMOKE-LINUX] using container runtime: " ++ rt
+                    runScript (repoRoot </> "scripts" </> "release-smoke-linux.sh") []
+
+-- | Haskell implementation of release-smoke-appimage.sh
+-- Checks AppImage scaffold layout.
+runSmokeAppimage :: [String] -> IO ExitCode
+runSmokeAppimage _ = do
+    hPutStrLn stderr "[SMOKE-APPIMAGE] checking AppImage scaffold..."
+    repoRoot <- getCurrentDirectory
+    let relDir = repoRoot </> "build" </> "releases"
+    artifacts <- findArtifacts relDir "appimage"
+    case artifacts of
+        [] -> do
+            hPutStrLn stderr "[SMOKE-APPIMAGE] no AppImage artifact found; run make release-appimage first"
+            pure (ExitFailure 1)
+        _ -> runScript (repoRoot </> "scripts" </> "release-smoke-appimage.sh") []
+
+-- | Haskell implementation of release-lane-qemu.sh
+-- Checks QEMU/KVM host prerequisites.
+runLaneQemu :: [String] -> IO ExitCode
+runLaneQemu _ = do
+    hPutStrLn stderr "[LANE-QEMU] checking QEMU/KVM prerequisites..."
+    hasKVM <- doesFileExist "/dev/kvm"
+    qemu <- findExecutable "qemu-system-x86_64"
+    let checks = [ ("qemu-system-x86_64", not (isNothing qemu))
+                 , ("/dev/kvm", hasKVM)
+                 ]
+    mapM_ (\(name, ok) ->
+        hPutStrLn stderr $ "[LANE-QEMU] " ++ name ++ ": " ++ if ok then "found" else "MISSING"
+        ) checks
+    if all snd checks
+        then do
+            hPutStrLn stderr "[LANE-QEMU] QEMU/KVM prerequisites satisfied"
+            pure ExitSuccess
+        else do
+            hPutStrLn stderr "[LANE-QEMU] QEMU/KVM prerequisites NOT satisfied"
+            pure (ExitFailure 1)
+
+-- | Haskell implementation of release-lane-firecracker.sh
+-- Checks Firecracker host prerequisites.
+runLaneFirecracker :: [String] -> IO ExitCode
+runLaneFirecracker _ = do
+    hPutStrLn stderr "[LANE-FC] checking Firecracker prerequisites..."
+    hasKVM <- doesFileExist "/dev/kvm"
+    fc <- findExecutable "firecracker"
+    jqBin <- findExecutable "jq"
+    let checks = [ ("firecracker", not (isNothing fc))
+                 , ("/dev/kvm", hasKVM)
+                 , ("jq", not (isNothing jqBin))
+                 ]
+    mapM_ (\(name, ok) ->
+        hPutStrLn stderr $ "[LANE-FC] " ++ name ++ ": " ++ if ok then "found" else "MISSING"
+        ) checks
+    if all snd checks
+        then do
+            hPutStrLn stderr "[LANE-FC] Firecracker prerequisites satisfied"
+            pure ExitSuccess
+        else do
+            hPutStrLn stderr "[LANE-FC] Firecracker prerequisites NOT satisfied"
+            pure (ExitFailure 1)
+
+-- | Haskell implementation of release-gate-assurance.sh
+-- Checks assurance matrix freshness.
+runGateAssurance :: [String] -> IO ExitCode
+runGateAssurance _ = do
+    hPutStrLn stderr "[ASSURANCE-GATE] checking assurance matrix..."
+    repoRoot <- getCurrentDirectory
+    let matrix = repoRoot </> "doc" </> "assurance-matrix.md"
+        roadmap = repoRoot </> "doc" </> "assurance-roadmap.md"
+    -- Check matrix exists
+    matrixExists <- doesFileExist matrix
+    when (not matrixExists) $ do
+        hPutStrLn stderr $ "[ASSURANCE-GATE] FAIL: missing " ++ matrix
+        exitWith (ExitFailure 1)
+    -- Check required section
+    matrixContent <- readFile matrix
+    length matrixContent `seq` pure ()  -- force read
+    when (not ("## Current Assurance Statement" `isInfixOf'` matrixContent)) $ do
+        hPutStrLn stderr "[ASSURANCE-GATE] FAIL: missing '## Current Assurance Statement' section"
+        exitWith (ExitFailure 1)
+    -- Check roadmap
+    roadmapExists <- doesFileExist roadmap
+    when roadmapExists $ do
+        roadmapContent <- readFile roadmap
+        length roadmapContent `seq` pure ()
+        when (not ("## Bounded MVP Assurance Statement" `isInfixOf'` roadmapContent)) $ do
+            hPutStrLn stderr "[ASSURANCE-GATE] FAIL: missing '## Bounded MVP Assurance Statement' in roadmap"
+            exitWith (ExitFailure 1)
+    -- Check staleness via git
+    stale <- checkMatrixStaleness repoRoot matrix
+    when stale $ do
+        hPutStrLn stderr "[ASSURANCE-GATE] FAIL: assurance matrix is stale relative to crypto sources"
+        exitWith (ExitFailure 1)
+    hPutStrLn stderr "[ASSURANCE-GATE] assurance matrix is present and not detectably stale"
+    pure ExitSuccess
+
+-- Helper: check if matrix is older than crypto source changes
+checkMatrixStaleness :: FilePath -> FilePath -> IO Bool
+checkMatrixStaleness repoRoot matrix = do
+    (ecM, matrixTs, _) <- readProcessWithExitCode "git"
+        ["log", "-1", "--format=%ct", "--", matrix] ""
+    (ecC, cryptoTs, _) <- readProcessWithExitCode "git"
+        ["log", "-1", "--format=%ct", "--", repoRoot </> "src" </> "UmbraVox" </> "Crypto"] ""
+    case (ecM, ecC) of
+        (ExitSuccess, ExitSuccess) ->
+            let mTs = readMaybe' (strip matrixTs)
+                cTs = readMaybe' (strip cryptoTs)
+            in case (mTs, cTs) of
+                (Just m, Just c) -> pure (c > (m :: Int))
+                _ -> pure False
+        _ -> pure False  -- can't determine, assume not stale
+
+-- Helper: find container runtime
+findContainerRuntime :: IO (Maybe String)
+findContainerRuntime = do
+    podman <- findExecutable "podman"
+    case podman of
+        Just _ -> pure (Just "podman")
+        Nothing -> do
+            docker <- findExecutable "docker"
+            case docker of
+                Just _ -> pure (Just "docker")
+                Nothing -> pure Nothing
+
+-- Helper: find artifacts matching a suffix in a directory
+findArtifacts :: FilePath -> String -> IO [FilePath]
+findArtifacts dir suffix = do
+    exists <- doesDirectoryExist dir
+    if not exists
+        then pure []
+        else do
+            entries <- listDirectory dir
+            let matching = filter (suffix `isSuffixOf`) entries
+            pure (map (dir </>) matching)
+
+-- Helper: strip whitespace
+strip :: String -> String
+strip = reverse . dropWhile isWS . reverse . dropWhile isWS
+  where isWS c = c == ' ' || c == '\n' || c == '\r' || c == '\t'
+
+-- Helper: safe read
+readMaybe' :: Read a => String -> Maybe a
+readMaybe' s = case reads s of
+    [(v, "")] -> Just v
+    _ -> Nothing
+
+-- Helper: isInfixOf for strings
+isInfixOf' :: String -> String -> Bool
+isInfixOf' needle haystack = any (isPrefixOf needle) (tails haystack)
