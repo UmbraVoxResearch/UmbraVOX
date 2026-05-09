@@ -7,6 +7,11 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 ## [Unreleased]
 
 ### Added
+- Added NixOS QEMU VM image (`nix build .#vm-image`) for fully isolated build/test/release execution with zero external dependencies.
+- Added Haskell VM smoke orchestration (`umbravox vm-smoke`) with image caching, source disk creation via genext2fs, and QEMU/KVM boot management.
+- Added `make vm-smoke`, `make vm-image-build`, `make vm-image-clean`, and `make image-clean` targets for VM-isolated pipeline execution.
+- Added `genext2fs` to nix-shell and flake devShell for non-root source disk image creation.
+- Added in-guest smoke pipeline script (`scripts/vm-smoke-run.sh`) that runs build, test, verify, complexity, license, format-check, and release-linux inside the isolated VM.
 - Added app-layer AEAD encryption module (`UmbraVox.Storage.Encryption`) providing AES-256-GCM field-level encryption with HKDF-derived per-identity storage keys, migration-safe plaintext passthrough, and deterministic test-key injection.
 - Added fail-closed persistence restore behavior: conversations that fail to decrypt are skipped with a `persistence.decrypt.failed` log event instead of crashing the application.
 - Added persistence encryption model documentation (`doc/persistence-model.md`) covering encrypted vs. plaintext fields, residual metadata exposure, and rationale.
@@ -38,6 +43,7 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - Tightened the microVM scaffold so pinned QEMU/Firecracker runs require an explicit in-guest verification command template before they proceed.
 
 ### Changed
+- Updated flake.nix to expose vm-image package on x86_64-linux and added QEMU/Firecracker/genext2fs to devTools.
 - Expanded runtime logging redaction list from 7 to 15 fields, adding content, answer, key, secret, passphrase, password, token, and session_id.
 - Hardened runtime log file permissions to enforce 0600 on every write (not just creation) with single-writer PID tracking.
 - Updated Haskell orchestration bridge targets (`build-haskell`, `test-haskell`, `verify-haskell`) to pass `--orchestrated` flag when `UMBRAVOX_USE_HASKELL_ORCH=1` is set, routing to real Haskell implementations instead of shelling back to Make.
