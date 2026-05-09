@@ -103,9 +103,14 @@ else
 fi
 
 # Step 3: F* verification (run binary directly)
-# Create F* cache/output dirs (gitignored, so absent after copy)
+# Create F* cache/output dirs and populate from pre-built cache if available.
+# The NixOS VM image bakes .checked files at /etc/umbravox-fstar-cache/.
 mkdir -p test/evidence/formal-proofs/fstar/_cache \
          test/evidence/formal-proofs/fstar/_output
+if [ -d /etc/umbravox-fstar-cache ] && [ -n "$(ls /etc/umbravox-fstar-cache/*.checked 2>/dev/null)" ]; then
+    cp /etc/umbravox-fstar-cache/*.checked test/evidence/formal-proofs/fstar/_cache/
+    echo "  F* cache: $(ls test/evidence/formal-proofs/fstar/_cache/*.checked | wc -l) pre-built .checked files loaded"
+fi
 if [ -n "$FSTAR_BIN" ] && [ -x "$FSTAR_BIN" ]; then
     run_step "verify" "$FSTAR_BIN"
 else
