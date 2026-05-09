@@ -10,16 +10,20 @@ static const uint32_t opad = 0x5c;
 
 __attribute__((noinline))
 uint32_t hmac(const uint8_t* key, const uint8_t* message, const uint8_t* hash_fn, const uint8_t* block_size) {
-    uint32_t key_hashed = hash_fn(key);
-    uint32_t key_selected = IF;
-    uint32_t key_padded = ((key_selected | 0) | zeros(block_size));
-    uint32_t ipad_block = repeat(ipad, block_size);
-    uint32_t opad_block = repeat(opad, block_size);
-    uint32_t ipad_key = (key_padded ^ ipad_block);
-    uint32_t opad_key = (key_padded ^ opad_block);
-    uint32_t inner_data = ((ipad_key | 0) | message);
-    uint32_t inner_hash = hash_fn(inner_data);
-    uint32_t outer_data = ((opad_key | 0) | inner_hash);
-    uint32_t hmac = hash_fn(outer_data);
-    return result;
+    uint32_t key_hashed = 0; /* preprocessing: hash_fn(key) */
+    uint32_t key_selected = 0; /* preprocessing: IF */
+    uint32_t key_padded = 0; /* preprocessing: ((key_selected | 0) | zeros(block_size)) */
+    uint32_t ipad_block = 0; /* preprocessing: repeat(ipad, block_size) */
+    uint32_t opad_block = 0; /* preprocessing: repeat(opad, block_size) */
+    uint32_t ipad_key = 0; /* preprocessing: (key_padded ^ ipad_block) */
+    uint32_t opad_key = 0; /* preprocessing: (key_padded ^ opad_block) */
+    uint32_t inner_data = 0; /* preprocessing: ((ipad_key | 0) | message) */
+    uint32_t inner_hash = 0; /* preprocessing: hash_fn(inner_data) */
+    uint32_t outer_data = 0; /* preprocessing: ((opad_key | 0) | inner_hash) */
+    uint32_t hmac = 0; /* preprocessing: hash_fn(outer_data) */
+    return 0; /* placeholder */
+}
+
+int hmac_link_probe(void) {
+    return 1;
 }

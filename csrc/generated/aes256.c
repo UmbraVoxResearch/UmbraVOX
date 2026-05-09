@@ -34,13 +34,17 @@ static const uint32_t Nr = 0x0000000e;
 
 __attribute__((noinline))
 uint32_t aes256(const uint8_t* key, const uint8_t* block) {
-    uint32_t state_init = (block ^ key_schedule_0);
-    uint32_t r1_sub = SubBytes(state_init);
-    uint32_t r1_shift = ShiftRows(r1_sub);
-    uint32_t r1_mix = MixColumns(r1_shift);
-    uint32_t r1_state = (r1_mix ^ key_schedule_1);
-    uint32_t r14_sub = SubBytes(r13_state);
-    uint32_t r14_shift = ShiftRows(r14_sub);
-    uint32_t ciphertext = (r14_shift ^ key_schedule_14);
-    return result;
+    uint32_t state_init = 0; /* preprocessing: (block ^ key_schedule_0) */
+    uint32_t r1_sub = 0; /* preprocessing: SubBytes(state_init) */
+    uint32_t r1_shift = 0; /* preprocessing: ShiftRows(r1_sub) */
+    uint32_t r1_mix = 0; /* preprocessing: MixColumns(r1_shift) */
+    uint32_t r1_state = 0; /* preprocessing: (r1_mix ^ key_schedule_1) */
+    uint32_t r14_sub = 0; /* preprocessing: SubBytes(r13_state) */
+    uint32_t r14_shift = 0; /* preprocessing: ShiftRows(r14_sub) */
+    uint32_t ciphertext = 0; /* preprocessing: (r14_shift ^ key_schedule_14) */
+    return 0; /* placeholder */
+}
+
+int aes256_link_probe(void) {
+    return 1;
 }
