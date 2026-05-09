@@ -7,6 +7,9 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 ## [Unreleased]
 
 ### Added
+- Added provider hot-reload via `reloadProviders` in `ProviderRuntime.hs` that re-scans `providers/*/manifest.uvx` at runtime without restarting (F4.5).
+- Added IPC transport hosting (`IPCTransport`, `startIPCProvider`) implementing `TransportHandle` over stdin/stdout with a line-based hex-encoded protocol for `ipc-stdio` providers (F4.5).
+- Added IPC provider protocol specification to `doc/transport-providers.md` documenting command/response format, hex encoding, and flush requirements (F4.5).
 - Added boundary/edge case differential tests (empty input, pad boundaries, block boundaries, AES roundtrip) (M6.2.4).
 - Added HACL* adoption evaluation (`doc/hacl-evaluation.md`) with coverage assessment and correspondence argument (M6.3.5, M6.3.6).
 - Added differential test harness (`Test.Crypto.Differential`) comparing C/FFI output against Haskell oracle for all 10 primitives with NIST/RFC test vectors and property-based fuzzing (M6.2).

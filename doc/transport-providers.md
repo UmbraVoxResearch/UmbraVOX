@@ -196,15 +196,64 @@ The full runtime catalog is available via `loadTransportProviderRuntimeCatalog`,
 which returns `CachedTransportProvider` records with resolved launch specs,
 load status, inherited provider chains, and capability lists.
 
+## IPC Provider Protocol
+
+Providers hosted via `ipc-stdio` communicate with the UmbraVOX runtime
+through a line-based protocol on stdin/stdout.  The runtime spawns the
+provider executable specified in the manifest `entrypoint` field and
+exchanges newline-terminated commands.
+
+### Host to Provider (stdin)
+
+| Command                    | Description                              |
+|----------------------------|------------------------------------------|
+| `SEND <hex-encoded-data>`  | Send data through the transport           |
+| `RECV`                     | Request next available data               |
+| `INFO`                     | Request endpoint info string              |
+| `CLOSE`                    | Tear down the transport                   |
+
+### Provider to Host (stdout)
+
+| Response                   | Description                              |
+|----------------------------|------------------------------------------|
+| `DATA <hex-encoded-data>`  | Response to `RECV` with received data     |
+| `OK`                       | Acknowledgement for `SEND` / `CLOSE`      |
+| `INFO <label>`             | Response to `INFO` with endpoint label    |
+| `ERR <message>`            | Error response                            |
+
+Data payloads are hex-encoded (lowercase, no prefix).  The provider
+must flush stdout after every response line.  The runtime wraps the
+spawned process in an `IPCTransport` that implements `TransportHandle`,
+so the rest of the stack (encryption, framing, chat) treats it
+identically to a built-in transport.
+
+Implementation: `src/UmbraVox/Network/ProviderRuntime.hs` exports
+`startIPCProvider`, `IPCTransport`, and low-level helpers
+`ipcSendCommand` / `ipcRecvResponse` / `ipcClose`.
+
+## Hot-Reload
+
+Provider manifests can be re-scanned at runtime without restarting the
+application.  Call `reloadProviders` (exported from
+`src/UmbraVox/Network/ProviderRuntime.hs`) to re-run the full
+discovery and loading pipeline.  The function returns the refreshed
+`[CachedTransportProvider]` catalog; the caller writes it into the
+application's mutable state.
+
+Active connections are not affected by a reload.  Only new connections
+will use updated provider definitions.
+
+The TUI already triggers a reload when opening the Settings dialog
+(via `refreshTransportProviderCatalog` in `UmbraVox.App.Startup`).
+
 ## Current Limitations
 
 - **Single active provider** -- `activeRuntimeProvider` is hard-coded to TCP.
   There is no runtime provider selection yet.
-- **IPC hosting not implemented** -- The `ipc-stdio` and `exec-direct` host
-  modes are defined in the type system but no process-launch or stdio
-  framing code exists.
-- **No hot-reload** -- Provider manifests are read once at startup. Changing
-  a manifest requires a restart.
+- **IPC hosting is minimal** -- The `ipc-stdio` host mode has a working
+  `TransportHandle` implementation and process launcher
+  (`startIPCProvider`), but `exec-direct` remains unimplemented.  No
+  reference provider executable ships with the repository yet.
 - **UDP is a stub** -- `src/UmbraVox/Network/Transport/UDP.hs` exports an
   empty module. The datagram transport is reserved but not yet functional.
 - **Bridge providers are metadata-only** -- All bridge providers (IRC, AIM,
