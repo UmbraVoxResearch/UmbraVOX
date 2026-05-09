@@ -168,6 +168,12 @@
           pkgs = import nixpkgs { system = "x86_64-linux"; };
         };
 
+        # arm64 VM image — requires aarch64 builder (M5.5.1)
+        # Uncomment when an aarch64 Nix builder is available:
+        # packages.vm-image-aarch64 = import ./nix/vm-image-aarch64.nix {
+        #   pkgs = import nixpkgs { system = "aarch64-linux"; };
+        # };
+
         packages.vm-image = (import ./nix/vm-image.nix {
           pkgs = import nixpkgs { system = "x86_64-linux"; };
           fstarCachePath = null;
