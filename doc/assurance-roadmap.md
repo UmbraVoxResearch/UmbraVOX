@@ -182,3 +182,66 @@ current boundary:
   surface, not yet an independently assured production crypto path
 - publication-grade, life-critical, or DO-style assurance claims must remain
   bounded by the evidence that is actually green
+
+## Bounded MVP Assurance Statement
+
+The following bounded statement describes the assurance posture of the
+current MVP release. It is intended to be the strongest honest claim
+supported by the evidence in this repository.
+
+What the MVP provides:
+
+- Active confidentiality and integrity through the layered Haskell runtime
+  path: Signal Double Ratchet, PQ outer wrapping (PQXDH), and Noise IK
+  transport.
+- App-layer AEAD encryption for persistent message content and conversation
+  names at rest, using AES-256-GCM with HKDF-derived per-identity storage
+  keys. SQLite format unchanged; no SQLCipher dependency.
+- 17 handwritten F* formal specifications, all green under the active
+  toolchain. These are internally consistent models, not machine-checked
+  refinement proofs against the Haskell runtime.
+- Runtime diagnostic logging with metadata redaction and restrictive file
+  permissions (0600). Logging is disabled by default and should not be
+  treated as production-safe telemetry.
+- Strong runtime test coverage across crypto primitives, protocol layers,
+  transport hardening, fault injection, and persistence recovery.
+
+What the MVP does not provide:
+
+- Constant-time cryptographic implementations (pure Haskell reference code).
+- Guaranteed key material zeroing.
+- Machine-checked refinement proof from F* models to Haskell runtime.
+- Independent, semantically real generated C execution path.
+- Independent security audit.
+- Maintained guest VM images for in-guest release verification.
+- Native build runners for non-Linux targets (Windows, macOS, BSD remain
+  source releases).
+
+Residual metadata exposure:
+
+- Peer public keys, IP addresses, ports, timestamps, settings, and
+  conversation IDs are stored as plaintext in the SQLite database. This
+  metadata is needed for database queries and session restore. See
+  `doc/persistence-model.md` for rationale.
+
+## Post-MVP Target Statement
+
+The stronger target model for UmbraVOX beyond the MVP is a triple-check
+assurance architecture:
+
+1. F* specifications define intended cryptographic and protocol semantics.
+2. Haskell remains the semantic oracle and readable reference implementation.
+3. C becomes the production-oriented low-level implementation path, with a
+   narrow and hardened FFI boundary.
+4. Differential testing between Haskell oracle and C implementation provides
+   independent cross-language assurance.
+5. Side-channel discipline, key-handling evidence, and constant-time
+   properties are demonstrated through targeted hardening tests.
+
+This target requires replacing the current generated C link probes with
+real semantic implementations, adding true FFI boundary hardening, and
+establishing a refinement or correspondence argument from F* models to
+the active runtime code.
+
+The post-MVP target is tracked in `TODO.txt` under Future Planned items
+F1-F4.

@@ -52,6 +52,17 @@ Current release orchestration is still bridge-mode:
 - `make release-lane-readiness-haskell` now routes the readiness command
   through a minimal Haskell entrypoint, but it still shells out to the current
   script implementation.
+- `make build-haskell`, `make test-haskell`, and `make verify-haskell` are
+  thin opt-in bridge wrappers. They default to the legacy `Makefile` path and
+  only flip to the Haskell orchestration path when `UMBRAVOX_USE_HASKELL_ORCH=1`
+  is set.
+- When `UMBRAVOX_USE_HASKELL_ORCH=1` is set, the `build-haskell`,
+  `test-haskell`, and `verify-haskell` targets now pass `--orchestrated`
+  to the Haskell binary. This routes to the real orchestration
+  implementation (`runOrchestratedBuild`, `runOrchestratedTest`,
+  `runOrchestratedVerify`) instead of shelling back to Make targets.
+- Exit codes from orchestrated subcommands follow stable mapping:
+  0 = success, 1 = failure, 124 = timeout, 127 = missing tool.
 - The migration is phased:
   1. add minimal Haskell entrypoints that mirror existing shell behavior
   2. keep the shell wrappers as thin adapters while parity is proven
@@ -61,6 +72,14 @@ Current release orchestration is still bridge-mode:
 
 Until those phases complete, release/readiness scripts should be treated as
 current operational glue rather than the desired end state.
+
+## Assurance Release Gate
+
+`make release-gate-assurance` verifies that the assurance matrix is
+present, complete, and not stale relative to crypto source changes.
+This gate should be included in release checklists to ensure that
+material assurance changes are reflected in the documentation before
+release.
 
 ## Compliance Placeholder Gates
 

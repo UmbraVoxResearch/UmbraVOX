@@ -7,6 +7,17 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 ## [Unreleased]
 
 ### Added
+- Added app-layer AEAD encryption module (`UmbraVox.Storage.Encryption`) providing AES-256-GCM field-level encryption with HKDF-derived per-identity storage keys, migration-safe plaintext passthrough, and deterministic test-key injection.
+- Added fail-closed persistence restore behavior: conversations that fail to decrypt are skipped with a `persistence.decrypt.failed` log event instead of crashing the application.
+- Added persistence encryption model documentation (`doc/persistence-model.md`) covering encrypted vs. plaintext fields, residual metadata exposure, and rationale.
+- Added bounded MVP assurance statement and post-MVP target statement to the assurance roadmap, with reconciled wording across README, AGENTS.md, and the assurance matrix.
+- Added persistence confidentiality row to the assurance matrix evidence ledger.
+- Added release gate script (`scripts/release-gate-assurance.sh`) requiring the assurance matrix to be present, complete, and not stale relative to crypto source changes.
+- Added `make release-gate-assurance` target for assurance matrix freshness checking.
+- Added Haskell orchestration subcommands (`runOrchestratedBuild`, `runOrchestratedTest`, `runOrchestratedVerify`) with stable exit-code mapping (0=success, 1=failure, 124=timeout, 127=missing tool) behind `--orchestrated` flag.
+- Added runtime logging regression tests (`Test.App.RuntimeLog`) covering redaction completeness, list ordering, permission enforcement, and sensitive-field coverage.
+- Added storage encryption tests (`Test.Storage.Encryption`) covering round-trip, migration-safe passthrough, wrong-key rejection, empty/large content, and key derivation determinism.
+- Added opt-in `build-haskell`, `test-haskell`, and `verify-haskell` bridge wrappers that keep the legacy `Makefile` path by default while documenting the future Haskell orchestration switch.
 - Added explicit active TODO tasks to keep `Makefile` as a thin wrapper while moving build/release orchestration logic into Haskell entrypoints with `nix-shell` workflow parity.
 - Added an opt-in Haskell readiness bridge (`make release-lane-readiness-haskell`) that shells out to the existing aggregate readiness script while keeping the shell bridge as the source of truth for now.
 - Added a phased release-orchestration migration plan that keeps the current shell bridge honest while tracking the move to Haskell entrypoints.
@@ -27,6 +38,9 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - Tightened the microVM scaffold so pinned QEMU/Firecracker runs require an explicit in-guest verification command template before they proceed.
 
 ### Changed
+- Expanded runtime logging redaction list from 7 to 15 fields, adding content, answer, key, secret, passphrase, password, token, and session_id.
+- Hardened runtime log file permissions to enforce 0600 on every write (not just creation) with single-writer PID tracking.
+- Updated Haskell orchestration bridge targets (`build-haskell`, `test-haskell`, `verify-haskell`) to pass `--orchestrated` flag when `UMBRAVOX_USE_HASKELL_ORCH=1` is set, routing to real Haskell implementations instead of shelling back to Make.
 - Clarified the AppImage track as scaffold-only and kept it outside the authoritative release posture.
 - Reworked messaging MVP hardening flow into explicit fast-gate and targeted suite runs with artifact logging.
 - Updated Linux release launch mechanics to use bundled-loader invocation instead of invalid interpreter patching assumptions.
@@ -43,6 +57,7 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - Fixed restoration/send safety by preventing disconnected restored sessions from being treated as live-sendable peers without reconnect.
 
 ### Security
+- Added app-layer AEAD storage encryption module for persistent message content and conversation name confidentiality at rest (AES-256-GCM with HKDF-derived keys).
 - Strengthened session restore safety boundaries to avoid local loopback/self-delivery risk after persistence restore.
 - Tightened logging assurance posture through redaction/scope controls and separation of pre-auth transport arrival vs trusted session establishment semantics.
 - Restored full green formal verification gate (17 F* specs) and retained verification as a hard quality gate.

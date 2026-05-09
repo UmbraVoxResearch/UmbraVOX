@@ -78,7 +78,9 @@ import qualified Test.Protocol.QRCode as QRCode
 import qualified Test.Protocol.SafetyNumber as SafetyNumber
 import qualified Test.Protocol.WireFormat as WireFormat
 import qualified Test.Security as Security
+import qualified Test.App.RuntimeLog as AppRuntimeLog
 import qualified Test.Storage.Anthony as Anthony
+import qualified Test.Storage.Encryption as StorageEncryption
 import qualified Test.Storage.ChainDB as ChainDB
 import qualified Test.Storage.Checkpoint as Checkpoint
 import qualified Test.Storage.Index as StorageIndex
@@ -221,6 +223,7 @@ coreSuites =
     , Suite "tools-complexity" ToolsComplexity.runTests
     , Suite "tools-fstar-verify" ToolsFStarVerify.runTests
     , Suite "tools-fetch-references" ToolsFetchReferences.runTests
+    , Suite "runtime-log" AppRuntimeLog.runTests
     ]
 
 coreCryptoSuites :: [Suite]
@@ -314,6 +317,7 @@ recoverySuites =
     [ Suite "app-startup" AppStartup.runTests
     , Suite "keystore" KeyStore.runTests
     , Suite "anthony" Anthony.runTests
+    , Suite "storage-encryption" StorageEncryption.runTests
     , Suite "hardening-recovery" HardeningRecovery.runTests
     ]
 

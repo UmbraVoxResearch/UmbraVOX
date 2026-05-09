@@ -44,6 +44,7 @@ Use it to answer:
 | Keccak / SHA-3 / SHAKE | FIPS 202 | Yes | Wrapper | Link probe | Bridge back to Haskell | Green | NIST vectors, SHAKE tests, fuzz, full `make verify` | No machine-checked refinement to Haskell | Good runtime/reference evidence, no independent C semantics |
 | Poly1305 | RFC 8439 | Yes | Wrapper | Link probe | Bridge back to Haskell | Green | RFC vector, parity tests, full `make verify` | No machine-checked refinement to Haskell | Good runtime/reference evidence, no independent C semantics |
 | ML-KEM-768 | FIPS 203 | Yes | Wrapper | Link probe | Bridge back to Haskell | Green | Self-consistency tests, round-trip, parity tests, full `make verify` | Evidence is much stronger on implementation/test side than on standards-correspondence proofs | Good MVP evidence, still not an independently assured low-level path |
+| App-layer AEAD | AES-256-GCM (SP 800-38D) + HKDF (RFC 5869) | Yes | N/A | N/A | N/A | N/A | Round-trip, ciphertext-at-rest, tamper detection, migration-safe, restart/recovery | Key derived from identity secret; nonce is random per-field; metadata remains plaintext | Provides storage confidentiality for message content and conversation names; does not encrypt structural metadata |
 
 ## Protocol Matrix
 
@@ -105,3 +106,11 @@ The strongest honest statement supported by the current repo is:
 5. Add a real refinement/correspondence story from handwritten F* models to the
    active handwritten Haskell implementations if publication-grade formal
    claims are required.
+
+## Persistence Confidentiality
+
+App-layer AEAD is now active for persistent storage. Message content and
+conversation names are encrypted with AES-256-GCM using per-identity keys
+derived via HKDF. Structural metadata (peer keys, timestamps, IDs) remains
+plaintext. See `doc/persistence-model.md` for the full residual-exposure
+analysis.
