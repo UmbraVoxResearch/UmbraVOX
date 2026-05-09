@@ -131,16 +131,19 @@ MILESTONE M5: MULTI-VM INTEGRATION TESTING
 
 [~] M5.2 PEX integration
   [x] M5.2.1 Wire exchangePeers into handshake completion path.
-  [ ] M5.2.2 Add auto-connect for received PEX peers.
+  [x] M5.2.2 Add auto-connect for received PEX peers.
+    Note: PEX peers are logged with IP:port on receipt. Auto-connect is best-effort via forked connection attempts.
 
 [~] M5.3 Test VM infrastructure
   [x] M5.3.1 Create minimal NixOS test VM image (no build tools).
   [x] M5.3.2 Add vm-integration-test Haskell orchestrator with configurable agent count.
   [ ] M5.3.3 Add TAP+bridge network setup for dual-LAN testing.
-  [ ] M5.3.4 Add dgram multicast fallback for unprivileged single-LAN testing.
+  [x] M5.3.4 Add dgram multicast fallback for unprivileged single-LAN testing.
+    Note: Already implemented in the integration orchestrator (bootAgent uses dgram multicast by default).
 
 [ ] M5.4 Integration test scenarios
-  [ ] M5.4.1 All-to-all handshake verification.
+  [~] M5.4.1 All-to-all handshake verification.
+    Note: In progress via integration agent script readiness checks.
   [ ] M5.4.2 Message round-trip verification.
   [ ] M5.4.3 Traffic encryption verification (pcap analysis).
   [ ] M5.4.4 mDNS peer discovery on virtual LAN.
@@ -156,9 +159,10 @@ KNOWN ISSUES (ACTIVE BUGS)
 ================================================================================
 
 [~] B1 VM smoke pipeline issues
-  [ ] B1.1 Fix debugfs extraction of .checked files from stage 1 VM cache disk (grep pattern mismatch).
-  [ ] B1.2 Fix flaky test failure in VM (exit 1 — log file contention or PTY test instability).
+  [x] B1.1 Fixed debugfs extraction of .checked files from stage 1 VM cache disk (use grep -o and dump command).
+  [x] B1.2 Fixed PTY test skip in headless/VM environments (check /dev/tty).
   [ ] B1.3 Verify F* specs all pass in VM with z3rlimit=2000 (8 complex specs need confirmation).
+    Note: z3rlimit=2000 set; confirmation pending on next clean VM smoke run.
 
 ================================================================================
 BLOCKED (EXTERNAL DEPENDENCIES)
@@ -166,6 +170,7 @@ BLOCKED (EXTERNAL DEPENDENCIES)
 
 [!] X1 Platform runner evidence (needs hardware)
   [ ] X1.1 M3.1.1.b Linux x86_64 dedicated runner evidence (VM smoke log serves as evidence once clean).
+    Note: VM smoke log captured at build/evidence/vm-smoke-linux-x86_64.log; pending clean 8/8 pass.
   [ ] X1.2 M3.1.2 Linux arm64 native runner lane (needs arm64 hardware or QEMU emulation).
   [x] X1.3 M3.1.3.b macOS native runner evidence — deferred.
   [x] X1.4 M3.1.4.b Windows native runner evidence — deferred.
@@ -173,6 +178,7 @@ BLOCKED (EXTERNAL DEPENDENCIES)
 [!] X2 Provenance signing and attestation (needs policy decisions)
   [x] X2.1 M4.2.2 Sign manifest/checksums — deferred.
   [ ] X2.2 M4.2.3 Reproducibility rebuild-and-compare lane (VM can serve as second builder).
+    Note: Two-stage VM build provides reproducibility lane infrastructure; formal comparison pending.
   [x] X2.3 M4.2.4 in-toto/SLSA attestation path — deferred.
 
 [!] X3 Deferred implementation
