@@ -2,6 +2,8 @@ module Main (main) where
 
 import Control.Monad (when)
 import Data.IORef (newIORef, readIORef, writeIORef)
+import System.Environment (getArgs)
+import System.Exit (exitWith)
 import System.IO (hSetBuffering, hSetEncoding, hFlush, stdout, stdin, utf8, BufferMode(..))
 import System.Posix.Signals (installHandler, Handler(Catch))
 import Foreign.C.Types (CInt(..))
@@ -14,6 +16,7 @@ import UmbraVox.TUI.Render (getTermSize, clampSize, calcLayout, clearScreen,
 import UmbraVox.TUI.Input (eventLoop)
 import UmbraVox.TUI.RuntimeNetwork (startListenerIfNeeded)
 import UmbraVox.TUI.RuntimeSettings (restartMDNS)
+import UmbraVox.Tools.ReleaseBridge (runReleaseBridgeCommand)
 import UmbraVox.App.Startup
     ( newDefaultAppConfig, initializeLocalIdentity, applyPersistenceAnswer
     , resolvePersistencePreference, persistenceAnswerEnables
@@ -25,6 +28,19 @@ sigWINCH = 28
 
 main :: IO ()
 main = do
+    args <- getArgs
+    case args of
+        ("release-lane-readiness" : rest) ->
+            exitWith =<< runReleaseBridgeCommand "release-lane-readiness" rest
+        ("release-lane-readiness-bridge" : rest) ->
+            exitWith =<< runReleaseBridgeCommand "release-lane-readiness" rest
+        ("release-bridge" : cmd : rest)
+            | cmd == "release-lane-readiness" ->
+                exitWith =<< runReleaseBridgeCommand cmd rest
+        _ -> runUi
+
+runUi :: IO ()
+runUi = do
     -- Ensure stdout handles UTF-8 for Unicode box-drawing characters
     hSetEncoding stdin utf8
     hSetEncoding stdout utf8
