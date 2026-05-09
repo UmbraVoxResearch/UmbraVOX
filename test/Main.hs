@@ -227,6 +227,7 @@ coreSuites =
     , Suite "tools-fstar-verify" ToolsFStarVerify.runTests
     , Suite "tools-fetch-references" ToolsFetchReferences.runTests
     , Suite "runtime-log" AppRuntimeLog.runTests
+    , Suite "differential" Differential.runTests
     ]
 
 coreCryptoSuites :: [Suite]
