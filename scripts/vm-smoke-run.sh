@@ -45,6 +45,18 @@ export PATH="/work/umbravox/scripts:$PATH"
 # Unset LD_LIBRARY_PATH to prevent nix glibc conflicts
 unset LD_LIBRARY_PATH 2>/dev/null || true
 
+# Offline cabal config
+mkdir -p /root/.cabal
+cat > /root/.cabal/config << 'CABALEOF'
+offline: True
+nix: False
+CABALEOF
+
+# ── Helper: find a built binary in dist-newstyle ────────────────────
+find_bin() {
+    find dist-newstyle -path "*/build/$1/$1" -type f 2>/dev/null | head -1
+}
+
 # ── Pipeline ────────────────────────────────────────────────────────
 PASS=0
 FAIL=0
@@ -64,10 +76,57 @@ run_step() {
     fi
 }
 
-run_step "build"         make build
-run_step "test"          make test
-run_step "verify"        make verify
-run_step "complexity"    make complexity
+# Step 1: Build (uses cabal build all - works offline since all deps are boot libs)
+run_step "build" make build
+
+# After build, locate pre-built binaries for direct execution
+TEST_BIN="$(find_bin umbravox-test)"
+FSTAR_BIN="$(find_bin fstar-verify)"
+COMPLEXITY_BIN="$(find_bin check-complexity)"
+echo ""
+echo "  binaries: test=${TEST_BIN:-MISSING} fstar=${FSTAR_BIN:-MISSING} complexity=${COMPLEXITY_BIN:-MISSING}"
+
+# Step 2: Test (run binary directly, bypassing cabal test)
+if [ -n "$TEST_BIN" ] && [ -x "$TEST_BIN" ]; then
+    run_step "test" "$TEST_BIN" required
+else
+    echo "  STEP FAIL: test (umbravox-test binary not found)"
+    FAIL=$((FAIL + 1))
+fi
+
+# Step 3: F* verification (run binary directly)
+if [ -n "$FSTAR_BIN" ] && [ -x "$FSTAR_BIN" ]; then
+    run_step "verify" "$FSTAR_BIN"
+else
+    echo "  STEP FAIL: verify (fstar-verify binary not found)"
+    FAIL=$((FAIL + 1))
+fi
+
+# Step 4: Complexity check (run binary directly per source file)
+if [ -n "$COMPLEXITY_BIN" ] && [ -x "$COMPLEXITY_BIN" ]; then
+    run_step "complexity" bash -c '
+        violations=0; total=0
+        for f in $(find src/UmbraVox test/Test codegen -name "*.hs" 2>/dev/null); do
+            result=$("'"$COMPLEXITY_BIN"'" "$f" 8 2>/dev/null)
+            if [ $? -ne 0 ]; then
+                echo "$result"
+                violations=$((violations + 1))
+            fi
+            total=$((total + 1))
+        done
+        if [ $violations -gt 0 ]; then
+            echo "$violations file(s) exceed complexity threshold."
+            exit 1
+        else
+            echo "All $total files pass complexity check (<= 8)."
+        fi
+    '
+else
+    echo "  STEP FAIL: complexity (check-complexity binary not found)"
+    FAIL=$((FAIL + 1))
+fi
+
+# Step 5-7: These don't need cabal, they use make + shell tools
 run_step "license"       make license
 run_step "format-check"  make format-check
 run_step "release-linux" make release-linux
@@ -82,7 +141,7 @@ done
 
 if [ -n "$ARTIFACT" ]; then
     echo "  artifact: $ARTIFACT"
-    echo "  size: $(du -h "$ARTIFACT" | cut -f1)"
+    echo "  size: $(du -h "$ARTIFACT" 2>/dev/null | cut -f1)"
     PASS=$((PASS + 1))
 else
     echo "  STEP FAIL: no release artifact produced"

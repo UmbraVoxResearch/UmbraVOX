@@ -65,7 +65,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify verify-haskell complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity vm-smoke vm-image-build vm-image-clean image-clean firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums clean cleandb cleanall help
+.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify verify-haskell complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity vm-smoke vm-image-build vm-image-clean image-clean firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -100,6 +100,29 @@ RELEASE_DIR := build/releases
 SUITE_LOCK := ./scripts/with-suite-lock.sh suite-gate
 TEST_REQUIRED_TIMEOUT ?= 25m
 UMBRAVOX_USE_HASKELL_ORCH ?= 0
+
+# Offline mode: when UMBRAVOX_OFFLINE=1, use pre-built binaries from
+# dist-newstyle directly instead of going through cabal run/test.
+# This is required for VM smoke testing where cabal cannot resolve
+# the package index.
+UMBRAVOX_OFFLINE ?= 0
+# Offline/online binary resolution.
+# In offline mode (UMBRAVOX_OFFLINE=1), recipes use 'find' at shell time
+# to locate pre-built binaries in dist-newstyle.  In online mode, recipes
+# delegate to cabal run/test which resolves the package index.
+FIND_EXE = find dist-newstyle -path '*/build/$(1)/$(1)' -type f 2>/dev/null | head -1
+
+ifeq ($(UMBRAVOX_OFFLINE),1)
+  run_test_suite = $$($(call FIND_EXE,umbravox-test)) $(1)
+  RUN_FSTAR = $$($(call FIND_EXE,fstar-verify))
+  RUN_COMPLEXITY = $$($(call FIND_EXE,check-complexity))
+  RUN_CODEGEN = $$($(call FIND_EXE,codegen))
+else
+  run_test_suite = cabal test umbravox-test --test-options="$(1)"
+  RUN_FSTAR = cabal run fstar-verify --
+  RUN_COMPLEXITY = cabal run check-complexity --
+  RUN_CODEGEN = cabal run codegen --
+endif
 QEMU_SMOKE_PROFILE ?= bundle-basic
 FIRECRACKER_SMOKE_KERNEL ?=
 FIRECRACKER_SMOKE_ROOTFS ?=
@@ -245,7 +268,7 @@ test: build
 	echo -e "$(BLUE)[TEST]$(NC) Log: $$log_file"; \
 	echo -e "$(BLUE)[TEST]$(NC) Timeout: $(TEST_REQUIRED_TIMEOUT)"; \
 	set -o pipefail; \
-	timeout --foreground $(TEST_REQUIRED_TIMEOUT) cabal test umbravox-test --test-options="required" 2>&1 | tee "$$log_file"; \
+	timeout --foreground $(TEST_REQUIRED_TIMEOUT) $(call run_test_suite,required) 2>&1 | tee "$$log_file"; \
 	status=$${PIPESTATUS[0]}; \
 	if [ $$status -eq 124 ]; then \
 		echo -e "$(RED)[TEST]$(NC) Gate timed out after $(TEST_REQUIRED_TIMEOUT). See $$log_file"; \
@@ -272,60 +295,60 @@ test-haskell:
 
 test-core: build
 	@echo -e "$(BLUE)[TEST-CORE]$(NC) Running core deterministic suite..."
-	@$(SUITE_LOCK) cabal test umbravox-test --test-options="core"
+	@$(SUITE_LOCK) $(call run_test_suite,core)
 
 test-core-crypto: build
 	@echo -e "$(BLUE)[TEST-CORE-CRYPTO]$(NC) Running core crypto suite..."
-	@$(SUITE_LOCK) cabal test umbravox-test --test-options="core-crypto"
+	@$(SUITE_LOCK) $(call run_test_suite,core-crypto)
 
 test-core-network: build
 	@echo -e "$(BLUE)[TEST-CORE-NETWORK]$(NC) Running core network suite..."
-	@$(SUITE_LOCK) cabal test umbravox-test --test-options="core-network"
+	@$(SUITE_LOCK) $(call run_test_suite,core-network)
 
 test-core-chat: build
 	@echo -e "$(BLUE)[TEST-CORE-CHAT]$(NC) Running core chat/protocol suite..."
-	@$(SUITE_LOCK) cabal test umbravox-test --test-options="core-chat"
+	@$(SUITE_LOCK) $(call run_test_suite,core-chat)
 
 test-core-tui: build
 	@echo -e "$(BLUE)[TEST-CORE-TUI]$(NC) Running core TUI suite..."
-	@$(SUITE_LOCK) cabal test umbravox-test --test-options="core-tui"
+	@$(SUITE_LOCK) $(call run_test_suite,core-tui)
 
 test-core-tools: build
 	@echo -e "$(BLUE)[TEST-CORE-TOOLS]$(NC) Running core tools/codegen suite..."
-	@$(SUITE_LOCK) cabal test umbravox-test --test-options="core-tools"
+	@$(SUITE_LOCK) $(call run_test_suite,core-tools)
 
 test-tcp: build
 	@echo -e "$(BLUE)[TEST-TCP]$(NC) Running real TCP suite..."
-	@$(SUITE_LOCK) cabal test umbravox-test --test-options="tcp"
+	@$(SUITE_LOCK) $(call run_test_suite,tcp)
 
 test-fault: build
 	@echo -e "$(BLUE)[TEST-FAULT]$(NC) Running fault-injection suite..."
-	@$(SUITE_LOCK) cabal test umbravox-test --test-options="fault"
+	@$(SUITE_LOCK) $(call run_test_suite,fault)
 
 test-recovery: build
 	@echo -e "$(BLUE)[TEST-RECOVERY]$(NC) Running recovery suite..."
-	@$(SUITE_LOCK) cabal test umbravox-test --test-options="recovery"
+	@$(SUITE_LOCK) $(call run_test_suite,recovery)
 
 test-tui-sim: build
 	@echo -e "$(BLUE)[TEST-TUI-SIM]$(NC) Running TUI simulation suite..."
-	@$(SUITE_LOCK) cabal test umbravox-test --test-options="tui-sim"
+	@$(SUITE_LOCK) $(call run_test_suite,tui-sim)
 
 test-integrity: build
 	@echo -e "$(BLUE)[TEST-INTEGRITY]$(NC) Running wire/integrity suite..."
-	@$(SUITE_LOCK) cabal test umbravox-test --test-options="integrity"
+	@$(SUITE_LOCK) $(call run_test_suite,integrity)
 
 test-mdns: build
 	@echo -e "$(BLUE)[TEST-MDNS]$(NC) Running exact mDNS/discovery suite..."
-	@$(SUITE_LOCK) cabal test umbravox-test --test-options="mdns"
+	@$(SUITE_LOCK) $(call run_test_suite,mdns)
 
 test-deferred: build
 	@echo -e "$(BLUE)[TEST-DEFERRED]$(NC) Running preserved deferred suite..."
-	@$(SUITE_LOCK) cabal test umbravox-test --test-options="deferred"
+	@$(SUITE_LOCK) $(call run_test_suite,deferred)
 
 soak: build
 	@echo -e "$(BLUE)[SOAK]$(NC) Running soak suite..."
 	@$(SUITE_LOCK) bash -c 'mkdir -p $(TEST_ARTIFACT_DIR); \
-	cabal test umbravox-test --test-options="soak" 2>&1 | tee $(TEST_ARTIFACT_DIR)/soak-report.txt'
+	$(call run_test_suite,soak) 2>&1 | tee $(TEST_ARTIFACT_DIR)/soak-report.txt'
 
 # --------------------------------------------------------------------------
 # F* Formal Verification
@@ -337,7 +360,7 @@ verify:
 	log_file=$$(mktemp "$(TEST_ARTIFACT_DIR)/verify.XXXXXX.log"); \
 	echo -e "$(BLUE)[VERIFY]$(NC) Log: $$log_file"; \
 	set -o pipefail; \
-	cabal run fstar-verify 2>&1 | tee "$$log_file"; \
+	$(RUN_FSTAR) 2>&1 | tee "$$log_file"; \
 	status=$${PIPESTATUS[0]}; \
 	if [ $$status -ne 0 ]; then \
 		echo -e "$(RED)[VERIFY]$(NC) Verification command failed. See $$log_file"; \
@@ -373,7 +396,7 @@ complexity:
 	@echo -e "$(BLUE)[COMPLEXITY]$(NC) Checking cyclomatic complexity (<= $(MAX_COMPLEXITY))..."
 	@violations=0; total=0; \
 	for f in $(SRC_FILES); do \
-		result=$$(cabal run check-complexity -- "$$f" $(MAX_COMPLEXITY) 2>/dev/null); \
+		result=$$($(RUN_COMPLEXITY) "$$f" $(MAX_COMPLEXITY) 2>/dev/null); \
 		if [ $$? -ne 0 ]; then \
 			echo "$$result"; \
 			violations=$$((violations + 1)); \
@@ -532,7 +555,7 @@ format-check:
 
 codegen: build
 	@echo -e "$(BLUE)[CODEGEN]$(NC) Generating Haskell + C + FFI from .spec files..."
-	@cabal run codegen 2>&1 | tail -20
+	@$(RUN_CODEGEN) 2>&1 | tail -20
 	@echo -e "$(GREEN)[CODEGEN]$(NC) Code generation complete."
 
 # --------------------------------------------------------------------------
@@ -699,6 +722,27 @@ platform-sanity:
 	@echo "FIRECRACKER_SMOKE_ROOTFS=$(if $(strip $(FIRECRACKER_SMOKE_ROOTFS)),$(FIRECRACKER_SMOKE_ROOTFS),<unset>)"
 	@echo "FIRECRACKER_SMOKE_CONFIG=$(if $(strip $(FIRECRACKER_SMOKE_CONFIG)),$(FIRECRACKER_SMOKE_CONFIG),<unset>)"
 	@echo -e "$(GREEN)[SANITY]$(NC) Platform lane targets/helpers are wired."
+
+test-offline-parity: build
+	@echo -e "$(BLUE)[PARITY]$(NC) Verifying online/offline test parity..."
+	@mkdir -p $(TEST_ARTIFACT_DIR); \
+	echo -e "$(BLUE)[PARITY]$(NC) Running core-crypto in normal (online) mode..."; \
+	$(call run_test_suite,core-crypto) > $(TEST_ARTIFACT_DIR)/parity-online.log 2>&1; \
+	online_exit=$$?; \
+	echo -e "$(BLUE)[PARITY]$(NC) Running core-crypto in offline mode..."; \
+	UMBRAVOX_OFFLINE=1 $(MAKE) test-core-crypto > $(TEST_ARTIFACT_DIR)/parity-offline.log 2>&1; \
+	offline_exit=$$?; \
+	online_pass=$$(grep -c "PASS:" $(TEST_ARTIFACT_DIR)/parity-online.log 2>/dev/null || echo 0); \
+	offline_pass=$$(grep -c "PASS:" $(TEST_ARTIFACT_DIR)/parity-offline.log 2>/dev/null || echo 0); \
+	if [ "$$online_exit" != "$$offline_exit" ]; then \
+		echo -e "$(RED)[PARITY]$(NC) Exit code mismatch: online=$$online_exit offline=$$offline_exit"; \
+		exit 1; \
+	fi; \
+	if [ "$$online_pass" != "$$offline_pass" ]; then \
+		echo -e "$(RED)[PARITY]$(NC) Pass count mismatch: online=$$online_pass offline=$$offline_pass"; \
+		exit 1; \
+	fi; \
+	echo -e "$(GREEN)[PARITY]$(NC) Both modes: exit=$$online_exit, $$online_pass assertions passed."
 
 sanity:
 	@echo -e "$(BLUE)[SANITY]$(NC) Checking Makefile release smoke/microVM wiring..."
