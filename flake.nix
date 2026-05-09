@@ -176,13 +176,11 @@
 
         packages.vm-image = (import ./nix/vm-image.nix {
           pkgs = import nixpkgs { system = "x86_64-linux"; };
-          fstarCachePath = null;
         }).qemu;
 
         packages.firecracker-image = let
           vmImages = import ./nix/vm-image.nix {
             pkgs = import nixpkgs { system = "x86_64-linux"; };
-            fstarCachePath = null;
           };
         in pkgs.runCommand "umbravox-firecracker-image" {} ''
           mkdir -p $out
