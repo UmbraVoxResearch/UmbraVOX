@@ -161,9 +161,19 @@
           '';
         };
 
-        packages.vm-image = import ./nix/vm-image.nix {
+        packages.vm-image = (import ./nix/vm-image.nix {
           pkgs = import nixpkgs { system = "x86_64-linux"; };
-        };
+        }).qemu;
+
+        packages.firecracker-image = let
+          vmImages = import ./nix/vm-image.nix {
+            pkgs = import nixpkgs { system = "x86_64-linux"; };
+          };
+        in pkgs.runCommand "umbravox-firecracker-image" {} ''
+          mkdir -p $out
+          cp ${vmImages.firecrackerRootfs}/nixos.img $out/rootfs.img
+          cp ${vmImages.firecrackerKernel} $out/vmlinux
+        '';
 
         packages.smoke-guest-image = let
           kernel = pkgs.linuxPackages.kernel;
