@@ -20,6 +20,8 @@ import Data.IORef (readIORef, writeIORef)
 import Data.List (intercalate, stripPrefix)
 import System.IO.Error (isUserError, ioeGetErrorString)
 import UmbraVox.App.RuntimeLog (logEvent)
+import UmbraVox.BuildProfile (buildSupportsPeerExchange)
+import UmbraVox.Network.PeerExchange (exchangePeers)
 import UmbraVox.Crypto.ConstantTime (constantEq)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 import UmbraVox.Network.ProviderCatalog (TransportProviderId, providerIdLabel)
@@ -28,7 +30,7 @@ import UmbraVox.Network.ProviderRuntime
     , bindListenerWithProvider, closeProviderListener, connectWithProvider
     , connectWithProviderTryPorts, connectWithProviderTryPortsProgress
     )
-import UmbraVox.Network.TransportClass (anyInfo)
+import UmbraVox.Network.TransportClass (AnyTransport, anyInfo)
 import UmbraVox.Protocol.Encoding (defaultPorts, parseHostPort, renderHostPort)
 import UmbraVox.TUI.Actions (addSession, selectLast)
 import UmbraVox.TUI.Handshake (genIdentity, fingerprint, handshakeInitiator, handshakeResponder)
@@ -79,6 +81,23 @@ applyListenPort st p = do
     logEvent (asConfig st) "settings.listen_port" [("port", show p), ("provider", runtimeProviderLabel)]
     emitStatus st ("Listen port set to " ++ show p ++ " and applied via " ++ runtimeProviderLabel)
 
+-- | Attempt PEX exchange after a successful handshake.
+--   Guarded by build plugin and runtime setting; failures are logged
+--   but never propagate (PEX is best-effort).
+tryPEXExchange :: AppConfig -> AnyTransport -> IO ()
+tryPEXExchange cfg at =
+    when buildSupportsPeerExchange $ do
+        pexOn <- readIORef (cfgPEXEnabled cfg)
+        when pexOn $
+            (do received <- exchangePeers at []
+                logEvent cfg "pex.exchange"
+                    [ ("sent",     "0")
+                    , ("received", show (length received))
+                    ]
+            ) `catch` (\(e :: SomeException) ->
+                logEvent cfg "pex.exchange.failed"
+                    [("reason", renderRuntimeError e)])
+
 acceptLoopTUI :: AppState -> IdentityKey -> Int -> IO ()
 acceptLoopTUI st ik port =
     bracket
@@ -111,6 +130,7 @@ acceptLoopBoundTUI st ik port listener = do
     logEvent (asConfig st) "transport.accepted.pre_auth" [("port", show port), ("provider", providerTag)]
     session <- handshakeResponder at ik trustCheck
     sid <- addSession (asConfig st) at session ("peer:" ++ show port)
+    tryPEXExchange (asConfig st) at
     selectLast st
     emitStatus st ("Session #" ++ show sid)
     acceptLoopBoundTUI st ik port listener
@@ -128,6 +148,7 @@ connectToPeer st h mPort =
                 session <- handshakeInitiator at ik
                 let endpoint = transportPeerLabel (anyInfo at)
                 sid <- addSession (asConfig st) at session endpoint
+                tryPEXExchange (asConfig st) at
                 selectLast st
                 emitStatus st ("Connected #" ++ show sid ++ " via " ++ endpoint)
                 ) `catch` (\(e :: SomeException) -> do
@@ -150,6 +171,7 @@ connectToPeer st h mPort =
                 session <- handshakeInitiator at ik
                 let endpoint = transportPeerLabel (anyInfo at)
                 sid <- addSession (asConfig st) at session endpoint
+                tryPEXExchange (asConfig st) at
                 selectLast st
                 emitStatus st ("Connected #" ++ show sid ++ " via " ++ endpoint)
                 ) `catch` (\(e :: SomeException) -> do
@@ -235,6 +257,7 @@ connectGroupPeers st ik (p:ps) successes failures =
         session <- handshakeInitiator at ik
         let endpoint = transportPeerLabel (anyInfo at)
         void $ addSession (asConfig st) at session endpoint
+        tryPEXExchange (asConfig st) at
         connectGroupPeers st ik ps (successes + 1) failures
         ) `catch` (\(_ :: SomeException) -> connectGroupPeers st ik ps successes (groupFailureLabel p : failures)))
 
