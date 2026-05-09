@@ -101,9 +101,9 @@ let
           # Offline cabal config (no network in guest)
           mkdir -p /root/.cabal
           cat > /root/.cabal/config << 'CABALEOF'
-          offline: True
-          nix: False
-          CABALEOF
+offline: True
+nix: False
+CABALEOF
 
           # Mount source disk and delegate to the in-guest script
           mkdir -p /mnt/src

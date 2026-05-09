@@ -214,19 +214,36 @@ ensureVMImage = do
             case ec of
                 ExitSuccess -> do
                     hPutStrLn stderr $ "[VM-SMOKE] VM image cached at: " ++ cachePath
+                    -- Clean up old nix store paths to reclaim disk space
+                    hPutStrLn stderr "[VM-SMOKE] cleaning up old nix store paths..."
+                    _ <- runScript "nix-collect-garbage" []
                     pure cachePath
                 _ -> do
                     hPutStrLn stderr "[VM-SMOKE] nix build .#vm-image failed"
                     exitWith (ExitFailure 1)
 
 -- | Create an ext2 disk image from the source tree for passing into the VM.
+-- Uses git archive to export only tracked files (excludes dist-newstyle, build/).
 createSourceDisk :: IO FilePath
 createSourceDisk = do
     repoRoot <- getCurrentDirectory
     tmpDir <- getTemporaryDirectory
     let diskPath = tmpDir </> "umbravox-vm-source.ext2"
+        srcDir   = tmpDir </> "umbravox-vm-src"
+    hPutStrLn stderr "[VM-SMOKE] exporting clean source tree..."
+    createDirectoryIfMissing True srcDir
+    -- Use git archive to get only tracked files (no dist-newstyle/build)
+    ecGit <- runScript "bash" ["-c",
+        "cd " ++ repoRoot ++ " && git archive HEAD | tar -x -C " ++ srcDir]
+    case ecGit of
+        ExitSuccess -> pure ()
+        _ -> do
+            hPutStrLn stderr "[VM-SMOKE] git archive failed"
+            exitWith (ExitFailure 1)
     hPutStrLn stderr "[VM-SMOKE] creating source disk..."
-    ec <- runScript "genext2fs" ["-b", "524288", "-d", repoRoot, diskPath]
+    ec <- runScript "genext2fs" ["-b", "524288", "-d", srcDir, diskPath]
+    -- Clean up temp source dir
+    removeDirectoryRecursive srcDir `catch` \(_ :: IOException) -> pure ()
     case ec of
         ExitSuccess -> do
             hPutStrLn stderr $ "[VM-SMOKE] source disk: " ++ diskPath
@@ -329,6 +346,7 @@ ensureFirecrackerImage = do
             case ec of
                 ExitSuccess -> do
                     hPutStrLn stderr $ "[FC-SMOKE] Firecracker image cached at: " ++ cachePath
+                    _ <- runScript "nix-collect-garbage" []
                     pure cachePath
                 _ -> do
                     hPutStrLn stderr "[FC-SMOKE] nix build .#firecracker-image failed"
