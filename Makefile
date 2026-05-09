@@ -65,7 +65,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify verify-haskell complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity vm-smoke vm-image-build vm-image-clean image-clean release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums clean cleandb cleanall help
+.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify verify-haskell complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity vm-smoke vm-image-build vm-image-clean image-clean firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -186,6 +186,8 @@ help:
 	@echo "    make vm-image-build Build and cache the NixOS VM image"
 	@echo "    make vm-image-clean Remove the cached VM image"
 	@echo "    make image-clean    Alias for vm-image-clean"
+	@echo "    make firecracker-smoke  Run pipeline inside Firecracker VM"
+	@echo "    make firecracker-image-build Build Firecracker image"
 	@echo ""
 	@echo "  Maintenance:"
 	@echo "    make clean       Remove build artifacts + build/ + dist-newstyle"
@@ -534,6 +536,20 @@ codegen: build
 	@echo -e "$(GREEN)[CODEGEN]$(NC) Code generation complete."
 
 # --------------------------------------------------------------------------
+# Release Smoke and Lane Checks
+# --------------------------------------------------------------------------
+# Haskell parity status:
+#   DONE: vm-smoke, firecracker-smoke, release-sbom-generate,
+#         release-license-bundle-generate, release-license-check,
+#         release-linking, release-manifest, release-checksums,
+#         build, test, verify, release-lane-readiness
+#   PENDING: release-smoke-linux, release-smoke-appimage,
+#            release-smoke-qemu, release-lane-qemu,
+#            release-lane-firecracker, release-gate-assurance
+# Shell targets below will be retired when Haskell parity is proven
+# for the remaining items (M4.3.4).
+
+# --------------------------------------------------------------------------
 # Release Packaging
 # --------------------------------------------------------------------------
 
@@ -727,6 +743,18 @@ vm-image-clean:
 	@cabal run umbravox -- vm-image-clean
 
 image-clean: vm-image-clean
+
+# --------------------------------------------------------------------------
+# Firecracker Isolated Smoke Testing
+# --------------------------------------------------------------------------
+
+firecracker-smoke:
+	@echo -e "$(BLUE)[FC-SMOKE]$(NC) Running Firecracker isolated pipeline..."
+	@cabal run umbravox -- firecracker-smoke
+
+firecracker-image-build:
+	@echo -e "$(BLUE)[FC-IMAGE]$(NC) Building/caching Firecracker image..."
+	@cabal run umbravox -- firecracker-image-build
 
 # --------------------------------------------------------------------------
 # Clean

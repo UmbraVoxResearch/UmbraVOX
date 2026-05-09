@@ -110,4 +110,70 @@ let
     copyChannel = false;
   };
 
-in image
+  # Firecracker-specific NixOS config: no GRUB, rootfs is /dev/vda directly
+  firecrackerNixosConfig = { config, lib, modulesPath, pkgs, ... }: {
+    imports = [ (modulesPath + "/profiles/qemu-guest.nix") ];
+
+    boot.loader.grub.enable = false;
+    boot.kernelParams = [ "console=ttyS0" "panic=1" "reboot=k" ];
+    boot.initrd.availableKernelModules = [
+      "virtio_pci" "virtio_blk" "virtio_net" "ext4"
+    ];
+
+    fileSystems."/" = {
+      device = "/dev/vda";
+      fsType = "ext4";
+    };
+
+    swapDevices = [];
+    networking.hostName = "umbravox-vm";
+    networking.firewall.enable = false;
+
+    systemd.services."serial-getty@ttyS0".enable = true;
+    services.getty.autologinUser = "root";
+
+    environment.systemPackages = devToolsPkgs;
+
+    fileSystems."/work" = {
+      device = "tmpfs";
+      fsType = "tmpfs";
+      options = [ "size=8G" "mode=1777" ];
+    };
+
+    documentation.enable = false;
+    programs.command-not-found.enable = false;
+    services.udisks2.enable = false;
+    security.polkit.enable = false;
+    xdg.mime.enable = false;
+    xdg.icons.enable = false;
+    nix.enable = false;
+
+    system.stateVersion = "25.05";
+  };
+
+  firecrackerNixos = import (pkgs.path + "/nixos") {
+    system = "x86_64-linux";
+    configuration = firecrackerNixosConfig;
+  };
+
+  firecrackerRootfs = import (pkgs.path + "/nixos/lib/make-disk-image.nix") {
+    inherit pkgs;
+    lib = pkgs.lib;
+    config = firecrackerNixos.config;
+    diskSize = "auto";
+    additionalSpace = "512M";
+    format = "raw";
+    partitionTableType = "none";
+    copyChannel = false;
+  };
+
+in {
+  # QEMU: full bootable disk image with GRUB + partition table
+  qemu = image;
+
+  # Firecracker: rootfs-only ext4 image (no partition table, no bootloader)
+  firecrackerRootfs = firecrackerRootfs;
+
+  # Firecracker: uncompressed vmlinux kernel (ELF, not bzImage)
+  firecrackerKernel = "${firecrackerNixos.config.system.build.kernel.dev}/vmlinux";
+}

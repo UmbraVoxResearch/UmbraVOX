@@ -58,14 +58,16 @@ MILESTONE M2: RELEASE ARCHITECTURE (NIX + VM EXECUTION)
   [x] M2.2.4 Define and document minimum glibc/ABI compatibility policy.
   [x] M2.2.5 Add deterministic manifest fields and artifact digest verification.
 
-[ ] M2.3 Linux single-file track (experimental)
-  [~] M2.3.1 Add AppImage target scaffold and non-authoritative smoke placeholder.
+[x] M2.3 Linux single-file track (experimental)
+  [x] M2.3.1 Add AppImage target scaffold and non-authoritative smoke placeholder.
+    Note: Scaffold complete; real single-file artifact deferred until musl evaluation (M2.3.2) is acted upon.
   [x] M2.3.2 Evaluate static musl feasibility and licensing implications.
   [x] M2.3.3 Keep single-file track experimental until parity and support policy are proven.
 
-[~] M2.4 VM-executed release lanes
+[x] M2.4 VM-executed release lanes
   [x] M2.4.1 QEMU/KVM lane for image bring-up, debug, and compatibility validation; NixOS VM image and Haskell orchestration now functional.
-  [~] M2.4.2 Firecracker lane as authoritative Linux release executor where practical.
+  [x] M2.4.2 Firecracker lane as authoritative Linux release executor where practical.
+    Note: Haskell orchestration and Nix image derivation implemented; vmlinux + rootfs produced by nix build .#firecracker-image.
   [x] M2.4.3 Define runner classes, isolation model, and artifact handoff mounts.
   [x] M2.4.4 Add smoke microVM lane validating produced Linux artifacts in isolation; `make vm-smoke` runs full pipeline in NixOS QEMU guest.
   [x] M2.4.4.c.4 Maintained NixOS guest image now exists via `nix build .#vm-image`, with in-guest verification via `scripts/vm-smoke-run.sh`.
@@ -84,7 +86,7 @@ MILESTONE M3: NATIVE PER-HOST BUILD SUPPORT + CROSS-TARGET POLICY
   [ ] M3.1.4.b Add an actual repo-owned native Windows CLI runner lane and smoke evidence, including build/test/release logs from the intended runner.
   [ ] M3.1.5 BSD remains source-only until native builders are available.
 
-[~] M3.2 Cross-compilation policy
+[x] M3.2 Cross-compilation policy
   [x] M3.2.1 Treat cross-built artifacts as non-authoritative until native parity evidence exists.
   [x] M3.2.2 Add behavior-parity checks for cross-built vs native-built artifacts.
   [x] M3.2.3 Publish explicit support matrix by target, builder class, and confidence tier.
@@ -111,11 +113,12 @@ MILESTONE M4: RELEASE COMPLIANCE, LICENSE, AND PROVENANCE GATES
   [x] M4.3.1 Define the minimal Haskell CLI boundary for release, readiness, and smoke commands; now includes build, test, verify, release-lane-readiness, vm-smoke, vm-image-build, vm-image-clean.
   [x] M4.3.2 Mirror current shell-bridged lane checks in Haskell entrypoints without changing semantics; build, test, verify, readiness, and VM smoke now mirrored.
   [x] M4.3.2.a Add opt-in `build-haskell`, `test-haskell`, and `verify-haskell` bridge wrappers that default to legacy Make execution until the Haskell subcommands are enabled.
-  [~] M4.3.3 Keep `Makefile` as a thin wrapper and move orchestration logic into Haskell entrypoints (build/release/smoke/readiness) where parity exists.
+  [x] M4.3.3 Keep `Makefile` as a thin wrapper and move orchestration logic into Haskell entrypoints (build/release/smoke/readiness) where parity exists.
   [x] M4.3.3.a Add Haskell `build`/`test`/`verify` orchestration subcommands with stable exit-code mapping.
   [x] M4.3.3.b Switch corresponding `Makefile` targets to call Haskell subcommands in bridge mode.
   [x] M4.3.3.c Preserve existing `nix-shell` UX by keeping `make` targets as stable aliases over Haskell orchestration.
   [ ] M4.3.4 Retire shell-specific release logic only after parity, logs, and exit codes match.
+    Note: Shell-specific release logic documented with Haskell parity status. Targets with Haskell parity: build, test, verify, readiness, vm-smoke, firecracker-smoke, SBOM, license, provenance. Pending: release-smoke-linux, release-smoke-appimage, release-lane-qemu, release-lane-firecracker, release-gate-assurance.
 
 ================================================================================
 FUTURE PLANNED (POST-MVP)
