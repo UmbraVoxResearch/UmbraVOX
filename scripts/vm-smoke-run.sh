@@ -76,8 +76,9 @@ run_step() {
     fi
 }
 
-# Step 1: Build (uses cabal build all - works offline since all deps are boot libs)
-run_step "build" make build
+# Step 1: Build everything including test suite
+# cabal build all only builds lib+exe; we need --enable-tests for the test binary
+run_step "build" cabal build all --enable-tests
 
 # After build, locate pre-built binaries for direct execution
 TEST_BIN="$(find_bin umbravox-test)"
