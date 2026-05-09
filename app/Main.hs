@@ -41,11 +41,17 @@ main = do
             exitWith =<< runBridgeCommand "release-lane-readiness" rest
         ("release-lane-readiness-bridge" : rest) ->
             exitWith =<< runBridgeCommand "release-lane-readiness-bridge" rest
+        ("vm-smoke" : rest) ->
+            exitWith =<< runBridgeCommand "vm-smoke" rest
+        ("vm-image-clean" : rest) ->
+            exitWith =<< runBridgeCommand "vm-image-clean" rest
+        ("vm-image-build" : rest) ->
+            exitWith =<< runBridgeCommand "vm-image-build" rest
         ("release-bridge" : cmd : rest) ->
             exitWith =<< runBridgeCommand cmd rest
         (cmd : _) -> do
             putStrLn $ "Unknown command: " ++ cmd
-            putStrLn "Try: build, test, verify, release-lane-readiness"
+            putStrLn "Try: build, test, verify, release-lane-readiness, vm-smoke, vm-image-build, vm-image-clean"
             exitWith (ExitFailure 64)
 
 runUi :: IO ()

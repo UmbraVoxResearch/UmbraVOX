@@ -75,6 +75,13 @@ in pkgs.mkShell {
     gnumake
     git
     pkg-config
+
+    # Image building
+    pkgs.genext2fs
+
+    # VM smoke testing
+    pkgs.qemu_kvm
+    pkgs.firecracker
   ];
 
   shellHook = ''

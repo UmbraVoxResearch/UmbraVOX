@@ -46,10 +46,10 @@ MILESTONE M2: RELEASE ARCHITECTURE (NIX + VM EXECUTION)
 ================================================================================
 
 [~] M2.1 Nix as release source-of-truth
-  [~] M2.1.1 Add `flake.nix` + `flake.lock` with pinned inputs.
-  [~] M2.1.2 Model build/test/verify/quality/release outputs as Nix derivations/checks.
+  [x] M2.1.1 Add `flake.nix` + `flake.lock` with pinned inputs.
+  [x] M2.1.2 Model build/test/verify/quality/release outputs as Nix derivations/checks; VM image added as package.
   [x] M2.1.3 Fail release on dirty worktree and non-tagged release attempts.
-  [~] M2.1.4 Keep `nix-shell` developer workflow compatible with new flake outputs.
+  [x] M2.1.4 Keep `nix-shell` developer workflow compatible with new flake outputs; shell.nix and flake devShell provide identical tools.
 
 [~] M2.2 Linux native dynamic bundle hardening (default supported artifact)
   [x] M2.2.1 Replace invalid interpreter patch approach with loader-wrapper launch.
@@ -64,11 +64,11 @@ MILESTONE M2: RELEASE ARCHITECTURE (NIX + VM EXECUTION)
   [ ] M2.3.3 Keep single-file track experimental until parity and support policy are proven.
 
 [~] M2.4 VM-executed release lanes
-  [~] M2.4.1 QEMU/KVM lane for image bring-up, debug, and compatibility validation.
+  [x] M2.4.1 QEMU/KVM lane for image bring-up, debug, and compatibility validation; NixOS VM image and Haskell orchestration now functional.
   [~] M2.4.2 Firecracker lane as authoritative Linux release executor where practical.
   [~] M2.4.3 Define runner classes, isolation model, and artifact handoff mounts.
-  [~] M2.4.4 Add smoke microVM lane validating produced Linux artifacts in isolation.
-  [~] M2.4.4.c.4 Define maintained Firecracker guest-image/config inputs and explicit in-guest verification command template that actually perform bundle verification by default.
+  [x] M2.4.4 Add smoke microVM lane validating produced Linux artifacts in isolation; `make vm-smoke` runs full pipeline in NixOS QEMU guest.
+  [x] M2.4.4.c.4 Maintained NixOS guest image now exists via `nix build .#vm-image`, with in-guest verification via `scripts/vm-smoke-run.sh`.
 
 ================================================================================
 MILESTONE M3: NATIVE PER-HOST BUILD SUPPORT + CROSS-TARGET POLICY
@@ -108,8 +108,8 @@ MILESTONE M4: RELEASE COMPLIANCE, LICENSE, AND PROVENANCE GATES
   [ ] M4.2.4 Add attestation path (future: in-toto/SLSA-style) after baseline stability.
 
 [~] M4.3 Release orchestration migration (shell bridge -> Haskell entrypoints)
-  [~] M4.3.1 Define the minimal Haskell CLI boundary for release, readiness, and smoke commands.
-  [~] M4.3.2 Mirror current shell-bridged lane checks in Haskell entrypoints without changing semantics.
+  [x] M4.3.1 Define the minimal Haskell CLI boundary for release, readiness, and smoke commands; now includes build, test, verify, release-lane-readiness, vm-smoke, vm-image-build, vm-image-clean.
+  [x] M4.3.2 Mirror current shell-bridged lane checks in Haskell entrypoints without changing semantics; build, test, verify, readiness, and VM smoke now mirrored.
   [x] M4.3.2.a Add opt-in `build-haskell`, `test-haskell`, and `verify-haskell` bridge wrappers that default to legacy Make execution until the Haskell subcommands are enabled.
   [~] M4.3.3 Keep `Makefile` as a thin wrapper and move orchestration logic into Haskell entrypoints (build/release/smoke/readiness) where parity exists.
   [x] M4.3.3.a Add Haskell `build`/`test`/`verify` orchestration subcommands with stable exit-code mapping.

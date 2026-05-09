@@ -81,6 +81,31 @@ This gate should be included in release checklists to ensure that
 material assurance changes are reflected in the documentation before
 release.
 
+## Isolated VM Pipeline
+
+`make vm-smoke` runs the full build/test/release pipeline inside an
+isolated NixOS QEMU VM:
+
+1. Builds (or reuses cached) NixOS VM image via `nix build .#vm-image`
+2. Creates a read-only ext2 source disk from the repository via `genext2fs`
+3. Boots QEMU with KVM acceleration
+4. Inside the guest: copies source to writable tmpfs, runs
+   `make build && make test && make verify && make complexity &&
+   make license && make format-check && make release-linux`
+5. Reports pass/fail based on guest exit
+
+The VM image contains all development tools (GHC, cabal, F*, Z3, etc.)
+with zero external dependencies. No network access is needed in-guest.
+
+Image caching:
+
+- The VM image is cached at `build/vm/image` (a Nix store symlink)
+- It is only rebuilt when `flake.nix` or `flake.lock` change
+- Use `make image-clean` to force a rebuild on next invocation
+
+This closes the gap between host-trusted builds and authoritative
+isolated release execution (M2.4).
+
 ## Compliance Placeholder Gates
 
 The repository now exposes non-authoritative compliance placeholders for
