@@ -204,6 +204,7 @@ library
     UmbraVox.Tools.ReleaseBridge
     UmbraVox.Tools.Compliance
     UmbraVox.Tools.Provenance
+    UmbraVox.Tools.PcapVerify
     -- Headless runtime
     UmbraVox.Runtime.Headless
   build-depends:

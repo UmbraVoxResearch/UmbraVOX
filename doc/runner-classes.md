@@ -87,6 +87,92 @@ tcpdump -i br-umbravox-a -w build/evidence/lan-a.pcap &
 tcpdump -i br-umbravox-b -w build/evidence/lan-b.pcap &
 ```
 
+## Integration Test Scenarios (M5.4)
+
+### M5.4.4: mDNS Peer Discovery
+
+Tests that UmbraVOX agents discover each other via mDNS multicast
+announcements on a virtual LAN.
+
+**Prerequisites**: Agents on the same dgram multicast group or TAP bridge.
+mDNS uses UDP 224.0.0.251:5353 which works on L2 broadcast domains.
+
+**Flow**:
+1. Agent 0 starts, binds port 7853, announces via mDNS
+2. Agent 1 starts, binds port 7853, announces via mDNS
+3. Agent 2 starts, binds port 7853, announces via mDNS
+4. After 10-15s, each agent should have discovered the other 2
+5. Verify: mDNS peer list contains correct IPs and ports
+
+**Verification**:
+- Agent logs contain `mdns.discovered` events
+- Peer count matches (N-1 peers per agent)
+- No self-discovery (filtered by pubkey)
+
+**Current status**: mDNS code exists in `src/UmbraVox/Network/MDNS.hs`.
+Integration testing requires the headless binary to run the mDNS
+subsystem inside the VM. Currently verified at the unit test level
+(`make test-core-network`).
+
+### M5.4.5: PEX Cross-LAN Discovery
+
+Tests that agents on separate LANs discover each other via the Peer
+Exchange (PEX) protocol after a seed connection bridges the two LANs.
+
+**Prerequisites**: Dual-LAN setup (TAP+bridge, M5.3.3). Agent 0 on
+LAN A seeds a connection to Agent 3 on LAN B.
+
+**Flow**:
+1. LAN A: Agents 0, 1, 2 discover each other via mDNS
+2. LAN B: Agents 3, 4, 5 discover each other via mDNS
+3. Agent 0 connects to Agent 3 via seed peer (cross-LAN TCP)
+4. PEX exchange: Agent 0 sends [1, 2] to Agent 3
+5. PEX exchange: Agent 3 sends [4, 5] to Agent 0
+6. Agent 0 learns about Agents 4, 5 (marked indirect, 1-hop)
+7. Agent 3 learns about Agents 1, 2 (marked indirect, 1-hop)
+
+**1-hop rule limitation**:
+- Agent 1 does NOT learn about Agent 4 (would require 2 hops)
+- Only the seed agents (0 and 3) gain cross-LAN visibility
+- Full mesh requires explicit connections or a relay mechanism
+
+**Verification**:
+- Agent 0 logs `pex.exchange` with sent=2, received=2
+- Agent 3 logs `pex.exchange` with sent=2, received=2
+- Agent 0 logs `pex.peer_received` for Agents 4 and 5
+- Agent 3 logs `pex.peer_received` for Agents 1 and 2
+- Agents 1, 2, 4, 5 have NO cross-LAN peers (1-hop rule)
+
+**Current status**: PEX exchange is wired into the handshake path
+(M5.2.1). Received peers are logged with IP:port. Auto-connect is
+best-effort (M5.2.2). Full cross-LAN testing requires dual-LAN
+infrastructure (M5.3.3) and the headless binary in the release bundle.
+
+### M5.4.6: Disconnect/Reconnect Resilience
+
+Tests that agents handle peer disconnection gracefully and can
+reconnect after network interruption.
+
+**Flow**:
+1. Agents 0 and 1 establish connection and exchange messages
+2. Agent 1's network is interrupted (kill QEMU network device)
+3. Agent 0 detects disconnection within 5 seconds
+4. Agent 0's contact list shows Agent 1 as offline
+5. Agent 1's network is restored
+6. Agent 1 reconnects to Agent 0
+7. Message exchange resumes
+
+**Verification**:
+- Agent 0 logs `transport.peer_disconnected` for Agent 1
+- Agent 0's session status shows `Offline`
+- After reconnect: new handshake completes
+- Post-reconnect messages are delivered correctly
+- No message from the disconnected period is lost or duplicated
+
+**Current status**: Disconnect detection exists in the TCP transport
+layer. Reconnect requires the headless binary. Currently tested at
+the unit level (`make test-tcp`, `make test-recovery`).
+
 ## Artifact Handoff
 
 ### VM Runner (Class 2) Artifact Flow

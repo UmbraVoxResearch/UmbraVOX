@@ -7,6 +7,8 @@
 module UmbraVox.Runtime.Headless
     ( HeadlessConfig(..)
     , runHeadlessNode
+    , createHeadlessState
+    , initCoreRuntime
     ) where
 
 import Control.Concurrent (threadDelay)
@@ -16,6 +18,7 @@ import qualified Data.Map.Strict as Map
 import System.Exit (ExitCode(..))
 
 import UmbraVox.App.Startup (newDefaultAppConfig, initializeLocalIdentity)
+import UmbraVox.Crypto.Signal.X3DH (IdentityKey)
 import UmbraVox.TUI.Types
     ( AppConfig(..), AppState(..), Layout(..), Pane(..), SessionInfo(..) )
 import UmbraVox.TUI.RuntimeNetwork (startListenerIfNeeded)
@@ -29,25 +32,33 @@ data HeadlessConfig = HeadlessConfig
     , hcScenario   :: String     -- ^ scenario name: "listen", "exchange", "flood"
     }
 
+-- | Initialize the core runtime: create config and identity.
+-- Both the TUI and headless runtimes share this init path.
+-- The caller is responsible for building an AppState (with real or dummy
+-- TUI fields) and starting the listener/mDNS afterwards.
+initCoreRuntime :: Maybe Int -> IO (AppConfig, IdentityKey)
+initCoreRuntime mPort = do
+    appCfg <- newDefaultAppConfig
+    case mPort of
+        Just p  -> writeIORef (cfgListenPort appCfg) p
+        Nothing -> pure ()
+    identity <- initializeLocalIdentity appCfg
+    pure (appCfg, identity)
+
 -- | Run a headless UmbraVOX node to completion.
 runHeadlessNode :: HeadlessConfig -> IO ExitCode
 runHeadlessNode cfg = do
     putStrLn $ "[HEADLESS] agent " ++ show (hcAgentId cfg)
             ++ " starting on port " ++ show (hcPort cfg)
 
-    -- 1. Create app config
-    appCfg <- newDefaultAppConfig
-    -- Override listen port
-    writeIORef (cfgListenPort appCfg) (hcPort cfg)
-
-    -- 2. Initialize identity
-    identity <- initializeLocalIdentity appCfg
+    -- 1. Shared core init (config + identity)
+    (appCfg, identity) <- initCoreRuntime (Just (hcPort cfg))
     putStrLn "[HEADLESS] identity initialized"
 
-    -- 3. Create dummy AppState (no TUI)
+    -- 2. Create dummy AppState (no TUI)
     st <- createHeadlessState appCfg
 
-    -- 4. Start listener
+    -- 3. Start listener
     activePort <- readIORef (cfgListenPort appCfg)
     _ <- startListenerIfNeeded st identity activePort "headless"
     putStrLn $ "[HEADLESS] listening on port " ++ show activePort

@@ -17,8 +17,9 @@ import UmbraVox.TUI.Input (eventLoop)
 import UmbraVox.TUI.RuntimeNetwork (startListenerIfNeeded)
 import UmbraVox.TUI.RuntimeSettings (restartMDNS)
 import UmbraVox.Tools.ReleaseBridge (runBridgeCommand)
+import UmbraVox.Runtime.Headless (initCoreRuntime)
 import UmbraVox.App.Startup
-    ( newDefaultAppConfig, initializeLocalIdentity, applyPersistenceAnswer
+    ( applyPersistenceAnswer
     , resolvePersistencePreference, persistenceAnswerEnables
     )
 
@@ -75,11 +76,13 @@ main = do
             exitWith =<< runBridgeCommand "gate-assurance" rest
         ("vm-integration-test" : rest) ->
             exitWith =<< runBridgeCommand "vm-integration-test" rest
+        ("verify-traffic" : rest) ->
+            exitWith =<< runBridgeCommand "verify-traffic" rest
         ("release-bridge" : cmd : rest) ->
             exitWith =<< runBridgeCommand cmd rest
         (cmd : _) -> do
             putStrLn $ "Unknown command: " ++ cmd
-            putStrLn "Try: build, test, verify, release-lane-readiness, vm-smoke, vm-image-build, vm-image-clean, firecracker-smoke, firecracker-image-build, release-sbom-generate, release-license-bundle-generate, release-license-check, release-linking, release-manifest, release-checksums, smoke-linux, smoke-appimage, lane-qemu, lane-firecracker, gate-assurance, vm-integration-test"
+            putStrLn "Try: build, test, verify, release-lane-readiness, vm-smoke, vm-image-build, vm-image-clean, firecracker-smoke, firecracker-image-build, release-sbom-generate, release-license-bundle-generate, release-license-check, release-linking, release-manifest, release-checksums, smoke-linux, smoke-appimage, lane-qemu, lane-firecracker, gate-assurance, vm-integration-test, verify-traffic"
             exitWith (ExitFailure 64)
 
 runUi :: IO ()
@@ -88,7 +91,8 @@ runUi = do
     hSetEncoding stdin utf8
     hSetEncoding stdout utf8
     hSetBuffering stdout (BlockBuffering (Just 8192))
-    cfg <- newDefaultAppConfig
+    -- Shared core init (config + identity) via headless runtime
+    (cfg, identity) <- initCoreRuntime Nothing
     debugLogging <- runtimeLoggingEnabled cfg
     (initRows, initCols) <- getTermSize
     let (r0, c0) = clampSize initRows initCols
@@ -106,7 +110,7 @@ runUi = do
                        <*> newIORef 0        -- asMenuIndex
                        <*> newIORef 0        -- asDialogTab
                        <*> newIORef Nothing  -- asLastRenderToken
-    identity <- initializeLocalIdentity cfg
+    -- identity already initialized by initCoreRuntime above
     when debugLogging $ logEvent cfg "app.start" []
     activeListenPort <- readIORef (cfgListenPort cfg)
     putStrLn ""

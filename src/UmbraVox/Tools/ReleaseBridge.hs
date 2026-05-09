@@ -37,6 +37,7 @@ import System.Process (CreateProcess(..), StdStream(Inherit), createProcess,
 import System.Timeout (timeout)
 
 import UmbraVox.Tools.Compliance (generateSBOM, generateLicenseBundle, checkLicensePolicy, analyzeLinkingObligations)
+import UmbraVox.Tools.PcapVerify (verifyTrafficEncryption)
 import UmbraVox.Tools.Provenance (generateReleaseManifest, emitReleaseChecksums)
 
 runBridgeCommand :: String -> [String] -> IO ExitCode
@@ -72,6 +73,7 @@ runBridgeCommand "lane-qemu" args = runLaneQemu args
 runBridgeCommand "lane-firecracker" args = runLaneFirecracker args
 runBridgeCommand "gate-assurance" args = runGateAssurance args
 runBridgeCommand "vm-integration-test" args = runIntegrationTest args
+runBridgeCommand "verify-traffic" _ = verifyTrafficEncryption
 runBridgeCommand cmd _ = do
     hPutStrLn stderr $ "Unknown orchestration bridge command: " ++ cmd
     pure (ExitFailure 64)

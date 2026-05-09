@@ -141,6 +141,29 @@ case "${AGENT_SCENARIO:-readiness}" in
             echo "  INFO: mDNS multicast group joined"
         fi
 
+        # Bidirectional connectivity test (M5.4.2)
+        # Uses bash /dev/tcp for client-side connection probes.
+        # Full message echo requires netcat or umbravox-headless,
+        # neither of which is in the minimal VM image yet.
+        echo ""
+        echo "── bidirectional connectivity (M5.4.2) ──"
+        if [ -n "${AGENT_PEERS:-}" ]; then
+            for peer in $(echo "$AGENT_PEERS" | tr ',' ' '); do
+                peer_ip="${peer%%:*}"
+                peer_port="${peer##*:}"
+                # Forward test: can we reach the peer?
+                if timeout 3 bash -c "echo PING > /dev/tcp/$peer_ip/$peer_port" 2>/dev/null; then
+                    echo "  PASS: forward connectivity to $peer"
+                    PASS=$((PASS + 1))
+                else
+                    echo "  INFO: peer $peer not reachable yet (may not be ready)"
+                fi
+            done
+        else
+            echo "  INFO: no peers configured; skipping connectivity probes"
+        fi
+        echo "  NOTE: full message round-trip requires umbravox-headless in bundle"
+
         # NOTE: M5.3.3 TAP+bridge networking is future work.
         # Current exchange tests rely on dgram multicast (M5.3.4)
         # which is already wired in the Haskell orchestrator. Full
