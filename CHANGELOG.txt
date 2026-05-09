@@ -7,6 +7,8 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 ## [Unreleased]
 
 ### Added
+- Added boundary/edge case differential tests (empty input, pad boundaries, block boundaries, AES roundtrip) (M6.2.4).
+- Added HACL* adoption evaluation (`doc/hacl-evaluation.md`) with coverage assessment and correspondence argument (M6.3.5, M6.3.6).
 - Added differential test harness (`Test.Crypto.Differential`) comparing C/FFI output against Haskell oracle for all 10 primitives with NIST/RFC test vectors and property-based fuzzing (M6.2).
 - Added F* assume reduction plan (`doc/fstar-assume-reduction.md`) categorizing 217 assumes across 17 specs with prioritized reduction strategy (M6.3.2).
 - Added real UDP transport with sequence-number reliability layer (F4.1).

@@ -53,6 +53,7 @@ runTests = do
         , testKeccakDifferential
         , testX25519Differential
         , testPropertyFuzz
+        , testEdgeCases
         ]
     let passed = length (filter id results)
         total  = length results
@@ -299,3 +300,54 @@ testPropertyFuzz =
             hsResult = SHA256.sha256 input
         ffiResult <- FFISHA256.sha256 input
         pure (hsResult == ffiResult)
+
+------------------------------------------------------------------------
+-- Edge case / boundary differential tests
+------------------------------------------------------------------------
+
+testEdgeCases :: IO Bool
+testEdgeCases = do
+    putStrLn "  Edge case differential tests:"
+    results <- sequence
+        [ edgeCase "SHA-256 empty"
+            (SHA256.sha256 BS.empty)
+            (FFISHA256.sha256 BS.empty)
+        , edgeCase "SHA-256 single byte"
+            (SHA256.sha256 (BS.singleton 0x42))
+            (FFISHA256.sha256 (BS.singleton 0x42))
+        , edgeCase "SHA-256 55 bytes (pad boundary)"
+            (SHA256.sha256 (BS.replicate 55 0x61))
+            (FFISHA256.sha256 (BS.replicate 55 0x61))
+        , edgeCase "SHA-256 56 bytes (pad boundary)"
+            (SHA256.sha256 (BS.replicate 56 0x61))
+            (FFISHA256.sha256 (BS.replicate 56 0x61))
+        , edgeCase "SHA-256 64 bytes (block boundary)"
+            (SHA256.sha256 (BS.replicate 64 0x61))
+            (FFISHA256.sha256 (BS.replicate 64 0x61))
+        , edgeCase "SHA-256 128 bytes (two blocks)"
+            (SHA256.sha256 (BS.replicate 128 0x61))
+            (FFISHA256.sha256 (BS.replicate 128 0x61))
+        , edgeCase "SHA-512 empty"
+            (SHA512.sha512 BS.empty)
+            (FFISHA512.sha512 BS.empty)
+        , edgeCase "HMAC-SHA256 empty key+msg"
+            (HMAC.hmacSHA256 BS.empty BS.empty)
+            (FFIHMAC.hmacSHA256 BS.empty BS.empty)
+        , edgeCase "AES-256 roundtrip"
+            (AES.aesDecrypt aesKey (AES.aesEncrypt aesKey aesBlock))
+            (FFIAES256.aesDecrypt aesKey (AES.aesEncrypt aesKey aesBlock))
+        ]
+    let passed = length (filter id results)
+        total  = length results
+    putStrLn $ "  Edge cases: " ++ show passed ++ "/" ++ show total ++ " passed."
+    pure (and results)
+  where
+    aesKey   = BS.pack [0..31]
+    aesBlock = BS.pack [0..15]
+
+edgeCase :: String -> ByteString -> IO ByteString -> IO Bool
+edgeCase label hsResult ffiAction = do
+    ffiResult <- ffiAction
+    let ok = hsResult == ffiResult
+    putStrLn $ (if ok then "    PASS: " else "    FAIL: ") ++ label
+    pure ok
