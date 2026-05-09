@@ -82,6 +82,59 @@ let
       options = [ "size=8G" "mode=1777" ];
     };
 
+    # Auto-run smoke pipeline on boot, then shut down
+    systemd.services.umbravox-smoke = {
+      description = "UmbraVOX isolated build/test/release smoke";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "local-fs.target" "network.target" ];
+      path = devToolsPkgs ++ [ pkgs.mount pkgs.util-linux ];
+      environment = {
+        HOME = "/root";
+        CABAL_DIR = "/root/.cabal";
+      };
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = pkgs.writeShellScript "umbravox-vm-smoke" ''
+          set -euo pipefail
+          export PATH=/run/current-system/sw/bin:/run/current-system/sw/sbin:$PATH
+
+          # Offline cabal config (no network in guest)
+          mkdir -p /root/.cabal
+          cat > /root/.cabal/config << 'CABALEOF'
+          offline: True
+          nix: False
+          CABALEOF
+
+          # Mount source disk and delegate to the in-guest script
+          mkdir -p /mnt/src
+          mount -o ro /dev/vdb /mnt/src
+          exec /run/current-system/sw/bin/bash /mnt/src/scripts/vm-smoke-run.sh
+        '';
+        StandardOutput = "journal+console";
+        StandardError = "journal+console";
+        TimeoutStartSec = "1800";
+      };
+    };
+
+    # Shut down after smoke completes (success or failure)
+    systemd.services.umbravox-shutdown = {
+      description = "Shutdown after smoke";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "umbravox-smoke.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${pkgs.systemd}/bin/systemctl poweroff";
+      };
+    };
+
+    # FHS compatibility for Makefile (SHELL := /bin/bash) and shebangs
+    system.activationScripts.fhsCompat = ''
+      mkdir -p /bin /usr/bin
+      ln -sf /run/current-system/sw/bin/bash /bin/bash
+      ln -sf /run/current-system/sw/bin/sh /bin/sh
+      ln -sf /run/current-system/sw/bin/env /usr/bin/env
+    '';
+
     # Minimize image size
     documentation.enable = false;
     programs.command-not-found.enable = false;
