@@ -65,7 +65,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify verify-haskell complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity vm-smoke vm-image-build vm-image-clean image-clean clean cleandb cleanall help
+.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify verify-haskell complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity vm-smoke vm-image-build vm-image-clean image-clean release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -171,6 +171,12 @@ help:
 	@echo "    make release-compliance Run placeholder SBOM/license compliance gates"
 	@echo "    make release-sbom Check SBOM tooling presence for future generation"
 	@echo "    make release-license-bundle Check license-bundle tooling presence for future generation"
+	@echo "    make release-sbom-generate Generate SBOM for release artifacts"
+	@echo "    make release-license-bundle-generate Generate third-party license bundle"
+	@echo "    make release-license-check Check dependency license policy"
+	@echo "    make release-linking Analyze static/dynamic linking obligations"
+	@echo "    make release-manifest Generate release provenance manifest"
+	@echo "    make release-checksums Emit SHA-256 checksums for release artifacts"
 	@echo "    make format-check Check for tabs and trailing whitespace"
 	@echo "    make release-gate-assurance Run assurance matrix freshness gate"
 	@echo "    make quality     Same as make (lint/format-check are non-blocking)"
@@ -470,6 +476,30 @@ release-license-bundle:
 		exit 1; \
 	fi
 	@echo -e "$(GREEN)[COMPLIANCE]$(NC) License-bundle gate is placeholder-only for now; no artifact emitted."
+
+release-sbom-generate:
+	@echo -e "$(BLUE)[COMPLIANCE]$(NC) Generating SBOM..."
+	@cabal run umbravox -- release-sbom-generate
+
+release-license-bundle-generate:
+	@echo -e "$(BLUE)[COMPLIANCE]$(NC) Generating third-party license bundle..."
+	@cabal run umbravox -- release-license-bundle-generate
+
+release-license-check:
+	@echo -e "$(BLUE)[COMPLIANCE]$(NC) Checking license policy..."
+	@cabal run umbravox -- release-license-check
+
+release-linking:
+	@echo -e "$(BLUE)[COMPLIANCE]$(NC) Analyzing linking obligations..."
+	@cabal run umbravox -- release-linking
+
+release-manifest:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Generating release provenance manifest..."
+	@cabal run umbravox -- release-manifest
+
+release-checksums:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Emitting release artifact checksums..."
+	@cabal run umbravox -- release-checksums
 
 # --------------------------------------------------------------------------
 # Code Formatting Check

@@ -55,6 +55,12 @@ make release-smoke-firecracker-pinned
 make release-lane-qemu
 make release-lane-firecracker
 make release-lane-readiness
+make release-sbom-generate
+make release-license-bundle-generate
+make release-license-check
+make release-linking
+make release-manifest
+make release-checksums
 make release-gate-assurance
 make vm-smoke
 make vm-image-build
@@ -126,6 +132,20 @@ scripts/nix-flake.sh flake show --no-write-lock-file
 - `make build-haskell`, `make test-haskell`, and `make verify-haskell` are
   bridge wrappers for the corresponding build/test/verify commands. They stay
   on the legacy `Makefile` path unless `UMBRAVOX_USE_HASKELL_ORCH=1` is set.
+- `make release-sbom-generate` generates a Software Bill of Materials
+  listing all Haskell dependencies, C sources, and build tools with their
+  licenses.
+- `make release-license-bundle-generate` generates aggregated third-party
+  license text for all dependencies.
+- `make release-license-check` enforces the license allow-list policy
+  against all known dependencies.
+- `make release-linking` analyzes static vs dynamic linking obligations
+  for the release bundle.
+- `make release-manifest` generates a release provenance manifest with
+  git commit, tag, builder info, and SHA-256 digests for all artifacts
+  under `build/releases/`.
+- `make release-checksums` emits SHA-256 checksums for all release
+  artifacts to stdout and `build/releases/SHA256SUMS.txt`.
 - `make release-gate-assurance` checks that the assurance matrix
   (`doc/assurance-matrix.md`) is present, contains the required sections,
   and was updated at least as recently as any material crypto source change.
