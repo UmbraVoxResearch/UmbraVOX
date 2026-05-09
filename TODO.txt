@@ -65,7 +65,7 @@ MILESTONE M2: RELEASE ARCHITECTURE (NIX + VM EXECUTION)
   [~] M2.4.2 Firecracker lane as authoritative Linux release executor where practical.
   [~] M2.4.3 Define runner classes, isolation model, and artifact handoff mounts.
   [~] M2.4.4 Add smoke microVM lane validating produced Linux artifacts in isolation.
-  [ ] M2.4.4.c.4 Define maintained Firecracker guest-image/config inputs and in-guest verification command that actually perform bundle verification by default.
+  [~] M2.4.4.c.4 Define maintained Firecracker guest-image/config inputs and explicit in-guest verification command template that actually perform bundle verification by default.
 
 ================================================================================
 MILESTONE M3: NATIVE PER-HOST BUILD SUPPORT + CROSS-TARGET POLICY
@@ -103,6 +103,12 @@ MILESTONE M4: RELEASE COMPLIANCE, LICENSE, AND PROVENANCE GATES
   [ ] M4.2.2 Sign manifest/checksums.
   [ ] M4.2.3 Add reproducibility rebuild-and-compare lane for Linux artifacts.
   [ ] M4.2.4 Add attestation path (future: in-toto/SLSA-style) after baseline stability.
+
+[~] M4.3 Release orchestration migration (shell bridge -> Haskell entrypoints)
+  [~] M4.3.1 Define the minimal Haskell CLI boundary for release, readiness, and smoke commands.
+  [ ] M4.3.2 Mirror current shell-bridged lane checks in Haskell entrypoints without changing semantics.
+  [ ] M4.3.3 Move `Makefile` and docs wrappers to call Haskell entrypoints where they exist.
+  [ ] M4.3.4 Retire shell-specific release logic only after parity, logs, and exit codes match.
 
 ================================================================================
 FUTURE PLANNED (POST-MVP)

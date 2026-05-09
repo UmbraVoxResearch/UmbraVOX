@@ -41,6 +41,27 @@ microVM entrypoints that now support direct pinned boot for both VMMs:
 - `make release-lane-readiness` runs the aggregate native runner readiness
   checks for Linux x86_64, Linux arm64, macOS, Windows, and BSD.
 
+## Orchestration Migration
+
+Current release orchestration is still bridge-mode:
+
+- `Makefile` targets dispatch to shell scripts for lane checks and smoke
+  scaffolding.
+- That shell layer is a compatibility bridge, not the final orchestration
+  boundary.
+- `make release-lane-readiness-haskell` now routes the readiness command
+  through a minimal Haskell entrypoint, but it still shells out to the current
+  script implementation.
+- The migration is phased:
+  1. add minimal Haskell entrypoints that mirror existing shell behavior
+  2. keep the shell wrappers as thin adapters while parity is proven
+  3. move documentation and `Makefile` targets to the Haskell entrypoints
+  4. retire shell-specific logic only after logs, exit codes, and coverage
+     match the existing bridge behavior
+
+Until those phases complete, release/readiness scripts should be treated as
+current operational glue rather than the desired end state.
+
 ## Compliance Placeholder Gates
 
 The repository now exposes non-authoritative compliance placeholders for

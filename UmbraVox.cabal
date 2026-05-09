@@ -200,6 +200,7 @@ library
     UmbraVox.Tools.Complexity
     UmbraVox.Tools.FStarVerify
     UmbraVox.Tools.FetchReferences
+    UmbraVox.Tools.ReleaseBridge
   build-depends:
     base         >= 4.18  && < 5,
     bytestring   >= 0.11  && < 0.13,

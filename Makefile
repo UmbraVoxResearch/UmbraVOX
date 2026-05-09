@@ -52,6 +52,7 @@
 #   make release-lane-qemu - Validate QEMU/KVM release-lane host prerequisites
 #   make release-lane-firecracker - Validate Firecracker release-lane host prerequisites
 #   make release-lane-readiness - Run aggregate native release-lane readiness checks
+#   make release-lane-readiness-haskell - Run the Haskell bridge for readiness checks
 #   make sanity       - Check Makefile wiring for release smoke/microVM helpers
 #   make evidence     - Run quality and write a publication evidence bundle
 #   make clean        - Remove build artifacts, build/, and dist-newstyle
@@ -62,6 +63,7 @@
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
 .PHONY: all build run test test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity clean cleandb cleanall help
+.PHONY: all build run test test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -150,6 +152,7 @@ help:
 	@echo "    make release-lane-qemu Validate QEMU/KVM release-lane prerequisites"
 	@echo "    make release-lane-firecracker Validate Firecracker release-lane prerequisites"
 	@echo "    make release-lane-readiness Run aggregate native release-lane readiness checks"
+	@echo "    make release-lane-readiness-haskell Run the Haskell bridge for readiness checks"
 	@echo "    make release-windows-cli Build Windows CLI source release zip"
 	@echo "    make release-macos-terminal Build macOS terminal source release tarball"
 	@echo "    make release-bsd-terminal Build BSD terminal source release tarball"
@@ -548,6 +551,10 @@ release-lane-readiness:
 		fi; \
 	done; \
 	exit $$status
+
+release-lane-readiness-haskell:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Running Haskell bridge for release-lane readiness..."
+	@cabal run umbravox -- release-lane-readiness
 
 release-windows-cli:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Building Windows CLI source release..."
