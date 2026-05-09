@@ -122,7 +122,7 @@ testDefaultConfigFlags =
                    , "--include", "/some/path"
                    , "--odir", "/some/path" </> "_output"
                    , "--cache_dir", "/some/path" </> "_cache"
-                   , "--z3rlimit", "60"
+                   , "--z3rlimit", "300"
                    ]
     in assertEq "defaultConfig vcFlags"
         expected
