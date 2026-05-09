@@ -163,6 +163,15 @@ scripts/nix-flake.sh flake show --no-write-lock-file
   isolated guest. No network access is needed in-guest. The VM image is
   cached at `build/vm/image` and only rebuilt when `flake.nix` or
   `flake.lock` change.
+- To capture VM smoke evidence for release qualification, redirect the
+  output to `build/evidence/`:
+  ```bash
+  make vm-smoke 2>&1 | tee build/evidence/vm-smoke-linux-x86_64.log
+  ```
+  The log includes kernel version, hostname, git commit, artifact
+  SHA-256, and per-step pass/fail results. This serves as the
+  dedicated Linux x86_64 runner evidence (M3.1.1.b) once all 8 steps
+  pass.
 - `make vm-image-build` builds and caches the NixOS VM image without
   running the smoke pipeline.
 - `make vm-image-clean` removes the cached VM image.

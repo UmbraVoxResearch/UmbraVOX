@@ -118,6 +118,12 @@ else
     FAIL=$((FAIL + 1))
 fi
 
+# Report F* module results for evidence
+if [ -n "$FSTAR_BIN" ] && [ -d test/evidence/formal-proofs/fstar/_cache ]; then
+    CHECKED_COUNT=$(ls test/evidence/formal-proofs/fstar/_cache/*.checked 2>/dev/null | wc -l)
+    echo "  F* cache: $CHECKED_COUNT of 17 modules cached"
+fi
+
 # Write F* cache to output disk (/dev/vdc) if present.
 # This is used by the two-stage image build to extract .checked files.
 if [ -b /dev/vdc ]; then
@@ -184,6 +190,21 @@ echo ""
 echo "========================================"
 echo "  SMOKE SUMMARY: $PASS passed, $FAIL failed"
 echo "========================================"
+
+# ── Evidence summary ────────────────────────────────────────────────
+echo ""
+echo "── evidence ──"
+echo "  kernel:     $(uname -r)"
+echo "  hostname:   $(hostname)"
+echo "  date:       $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+echo "  git commit: $(git rev-parse HEAD 2>/dev/null || echo unknown)"
+if [ -d build/releases ]; then
+    ARTIFACT=$(ls build/releases/umbravox-*-linux-x86_64.tar.gz 2>/dev/null | head -1)
+    if [ -n "$ARTIFACT" ]; then
+        echo "  artifact:   $(basename $ARTIFACT)"
+        echo "  sha256:     $(sha256sum $ARTIFACT 2>/dev/null | cut -d' ' -f1)"
+    fi
+fi
 
 if [ "$FAIL" -eq 0 ]; then
     echo "SMOKE_RESULT=PASS"
