@@ -25,6 +25,9 @@ import System.Process (CreateProcess(..), StdStream(Inherit), createProcess,
                        proc, waitForProcess)
 import System.Timeout (timeout)
 
+import UmbraVox.Tools.Compliance (generateSBOM, generateLicenseBundle, checkLicensePolicy, analyzeLinkingObligations)
+import UmbraVox.Tools.Provenance (generateReleaseManifest, emitReleaseChecksums)
+
 runBridgeCommand :: String -> [String] -> IO ExitCode
 runBridgeCommand "build" args
     | "--orchestrated" `elem` args = runOrchestratedBuild args
@@ -42,6 +45,12 @@ runBridgeCommand "vm-image-clean" args = runVMImageClean args
 runBridgeCommand "vm-image-build" _ = do
     _ <- ensureVMImage
     pure ExitSuccess
+runBridgeCommand "release-sbom-generate" _ = generateSBOM
+runBridgeCommand "release-license-bundle-generate" _ = generateLicenseBundle
+runBridgeCommand "release-license-check" _ = checkLicensePolicy
+runBridgeCommand "release-linking" _ = analyzeLinkingObligations
+runBridgeCommand "release-manifest" _ = generateReleaseManifest
+runBridgeCommand "release-checksums" _ = emitReleaseChecksums
 runBridgeCommand cmd _ = do
     hPutStrLn stderr $ "Unknown orchestration bridge command: " ++ cmd
     pure (ExitFailure 64)

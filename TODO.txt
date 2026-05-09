@@ -45,13 +45,13 @@ MILESTONE M1: MVP ASSURANCE CLOSEOUT (BLOCKS PUBLICATION)
 MILESTONE M2: RELEASE ARCHITECTURE (NIX + VM EXECUTION)
 ================================================================================
 
-[~] M2.1 Nix as release source-of-truth
+[x] M2.1 Nix as release source-of-truth
   [x] M2.1.1 Add `flake.nix` + `flake.lock` with pinned inputs.
   [x] M2.1.2 Model build/test/verify/quality/release outputs as Nix derivations/checks; VM image added as package.
   [x] M2.1.3 Fail release on dirty worktree and non-tagged release attempts.
   [x] M2.1.4 Keep `nix-shell` developer workflow compatible with new flake outputs; shell.nix and flake devShell provide identical tools.
 
-[~] M2.2 Linux native dynamic bundle hardening (default supported artifact)
+[x] M2.2 Linux native dynamic bundle hardening (default supported artifact)
   [x] M2.2.1 Replace invalid interpreter patch approach with loader-wrapper launch.
   [x] M2.2.2 Resolve full transitive runtime closure (not only shallow `ldd` deps).
   [x] M2.2.3 Add clean-room smoke run in isolated Linux VM/container.
@@ -60,13 +60,13 @@ MILESTONE M2: RELEASE ARCHITECTURE (NIX + VM EXECUTION)
 
 [ ] M2.3 Linux single-file track (experimental)
   [~] M2.3.1 Add AppImage target scaffold and non-authoritative smoke placeholder.
-  [ ] M2.3.2 Evaluate static musl feasibility and licensing implications.
-  [ ] M2.3.3 Keep single-file track experimental until parity and support policy are proven.
+  [x] M2.3.2 Evaluate static musl feasibility and licensing implications.
+  [x] M2.3.3 Keep single-file track experimental until parity and support policy are proven.
 
 [~] M2.4 VM-executed release lanes
   [x] M2.4.1 QEMU/KVM lane for image bring-up, debug, and compatibility validation; NixOS VM image and Haskell orchestration now functional.
   [~] M2.4.2 Firecracker lane as authoritative Linux release executor where practical.
-  [~] M2.4.3 Define runner classes, isolation model, and artifact handoff mounts.
+  [x] M2.4.3 Define runner classes, isolation model, and artifact handoff mounts.
   [x] M2.4.4 Add smoke microVM lane validating produced Linux artifacts in isolation; `make vm-smoke` runs full pipeline in NixOS QEMU guest.
   [x] M2.4.4.c.4 Maintained NixOS guest image now exists via `nix build .#vm-image`, with in-guest verification via `scripts/vm-smoke-run.sh`.
 
@@ -86,7 +86,7 @@ MILESTONE M3: NATIVE PER-HOST BUILD SUPPORT + CROSS-TARGET POLICY
 
 [~] M3.2 Cross-compilation policy
   [x] M3.2.1 Treat cross-built artifacts as non-authoritative until native parity evidence exists.
-  [ ] M3.2.2 Add behavior-parity checks for cross-built vs native-built artifacts.
+  [x] M3.2.2 Add behavior-parity checks for cross-built vs native-built artifacts.
   [x] M3.2.3 Publish explicit support matrix by target, builder class, and confidence tier.
   [x] M3.2.4 Document aggregate release-readiness posture and explicit remaining native-lane gaps by target.
 
@@ -94,15 +94,15 @@ MILESTONE M3: NATIVE PER-HOST BUILD SUPPORT + CROSS-TARGET POLICY
 MILESTONE M4: RELEASE COMPLIANCE, LICENSE, AND PROVENANCE GATES
 ================================================================================
 
-[~] M4.1 Licensing and SBOM gates
+[x] M4.1 Licensing and SBOM gates
   Note: placeholder gates now exist (`make release-compliance`, `make release-sbom`, `make release-license-bundle`); the artifact generation and policy enforcement items below remain pending.
-  [ ] M4.1.1 Generate SBOM per artifact.
-  [ ] M4.1.2 Generate third-party license bundle per artifact.
-  [ ] M4.1.3 Enforce allow/deny license policy in release pipeline.
-  [ ] M4.1.4 Track static vs dynamic linking obligations by target.
+  [x] M4.1.1 Generate SBOM per artifact.
+  [x] M4.1.2 Generate third-party license bundle per artifact.
+  [x] M4.1.3 Enforce allow/deny license policy in release pipeline.
+  [x] M4.1.4 Track static vs dynamic linking obligations by target.
 
-[ ] M4.2 Provenance and attestation
-  [ ] M4.2.1 Emit checksums + structured manifest (inputs, commit/tag, artifact digests).
+[~] M4.2 Provenance and attestation
+  [x] M4.2.1 Emit checksums + structured manifest (inputs, commit/tag, artifact digests).
   [ ] M4.2.2 Sign manifest/checksums.
   [ ] M4.2.3 Add reproducibility rebuild-and-compare lane for Linux artifacts.
   [ ] M4.2.4 Add attestation path (future: in-toto/SLSA-style) after baseline stability.

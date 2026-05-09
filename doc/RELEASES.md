@@ -108,18 +108,37 @@ isolated release execution (M2.4).
 
 ## Compliance Placeholder Gates
 
-The repository now exposes non-authoritative compliance placeholders for
-future SBOM and third-party license bundle generation:
+The repository now provides real compliance tooling implemented in Haskell:
 
-- `make release-compliance` runs both placeholder gates in sequence.
-- `make release-sbom` checks for `syft` and prints a no-artifact status when
-  the tool is present.
-- `make release-license-bundle` checks for `reuse` and prints a no-artifact
-  status when the tool is present.
+- `make release-sbom-generate` generates a real SBOM listing all Haskell
+  dependencies, C sources, and build tools with their licenses (replaces the
+  placeholder `make release-sbom`).
+- `make release-license-bundle-generate` generates a real aggregated
+  third-party license bundle.
+- `make release-license-check` enforces a license allow-list against all
+  known dependencies.
+- `make release-linking` documents static vs dynamic linking obligations
+  for the release bundle.
+- `make release-compliance` runs all compliance gates in sequence.
+- The old placeholder targets (`make release-sbom`, `make release-license-bundle`)
+  still exist for backward compatibility but the new targets produce actual
+  output.
 
-These targets are intentionally minimal. They do not emit SBOM files or license
-bundles yet, and they fail with actionable messages if the required tools are
-absent from the current environment.
+## Release Provenance
+
+`make release-manifest` generates a structured provenance manifest for
+the current release artifacts. It captures:
+
+- Git commit hash, describe string, and tag
+- Build timestamp and builder hostname
+- SHA-256 digests for all artifacts under `build/releases/`
+
+The manifest is written to `build/releases/RELEASE-PROVENANCE.txt` and
+printed to stdout.
+
+`make release-checksums` emits SHA-256 checksums for all release
+artifacts in `sha256sum`-compatible format, written to
+`build/releases/SHA256SUMS.txt`.
 
 The microVM smoke script always does these baseline checks first:
 

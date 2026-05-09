@@ -47,11 +47,23 @@ main = do
             exitWith =<< runBridgeCommand "vm-image-clean" rest
         ("vm-image-build" : rest) ->
             exitWith =<< runBridgeCommand "vm-image-build" rest
+        ("release-sbom-generate" : rest) ->
+            exitWith =<< runBridgeCommand "release-sbom-generate" rest
+        ("release-license-bundle-generate" : rest) ->
+            exitWith =<< runBridgeCommand "release-license-bundle-generate" rest
+        ("release-license-check" : rest) ->
+            exitWith =<< runBridgeCommand "release-license-check" rest
+        ("release-linking" : rest) ->
+            exitWith =<< runBridgeCommand "release-linking" rest
+        ("release-manifest" : rest) ->
+            exitWith =<< runBridgeCommand "release-manifest" rest
+        ("release-checksums" : rest) ->
+            exitWith =<< runBridgeCommand "release-checksums" rest
         ("release-bridge" : cmd : rest) ->
             exitWith =<< runBridgeCommand cmd rest
         (cmd : _) -> do
             putStrLn $ "Unknown command: " ++ cmd
-            putStrLn "Try: build, test, verify, release-lane-readiness, vm-smoke, vm-image-build, vm-image-clean"
+            putStrLn "Try: build, test, verify, release-lane-readiness, vm-smoke, vm-image-build, vm-image-clean, release-sbom-generate, release-license-bundle-generate, release-license-check, release-linking, release-manifest, release-checksums"
             exitWith (ExitFailure 64)
 
 runUi :: IO ()

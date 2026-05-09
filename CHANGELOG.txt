@@ -7,6 +7,14 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 ## [Unreleased]
 
 ### Added
+- Added Haskell SBOM generation (`make release-sbom-generate`) listing all dependencies with licenses and sources.
+- Added Haskell third-party license bundle generation (`make release-license-bundle-generate`).
+- Added Haskell license policy enforcement (`make release-license-check`) with configurable allow-list.
+- Added Haskell linking obligations analysis (`make release-linking`) documenting static vs dynamic linking.
+- Added Haskell release provenance manifest (`make release-manifest`) with git commit, tag, builder info, and artifact SHA-256 digests.
+- Added Haskell release checksum emission (`make release-checksums`) producing SHA256SUMS.txt.
+- Added static musl feasibility evaluation documentation (`doc/musl-evaluation.md`).
+- Added runner classes and isolation model documentation (`doc/runner-classes.md`) covering host, VM, and container runner tiers.
 - Added NixOS QEMU VM image (`nix build .#vm-image`) for fully isolated build/test/release execution with zero external dependencies.
 - Added Haskell VM smoke orchestration (`umbravox vm-smoke`) with image caching, source disk creation via genext2fs, and QEMU/KVM boot management.
 - Added `make vm-smoke`, `make vm-image-build`, `make vm-image-clean`, and `make image-clean` targets for VM-isolated pipeline execution.
@@ -43,6 +51,7 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - Tightened the microVM scaffold so pinned QEMU/Firecracker runs require an explicit in-guest verification command template before they proceed.
 
 ### Changed
+- Replaced placeholder SBOM/license compliance gates with real Haskell implementations that generate actual artifacts.
 - Updated flake.nix to expose vm-image package on x86_64-linux and added QEMU/Firecracker/genext2fs to devTools.
 - Expanded runtime logging redaction list from 7 to 15 fields, adding content, answer, key, secret, passphrase, password, token, and session_id.
 - Hardened runtime log file permissions to enforce 0600 on every write (not just creation) with single-writer PID tracking.
