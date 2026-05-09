@@ -31,19 +31,19 @@ Use it to answer:
 
 | Primitive | Standard target | Active Haskell | Generated Haskell | Generated C | Generated FFI | F* status | Tests/evidence | Assumption gaps | Current bottom line |
 |---|---|---|---|---|---|---|---|---|---|
-| SHA-256 | FIPS 180-4 | Yes | Wrapper | Link probe | Bridge back to Haskell | Green | NIST KATs, boundary cases, fuzz, full `make verify` | KAT lemmas in F* remain assumption-backed; no Haskell refinement proof | Strong runtime evidence, green handwritten model, no independent C semantics |
-| SHA-512 | FIPS 180-4 | Yes | Wrapper | Link probe | Bridge back to Haskell | Green | NIST KATs, boundary cases, fuzz, full `make verify` | Padding divisibility and KAT proof story still partly trusted in F* | Strong runtime evidence, green handwritten model, no independent C semantics |
-| HMAC | RFC 2104 / RFC 4231 | Yes | Wrapper | Link probe | Bridge back to Haskell | Green | RFC KATs, fuzz, full `make verify` | PRF/security lemmas and some KAT structure remain assumption-heavy | Good implementation/test evidence, weaker formal security claim than wording should imply |
-| HKDF | RFC 5869 | Yes | Wrapper | Link probe | Bridge back to Haskell | Green | RFC KATs, fuzz, full `make verify` | Counter-byte and output-structure obligations still rely partly on trusted assumptions | Good implementation/test evidence, incomplete formal equivalence/security story |
-| AES-256 | FIPS 197 | Yes | Wrapper | Link probe | Bridge back to Haskell | Green | NIST KATs, round-trip, fuzz, full `make verify` | No machine-checked refinement from F* to Haskell; no active generated C semantics | Good runtime/reference evidence, no independent production C path |
+| SHA-256 | FIPS 180-4 | Yes | Wrapper | Codegen from .spec (placeholder preprocessing) | Bridge back to Haskell | Green | NIST KATs, boundary cases, fuzz, full `make verify` | KAT lemmas in F* remain assumption-backed; no Haskell refinement proof | Strong runtime evidence, green handwritten model, no independent C semantics |
+| SHA-512 | FIPS 180-4 | Yes | Wrapper | Codegen from .spec (placeholder preprocessing) | Bridge back to Haskell | Green | NIST KATs, boundary cases, fuzz, full `make verify` | Padding divisibility and KAT proof story still partly trusted in F* | Strong runtime evidence, green handwritten model, no independent C semantics |
+| HMAC | RFC 2104 / RFC 4231 | Yes | Wrapper | Codegen from .spec (placeholder preprocessing) | Bridge back to Haskell | Green | RFC KATs, fuzz, full `make verify` | PRF/security lemmas and some KAT structure remain assumption-heavy | Good implementation/test evidence, weaker formal security claim than wording should imply |
+| HKDF | RFC 5869 | Yes | Wrapper | Codegen from .spec (placeholder preprocessing) | Bridge back to Haskell | Green | RFC KATs, fuzz, full `make verify` | Counter-byte and output-structure obligations still rely partly on trusted assumptions | Good implementation/test evidence, incomplete formal equivalence/security story |
+| AES-256 | FIPS 197 | Yes | Wrapper | Codegen from .spec (placeholder preprocessing) | Bridge back to Haskell | Green | NIST KATs, round-trip, fuzz, full `make verify` | No machine-checked refinement from F* to Haskell; no active generated C semantics | Good runtime/reference evidence, no independent production C path |
 | GF(2^128) | SP 800-38D | Yes (inside GCM) | N/A | N/A | N/A | Green | Covered through GCM tests and F* lemmas | Formal layer does not by itself prove active runtime refinement | Internal formal component is green, still tied to handwritten model only |
-| AES-GCM | SP 800-38D | Yes | Wrapper | Link probe | Bridge back to Haskell | Green | NIST vectors, tamper tests, fuzz, full `make verify` | GCM formal model still uses important assumptions; current F* type still does not fully bind AES semantics to keyed AES-256 behavior | Runtime path is strong; formal story is green but not publication-grade complete |
-| ChaCha20 | RFC 8439 | Yes | Wrapper | Link probe | Bridge back to Haskell | Green | RFC KATs, edge cases, fuzz, full `make verify` | No refinement proof to Haskell; no active generated C semantics | Good runtime/reference evidence, no independent C semantics |
-| X25519 | RFC 7748 | Yes | Wrapper | Link probe | Bridge back to Haskell | Green | RFC vectors, DH properties, fuzz, full `make verify` | No machine-checked refinement to Haskell | Good runtime/reference evidence, still one semantic implementation path |
+| AES-GCM | SP 800-38D | Yes | Wrapper | Codegen from .spec (placeholder preprocessing) | Bridge back to Haskell | Green | NIST vectors, tamper tests, fuzz, full `make verify` | GCM formal model still uses important assumptions; current F* type still does not fully bind AES semantics to keyed AES-256 behavior | Runtime path is strong; formal story is green but not publication-grade complete |
+| ChaCha20 | RFC 8439 | Yes | Wrapper | Codegen from .spec (placeholder preprocessing) | Bridge back to Haskell | Green | RFC KATs, edge cases, fuzz, full `make verify` | No refinement proof to Haskell; no active generated C semantics | Good runtime/reference evidence, no independent C semantics |
+| X25519 | RFC 7748 | Yes | Wrapper | Codegen from .spec (placeholder preprocessing) | Bridge back to Haskell | Green | RFC vectors, DH properties, fuzz, full `make verify` | No machine-checked refinement to Haskell | Good runtime/reference evidence, still one semantic implementation path |
 | Ed25519 | RFC 8032 | Yes | N/A | N/A | N/A | Green | RFC vectors, sign/verify tests, fuzz, full `make verify` | No machine-checked refinement to Haskell | Good runtime/reference evidence, handwritten model only |
-| Keccak / SHA-3 / SHAKE | FIPS 202 | Yes | Wrapper | Link probe | Bridge back to Haskell | Green | NIST vectors, SHAKE tests, fuzz, full `make verify` | No machine-checked refinement to Haskell | Good runtime/reference evidence, no independent C semantics |
-| Poly1305 | RFC 8439 | Yes | Wrapper | Link probe | Bridge back to Haskell | Green | RFC vector, parity tests, full `make verify` | No machine-checked refinement to Haskell | Good runtime/reference evidence, no independent C semantics |
-| ML-KEM-768 | FIPS 203 | Yes | Wrapper | Link probe | Bridge back to Haskell | Green | Self-consistency tests, round-trip, parity tests, full `make verify` | Evidence is much stronger on implementation/test side than on standards-correspondence proofs | Good MVP evidence, still not an independently assured low-level path |
+| Keccak / SHA-3 / SHAKE | FIPS 202 | Yes | Wrapper | Codegen from .spec (placeholder preprocessing) | Bridge back to Haskell | Green | NIST vectors, SHAKE tests, fuzz, full `make verify` | No machine-checked refinement to Haskell | Good runtime/reference evidence, no independent C semantics |
+| Poly1305 | RFC 8439 | Yes | Wrapper | Codegen from .spec (placeholder preprocessing) | Bridge back to Haskell | Green | RFC vector, parity tests, full `make verify` | No machine-checked refinement to Haskell | Good runtime/reference evidence, no independent C semantics |
+| ML-KEM-768 | FIPS 203 | Yes | Wrapper | Codegen from .spec (placeholder preprocessing) | Bridge back to Haskell | Green | Self-consistency tests, round-trip, parity tests, full `make verify` | Evidence is much stronger on implementation/test side than on standards-correspondence proofs | Good MVP evidence, still not an independently assured low-level path |
 | App-layer AEAD | AES-256-GCM (SP 800-38D) + HKDF (RFC 5869) | Yes | N/A | N/A | N/A | N/A | Round-trip, ciphertext-at-rest, tamper detection, migration-safe, restart/recovery | Key derived from identity secret; nonce is random per-field; metadata remains plaintext | Provides storage confidentiality for message content and conversation names; does not encrypt structural metadata |
 
 ## Protocol Matrix
@@ -89,6 +89,11 @@ The strongest honest statement supported by the current repo is:
   only
 - there is not yet a machine-checked refinement proof from F* to Haskell
 - there is not yet an independent, semantically real generated C execution path
+- generated C implementations are now real algorithmic code produced by
+  the codegen from .spec files, not link probes; preprocessing steps
+  (padding, block parsing) remain placeholder-initialized
+- differential testing framework compares C/FFI output against the
+  Haskell oracle for NIST/RFC test vectors and random inputs
 
 ## Next Evidence Upgrades
 
