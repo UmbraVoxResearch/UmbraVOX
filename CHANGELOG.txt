@@ -7,6 +7,8 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 ## [Unreleased]
 
 ### Added
+- Added an opt-in Haskell readiness bridge (`make release-lane-readiness-haskell`) that shells out to the existing aggregate readiness script while keeping the shell bridge as the source of truth for now.
+- Added a phased release-orchestration migration plan that keeps the current shell bridge honest while tracking the move to Haskell entrypoints.
 - Added an experimental AppImage scaffold target plus a non-authoritative smoke placeholder that validates layout only.
 - Added consolidated tracking hygiene so completed release-lane and readiness-scaffold work is moved out of `TODO.txt` and only active items remain there.
 - Added placeholder compliance gates for future SBOM and license-bundle work (`make release-compliance`, `make release-sbom`, `make release-license-bundle`) that fail clearly when required tools are absent and emit no artifacts yet.
@@ -21,6 +23,7 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - Added explicit platform-lane posture and cross-target policy documentation covering native-lane placeholders, source-release targets, and non-authoritative cross-built outputs.
 - Added aggregate release-readiness documentation covering host quality gates, Linux smoke coverage, microVM prerequisite checks, and the remaining authoritative-lane gaps.
 - Refined release-lane gap output so Firecracker guest-image/config evidence, native runner evidence, and lane-specific next actions point at the exact remaining tasks.
+- Tightened the microVM scaffold so pinned QEMU/Firecracker runs require an explicit in-guest verification command template before they proceed.
 
 ### Changed
 - Clarified the AppImage track as scaffold-only and kept it outside the authoritative release posture.
@@ -31,6 +34,7 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - Clarified release docs to distinguish working Linux container smoke, completed QEMU/Firecracker pinned-boot invocation paths, and the still-missing maintained guest-image/config and authoritative in-guest release execution.
 - Updated release tracking to mark only implemented documentation/scaffold tasks complete for platform lanes and cross-target policy, while leaving native execution gaps open.
 - Updated quickstart/release lane guidance to state the current aggregate readiness checks and keep unfinished native-lane, parity, and in-guest execution gaps explicit.
+- Updated microVM lane guidance to call out the explicit in-guest verification command template now required for pinned runs.
 
 ### Fixed
 - Fixed host-only peer connect flow to try default port lists with clearer diagnostics and endpoint reporting.

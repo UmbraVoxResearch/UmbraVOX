@@ -110,6 +110,11 @@ scripts/nix-flake.sh flake show --no-write-lock-file
   Windows, and BSD remain informational.
 - `make platform-sanity` and `make sanity` check that the helper scripts and
   lane wiring are still present in the tree.
+- Release/readiness orchestration is currently shell-bridged through
+  `Makefile` targets. Haskell entrypoints are the planned replacement layer,
+  but they are not yet the primary orchestration path.
+- `make release-lane-readiness-haskell` is the current opt-in Haskell bridge
+  for readiness checks; it shells out to the existing aggregate script.
 - Only the QEMU microVM path currently has a documented deterministic
   command-line smoke profile helper:
   `scripts/release-smoke-qemu-profile.sh bundle-basic`.
@@ -139,6 +144,11 @@ scripts/nix-flake.sh flake show --no-write-lock-file
   native lanes and parity evidence exist.
 - The AppImage track is intentionally experimental and scaffold-only until
   support policy and parity evidence are proven.
+- The shell-to-Haskell migration is phased; current commands remain bridge
+  mode until Haskell entrypoints first mirror and then replace the shell
+  wrappers.
+- The readiness bridge is currently Haskell-backed only for the aggregate
+  readiness command; all other orchestration remains shell-driven.
 
 ## Release Target Posture
 
