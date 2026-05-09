@@ -466,72 +466,86 @@ renderProviderEndpoint providerId host port =
 
 parseProviderEndpoint :: TransportProviderId -> String -> Maybe String
 parseProviderEndpoint providerId raw =
-    case providerId of
-        ProviderTCP -> parseRequiredHostPort normalized
-        ProviderUDP -> parseRequiredHostPort normalized
-        ProviderTor -> parseRequiredHostPort normalized
-        ProviderWireGuard -> do
-            (peer, hostPort) <- splitOnce '@' normalized
-            hostPort' <- parseRequiredHostPort hostPort
-            pure (peer ++ "@" ++ hostPort')
-        ProviderIRC -> do
-            (nick, serverRest) <- splitOnce '@' normalized
-            (serverPort, channel) <- splitOnce '/' serverRest
-            serverPort' <- parseRequiredHostPort serverPort
-            if validToken channel
-                then pure (nick ++ "@" ++ serverPort' ++ "/" ++ channel)
-                else Nothing
-        ProviderAIM -> do
-            (screenname, server) <- splitOnce '@' normalized
-            if validToken screenname && validToken server
-                then pure (screenname ++ "@" ++ server)
-                else Nothing
-        ProviderXMPP -> do
-            (jid, resource) <- splitOnce '/' normalized
-            if validToken jid && validToken resource
-                then pure (jid ++ "/" ++ resource)
-                else Nothing
-        ProviderMastodon -> do
-            stripped <- stripLeading '@' normalized
-            (user, instanceName) <- splitOnce '@' stripped
-            if validToken user && validToken instanceName
-                then pure ("@" ++ user ++ "@" ++ instanceName)
-                else Nothing
-        ProviderFacebook -> parseAccount normalized
-        ProviderInstagram -> parseAccount normalized
-        ProviderWhatsApp -> parseAccount normalized
-        ProviderSignal -> parseAccount normalized
-        ProviderSignalServer -> do
-            (serverPort, account) <- splitOnce '/' normalized
-            serverPort' <- parseRequiredHostPort serverPort
-            if validToken account
-                then pure (serverPort' ++ "/" ++ account)
-                else Nothing
-  where
-    normalized = trim raw
+    let normalized = trim raw
+    in providerEndpointParser providerId normalized
 
-    parseRequiredHostPort input =
-        case parseHostPort input of
-            (host, Just port)
-                | validToken host -> Just (renderHostPort host port)
-            _ -> Nothing
+providerEndpointParser :: TransportProviderId -> String -> Maybe String
+providerEndpointParser ProviderTCP          = parseRequiredHostPort
+providerEndpointParser ProviderUDP          = parseRequiredHostPort
+providerEndpointParser ProviderTor          = parseRequiredHostPort
+providerEndpointParser ProviderWireGuard    = parseWireGuardEndpoint
+providerEndpointParser ProviderIRC          = parseIRCEndpoint
+providerEndpointParser ProviderAIM          = parseSplitEndpoint '@'
+providerEndpointParser ProviderXMPP         = parseSplitEndpoint '/'
+providerEndpointParser ProviderMastodon     = parseMastodonEndpoint
+providerEndpointParser ProviderSignalServer = parseServerAccountEndpoint
+providerEndpointParser _                    = parseAccount
 
-    parseAccount input =
-        if validToken input
-            then Just input
-            else Nothing
+parseWireGuardEndpoint :: String -> Maybe String
+parseWireGuardEndpoint input = do
+    (peer, hostPort) <- splitOnce '@' input
+    hostPort' <- parseRequiredHostPort hostPort
+    pure (peer ++ "@" ++ hostPort')
 
-    stripLeading ch (c:rest)
-        | c == ch = Just rest
-    stripLeading _ _ = Nothing
+parseIRCEndpoint :: String -> Maybe String
+parseIRCEndpoint input = do
+    (nick, serverRest) <- splitOnce '@' input
+    (serverPort, channel) <- splitOnce '/' serverRest
+    serverPort' <- parseRequiredHostPort serverPort
+    if validToken channel
+        then pure (nick ++ "@" ++ serverPort' ++ "/" ++ channel)
+        else Nothing
 
-    validToken = not . null . trim
+parseSplitEndpoint :: Char -> String -> Maybe String
+parseSplitEndpoint sep input = do
+    (lhs, rhs) <- splitOnce sep input
+    if validToken lhs && validToken rhs
+        then pure (lhs ++ [sep] ++ rhs)
+        else Nothing
 
-    splitOnce ch input =
-        case break (== ch) input of
-            (lhs, _ : rhs)
-                | validToken lhs && validToken rhs -> Just (trim lhs, trim rhs)
-            _ -> Nothing
+parseMastodonEndpoint :: String -> Maybe String
+parseMastodonEndpoint input = do
+    stripped <- stripLeading '@' input
+    (user, instanceName) <- splitOnce '@' stripped
+    if validToken user && validToken instanceName
+        then pure ("@" ++ user ++ "@" ++ instanceName)
+        else Nothing
+
+parseServerAccountEndpoint :: String -> Maybe String
+parseServerAccountEndpoint input = do
+    (serverPort, account) <- splitOnce '/' input
+    serverPort' <- parseRequiredHostPort serverPort
+    if validToken account
+        then pure (serverPort' ++ "/" ++ account)
+        else Nothing
+
+parseRequiredHostPort :: String -> Maybe String
+parseRequiredHostPort input =
+    case parseHostPort input of
+        (host, Just port)
+            | validToken host -> Just (renderHostPort host port)
+        _ -> Nothing
+
+parseAccount :: String -> Maybe String
+parseAccount input =
+    if validToken input
+        then Just input
+        else Nothing
+
+stripLeading :: Char -> String -> Maybe String
+stripLeading ch (c:rest)
+    | c == ch = Just rest
+stripLeading _ _ = Nothing
+
+validToken :: String -> Bool
+validToken = not . null . trim
+
+splitOnce :: Char -> String -> Maybe (String, String)
+splitOnce ch input =
+    case break (== ch) input of
+        (lhs, _ : rhs)
+            | validToken lhs && validToken rhs -> Just (trim lhs, trim rhs)
+        _ -> Nothing
 
 resolveArtifactPath :: FilePath -> FilePath -> FilePath
 resolveArtifactPath manifestPath artifactPath

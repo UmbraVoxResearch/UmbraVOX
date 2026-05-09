@@ -206,85 +206,100 @@ handleDialogMouseClick st lay dlg row col = do
     closedByX <- handleOverlayTopClose st lay lineCount row col
     unless closedByX $
         case dlg of
-            DlgHelp ->
-                when (overlayButtonHit lay lineCount row col (length helpOverlayLines - 1) helpOverlayLines "close") $
-                    writeIORef (asDialogMode st) Nothing
-            DlgAbout ->
-                when (overlayButtonHit lay lineCount row col (length aboutOverlayLines - 1) aboutOverlayLines "close") $
-                    writeIORef (asDialogMode st) Nothing
-            DlgKeys -> do
-                lines' <- keysOverlayLines st
-                when (overlayButtonHit lay lineCount row col (length lines' - 1) lines' "close") $
-                    writeIORef (asDialogMode st) Nothing
-            DlgVerify -> do
-                lines' <- verifyOverlayLines st
-                when (overlayButtonHit lay lineCount row col (length lines' - 1) lines' "close") $
-                    writeIORef (asDialogMode st) Nothing
-            DlgBrowse -> do
-                lines' <- browseOverlayLines st
-                let footerIx = length lines' - 1
-                if overlayButtonHit lay lineCount row col footerIx lines' "prev"
-                    then stepBrowsePage st (-1)
-                else if overlayButtonHit lay lineCount row col footerIx lines' "next"
-                    then stepBrowsePage st 1
-                else if overlayButtonHit lay lineCount row col footerIx lines' "search"
-                    then openBrowseSearchPrompt st
-                else if overlayButtonHit lay lineCount row col footerIx lines' "clear"
-                    then clearBrowseSearch st
-                else if overlayButtonHit lay lineCount row col footerIx lines' "close"
-                    then writeIORef (asDialogMode st) Nothing
-                else case overlayContentLine lay lineCount row col of
-                    Just 2 -> openBrowseSearchPrompt st
-                    Just lineIx -> do
-                        visible <- currentBrowsePeers st
-                        let peerIx = lineIx - 5
-                        when (peerIx >= 0 && peerIx < length visible) $
-                            selectBrowsePeerByDigit st (toEnum (fromEnum '0' + peerIx))
+            DlgBrowse        -> handleDlgBrowseClick st lay lineCount row col
+            DlgSettings      -> handleDlgSettingsClick st lay lineCount row col
+            DlgNewConn       -> handleDlgNewConnClick st lay lineCount row col
+            DlgPrompt title cb -> handleDlgPromptClick st lay lineCount row col title cb
+            _                -> handleDlgCloseOnly st lay dlg lineCount row col
+
+handleDlgCloseOnly :: AppState -> Layout -> DialogMode -> Int -> Int -> Int -> IO ()
+handleDlgCloseOnly st lay dlg lineCount row col = do
+    lines' <- closeOnlyLines st dlg
+    when (overlayButtonHit lay lineCount row col (length lines' - 1) lines' "close") $
+        writeIORef (asDialogMode st) Nothing
+
+closeOnlyLines :: AppState -> DialogMode -> IO [String]
+closeOnlyLines _  DlgHelp   = pure helpOverlayLines
+closeOnlyLines _  DlgAbout  = pure aboutOverlayLines
+closeOnlyLines st DlgKeys   = keysOverlayLines st
+closeOnlyLines st DlgVerify = verifyOverlayLines st
+closeOnlyLines _  _         = pure []
+
+handleDlgBrowseClick :: AppState -> Layout -> Int -> Int -> Int -> IO ()
+handleDlgBrowseClick st lay lineCount row col = do
+    lines' <- browseOverlayLines st
+    let footerIx = length lines' - 1
+        btn = overlayButtonHit lay lineCount row col footerIx lines'
+    case lookup True [ (btn "prev",   stepBrowsePage st (-1))
+                     , (btn "next",   stepBrowsePage st 1)
+                     , (btn "search", openBrowseSearchPrompt st)
+                     , (btn "clear",  clearBrowseSearch st)
+                     , (btn "close",  writeIORef (asDialogMode st) Nothing)
+                     ] of
+        Just action -> action
+        Nothing -> case overlayContentLine lay lineCount row col of
+            Just 2 -> openBrowseSearchPrompt st
+            Just lineIx -> do
+                visible <- currentBrowsePeers st
+                let peerIx = lineIx - 5
+                when (peerIx >= 0 && peerIx < length visible) $
+                    selectBrowsePeerByDigit st (toEnum (fromEnum '0' + peerIx))
+            Nothing -> pure ()
+
+handleDlgSettingsClick :: AppState -> Layout -> Int -> Int -> Int -> IO ()
+handleDlgSettingsClick st lay lineCount row col = do
+    lines' <- settingsOverlayLines st
+    case overlayButtonAtLine lay lines' 0 row col of
+        Just tabLabel -> handleSettingsTabClick st tabLabel
+        Nothing -> handleSettingsBodyClick st lay lineCount lines' row col
+
+handleSettingsTabClick :: AppState -> String -> IO ()
+handleSettingsTabClick st tabLabel =
+    case lookup (map toLower tabLabel) (zip (map (map toLower) settingsTabLabels) [0..]) of
+        Just tabIx -> writeIORef (asDialogTab st) tabIx
+        Nothing -> pure ()
+
+handleSettingsBodyClick :: AppState -> Layout -> Int -> [String] -> Int -> Int -> IO ()
+handleSettingsBodyClick st lay lineCount lines' row col =
+    let footerIx = length lines' - 1
+    in if overlayButtonHit lay lineCount row col footerIx lines' "close"
+        then writeIORef (asDialogMode st) Nothing
+        else case overlayContentLine lay lineCount row col of
+            Just lineIx ->
+                case lineOptionKey (lines' !! lineIx) of
+                    Just key -> handleSettingsDlg st (KeyChar key)
                     Nothing -> pure ()
-            DlgSettings -> do
-                lines' <- settingsOverlayLines st
-                let footerIx = length lines' - 1
-                case overlayButtonAtLine lay lines' 0 row col of
-                    Just tabLabel ->
-                        case lookup (map toLower tabLabel) (zip (map (map toLower) settingsTabLabels) [0..]) of
-                            Just tabIx -> writeIORef (asDialogTab st) tabIx
-                            Nothing -> pure ()
-                    Nothing ->
-                        if overlayButtonHit lay lineCount row col footerIx lines' "close"
-                            then writeIORef (asDialogMode st) Nothing
-                            else case overlayContentLine lay lineCount row col of
-                                Just lineIx ->
-                                    case lineOptionKey (lines' !! lineIx) of
-                                        Just key -> handleSettingsDlg st (KeyChar key)
-                                        Nothing -> pure ()
-                                Nothing -> pure ()
-            DlgNewConn -> do
-                let lines' = newConnOverlayLines
-                    footerIx = length lines' - 1
-                if overlayButtonHit lay lineCount row col footerIx lines' "private"
-                    then handleNewConnDlg st (KeyChar '1')
-                else if overlayButtonHit lay lineCount row col footerIx lines' "single"
-                    then handleNewConnDlg st (KeyChar '2')
-                else if overlayButtonHit lay lineCount row col footerIx lines' "group"
-                    then handleNewConnDlg st (KeyChar '3')
-                else if overlayButtonHit lay lineCount row col footerIx lines' "cancel"
-                    then writeIORef (asDialogMode st) Nothing
-                else case overlayContentLine lay lineCount row col of
-                    Just 0 -> handleNewConnDlg st (KeyChar '1')
-                    Just 1 -> handleNewConnDlg st (KeyChar '2')
-                    Just 2 -> handleNewConnDlg st (KeyChar '3')
-                    _ -> pure ()
-            DlgPrompt title cb -> do
-                buf <- readIORef (asDialogBuf st)
-                let lines' = promptOverlayLines title buf
-                    footerIx = length lines' - 1
-                if overlayButtonHit lay lineCount row col footerIx lines' "ok"
-                    then submitPrompt st cb
-                else if overlayButtonHit lay lineCount row col footerIx lines' "cancel"
-                    then do
-                        writeIORef (asDialogBuf st) ""
-                        writeIORef (asDialogMode st) Nothing
-                else pure ()
+            Nothing -> pure ()
+
+handleDlgNewConnClick :: AppState -> Layout -> Int -> Int -> Int -> IO ()
+handleDlgNewConnClick st lay lineCount row col = do
+    let lines' = newConnOverlayLines
+        footerIx = length lines' - 1
+        btn = overlayButtonHit lay lineCount row col footerIx lines'
+    case lookup True [ (btn "private", handleNewConnDlg st (KeyChar '1'))
+                     , (btn "single",  handleNewConnDlg st (KeyChar '2'))
+                     , (btn "group",   handleNewConnDlg st (KeyChar '3'))
+                     , (btn "cancel",  writeIORef (asDialogMode st) Nothing)
+                     ] of
+        Just action -> action
+        Nothing -> case overlayContentLine lay lineCount row col of
+            Just 0 -> handleNewConnDlg st (KeyChar '1')
+            Just 1 -> handleNewConnDlg st (KeyChar '2')
+            Just 2 -> handleNewConnDlg st (KeyChar '3')
+            _      -> pure ()
+
+handleDlgPromptClick :: AppState -> Layout -> Int -> Int -> Int -> String -> (String -> IO ()) -> IO ()
+handleDlgPromptClick st lay lineCount row col title cb = do
+    buf <- readIORef (asDialogBuf st)
+    let lines' = promptOverlayLines title buf
+        footerIx = length lines' - 1
+    if overlayButtonHit lay lineCount row col footerIx lines' "ok"
+        then submitPrompt st cb
+    else if overlayButtonHit lay lineCount row col footerIx lines' "cancel"
+        then do
+            writeIORef (asDialogBuf st) ""
+            writeIORef (asDialogMode st) Nothing
+    else pure ()
 
 dialogLineCount :: AppState -> DialogMode -> IO Int
 dialogLineCount _ DlgHelp = pure (length helpOverlayLines)
