@@ -5,8 +5,10 @@
 # Usage:
 #   make              - Build + run the full pipeline (build, test, verify, complexity, lint, license, format-check)
 #   make build        - Build library + executables only
+#   make build-haskell - Opt-in bridge wrapper for Haskell build orchestration
 #   make run          - Run UmbraVOX TUI application
 #   make test         - Run the fast messaging-MVP hardening gate
+#   make test-haskell  - Opt-in bridge wrapper for Haskell test orchestration
 #   make test-core    - Run the core deterministic messaging suite
 #   make test-core-crypto - Run deterministic crypto/unit coverage
 #   make test-core-network - Run deterministic network/discovery coverage
@@ -22,6 +24,7 @@
 #   make test-deferred - Run preserved deferred blockchain/economics suites
 #   make soak         - Run the long soak suite and write an artifact report
 #   make verify       - Run F* formal verification (17 modules)
+#   make verify-haskell - Opt-in bridge wrapper for Haskell verification orchestration
 #   make complexity   - Check cyclomatic complexity (<= 8 for all functions)
 #   make lint         - Check code formatting and style
 #   make license      - Check SPDX license headers in source files
@@ -62,8 +65,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build run test test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity clean cleandb cleanall help
-.PHONY: all build run test test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity clean cleandb cleanall help
+.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred soak verify verify-haskell complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -97,6 +99,7 @@ EVIDENCE_DIR := build/evidence
 RELEASE_DIR := build/releases
 SUITE_LOCK := ./scripts/with-suite-lock.sh suite-gate
 TEST_REQUIRED_TIMEOUT ?= 25m
+UMBRAVOX_USE_HASKELL_ORCH ?= 0
 QEMU_SMOKE_PROFILE ?= bundle-basic
 FIRECRACKER_SMOKE_KERNEL ?=
 FIRECRACKER_SMOKE_ROOTFS ?=
@@ -169,6 +172,7 @@ help:
 	@echo "    make release-sbom Check SBOM tooling presence for future generation"
 	@echo "    make release-license-bundle Check license-bundle tooling presence for future generation"
 	@echo "    make format-check Check for tabs and trailing whitespace"
+	@echo "    make release-gate-assurance Run assurance matrix freshness gate"
 	@echo "    make quality     Same as make (lint/format-check are non-blocking)"
 	@echo ""
 	@echo "  Maintenance:"
@@ -208,6 +212,14 @@ build:
 	@cabal build all 2>&1 | tail -5
 	@echo -e "$(GREEN)[BUILD]$(NC) Build complete."
 
+build-haskell:
+	@echo -e "$(BLUE)[BUILD-HASKELL]$(NC) Opt-in bridge wrapper: legacy Make build by default; set UMBRAVOX_USE_HASKELL_ORCH=1 to try the Haskell subcommand."
+	@if [ "$(UMBRAVOX_USE_HASKELL_ORCH)" = "1" ]; then \
+		cabal run umbravox -- build --orchestrated; \
+	else \
+		$(MAKE) build; \
+	fi
+
 # --------------------------------------------------------------------------
 # Test
 # --------------------------------------------------------------------------
@@ -235,6 +247,14 @@ test: build
 		echo -e "$(RED)[TEST]$(NC) Success marker missing. See $$log_file"; \
 		exit 1; \
 	fi'
+
+test-haskell:
+	@echo -e "$(BLUE)[TEST-HASKELL]$(NC) Opt-in bridge wrapper: legacy Make test by default; set UMBRAVOX_USE_HASKELL_ORCH=1 to try the Haskell subcommand."
+	@if [ "$(UMBRAVOX_USE_HASKELL_ORCH)" = "1" ]; then \
+		cabal run umbravox -- test --orchestrated; \
+	else \
+		$(MAKE) test; \
+	fi
 
 test-core: build
 	@echo -e "$(BLUE)[TEST-CORE]$(NC) Running core deterministic suite..."
@@ -315,6 +335,14 @@ verify:
 		echo -e "$(RED)[VERIFY]$(NC) Success marker missing. See $$log_file"; \
 		exit 1; \
 	fi'
+
+verify-haskell:
+	@echo -e "$(BLUE)[VERIFY-HASKELL]$(NC) Opt-in bridge wrapper: legacy Make verify by default; set UMBRAVOX_USE_HASKELL_ORCH=1 to try the Haskell subcommand."
+	@if [ "$(UMBRAVOX_USE_HASKELL_ORCH)" = "1" ]; then \
+		cabal run umbravox -- verify --orchestrated; \
+	else \
+		$(MAKE) verify; \
+	fi
 
 # --------------------------------------------------------------------------
 # Cyclomatic Complexity
@@ -555,6 +583,10 @@ release-lane-readiness:
 release-lane-readiness-haskell:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Running Haskell bridge for release-lane readiness..."
 	@cabal run umbravox -- release-lane-readiness
+
+release-gate-assurance:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Running assurance matrix release gate..."
+	@./scripts/release-gate-assurance.sh
 
 release-windows-cli:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Building Windows CLI source release..."

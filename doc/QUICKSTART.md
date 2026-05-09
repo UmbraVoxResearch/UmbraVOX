@@ -17,8 +17,10 @@ preserved artifacts pending broader wiring.
 ```bash
 nix-shell
 make build
+make build-haskell
 make run
 make test
+make test-haskell
 make test-core
 make test-core-crypto
 make test-core-network
@@ -34,6 +36,7 @@ make test-mdns
 make test-deferred
 make soak
 make verify
+make verify-haskell
 make quality
 make evidence
 make release-linux
@@ -52,6 +55,7 @@ make release-smoke-firecracker-pinned
 make release-lane-qemu
 make release-lane-firecracker
 make release-lane-readiness
+make release-gate-assurance
 make platform-sanity
 make sanity
 scripts/nix-flake.sh flake show --no-write-lock-file
@@ -77,6 +81,7 @@ scripts/nix-flake.sh flake show --no-write-lock-file
 - Exact runner names such as `mdns`, `sha256`, or `tui-sim-dialogs` are also accepted via `cabal test umbravox-test --test-options='<suite>'`.
 - `make soak` runs the longer stress suite and writes artifacts under `build/test-artifacts/`.
 - `make verify` runs the F* verification pass.
+- `make build-haskell`, `make test-haskell`, and `make verify-haskell` are opt-in bridge wrappers. They use the legacy `Makefile` path by default and only switch to the Haskell orchestration path when `UMBRAVOX_USE_HASKELL_ORCH=1` is set.
 - `make quality` runs the full build pipeline and is equivalent to `make` (`build + test + verify + complexity + lint + license + format-check`).
 - `make evidence` runs `make quality` and writes a timestamped publication evidence bundle under `build/evidence/` with logs, git metadata, and copied test artifacts.
 - `make release-linux` builds a portable Linux x86_64 terminal bundle with a patched local loader/lib set.
@@ -115,6 +120,12 @@ scripts/nix-flake.sh flake show --no-write-lock-file
   but they are not yet the primary orchestration path.
 - `make release-lane-readiness-haskell` is the current opt-in Haskell bridge
   for readiness checks; it shells out to the existing aggregate script.
+- `make build-haskell`, `make test-haskell`, and `make verify-haskell` are
+  bridge wrappers for the corresponding build/test/verify commands. They stay
+  on the legacy `Makefile` path unless `UMBRAVOX_USE_HASKELL_ORCH=1` is set.
+- `make release-gate-assurance` checks that the assurance matrix
+  (`doc/assurance-matrix.md`) is present, contains the required sections,
+  and was updated at least as recently as any material crypto source change.
 - Only the QEMU microVM path currently has a documented deterministic
   command-line smoke profile helper:
   `scripts/release-smoke-qemu-profile.sh bundle-basic`.

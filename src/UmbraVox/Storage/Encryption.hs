@@ -1,0 +1,141 @@
+-- SPDX-License-Identifier: Apache-2.0
+-- | App-layer AEAD encryption for at-rest persistence confidentiality.
+--
+-- This module provides field-level AES-256-GCM encryption for values
+-- stored in local databases (Anthony, StateDB, etc.).  It is NOT a
+-- replacement for SQLCipher or full-disk encryption — it protects
+-- individual sensitive fields so that a raw database dump does not
+-- expose plaintext secrets.
+--
+-- Encrypted fields carry the prefix @UVENC1:@ followed by hex-encoded
+-- @nonce(12) || ciphertext || tag(16)@.  Legacy plaintext values pass
+-- through 'decryptField' unchanged for migration safety.
+module UmbraVox.Storage.Encryption
+    ( StorageKey
+    , deriveStorageKey
+    , testStorageKey
+    , encryptField
+    , decryptField
+    , isEncryptedField
+    ) where
+
+import Data.ByteString (ByteString)
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as C8
+import Data.List (isPrefixOf)
+import Data.Word (Word8)
+
+import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
+import UmbraVox.Crypto.HKDF (hkdfSHA256Extract, hkdfSHA256Expand)
+import UmbraVox.Crypto.Random (randomBytes)
+
+------------------------------------------------------------------------
+-- Types
+------------------------------------------------------------------------
+
+-- | A 32-byte AES-256-GCM key for storage encryption.
+type StorageKey = ByteString
+
+------------------------------------------------------------------------
+-- Key derivation
+------------------------------------------------------------------------
+
+-- | Derive a 32-byte storage key from an identity secret.
+--
+-- Uses HKDF-SHA-256 Extract-then-Expand with domain-specific salt and
+-- info strings to produce a key suitable for AES-256-GCM.
+deriveStorageKey :: ByteString -> StorageKey
+deriveStorageKey secret =
+    let !prk = hkdfSHA256Extract (C8.pack "UmbraVox_StorageAEAD_v1_salt") secret
+    in hkdfSHA256Expand prk (C8.pack "UmbraVox_StorageAEAD_v1") 32
+
+-- | Deterministic test key.  Non-production use only.
+testStorageKey :: StorageKey
+testStorageKey = deriveStorageKey (BS.pack [0..31])
+
+------------------------------------------------------------------------
+-- Field encryption / decryption
+------------------------------------------------------------------------
+
+-- | Prefix that marks an encrypted field value.
+encPrefix :: String
+encPrefix = "UVENC1:"
+
+-- | Encrypt a string field for at-rest storage.
+--
+-- Returns @\"UVENC1:\" ++ hex(nonce || ciphertext || tag)@.
+encryptField :: StorageKey -> String -> IO String
+encryptField key plainStr = do
+    nonce <- randomBytes 12
+    let !plaintext      = C8.pack plainStr
+        !(ciphertext, tag) = gcmEncrypt key nonce BS.empty plaintext
+        !blob           = nonce <> ciphertext <> tag
+    return (encPrefix ++ C8.unpack (toHex blob))
+
+-- | Decrypt a field value.
+--
+-- * If the input does not start with @\"UVENC1:\"@, it is returned
+--   unchanged ('Just') for migration-safe passthrough of legacy
+--   plaintext.
+-- * Returns 'Nothing' on malformed ciphertext or authentication
+--   failure.
+decryptField :: StorageKey -> String -> Maybe String
+decryptField key input
+    | not (isEncryptedField input) = Just input
+    | otherwise =
+        let hexPart = drop (length encPrefix) input
+        in case fromHex (C8.pack hexPart) of
+            Nothing  -> Nothing
+            Just raw -> decryptRaw key raw
+
+-- | Attempt to decrypt a raw blob of @nonce(12) || ciphertext || tag(16)@.
+decryptRaw :: StorageKey -> ByteString -> Maybe String
+decryptRaw key raw
+    | BS.length raw < 28 = Nothing
+    | otherwise =
+        let !nonce      = BS.take 12 raw
+            !ctAndTag   = BS.drop 12 raw
+            !totalCT    = BS.length ctAndTag
+            !ciphertext = BS.take (totalCT - 16) ctAndTag
+            !tag        = BS.drop (totalCT - 16) ctAndTag
+        in case gcmDecrypt key nonce BS.empty ciphertext tag of
+            Just pt -> Just (C8.unpack pt)
+            Nothing -> Nothing
+
+-- | Check whether a string carries the @UVENC1:@ encrypted-field prefix.
+isEncryptedField :: String -> Bool
+isEncryptedField s = encPrefix `isPrefixOf` s
+
+------------------------------------------------------------------------
+-- Internal — hex encoding helpers
+------------------------------------------------------------------------
+
+-- | Encode a 'ByteString' as lowercase hexadecimal.
+toHex :: ByteString -> ByteString
+toHex = BS.concatMap (\b -> BS.pack [hexNibble (b `div` 16), hexNibble (b `mod` 16)])
+  where
+    hexNibble :: Word8 -> Word8
+    hexNibble n
+        | n < 10    = n + 0x30  -- '0'
+        | otherwise = n + 0x57  -- 'a' - 10
+
+-- | Decode a hexadecimal 'ByteString'.  Returns 'Nothing' on invalid input.
+fromHex :: ByteString -> Maybe ByteString
+fromHex bs
+    | odd (BS.length bs) = Nothing
+    | not (BS.all isHexChar bs) = Nothing
+    | otherwise = Just (BS.pack (go (BS.unpack bs)))
+  where
+    go [] = []
+    go (a:b:rest) = (unhex a * 16 + unhex b) : go rest
+    go [_] = []
+    unhex :: Word8 -> Word8
+    unhex w
+        | w >= 0x30 && w <= 0x39 = w - 0x30
+        | w >= 0x41 && w <= 0x46 = w - 0x37
+        | w >= 0x61 && w <= 0x66 = w - 0x57
+        | otherwise              = 0
+    isHexChar :: Word8 -> Bool
+    isHexChar w = (w >= 0x30 && w <= 0x39)
+              || (w >= 0x41 && w <= 0x46)
+              || (w >= 0x61 && w <= 0x66)

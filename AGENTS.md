@@ -19,6 +19,9 @@ Current assurance model:
 - Generated FFI modules currently call the C link probes and then delegate back
   to handwritten Haskell crypto; they are not yet an independently assured C
   execution path.
+- Persistent message content and conversation names are encrypted at the
+  app layer (AES-256-GCM, HKDF-derived keys). Structural metadata remains
+  plaintext; see `doc/persistence-model.md`.
 - The F* specifications are handwritten formal models, not generated from NIST
   or RFC text. They remain assurance-critical and the current full verifier run
   is green, but that does not constitute a machine-checked refinement proof
@@ -37,6 +40,7 @@ Current assurance model:
 - [doc/mvp-plan.md](doc/mvp-plan.md) — current messaging MVP hardening plan
 - [doc/assurance-roadmap.md](doc/assurance-roadmap.md) — current assurance boundary and stronger target model
 - [doc/assurance-matrix.md](doc/assurance-matrix.md) — current evidence ledger for standards, implementations, tests, and trust gaps
+- [doc/persistence-model.md](doc/persistence-model.md) — persistence encryption model and residual metadata analysis
 
 ### Legacy Documentation Archive
 

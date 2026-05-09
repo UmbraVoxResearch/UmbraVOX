@@ -1,12 +1,23 @@
 -- SPDX-License-Identifier: Apache-2.0
+
+-- | Runtime event logging for operational diagnostics.
+--
+-- WARNING: Debug logging captures sensitive operational metadata.
+-- Even with payload redaction and restrictive file permissions,
+-- log files should not be treated as production-safe telemetry.
+-- This facility is intended for troubleshooting only and is
+-- disabled by default. Enable via UMBRAVOX_DEBUG_LOG=1.
 module UmbraVox.App.RuntimeLog
     ( logEvent
     , runtimeLoggingEnabled
+    , redactedFieldKeys
+    , ensureLogPermissions
     ) where
 
-import Control.Exception (SomeException, catch)
 import Control.Concurrent.MVar (MVar, withMVar, newMVar)
-import Data.IORef (readIORef)
+import Control.Exception (SomeException, catch)
+import Control.Monad (when)
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (defaultTimeLocale, formatTime)
 import System.Directory (createDirectoryIfMissing, doesFileExist)
@@ -19,6 +30,7 @@ import System.Posix.Files
     , setFileMode
     , unionFileModes
     )
+import System.Posix.Process (getProcessID)
 
 import UmbraVox.BuildProfile (BuildPluginId(..), pluginEnabled)
 import UmbraVox.TUI.Types (AppConfig(..))
@@ -26,6 +38,10 @@ import UmbraVox.TUI.Types (AppConfig(..))
 runtimeLogLock :: MVar ()
 runtimeLogLock = unsafePerformIO (newMVar ())
 {-# NOINLINE runtimeLogLock #-}
+
+logWriterPID :: IORef Int
+logWriterPID = unsafePerformIO (newIORef 0)
+{-# NOINLINE logWriterPID #-}
 
 runtimeLoggingEnabled :: AppConfig -> IO Bool
 runtimeLoggingEnabled cfg = do
@@ -57,11 +73,24 @@ logEvent cfg name fields = do
 writeLogLine :: FilePath -> String -> IO ()
 writeLogLine path line = do
     createDirectoryIfMissing True (takeDirectory path)
-    existed <- doesFileExist path
     appendFile path line
-    if existed
-        then pure ()
-        else setFileMode path (ownerReadMode `unionFileModes` ownerWriteMode)
+    -- Enforce restrictive permissions on every write
+    ensureLogPermissions path
+    -- Single-writer PID tracking
+    currentPID <- fromIntegral <$> getProcessID
+    previousPID <- readIORef logWriterPID
+    writeIORef logWriterPID currentPID
+    when (previousPID /= 0 && previousPID /= currentPID) $
+        appendFile path $ "WARN: multiple log writer PIDs detected ("
+            ++ show previousPID ++ " -> " ++ show currentPID ++ ")\n"
+
+-- | Ensure the log file has restrictive permissions (0600).
+-- Re-applied on every write to prevent permission drift.
+ensureLogPermissions :: FilePath -> IO ()
+ensureLogPermissions path = do
+    exists <- doesFileExist path
+    when exists $
+        setFileMode path (ownerReadMode `unionFileModes` ownerWriteMode)
 
 quoteValue :: String -> String
 quoteValue raw = "\"" ++ concatMap escapeChar raw ++ "\""
@@ -83,11 +112,19 @@ sanitizeFieldValue key value
 
 redactedFieldKeys :: [String]
 redactedFieldKeys =
-    [ "host"
+    [ "answer"
+    , "content"
+    , "host"
+    , "key"
     , "messages"
+    , "passphrase"
+    , "password"
     , "path"
     , "peer"
     , "port"
+    , "secret"
     , "selected_index"
     , "sender"
+    , "session_id"
+    , "token"
     ]
