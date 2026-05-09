@@ -21,12 +21,13 @@ import Data.Char (toLower)
 import Data.List (dropWhileEnd, intercalate)
 import System.IO (hFlush, stdout)
 import UmbraVox.BuildProfile
-    ( bpId, bpName, buildChastityOnly, disabledPlugins
+    ( BuildPluginId, PackagedPluginRuntime
+    , bpId, bpName, buildChastityOnly, disabledPlugins
     , enabledPlugins, pluginLoadStatusLabel
     , pluginName, pmStatusTag, pprLoadStatus, pprManifest, pprPlugin
     )
 import UmbraVox.Network.ProviderCatalog
-    ( ProviderClass(..), ctpInherits, ctpLoadStatus
+    ( CachedTransportProvider, ProviderClass(..), ctpInherits, ctpLoadStatus
     , ctpManifest, ctpProvider, pmfEndpointTag, pmfStatusTag
     , providerEndpointSchema, providerIdLabel, providerLoadStatusLabel
     , renderProviderEndpoint, tpClass, tpName
@@ -238,7 +239,50 @@ settingsOverlayLines st = do
     mDb       <- readIORef (cfgAnthonyDB (asConfig st))
     let tf True = "ON"; tf False = "OFF"
         ephemeral = case mDb of { Nothing -> True; Just _ -> False }
-    storageLines <- if ephemeral
+    storageLines <- settingsStorageLines st tf dbEnabled ephemeral
+    connMode <- readIORef (cfgConnectionMode (asConfig st))
+    packagedPluginRuntimeCatalog <- readIORef (cfgPackagedPluginRuntimeCatalog (asConfig st))
+    transportProviderRuntimeCatalog <- readIORef (cfgTransportProviderRuntimeCatalog (asConfig st))
+    let modeLabel = settingsConnModeLabel connMode
+        tabLine = tabRowLine settingsTabLabels tabIx
+        ctx = SettingsCtx port name mdns pex debugLog debugPath modeLabel storageLines
+                packagedPluginRuntimeCatalog transportProviderRuntimeCatalog
+    tabBody <-
+        if buildChastityOnly
+            then pure (settingsChastityTab ctx tabIx)
+            else settingsFullTab ctx tabIx
+    pure $
+        [ tabLine
+        , ""
+        ] ++ tabBody ++
+        [ ""
+        , " Press Left/Right to switch tabs"
+        , " Press 0-9/a/b/c to change, Esc to close"
+        , "[ Close ]" ]
+
+data SettingsCtx = SettingsCtx
+    { sctxPort :: Int
+    , sctxName :: String
+    , sctxMdns :: Bool
+    , sctxPex :: Bool
+    , sctxDebugLog :: Bool
+    , sctxDebugPath :: String
+    , sctxModeLabel :: String
+    , sctxStorageLines :: [String]
+    , sctxPackagedPlugins :: [PackagedPluginRuntime]
+    , sctxTransportProviders :: [CachedTransportProvider]
+    }
+
+settingsConnModeLabel :: ConnectionMode -> String
+settingsConnModeLabel Swing       = "SWING"
+settingsConnModeLabel Promiscuous = "PROMISCUOUS"
+settingsConnModeLabel Selective   = "SELECTIVE"
+settingsConnModeLabel Chaste      = "CHASTE"
+settingsConnModeLabel Chastity    = "CHASTITY"
+
+settingsStorageLines :: AppState -> (Bool -> String) -> Bool -> Bool -> IO [String]
+settingsStorageLines st tf dbEnabled ephemeral =
+    if ephemeral
         then pure
             [ " Storage"
             , "   5. Persistent DB: [" ++ tf dbEnabled ++ "]"
@@ -257,159 +301,164 @@ settingsOverlayLines st = do
                  , "   7. Retention:     " ++ retLabel
                  , "   8. Auto-save msgs: [" ++ tf autoSave ++ "]"
                  , "   9. Clear history..." ]
-    connMode <- readIORef (cfgConnectionMode (asConfig st))
-    packagedPluginRuntimeCatalog <- readIORef (cfgPackagedPluginRuntimeCatalog (asConfig st))
-    transportProviderRuntimeCatalog <- readIORef (cfgTransportProviderRuntimeCatalog (asConfig st))
-    let modeLabel = case connMode of
-            Swing       -> "SWING"
-            Promiscuous -> "PROMISCUOUS"
-            Selective   -> "SELECTIVE"
-            Chaste      -> "CHASTE"
-            Chastity    -> "CHASTITY"
-        tabLine = tabRowLine settingsTabLabels tabIx
-    tabBody <-
-        if buildChastityOnly
-            then pure $
-                case tabIx of
-                    0 ->
-                        [ " Simple"
-                        , "   1. Listen port:    " ++ show port
-                        , "   2. Display name:   " ++ name
-                        , "   0. View/regenerate keys"
-                        , ""
-                        , " Discovery, storage, export/import, and logs"
-                        , " are compile-time disabled in this build."
-                        ]
-                    1 ->
-                        [ " Security"
-                        , "   Build profile:     CHASTITY"
-                        , "   Connection mode:   [" ++ modeLabel ++ "]"
-                        , ""
-                        , " Persistent storage is compile-time locked OFF."
-                        , " Mode changes are compile-time locked OFF."
-                        ]
-                    _ ->
-                        [ " Advanced"
-                        , "   Disabled built-ins:"
-                        ]
-                        ++ map renderDisabledPlugin disabledPluginIds
-                        ++ [ ""
-                           , " This build keeps all chats and identity state"
-                           , " in memory only."
-                           ]
-            else
-                case tabIx of
-                    0 ->
-                        pure
-                            [ " Simple"
-                            , "   1. Listen port:    " ++ show port
-                            , "   2. Display name:   " ++ name
-                            , "   3. mDNS (LAN):    [" ++ tf mdns ++ "]"
-                            , "   c. Connection mode: [" ++ modeLabel ++ "]"
-                            , "   0. View/regenerate keys"
-                            ]
-                    1 ->
-                        pure
-                            [ " Discovery"
-                            , "   3. mDNS (LAN):    [" ++ tf mdns ++ "]"
-                            , "   4. Peer Exchange: [" ++ tf pex ++ "]"
-                            , ""
-                            , " Peer discovery applies immediately."
-                            ]
-                    2 ->
-                        pure ([ " Storage" ] ++ tail storageLines)
-                    3 ->
-                        pure
-                            [ " Security"
-                            , "   c. Connection mode: [" ++ modeLabel ++ "]"
-                            , "   (Swing / Promiscuous / Selective / Chaste / Chastity)"
-                            , ""
-                            , " Switching mode renegotiates remote sessions."
-                            ]
-                    _ -> do
-                        let packagedPluginLines = summarizePackagedPlugins packagedPluginRuntimeCatalog
-                            providerLines = summarizeTransportProviders transportProviderRuntimeCatalog
-                        pure $
-                            [ " Advanced"
-                            , "   a. Debug logging:  [" ++ tf debugLog ++ "]"
-                            , "   b. Log path:       " ++ debugPath
-                            , ""
-                            , "   Compiled built-ins:"
-                            ]
-                            ++ summarizeBuiltInPlugins enabledPluginIds
-                            ++ [ ""
-                               , "   Packaged feature slots:"
-                               ]
-                            ++ packagedPluginLines
-                            ++ [ ""
-                               , "   Transport providers:"
-                               ]
-                            ++ providerLines
-                            ++ [ ""
-                               , " Diagnostic controls stay off by default."
-                               ]
-    pure $
-        [ tabLine
-        , ""
-        ] ++ tabBody ++
-        [ ""
-        , " Press Left/Right to switch tabs"
-        , " Press 0-9/a/b/c to change, Esc to close"
-        , "[ Close ]" ]
-  where
-    enabledPluginIds = map bpId enabledPlugins
-    disabledPluginIds = map bpId disabledPlugins
-    renderDisabledPlugin pid =
-        "   - " ++ pluginName pid ++ ": [OFF]"
-    summarizeBuiltInPlugins [] =
-        [ "   - none" ]
-    summarizeBuiltInPlugins pluginIds =
-        map (\row -> "   - " ++ intercalate ", " (map pluginName row)) (chunkItems 3 pluginIds)
-    summarizePackagedPlugins [] =
-        [ "   - none discovered" ]
-    summarizePackagedPlugins catalog =
-        map (\row -> "   - " ++ intercalate ", " (map renderPackagedPlugin row)) (chunkItems 2 catalog)
-    renderPackagedPlugin runtimeEntry =
-        let plugin = pprPlugin runtimeEntry
-            manifest = pprManifest runtimeEntry
-            loadStatus = pprLoadStatus runtimeEntry
-        in bpName plugin
-            ++ " ("
-            ++ pmStatusTag manifest
-            ++ "/"
-            ++ pluginLoadStatusLabel loadStatus
-            ++ ")"
-    summarizeTransportProviders [] =
-        [ "   - none discovered" ]
-    summarizeTransportProviders catalog =
-        renderProviderGroup ProviderDirectCarrier "   - Direct carriers" catalog
-        ++ renderProviderGroup ProviderOverlayCarrier "   - Overlay carriers" catalog
-        ++ renderProviderGroup ProviderOpenBridge "   - Open bridges" catalog
-        ++ renderProviderGroup ProviderClosedBridge "   - Closed bridges" catalog
-    renderProviderGroup providerClass label catalog =
-        let entries = filter ((== providerClass) . tpClass . ctpProvider) catalog
-        in if null entries
-            then []
-            else [label ++ ": " ++ intercalate ", " (map renderProviderEntry entries)]
-    renderProviderEntry runtimeEntry =
-        let provider = ctpProvider runtimeEntry
-            manifest = ctpManifest runtimeEntry
-            inheritsLabel =
-                case map providerIdLabel (ctpInherits runtimeEntry) of
-                    [] -> ""
-                    names -> "<-" ++ intercalate "+" names
-        in tpName provider
-            ++ "("
-            ++ pmfStatusTag manifest
-            ++ inheritsLabel
-            ++ "/"
-            ++ pmfEndpointTag manifest
-            ++ "/"
-            ++ providerLoadStatusLabel (ctpLoadStatus runtimeEntry)
-            ++ ")"
-    chunkItems _ [] = []
-    chunkItems n xs =
-        take n xs : chunkItems n (drop n xs)
+
+settingsChastityTab :: SettingsCtx -> Int -> [String]
+settingsChastityTab ctx tabIx =
+    let tf True = "ON"; tf False = "OFF"
+    in case tabIx of
+        0 ->
+            [ " Simple"
+            , "   1. Listen port:    " ++ show (sctxPort ctx)
+            , "   2. Display name:   " ++ sctxName ctx
+            , "   0. View/regenerate keys"
+            , ""
+            , " Discovery, storage, export/import, and logs"
+            , " are compile-time disabled in this build."
+            ]
+        1 ->
+            [ " Security"
+            , "   Build profile:     CHASTITY"
+            , "   Connection mode:   [" ++ sctxModeLabel ctx ++ "]"
+            , ""
+            , " Persistent storage is compile-time locked OFF."
+            , " Mode changes are compile-time locked OFF."
+            ]
+        _ ->
+            [ " Advanced"
+            , "   Disabled built-ins:"
+            ]
+            ++ map renderDisabledPlugin disabledPluginIds
+            ++ [ ""
+               , " This build keeps all chats and identity state"
+               , " in memory only."
+               ]
+
+settingsFullTab :: SettingsCtx -> Int -> IO [String]
+settingsFullTab ctx tabIx =
+    let tf True = "ON"; tf False = "OFF"
+    in case tabIx of
+        0 ->
+            pure
+                [ " Simple"
+                , "   1. Listen port:    " ++ show (sctxPort ctx)
+                , "   2. Display name:   " ++ sctxName ctx
+                , "   3. mDNS (LAN):    [" ++ tf (sctxMdns ctx) ++ "]"
+                , "   c. Connection mode: [" ++ sctxModeLabel ctx ++ "]"
+                , "   0. View/regenerate keys"
+                ]
+        1 ->
+            pure
+                [ " Discovery"
+                , "   3. mDNS (LAN):    [" ++ tf (sctxMdns ctx) ++ "]"
+                , "   4. Peer Exchange: [" ++ tf (sctxPex ctx) ++ "]"
+                , ""
+                , " Peer discovery applies immediately."
+                ]
+        2 ->
+            pure ([ " Storage" ] ++ tail (sctxStorageLines ctx))
+        3 ->
+            pure
+                [ " Security"
+                , "   c. Connection mode: [" ++ sctxModeLabel ctx ++ "]"
+                , "   (Swing / Promiscuous / Selective / Chaste / Chastity)"
+                , ""
+                , " Switching mode renegotiates remote sessions."
+                ]
+        _ -> do
+            let packagedPluginLines = summarizePackagedPlugins (sctxPackagedPlugins ctx)
+                providerLines = summarizeTransportProviders (sctxTransportProviders ctx)
+            pure $
+                [ " Advanced"
+                , "   a. Debug logging:  [" ++ tf (sctxDebugLog ctx) ++ "]"
+                , "   b. Log path:       " ++ sctxDebugPath ctx
+                , ""
+                , "   Compiled built-ins:"
+                ]
+                ++ summarizeBuiltInPlugins enabledPluginIds
+                ++ [ ""
+                   , "   Packaged feature slots:"
+                   ]
+                ++ packagedPluginLines
+                ++ [ ""
+                   , "   Transport providers:"
+                   ]
+                ++ providerLines
+                ++ [ ""
+                   , " Diagnostic controls stay off by default."
+                   ]
+
+enabledPluginIds :: [BuildPluginId]
+enabledPluginIds = map bpId enabledPlugins
+
+disabledPluginIds :: [BuildPluginId]
+disabledPluginIds = map bpId disabledPlugins
+
+renderDisabledPlugin :: BuildPluginId -> String
+renderDisabledPlugin pid =
+    "   - " ++ pluginName pid ++ ": [OFF]"
+
+summarizeBuiltInPlugins :: [BuildPluginId] -> [String]
+summarizeBuiltInPlugins [] =
+    [ "   - none" ]
+summarizeBuiltInPlugins pluginIds =
+    map (\row -> "   - " ++ intercalate ", " (map pluginName row)) (chunkItems 3 pluginIds)
+
+summarizePackagedPlugins :: [PackagedPluginRuntime] -> [String]
+summarizePackagedPlugins [] =
+    [ "   - none discovered" ]
+summarizePackagedPlugins catalog =
+    map (\row -> "   - " ++ intercalate ", " (map renderPackagedPlugin row)) (chunkItems 2 catalog)
+
+renderPackagedPlugin :: PackagedPluginRuntime -> String
+renderPackagedPlugin runtimeEntry =
+    let plugin = pprPlugin runtimeEntry
+        manifest = pprManifest runtimeEntry
+        loadStatus = pprLoadStatus runtimeEntry
+    in bpName plugin
+        ++ " ("
+        ++ pmStatusTag manifest
+        ++ "/"
+        ++ pluginLoadStatusLabel loadStatus
+        ++ ")"
+
+summarizeTransportProviders :: [CachedTransportProvider] -> [String]
+summarizeTransportProviders [] =
+    [ "   - none discovered" ]
+summarizeTransportProviders catalog =
+    renderProviderGroup ProviderDirectCarrier "   - Direct carriers" catalog
+    ++ renderProviderGroup ProviderOverlayCarrier "   - Overlay carriers" catalog
+    ++ renderProviderGroup ProviderOpenBridge "   - Open bridges" catalog
+    ++ renderProviderGroup ProviderClosedBridge "   - Closed bridges" catalog
+
+renderProviderGroup :: ProviderClass -> String -> [CachedTransportProvider] -> [String]
+renderProviderGroup providerClass label catalog =
+    let entries = filter ((== providerClass) . tpClass . ctpProvider) catalog
+    in if null entries
+        then []
+        else [label ++ ": " ++ intercalate ", " (map renderProviderEntry entries)]
+
+renderProviderEntry :: CachedTransportProvider -> String
+renderProviderEntry runtimeEntry =
+    let provider = ctpProvider runtimeEntry
+        manifest = ctpManifest runtimeEntry
+        inheritsLabel =
+            case map providerIdLabel (ctpInherits runtimeEntry) of
+                [] -> ""
+                names -> "<-" ++ intercalate "+" names
+    in tpName provider
+        ++ "("
+        ++ pmfStatusTag manifest
+        ++ inheritsLabel
+        ++ "/"
+        ++ pmfEndpointTag manifest
+        ++ "/"
+        ++ providerLoadStatusLabel (ctpLoadStatus runtimeEntry)
+        ++ ")"
+
+chunkItems :: Int -> [a] -> [[a]]
+chunkItems _ [] = []
+chunkItems n xs =
+    take n xs : chunkItems n (drop n xs)
 
 renderKeysOverlay :: Layout -> AppState -> IO ()
 renderKeysOverlay lay st = showOverlay lay "Identity & Keys" =<< keysOverlayLines st
