@@ -214,9 +214,9 @@ ensureVMImage = do
             case ec of
                 ExitSuccess -> do
                     hPutStrLn stderr $ "[VM-SMOKE] VM image cached at: " ++ cachePath
-                    -- Clean up old nix store paths to reclaim disk space
+                    -- Clean up old nix store paths (keep recent for download cache)
                     hPutStrLn stderr "[VM-SMOKE] cleaning up old nix store paths..."
-                    _ <- runScript "nix-collect-garbage" []
+                    _ <- runScript "nix-collect-garbage" ["--delete-older-than", "3d"]
                     pure cachePath
                 _ -> do
                     hPutStrLn stderr "[VM-SMOKE] nix build .#vm-image failed"
@@ -346,7 +346,7 @@ ensureFirecrackerImage = do
             case ec of
                 ExitSuccess -> do
                     hPutStrLn stderr $ "[FC-SMOKE] Firecracker image cached at: " ++ cachePath
-                    _ <- runScript "nix-collect-garbage" []
+                    _ <- runScript "nix-collect-garbage" ["--delete-older-than", "3d"]
                     pure cachePath
                 _ -> do
                     hPutStrLn stderr "[FC-SMOKE] nix build .#firecracker-image failed"
