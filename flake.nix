@@ -164,6 +164,10 @@
           '';
         };
 
+        packages.vm-test-image = import ./nix/vm-test-image.nix {
+          pkgs = import nixpkgs { system = "x86_64-linux"; };
+        };
+
         packages.vm-image = (import ./nix/vm-image.nix {
           pkgs = import nixpkgs { system = "x86_64-linux"; };
           fstarCachePath = null;
