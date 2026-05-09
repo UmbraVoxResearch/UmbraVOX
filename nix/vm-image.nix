@@ -11,11 +11,17 @@
 #   nix-build nix/vm-image.nix      (standalone)
 #
 # The output is a raw disk image: result/nixos.raw
-{ pkgs ? import <nixpkgs> { system = "x86_64-linux"; }
-, fstarCachePath ? null
-}:
+{ pkgs ? import <nixpkgs> { system = "x86_64-linux"; } }:
 
 let
+  # Auto-detect F* cache from the source tree.
+  # The two-stage VM build copies .checked files to nix/fstar-cache/
+  # before rebuilding the image. If present, they're baked in.
+  fstarCacheDir = ../nix/fstar-cache;
+  fstarCachePath = if builtins.pathExists fstarCacheDir
+    then fstarCacheDir
+    else null;
+
   hp = pkgs.haskell.packages.ghc96;
 
   devToolsPkgs = with pkgs; [
