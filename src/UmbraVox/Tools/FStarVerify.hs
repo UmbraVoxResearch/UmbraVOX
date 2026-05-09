@@ -24,6 +24,7 @@ module UmbraVox.Tools.FStarVerify
     , checkTool
     ) where
 
+import Data.List (partition)
 import System.Directory (doesFileExist, findExecutable, listDirectory)
 import System.Exit (ExitCode(..))
 import System.FilePath ((</>), takeBaseName, takeExtension)
@@ -84,27 +85,45 @@ discoverModules dir = do
                     , takeExtension f == ".fst"
                     , startsWith "Spec." f
                     ]
-    pure (sort' specFiles)
+    -- Sort alphabetically but put heavy specs (Keccak) last so other
+    -- modules get cached first and the heavy ones benefit from warm cache.
+    let (heavy, normal) = partition (`elem` heavySpecs) (sort' specFiles)
+    pure (normal ++ heavy)
+
+-- | Specs that require significantly more Z3 time.
+-- These are verified last so other modules populate the cache first.
+heavySpecs :: [String]
+heavySpecs = ["Spec.Keccak"]
 
 -- | Check if a tool is available on PATH.
 checkTool :: String -> IO (Maybe FilePath)
 checkTool = findExecutable
 
 -- | Verify a single F* module.
+-- Heavy specs get a higher z3rlimit to avoid timeouts on cold verification.
 verifyModule :: VerifyConfig -> String -> IO VerifyResult
 verifyModule cfg modName = do
     let filePath = vcSpecDir cfg </> moduleToFile modName
+        flags = if modName `elem` heavySpecs
+                    then replaceZ3Rlimit "10000" (vcFlags cfg)
+                    else vcFlags cfg
     exists <- doesFileExist filePath
     if not exists
         then pure (NotFound modName)
         else do
             (exitCode, _stdout, stderr) <- readProcessWithExitCode
                 (vcFstarExe cfg)
-                (vcFlags cfg ++ [filePath])
+                (flags ++ [filePath])
                 ""
             case exitCode of
                 ExitSuccess   -> pure (Passed modName)
                 ExitFailure _ -> pure (Failed modName stderr)
+
+-- | Replace the z3rlimit value in a flags list.
+replaceZ3Rlimit :: String -> [String] -> [String]
+replaceZ3Rlimit _ [] = []
+replaceZ3Rlimit newVal ("--z3rlimit" : _ : rest) = "--z3rlimit" : newVal : rest
+replaceZ3Rlimit newVal (f : rest) = f : replaceZ3Rlimit newVal rest
 
 -- | Build a summary from a list of results.
 verifySummary :: [VerifyResult] -> VerifySummary

@@ -237,7 +237,6 @@ expectedModules =
     , "Spec.GaloisField"
     , "Spec.HKDF"
     , "Spec.HMAC"
-    , "Spec.Keccak"
     , "Spec.MLKEM768"
     , "Spec.NoiseIK"
     , "Spec.PQXDH"
@@ -246,6 +245,7 @@ expectedModules =
     , "Spec.SHA512"
     , "Spec.X25519"
     , "Spec.X3DH"
+    , "Spec.Keccak"  -- heavy spec, verified last with higher z3rlimit
     ]
 
 testDiscoverModules :: IO Bool
