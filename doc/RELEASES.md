@@ -106,6 +106,19 @@ Image caching:
 This closes the gap between host-trusted builds and authoritative
 isolated release execution (M2.4).
 
+### Firecracker Lane
+
+`make firecracker-smoke` provides the same isolated pipeline via
+Firecracker instead of QEMU:
+
+1. Builds (or reuses cached) Firecracker image via
+   `nix build .#firecracker-image` (vmlinux + ext4 rootfs)
+2. Creates source disk and generates Firecracker JSON config at runtime
+3. Boots Firecracker with KVM acceleration
+4. Guest runs the same pipeline as the QEMU lane
+
+The Firecracker image is cached at `build/vm/firecracker-image`.
+
 ## Compliance Placeholder Gates
 
 The repository now provides real compliance tooling implemented in Haskell:

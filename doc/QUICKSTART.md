@@ -64,6 +64,8 @@ make release-checksums
 make release-gate-assurance
 make vm-smoke
 make vm-image-build
+make firecracker-smoke
+make firecracker-image-build
 make vm-image-clean
 make platform-sanity
 make sanity
@@ -164,6 +166,11 @@ scripts/nix-flake.sh flake show --no-write-lock-file
 - `make vm-image-build` builds and caches the NixOS VM image without
   running the smoke pipeline.
 - `make vm-image-clean` removes the cached VM image.
+- `make firecracker-smoke` boots a Firecracker microVM with the NixOS
+  guest image and runs the full isolated pipeline. Requires KVM and
+  the `firecracker` binary (both provided by nix-shell).
+- `make firecracker-image-build` builds and caches the Firecracker guest
+  image (vmlinux kernel + ext4 rootfs) without running the pipeline.
 - Flake parity commands are available through `flake.nix` apps/checks/packages.
   Use `scripts/nix-flake.sh ...` to avoid repeating feature flags.
 - Release packaging now fails by default on dirty or untagged commits.

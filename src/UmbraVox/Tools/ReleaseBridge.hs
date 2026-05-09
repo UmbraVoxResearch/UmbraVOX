@@ -8,6 +8,8 @@ module UmbraVox.Tools.ReleaseBridge
     , runVMSmoke
     , runVMImageClean
     , ensureVMImage
+    , runFirecrackerSmoke
+    , ensureFirecrackerImage
     ) where
 
 import Control.Exception (IOException, catch)
@@ -44,6 +46,10 @@ runBridgeCommand "vm-smoke" args = runVMSmoke args
 runBridgeCommand "vm-image-clean" args = runVMImageClean args
 runBridgeCommand "vm-image-build" _ = do
     _ <- ensureVMImage
+    pure ExitSuccess
+runBridgeCommand "firecracker-smoke" args = runFirecrackerSmoke args
+runBridgeCommand "firecracker-image-build" _ = do
+    _ <- ensureFirecrackerImage
     pure ExitSuccess
 runBridgeCommand "release-sbom-generate" _ = generateSBOM
 runBridgeCommand "release-license-bundle-generate" _ = generateLicenseBundle
@@ -228,3 +234,101 @@ runScriptWithEnv script args extraEnv = do
         (\(e :: IOException) -> do
             hPutStrLn stderr $ "Failed to start VM: " ++ show e
             pure (ExitFailure 127))
+
+-- | Run the Firecracker smoke pipeline: preflight, image build, source disk, boot.
+runFirecrackerSmoke :: [String] -> IO ExitCode
+runFirecrackerSmoke _ = do
+    hPutStrLn stderr "[FC-SMOKE] starting Firecracker isolated pipeline..."
+    preflightOk <- firecrackerPreflight
+    when (not preflightOk) $ exitWith (ExitFailure 127)
+    imagePath <- ensureFirecrackerImage
+    srcDisk <- createSourceDisk
+    let kernel = imagePath </> "vmlinux"
+        rootfs = imagePath </> "rootfs.img"
+    configPath <- generateFirecrackerConfig kernel rootfs srcDisk
+    hPutStrLn stderr $ "[FC-SMOKE] booting Firecracker with config: " ++ configPath
+    ec <- runScript "firecracker" ["--config-file", configPath]
+    removeFile srcDisk `catch` \(_ :: IOException) -> pure ()
+    removeFile configPath `catch` \(_ :: IOException) -> pure ()
+    pure ec
+
+-- | Pre-flight checks for Firecracker: /dev/kvm, firecracker binary, genext2fs.
+firecrackerPreflight :: IO Bool
+firecrackerPreflight = do
+    hasKVM <- doesFileExist "/dev/kvm"
+    when (not hasKVM) $
+        hPutStrLn stderr "[FC-SMOKE] /dev/kvm not present; KVM required"
+    fc <- findExecutable "firecracker"
+    when (isNothing fc) $
+        hPutStrLn stderr "[FC-SMOKE] firecracker not on PATH"
+    genext2 <- findExecutable "genext2fs"
+    when (isNothing genext2) $
+        hPutStrLn stderr "[FC-SMOKE] genext2fs not on PATH"
+    pure (hasKVM && not (isNothing fc) && not (isNothing genext2))
+
+-- | Ensure the Firecracker image is built and cached at build/vm/firecracker-image.
+-- Rebuilds only when flake.nix or flake.lock are newer than the cached symlink.
+ensureFirecrackerImage :: IO FilePath
+ensureFirecrackerImage = do
+    repoRoot <- getCurrentDirectory
+    let cacheDir  = repoRoot </> "build" </> "vm"
+        cachePath = cacheDir </> "firecracker-image"
+        flakeNix  = repoRoot </> "flake.nix"
+        flakeLock = repoRoot </> "flake.lock"
+    cacheExists <- doesDirectoryExist cachePath
+    needsRebuild <- if not cacheExists
+        then pure True
+        else do
+            cacheTime <- getModificationTime cachePath
+            nixTime   <- getModificationTime flakeNix
+            lockTime  <- getModificationTime flakeLock
+            pure (nixTime > cacheTime || lockTime > cacheTime)
+    if not needsRebuild
+        then do
+            hPutStrLn stderr $ "[FC-SMOKE] using cached Firecracker image: " ++ cachePath
+            pure cachePath
+        else do
+            hPutStrLn stderr "[FC-SMOKE] building Firecracker image (this may take a while on first run)..."
+            createDirectoryIfMissing True cacheDir
+            ec <- runScript "nix" [ "build", ".#firecracker-image", "--out-link", cachePath
+                                  , "--extra-experimental-features", "nix-command flakes" ]
+            case ec of
+                ExitSuccess -> do
+                    hPutStrLn stderr $ "[FC-SMOKE] Firecracker image cached at: " ++ cachePath
+                    pure cachePath
+                _ -> do
+                    hPutStrLn stderr "[FC-SMOKE] nix build .#firecracker-image failed"
+                    exitWith (ExitFailure 1)
+
+-- | Generate a Firecracker JSON config file with paths to kernel, rootfs, and source disk.
+generateFirecrackerConfig :: FilePath -> FilePath -> FilePath -> IO FilePath
+generateFirecrackerConfig kernel rootfs srcDisk = do
+    tmpDir <- getTemporaryDirectory
+    let configPath = tmpDir </> "umbravox-fc-config.json"
+    writeFile configPath $ unlines
+        [ "{"
+        , "  \"boot-source\": {"
+        , "    \"kernel_image_path\": " ++ show kernel ++ ","
+        , "    \"boot_args\": \"console=ttyS0 panic=1 reboot=k\""
+        , "  },"
+        , "  \"drives\": ["
+        , "    {"
+        , "      \"drive_id\": \"rootfs\","
+        , "      \"path_on_host\": " ++ show rootfs ++ ","
+        , "      \"is_root_device\": true,"
+        , "      \"is_read_only\": false"
+        , "    },"
+        , "    {"
+        , "      \"drive_id\": \"source\","
+        , "      \"path_on_host\": " ++ show srcDisk ++ ","
+        , "      \"is_root_device\": false,"
+        , "      \"is_read_only\": true"
+        , "    }"
+        , "  ],"
+        , "  \"machine-config\": {"
+        , "    \"vcpu_count\": 4,"
+        , "    \"mem_size_mib\": 4096"
+        , "  }"
+        , "}"
+        ]
+    pure configPath
