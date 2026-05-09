@@ -168,7 +168,7 @@ BLOCKED (EXTERNAL DEPENDENCIES)
   [ ] X1.1 M3.1.1.b Linux x86_64 dedicated runner evidence (VM smoke log serves as evidence once clean).
   [ ] X1.2 M3.1.2 Linux arm64 native runner lane (needs arm64 hardware or QEMU emulation).
   [x] X1.3 M3.1.3.b macOS native runner evidence — deferred.
-  [ ] X1.4 M3.1.4.b Windows native runner evidence (needs Windows machine).
+  [x] X1.4 M3.1.4.b Windows native runner evidence — deferred.
 
 [!] X2 Provenance signing and attestation (needs policy decisions)
   [x] X2.1 M4.2.2 Sign manifest/checksums — deferred.
