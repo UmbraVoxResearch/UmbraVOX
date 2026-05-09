@@ -50,6 +50,51 @@ let
     gnupatch
   ];
 
+  # Pre-built F* verification cache.  Runs fstar.exe on all 17 specs
+  # during the Nix build so the VM boots with warm .checked files.
+  # Nix rebuilds this when spec sources or fstar/z3 versions change.
+  # F* self-validates: stale .checked files are rejected at load time.
+  fstarCache = pkgs.runCommand "umbravox-fstar-cache" {
+    nativeBuildInputs = [ pkgs.fstar pkgs.z3 pkgs.coreutils ];
+    src = ../test/evidence/formal-proofs/fstar;
+  } ''
+    mkdir -p work/_cache work/_output
+    cp $src/Spec.*.fst work/
+
+    # Resolve F* ulib path for standard library includes
+    FSTAR_REAL=$(readlink -f $(which fstar.exe))
+    FSTAR_HOME=$(dirname $(dirname $FSTAR_REAL))
+    ULIB=""
+    for d in "$FSTAR_HOME/lib/fstar/ulib" "$FSTAR_HOME/ulib" "$FSTAR_HOME/share/fstar/ulib"; do
+      [ -d "$d" ] && ULIB="$d" && break
+    done
+    ULIB_FLAG=""
+    [ -n "$ULIB" ] && ULIB_FLAG="--include $ULIB"
+
+    # Two passes: first populates independent modules, second resolves
+    # cross-module dependencies using the cache from pass one.
+    for pass in 1 2; do
+      echo "=== F* cache build pass $pass ==="
+      for f in work/Spec.*.fst; do
+        echo "  verifying $(basename $f) ..."
+        fstar.exe \
+          --cache_checked_modules \
+          --already_cached "Prims,FStar" \
+          --include work \
+          --odir work/_output \
+          --cache_dir work/_cache \
+          --z3rlimit 600 \
+          $ULIB_FLAG \
+          "$f" 2>&1 || true
+      done
+    done
+
+    mkdir -p $out
+    cp work/_cache/*.checked $out/ 2>/dev/null || true
+    count=$(ls $out/*.checked 2>/dev/null | wc -l)
+    echo "F* cache complete: $count checked files"
+  '';
+
   nixosConfig = { config, lib, modulesPath, pkgs, ... }: {
     imports = [ (modulesPath + "/profiles/qemu-guest.nix") ];
 
@@ -126,6 +171,10 @@ CABALEOF
         ExecStart = "${pkgs.systemd}/bin/systemctl poweroff";
       };
     };
+
+    # Pre-built F* verification cache baked into the image.
+    # vm-smoke-run.sh copies this to the workspace before running verify.
+    environment.etc."umbravox-fstar-cache".source = fstarCache;
 
     # FHS compatibility for Makefile (SHELL := /bin/bash) and shebangs
     system.activationScripts.fhsCompat = ''
