@@ -45,6 +45,13 @@ export PATH="/work/umbravox/scripts:$PATH"
 # Unset LD_LIBRARY_PATH to prevent nix glibc conflicts
 unset LD_LIBRARY_PATH 2>/dev/null || true
 
+# Set FSTAR_HOME so fstar.exe can find its standard library (ulib)
+FSTAR_EXE_PATH=$(command -v fstar.exe 2>/dev/null || true)
+if [ -n "$FSTAR_EXE_PATH" ]; then
+    FSTAR_REAL=$(readlink -f "$FSTAR_EXE_PATH")
+    export FSTAR_HOME=$(dirname "$(dirname "$FSTAR_REAL")")
+fi
+
 # Offline cabal config
 mkdir -p /root/.cabal
 cat > /root/.cabal/config << 'CABALEOF'

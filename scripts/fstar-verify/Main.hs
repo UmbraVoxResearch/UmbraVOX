@@ -1,8 +1,11 @@
 module Main (main) where
 
+import System.Directory (doesDirectoryExist, findExecutable)
 import System.Environment (getArgs, lookupEnv)
 import System.Exit (exitFailure, exitSuccess)
+import System.FilePath ((</>), takeDirectory)
 import System.IO (BufferMode(LineBuffering), hSetBuffering, stdout, stderr)
+import System.Process (readProcess)
 
 import UmbraVox.Tools.FStarVerify
 
@@ -16,9 +19,14 @@ main = do
     -- Build config from environment or defaults
     fstarExe <- maybe "fstar.exe" id <$> lookupEnv "FSTAR_EXE"
     z3Exe    <- maybe "z3"        id <$> lookupEnv "Z3_EXE"
+
+    -- Auto-detect F* ulib path for standard library includes
+    ulibFlags <- resolveUlibFlags fstarExe
+
     let cfg = (defaultConfig specDir)
             { vcFstarExe = fstarExe
             , vcZ3Exe    = z3Exe
+            , vcFlags    = vcFlags (defaultConfig specDir) ++ ulibFlags
             }
 
     -- Check prerequisites
@@ -96,3 +104,50 @@ resolveSpecDir = do
     case mRoot of
         Just root -> pure (root ++ "/test/evidence/formal-proofs/fstar")
         Nothing -> fail "UMBRAVOX_ROOT is not set; run inside nix-shell"
+
+-- | Resolve F* ulib include path from fstar.exe location or FSTAR_HOME.
+-- Returns ["--include", "<ulib-path>"] if found, [] otherwise.
+resolveUlibFlags :: String -> IO [String]
+resolveUlibFlags fstarExe = do
+    -- Try FSTAR_HOME first
+    mHome <- lookupEnv "FSTAR_HOME"
+    case mHome of
+        Just home -> do
+            let candidates = [ home </> "lib" </> "fstar" </> "ulib"
+                             , home </> "ulib"
+                             , home </> "share" </> "fstar" </> "ulib"
+                             ]
+            found <- findFirst candidates
+            case found of
+                Just ulib -> do
+                    putStrLn $ "\x1b[34m[INFO]\x1b[0m  F* ulib: " ++ ulib
+                    pure ["--include", ulib]
+                Nothing -> tryFromBinary fstarExe
+        Nothing -> tryFromBinary fstarExe
+  where
+    tryFromBinary exe = do
+        mPath <- findExecutable exe
+        case mPath of
+            Nothing -> pure []
+            Just path -> do
+                -- Resolve symlinks to find the real nix store path
+                real <- readProcess "readlink" ["-f", path] ""
+                let realDir = takeDirectory (strip' real)
+                    home = takeDirectory realDir
+                    candidates = [ home </> "lib" </> "fstar" </> "ulib"
+                                 , home </> "ulib"
+                                 , home </> "share" </> "fstar" </> "ulib"
+                                 ]
+                found <- findFirst candidates
+                case found of
+                    Just ulib -> do
+                        putStrLn $ "\x1b[34m[INFO]\x1b[0m  F* ulib: " ++ ulib
+                        pure ["--include", ulib]
+                    Nothing -> pure []
+
+    findFirst [] = pure Nothing
+    findFirst (d:ds) = do
+        exists <- doesDirectoryExist d
+        if exists then pure (Just d) else findFirst ds
+
+    strip' = reverse . dropWhile (\c -> c == '\n' || c == '\r') . reverse
