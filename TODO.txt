@@ -192,7 +192,7 @@ BLOCKED (EXTERNAL DEPENDENCIES)
   [x] X2.3 M4.2.4 in-toto/SLSA attestation path — deferred.
 
 [!] X3 Deferred implementation
-  [ ] X3.1 M1.1.3 Anthony.hs encryption integration (deferred pending upstream patches).
+  [x] X3.1 M1.1.3 Anthony.hs encryption integration — deferred pending upstream patches.
 
 ================================================================================
 FUTURE PLANNED (POST-MVP)
