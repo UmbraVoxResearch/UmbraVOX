@@ -14,8 +14,8 @@ import qualified Data.Map.Strict as Map
 import Data.List (find, isInfixOf, isPrefixOf, sort, stripPrefix)
 import qualified Network.Socket as NS
 import System.Directory
-    ( createDirectoryIfMissing, findExecutable, getTemporaryDirectory
-    , removeDirectoryRecursive, removeFile
+    ( createDirectoryIfMissing, doesFileExist, findExecutable
+    , getTemporaryDirectory, removeDirectoryRecursive, removeFile
     )
 import System.Environment (getEnvironment, getExecutablePath)
 import System.Exit (ExitCode(..))
@@ -409,57 +409,63 @@ testLiveTerminalBootPath = do
             putStrLn "  SKIP: script PTY helper unavailable"
             pure True
         Just scriptBin -> do
-            helperReady <- probeScriptHelper scriptBin
-            if not helperReady
+            hasTTY <- doesFileExist "/dev/tty"
+            if not hasTTY
                 then do
-                    putStrLn "  SKIP: script PTY helper is unstable in this environment"
+                    putStrLn "  SKIP: no /dev/tty available (headless/VM environment)"
                     pure True
                 else do
-                    tmp <- getTemporaryDirectory
-                    let homeDir = tmp </> "umbravox-live-terminal-home"
-                        dataDir = homeDir </> ".umbravox"
-                        idPath = dataDir </> "identity.key"
-                        dbPath = dataDir </> "umbravox.db"
-                    createDirectoryIfMissing True dataDir
-                    ik1 <- resolveIdentityAt idPath
-                    seedPersistentDB dbPath
-                    -- Write the persistence preference file so the binary
-                    -- skips the interactive prompt on boot.
-                    writeFile (dbPath ++ ".pref") "1\n"
-                    binaryPath <- locateUmbravoxBinary
-                    result <- timeout (20 * 1000000) $
-                        readProcessWithExitCode "sh"
-                            [ "-c"
-                            , staggeredPTYCommand homeDir scriptBin binaryPath
-                            ]
-                            ""
-                    ik2 <- resolveIdentityAt idPath
-                    cleanupFile idPath
-                    cleanupFile dbPath
-                    cleanupDir homeDir
-                    case result of
-                        Nothing ->
-                            assertEq "live terminal boot path exits before timeout" True False
-                        Just (exitCode, stdoutText, stderrText) -> do
-                            if exitCode == ExitFailure 139
-                                then do
-                                    putStrLn "  SKIP: script PTY helper is unstable in this environment"
-                                    pure True
-                                else do
-                                    ok1 <- assertEq "live terminal boot path exit code" ExitSuccess exitCode
-                                    ok2 <- assertEq "live terminal boot path skips prompt after persistence remembered" False
-                                        ("Enable persistent storage?" `isInfixOf` stdoutText)
-                                    ok3 <- assertEq "live terminal boot path initializes DB" True
-                                        ("Initializing database..." `isInfixOf` stdoutText)
-                                    ok4 <- assertEq "live terminal boot path restores conversations" True
-                                        ("Storage: persistent mode (2 conversations restored)" `isInfixOf` stdoutText)
-                                    ok5 <- assertEq "live terminal boot path reaches clean quit" True
-                                        ("Goodbye." `isInfixOf` stdoutText)
-                                    ok6 <- assertEq "live terminal boot path keeps fingerprint stable"
-                                        (fingerprint (ikX25519Public ik1))
-                                        (fingerprint (ikX25519Public ik2))
-                                    ok7 <- assertEq "live terminal boot path keeps stderr empty" "" stderrText
-                                    pure (and [ok1, ok2, ok3, ok4, ok5, ok6, ok7])
+                    helperReady <- probeScriptHelper scriptBin
+                    if not helperReady
+                        then do
+                            putStrLn "  SKIP: script PTY helper is unstable in this environment"
+                            pure True
+                        else do
+                            tmp <- getTemporaryDirectory
+                            let homeDir = tmp </> "umbravox-live-terminal-home"
+                                dataDir = homeDir </> ".umbravox"
+                                idPath = dataDir </> "identity.key"
+                                dbPath = dataDir </> "umbravox.db"
+                            createDirectoryIfMissing True dataDir
+                            ik1 <- resolveIdentityAt idPath
+                            seedPersistentDB dbPath
+                            -- Write the persistence preference file so the binary
+                            -- skips the interactive prompt on boot.
+                            writeFile (dbPath ++ ".pref") "1\n"
+                            binaryPath <- locateUmbravoxBinary
+                            result <- timeout (20 * 1000000) $
+                                readProcessWithExitCode "sh"
+                                    [ "-c"
+                                    , staggeredPTYCommand homeDir scriptBin binaryPath
+                                    ]
+                                    ""
+                            ik2 <- resolveIdentityAt idPath
+                            cleanupFile idPath
+                            cleanupFile dbPath
+                            cleanupDir homeDir
+                            case result of
+                                Nothing ->
+                                    assertEq "live terminal boot path exits before timeout" True False
+                                Just (exitCode, stdoutText, stderrText) -> do
+                                    if exitCode == ExitFailure 139
+                                        then do
+                                            putStrLn "  SKIP: script PTY helper is unstable in this environment"
+                                            pure True
+                                        else do
+                                            ok1 <- assertEq "live terminal boot path exit code" ExitSuccess exitCode
+                                            ok2 <- assertEq "live terminal boot path skips prompt after persistence remembered" False
+                                                ("Enable persistent storage?" `isInfixOf` stdoutText)
+                                            ok3 <- assertEq "live terminal boot path initializes DB" True
+                                                ("Initializing database..." `isInfixOf` stdoutText)
+                                            ok4 <- assertEq "live terminal boot path restores conversations" True
+                                                ("Storage: persistent mode (2 conversations restored)" `isInfixOf` stdoutText)
+                                            ok5 <- assertEq "live terminal boot path reaches clean quit" True
+                                                ("Goodbye." `isInfixOf` stdoutText)
+                                            ok6 <- assertEq "live terminal boot path keeps fingerprint stable"
+                                                (fingerprint (ikX25519Public ik1))
+                                                (fingerprint (ikX25519Public ik2))
+                                            ok7 <- assertEq "live terminal boot path keeps stderr empty" "" stderrText
+                                            pure (and [ok1, ok2, ok3, ok4, ok5, ok6, ok7])
 
 testRestorePersistentStateFailureDisablesPersistence :: IO Bool
 testRestorePersistentStateFailureDisablesPersistence = do

@@ -7,6 +7,11 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 ## [Unreleased]
 
 ### Added
+- Added multi-VM integration test orchestrator (`make vm-integration-test`) with configurable agent count, dgram multicast networking, and parallel QEMU boot.
+- Added integration test agent script (`scripts/vm-integration-agent.sh`) with readiness, exchange, and flood scenario support.
+- Added PEX auto-connect: received indirect peers trigger best-effort connection attempts via forked threads.
+- Added PTY availability check to skip terminal-dependent tests in headless/VM environments.
+- Added debugfs dump-based extraction for F* cache files from stage 1 VM (replaces broken grep -oP pattern).
 - Added Haskell implementations for all remaining shell-orchestrated targets: release-smoke-linux, release-smoke-appimage, release-lane-qemu, release-lane-firecracker, and release-gate-assurance (M4.3.4).
 - Added BSD source-only release policy documentation in doc/RELEASES.md (M3.1.5).
 - Added Firecracker VM smoke lane with Haskell orchestration (`make firecracker-smoke`) and NixOS-based vmlinux + rootfs image (`nix build .#firecracker-image`).
@@ -55,6 +60,7 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - Tightened the microVM scaffold so pinned QEMU/Firecracker runs require an explicit in-guest verification command template before they proceed.
 
 ### Changed
+- Restructured TODO.txt with Known Issues (B1), Blocked (X1-X3), and priority tracking sections.
 - Switched all Makefile orchestration targets from shell scripts to Haskell entrypoints; shell scripts preserved in scripts/ for reference only (M4.3.4 complete).
 - Marked Makefile as thin wrapper over Haskell orchestration (M4.3.3 complete); all new targets route through Haskell entrypoints.
 - Replaced placeholder SBOM/license compliance gates with real Haskell implementations that generate actual artifacts.
