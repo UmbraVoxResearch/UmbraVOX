@@ -35,6 +35,13 @@ require_command() {
   command -v "$command_name" >/dev/null 2>&1 || die "$error_message"
 }
 
+require_env() {
+  local var_name="$1"
+  local help="$2"
+  local value="${!var_name:-}"
+  [[ -n "$value" ]] || die "$help"
+}
+
 cleanup_temp_files() {
   if [[ -n "${FIRECRACKER_TEMP_CONFIG:-}" ]] && [[ -e "$FIRECRACKER_TEMP_CONFIG" ]]; then
     rm -f -- "$FIRECRACKER_TEMP_CONFIG"
@@ -80,6 +87,7 @@ qemu_boot_smoke() {
   : "${UMBRAVOX_QEMU_KERNEL:?set UMBRAVOX_QEMU_KERNEL to a Linux kernel image path}"
   : "${UMBRAVOX_QEMU_INITRD:?set UMBRAVOX_QEMU_INITRD to an initrd path}"
   : "${UMBRAVOX_QEMU_ROOTFS:?set UMBRAVOX_QEMU_ROOTFS to a rootfs image path}"
+  require_env "UMBRAVOX_QEMU_VERIFY_CMD" "set UMBRAVOX_QEMU_VERIFY_CMD to the explicit in-guest verification command template"
   require_file "$UMBRAVOX_QEMU_KERNEL" "QEMU kernel image"
   require_file "$UMBRAVOX_QEMU_INITRD" "QEMU initrd"
   require_file "$UMBRAVOX_QEMU_ROOTFS" "QEMU rootfs image"
@@ -92,6 +100,7 @@ qemu_boot_smoke() {
     fi
   fi
   [[ -n "$UMBRAVOX_QEMU_APPEND" ]] || die "QEMU kernel command line is empty"
+  echo "QEMU in-guest verification command template: $UMBRAVOX_QEMU_VERIFY_CMD"
 
   qemu-system-x86_64 \
     -machine q35,accel=kvm \
@@ -115,8 +124,9 @@ firecracker_boot_smoke() {
   [[ -n "${UMBRAVOX_FIRECRACKER_KERNEL:-}" ]] || missing+=("UMBRAVOX_FIRECRACKER_KERNEL")
   [[ -n "${UMBRAVOX_FIRECRACKER_ROOTFS:-}" ]] || missing+=("UMBRAVOX_FIRECRACKER_ROOTFS")
   [[ -n "${UMBRAVOX_FIRECRACKER_CONFIG:-}" ]] || missing+=("UMBRAVOX_FIRECRACKER_CONFIG")
+  [[ -n "${UMBRAVOX_FIRECRACKER_VERIFY_CMD:-}" ]] || missing+=("UMBRAVOX_FIRECRACKER_VERIFY_CMD")
   if ((${#missing[@]} > 0)); then
-    die "incomplete Firecracker pinned-boot inputs: missing ${missing[*]}; set all of UMBRAVOX_FIRECRACKER_KERNEL, UMBRAVOX_FIRECRACKER_ROOTFS, and UMBRAVOX_FIRECRACKER_CONFIG, or unset them all to keep scaffold behavior"
+    die "incomplete Firecracker pinned-boot inputs: missing ${missing[*]}; set UMBRAVOX_FIRECRACKER_KERNEL, UMBRAVOX_FIRECRACKER_ROOTFS, UMBRAVOX_FIRECRACKER_CONFIG, and UMBRAVOX_FIRECRACKER_VERIFY_CMD together, or unset them all to keep scaffold behavior"
   fi
 
   require_readable_file "$UMBRAVOX_FIRECRACKER_KERNEL" "Firecracker kernel image"
@@ -143,6 +153,7 @@ firecracker_boot_smoke() {
   if ! jq -e --argjson root_drive_index "$root_drive_index" '.drives[$root_drive_index].drive_id | type == "string" and length > 0' "$UMBRAVOX_FIRECRACKER_CONFIG" >/dev/null; then
     die "Firecracker root drive entry must define a non-empty drive_id: $UMBRAVOX_FIRECRACKER_CONFIG"
   fi
+  echo "Firecracker in-guest verification command template: $UMBRAVOX_FIRECRACKER_VERIFY_CMD"
 
   FIRECRACKER_TEMP_CONFIG="$(mktemp "${TMPDIR:-/tmp}/umbravox-firecracker-config.XXXXXX.json")" || die "unable to create temporary Firecracker config"
   if ! jq \
@@ -186,9 +197,10 @@ case "$mode" in
 QEMU microVM smoke scaffold
 - prerequisites satisfied
 - to execute in-guest checks now, set UMBRAVOX_QEMU_SMOKE_RUNNER to a host-specific boot-and-check command
-- or set UMBRAVOX_QEMU_KERNEL, UMBRAVOX_QEMU_INITRD, UMBRAVOX_QEMU_ROOTFS, and UMBRAVOX_QEMU_APPEND for pinned-boot execution
+- or set UMBRAVOX_QEMU_KERNEL, UMBRAVOX_QEMU_INITRD, UMBRAVOX_QEMU_ROOTFS, UMBRAVOX_QEMU_APPEND, and UMBRAVOX_QEMU_VERIFY_CMD for pinned-boot execution
 - optional deterministic profile path: set UMBRAVOX_QEMU_PROFILE (uses scripts/release-smoke-qemu-profile.sh)
 - default behavior remains scaffold-only until pinned guest boot wiring is configured
+- in-guest verification template example: /usr/local/bin/umbravox-release-smoke --verify bundle-basic
 EOF
     ;;
   firecracker)
@@ -213,8 +225,9 @@ EOF
 Firecracker microVM smoke scaffold
 - prerequisites satisfied
 - to execute in-guest checks now, set UMBRAVOX_FIRECRACKER_SMOKE_RUNNER to a host-specific boot-and-check command
-- or set UMBRAVOX_FIRECRACKER_KERNEL, UMBRAVOX_FIRECRACKER_ROOTFS, and UMBRAVOX_FIRECRACKER_CONFIG for pinned-boot execution
+- or set UMBRAVOX_FIRECRACKER_KERNEL, UMBRAVOX_FIRECRACKER_ROOTFS, UMBRAVOX_FIRECRACKER_CONFIG, and UMBRAVOX_FIRECRACKER_VERIFY_CMD for pinned-boot execution
 - default behavior remains scaffold-only until pinned microVM boot wiring is configured
+- in-guest verification template example: /usr/local/bin/umbravox-release-smoke --verify bundle-basic
 EOF
     ;;
   *)

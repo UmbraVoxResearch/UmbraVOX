@@ -12,6 +12,18 @@ TUI
   -> Temporary sqlite3-backed persistence
 ```
 
+## Release Orchestration
+
+- Build and release orchestration currently uses `Makefile` targets plus shell
+  scripts as a bridge layer.
+- That bridge exists to keep release and readiness commands runnable while the
+  long-term Haskell entrypoints are introduced.
+- The migration target is phased: first mirror the current shell behavior in
+  Haskell, then route wrappers through Haskell entrypoints, and only then
+  retire shell-specific logic after logs, exit codes, and coverage match.
+- Current docs and TODOs should be read as bridge mode, not as a completed
+  Haskell orchestration migration.
+
 ## Active Modules
 
 - `Crypto/` and `Crypto/Signal/` implement the messaging cryptography.
