@@ -141,10 +141,33 @@ runVMSmoke _ = do
     when (not preflightOk) $ exitWith (ExitFailure 127)
     imagePath <- ensureVMImage
     srcDisk <- createSourceDisk
-    let runner = imagePath </> "bin" </> "run-umbravox-vm-vm"
-    let extraOpts = "-drive if=virtio,format=raw,file=" ++ srcDisk ++ ",readonly=on"
-    hPutStrLn stderr $ "[VM-SMOKE] booting VM with source disk: " ++ srcDisk
-    ec <- runScriptWithEnv runner [] [("QEMU_OPTS", extraOpts)]
+    let diskImg = imagePath </> "nixos.img"
+    hPutStrLn stderr $ "[VM-SMOKE] disk image: " ++ diskImg
+    hPutStrLn stderr $ "[VM-SMOKE] source disk: " ++ srcDisk
+    -- Create a COW overlay so we don't need write access to the nix store image
+    tmpDir <- getTemporaryDirectory
+    let overlay = tmpDir </> "umbravox-vm-overlay.qcow2"
+    hPutStrLn stderr "[VM-SMOKE] creating COW overlay..."
+    ecOv <- runScript "qemu-img" ["create", "-f", "qcow2", "-b", diskImg, "-F", "raw", overlay]
+    case ecOv of
+        ExitSuccess -> pure ()
+        _ -> do
+            hPutStrLn stderr "[VM-SMOKE] qemu-img overlay creation failed"
+            exitWith (ExitFailure 1)
+    hPutStrLn stderr "[VM-SMOKE] booting QEMU..."
+    ec <- runScript "qemu-system-x86_64"
+        [ "-machine", "q35,accel=kvm"
+        , "-cpu", "max"
+        , "-m", "8192"
+        , "-smp", "4"
+        , "-nographic"
+        , "-nodefaults"
+        , "-no-reboot"
+        , "-serial", "stdio"
+        , "-drive", "if=virtio,format=qcow2,file=" ++ overlay
+        , "-drive", "if=virtio,format=raw,file=" ++ srcDisk ++ ",readonly=on"
+        ]
+    removeFile overlay `catch` \(_ :: IOException) -> pure ()
     removeFile srcDisk `catch` \(_ :: IOException) -> pure ()
     pure ec
 

@@ -18,12 +18,15 @@ echo ""
 
 # ── Mount source from /dev/vdb ──────────────────────────────────────
 mkdir -p /mnt/src
-if ! mount -o ro /dev/vdb /mnt/src 2>/dev/null; then
+if mountpoint -q /mnt/src 2>/dev/null; then
+    echo "source disk already mounted at /mnt/src"
+elif mount -o ro /dev/vdb /mnt/src 2>/dev/null; then
+    echo "source disk mounted at /mnt/src"
+else
     echo "SMOKE FAIL: cannot mount source disk /dev/vdb"
     echo "SMOKE_RESULT=FAIL"
     exit 1
 fi
-echo "source disk mounted at /mnt/src"
 
 # ── Copy to writable workspace ──────────────────────────────────────
 echo "copying source to /work/umbravox ..."
