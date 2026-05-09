@@ -152,6 +152,33 @@ MILESTONE M5: MULTI-VM INTEGRATION TESTING
   [ ] M5.5.2 Add cross-architecture test matrix.
 
 ================================================================================
+KNOWN ISSUES (ACTIVE BUGS)
+================================================================================
+
+[~] B1 VM smoke pipeline issues
+  [ ] B1.1 Fix debugfs extraction of .checked files from stage 1 VM cache disk (grep pattern mismatch).
+  [ ] B1.2 Fix flaky test failure in VM (exit 1 — log file contention or PTY test instability).
+  [ ] B1.3 Verify F* specs all pass in VM with z3rlimit=2000 (8 complex specs need confirmation).
+
+================================================================================
+BLOCKED (EXTERNAL DEPENDENCIES)
+================================================================================
+
+[!] X1 Platform runner evidence (needs hardware)
+  [ ] X1.1 M3.1.1.b Linux x86_64 dedicated runner evidence (VM smoke log serves as evidence once clean).
+  [ ] X1.2 M3.1.2 Linux arm64 native runner lane (needs arm64 hardware or QEMU emulation).
+  [ ] X1.3 M3.1.3.b macOS native runner evidence (needs macOS machine).
+  [ ] X1.4 M3.1.4.b Windows native runner evidence (needs Windows machine).
+
+[!] X2 Provenance signing and attestation (needs policy decisions)
+  [ ] X2.1 M4.2.2 Sign manifest/checksums (needs signing key policy: GPG? minisign? sigstore?).
+  [ ] X2.2 M4.2.3 Reproducibility rebuild-and-compare lane (VM can serve as second builder).
+  [ ] X2.3 M4.2.4 in-toto/SLSA attestation path (needs baseline stability).
+
+[!] X3 Deferred implementation
+  [ ] X3.1 M1.1.3 Anthony.hs encryption integration (deferred pending upstream patches).
+
+================================================================================
 FUTURE PLANNED (POST-MVP)
 ================================================================================
 

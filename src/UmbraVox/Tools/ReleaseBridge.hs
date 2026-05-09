@@ -15,19 +15,22 @@ module UmbraVox.Tools.ReleaseBridge
     , runLaneQemu
     , runLaneFirecracker
     , runGateAssurance
+    , runIntegrationTest
     ) where
 
+import Control.Concurrent (forkIO)
+import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Control.Exception (IOException, catch)
-import Control.Monad (when)
-import Data.List (isPrefixOf, isSuffixOf, tails)
+import Control.Monad (when, forM_)
+import Data.List (find, intercalate, isPrefixOf, isSuffixOf, tails)
 import Data.Maybe (isNothing)
 import System.Directory (doesFileExist, doesDirectoryExist, getModificationTime,
                          createDirectoryIfMissing, removeDirectoryRecursive,
                          removeFile, findExecutable, getTemporaryDirectory,
-                         getCurrentDirectory, listDirectory)
+                         getCurrentDirectory, listDirectory, copyFile)
 import System.Environment (getEnvironment, lookupEnv)
 import System.Exit (ExitCode(..), exitWith)
-import System.FilePath ((</>))
+import System.FilePath ((</>), takeFileName)
 import System.IO (hPutStrLn, stderr)
 import System.Process (CreateProcess(..), StdStream(Inherit), createProcess,
                        proc, waitForProcess, readProcessWithExitCode)
@@ -68,6 +71,7 @@ runBridgeCommand "smoke-appimage" args = runSmokeAppimage args
 runBridgeCommand "lane-qemu" args = runLaneQemu args
 runBridgeCommand "lane-firecracker" args = runLaneFirecracker args
 runBridgeCommand "gate-assurance" args = runGateAssurance args
+runBridgeCommand "vm-integration-test" args = runIntegrationTest args
 runBridgeCommand cmd _ = do
     hPutStrLn stderr $ "Unknown orchestration bridge command: " ++ cmd
     pure (ExitFailure 64)
@@ -296,10 +300,10 @@ buildFstarCacheInVM _repoRoot imagePath cacheStage = do
     hPutStrLn stderr "[VM-SMOKE] stage 1b: extracting F* cache from output disk..."
     createDirectoryIfMissing True cacheStage
     _ <- runScript "bash" ["-c",
-        "debugfs -R 'ls -p /' " ++ cacheImg
-        ++ " 2>/dev/null | grep -oP '(?<=/)[^/]+\\.checked' | while read f; do"
-        ++ " debugfs -R \"cat /$f\" " ++ cacheImg ++ " > " ++ cacheStage ++ "/$f 2>/dev/null;"
-        ++ " done"
+        "for f in $(debugfs -R 'ls /' " ++ cacheImg
+        ++ " 2>/dev/null | grep -o '[^ ]*\\.checked'); do "
+        ++ "debugfs -R \"dump /$f " ++ cacheStage ++ "/$f\" " ++ cacheImg ++ " 2>/dev/null; "
+        ++ "done"
         ]
     -- Count extracted files and report
     files <- listDirectory cacheStage
@@ -644,3 +648,174 @@ readMaybe' s = case reads s of
 -- Helper: isInfixOf for strings
 isInfixOf' :: String -> String -> Bool
 isInfixOf' needle haystack = any (isPrefixOf needle) (tails haystack)
+
+-- | Run concurrent actions over a list and collect results.
+forConcurrently :: [a] -> (a -> IO b) -> IO [b]
+forConcurrently items action = do
+    mvars <- mapM (\i -> do
+        mv <- newEmptyMVar
+        _ <- forkIO (action i >>= putMVar mv)
+        pure mv
+        ) items
+    mapM takeMVar mvars
+
+-- | Parse --agents N from args, defaulting to 3.
+parseAgentCount :: [String] -> Int
+parseAgentCount [] = 3
+parseAgentCount ("--agents" : n : _) = read n
+parseAgentCount (_ : rest) = parseAgentCount rest
+
+-- | Ensure the test VM image is built and cached at build/vm/test-image.
+-- Rebuilds only when flake.nix or flake.lock are newer than the cached symlink.
+ensureTestVMImage :: IO FilePath
+ensureTestVMImage = do
+    repoRoot <- getCurrentDirectory
+    let cacheDir  = repoRoot </> "build" </> "vm"
+        cachePath = cacheDir </> "test-image"
+        flakeNix  = repoRoot </> "flake.nix"
+        flakeLock = repoRoot </> "flake.lock"
+    cacheExists <- doesDirectoryExist cachePath
+    needsRebuild <- if not cacheExists
+        then pure True
+        else do
+            cacheTime <- getModificationTime cachePath
+            nixTime   <- getModificationTime flakeNix
+            lockTime  <- getModificationTime flakeLock
+            pure (nixTime > cacheTime || lockTime > cacheTime)
+    if not needsRebuild
+        then do
+            hPutStrLn stderr $ "[INTEGRATION] using cached test VM image: " ++ cachePath
+            pure cachePath
+        else do
+            hPutStrLn stderr "[INTEGRATION] building test VM image..."
+            createDirectoryIfMissing True cacheDir
+            ec <- runScript "nix-build"
+                [ repoRoot </> "nix" </> "vm-test-image.nix"
+                , "--out-link", cachePath ]
+            case ec of
+                ExitSuccess -> do
+                    hPutStrLn stderr $ "[INTEGRATION] test image: " ++ cachePath
+                    pure cachePath
+                _ -> do
+                    hPutStrLn stderr "[INTEGRATION] nix-build vm-test-image.nix failed"
+                    exitWith (ExitFailure 1)
+
+-- | Create an ext2 disk for a single integration test agent.
+-- Contains the release bundle, agent config, and optionally the agent script.
+createAgentDisk :: FilePath -> Int -> Int -> IO FilePath
+createAgentDisk bundlePath agentCount agentId = do
+    tmpDir <- getTemporaryDirectory
+    let diskPath = tmpDir </> "umbravox-agent-" ++ show agentId ++ ".ext2"
+        srcDir   = tmpDir </> "umbravox-agent-" ++ show agentId ++ "-src"
+        peers    = if agentId == 0
+                      then intercalate "," ["10.0.42." ++ show (10 + j) ++ ":7853" | j <- [1..agentCount-1]]
+                      else "10.0.42.10:7853"
+    createDirectoryIfMissing True srcDir
+    copyFile bundlePath (srcDir </> takeFileName bundlePath)
+    writeFile (srcDir </> "agent.env") $ unlines
+        [ "AGENT_ID=" ++ show agentId
+        , "AGENT_COUNT=" ++ show agentCount
+        , "AGENT_PORT=7853"
+        , "AGENT_IP=10.0.42." ++ show (10 + agentId)
+        , "AGENT_PEERS=" ++ peers
+        , "AGENT_SCENARIO=exchange"
+        , "AGENT_TIMEOUT=60"
+        ]
+    copyAgentScript srcDir
+    _ <- runScript "genext2fs" ["-b", "262144", "-d", srcDir, diskPath]
+    removeDirectoryRecursive srcDir `catch` \(_ :: IOException) -> pure ()
+    pure diskPath
+
+-- | Copy the integration agent script into the source dir if it exists.
+copyAgentScript :: FilePath -> IO ()
+copyAgentScript srcDir = do
+    repoRoot <- getCurrentDirectory
+    let scriptSrc = repoRoot </> "scripts" </> "vm-integration-agent.sh"
+    scriptExists <- doesFileExist scriptSrc
+    when scriptExists $ do
+        createDirectoryIfMissing True (srcDir </> "scripts")
+        copyFile scriptSrc (srcDir </> "scripts" </> "vm-integration-agent.sh")
+
+-- | Boot a single integration test agent via QEMU with dgram multicast networking.
+bootAgent :: FilePath -> FilePath -> String -> String -> Int -> Int -> IO (Int, ExitCode)
+bootAgent testImagePath agentDisk mcastAddr mcastPort _agentCount agentId = do
+    let diskImg = testImagePath </> "nixos.img"
+        overlay = "/tmp/umbravox-integration-agent-" ++ show agentId ++ ".qcow2"
+        ip      = "10.0.42." ++ show (10 + agentId)
+    _ <- runScript "qemu-img" ["create", "-f", "qcow2", "-b", diskImg, "-F", "raw", overlay]
+    hPutStrLn stderr $ "[INTEGRATION] agent " ++ show agentId ++ ": " ++ ip ++ ":7853"
+    ec <- runScript "qemu-system-x86_64"
+        [ "-machine", "q35,accel=kvm"
+        , "-cpu", "max"
+        , "-m", "1024"
+        , "-smp", "1"
+        , "-nographic"
+        , "-nodefaults"
+        , "-no-reboot"
+        , "-serial", "file:/tmp/umbravox-integration-agent-" ++ show agentId ++ ".log"
+        , "-drive", "if=virtio,format=qcow2,file=" ++ overlay
+        , "-drive", "if=virtio,format=raw,file=" ++ agentDisk ++ ",readonly=on"
+        , "-netdev", "dgram,id=net0,remote.type=inet,remote.host=" ++ mcastAddr ++ ",remote.port=" ++ mcastPort
+        , "-device", "virtio-net-pci,netdev=net0"
+        ]
+    removeFile overlay `catch` \(_ :: IOException) -> pure ()
+    pure (agentId, ec)
+
+-- | Collect and report agent logs, cleaning up log files.
+collectAgentLogs :: Int -> IO ()
+collectAgentLogs agentCount = do
+    forM_ [0..agentCount-1] $ \i -> do
+        let logFile = "/tmp/umbravox-integration-agent-" ++ show i ++ ".log"
+        exists <- doesFileExist logFile
+        when exists $ do
+            content <- readFile logFile
+            length content `seq` pure ()
+            let resultLine = find ("AGENT_RESULT=" `isPrefixOf`) (lines content)
+            hPutStrLn stderr $ "[INTEGRATION] agent " ++ show i ++ ": " ++ maybe "NO RESULT" id resultLine
+            removeFile logFile `catch` \(_ :: IOException) -> pure ()
+
+-- | Orchestrate a multi-VM integration test with N agents on dgram multicast.
+runIntegrationTest :: [String] -> IO ExitCode
+runIntegrationTest args = do
+    let agentCount = parseAgentCount args
+    hPutStrLn stderr $ "[INTEGRATION] starting " ++ show agentCount ++ "-agent integration test..."
+
+    -- Preflight
+    preflightOk <- vmPreflight
+    when (not preflightOk) $ exitWith (ExitFailure 127)
+
+    -- Ensure test VM image
+    testImagePath <- ensureTestVMImage
+
+    -- Ensure release bundle exists
+    repoRoot <- getCurrentDirectory
+    let relDir = repoRoot </> "build" </> "releases"
+    artifacts <- findArtifacts relDir "linux-x86_64.tar.gz"
+    when (null artifacts) $ do
+        hPutStrLn stderr "[INTEGRATION] no release artifact found; run make release-linux first"
+        exitWith (ExitFailure 1)
+    let bundle = head artifacts
+    hPutStrLn stderr $ "[INTEGRATION] bundle: " ++ bundle
+
+    -- Create per-agent bundle disks
+    agentDisks <- mapM (createAgentDisk bundle agentCount) [0..agentCount-1]
+
+    -- Boot all agents in parallel using dgram multicast networking
+    let mcastAddr = "230.0.0.1"
+        mcastPort = "1234"
+    hPutStrLn stderr $ "[INTEGRATION] booting " ++ show agentCount ++ " agents on multicast " ++ mcastAddr ++ ":" ++ mcastPort
+    results <- forConcurrently [0..agentCount-1] $ \agentId ->
+        bootAgent testImagePath (agentDisks !! agentId) mcastAddr mcastPort agentCount agentId
+
+    -- Cleanup agent disks
+    mapM_ (\d -> removeFile d `catch` \(_ :: IOException) -> pure ()) agentDisks
+
+    -- Report results
+    let passed = length (filter (\(_, ec) -> ec == ExitSuccess) results)
+        failed = length results - passed
+    hPutStrLn stderr $ "[INTEGRATION] results: " ++ show passed ++ " passed, " ++ show failed ++ " failed"
+    collectAgentLogs agentCount
+
+    if failed == 0
+        then pure ExitSuccess
+        else pure (ExitFailure 1)
