@@ -108,11 +108,12 @@ deriveStealthAddress scanPub spendPub = do
     -- Step 3: Shared secret via ECDH
     let !sharedSecret = x25519 ephSecret scanPub
     -- Steps 4-6: Derive view tag and stealth address
-    let !sa = computeStealthAddress sharedSecret spendPub ephPublic
-    return sa
+    return (computeStealthAddress sharedSecret spendPub ephPublic)
 
 -- | Compute stealth address from shared secret, spend pubkey, and ephemeral R.
 -- Factored out to keep cyclomatic complexity low.
+-- SAFETY (M9.1.2): If spend pubkey is invalid, saAddress will be empty (BS.null).
+-- Callers should validate with isValidStealthAddress before use.
 computeStealthAddress :: ByteString -> ByteString -> ByteString -> StealthAddress
 computeStealthAddress sharedSecret spendPub ephPublic =
     let -- Step 4: View tag
@@ -124,10 +125,10 @@ computeStealthAddress sharedSecret spendPub ephPublic =
         !sG = scalarMul s basepoint
         !stealthPoint = addSpendKey sG spendPub
     in StealthAddress
-        { saAddress   = stealthPoint
-        , saEphemeral = ephPublic
-        , saViewTag   = vt
-        }
+            { saAddress   = stealthPoint
+            , saEphemeral = ephPublic
+            , saViewTag   = vt
+            }
 
 -- | Derive the view tag bytes from shared secret via HKDF.
 deriveViewTagBytes :: ByteString -> ByteString
@@ -135,10 +136,12 @@ deriveViewTagBytes sharedSecret = hkdf hkdfSalt sharedSecret viewTagInfo 32
 
 -- | Add the spend public key point to a computed point s*G.
 -- Decodes the spend pubkey, performs Ed25519 point addition, and encodes.
+-- Returns empty ByteString if the spend public key is not a valid Ed25519 point.
+-- SAFETY (M9.1.2): Callers should check for BS.null result as an error indicator.
 addSpendKey :: ExtPoint -> ByteString -> ByteString
 addSpendKey sG spendPubBS =
     case decodePoint spendPubBS of
-        Nothing      -> BS.empty
+        Nothing      -> BS.empty  -- invalid key, caller must check
         Just !bPoint -> encodePoint (pointAdd sG bPoint)
 
 ------------------------------------------------------------------------
@@ -179,9 +182,11 @@ scanForPayment scanSecret spendSecret spendPub ephR candidateP =
         -- Step 3: Recompute expected stealth public key
         !sG = scalarMul s basepoint
         !expectedP = addSpendKey sG spendPub
-    in if constantEq expectedP candidateP
-       then Just (computeSpendingSecret s spendSecret)
-       else Nothing
+    in if BS.null expectedP
+       then Nothing
+       else if constantEq expectedP candidateP
+            then Just (computeSpendingSecret s spendSecret)
+            else Nothing
 
 -- | Compute the spending secret: sk_stealth = s + sk_spend (mod L).
 -- The spend secret is an Ed25519 seed; we hash and clamp it to get

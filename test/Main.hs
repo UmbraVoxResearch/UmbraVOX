@@ -61,6 +61,7 @@ import qualified Test.Fuzz as Fuzz
 import qualified Test.FuzzConnection as FuzzConnection
 import qualified Test.FuzzInputs as FuzzInputs
 import qualified Test.Hardening.Fault as HardeningFault
+import qualified Test.Security.Adversarial as Adversarial
 import qualified Test.Hardening.Recovery as HardeningRecovery
 import qualified Test.Hardening.Soak as HardeningSoak
 import qualified Test.Hardening.TCP as HardeningTCP
@@ -228,6 +229,7 @@ coreSuites =
     , Suite "tools-fetch-references" ToolsFetchReferences.runTests
     , Suite "runtime-log" AppRuntimeLog.runTests
     , Suite "differential" Differential.runTests
+    , Suite "adversarial" Adversarial.runTests
     ]
 
 coreCryptoSuites :: [Suite]
@@ -390,5 +392,5 @@ validSuiteArgs :: [String]
 validSuiteArgs =
     [ "required", "core", "core-crypto", "core-network", "core-chat"
     , "core-tui", "core-tools", "tcp", "fault", "recovery", "tui-sim"
-    , "integrity", "soak", "deferred", "differential", "all"
+    , "integrity", "soak", "deferred", "differential", "adversarial", "all"
     ]

@@ -20,24 +20,27 @@ import Data.ByteString (ByteString)
 import Data.Char (digitToInt, isDigit)
 import Data.List (intercalate, foldl')
 import Data.Word (Word8)
-import UmbraVox.Crypto.SHA256 (sha256)
+import UmbraVox.Crypto.HMAC (hmacSHA256)
+import UmbraVox.Crypto.HKDF (hkdfSHA256Expand)
 
 -- | Generate a 60-digit safety number from two public keys.
 --
 -- The keys are sorted (lexicographic on raw bytes) before hashing so
 -- that both parties derive the same number regardless of role.
--- SHA-256 of the sorted concatenation is used to extract 60 decimal
--- digits (each from 0-9), displayed as 12 groups of 5.
+--
+-- Uses HMAC-SHA-256 with domain separation for collision resistance,
+-- then HKDF-Expand to derive 60 bytes (one per digit).  Each byte is
+-- mapped to a digit via @mod 10@; the bias is 0.39% (26/256 vs 25/256
+-- for digits 0-5 vs 6-9), which is negligible for safety-number display.
 generateSafetyNumber :: ByteString -> ByteString -> String
 generateSafetyNumber ours theirs =
     let (lo, hi) = if ours <= theirs then (ours, theirs) else (theirs, ours)
-        hash     = sha256 (lo <> hi)
-        -- We need 60 digits. Each hash byte gives one digit (mod 10).
-        -- 32 bytes per hash; hash twice to get 64 bytes, take 60.
-        hash2    = sha256 hash
-        allBytes = BS.unpack hash <> BS.unpack hash2  -- 64 bytes
-        digits   = take 60 (map byteToDigit allBytes)
-    in digits
+        -- HMAC-SHA256(key = lo || hi, msg = domain tag) for domain separation
+        prk      = hmacSHA256 (lo <> hi) "UmbraVox_SafetyNumber_v2"
+        -- HKDF-Expand to get 60 bytes — one per digit
+        expanded = hkdfSHA256Expand prk "digits" 60
+        digits   = map byteToDigit (BS.unpack expanded)
+    in take 60 digits
   where
     byteToDigit :: Word8 -> Char
     byteToDigit w = toEnum (fromEnum '0' + fromIntegral w `mod` 10)

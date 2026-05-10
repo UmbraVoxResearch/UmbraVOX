@@ -12,7 +12,7 @@ module UmbraVox.Tools.PcapVerify
 
 import Data.Char (toLower)
 import Data.List (isInfixOf, nub)
-import Data.Map.Strict qualified as Map
+import qualified Data.Map.Strict as Map
 import System.Directory (doesDirectoryExist, listDirectory)
 import System.Exit (ExitCode(..))
 import System.FilePath ((</>), takeExtension)
