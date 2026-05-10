@@ -103,15 +103,28 @@ clampScalar !bs =
 -- scalar @k@ on Curve25519 using the Montgomery ladder.
 --
 -- Both @k@ and @u@ are 32-byte little-endian ByteStrings.
-x25519 :: ByteString -> ByteString -> ByteString
+--
+-- Finding: The previous implementation called 'error' on an all-zero DH
+--   output, making the check non-recoverable and unsuitable for use in
+--   protocol code that must handle adversarially-chosen public keys.
+-- Vulnerability: RFC 7748 Section 6.1 requires callers to detect and
+--   reject an all-zero result (low-order point attack).  Using 'error'
+--   caused an uncontrolled exception that could crash the process rather
+--   than allowing the caller to respond gracefully (e.g., abort a
+--   handshake and log the event).
+-- Fix: Return 'Nothing' for the all-zero case, 'Just result' otherwise.
+--   Callers must now handle the Maybe and propagate failure explicitly.
+-- Verified: All call sites in Handshake.hs, StealthAddress.hs, X3DH.hs,
+--   PQXDH.hs, and DoubleRatchet.hs updated to pattern-match on Maybe.
+x25519 :: ByteString -> ByteString -> Maybe ByteString
 x25519 !scalar !uCoord =
     let !k = decodeLE (clampScalar scalar)
         -- RFC 7748: decode u-coordinate, masking bit 255
         !u = decodeLE uCoord .&. (2 ^ (255 :: Int) - 1)
         !result = encodeLE (scalarMult k u)
     in if result == BS.replicate 32 0
-       then error "x25519: all-zero DH output (RFC 7748 Section 6.1)"
-       else result
+       then Nothing
+       else Just result
 
 -- | Scalar multiplication on Curve25519 via the Montgomery ladder.
 --

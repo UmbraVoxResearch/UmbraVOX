@@ -275,7 +275,10 @@ testOfflineSessionRejectsSend = do
     secret <- randomBytes 32
     dhSec <- randomBytes 32
     peerPub <- randomBytes 32
-    session <- initChatSession secret dhSec peerPub
+    mSession <- initChatSession secret dhSec peerPub
+    let session = case mSession of
+                      Just s  -> s
+                      Nothing -> error "MessageFlow: initChatSession returned Nothing (impossible with random keys)"
     ref <- newIORef session
     lock <- newMVar ()
     histRef <- newIORef ["Peer: old message"]

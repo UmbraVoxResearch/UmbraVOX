@@ -48,6 +48,23 @@ runTests = do
 -- Helpers
 ------------------------------------------------------------------------
 
+-- | Unwrap sendChatMessage's Either result, failing on ratchet error.
+mustSend :: ChatSession -> ByteString -> IO (ChatSession, ByteString)
+mustSend sess msg = do
+    r <- sendChatMessage sess msg
+    case r of
+        Left _         -> fail "mustSend: ratchet error (counter exhausted?)"
+        Right (s', w)  -> pure (s', w)
+
+-- | Unwrap recvChatMessage's Either/Maybe result for test assertions.
+-- Returns Nothing on rejection (auth failure, ratchet error, etc.)
+tryRecv :: ChatSession -> ByteString -> IO (Maybe (ChatSession, ByteString))
+tryRecv sess wire = do
+    r <- recvChatMessage sess wire
+    case r of
+        Left _         -> pure Nothing  -- ratchet error treated as rejection
+        Right mResult  -> pure mResult
+
 -- | Receive one decrypted message with a timeout, failing on timeout.
 recvOne :: TestClient -> IO ByteString
 recvOne client = do
@@ -144,42 +161,40 @@ test03_bitFlipAttack = do
     handshakeClients alice bob
     -- Send a message to establish ratchet state
     let plaintext = BC.pack "Bit flip attack test message"
-    (sess', wireBytes) <- do
-        mSess <- readIORef (tcSession alice)
-        case mSess of
-            Nothing -> fail "alice: no session"
-            Just s  -> sendChatMessage s plaintext
-    writeIORef (tcSession alice) (Just sess')
-    -- Flip bit 0 of the first byte of the ciphertext portion (after 40-byte header)
-    let headerLen = 40
-        tagLen    = 16
-    if BS.length wireBytes <= headerLen + tagLen
-        then do
-            putStrLn "  FAIL: bitFlipAttack: wire bytes too short"
-            pure False
-        else do
-            let hdrPart = BS.take headerLen wireBytes
-                ctAndTag = BS.drop headerLen wireBytes
-                -- Flip bit in ciphertext (not tag)
-                ctLen = BS.length ctAndTag - tagLen
-                ctPart = BS.take ctLen ctAndTag
-                tagPart = BS.drop ctLen ctAndTag
-                flippedByte = BS.index ctPart 0 `xor` 0x01
-                ctFlipped = BS.cons flippedByte (BS.drop 1 ctPart)
-                tampered = hdrPart <> ctFlipped <> tagPart
-            -- Try to decrypt tampered bytes
-            mSessBob <- readIORef (tcSession bob)
-            case mSessBob of
-                Nothing -> fail "bob: no session"
-                Just bobSess -> do
-                    result <- recvChatMessage bobSess tampered
-                    case result of
-                        Nothing -> do
-                            putStrLn "  PASS: bitFlipAttack (tampered ciphertext rejected)"
-                            pure True
-                        Just _  -> do
-                            putStrLn "  FAIL: bitFlipAttack (tampered ciphertext was accepted!)"
-                            pure False
+    mSess03 <- readIORef (tcSession alice)
+    case mSess03 of
+        Nothing -> fail "alice: no session"
+        Just s03 -> do
+            (sess', wireBytes) <- mustSend s03 plaintext
+            writeIORef (tcSession alice) (Just sess')
+            -- Flip bit 0 of the first byte of the ciphertext portion (after 40-byte header)
+            let headerLen = 40
+                tagLen    = 16
+            if BS.length wireBytes <= headerLen + tagLen
+                then do
+                    putStrLn "  FAIL: bitFlipAttack: wire bytes too short"
+                    pure False
+                else do
+                    let hdrPart = BS.take headerLen wireBytes
+                        ctAndTag = BS.drop headerLen wireBytes
+                        ctLen = BS.length ctAndTag - tagLen
+                        ctPart = BS.take ctLen ctAndTag
+                        tagPart = BS.drop ctLen ctAndTag
+                        flippedByte = BS.index ctPart 0 `xor` 0x01
+                        ctFlipped = BS.cons flippedByte (BS.drop 1 ctPart)
+                        tampered = hdrPart <> ctFlipped <> tagPart
+                    mSessBob <- readIORef (tcSession bob)
+                    case mSessBob of
+                        Nothing -> fail "bob: no session"
+                        Just bobSess -> do
+                            result <- tryRecv bobSess tampered
+                            case result of
+                                Nothing -> do
+                                    putStrLn "  PASS: bitFlipAttack (tampered ciphertext rejected)"
+                                    pure True
+                                Just _  -> do
+                                    putStrLn "  FAIL: bitFlipAttack (tampered ciphertext was accepted!)"
+                                    pure False
 
 ------------------------------------------------------------------------
 -- 4. Tag truncation: truncate last byte of tag -> must fail
@@ -191,26 +206,26 @@ test04_tagTruncation = do
     (alice, bob) <- createClientPair logRef
     handshakeClients alice bob
     let plaintext = BC.pack "Tag truncation test message"
-    (sess', wireBytes) <- do
-        mSess <- readIORef (tcSession alice)
-        case mSess of
-            Nothing -> fail "alice: no session"
-            Just s  -> sendChatMessage s plaintext
-    writeIORef (tcSession alice) (Just sess')
-    -- Truncate last byte (removes part of the 16-byte GCM tag)
-    let truncated = BS.take (BS.length wireBytes - 1) wireBytes
-    mSessBob <- readIORef (tcSession bob)
-    case mSessBob of
-        Nothing -> fail "bob: no session"
-        Just bobSess -> do
-            result <- recvChatMessage bobSess truncated
-            case result of
-                Nothing -> do
-                    putStrLn "  PASS: tagTruncation (truncated tag rejected)"
-                    pure True
-                Just _  -> do
-                    putStrLn "  FAIL: tagTruncation (truncated tag was accepted!)"
-                    pure False
+    mSess04 <- readIORef (tcSession alice)
+    case mSess04 of
+        Nothing -> fail "alice: no session"
+        Just s04 -> do
+            (sess', wireBytes) <- mustSend s04 plaintext
+            writeIORef (tcSession alice) (Just sess')
+            -- Truncate last byte (removes part of the 16-byte GCM tag)
+            let truncated = BS.take (BS.length wireBytes - 1) wireBytes
+            mSessBob <- readIORef (tcSession bob)
+            case mSessBob of
+                Nothing -> fail "bob: no session"
+                Just bobSess -> do
+                    result <- tryRecv bobSess truncated
+                    case result of
+                        Nothing -> do
+                            putStrLn "  PASS: tagTruncation (truncated tag rejected)"
+                            pure True
+                        Just _  -> do
+                            putStrLn "  FAIL: tagTruncation (truncated tag was accepted!)"
+                            pure False
 
 ------------------------------------------------------------------------
 -- 5. Header tampering: modify DH public key in header -> must fail
@@ -222,27 +237,27 @@ test05_headerTampering = do
     (alice, bob) <- createClientPair logRef
     handshakeClients alice bob
     let plaintext = BC.pack "Header tampering test message"
-    (sess', wireBytes) <- do
-        mSess <- readIORef (tcSession alice)
-        case mSess of
-            Nothing -> fail "alice: no session"
-            Just s  -> sendChatMessage s plaintext
-    writeIORef (tcSession alice) (Just sess')
-    -- Flip bit in the DH public key (first 32 bytes of header)
-    let flippedByte = BS.index wireBytes 0 `xor` 0x80
-        tampered = BS.cons flippedByte (BS.drop 1 wireBytes)
-    mSessBob <- readIORef (tcSession bob)
-    case mSessBob of
-        Nothing -> fail "bob: no session"
-        Just bobSess -> do
-            result <- recvChatMessage bobSess tampered
-            case result of
-                Nothing -> do
-                    putStrLn "  PASS: headerTampering (modified DH key rejected)"
-                    pure True
-                Just _  -> do
-                    putStrLn "  FAIL: headerTampering (modified DH key was accepted!)"
-                    pure False
+    mSess05 <- readIORef (tcSession alice)
+    case mSess05 of
+        Nothing -> fail "alice: no session"
+        Just s05 -> do
+            (sess', wireBytes) <- mustSend s05 plaintext
+            writeIORef (tcSession alice) (Just sess')
+            -- Flip bit in the DH public key (first 32 bytes of header)
+            let flippedByte = BS.index wireBytes 0 `xor` 0x80
+                tampered = BS.cons flippedByte (BS.drop 1 wireBytes)
+            mSessBob <- readIORef (tcSession bob)
+            case mSessBob of
+                Nothing -> fail "bob: no session"
+                Just bobSess -> do
+                    result <- tryRecv bobSess tampered
+                    case result of
+                        Nothing -> do
+                            putStrLn "  PASS: headerTampering (modified DH key rejected)"
+                            pure True
+                        Just _  -> do
+                            putStrLn "  FAIL: headerTampering (modified DH key was accepted!)"
+                            pure False
 
 ------------------------------------------------------------------------
 -- 6. Replay attack: replay same wire bytes -> must fail
@@ -254,32 +269,32 @@ test06_replayAttack = do
     (alice, bob) <- createClientPair logRef
     handshakeClients alice bob
     let plaintext = BC.pack "Replay attack test message"
-    (sess', wireBytes) <- do
-        mSess <- readIORef (tcSession alice)
-        case mSess of
-            Nothing -> fail "alice: no session"
-            Just s  -> sendChatMessage s plaintext
-    writeIORef (tcSession alice) (Just sess')
-    -- First decrypt should succeed
-    mSessBob <- readIORef (tcSession bob)
-    case mSessBob of
-        Nothing -> fail "bob: no session"
-        Just bobSess -> do
-            result1 <- recvChatMessage bobSess wireBytes
-            case result1 of
-                Nothing -> do
-                    putStrLn "  FAIL: replayAttack (first decrypt failed)"
-                    pure False
-                Just (bobSess', _) -> do
-                    -- Second decrypt with same bytes should fail (nonce advanced)
-                    result2 <- recvChatMessage bobSess' wireBytes
-                    case result2 of
+    mSess06 <- readIORef (tcSession alice)
+    case mSess06 of
+        Nothing -> fail "alice: no session"
+        Just s06 -> do
+            (sess', wireBytes) <- mustSend s06 plaintext
+            writeIORef (tcSession alice) (Just sess')
+            -- First decrypt should succeed
+            mSessBob <- readIORef (tcSession bob)
+            case mSessBob of
+                Nothing -> fail "bob: no session"
+                Just bobSess -> do
+                    result1 <- tryRecv bobSess wireBytes
+                    case result1 of
                         Nothing -> do
-                            putStrLn "  PASS: replayAttack (replayed message rejected)"
-                            pure True
-                        Just _  -> do
-                            putStrLn "  FAIL: replayAttack (replayed message was accepted!)"
+                            putStrLn "  FAIL: replayAttack (first decrypt failed)"
                             pure False
+                        Just (bobSess', _) -> do
+                            -- Second decrypt with same bytes should fail (nonce advanced)
+                            result2 <- tryRecv bobSess' wireBytes
+                            case result2 of
+                                Nothing -> do
+                                    putStrLn "  PASS: replayAttack (replayed message rejected)"
+                                    pure True
+                                Just _  -> do
+                                    putStrLn "  FAIL: replayAttack (replayed message was accepted!)"
+                                    pure False
 
 ------------------------------------------------------------------------
 -- 7. Message integrity: exact content match

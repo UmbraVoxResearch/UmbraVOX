@@ -43,8 +43,13 @@ testKeyGenRoundTrip :: IO Bool
 testKeyGenRoundTrip = do
     let secret = hexDecode "a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4"
         kp = generateKeyPair secret
-        expectedPub = x25519 secret x25519Basepoint
-    assertEq "key generation round-trip" expectedPub (kpPublic kp)
+        -- x25519 now returns Maybe; basepoint mult of a non-zero secret is always Just
+        mExpectedPub = x25519 secret x25519Basepoint
+    case mExpectedPub of
+        Nothing -> do
+            putStrLn "  FAIL: key gen round-trip: x25519 basepoint returned Nothing (impossible)"
+            pure False
+        Just expectedPub -> assertEq "key generation round-trip" expectedPub (kpPublic kp)
 
 ------------------------------------------------------------------------
 -- Test 2: SPK signature verification
@@ -116,16 +121,20 @@ testX3DHWithOPK = do
             putStrLn "  FAIL: X3DH with OPK (initiation failed)"
             pure False
         Just result -> do
-            -- Bob responds
-            let bobSecret = x3dhRespond bobIK spkSecret (Just opkSecret)
-                    (ikX25519Public aliceIK) (x3dhEphemeralKey result)
-            r1 <- assertEq "X3DH with OPK: secrets match"
-                    (x3dhSharedSecret result) bobSecret
-            r2 <- assertEq "X3DH with OPK: secret is 32 bytes"
-                    32 (BS.length (x3dhSharedSecret result))
-            r3 <- assertEq "X3DH with OPK: used OPK matches"
-                    (Just (kpPublic opk)) (x3dhUsedOPK result)
-            pure (r1 && r2 && r3)
+            -- Bob responds (x3dhRespond now returns Maybe ByteString)
+            case x3dhRespond bobIK spkSecret (Just opkSecret)
+                    (ikX25519Public aliceIK) (x3dhEphemeralKey result) of
+                Nothing -> do
+                    putStrLn "  FAIL: X3DH with OPK (Bob response failed)"
+                    pure False
+                Just bobSecret -> do
+                    r1 <- assertEq "X3DH with OPK: secrets match"
+                            (x3dhSharedSecret result) bobSecret
+                    r2 <- assertEq "X3DH with OPK: secret is 32 bytes"
+                            32 (BS.length (x3dhSharedSecret result))
+                    r3 <- assertEq "X3DH with OPK: used OPK matches"
+                            (Just (kpPublic opk)) (x3dhUsedOPK result)
+                    pure (r1 && r2 && r3)
 
 ------------------------------------------------------------------------
 -- Test 4: X3DH key agreement WITHOUT OPK
@@ -155,15 +164,20 @@ testX3DHWithoutOPK = do
             putStrLn "  FAIL: X3DH without OPK (initiation failed)"
             pure False
         Just result -> do
-            let bobSecret = x3dhRespond bobIK spkSecret Nothing
-                    (ikX25519Public aliceIK) (x3dhEphemeralKey result)
-            r1 <- assertEq "X3DH without OPK: secrets match"
-                    (x3dhSharedSecret result) bobSecret
-            r2 <- assertEq "X3DH without OPK: secret is 32 bytes"
-                    32 (BS.length (x3dhSharedSecret result))
-            r3 <- assertEq "X3DH without OPK: usedOPK is Nothing"
-                    Nothing (x3dhUsedOPK result)
-            pure (r1 && r2 && r3)
+            -- x3dhRespond now returns Maybe ByteString
+            case x3dhRespond bobIK spkSecret Nothing
+                    (ikX25519Public aliceIK) (x3dhEphemeralKey result) of
+                Nothing -> do
+                    putStrLn "  FAIL: X3DH without OPK (Bob response failed)"
+                    pure False
+                Just bobSecret -> do
+                    r1 <- assertEq "X3DH without OPK: secrets match"
+                            (x3dhSharedSecret result) bobSecret
+                    r2 <- assertEq "X3DH without OPK: secret is 32 bytes"
+                            32 (BS.length (x3dhSharedSecret result))
+                    r3 <- assertEq "X3DH without OPK: usedOPK is Nothing"
+                            Nothing (x3dhUsedOPK result)
+                    pure (r1 && r2 && r3)
 
 ------------------------------------------------------------------------
 -- Test 5: Property test — agreement always matches for random keys
@@ -199,11 +213,13 @@ propKeyAgreementMatches g0 =
     in case x3dhInitiate aliceIK bundle ekSec of
         Nothing -> False  -- signature should always verify for valid keys
         Just result ->
-            let bobSecret = x3dhRespond bobIK spkSec
+            case x3dhRespond bobIK spkSec
                     (if useOPK then Just opkSec else Nothing)
-                    (ikX25519Public aliceIK) (x3dhEphemeralKey result)
-            in x3dhSharedSecret result == bobSecret
-                && BS.length (x3dhSharedSecret result) == 32
+                    (ikX25519Public aliceIK) (x3dhEphemeralKey result) of
+                Nothing        -> False  -- DH all-zero should not occur with random keys
+                Just bobSecret ->
+                    x3dhSharedSecret result == bobSecret
+                    && BS.length (x3dhSharedSecret result) == 32
 
 ------------------------------------------------------------------------
 -- Test 6: Reject invalid SPK signature

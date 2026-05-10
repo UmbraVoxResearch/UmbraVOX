@@ -24,6 +24,7 @@ import Data.Char (isSpace, toLower)
 import Data.IORef (newIORef, readIORef, writeIORef, modifyIORef')
 import Data.List (dropWhileEnd, isInfixOf)
 import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 import System.Directory (createDirectoryIfMissing, doesFileExist, getHomeDirectory)
 import System.Environment (lookupEnv)
 import System.FilePath (takeDirectory)
@@ -104,6 +105,7 @@ newDefaultAppConfig = do
         <*> newIORef Nothing
         <*> newIORef initialMode
         <*> newIORef []
+        <*> newIORef Set.empty
 
 initializeLocalIdentity :: AppConfig -> IO IdentityKey
 initializeLocalIdentity cfg = do
@@ -293,7 +295,11 @@ restoreConversation cfg db (convId, _pubkey, name, _created) = do
     chatSec <- randomBytes 32
     dhSec   <- randomBytes 32
     dhPub   <- randomBytes 32
-    session <- initChatSession chatSec dhSec dhPub
+    -- Random keys are never all-zero, so initChatSession cannot return Nothing here.
+    mSession <- initChatSession chatSec dhSec dhPub
+    let session = case mSession of
+                      Just s  -> s
+                      Nothing -> error "restoreConversation: ratchet init with random keys returned Nothing (impossible)"
     sessRef <- newIORef session
     lockRef <- newMVar ()
     histRef <- newIORef []

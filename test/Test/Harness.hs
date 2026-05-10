@@ -171,11 +171,14 @@ clientSend client msg = do
         case mSess of
             Nothing   -> fail $ tcName client ++ ": no active session"
             Just sess -> do
-                (sess', wireBytes) <- sendChatMessage sess msg
-                writeIORef (tcSession client) (Just sess')
-                -- Length-prefix the wire bytes and send
-                let lenPrefix = putWord32BE (fromIntegral (BS.length wireBytes))
-                anySend (tcTransport client) (lenPrefix <> wireBytes)
+                sendResult <- sendChatMessage sess msg
+                case sendResult of
+                    Left _ -> fail $ tcName client ++ ": ratchet counter exhausted"
+                    Right (sess', wireBytes) -> do
+                        writeIORef (tcSession client) (Just sess')
+                        -- Length-prefix the wire bytes and send
+                        let lenPrefix = putWord32BE (fromIntegral (BS.length wireBytes))
+                        anySend (tcTransport client) (lenPrefix <> wireBytes)
 
 -- | Receive and decrypt a message for a client.
 -- Reads the length prefix, then the payload, decrypts, appends to history.
@@ -192,8 +195,9 @@ clientRecv client = do
             Just sess -> do
                 result <- recvChatMessage sess wireBytes
                 case result of
-                    Nothing -> pure Nothing
-                    Just (sess', plaintext) -> do
+                    Left _                 -> pure Nothing
+                    Right Nothing          -> pure Nothing
+                    Right (Just (sess', plaintext)) -> do
                         writeIORef (tcSession client) (Just sess')
                         modifyIORef' (tcHistory client) (plaintext :)
                         pure (Just plaintext)

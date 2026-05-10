@@ -90,7 +90,8 @@ derivePQSecret !dh1 !dh2 !dh3 !mDh4 !pqSS !pqCt !aliceIKPub !bobIKPub =
 -- Takes Alice's identity key, Bob's prekey bundle, a 32-byte ephemeral
 -- secret for generating the ephemeral X25519 keypair, and a 32-byte
 -- randomness value for ML-KEM encapsulation.
--- Returns Nothing if SPK signature verification fails.
+-- Returns Nothing if SPK signature verification fails or any DH yields
+-- an all-zero output (low-order point attack rejection).
 pqxdhInitiate :: IdentityKey      -- ^ Alice's identity key
               -> PQPreKeyBundle   -- ^ Bob's prekey bundle
               -> ByteString       -- ^ 32-byte ephemeral secret
@@ -102,24 +103,27 @@ pqxdhInitiate aliceIK bundle ekSecret mlkemRand =
                           (pqpkbSignedPreKey bundle)
                           (pqpkbSPKSignature bundle))
     then Nothing
-    else Just (initSession aliceIK bundle ekSecret mlkemRand)
+    else initSession aliceIK bundle ekSecret mlkemRand
 
 -- | Compute the PQXDH session after SPK verification succeeds.
-initSession :: IdentityKey -> PQPreKeyBundle -> ByteString -> ByteString -> PQXDHResult
-initSession aliceIK bundle ekSecret mlkemRand =
+-- Returns Nothing if any DH output is all-zero (low-order point).
+initSession :: IdentityKey -> PQPreKeyBundle -> ByteString -> ByteString -> Maybe PQXDHResult
+initSession aliceIK bundle ekSecret mlkemRand = do
     let -- Generate ephemeral keypair
-        !ek   = generateKeyPair ekSecret
-        -- Compute DH values
-        !dh1  = x25519 (ikX25519Secret aliceIK) (pqpkbSignedPreKey bundle)
-        !dh2  = x25519 (kpSecret ek)             (pqpkbIdentityKey bundle)
-        !dh3  = x25519 (kpSecret ek)             (pqpkbSignedPreKey bundle)
-        !mDh4 = fmap (x25519 (kpSecret ek)) (pqpkbOneTimePreKey bundle)
-        -- ML-KEM encapsulation
+        !ek = generateKeyPair ekSecret
+    -- Compute DH values; abort if any yields all-zero (low-order point)
+    !dh1  <- x25519 (ikX25519Secret aliceIK) (pqpkbSignedPreKey bundle)
+    !dh2  <- x25519 (kpSecret ek)             (pqpkbIdentityKey bundle)
+    !dh3  <- x25519 (kpSecret ek)             (pqpkbSignedPreKey bundle)
+    !mDh4 <- case pqpkbOneTimePreKey bundle of
+                 Nothing  -> Just Nothing
+                 Just opk -> fmap Just (x25519 (kpSecret ek) opk)
+    let -- ML-KEM encapsulation
         !(pqCt, pqSS) = mlkemEncaps (pqpkbPQPreKey bundle) mlkemRand
         -- Derive master secret (with identity + ciphertext binding)
         !masterSecret = derivePQSecret dh1 dh2 dh3 mDh4 pqSS pqCt
                             (ikX25519Public aliceIK) (pqpkbIdentityKey bundle)
-    in PQXDHResult
+    Just PQXDHResult
         { pqxdhSharedSecret = masterSecret
         , pqxdhEphemeralKey = kpPublic ek
         , pqxdhPQCiphertext = pqCt
@@ -141,13 +145,16 @@ pqxdhRespond :: IdentityKey       -- ^ Bob's identity key
              -> ByteString        -- ^ Alice's X25519 identity public key
              -> ByteString        -- ^ Alice's ephemeral public key
              -> MLKEMCiphertext   -- ^ ML-KEM ciphertext from Alice
-             -> ByteString        -- ^ 32-byte shared secret
-pqxdhRespond bobIK spkSecret mOPKSecret pqDK aliceIKPub aliceEKPub pqCt =
-    let -- Mirror the DH computations from Alice's perspective
-        !dh1  = x25519 spkSecret              aliceIKPub
-        !dh2  = x25519 (ikX25519Secret bobIK) aliceEKPub
-        !dh3  = x25519 spkSecret              aliceEKPub
-        !mDh4 = fmap (\opkSec -> x25519 opkSec aliceEKPub) mOPKSecret
-        -- ML-KEM decapsulation
+             -> Maybe ByteString  -- ^ 32-byte shared secret, or Nothing on low-order point
+pqxdhRespond bobIK spkSecret mOPKSecret pqDK aliceIKPub aliceEKPub pqCt = do
+    -- Mirror the DH computations from Alice's perspective
+    -- Abort if any DH yields all-zero (low-order point attack)
+    !dh1  <- x25519 spkSecret              aliceIKPub
+    !dh2  <- x25519 (ikX25519Secret bobIK) aliceEKPub
+    !dh3  <- x25519 spkSecret              aliceEKPub
+    !mDh4 <- case mOPKSecret of
+                 Nothing     -> Just Nothing
+                 Just opkSec -> fmap Just (x25519 opkSec aliceEKPub)
+    let -- ML-KEM decapsulation
         !pqSS = mlkemDecaps pqDK pqCt
-    in derivePQSecret dh1 dh2 dh3 mDh4 pqSS pqCt aliceIKPub (ikX25519Public bobIK)
+    Just (derivePQSecret dh1 dh2 dh3 mDh4 pqSS pqCt aliceIKPub (ikX25519Public bobIK))

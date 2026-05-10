@@ -40,27 +40,36 @@ testKeyGenValid = do
 testDeriveScanRoundTrip :: IO Bool
 testDeriveScanRoundTrip = do
     keys <- generateStealthKeys
-    sa <- deriveStealthAddress (skScanPublic keys) (skSpendPublic keys)
-    let result = scanForPayment
-            (skScanSecret keys)
-            (skSpendSecret keys)
-            (skSpendPublic keys)
-            (saEphemeral sa)
-            (saAddress sa)
-    case result of
+    mSa <- deriveStealthAddress (skScanPublic keys) (skSpendPublic keys)
+    case mSa of
         Nothing -> do
-            putStrLn "  FAIL: derive/scan round-trip (scan returned Nothing)"
+            putStrLn "  FAIL: derive/scan round-trip (deriveStealthAddress returned Nothing)"
             pure False
-        Just spendingKey ->
-            assertEq "derive/scan round-trip produces 32-byte key"
-                     32 (BS.length spendingKey)
+        Just sa -> do
+            let result = scanForPayment
+                    (skScanSecret keys)
+                    (skSpendSecret keys)
+                    (skSpendPublic keys)
+                    (saEphemeral sa)
+                    (saAddress sa)
+            case result of
+                Nothing -> do
+                    putStrLn "  FAIL: derive/scan round-trip (scan returned Nothing)"
+                    pure False
+                Just spendingKey ->
+                    assertEq "derive/scan round-trip produces 32-byte key"
+                             32 (BS.length spendingKey)
 
 -- | Different ephemeral keys produce different stealth addresses.
 testUnlinkability :: IO Bool
 testUnlinkability = do
     keys <- generateStealthKeys
-    sa1 <- deriveStealthAddress (skScanPublic keys) (skSpendPublic keys)
-    sa2 <- deriveStealthAddress (skScanPublic keys) (skSpendPublic keys)
+    mSa1 <- deriveStealthAddress (skScanPublic keys) (skSpendPublic keys)
+    mSa2 <- deriveStealthAddress (skScanPublic keys) (skSpendPublic keys)
     -- Each call generates a fresh ephemeral key, so addresses should differ
-    let differ = saAddress sa1 /= saAddress sa2
-    assertEq "different ephemeral keys -> different addresses" True differ
+    case (mSa1, mSa2) of
+        (Nothing, _) -> putStrLn "  FAIL: unlinkability (first derive returned Nothing)" >> pure False
+        (_, Nothing) -> putStrLn "  FAIL: unlinkability (second derive returned Nothing)" >> pure False
+        (Just sa1, Just sa2) ->
+            let differ = saAddress sa1 /= saAddress sa2
+            in assertEq "different ephemeral keys -> different addresses" True differ

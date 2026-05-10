@@ -27,7 +27,7 @@
 -- 4. What property this test specifically verifies.
 module Test.Security.RegressionM8 (runTests) where
 
-import Control.Exception (evaluate, try, SomeException)
+import Control.Exception (SomeException, evaluate, try)
 import qualified Data.ByteString as BS
 import Data.Word (Word32)
 
@@ -40,7 +40,7 @@ import UmbraVox.Crypto.HMAC (hmacSHA256)
 import UmbraVox.Crypto.Keccak (sha3_256)
 import UmbraVox.Crypto.Poly1305 (poly1305)
 import UmbraVox.Crypto.Signal.DoubleRatchet
-    ( RatchetState(..), RatchetHeader(..)
+    ( RatchetState(..), RatchetHeader(..), RatchetError(..)
     , maxTotalSkipped
     , ratchetInitAlice
     , ratchetEncrypt
@@ -107,17 +107,18 @@ testM811MaxTotalSkippedConstant =
         maxTotalSkipped
 
 ------------------------------------------------------------------------
--- M8.1.1 – DoubleRatchet: send counter at 0xFFFFFFFE must raise an error
+-- M8.1.1 / M10.2.2 – DoubleRatchet: send counter at 0xFFFFFFFE must
+-- return Left CounterExhausted
 --
 -- Finding:   If rsSendN reached 0xFFFFFFFF and wrapped to 0, nonce reuse
 --            would occur: the same nonce would be used for two different
 --            messages encrypted with the same GCM key, completely breaking
 --            AES-GCM confidentiality and authenticity.
--- Fix:       ratchetEncrypt checks rsSendN >= 0xFFFFFFFE and calls error()
---            to terminate the session rather than allow nonce reuse
---            (DoubleRatchet.hs:217).
+-- Fix:       ratchetEncrypt checks rsSendN >= 0xFFFFFFFE and returns
+--            Left CounterExhausted (M10.2.2) instead of calling error().
 -- This test: Constructs a RatchetState with rsSendN at the exhaustion
---            threshold (0xFFFFFFFE) and verifies ratchetEncrypt throws.
+--            threshold (0xFFFFFFFE) and verifies ratchetEncrypt returns
+--            Left CounterExhausted.
 ------------------------------------------------------------------------
 
 testM811SendCounterExhaustionErrors :: IO Bool
@@ -126,17 +127,18 @@ testM811SendCounterExhaustionErrors = do
     let sharedSecret  = BS.replicate 32 0xAA
         bobSPK        = BS.replicate 32 0xBB
         aliceDHSecret = BS.replicate 32 0xCC
-        baseState     = ratchetInitAlice sharedSecret bobSPK aliceDHSecret
+        Just baseState = ratchetInitAlice sharedSecret bobSPK aliceDHSecret
         exhaustedState = baseState { rsSendN = (0xFFFFFFFE :: Word32) }
-    result <- try (ratchetEncrypt exhaustedState (BS.pack [1, 2, 3])
-                   >>= \(st, _, _, _) -> evaluate st)
-                  :: IO (Either SomeException RatchetState)
+    result <- ratchetEncrypt exhaustedState (BS.pack [1, 2, 3])
     case result of
-        Left _ -> do
-            putStrLn "  PASS: M8.1.1 ratchetEncrypt at counter 0xFFFFFFFE -> exception"
+        Left CounterExhausted -> do
+            putStrLn "  PASS: M8.1.1 ratchetEncrypt at counter 0xFFFFFFFE -> Left CounterExhausted"
             pure True
+        Left _ -> do
+            putStrLn "  FAIL: M8.1.1 ratchetEncrypt returned unexpected Left error"
+            pure False
         Right _ -> do
-            putStrLn "  FAIL: M8.1.1 ratchetEncrypt at counter 0xFFFFFFFE should have errored"
+            putStrLn "  FAIL: M8.1.1 ratchetEncrypt at counter 0xFFFFFFFE should have returned Left"
             pure False
 
 ------------------------------------------------------------------------

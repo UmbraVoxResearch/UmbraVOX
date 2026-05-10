@@ -102,23 +102,31 @@ testNonceUniqueness = do
     let sharedSecret = BS.pack [0x01 .. 0x20]
         bobSPKSecret = BS.pack [0x21 .. 0x40]
         aliceDHSecret = BS.pack [0x41 .. 0x60]
-        aliceState = ratchetInitAlice sharedSecret
-                         (x25519 bobSPKSecret x25519Basepoint) aliceDHSecret
-    -- Encrypt 1000 messages, collect (header, ct, tag) triples
-    (nonces, _) <- collectNonces 1000 aliceState
-    let uniqueCount = Set.size (Set.fromList nonces)
-    assertEq "nonce uniqueness: 1000 messages, all nonces distinct"
-             1000 uniqueCount
+        mBobSPKPub = x25519 bobSPKSecret x25519Basepoint
+    case mBobSPKPub of
+        Nothing -> putStrLn "  FAIL: nonce uniqueness: x25519 basepoint returned Nothing" >> pure False
+        Just bobSPKPub ->
+            case ratchetInitAlice sharedSecret bobSPKPub aliceDHSecret of
+                Nothing -> putStrLn "  FAIL: nonce uniqueness: ratchetInitAlice returned Nothing" >> pure False
+                Just aliceState -> do
+                    -- Encrypt 1000 messages, collect (header, ct, tag) triples
+                    (nonces, _) <- collectNonces 1000 aliceState
+                    let uniqueCount = Set.size (Set.fromList nonces)
+                    assertEq "nonce uniqueness: 1000 messages, all nonces distinct"
+                             1000 uniqueCount
 
 collectNonces :: Int -> RatchetState -> IO ([ByteString], RatchetState)
 collectNonces 0 st = pure ([], st)
 collectNonces n st = do
-    (st', hdr, _ct, _tag) <- ratchetEncrypt st (strToBS "msg")
-    -- Reconstruct nonce from msgKey: we can't access it directly,
-    -- so use (dhPub, msgN) as a proxy for uniqueness
-    let nonceProxy = rhDHPublic hdr <> encodeW32 (rhMsgN hdr)
-    (rest, st'') <- collectNonces (n - 1) st'
-    pure (nonceProxy : rest, st'')
+    encResult <- ratchetEncrypt st (strToBS "msg")
+    case encResult of
+        Left err -> error ("collectNonces: ratchetEncrypt failed: " ++ show err)
+        Right (st', hdr, _ct, _tag) -> do
+            -- Reconstruct nonce from msgKey: we can't access it directly,
+            -- so use (dhPub, msgN) as a proxy for uniqueness
+            let nonceProxy = rhDHPublic hdr <> encodeW32 (rhMsgN hdr)
+            (rest, st'') <- collectNonces (n - 1) st'
+            pure (nonceProxy : rest, st'')
 
 encodeW32 :: Integral a => a -> ByteString
 encodeW32 w = BS.pack [fromIntegral w, fromIntegral (w `div` 256),
@@ -135,22 +143,40 @@ testForwardSecrecy = do
     let sharedSecret = BS.pack [0x01 .. 0x20]
         bobSPKSecret = BS.pack [0x21 .. 0x40]
         aliceDHSecret = BS.pack [0x41 .. 0x60]
-        bobSPKPublic = x25519 bobSPKSecret x25519Basepoint
-        aliceState = ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret
-        bobState = ratchetInitBob sharedSecret bobSPKSecret
-        oldSendChain = rsSendChain aliceState
-    -- Alice sends a message (triggers chain advancement)
-    (alice1, hdr1, ct1, tag1) <- ratchetEncrypt aliceState (strToBS "msg1")
-    -- Bob decrypts (triggers DH ratchet)
-    Just (bob1, _pt1) <- ratchetDecrypt bobState hdr1 ct1 tag1
-    -- Bob sends back (DH ratchet step for Alice on next recv)
-    (_bob2, hdr2, ct2, tag2) <- ratchetEncrypt bob1 (strToBS "reply")
-    -- Alice decrypts (DH ratchet: new keys derived)
-    Just (alice2, _pt2) <- ratchetDecrypt alice1 hdr2 ct2 tag2
-    -- Old chain key must differ from new chain key
-    let newSendChain = rsSendChain alice2
-        keysChanged = oldSendChain /= newSendChain
-    assertEq "forward secrecy: chain key changes after DH ratchet" True keysChanged
+        mBobSPKPub = x25519 bobSPKSecret x25519Basepoint
+    case mBobSPKPub of
+        Nothing -> putStrLn "  FAIL: forward secrecy: x25519 returned Nothing" >> pure False
+        Just bobSPKPublic ->
+            case ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret of
+                Nothing -> putStrLn "  FAIL: forward secrecy: ratchetInitAlice returned Nothing" >> pure False
+                Just aliceState -> do
+                    let bobState = ratchetInitBob sharedSecret bobSPKSecret
+                        oldSendChain = rsSendChain aliceState
+                    -- Alice sends a message (triggers chain advancement)
+                    enc1 <- ratchetEncrypt aliceState (strToBS "msg1")
+                    case enc1 of
+                        Left e -> putStrLn ("  FAIL: fwd secrecy enc1: " ++ show e) >> pure False
+                        Right (alice1, hdr1, ct1, tag1) -> do
+                            -- Bob decrypts (triggers DH ratchet)
+                            dec1 <- ratchetDecrypt bobState hdr1 ct1 tag1
+                            case dec1 of
+                                Left e -> putStrLn ("  FAIL: fwd secrecy dec1: " ++ show e) >> pure False
+                                Right Nothing -> putStrLn "  FAIL: fwd secrecy dec1: Nothing" >> pure False
+                                Right (Just (bob1, _pt1)) -> do
+                                    -- Bob sends back
+                                    enc2 <- ratchetEncrypt bob1 (strToBS "reply")
+                                    case enc2 of
+                                        Left e -> putStrLn ("  FAIL: fwd secrecy enc2: " ++ show e) >> pure False
+                                        Right (_bob2, hdr2, ct2, tag2) -> do
+                                            -- Alice decrypts (DH ratchet: new keys derived)
+                                            dec2 <- ratchetDecrypt alice1 hdr2 ct2 tag2
+                                            case dec2 of
+                                                Left e -> putStrLn ("  FAIL: fwd secrecy dec2: " ++ show e) >> pure False
+                                                Right Nothing -> putStrLn "  FAIL: fwd secrecy dec2: Nothing" >> pure False
+                                                Right (Just (alice2, _pt2)) -> do
+                                                    let newSendChain = rsSendChain alice2
+                                                        keysChanged = oldSendChain /= newSendChain
+                                                    assertEq "forward secrecy: chain key changes after DH ratchet" True keysChanged
 
 ------------------------------------------------------------------------
 -- 5. Key independence: two sessions with different seeds produce
@@ -164,14 +190,18 @@ testKeyIndependence = do
         bobSPKSecret = BS.pack [0x41 .. 0x60]
         aliceDH1 = BS.pack [0x61 .. 0x80]
         aliceDH2 = BS.pack [0x81 .. 0xa0]
-        bobSPKPub = x25519 bobSPKSecret x25519Basepoint
-        state1 = ratchetInitAlice ss1 bobSPKPub aliceDH1
-        state2 = ratchetInitAlice ss2 bobSPKPub aliceDH2
-        rootDiff = rsRootKey state1 /= rsRootKey state2
-        chainDiff = rsSendChain state1 /= rsSendChain state2
-    assertEq "key independence: root keys differ" True rootDiff
-        >>= \ok1 -> assertEq "key independence: send chains differ" True chainDiff
-        >>= \ok2 -> pure (ok1 && ok2)
+        mBobSPKPub = x25519 bobSPKSecret x25519Basepoint
+    case mBobSPKPub of
+        Nothing -> putStrLn "  FAIL: key independence: x25519 returned Nothing" >> pure False
+        Just bobSPKPub ->
+            case (ratchetInitAlice ss1 bobSPKPub aliceDH1, ratchetInitAlice ss2 bobSPKPub aliceDH2) of
+                (Just state1, Just state2) -> do
+                    let rootDiff  = rsRootKey state1 /= rsRootKey state2
+                        chainDiff = rsSendChain state1 /= rsSendChain state2
+                    assertEq "key independence: root keys differ" True rootDiff
+                        >>= \ok1 -> assertEq "key independence: send chains differ" True chainDiff
+                        >>= \ok2 -> pure (ok1 && ok2)
+                _ -> putStrLn "  FAIL: key independence: ratchetInitAlice returned Nothing" >> pure False
 
 ------------------------------------------------------------------------
 -- 6. Implicit rejection: ML-KEM decaps with wrong key returns
@@ -219,13 +249,22 @@ testStealthUnlinkability = do
     -- Generate a fixed recipient keypair
     let scanSecret = BS.pack [0x01 .. 0x20]
         spendSecret = BS.pack [0x21 .. 0x40]
-        scanPub = x25519 scanSecret x25519Basepoint
-    let spendPub = ed25519PublicKey spendSecret
-    -- Generate 100 stealth addresses
-    addrs <- mapM (\_ -> deriveStealthAddress scanPub spendPub) [1..100 :: Int]
-    let addrSet = Set.fromList (map saAddress addrs)
-        allUnique = Set.size addrSet == 100
-    assertEq "stealth unlinkability: 100 addresses all unique" True allUnique
+        mScanPub = x25519 scanSecret x25519Basepoint
+    case mScanPub of
+        Nothing -> putStrLn "  FAIL: stealth unlinkability: x25519 returned Nothing" >> pure False
+        Just scanPub -> do
+            let spendPub = ed25519PublicKey spendSecret
+            -- Generate 100 stealth addresses (deriveStealthAddress returns IO (Maybe StealthAddress))
+            mAddrs <- mapM (\_ -> deriveStealthAddress scanPub spendPub) [1..100 :: Int]
+            let addrs = [sa | Just sa <- mAddrs]
+            if length addrs /= 100
+                then do
+                    putStrLn "  FAIL: stealth unlinkability: some deriveStealthAddress calls returned Nothing"
+                    pure False
+                else do
+                    let addrSet = Set.fromList (map saAddress addrs)
+                        allUnique = Set.size addrSet == 100
+                    assertEq "stealth unlinkability: 100 addresses all unique" True allUnique
 
 ------------------------------------------------------------------------
 -- 9. CSPRNG non-determinism: two calls produce different output

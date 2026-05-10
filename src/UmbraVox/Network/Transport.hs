@@ -22,7 +22,7 @@ import Control.Concurrent.MVar (MVar, newEmptyMVar, takeMVar, tryPutMVar)
 import qualified Data.ByteString as BS
 import Data.ByteString (ByteString)
 import Control.Exception (SomeException, bracketOnError, catch, onException, throwIO, try)
-import Control.Monad (forM, void, when)
+import Control.Monad (forM, when)
 import qualified Network.Socket as NS
 import qualified Network.Socket.ByteString as NSB
 import System.Timeout (timeout)
@@ -73,6 +73,32 @@ listenOn port = do
         [] -> ioError (userError ("unable to bind tcp listener on port " ++ show port))
         _ -> pure TCPListener { tlSockets = listeners }
 
+-- Finding: M10.2.12 — The previous 'accept' implementation raced multiple
+-- 'forkAccept' threads across dual-stack listening sockets.  Any thread that
+-- won an OS-level 'NS.accept' but lost the 'tryPutMVar' race had its socket
+-- silently discarded: neither the thread nor any cleanup path ever called
+-- 'NS.close' on the losing socket.  Under an asynchronous exception the winner
+-- socket could also leak if the exception arrived between 'takeMVar' and the
+-- construction of the 'TCPTransport' return value.
+--
+-- Vulnerability: Each leaked file descriptor consumes a system resource.  Under
+-- high connection rate or repeated listener restarts the process could exhaust
+-- its fd limit, causing subsequent accept(2) calls to fail with EMFILE/ENFILE.
+-- Leaked connected sockets also hold the peer's half-open connection open
+-- indefinitely from the peer's perspective.
+--
+-- Fix: Each 'forkAccept' thread closes its own losing socket — if 'tryPutMVar'
+-- returns False the thread calls 'NS.close' directly, eliminating the race
+-- window where an async kill could arrive between accepting and registering in
+-- a shared MVar.  The winner socket is wrapped with 'bracketOnError' in the
+-- main thread so it is closed if an async exception arrives before the
+-- 'TCPTransport' value is returned.  All helper threads are killed via
+-- 'onException' to stop any still-pending accept(2) calls.
+--
+-- Verified: Non-winning sockets are closed by the thread that accepted them.
+-- The winner socket is protected by 'bracketOnError'.  An async exception after
+-- 'takeMVar' but before return closes the winner via the bracket.  Threads
+-- that never return from accept(2) are killed on both normal and exception paths.
 accept :: TCPListener -> IO TCPTransport
 accept listener = do
     accepted <- newEmptyMVar
@@ -80,7 +106,8 @@ accept listener = do
     flip onException (mapM_ killThread tids) $ do
         (conn, peer) <- takeMVar accepted
         mapM_ killThread tids
-        pure TCPTransport { tSocket = conn, tAddr = peer }
+        bracketOnError (pure conn) NS.close $ \_ ->
+            pure TCPTransport { tSocket = conn, tAddr = peer }
 
 closeListener :: TCPListener -> IO ()
 closeListener = closeSockets . tlSockets
@@ -230,12 +257,20 @@ openListeningSocket addr =
             ) `onException` NS.close sock
         ) `catch` \(_ :: SomeException) -> pure Nothing
 
+-- | Fork a thread that calls 'NS.accept' on @sock@.
+--
+-- The first thread to win puts its socket into @accepted@.  Any thread that
+-- accepted a connection but lost the 'tryPutMVar' race closes the socket
+-- immediately, preventing fd leaks without requiring a shared accumulator.
 forkAccept :: MVar (NS.Socket, NS.SockAddr) -> NS.Socket -> IO ThreadId
 forkAccept accepted sock =
     forkIO $ do
         result <- try (NS.accept sock) :: IO (Either SomeException (NS.Socket, NS.SockAddr))
         case result of
-            Right pair -> void (tryPutMVar accepted pair)
+            Right pair@(conn, _) -> do
+                won <- tryPutMVar accepted pair
+                when (not won) $
+                    NS.close conn `catch` \(_ :: SomeException) -> pure ()
             Left _ -> pure ()
 
 closeSockets :: [NS.Socket] -> IO ()

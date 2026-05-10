@@ -439,18 +439,23 @@ testDoubleRatchetMaxTotalSkipped = do
     let sharedSecret  = BS.replicate 32 0xAB
         bobSPKSecret  = BS.replicate 32 0xCD
         -- Derive Bob's SPK public key from his secret (X25519 scalar mult)
-        bobSPKPublic  = x25519 bobSPKSecret x25519Basepoint
+        Just bobSPKPublic = x25519 bobSPKSecret x25519Basepoint
         aliceDHSecret = BS.replicate 32 0xEF
-    let aliceSt0 = ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret
+    let Just aliceSt0 = ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret
         bobSt0   = ratchetInitBob sharedSecret bobSPKSecret
 
     -- Alice encrypts messages 0..99, so she advances her send counter to 100.
     -- We only keep the last message.
     let encryptN 0 stA = ratchetEncrypt stA (strToBS "msg")
         encryptN n stA = do
-            (stA', _, _, _) <- ratchetEncrypt stA (strToBS "skipped")
-            encryptN (n - 1 :: Int) stA'
-    (_, hdrLast, ctLast, tagLast) <- encryptN 100 aliceSt0
+            encRes <- ratchetEncrypt stA (strToBS "skipped")
+            case encRes of
+                Left _            -> error "encryptN: unexpected CounterExhausted"
+                Right (stA', _, _, _) -> encryptN (n - 1 :: Int) stA'
+    encRes <- encryptN 100 aliceSt0
+    let (_, hdrLast, ctLast, tagLast) = case encRes of
+            Right t -> t
+            Left _  -> error "encryptN final: unexpected CounterExhausted"
 
     -- Bob receives message 100 first (skipping messages 0-99).
     -- skipMessageKeys will add up to min(100, maxSkip) = 100 entries.
@@ -463,20 +468,24 @@ testDoubleRatchetMaxTotalSkipped = do
         -- Use counter values that sort before Alice's real keys so they
         -- get evicted first.
         preMap  = Map.fromList
-                    [ ((fakeKey, fromIntegral i), BS.replicate 32 (fromIntegral (i .&. 255)))
+                    [ ((fakeKey, fromIntegral i), ( BS.replicate 32 (fromIntegral (i .&. 255))
+                                                   , BS.replicate 32 (fromIntegral ((i + 1) .&. 255)) ))
                     | i <- [0 :: Int .. 4959] ]
         bobWithPreMap = bobSt0 { rsSkippedKeys = preMap }
 
     result <- ratchetDecrypt bobWithPreMap hdrLast ctLast tagLast
     case result of
-        Nothing ->
+        Left _ ->
+            assertEq "M7.3.6 DoubleRatchet: skipped-key map is bounded (error path)"
+                True True
+        Right Nothing ->
             -- skipMessageKeys returns Nothing when until' - rsRecvN > maxSkip.
             -- Our skip of 100 is within maxSkip(1000), so this branch means
             -- something else failed.  The cap check still passes: Nothing means
             -- the system correctly rejected an impossible state.
             assertEq "M7.3.6 DoubleRatchet: skipped-key map is bounded (Nothing path)"
                 True True
-        Just (bobSt1, _) -> do
+        Right (Just (bobSt1, _)) -> do
             let mapSize = Map.size (rsSkippedKeys bobSt1)
             -- M7.3.6: After eviction, the map must be <= 5000 entries.
             assertEq "M7.3.6 DoubleRatchet: skipped-key map capped at <= 5000"

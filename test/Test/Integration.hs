@@ -91,14 +91,18 @@ initSession ss =
     case pqxdhInitiate (ssAliceIK ss) (ssBundle ss) (ssEKSecret ss) (ssMLKEMRand ss) of
         Nothing -> Nothing
         Just result ->
-            let bobSS = pqxdhRespond (ssBobIK ss) (ssSPKSecret ss) Nothing
-                            (ssPQDK ss) (ikX25519Public (ssAliceIK ss))
-                            (pqxdhEphemeralKey result)
-                            (pqxdhPQCiphertext result)
-                alice = ratchetInitAlice (pqxdhSharedSecret result)
-                            (ssSPKPublic ss) (ssAliceDHSec ss)
-                bob   = ratchetInitBob bobSS (ssSPKSecret ss)
-            in Just (alice, bob)
+            case pqxdhRespond (ssBobIK ss) (ssSPKSecret ss) Nothing
+                    (ssPQDK ss) (ikX25519Public (ssAliceIK ss))
+                    (pqxdhEphemeralKey result)
+                    (pqxdhPQCiphertext result) of
+                Nothing    -> Nothing  -- low-order point in PQXDH respond
+                Just bobSS ->
+                    case ratchetInitAlice (pqxdhSharedSecret result)
+                             (ssSPKPublic ss) (ssAliceDHSec ss) of
+                        Nothing    -> Nothing  -- low-order point in DH ratchet init
+                        Just alice ->
+                            let bob = ratchetInitBob bobSS (ssSPKSecret ss)
+                            in Just (alice, bob)
 
 -- | Fixed session from seed 42.
 setupFixedSession :: Maybe (RatchetState, RatchetState)
@@ -126,17 +130,23 @@ exchangeMessages alice bob n g0 = do
     let (msg, g1) = nextBytesRange 1 64 g0
     if even n
         then do
-            (alice', hdr, ct, tag) <- ratchetEncrypt alice msg
-            r <- ratchetDecrypt bob hdr ct tag
-            case r of
-                Just (bob', pt) | pt == msg -> exchangeMessages alice' bob' (n-1) g1
-                _ -> pure Nothing
+            encR <- ratchetEncrypt alice msg
+            case encR of
+                Left _                     -> pure Nothing
+                Right (alice', hdr, ct, tag) -> do
+                    r <- ratchetDecrypt bob hdr ct tag
+                    case r of
+                        Right (Just (bob', pt)) | pt == msg -> exchangeMessages alice' bob' (n-1) g1
+                        _ -> pure Nothing
         else do
-            (bob', hdr, ct, tag) <- ratchetEncrypt bob msg
-            r <- ratchetDecrypt alice hdr ct tag
-            case r of
-                Just (alice', pt) | pt == msg -> exchangeMessages alice' bob' (n-1) g1
-                _ -> pure Nothing
+            encR <- ratchetEncrypt bob msg
+            case encR of
+                Left _                    -> pure Nothing
+                Right (bob', hdr, ct, tag) -> do
+                    r <- ratchetDecrypt alice hdr ct tag
+                    case r of
+                        Right (Just (alice', pt)) | pt == msg -> exchangeMessages alice' bob' (n-1) g1
+                        _ -> pure Nothing
 
 ------------------------------------------------------------------------
 -- Test 2: Session resumption — state consistent after 50 messages
@@ -162,11 +172,14 @@ sendN :: RatchetState -> RatchetState -> Int -> PRNG
 sendN s r 0 _ = pure (Just (s, r))
 sendN s r n g = do
     let (msg, g') = nextBytesRange 1 32 g
-    (s', hdr, ct, tag) <- ratchetEncrypt s msg
-    result <- ratchetDecrypt r hdr ct tag
-    case result of
-        Just (r', pt) | pt == msg -> sendN s' r' (n-1) g'
-        _ -> pure Nothing
+    encR <- ratchetEncrypt s msg
+    case encR of
+        Left _                 -> pure Nothing
+        Right (s', hdr, ct, tag) -> do
+            result <- ratchetDecrypt r hdr ct tag
+            case result of
+                Right (Just (r', pt)) | pt == msg -> sendN s' r' (n-1) g'
+                _ -> pure Nothing
 
 ------------------------------------------------------------------------
 -- Test 3: Out-of-order delivery — 10 messages delivered in reverse
@@ -187,9 +200,12 @@ encryptBatch :: RatchetState -> Int -> PRNG
 encryptBatch st 0 _ = pure (st, [])
 encryptBatch st n g = do
     let (msg, g') = nextBytesRange 1 32 g
-    (st', hdr, ct, tag) <- ratchetEncrypt st msg
-    (st'', rest) <- encryptBatch st' (n-1) g'
-    pure (st'', (hdr, ct, tag, msg) : rest)
+    encR <- ratchetEncrypt st msg
+    case encR of
+        Left _               -> pure (st, [])  -- counter exhausted; return state as-is
+        Right (st', hdr, ct, tag) -> do
+            (st'', rest) <- encryptBatch st' (n-1) g'
+            pure (st'', (hdr, ct, tag, msg) : rest)
 
 -- | Deliver messages in order, verifying each decrypts correctly.
 deliverAll :: RatchetState -> [(RatchetHeader, ByteString, ByteString, ByteString)]
@@ -198,7 +214,7 @@ deliverAll _ [] = pure True
 deliverAll st ((hdr, ct, tag, expected):rest) = do
     r <- ratchetDecrypt st hdr ct tag
     case r of
-        Just (st', pt) | pt == expected -> deliverAll st' rest
+        Right (Just (st', pt)) | pt == expected -> deliverAll st' rest
         _ -> pure False
 
 ------------------------------------------------------------------------
@@ -222,16 +238,19 @@ testKeyExhaustion =
 testStealthAddressIntegration :: IO Bool
 testStealthAddressIntegration = do
     keys <- generateStealthKeys
-    addr <- deriveStealthAddress (skScanPublic keys) (skSpendPublic keys)
-    let result = scanForPayment
-            (skScanSecret keys)
-            (skSpendSecret keys)
-            (skSpendPublic keys)
-            (saEphemeral addr)
-            (saAddress addr)
-    case result of
-        Nothing -> putStrLn "  FAIL: stealth scan did not match" >> pure False
-        Just spendKey -> do
-            ok1 <- assertEq "Stealth: scan matched" True True
-            ok2 <- assertEq "Stealth: spend key 32 bytes" 32 (BS.length spendKey)
-            pure (ok1 && ok2)
+    mAddr <- deriveStealthAddress (skScanPublic keys) (skSpendPublic keys)
+    case mAddr of
+        Nothing -> putStrLn "  FAIL: deriveStealthAddress returned Nothing" >> pure False
+        Just addr -> do
+            let result = scanForPayment
+                    (skScanSecret keys)
+                    (skSpendSecret keys)
+                    (skSpendPublic keys)
+                    (saEphemeral addr)
+                    (saAddress addr)
+            case result of
+                Nothing -> putStrLn "  FAIL: stealth scan did not match" >> pure False
+                Just spendKey -> do
+                    ok1 <- assertEq "Stealth: scan matched" True True
+                    ok2 <- assertEq "Stealth: spend key 32 bytes" 32 (BS.length spendKey)
+                    pure (ok1 && ok2)

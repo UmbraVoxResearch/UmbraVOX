@@ -8,7 +8,7 @@ module UmbraVox.Crypto.Generated.X25519
 import Data.ByteString (ByteString)
 import qualified UmbraVox.Crypto.Curve25519 as Reference
 
-x25519 :: ByteString -> ByteString -> ByteString
+x25519 :: ByteString -> ByteString -> Maybe ByteString
 x25519 = Reference.x25519
 
 x25519Basepoint :: ByteString

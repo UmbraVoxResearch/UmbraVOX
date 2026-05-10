@@ -28,7 +28,7 @@
 -- * 'testIB013SqlInjectionMessage'  — '; DROP TABLE--' in message content is blocked
 module Test.Security.M11KeyMgmt (runTests) where
 
-import Control.Exception (SomeException, catch, evaluate, try)
+import Control.Exception (SomeException, catch)
 import Data.Bits ((.&.))
 import qualified Data.ByteString as BS
 import Data.List (isInfixOf)
@@ -45,7 +45,7 @@ import UmbraVox.Crypto.Curve25519 (x25519)
 import UmbraVox.Crypto.KeyStore (saveIdentityKeyAt)
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Crypto.Signal.DoubleRatchet
-    ( RatchetState(..)
+    ( RatchetState(..), RatchetError(..)
     , ratchetInitAlice
     , ratchetEncrypt
     )
@@ -552,17 +552,18 @@ testIB005RatchetCounterNearMax = do
     let sharedSecret  = BS.replicate 32 0xAA
         bobSPK        = BS.replicate 32 0xBB
         aliceDHSecret = BS.replicate 32 0xCC
-        baseState     = ratchetInitAlice sharedSecret bobSPK aliceDHSecret
-        nearMaxState  = baseState { rsSendN = (0xFFFFFFFE :: Word32) }
-    result <- try (ratchetEncrypt nearMaxState (BS.pack [1, 2, 3])
-                   >>= \(st, _, _, _) -> evaluate st)
-                  :: IO (Either SomeException RatchetState)
+        Just baseState = ratchetInitAlice sharedSecret bobSPK aliceDHSecret
+        nearMaxState   = baseState { rsSendN = (0xFFFFFFFE :: Word32) }
+    result <- ratchetEncrypt nearMaxState (BS.pack [1, 2, 3])
     case result of
-        Left _ -> do
-            putStrLn "  PASS: IB-005 ratchetEncrypt at counter 0xFFFFFFFE raises exception"
+        Left CounterExhausted -> do
+            putStrLn "  PASS: IB-005 ratchetEncrypt at counter 0xFFFFFFFE -> Left CounterExhausted"
             pure True
+        Left _ -> do
+            putStrLn "  FAIL: IB-005 ratchetEncrypt returned unexpected Left error"
+            pure False
         Right _ -> do
-            putStrLn "  FAIL: IB-005 ratchetEncrypt at counter 0xFFFFFFFE should have errored"
+            putStrLn "  FAIL: IB-005 ratchetEncrypt at counter 0xFFFFFFFE should have returned Left"
             pure False
 
 ------------------------------------------------------------------------
@@ -587,18 +588,16 @@ testIB010X25519AllZero :: IO Bool
 testIB010X25519AllZero = do
     let sk = BS.replicate 32 0x42   -- arbitrary non-zero scalar
         lowOrderPoint = BS.replicate 32 0x00   -- all-zero u-coordinate
-    result <- try (evaluate (x25519 sk lowOrderPoint))
-                  :: IO (Either SomeException BS.ByteString)
-    case result of
-        Left _ -> do
-            putStrLn "  PASS: IB-010 x25519 all-zero u-coord raises exception (RFC 7748 §6.1)"
+    case x25519 sk lowOrderPoint of
+        Nothing -> do
+            putStrLn "  PASS: IB-010 x25519 all-zero u-coord returns Nothing (RFC 7748 §6.1)"
             pure True
-        Right out -> do
+        Just out -> do
             -- The output for all-zero u is all-zero; if the guard is missing
             -- the call succeeds but returns a predictable zero value.
             if out == BS.replicate 32 0x00
                 then do
-                    putStrLn "  FAIL: IB-010 x25519 all-zero u-coord returned all-zero output without exception"
+                    putStrLn "  FAIL: IB-010 x25519 all-zero u-coord returned all-zero output without rejection"
                     pure False
                 else do
                     putStrLn "  FAIL: IB-010 x25519 all-zero u-coord returned non-zero (unexpected)"

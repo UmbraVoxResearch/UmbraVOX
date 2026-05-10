@@ -103,8 +103,11 @@ handshakeInitiator t aliceIK = do
     anySend t . encodeMessage $ BS.concat
         [ ikX25519Public aliceIK, pqxdhEphemeralKey result
         , putW32BE (fromIntegral (BS.length ctBS)), ctBS ]
-    initChatSession (pqxdhSharedSecret result)
-                    (ikX25519Secret aliceIK) (pqpkbSignedPreKey bundle)
+    mSession <- initChatSession (pqxdhSharedSecret result)
+                                (ikX25519Secret aliceIK) (pqpkbSignedPreKey bundle)
+    case mSession of
+        Nothing -> fail "PQXDH: ratchet init DH returned all-zero (low-order point rejected)"
+        Just s  -> pure s
 
 handshakeResponder :: AnyTransport -> IdentityKey -> (BS.ByteString -> IO Bool) -> IO ChatSession
 handshakeResponder t bobIK trustCheck = do
@@ -114,8 +117,10 @@ handshakeResponder t bobIK trustCheck = do
     (aliceIKPub, aliceEKPub, pqCt) <- recvInitialMessage t
     trusted <- trustCheck aliceIKPub
     unless trusted $ fail "Connection rejected: peer not trusted"
-    let !shared = pqxdhRespond bobIK (kpSecret spk) Nothing pqDK
-                               aliceIKPub aliceEKPub pqCt
+    shared <- case pqxdhRespond bobIK (kpSecret spk) Nothing pqDK
+                               aliceIKPub aliceEKPub pqCt of
+                  Nothing -> fail "PQXDH: DH returned all-zero (low-order point rejected)"
+                  Just s  -> pure s
     initChatSessionBob shared (kpSecret spk)
 
 recvBundle :: AnyTransport -> IO PQPreKeyBundle

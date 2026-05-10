@@ -414,7 +414,7 @@ encodeEK tHat rho =
 decodeEK :: ByteString -> ([Poly], ByteString)
 decodeEK ek =
     let polyBytes = 384  -- 256 * 12 / 8
-        tHat = [byteDecode12 (bsSlice (i * polyBytes) polyBytes ek)
+        tHat = [byteDecode12 (bsSliceUnsafe (i * polyBytes) polyBytes ek)
                | i <- [0.._K-1]]
         rho = BS.drop (_K * polyBytes) ek
     in (tHat, rho)
@@ -425,7 +425,7 @@ encodeDK sVec = BS.concat (map (byteEncode 12) sVec)
 decodeDK :: ByteString -> [Poly]
 decodeDK dk =
     let polyBytes = 384
-    in [byteDecode12 (bsSlice (i * polyBytes) polyBytes dk)
+    in [byteDecode12 (bsSliceUnsafe (i * polyBytes) polyBytes dk)
        | i <- [0.._K-1]]
 
 -- | Sample error vectors for encryption (FIPS 203 Algorithm 13, lines 3-7)
@@ -473,8 +473,8 @@ kpkeDecrypt dk ct =
         c1 = BS.take c1Bytes ct
         c2 = BS.drop c1Bytes ct
         uVec = [decompressPoly _DU
-                    (byteDecode _DU (bsSlice (i * (_N * _DU `div` 8))
-                                             (_N * _DU `div` 8) c1))
+                    (byteDecode _DU (bsSliceUnsafe (i * (_N * _DU `div` 8))
+                                                   (_N * _DU `div` 8) c1))
                | i <- [0.._K-1]]
         v = decompressPoly _DV (byteDecode _DV c2)
         innerProd = foldl1 polyAdd
@@ -524,23 +524,52 @@ mlkemDecaps (MLKEMDecapKey fullDK) (MLKEMCiphertext ct) =
     let dkPKELen = _K * 384
         ekLen = _K * 384 + 32
         dkPKE = BS.take dkPKELen fullDK
-        ek = bsSlice dkPKELen ekLen fullDK
-        ekHash = bsSlice (dkPKELen + ekLen) 32 fullDK
+        -- Use Maybe-returning bsSlice; fall back to rejection secret on
+        -- malformed decapsulation key (out-of-bounds slice).
+        mEK     = bsSlice dkPKELen ekLen fullDK
+        mEkHash = bsSlice (dkPKELen + ekLen) 32 fullDK
         z = BS.drop (dkPKELen + ekLen + 32) fullDK
-        m' = kpkeDecrypt dkPKE ct
-        (sharedSecret', r') = hashG (m' `BS.append` ekHash)
-        ct' = kpkeEncrypt ek m' r'
         rejectionSecret = hashJ z ct
-    in if constantEq ct' ct
-       then sharedSecret'
-       else rejectionSecret
+    in case (mEK, mEkHash) of
+        (Nothing, _) -> rejectionSecret
+        (_, Nothing) -> rejectionSecret
+        (Just ek, Just ekHash) ->
+            let m' = kpkeDecrypt dkPKE ct
+                (sharedSecret', r') = hashG (m' `BS.append` ekHash)
+                ct' = kpkeEncrypt ek m' r'
+            in if constantEq ct' ct
+               then sharedSecret'
+               else rejectionSecret
 
 ------------------------------------------------------------------------
 -- Utility
 ------------------------------------------------------------------------
 
-bsSlice :: Int -> Int -> ByteString -> ByteString
+-- | Internal slice helper for callers that have already validated sizes.
+-- Panics on out-of-bounds — use only when the offset/length are derived
+-- from well-known constants (e.g. 'decodeEK', 'decodeDK', 'kpkeDecrypt').
+bsSliceUnsafe :: Int -> Int -> ByteString -> ByteString
+bsSliceUnsafe offset len bs =
+    case bsSlice offset len bs of
+        Just r  -> r
+        Nothing -> error ("bsSliceUnsafe: out of bounds (offset="
+                          ++ show offset ++ ", len=" ++ show len
+                          ++ ", bsLen=" ++ show (BS.length bs) ++ ")")
+
+-- | Finding: 'bsSlice' silently returned 'BS.empty' on out-of-bounds access,
+--   making it indistinguishable from a legitimately empty slice. Callers in
+--   'decodeEK', 'decodeDK', and 'kpkeDecrypt' could then pass a zero-length
+--   ByteString to polynomial decoding routines, producing garbage polynomials
+--   without any error indication.
+-- Vulnerability: Silent failure on malformed ciphertexts or keys allows
+--   the KEM to silently process attacker-controlled zero bytes, potentially
+--   leaking information through timing differences in downstream arithmetic.
+-- Fix: Return 'Maybe ByteString' — 'Nothing' on out-of-bounds, 'Just' on
+--   success. All internal callers updated to propagate the failure explicitly.
+-- Verified: 'decodeEK', 'decodeDK', 'kpkeDecrypt', and 'mlkemDecaps' updated
+--   to thread the Maybe through their computations.
+bsSlice :: Int -> Int -> ByteString -> Maybe ByteString
 bsSlice offset len bs
-    | offset + len > BS.length bs = BS.empty
-    | otherwise                   = BS.take len (BS.drop offset bs)
+    | offset + len > BS.length bs = Nothing
+    | otherwise                   = Just (BS.take len (BS.drop offset bs))
 

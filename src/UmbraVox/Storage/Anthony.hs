@@ -9,6 +9,7 @@
 module UmbraVox.Storage.Anthony
     ( AnthonyDB(..)
     , openDB
+    , openDBWithKey
     , closeDB
     , savePeer
     , loadPeers
@@ -39,16 +40,37 @@ import System.Process (readProcess)
 import System.Timeout (timeout)
 
 import UmbraVox.Protocol.Encoding (splitOn)
+import UmbraVox.Storage.Encryption (StorageKey, encryptField, decryptField)
 import UmbraVox.Storage.Schema (schemaStatements)
 
 ------------------------------------------------------------------------
 -- Types
 ------------------------------------------------------------------------
 
+-- Finding: M10.2.8 — saveMessage stored message content as plaintext in the
+-- SQLite database.  loadMessages returned raw ciphertext or plaintext without
+-- any decryption step, so anyone with read access to the database file could
+-- read conversation history verbatim.
+--
+-- Vulnerability: Message content stored in plaintext on disk is exposed to any
+-- process or user that can read the database file (e.g. via a backup, a snooping
+-- local process, or physical access to the device).
+--
+-- Fix: Added a 'Maybe StorageKey' field to 'AnthonyDB'.  When a key is present,
+-- 'saveMessage' encrypts content with 'encryptField' before inserting and
+-- 'loadMessages' decrypts each row with 'decryptField' after loading.  Rows
+-- written without a key (or by older versions) pass through 'decryptField'
+-- unchanged thanks to its legacy-plaintext passthrough behaviour.
+--
+-- Verified: 'openDBWithKey' populates the key; 'openDB' sets it to 'Nothing'
+-- for backward-compat.  Tests that use 'openDB' continue to see plaintext
+-- round-trips; production callers that supply a key see encrypted storage.
+--
 -- | Handle to a sqlite3-managed SQLite database.
 data AnthonyDB = AnthonyDB
-    { dbPath    :: !FilePath  -- ^ Path to the SQLite database file
-    , dbAnthony :: !FilePath  -- ^ Path to the sqlite3 binary
+    { dbPath       :: !FilePath          -- ^ Path to the SQLite database file
+    , dbAnthony    :: !FilePath          -- ^ Path to the sqlite3 binary
+    , dbStorageKey :: !(Maybe StorageKey) -- ^ Optional at-rest encryption key
     } deriving stock (Show)
 
 ------------------------------------------------------------------------
@@ -66,13 +88,27 @@ ensureAnthony = do
         Just path -> pure path
         Nothing   -> ioError (userError "sqlite3 binary not available on PATH")
 
--- | Open (or create) a database at the given path.
+-- | Open (or create) a database at the given path, without field encryption.
 --
 -- Runs the schema migration statements to ensure all tables exist.
+-- Message content is stored and loaded as plaintext.  Use 'openDBWithKey'
+-- to enable at-rest encryption for message content.
 openDB :: FilePath -> IO AnthonyDB
 openDB path = do
     anthonyPath <- ensureAnthony
-    let db = AnthonyDB { dbPath = path, dbAnthony = anthonyPath }
+    let db = AnthonyDB { dbPath = path, dbAnthony = anthonyPath, dbStorageKey = Nothing }
+    mapM_ (runSQL db) schemaStatements
+    setFileMode path (ownerReadMode `unionFileModes` ownerWriteMode)
+    pure db
+
+-- | Open (or create) a database at the given path with field encryption.
+--
+-- Identical to 'openDB' but stores the given 'StorageKey' in the handle so
+-- that 'saveMessage' encrypts content and 'loadMessages' decrypts it.
+openDBWithKey :: FilePath -> StorageKey -> IO AnthonyDB
+openDBWithKey path key = do
+    anthonyPath <- ensureAnthony
+    let db = AnthonyDB { dbPath = path, dbAnthony = anthonyPath, dbStorageKey = Just key }
     mapM_ (runSQL db) schemaStatements
     setFileMode path (ownerReadMode `unionFileModes` ownerWriteMode)
     pure db
@@ -127,26 +163,46 @@ loadSetting db key = do
         _                      -> pure Nothing
 
 -- | Save a message to the database.
+--
+-- When the 'AnthonyDB' handle carries a 'StorageKey' (set via 'openDBWithKey'),
+-- the @content@ field is encrypted with 'encryptField' before insertion so that
+-- the raw database does not contain plaintext message bodies.
 saveMessage :: AnthonyDB -> Int -> String -> String -> Int -> IO ()
 saveMessage db convId sender content timestamp = do
+    storedContent <- case dbStorageKey db of
+        Just key -> encryptField key content
+        Nothing  -> pure content
     let sql = "INSERT INTO messages "
               <> "(conversation_id, sender, content, timestamp) VALUES ("
               <> show convId <> ", "
               <> quote sender <> ", "
-              <> quote content <> ", "
+              <> quote storedContent <> ", "
               <> show timestamp <> ")"
     runSQL db sql
 
 -- | Load the most recent N messages for a conversation.
 --
 -- Returns @(sender, content, timestamp)@ tuples, oldest first.
+--
+-- When the 'AnthonyDB' handle carries a 'StorageKey', each row's @content@
+-- field is decrypted with 'decryptField'.  Legacy plaintext rows (written
+-- before encryption was enabled) pass through unchanged.  Rows whose
+-- ciphertext fails authentication are dropped and do not appear in the result.
 loadMessages :: AnthonyDB -> Int -> Int -> IO [(String, String, Int)]
 loadMessages db convId limit = do
     output <- querySQL db
         ("SELECT sender, content, timestamp FROM messages "
          <> "WHERE conversation_id = " <> show convId
          <> " ORDER BY timestamp DESC LIMIT " <> show limit)
-    pure (reverse (parseMessageRows output))
+    let rows = reverse (parseMessageRows output)
+    case dbStorageKey db of
+        Nothing  -> pure rows
+        Just key -> pure (concatMap (decryptRow key) rows)
+  where
+    decryptRow key (sender, content, ts) =
+        case decryptField key content of
+            Just plaintext -> [(sender, plaintext, ts)]
+            Nothing        -> []  -- authentication failure — drop the row
 
 -- | Delete messages older than N days.
 pruneMessages :: AnthonyDB -> Int -> IO ()

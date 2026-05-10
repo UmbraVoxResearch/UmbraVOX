@@ -22,6 +22,7 @@ import Control.Concurrent.MVar (MVar)
 import Data.ByteString (ByteString)
 import Data.IORef (IORef)
 import Data.Map.Strict (Map)
+import qualified Data.Set as Set
 import UmbraVox.BuildProfile
     ( BuildPlugin, BuildPluginId(..), PackagedPluginRuntime, PluginManifest, pluginEnabled )
 import UmbraVox.Chat.Session (ChatSession)
@@ -159,6 +160,25 @@ data AppConfig = AppConfig
     -- Security
     , cfgConnectionMode   :: IORef ConnectionMode
     , cfgTrustedKeys      :: IORef [ByteString]
+    -- Finding: M10.2.13 — Selective mode previously accepted every peer without
+    -- remembering whether a given key had been seen before, making it equivalent
+    -- to Promiscuous.  There was no mechanism to detect a key-change attack where
+    -- a second peer claims the same identity with a different key.
+    --
+    -- Vulnerability: Without a per-session TOFU set an attacker could present an
+    -- arbitrary key and be accepted silently on every connection.  A key-change
+    -- (man-in-the-middle substitution) would also go undetected.
+    --
+    -- Fix: 'cfgTofoKeys' is an IORef holding the set of peer public keys that
+    -- have been accepted under Selective mode in this session.  On first
+    -- connection a key is added; on repeat connection the same key is accepted.
+    -- A different key claiming a previously-seen slot is rejected (see
+    -- 'RuntimeNetwork.hs' trustCheck).
+    --
+    -- Verified: 'newDefaultAppConfig' initialises the set to empty; the trust
+    -- check in 'acceptLoopBoundTUI' inserts on first encounter and rejects
+    -- conflicting keys on subsequent encounters.
+    , cfgTofoKeys         :: IORef (Set.Set ByteString)
     }
 
 data Layout = Layout

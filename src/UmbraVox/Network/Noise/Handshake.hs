@@ -79,70 +79,100 @@ noiseHandshakeInitiator iStaticSec iStaticPub rStaticPub trustCheck transport = 
     -- Initialize chaining key
     let !ck0 = initCK
 
-    -- Generate ephemeral keypair
+    -- Generate ephemeral keypair; x25519 returns Nothing on all-zero (low-order point)
     eSec <- randomBytes 32
-    let !ePub = x25519 eSec x25519Basepoint
+    case x25519 eSec x25519Basepoint of
+      Nothing   -> pure Nothing
+      Just !ePub -> do
+        -- -> e: send ephemeral public, mix into hash
+        let !h3 = mixHash h2 ePub
 
-    -- -> e: send ephemeral public, mix into hash
-    let !h3 = mixHash h2 ePub
+        -- -> es: DH(e, rs); reject all-zero (low-order point)
+        case x25519 eSec rStaticPub of
+          Nothing    -> pure Nothing
+          Just !dhES -> do
+            let (!ck1, !k1) = hkdfCK ck0 dhES
 
-    -- -> es: DH(e, rs)
-    let !dhES = x25519 eSec rStaticPub
-    let (!ck1, !k1) = hkdfCK ck0 dhES
+            -- -> s: encrypt and send initiator's static public key
+            let !encStaticPub = encryptWithKey k1 h3 iStaticPub
+            let !h4 = mixHash h3 encStaticPub
 
-    -- -> s: encrypt and send initiator's static public key
-    let !encStaticPub = encryptWithKey k1 h3 iStaticPub
-    let !h4 = mixHash h3 encStaticPub
+            -- -> ss: DH(s, rs); reject all-zero (low-order point)
+            case x25519 iStaticSec rStaticPub of
+              Nothing    -> pure Nothing
+              Just !dhSS -> do
+                let (!ck2, !_k2) = hkdfCK ck1 dhSS
 
-    -- -> ss: DH(s, rs)
-    let !dhSS = x25519 iStaticSec rStaticPub
-    let (!ck2, !_k2) = hkdfCK ck1 dhSS
+                -- Build and send message 1: ePub || encStaticPub
+                let !msg1 = ePub <> encStaticPub
+                sendFrame transport msg1
 
-    -- Build and send message 1: ePub || encStaticPub
-    let !msg1 = ePub <> encStaticPub
-    sendFrame transport msg1
+                -- Receive message 2: rEPub
+                mMsg2 <- recvFrame transport
+                case mMsg2 of
+                  Nothing -> pure Nothing
+                  Just msg2
+                    -- Validate message length: msg2 must be exactly 32 bytes (responder ephemeral key).
+                    -- Reject short messages and trailing bytes that could indicate injection.
+                    | BS.length msg2 /= 32 -> pure Nothing
+                    | otherwise -> do
+                        let !rEPub = BS.take 32 msg2
 
-    -- Receive message 2: rEPub
-    mMsg2 <- recvFrame transport
-    case mMsg2 of
-      Nothing -> pure Nothing
-      Just msg2
-        -- Validate message length: msg2 must be exactly 32 bytes (responder ephemeral key).
-        -- Reject short messages and trailing bytes that could indicate injection.
-        | BS.length msg2 /= 32 -> pure Nothing
-        | otherwise -> do
-        let !rEPub = BS.take 32 msg2
+                        -- <- e: mix responder ephemeral into hash
+                        let !_h5 = mixHash h4 rEPub
 
-        -- <- e: mix responder ephemeral into hash
-        let !_h5 = mixHash h4 rEPub
+                        -- <- ee: DH(e_i, e_r); reject all-zero
+                        case x25519 eSec rEPub of
+                          Nothing    -> pure Nothing
+                          Just !dhEE -> do
+                            let (!ck3, !_k3) = hkdfCK ck2 dhEE
 
-        -- <- ee: DH(e_i, e_r)
-        let !dhEE = x25519 eSec rEPub
-        let (!ck3, !_k3) = hkdfCK ck2 dhEE
+                            -- Finding: Noise IK `se` leg used the wrong keys, computing
+                            --   DH(e_i, s_r) instead of the spec-required DH(s_i, e_r).
+                            --   This produced the same DH output as the `es` leg (modulo
+                            --   key-role symmetry), collapsing two independent DH
+                            --   contributions into one, weakening the handshake's
+                            --   forward-secrecy and identity-binding guarantees.
+                            -- Vulnerability: Because ck4 was derived from a duplicate DH
+                            --   value rather than a fresh independent one, an adversary who
+                            --   learns the initiator's static secret can recover ck4 without
+                            --   knowledge of the initiator's ephemeral secret.  This breaks
+                            --   the mutual-auth property of Noise IK: the session keys no
+                            --   longer cryptographically bind both the initiator's static and
+                            --   ephemeral keys to the transcript.
+                            -- Fix: Compute se = DH(s_i, e_r) = x25519 iStaticSec rEPub,
+                            --   where iStaticSec is the initiator's static secret (available
+                            --   throughout the initiator path) and rEPub is the responder's
+                            --   ephemeral public key extracted from msg2 above.  This matches
+                            --   the Noise IK spec: the `se` token always means "initiator
+                            --   static x responder ephemeral" from the initiator's perspective.
+                            -- Verified: matches noiseHandshakeResponder which correctly
+                            --   computes x25519 rStaticSec iEPub (= DH(s_r, e_i)), the same
+                            --   value from the responder's side.
+                            -- Low-order point: also reject all-zero DH (x25519 returns Maybe).
+                            case x25519 iStaticSec rEPub of
+                              Nothing    -> pure Nothing
+                              Just !dhSE -> do
+                                let (!ck4, !_k4) = hkdfCK ck3 dhSE
 
-        -- <- se: responder's static x initiator's ephemeral
-        -- Initiator computes: x25519(eSec, rStaticPub)
-        let !dhSE = x25519 eSec rStaticPub
-        let (!ck4, !_k4) = hkdfCK ck3 dhSE
-
-        -- Verify responder identity before committing to session keys.
-        -- In IK pattern the responder's static key is pre-known, but the
-        -- trust callback lets the caller enforce pinning / TOFU policy.
-        trusted <- trustCheck rStaticPub
-        if not trusted
-          then pure Nothing
-          else do
-            -- Derive final send/recv keys with key separation
-            let (!sendEncKey, !sendMacKey, !recvEncKey, !recvMacKey) = splitKeys ck4
-
-            pure (Just NoiseState
-                { nsSendEncKey = sendEncKey
-                , nsSendMacKey = sendMacKey
-                , nsRecvEncKey = recvEncKey
-                , nsRecvMacKey = recvMacKey
-                , nsSendN      = 0
-                , nsRecvN      = 0
-                })
+                                -- Verify responder identity before committing to session keys.
+                                -- In IK pattern the responder's static key is pre-known, but the
+                                -- trust callback lets the caller enforce pinning / TOFU policy.
+                                trusted <- trustCheck rStaticPub
+                                if not trusted
+                                  then pure Nothing
+                                  else do
+                                    -- Derive final send/recv keys with key separation
+                                    let (!sendEncKey, !sendMacKey, !recvEncKey, !recvMacKey) =
+                                            splitKeys ck4
+                                    pure (Just NoiseState
+                                        { nsSendEncKey = sendEncKey
+                                        , nsSendMacKey = sendMacKey
+                                        , nsRecvEncKey = recvEncKey
+                                        , nsRecvMacKey = recvMacKey
+                                        , nsSendN      = 0
+                                        , nsRecvN      = 0
+                                        })
 
 ------------------------------------------------------------------------
 -- Handshake: Responder
@@ -172,58 +202,69 @@ noiseHandshakeResponder rStaticSec rStaticPub transport = do
         -- Validate message length: need at least 32 (ephemeral) + 32 (ct) + 32 (mac)
         | BS.length msg1 < (32 + 32 + macLen) -> pure Nothing
         | otherwise -> do
-        let !iEPub        = BS.take 32 msg1
-            !encStaticPub = BS.drop 32 msg1
+            let !iEPub        = BS.take 32 msg1
+                !encStaticPub = BS.drop 32 msg1
 
-        -- -> e: mix initiator ephemeral into hash
-        let !h3 = mixHash h2 iEPub
+            -- -> e: mix initiator ephemeral into hash
+            let !h3 = mixHash h2 iEPub
 
-        -- -> es: DH(e_i, s_r) — responder computes DH(s_r, e_i)
-        let !dhES = x25519 rStaticSec iEPub
-        let (!ck1, !k1) = hkdfCK ck0 dhES
+            -- -> es: DH(e_i, s_r) — responder computes DH(s_r, e_i); reject all-zero
+            case x25519 rStaticSec iEPub of
+              Nothing    -> pure Nothing
+              Just !dhES -> do
+                let (!ck1, !k1) = hkdfCK ck0 dhES
 
-        -- -> s: decrypt initiator's static public key
-        case decryptWithKey k1 h3 encStaticPub of
-            Nothing -> pure Nothing
-            Just iStaticPub -> do
-                let !h4 = mixHash h3 encStaticPub
+                -- -> s: decrypt initiator's static public key
+                case decryptWithKey k1 h3 encStaticPub of
+                  Nothing         -> pure Nothing
+                  Just iStaticPub -> do
+                    let !h4 = mixHash h3 encStaticPub
 
-                -- -> ss: DH(s_r, s_i) — responder computes DH(s_r, s_i)
-                let !dhSS = x25519 rStaticSec iStaticPub
-                let (!ck2, !_k2) = hkdfCK ck1 dhSS
+                    -- -> ss: DH(s_r, s_i) — responder computes DH(s_r, s_i); reject all-zero
+                    case x25519 rStaticSec iStaticPub of
+                      Nothing    -> pure Nothing
+                      Just !dhSS -> do
+                        let (!ck2, !_k2) = hkdfCK ck1 dhSS
 
-                -- Generate responder ephemeral keypair
-                eSec <- randomBytes 32
-                let !ePub = x25519 eSec x25519Basepoint
+                        -- Generate responder ephemeral keypair
+                        eSec <- randomBytes 32
+                        case x25519 eSec x25519Basepoint of
+                          Nothing    -> pure Nothing
+                          Just !ePub -> do
+                            -- <- e: send ephemeral public, mix into hash
+                            let !_h5 = mixHash h4 ePub
 
-                -- <- e: send ephemeral public, mix into hash
-                let !_h5 = mixHash h4 ePub
+                            -- <- ee: DH(e_r, e_i); reject all-zero
+                            case x25519 eSec iEPub of
+                              Nothing    -> pure Nothing
+                              Just !dhEE -> do
+                                let (!ck3, !_k3) = hkdfCK ck2 dhEE
 
-                -- <- ee: DH(e_r, e_i)
-                let !dhEE = x25519 eSec iEPub
-                let (!ck3, !_k3) = hkdfCK ck2 dhEE
+                                -- <- se: DH(e_r, s_i) — responder's ephemeral, initiator's static.
+                                -- The `se` token means sender-ephemeral x recipient-static from
+                                -- the responder's side: x25519(e_r_sec, s_i_pub).
+                                -- Mirrors the initiator's DH(s_i, e_r) = x25519(iStaticSec, rEPub).
+                                case x25519 eSec iStaticPub of
+                                  Nothing    -> pure Nothing
+                                  Just !dhSE -> do
+                                    let (!ck4, !_k4) = hkdfCK ck3 dhSE
 
-                -- <- se: DH(s_r, e_i) — responder's static, initiator's ephemeral
-                let !dhSE = x25519 rStaticSec iEPub
-                let (!ck4, !_k4) = hkdfCK ck3 dhSE
+                                    -- Send message 2: ePub
+                                    sendFrame transport ePub
 
-                -- Send message 2: ePub
-                let !msg2 = ePub
-                sendFrame transport msg2
-
-                -- Derive final send/recv keys with key separation
-                -- Responder's send = initiator's recv and vice versa
-                let (!iSendEncKey, !iSendMacKey, !iRecvEncKey, !iRecvMacKey) = splitKeys ck4
-
-                let !noiseState = NoiseState
-                        { nsSendEncKey = iRecvEncKey
-                        , nsSendMacKey = iRecvMacKey
-                        , nsRecvEncKey = iSendEncKey
-                        , nsRecvMacKey = iSendMacKey
-                        , nsSendN      = 0
-                        , nsRecvN      = 0
-                        }
-                pure (Just (noiseState, iStaticPub))
+                                    -- Derive final send/recv keys with key separation
+                                    -- Responder's send = initiator's recv and vice versa
+                                    let (!iSendEncKey, !iSendMacKey, !iRecvEncKey, !iRecvMacKey) =
+                                            splitKeys ck4
+                                    let !noiseState = NoiseState
+                                            { nsSendEncKey = iRecvEncKey
+                                            , nsSendMacKey = iRecvMacKey
+                                            , nsRecvEncKey = iSendEncKey
+                                            , nsRecvMacKey = iSendMacKey
+                                            , nsSendN      = 0
+                                            , nsRecvN      = 0
+                                            }
+                                    pure (Just (noiseState, iStaticPub))
 
 ------------------------------------------------------------------------
 -- Handshake helpers

@@ -266,7 +266,7 @@ testMDNSControlCharsStripped = do
         rawName = "alice\x01\x02\x03"
         payload = buildAnnouncementWithName 7853 rawName pubkey
         srcAddr = NS.SockAddrInet 5353 (NS.tupleToHostAddress (127, 0, 0, 1))
-    case parseAnnouncement payload srcAddr of
+    case parseAnnouncement payload srcAddr 0 of
         Nothing -> putStrLn "  FAIL: mDNS control chars: announcement did not parse" >> pure False
         Just peer ->
             let nameOk = case mdnsName peer of
@@ -284,7 +284,7 @@ testMDNSNameLengthCapped = do
         longName = replicate 200 'x'
         payload  = buildAnnouncementWithName 7853 longName pubkey
         srcAddr  = NS.SockAddrInet 5353 (NS.tupleToHostAddress (127, 0, 0, 1))
-    case parseAnnouncement payload srcAddr of
+    case parseAnnouncement payload srcAddr 0 of
         Nothing -> putStrLn "  FAIL: mDNS name cap: announcement did not parse" >> pure False
         Just peer ->
             let lenOk = case mdnsName peer of

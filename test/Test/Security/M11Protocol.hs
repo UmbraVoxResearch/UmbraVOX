@@ -97,6 +97,19 @@ runTests = do
     pure (and results)
 
 ------------------------------------------------------------------------
+-- Test helpers
+------------------------------------------------------------------------
+
+-- | Unwrap the Maybe returned by x25519.
+-- In test contexts, keys are randomly generated and are never all-zero, so
+-- this is safe.  Using 'error' makes test failures loud rather than silent.
+mustX25519 :: BS.ByteString -> BS.ByteString -> BS.ByteString
+mustX25519 scalar point =
+    case x25519 scalar point of
+        Just r  -> r
+        Nothing -> error "mustX25519: x25519 returned all-zero (should be impossible in tests)"
+
+------------------------------------------------------------------------
 -- PL-001: Handshake replay — msg1 replayed after session complete
 --
 -- Finding:     An attacker captures the initiator's first Noise IK
@@ -134,9 +147,9 @@ testPL001HandshakeReplay :: IO Bool
 testPL001HandshakeReplay = do
     -- Generate legitimate identity keys
     iStaticSec <- randomBytes 32
-    let !iStaticPub = x25519 iStaticSec x25519Basepoint
+    let !iStaticPub = case x25519 iStaticSec x25519Basepoint of Just p -> p; Nothing -> error "iStaticPub: impossible"
     rStaticSec <- randomBytes 32
-    let !rStaticPub = x25519 rStaticSec x25519Basepoint
+    let !rStaticPub = case x25519 rStaticSec x25519Basepoint of Just p -> p; Nothing -> error "rStaticPub: impossible"
 
     -- Session A: perform a full handshake, capture msg1
     (loopAi, loopAr) <- newLoopbackPair "session-a"
@@ -213,15 +226,15 @@ testPL002CrossSessionReplay :: IO Bool
 testPL002CrossSessionReplay = do
     -- Bob's static keypair
     bobSec <- randomBytes 32
-    let !bobPub = x25519 bobSec x25519Basepoint
+    let !bobPub = case x25519 bobSec x25519Basepoint of Just p -> p; Nothing -> error "bobPub: impossible"
 
     -- Carol's static keypair (different from Bob)
     carolSec <- randomBytes 32
-    let !carolPub = x25519 carolSec x25519Basepoint
+    let !carolPub = case x25519 carolSec x25519Basepoint of Just p -> p; Nothing -> error "carolPub: impossible"
 
     -- Alice's static keypair
     aliceSec <- randomBytes 32
-    let !alicePub = x25519 aliceSec x25519Basepoint
+    let !alicePub = case x25519 aliceSec x25519Basepoint of Just p -> p; Nothing -> error "alicePub: impossible"
 
     -- Build a valid msg1 for Bob (session A), without using the full transport
     -- handshake — compute the message directly.
@@ -229,13 +242,13 @@ testPL002CrossSessionReplay = do
         (eSec, _) = nextBytes 32 prng
 
         -- Noise IK msg1 construction (mirrors noiseHandshakeInitiator)
-        !ePub      = x25519 eSec x25519Basepoint
+        !ePub      = case x25519 eSec x25519Basepoint of Just p -> p; Nothing -> error "ePub: impossible"
         !h0        = initHash
         !h1        = mixHash h0 (BS.pack (map (fromIntegral . fromEnum) "UmbraVox_v1"))
         !h2        = mixHash h1 bobPub           -- pre-message: responder's static pub
         !ck0       = initCK
         !h3        = mixHash h2 ePub
-        !dhES      = x25519 eSec bobPub
+        !dhES      = case x25519 eSec bobPub of Just d -> d; Nothing -> error "dhES: impossible"
         !(_ck1, !k1) = hkdfCK ck0 dhES
         !encStaticPub = encryptWithKey k1 h3 alicePub
         !msg1      = ePub <> encStaticPub
@@ -285,7 +298,7 @@ testPL002CrossSessionReplay = do
 testPL003ReflectionAttack :: IO Bool
 testPL003ReflectionAttack = do
     rStaticSec <- randomBytes 32
-    let !rStaticPub = x25519 rStaticSec x25519Basepoint
+    let !rStaticPub = case x25519 rStaticSec x25519Basepoint of Just p -> p; Nothing -> error "rStaticPub: impossible"
 
     (loopI, loopR) <- newLoopbackPair "reflection"
     let transportI = AnyTransport loopI
@@ -416,10 +429,10 @@ testPL005KCI :: IO Bool
 testPL005KCI = do
     -- Legitimate static keys
     iStaticSec <- randomBytes 32
-    let !iStaticPub = x25519 iStaticSec x25519Basepoint
+    let !iStaticPub = case x25519 iStaticSec x25519Basepoint of Just p -> p; Nothing -> error "iStaticPub: impossible"
 
     rStaticSec <- randomBytes 32
-    let !rStaticPub = x25519 rStaticSec x25519Basepoint
+    let !rStaticPub = case x25519 rStaticSec x25519Basepoint of Just p -> p; Nothing -> error "rStaticPub: impossible"
 
     -- Adversary holds iStaticSec and constructs a fake responder.
     -- The adversary cannot compute the correct se = DH(s_r, e_i) without rStaticSec,
@@ -513,33 +526,38 @@ testPL007DoubleRatchetReplay = do
         bobSPKSecret  = BS.replicate 32 0xBB
         aliceDHSecret = BS.replicate 32 0xCC
 
-    let !aliceSt0 = ratchetInitAlice sharedSecret
-                        (x25519 bobSPKSecret x25519Basepoint)
-                        aliceDHSecret
+    let !aliceSt0 = case ratchetInitAlice sharedSecret
+                        (mustX25519 bobSPKSecret x25519Basepoint)
+                        aliceDHSecret of
+                        Just s  -> s
+                        Nothing -> error "testPL007: ratchetInitAlice returned Nothing"
         !bobSt0   = ratchetInitBob sharedSecret bobSPKSecret
 
     let plaintext = BS.pack [0x01, 0x02, 0x03, 0x04]
 
     -- Alice encrypts one message
-    (aliceSt1, hdr, ct, tag) <- ratchetEncrypt aliceSt0 plaintext
-
-    -- Bob decrypts it — first time (valid)
-    mResult1 <- ratchetDecrypt bobSt0 hdr ct tag
-    case mResult1 of
-        Nothing -> do
-            putStrLn "  FAIL: PL-007 first decryption should succeed"
-            pure False
-        Just (bobSt1, plain1) -> do
-            ok1 <- assertEq "PL-007 first decryption returns correct plaintext"
-                            plaintext plain1
-            -- Bob attempts to replay the same ciphertext
-            mResult2 <- ratchetDecrypt bobSt1 hdr ct tag
-            ok2 <- assertEq "PL-007 replay decryption must return Nothing"
-                            True (isNothing mResult2)
-            -- Alice's updated state is well-formed (regression guard)
-            ok3 <- assertEq "PL-007 Alice send counter advanced"
-                            (1 :: Word32) (rsSendN aliceSt1)
-            pure (ok1 && ok2 && ok3)
+    encResult <- ratchetEncrypt aliceSt0 plaintext
+    case encResult of
+        Left _ -> putStrLn "  FAIL: PL-007 ratchetEncrypt failed" >> pure False
+        Right (aliceSt1, hdr, ct, tag) -> do
+            -- Bob decrypts it — first time (valid)
+            mResult1 <- ratchetDecrypt bobSt0 hdr ct tag
+            case mResult1 of
+                Left _ -> putStrLn "  FAIL: PL-007 ratchetDecrypt error" >> pure False
+                Right Nothing -> do
+                    putStrLn "  FAIL: PL-007 first decryption should succeed"
+                    pure False
+                Right (Just (bobSt1, plain1)) -> do
+                    ok1 <- assertEq "PL-007 first decryption returns correct plaintext"
+                                    plaintext plain1
+                    -- Bob attempts to replay the same ciphertext
+                    mResult2 <- ratchetDecrypt bobSt1 hdr ct tag
+                    ok2 <- assertEq "PL-007 replay decryption must return Nothing"
+                                    True (mResult2 == Right Nothing)
+                    -- Alice's updated state is well-formed (regression guard)
+                    ok3 <- assertEq "PL-007 Alice send counter advanced"
+                                    (1 :: Word32) (rsSendN aliceSt1)
+                    pure (ok1 && ok2 && ok3)
 
 ------------------------------------------------------------------------
 -- PL-009: X3DH OPK reuse — same OPK presented in two sessions
@@ -580,7 +598,7 @@ testPL009X3DHOPKReuse = do
 
     -- OPK that will be "reused"
     opkSec <- randomBytes 32
-    let !opkPub = x25519 opkSec x25519Basepoint
+    let !opkPub = mustX25519 opkSec x25519Basepoint
 
     let !bundle = PreKeyBundle
             { pkbIdentityKey     = ikX25519Public bobIK
@@ -719,21 +737,21 @@ testPL010PQXDHPrekeyReuse = do
 testPL011NoiseIKIdentityMismatch :: IO Bool
 testPL011NoiseIKIdentityMismatch = do
     rStaticSec <- randomBytes 32
-    let !rStaticPub = x25519 rStaticSec x25519Basepoint
+    let !rStaticPub = mustX25519 rStaticSec x25519Basepoint
 
     aliceSec <- randomBytes 32
-    let !alicePub = x25519 aliceSec x25519Basepoint
+    let !alicePub = mustX25519 aliceSec x25519Basepoint
 
     -- Build a valid msg1
     let prng = mkPRNG 0xC0FFEE
         (eSec, _) = nextBytes 32 prng
-        !ePub      = x25519 eSec x25519Basepoint
+        !ePub      = mustX25519 eSec x25519Basepoint
         !h0        = initHash
         !h1        = mixHash h0 (BS.pack (map (fromIntegral . fromEnum) "UmbraVox_v1"))
         !h2        = mixHash h1 rStaticPub
         !ck0       = initCK
         !h3        = mixHash h2 ePub
-        !dhES      = x25519 eSec rStaticPub
+        !dhES      = mustX25519 eSec rStaticPub
         !(_ck1, !k1) = hkdfCK ck0 dhES
         !encStaticPub = encryptWithKey k1 h3 alicePub
         !validMsg1 = ePub <> encStaticPub
@@ -953,7 +971,7 @@ testPL025WireFrameLengthOverflow = do
         transportR = AnyTransport loopR
 
     rStaticSec <- randomBytes 32
-    let !rStaticPub = x25519 rStaticSec x25519Basepoint
+    let !rStaticPub = mustX25519 rStaticSec x25519Basepoint
 
     resultVar <- newEmptyMVar
     _ <- forkIO $ do

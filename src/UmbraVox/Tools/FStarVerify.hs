@@ -54,6 +54,18 @@ data VerifyConfig = VerifyConfig
     } deriving stock (Show, Eq)
 
 -- | Default configuration using standard tool names.
+--
+-- Finding    M10.1.4 — F* verification pipeline reported PASS for modules
+--            that were entirely @assume@-based (201 holes).
+-- Vulnerability: Without @--admit_smt_queries false@, F* silently accepts
+--            @assume@ goals as proved, so a spec file full of @assume@
+--            statements passes verification and gives a false assurance
+--            of correctness.
+-- Fix:       @--admit_smt_queries false@ is now included in 'vcFlags' so
+--            that any unproved goal causes verification failure instead of
+--            a silent pass.
+-- Verified:  Any module with a bare @assume@ will now produce a
+--            @[FAIL]@ result rather than @[PASS]@.
 defaultConfig :: FilePath -> VerifyConfig
 defaultConfig specDir = VerifyConfig
     { vcFstarExe = "fstar.exe"
@@ -65,6 +77,8 @@ defaultConfig specDir = VerifyConfig
                    , "--odir", specDir </> "_output"
                    , "--cache_dir", specDir </> "_cache"
                    , "--z3rlimit", "2000"
+                   -- M10.1.4: reject assume holes so they cause FAIL not PASS
+                   , "--admit_smt_queries", "false"
                    ]
     }
 

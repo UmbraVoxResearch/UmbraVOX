@@ -15,6 +15,7 @@ module UmbraVox.Crypto.StealthAddress
     , deriveStealthAddress
     , scanForPayment
     , viewTag
+    , isValidStealthAddress
     ) where
 
 import Data.ByteString (ByteString)
@@ -80,7 +81,10 @@ generateStealthKeys :: IO StealthKeys
 generateStealthKeys = do
     scanSecret  <- randomBytes 32
     spendSecret <- randomBytes 32
-    let !scanPublic  = x25519 scanSecret x25519Basepoint
+    -- Basepoint multiplication cannot return all-zero for a non-zero secret.
+    let !scanPublic = case x25519 scanSecret x25519Basepoint of
+                          Just p  -> p
+                          Nothing -> error "generateStealthKeys: x25519 basepoint all-zero (impossible)"
         !spendPublic = ed25519PublicKey spendSecret
     return StealthKeys
         { skScanSecret  = scanSecret
@@ -100,15 +104,20 @@ generateStealthKeys = do
 -- address per Section 3.1 of the spec.
 deriveStealthAddress :: ByteString   -- ^ Recipient scan public key (32 bytes)
                      -> ByteString   -- ^ Recipient spend public key (32 bytes)
-                     -> IO StealthAddress
+                     -> IO (Maybe StealthAddress)
 deriveStealthAddress scanPub spendPub = do
     -- Step 1-2: Generate ephemeral keypair
     ephSecret <- randomBytes 32
-    let !ephPublic = x25519 ephSecret x25519Basepoint
-    -- Step 3: Shared secret via ECDH
-    let !sharedSecret = x25519 ephSecret scanPub
-    -- Steps 4-6: Derive view tag and stealth address
-    return (computeStealthAddress sharedSecret spendPub ephPublic)
+    let mEphPublic = x25519 ephSecret x25519Basepoint
+    case mEphPublic of
+        Nothing -> return Nothing
+        Just !ephPublic ->
+            -- Step 3: Shared secret via ECDH; reject all-zero (low-order point)
+            case x25519 ephSecret scanPub of
+                Nothing           -> return Nothing
+                Just !sharedSecret ->
+                    -- Steps 4-6: Derive view tag and stealth address
+                    return (Just (computeStealthAddress sharedSecret spendPub ephPublic))
 
 -- | Compute stealth address from shared secret, spend pubkey, and ephemeral R.
 -- Factored out to keep cyclomatic complexity low.
@@ -173,16 +182,16 @@ scanForPayment :: ByteString   -- ^ Scan secret key (32 bytes, X25519)
                -> ByteString   -- ^ Ephemeral public key R (32 bytes, X25519)
                -> ByteString   -- ^ Candidate stealth address P (32 bytes)
                -> Maybe ByteString
-scanForPayment scanSecret spendSecret spendPub ephR candidateP =
-    let -- Step 1: Recompute shared secret
-        !sharedSecret = x25519 scanSecret ephR
-        -- Step 2: Recompute stealth scalar
+scanForPayment scanSecret spendSecret spendPub ephR candidateP = do
+    -- Step 1: Recompute shared secret; reject all-zero DH (low-order point)
+    !sharedSecret <- x25519 scanSecret ephR
+    let -- Step 2: Recompute stealth scalar
         !stealthScalar = hkdf hkdfSalt sharedSecret stealthKeyInfo 32
         !s = decodeLE stealthScalar `mod` groupL
         -- Step 3: Recompute expected stealth public key
         !sG = scalarMul s basepoint
         !expectedP = addSpendKey sG spendPub
-    in if BS.null expectedP
+    if BS.null expectedP
        then Nothing
        else if constantEq expectedP candidateP
             then Just (computeSpendingSecret s spendSecret)
@@ -198,3 +207,24 @@ computeSpendingSecret s spendSecret =
         !a = clampScalar (BS.take 32 h)
         !skStealth = (s + a) `mod` groupL
     in encodeLEn 32 skStealth
+
+------------------------------------------------------------------------
+-- Address validation
+------------------------------------------------------------------------
+
+-- | Check whether a 'StealthAddress' is structurally valid.
+--
+-- Finding: The 'addSpendKey' helper silently returns an empty
+--   'ByteString' when the spend public key is not a valid Ed25519 point
+--   (SAFETY note M9.1.2). Without an explicit check, callers could use
+--   an invalid stealth address, sending funds to an unspendable output.
+-- Vulnerability: Callers of 'deriveStealthAddress' and related functions
+--   had no exported predicate to guard against the empty-address case,
+--   requiring ad-hoc 'BS.null' checks scattered across the codebase.
+-- Fix: Export 'isValidStealthAddress' so call sites have a single,
+--   clearly-named validation point. Returns 'False' for any address
+--   whose 'saAddress' field is empty (the sentinel for a decoding error).
+-- Verified: 'saAddress' is set to 'BS.empty' only by 'addSpendKey' on
+--   failure; all successful derivations produce a 32-byte point.
+isValidStealthAddress :: StealthAddress -> Bool
+isValidStealthAddress sa = not (BS.null (saAddress sa))

@@ -19,7 +19,7 @@ ffiLinked = (/= 0) <$> c_x25519_link_probe
 x25519Basepoint :: ByteString
 x25519Basepoint = Reference.x25519Basepoint
 
-x25519 :: ByteString -> ByteString -> IO ByteString
+x25519 :: ByteString -> ByteString -> IO (Maybe ByteString)
 x25519 scalar point = do
     _ <- c_x25519_link_probe
-    pure (Reference.x25519 scalar point)
+    pure $! Reference.x25519 scalar point

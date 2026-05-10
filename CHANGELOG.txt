@@ -4,6 +4,36 @@ All notable changes to UmbraVOX are documented in this file.
 
 The format is based on Keep a Changelog 1.1.0 and this project aims to follow Semantic Versioning.
 
+## [0.0.8] — 2026-05-10
+
+### Added
+- M11 cryptographic attack test plan (280 items across 12 categories).
+- M11 critical attack tests: 64 tests covering side-channel, protocol, symmetric, asymmetric, and key management attacks.
+- M11 high-priority attack tests: 28 tests covering SHA boundary correctness, HMAC length extension, HKDF edge cases, Ed25519 malleability, X3DH UKS, CBOR bomb, UDP far-ahead.
+- M10 regression test suites: RegressionM7 (17 tests), RegressionM8 (13 tests), Regression (16 tests), RegressionNet (15 tests).
+- TOFU allowlist in Selective peer trust mode (RuntimeNetwork.hs).
+- Per-install random storage encryption salt (Encryption.hs).
+- Connection limit (max 64) with per-IP rate tracking on accept loop.
+- Message content encryption wired into saveMessage/loadMessages (Anthony.hs).
+- Transport socket leak fix via bracketOnError in accept (Transport.hs).
+- StealthAddress isValidStealthAddress validator exported.
+
+### Changed
+- DoubleRatchet nonce construction: standard 4-zero + 8-byte-LE-counter layout, derived from chain key via separate HKDF label (BREAKING: wire-incompatible with pre-0.0.8).
+- DoubleRatchet ratchetEncrypt/ratchetDecrypt return Either RatchetError instead of error/crash.
+- Noise IK handshake: fixed se leg to use correct DH (initiator static × responder ephemeral).
+- Curve25519 x25519 returns Maybe ByteString (Nothing on all-zero DH output).
+- MLKEM bsSlice returns Maybe ByteString on out-of-bounds.
+- FStarVerify: --admit_smt_queries false detects assume-holes as failures.
+- mDNS: mdnsLastSeen stamped with POSIX time; stale peer eviction.
+- Socks5: opaque error messages (no raw status code leakage).
+- Comprehensive Finding/Vulnerability/Fix/Verified documentation on all security tests.
+
+### Fixed
+- Noise IK se leg duplicated es leg (collapsed mutual auth to one-sided).
+- DoubleRatchet skipped-key nonce mismatch (stored chain key alongside msg key).
+- FuzzConnection crash on skipMessageKeys with Nothing rsDHRecv.
+
 ## [Unreleased]
 
 ### Added

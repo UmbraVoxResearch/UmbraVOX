@@ -247,13 +247,17 @@ testFuzzEncryptedMessageGarbage = do
                     wireBytes <- anyRecv (tcTransport bob) len
                     recvChatMessage bobSess wireBytes
                 garbageOk <- case recvResult of
-                    Nothing -> pure True  -- timeout ok
-                    Just Nothing -> pure True  -- graceful rejection
-                    Just (Just _) -> pure False  -- garbage should not decrypt!
+                    Nothing               -> pure True  -- timeout ok
+                    Just (Left _)         -> pure True  -- ratchet error = rejected
+                    Just (Right Nothing)  -> pure True  -- graceful rejection
+                    Just (Right (Just _)) -> pure False -- garbage should not decrypt!
                 -- After garbage, verify session still works
                 -- Alice sends a real message
                 -- Note: bob's session was not updated by the failed decrypt, so use original
-                (aliceSess', wire) <- sendChatMessage aliceSess (BS.pack [0x41, 0x42])
+                sendRes2 <- sendChatMessage aliceSess (BS.pack [0x41, 0x42])
+                let (aliceSess', wire) = case sendRes2 of
+                                             Right r -> r
+                                             Left _  -> error "fuzzGarbage: sendChatMessage Left"
                 writeIORef (tcSession alice) (Just aliceSess')
                 anySend (tcTransport alice) (putWord32BE (fromIntegral (BS.length wire)) <> wire)
                 validResult <- timeout timeoutMicros $ do
@@ -262,9 +266,10 @@ testFuzzEncryptedMessageGarbage = do
                     wireBytes2 <- anyRecv (tcTransport bob) len2
                     recvChatMessage bobSess wireBytes2
                 validOk <- case validResult of
-                    Nothing -> pure True  -- timeout, acceptable
-                    Just Nothing -> pure True  -- ratchet may have desynchronized, still no crash
-                    Just (Just (_, pt)) -> pure (pt == BS.pack [0x41, 0x42])
+                    Nothing               -> pure True  -- timeout, acceptable
+                    Just (Left _)         -> pure True  -- ratchet desynchronized, still no crash
+                    Just (Right Nothing)  -> pure True  -- ratchet may have desynchronized
+                    Just (Right (Just (_, pt))) -> pure (pt == BS.pack [0x41, 0x42])
                 pure (garbageOk && validOk)
             _ -> pure False  -- session setup failed
 
@@ -424,7 +429,10 @@ testFuzzMessageOrderingAttack = do
     encryptAll :: ChatSession -> [ByteString] -> IO (ChatSession, [ByteString])
     encryptAll sess [] = pure (sess, [])
     encryptAll sess (m:ms) = do
-        (sess', wire) <- sendChatMessage sess m
+        sendR <- sendChatMessage sess m
+        let (sess', wire) = case sendR of
+                                Right r -> r
+                                Left _  -> error "encryptAll: sendChatMessage returned Left"
         (finalSess, rest) <- encryptAll sess' ms
         pure (finalSess, wire : rest)
 
@@ -451,11 +459,10 @@ testFuzzMessageOrderingAttack = do
         case r of
             Nothing -> pure (0, 0, sess)  -- no more data
             Just wireBytes -> do
-                decResult <- try (recvChatMessage sess wireBytes)
-                                 :: IO (Either SomeException (Maybe (ChatSession, ByteString)))
+                decResult <- recvChatMessage sess wireBytes
                 case decResult of
                     Left _ -> do
-                        -- Exception = garbage rejected
+                        -- RatchetError (counter exhausted etc) = treated as rejection
                         (vc, gc, s') <- recvAndClassify t sess (n - 1)
                         pure (vc, gc + 1, s')
                     Right Nothing -> do
@@ -542,7 +549,10 @@ testFuzzBitFlip = do
     case (mAliceSess, mBobSess) of
         (Just aliceSess, Just bobSess) -> do
             let plaintext = BS.pack [0x48, 0x65, 0x6C, 0x6C, 0x6F]  -- "Hello"
-            (aliceSess', wireBytes) <- sendChatMessage aliceSess plaintext
+            sendR <- sendChatMessage aliceSess plaintext
+            let (aliceSess', wireBytes) = case sendR of
+                                              Right r -> r
+                                              Left _  -> error "testFuzzBitFlip: sendChatMessage Left"
             writeIORef (tcSession alice) (Just aliceSess')
             -- For each byte position, flip one bit and try to decrypt
             let wireLen = BS.length wireBytes
@@ -551,11 +561,10 @@ testFuzzBitFlip = do
                 else do
                     results <- mapM (\pos -> do
                         let flipped = flipBit wireBytes pos
-                        decResult <- try (recvChatMessage bobSess flipped)
-                                         :: IO (Either SomeException (Maybe (ChatSession, ByteString)))
+                        decResult <- recvChatMessage bobSess flipped
                         case decResult of
-                            Left _ -> pure True     -- exception = correctly rejected
-                            Right Nothing -> pure True   -- correctly rejected
+                            Left _              -> pure True  -- ratchet error = correctly rejected
+                            Right Nothing       -> pure True  -- correctly rejected
                             Right (Just (_, pt)) ->
                                 -- Should NOT decrypt to original plaintext
                                 -- (bit flip should cause auth failure)

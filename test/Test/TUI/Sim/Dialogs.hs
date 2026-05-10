@@ -490,7 +490,10 @@ testSettingsConnectionModeDisconnectsRemoteSessions = do
     secret <- randomBytes 32
     dhSecret <- randomBytes 32
     peerPub <- randomBytes 32
-    session <- initChatSession secret dhSecret peerPub
+    mSession <- initChatSession secret dhSecret peerPub
+    let session = case mSession of
+                      Just s  -> s
+                      Nothing -> error "Dialogs: initChatSession returned Nothing (impossible with random keys)"
     sessionRef <- newIORef session
     lock <- newMVar ()
     histRef <- newIORef []

@@ -379,18 +379,18 @@ M10 Security Audit Round 4 (2026-05-10)
   [ ] M10.2.1 PQXDH: add Ed25519 signature on PQ prekey and verify in pqxdhInitiate (PQXDH.hs:36).
   [ ] M10.2.2 DoubleRatchet: replace counter-exhaustion `error` with Either/ExceptT (DoubleRatchet.hs:217,254).
   [ ] M10.2.3 DoubleRatchet: unify nonce construction (standard 4-zero + 8-byte-LE-counter).
-  [ ] M10.2.4 HMAC: remove Debug.Trace; use proper typed error for empty-key warning (HMAC.hs:14,52).
+  [x] M10.2.4 HMAC: remove Debug.Trace; use proper typed error for empty-key warning (HMAC.hs:14,52).
   [ ] M10.2.5 DoubleRatchet: derive nonce from chain key via separate HKDF label, not msgKey (DoubleRatchet.hs:397).
-  [ ] M10.2.6 ConstantTime: iterate over max(lenA,lenB) to avoid length leakage (ConstantTime.hs:22).
-  [ ] M10.2.7 Anthony: fix SQL comment injection (block --, /* */); fix semicolon check on normalized string.
+  [x] M10.2.6 ConstantTime: iterate over max(lenA,lenB) to avoid length leakage (ConstantTime.hs:22).
+  [x] M10.2.7 Anthony: fix SQL comment injection (block --, /* */); fix semicolon check on normalized string.
   [ ] M10.2.8 Anthony: call encryptField/decryptField in saveMessage/loadMessages (Anthony.hs:126).
   [ ] M10.2.9 Encryption: generate per-install random salt at first run (Encryption.hs:57).
-  [ ] M10.2.10 PeerExchange: cap payloadLen at 4096 bytes (PeerExchange.hs:88).
-  [ ] M10.2.11 UDP: cap utRecvBuf at 256 entries; drop far-ahead datagrams (Transport/UDP.hs:43).
+  [x] M10.2.10 PeerExchange: cap payloadLen at 4096 bytes (PeerExchange.hs:88).
+  [x] M10.2.11 UDP: cap utRecvBuf at 256 entries; drop far-ahead datagrams (Transport/UDP.hs:43).
   [ ] M10.2.12 Transport: wrap accept/killThread in bracket for socket leak fix (Transport.hs:76).
   [ ] M10.2.13 RuntimeNetwork: implement real TOFU/allowlist in Selective mode (RuntimeNetwork.hs:138).
-  [ ] M10.2.14 TUI: sanitize /file path via canonicalizePath + directory allowlist (Actions/Session.hs:119).
-  [ ] M10.2.15 TUI: derive safety number from verified peer key, not display name (Dialog.hs:212).
+  [x] M10.2.14 TUI: sanitize /file path via canonicalizePath + directory allowlist (Actions/Session.hs:119).
+  [x] M10.2.15 TUI: derive safety number from verified peer key, not display name (Dialog.hs:212).
   [ ] M10.2.16 Scripts: validate UMBRAVOX_QEMU_SMOKE_RUNNER as executable path (release-smoke-microvm.sh:188).
 
 [ ] M10.3 Medium-priority fixes
@@ -399,32 +399,32 @@ M10 Security Audit Round 4 (2026-05-10)
   [ ] M10.3.3 Export: document iterated-HKDF limitation; add TODO for Argon2id migration.
   [ ] M10.3.4 StealthAddress: export isValidStealthAddress validator function.
   [ ] M10.3.5 DoubleRatchet: evict skipped keys by insertion order (add timestamp/sequence).
-  [ ] M10.3.6 Anthony: setFileMode 0600 on database file after openDB.
+  [x] M10.3.6 Anthony: setFileMode 0600 on database file after openDB.
   [ ] M10.3.7 Encryption: remove plaintext passthrough after migration window.
-  [ ] M10.3.8 MDNS: filter NUL/control/ANSI chars in sanitizeName; cap at 64 chars.
+  [x] M10.3.8 MDNS: filter NUL/control/ANSI chars in sanitizeName; cap at 64 chars.
   [ ] M10.3.9 MDNS: stamp mdnsLastSeen with POSIX time; evict stale peers.
   [ ] M10.3.10 Socks5: map status codes to opaque messages; log raw at debug only.
-  [ ] M10.3.11 Encoding: strict port parsing (reject trailing chars in safeReadPort).
-  [ ] M10.3.12 TUI: don't display BIP39 passphrase in status bar (use overlay).
+  [x] M10.3.11 Encoding: strict port parsing (reject trailing chars in safeReadPort).
+  [x] M10.3.12 TUI: don't display BIP39 passphrase in status bar (use overlay).
   [ ] M10.3.13 nixpkgs: pin to content-addressed revision in shell.nix.
   [ ] M10.3.14 VM: validate agent.env with key=value parsing instead of source.
 
-[ ] M10.4 Regression test suite (covers M7-M10 findings)
-  [ ] M10.4.1 Test constantEq: equal match, mismatch, different-length, prefix, empty inputs.
-  [ ] M10.4.2 Test Noise handshake: replay rejection, key mismatch mid-handshake, half-open reject.
-  [ ] M10.4.3 Test PEX: oversized payload rejection (>4096 bytes).
-  [ ] M10.4.4 Test UDP: far-ahead seq number rejection (>256 ahead).
-  [ ] M10.4.5 Test Anthony SQL: comment injection (--), tab-before-semicolon, newline bypass.
-  [ ] M10.4.6 Test HMAC: empty key produces warning without crash.
-  [ ] M10.4.7 Test KeyStore: corrupted file, non-existent path, permission-denied.
-  [ ] M10.4.8 Test DoubleRatchet: counter overflow returns error (not crash).
-  [ ] M10.4.9 Test PQXDH: unsigned PQ prekey rejected.
-  [ ] M10.4.10 Test /file path: traversal attempt blocked.
-  [ ] M10.4.11 Test safety number: derived from key bytes, not display name.
-  [ ] M10.4.12 Test Storage.Encryption: nonce reuse detection, truncated ciphertext, corrupted tag.
-  [ ] M10.4.13 Test mDNS: control chars stripped, oversized name truncated.
-  [ ] M10.4.14 Test Encoding: strict port parsing rejects "80abc".
-  [ ] M10.4.15 Add integritySuites to requiredSuites gate (Main.hs).
+[x] M10.4 Regression test suite (covers M7-M10 findings)
+  [x] M10.4.1 Test constantEq: equal match, mismatch, different-length, prefix, empty inputs.
+  [x] M10.4.2 Test Noise handshake: replay rejection, key mismatch mid-handshake, half-open reject.
+  [x] M10.4.3 Test PEX: oversized payload rejection (>4096 bytes).
+  [x] M10.4.4 Test UDP: far-ahead seq number rejection (>256 ahead).
+  [x] M10.4.5 Test Anthony SQL: comment injection (--), tab-before-semicolon, newline bypass.
+  [x] M10.4.6 Test HMAC: empty key produces warning without crash.
+  [x] M10.4.7 Test KeyStore: corrupted file, non-existent path, permission-denied.
+  [x] M10.4.8 Test DoubleRatchet: counter overflow returns error (not crash).
+  [x] M10.4.9 Test PQXDH: unsigned PQ prekey rejected.
+  [x] M10.4.10 Test /file path: traversal attempt blocked.
+  [x] M10.4.11 Test safety number: derived from key bytes, not display name.
+  [x] M10.4.12 Test Storage.Encryption: nonce reuse detection, truncated ciphertext, corrupted tag.
+  [x] M10.4.13 Test mDNS: control chars stripped, oversized name truncated.
+  [x] M10.4.14 Test Encoding: strict port parsing rejects "80abc".
+  [x] M10.4.15 Add integritySuites to requiredSuites gate (Main.hs).
 
 ================================================================================
 MILESTONE M11: TOP-500 CRYPTOGRAPHIC ATTACK TEST PLAN
