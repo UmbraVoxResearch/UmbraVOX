@@ -356,6 +356,14 @@ memory forensics, disk inspection, and attack simulation.
   [x] M9.4.4 Handshake fuzzer — random bytes to recvFrame/recvBundle, verify no crash.
   [x] M9.4.5 Crypto input fuzzer — edge-case inputs to all 10 primitives, verify no crash.
 
+[x] M9.5 Unicode exhaustive testing
+  [x] M9.5.1 Test all 1,112,064 valid code points — sequential encrypt/decrypt round-trip.
+  [x] M9.5.2 Test 10,000 random-order code points — randomized round-trip.
+  [x] M9.5.3 Test all 2,048 surrogate code points — verify no crash on rejection.
+  [x] M9.5.4 Test surrogate passthrough resilience — raw surrogate bytes survive crypto.
+  [x] M9.5.5 Test invalid UTF-8 sequences — overlong, truncated, 0xFE/0xFF, above U+10FFFF.
+  [x] M9.5.6 Test multi-plane strings — ASCII, CJK, emoji, RTL, combining marks, BOM, zero-width.
+
 ================================================================================
 OUTSIDE MVP (DEFERRED)
 ================================================================================
