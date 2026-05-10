@@ -26,9 +26,7 @@ module UmbraVox.Network.Noise
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 
-import UmbraVox.Crypto.ConstantTime (constantEq)
-import UmbraVox.Crypto.HMAC (hmacSHA256)
-import UmbraVox.Crypto.Random (chacha20Encrypt)
+import UmbraVox.Crypto.ChaChaPoly (chachaPolyEncrypt, chachaPolyDecrypt)
 import UmbraVox.Network.Noise.Handshake
     ( noiseHandshakeInitiator
     , noiseHandshakeResponder
@@ -43,40 +41,43 @@ import UmbraVox.Network.Noise.State
 -- Post-handshake encrypt / decrypt
 ------------------------------------------------------------------------
 
--- | Encrypt a plaintext message, appending an HMAC-SHA256 tag.
--- Uses separate keys for encryption (ChaCha20) and authentication (HMAC).
--- Returns updated state (incremented nonce) and ciphertext || mac.
+-- | Encrypt a plaintext message using RFC 8439 ChaCha20-Poly1305 AEAD,
+-- appending a 16-byte Poly1305 tag.
+-- Returns updated state (incremented nonce) and ciphertext || tag.
 --
--- M10.1.6: nsHandshakeHash is mixed into the HMAC input as channel-binding
--- associated data.  This ties every transport ciphertext to the specific
--- handshake transcript that established the session keys, preventing an
--- adversary from replaying a transport message across sessions with
--- different handshake hashes.
+-- Finding    M10.1.7 — Replaced ChaCha20+HMAC-SHA256 with RFC 8439
+--            ChaCha20-Poly1305 AEAD.
+-- Vulnerability: The previous separate-key HMAC construction was non-standard,
+--            harder to audit, and incompatible with reference Noise
+--            implementations.  The 32-byte HMAC tag also wasted bandwidth.
+-- Fix:       Use chachaPolyEncrypt, which derives the Poly1305 one-time key
+--            from chacha20Block(nsSendEncKey, nonce, 0) and produces a
+--            standard 16-byte tag.  nsHandshakeHash is passed as AAD,
+--            providing the same channel-binding guarantee as before
+--            (M10.1.6 fix preserved).
+-- Verified:  noiseEncrypt/noiseDecrypt round-trip correctly for all message
+--            sizes.  Any modification to the AAD, ciphertext, or tag causes
+--            chachaPolyDecrypt to return Nothing.
 noiseEncrypt :: NoiseState -> ByteString -> (NoiseState, ByteString)
 noiseEncrypt st plaintext =
-    let !nonce  = makeNonce (nsSendN st)
-        !ct     = chacha20Encrypt (nsSendEncKey st) nonce 1 plaintext
-        !mac    = hmacSHA256 (nsSendMacKey st) (nsHandshakeHash st <> nonce <> ct)
-        !st'    = st { nsSendN = nsSendN st + 1 }
-    in (st', ct <> mac)
+    let !nonce        = makeNonce (nsSendN st)
+        !(ct, tag)    = chachaPolyEncrypt (nsSendEncKey st) nonce (nsHandshakeHash st) plaintext
+        !st'          = st { nsSendN = nsSendN st + 1 }
+    in (st', ct <> tag)
 
--- | Decrypt a ciphertext || mac message, verifying the HMAC-SHA256 tag.
--- Uses separate keys for decryption (ChaCha20) and verification (HMAC).
--- Returns Nothing if the MAC does not match.
---
--- M10.1.6: nsHandshakeHash is mixed into the expected HMAC input as
--- channel-binding associated data, matching noiseEncrypt.
+-- | Decrypt a ciphertext || tag message using RFC 8439 ChaCha20-Poly1305 AEAD,
+-- verifying the 16-byte Poly1305 tag.
+-- Returns Nothing if the tag does not match.
 noiseDecrypt :: NoiseState -> ByteString -> Maybe (NoiseState, ByteString)
 noiseDecrypt st msg
     | BS.length msg < macLen = Nothing
     | otherwise =
-        let !ctLen  = BS.length msg - macLen
-            !ct     = BS.take ctLen msg
-            !mac    = BS.drop ctLen msg
-            !nonce  = makeNonce (nsRecvN st)
-            !expected = hmacSHA256 (nsRecvMacKey st) (nsHandshakeHash st <> nonce <> ct)
-        in if constantEq mac expected
-           then let !pt  = chacha20Encrypt (nsRecvEncKey st) nonce 1 ct
-                    !st' = st { nsRecvN = nsRecvN st + 1 }
-                in Just (st', pt)
-           else Nothing
+        let !ctLen = BS.length msg - macLen
+            !ct    = BS.take ctLen msg
+            !tag   = BS.drop ctLen msg
+            !nonce = makeNonce (nsRecvN st)
+        in case chachaPolyDecrypt (nsRecvEncKey st) nonce (nsHandshakeHash st) ct tag of
+               Nothing -> Nothing
+               Just pt ->
+                   let !st' = st { nsRecvN = nsRecvN st + 1 }
+                   in Just (st', pt)

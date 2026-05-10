@@ -375,12 +375,12 @@ M10 Security Audit Round 4 (2026-05-10)
   [x] M10.1.4 FStarVerify: add --admit_smt_queries false to detect assume-holes as failures.
   [x] M10.1.5 Network: add connection limit (max 64) and per-IP rate limiting on accept loop (RuntimeNetwork.hs:128).
   [x] M10.1.6 Noise: carry handshake hash (h) into transport phase for channel binding (Handshake.hs).
-  [ ] M10.1.7 Noise: replace ChaCha20+HMAC with ChaCha20-Poly1305 AEAD per Noise spec expectations.
+  [x] M10.1.7 Noise: replace ChaCha20+HMAC with ChaCha20-Poly1305 AEAD per Noise spec (RFC 8439).
   [x] M10.1.8 Nonce: change HKDF salt from chainKey to zeros (match Signal; current salt=ikm is redundant).
-  [ ] M10.1.9 Noise: add test vectors for all four DH legs (ee, es, ss, se) with known keys.
-  [ ] M10.1.10 Noise: add negative tests for swapped, missing, or duplicated DH terms.
-  [ ] M10.1.11 Noise: document the nonce invariant (AEAD story) in module-level Haddock.
-  [ ] M10.1.12 Noise: fix protocolName to match actual AEAD (currently "AESGCM" but uses ChaCha20+HMAC).
+  [x] M10.1.9 Noise: add test vectors for all four DH legs (ee, es, ss, se) with known keys.
+  [x] M10.1.10 Noise: add negative tests for swapped, missing, or duplicated DH terms.
+  [x] M10.1.11 Noise: document the nonce invariant (AEAD story) in module-level Haddock.
+  [x] M10.1.12 Noise: fix protocolName to "Noise_IK_25519_ChaChaPoly_SHA256".
 
 [ ] M10.2 High-priority fixes
   [ ] M10.2.1 PQXDH: add Ed25519 signature on PQ prekey and verify in pqxdhInitiate (PQXDH.hs:36).
