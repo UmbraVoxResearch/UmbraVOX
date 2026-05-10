@@ -100,7 +100,11 @@ data AppState = AppState
     , asMenuOpen :: IORef (Maybe MenuTab)
     , asMenuIndex :: IORef Int
     , asDialogTab :: IORef Int
-    , asLastRenderToken :: IORef (Maybe String) }
+    , asLastRenderToken :: IORef (Maybe String)
+      -- ^ Strict: writers must evaluate the token with a bang pattern
+      --   before storing (e.g. @let !tok = …; writeIORef ref (Just tok)@)
+      --   to avoid IORef space leaks.
+    }
 
 data DialogMode = DlgHelp | DlgAbout | DlgSettings | DlgVerify | DlgNewConn
     | DlgKeys | DlgBrowse | DlgPrompt String (String -> IO ())

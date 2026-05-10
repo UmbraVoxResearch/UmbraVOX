@@ -107,8 +107,9 @@ noiseHandshakeInitiator iStaticSec iStaticPub rStaticPub trustCheck transport = 
     case mMsg2 of
       Nothing -> pure Nothing
       Just msg2
-        -- Validate message length: need at least 32 bytes for responder ephemeral key
-        | BS.length msg2 < 32 -> pure Nothing
+        -- Validate message length: msg2 must be exactly 32 bytes (responder ephemeral key).
+        -- Reject short messages and trailing bytes that could indicate injection.
+        | BS.length msg2 /= 32 -> pure Nothing
         | otherwise -> do
         let !rEPub = BS.take 32 msg2
 
@@ -315,6 +316,10 @@ recvFrame t = do
         then pure Nothing
         else do
             let !len = getWord32BE lenBS
-            if len > maxFrameSize
+            if len >= maxFrameSize
                 then pure Nothing
-                else Just <$> anyRecv t (fromIntegral len)
+                else do
+                    payload <- anyRecv t (fromIntegral len)
+                    if BS.length payload < fromIntegral len
+                        then pure Nothing
+                        else pure (Just payload)

@@ -55,7 +55,9 @@ decodeWire bs
                     , rhPrevChainN = getWord32BE prevBytes
                     , rhMsgN       = getWord32BE msgBytes
                     }
-            in Just (hdr, ct, tag)
+            -- M8.3.1: Reject zero-length ciphertext to prevent trivial
+            -- forgery / oracle attacks with an empty plaintext body.
+            in if BS.length ct == 0 then Nothing else Just (hdr, ct, tag)
 
 -- | Encode a ratchet header as 40 bytes.
 encodeHeader :: RatchetHeader -> ByteString

@@ -45,8 +45,17 @@ poly1305 !key !msg
 -- RFC 8439 Section 2.5.1 -- Clamping
 ------------------------------------------------------------------------
 
--- | Clamp r per RFC 8439: clear top 4 bits of bytes 3,7,11,15
+-- | Clamp r per RFC 8439 §2.5.1: clear top 4 bits of bytes 3,7,11,15
 -- and clear bottom 2 bits of bytes 4,8,12.
+--
+-- M8.1.2 audit: mask 0x0ffffffc0ffffffc0ffffffc0fffffff verified correct.
+--   byte  3 (bits 24-31)  → 0x0F  (top 4 cleared)
+--   byte  7 (bits 56-63)  → 0x0F  (top 4 cleared)
+--   byte 11 (bits 88-95)  → 0x0F  (top 4 cleared)
+--   byte 15 (bits 120-127)→ 0x0F  (top 4 cleared)
+--   byte  4 (bits 32-39)  → 0xFC  (bottom 2 cleared)
+--   byte  8 (bits 64-71)  → 0xFC  (bottom 2 cleared)
+--   byte 12 (bits 96-103) → 0xFC  (bottom 2 cleared)
 clampR :: Integer -> Integer
 clampR !r = r .&. 0x0ffffffc0ffffffc0ffffffc0fffffff
 

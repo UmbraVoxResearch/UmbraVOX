@@ -235,7 +235,13 @@ word64ToBytes w =
 -- @rate@ is the rate in bytes, @suffix@ is the domain separation byte,
 -- @outputLen@ is the desired output length in bytes.
 sponge :: Int -> Word8 -> Int -> ByteString -> ByteString
-sponge rate suffix outputLen msg = squeeze state0 outputLen
+sponge rate suffix outputLen msg
+    | rate `mod` 8 /= 0
+    = error "Keccak: rate must be a multiple of 8"
+    | rate <= 0 || rate >= 200
+    = error "Keccak: rate must be between 1 and 199 bytes (state is 200 bytes / 1600 bits)"
+    | otherwise
+    = squeeze state0 outputLen
   where
     -- Pad the message: append suffix, pad with zeros, set last byte bit
     padded = pad rate suffix msg

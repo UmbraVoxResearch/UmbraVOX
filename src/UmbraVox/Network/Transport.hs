@@ -21,7 +21,7 @@ import Control.Concurrent (ThreadId, forkIO, killThread)
 import Control.Concurrent.MVar (MVar, newEmptyMVar, takeMVar, tryPutMVar)
 import qualified Data.ByteString as BS
 import Data.ByteString (ByteString)
-import Control.Exception (SomeException, catch, onException, throwIO, try)
+import Control.Exception (SomeException, bracketOnError, catch, onException, throwIO, try)
 import Control.Monad (forM, void, when)
 import qualified Network.Socket as NS
 import qualified Network.Socket.ByteString as NSB
@@ -107,15 +107,17 @@ connectWithTimeoutUs timeoutUs host port = do
             Right transport -> pure transport
             Left err -> tryConnectAddrs rest (Just err)
 
-    connectAddr addr = do
-        sock <- NS.openSocket addr
-        result <- timeout timeoutUs (NS.connect sock (NS.addrAddress addr)) `onException` NS.close sock
-        case result of
-            Just () ->
-                pure TCPTransport { tSocket = sock, tAddr = NS.addrAddress addr }
-            Nothing -> do
-                NS.close sock
-                ioError (userError ("connect timeout to " ++ host ++ ":" ++ show port))
+    connectAddr addr = bracketOnError
+        (NS.openSocket addr)
+        NS.close
+        $ \sock -> do
+            NS.setSocketOption sock NS.ReuseAddr 1
+            result <- timeout timeoutUs (NS.connect sock (NS.addrAddress addr))
+            case result of
+                Just () ->
+                    pure TCPTransport { tSocket = sock, tAddr = NS.addrAddress addr }
+                Nothing ->
+                    ioError (userError ("connect timeout to " ++ host ++ ":" ++ show port))
 
 -- | Try connecting to a host on a sequence of ports, returning the first success.
 -- Throws the last error if all ports fail.
