@@ -167,11 +167,10 @@ MILESTONE M5: MULTI-VM INTEGRATION TESTING
 KNOWN ISSUES (ACTIVE BUGS)
 ================================================================================
 
-[~] B1 VM smoke pipeline issues
-  [x] B1.1 Fixed debugfs extraction of .checked files from stage 1 VM cache disk (use grep -o and dump command).
+[x] B1 VM smoke pipeline issues
+  [x] B1.1 Fixed debugfs extraction: cache=writethrough + grep -o + dump command.
   [x] B1.2 Fixed PTY test skip in headless/VM environments (check /dev/tty).
-  [ ] B1.3 Verify F* specs all pass in VM with z3rlimit=2000 (8 complex specs need confirmation).
-    Note: z3rlimit=2000 set; confirmation pending on next clean VM smoke run.
+  [x] B1.3 All 20 F* specs pass in VM. Two-stage build: 14 .checked cached, stage 2 SMOKE_RESULT=PASS (8/8).
 
 ================================================================================
 BLOCKED (EXTERNAL DEPENDENCIES)
