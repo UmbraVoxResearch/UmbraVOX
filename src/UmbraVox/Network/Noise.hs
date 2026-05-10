@@ -46,17 +46,26 @@ import UmbraVox.Network.Noise.State
 -- | Encrypt a plaintext message, appending an HMAC-SHA256 tag.
 -- Uses separate keys for encryption (ChaCha20) and authentication (HMAC).
 -- Returns updated state (incremented nonce) and ciphertext || mac.
+--
+-- M10.1.6: nsHandshakeHash is mixed into the HMAC input as channel-binding
+-- associated data.  This ties every transport ciphertext to the specific
+-- handshake transcript that established the session keys, preventing an
+-- adversary from replaying a transport message across sessions with
+-- different handshake hashes.
 noiseEncrypt :: NoiseState -> ByteString -> (NoiseState, ByteString)
 noiseEncrypt st plaintext =
     let !nonce  = makeNonce (nsSendN st)
         !ct     = chacha20Encrypt (nsSendEncKey st) nonce 1 plaintext
-        !mac    = hmacSHA256 (nsSendMacKey st) (nonce <> ct)
+        !mac    = hmacSHA256 (nsSendMacKey st) (nsHandshakeHash st <> nonce <> ct)
         !st'    = st { nsSendN = nsSendN st + 1 }
     in (st', ct <> mac)
 
 -- | Decrypt a ciphertext || mac message, verifying the HMAC-SHA256 tag.
 -- Uses separate keys for decryption (ChaCha20) and verification (HMAC).
 -- Returns Nothing if the MAC does not match.
+--
+-- M10.1.6: nsHandshakeHash is mixed into the expected HMAC input as
+-- channel-binding associated data, matching noiseEncrypt.
 noiseDecrypt :: NoiseState -> ByteString -> Maybe (NoiseState, ByteString)
 noiseDecrypt st msg
     | BS.length msg < macLen = Nothing
@@ -65,7 +74,7 @@ noiseDecrypt st msg
             !ct     = BS.take ctLen msg
             !mac    = BS.drop ctLen msg
             !nonce  = makeNonce (nsRecvN st)
-            !expected = hmacSHA256 (nsRecvMacKey st) (nonce <> ct)
+            !expected = hmacSHA256 (nsRecvMacKey st) (nsHandshakeHash st <> nonce <> ct)
         in if constantEq mac expected
            then let !pt  = chacha20Encrypt (nsRecvEncKey st) nonce 1 ct
                     !st' = st { nsRecvN = nsRecvN st + 1 }

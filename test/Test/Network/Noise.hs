@@ -7,6 +7,7 @@ module Test.Network.Noise (runTests) where
 
 import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
+import qualified Data.ByteString as BS
 import Test.Util
 import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
 import UmbraVox.Network.Noise
@@ -75,20 +76,22 @@ testEncryptDecryptRoundTrip = checkPropertyIO
             (recvMacKey, g4) = nextBytes 32 g3
             (payload, _)     = nextBytesRange 1 200 g4
             senderSt = NoiseState
-                { nsSendEncKey = sendEncKey
-                , nsSendMacKey = sendMacKey
-                , nsRecvEncKey = recvEncKey
-                , nsRecvMacKey = recvMacKey
-                , nsSendN      = 0
-                , nsRecvN      = 0
+                { nsSendEncKey    = sendEncKey
+                , nsSendMacKey    = sendMacKey
+                , nsRecvEncKey    = recvEncKey
+                , nsRecvMacKey    = recvMacKey
+                , nsSendN         = 0
+                , nsRecvN         = 0
+                , nsHandshakeHash = BS.replicate 32 0
                 }
             receiverSt = NoiseState
-                { nsSendEncKey = recvEncKey
-                , nsSendMacKey = recvMacKey
-                , nsRecvEncKey = sendEncKey
-                , nsRecvMacKey = sendMacKey
-                , nsSendN      = 0
-                , nsRecvN      = 0
+                { nsSendEncKey    = recvEncKey
+                , nsSendMacKey    = recvMacKey
+                , nsRecvEncKey    = sendEncKey
+                , nsRecvMacKey    = sendMacKey
+                , nsSendN         = 0
+                , nsRecvN         = 0
+                , nsHandshakeHash = BS.replicate 32 0
                 }
             (_, ct) = noiseEncrypt senderSt payload
         pure $ case noiseDecrypt receiverSt ct of
@@ -104,20 +107,22 @@ testWrongKeyFails = do
         recvMacKey = hexDecode "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a"
         wrongKey   = hexDecode "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb"
         senderSt = NoiseState
-            { nsSendEncKey = sendEncKey
-            , nsSendMacKey = sendMacKey
-            , nsRecvEncKey = recvEncKey
-            , nsRecvMacKey = recvMacKey
-            , nsSendN      = 0
-            , nsRecvN      = 0
+            { nsSendEncKey    = sendEncKey
+            , nsSendMacKey    = sendMacKey
+            , nsRecvEncKey    = recvEncKey
+            , nsRecvMacKey    = recvMacKey
+            , nsSendN         = 0
+            , nsRecvN         = 0
+            , nsHandshakeHash = BS.replicate 32 0
             }
         badReceiverSt = NoiseState
-            { nsSendEncKey = recvEncKey
-            , nsSendMacKey = recvMacKey
-            , nsRecvEncKey = wrongKey
-            , nsRecvMacKey = wrongKey
-            , nsSendN      = 0
-            , nsRecvN      = 0
+            { nsSendEncKey    = recvEncKey
+            , nsSendMacKey    = recvMacKey
+            , nsRecvEncKey    = wrongKey
+            , nsRecvMacKey    = wrongKey
+            , nsSendN         = 0
+            , nsRecvN         = 0
+            , nsHandshakeHash = BS.replicate 32 0
             }
         msg = strToBS "secret message"
         (_, ct) = noiseEncrypt senderSt msg

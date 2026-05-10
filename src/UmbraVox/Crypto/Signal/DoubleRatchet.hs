@@ -481,13 +481,31 @@ evictOldest m
 --            bytes to match the standard Noise layout.
 -- Verified:  'ratchetEncrypt' and 'ratchetDecrypt' pass the chain key (not
 --            the message key) to 'makeNonce'.
+--
+-- Finding    M10.1.8 — 'makeNonce' used @chainKey@ as the HKDF-Extract salt
+--            and @nonceInfo@ ("UmbraVox_Nonce_v1") as the IKM.  Passing the
+--            same material as both the salt and a key-derived input is
+--            non-standard and redundant; the Signal Protocol convention for
+--            HKDF-Extract uses a zero salt so that HKDF-Extract behaves as
+--            a pure PRF keyed on the IKM.
+-- Vulnerability: Using @chainKey@ as the salt means the PRK is not derived
+--            purely from @chainKey@; the salt role mixes a non-secret
+--            constant (nonceInfo) in a place the Noise/Signal specs expect a
+--            zero or random salt, deviating from the intended security model.
+-- Fix:       Changed HKDF-Extract to use a 32-byte zero salt with @chainKey@
+--            as IKM, matching Signal's HKDF-Extract convention (RFC 5869 §2.2:
+--            "if not provided, [salt] is set to a string of HashLen zeros").
+-- Verified:  Both 'ratchetEncrypt' and 'ratchetDecrypt' call 'makeNonce' with
+--            the chain key; the zero-salt change is transparent to callers
+--            and both sides derive the same nonce from the same chain key.
 makeNonce :: ByteString  -- ^ Chain key (NOT the message key)
           -> Word32      -- ^ Message counter
           -> ByteString
 makeNonce chainKey counter =
-    -- Derive 8-byte nonce base from chain key, isolated from the GCM key
-    let !prk  = hkdfExtract chainKey nonceInfo
-        !base = hkdfExpand prk BS.empty 8
+    -- Derive 8-byte nonce base from chain key via HKDF with zero salt (Signal
+    -- convention: zero salt so HKDF-Extract acts as a keyed PRF on chainKey).
+    let !prk  = hkdfExtract (BS.replicate 32 0) chainKey
+        !base = hkdfExpand prk nonceInfo 8
         -- XOR the base with the 8-byte LE counter for per-message uniqueness
         !ctr  = encodeWord64LE (fromIntegral counter)
         !mixed = BS.pack (BS.zipWith xor base ctr)

@@ -119,7 +119,9 @@ noiseHandshakeInitiator iStaticSec iStaticPub rStaticPub trustCheck transport = 
                         let !rEPub = BS.take 32 msg2
 
                         -- <- e: mix responder ephemeral into hash
-                        let !_h5 = mixHash h4 rEPub
+                        -- M10.1.6: h5 is the final handshake hash; carried into
+                        -- transport phase as channel-binding associated data.
+                        let !h5 = mixHash h4 rEPub
 
                         -- <- ee: DH(e_i, e_r); reject all-zero
                         case x25519 eSec rEPub of
@@ -166,12 +168,13 @@ noiseHandshakeInitiator iStaticSec iStaticPub rStaticPub trustCheck transport = 
                                     let (!sendEncKey, !sendMacKey, !recvEncKey, !recvMacKey) =
                                             splitKeys ck4
                                     pure (Just NoiseState
-                                        { nsSendEncKey = sendEncKey
-                                        , nsSendMacKey = sendMacKey
-                                        , nsRecvEncKey = recvEncKey
-                                        , nsRecvMacKey = recvMacKey
-                                        , nsSendN      = 0
-                                        , nsRecvN      = 0
+                                        { nsSendEncKey    = sendEncKey
+                                        , nsSendMacKey    = sendMacKey
+                                        , nsRecvEncKey    = recvEncKey
+                                        , nsRecvMacKey    = recvMacKey
+                                        , nsSendN         = 0
+                                        , nsRecvN         = 0
+                                        , nsHandshakeHash = h5
                                         })
 
 ------------------------------------------------------------------------
@@ -232,7 +235,9 @@ noiseHandshakeResponder rStaticSec rStaticPub transport = do
                           Nothing    -> pure Nothing
                           Just !ePub -> do
                             -- <- e: send ephemeral public, mix into hash
-                            let !_h5 = mixHash h4 ePub
+                            -- M10.1.6: h5 is the final handshake hash; carried into
+                            -- transport phase as channel-binding associated data.
+                            let !h5 = mixHash h4 ePub
 
                             -- <- ee: DH(e_r, e_i); reject all-zero
                             case x25519 eSec iEPub of
@@ -257,12 +262,13 @@ noiseHandshakeResponder rStaticSec rStaticPub transport = do
                                     let (!iSendEncKey, !iSendMacKey, !iRecvEncKey, !iRecvMacKey) =
                                             splitKeys ck4
                                     let !noiseState = NoiseState
-                                            { nsSendEncKey = iRecvEncKey
-                                            , nsSendMacKey = iRecvMacKey
-                                            , nsRecvEncKey = iSendEncKey
-                                            , nsRecvMacKey = iSendMacKey
-                                            , nsSendN      = 0
-                                            , nsRecvN      = 0
+                                            { nsSendEncKey    = iRecvEncKey
+                                            , nsSendMacKey    = iRecvMacKey
+                                            , nsRecvEncKey    = iSendEncKey
+                                            , nsRecvMacKey    = iSendMacKey
+                                            , nsSendN         = 0
+                                            , nsRecvN         = 0
+                                            , nsHandshakeHash = h5
                                             }
                                     pure (Just (noiseState, iStaticPub))
 
