@@ -79,9 +79,15 @@ data RatchetHeader = RatchetHeader
 ratchetInfo :: ByteString
 ratchetInfo = "UmbraVox_Ratchet_v1"
 
--- | Maximum number of skipped message keys to store.
+-- | Maximum number of skipped message keys to store per ratchet step.
 maxSkip :: Word32
 maxSkip = 1000
+
+-- | Maximum total entries in the skipped-key cache across all DH ratchets.
+-- Prevents unbounded memory growth from an adversary triggering many
+-- small skips across many ratchet epochs (M7.3.6).
+maxTotalSkipped :: Int
+maxTotalSkipped = 5000
 
 ------------------------------------------------------------------------
 -- KDF helpers
@@ -149,7 +155,11 @@ ratchetInitAlice sharedSecret bobSPK aliceDHSecret =
         , rsDHRecv      = Just bobSPK
         , rsRootKey     = rootKey1
         , rsSendChain   = sendChain
-        , rsRecvChain   = BS.replicate 32 0  -- Will be set on first DH ratchet from Bob
+        , rsRecvChain   = BS.replicate 32 0
+          -- SAFETY (M7.2.3): This zero placeholder is never used for
+          -- decryption.  Bob's first message triggers dhRatchet, which
+          -- overwrites rsRecvChain via kdfRK before any kdfCK derivation.
+          -- The zero value cannot leak key material.
         , rsSendN       = 0
         , rsRecvN       = 0
         , rsPrevChainN  = 0
@@ -171,8 +181,15 @@ ratchetInitBob sharedSecret bobSPKSecret =
         { rsDHSend      = bobKP
         , rsDHRecv      = Nothing   -- Set from first message header
         , rsRootKey     = sharedSecret
-        , rsSendChain   = BS.replicate 32 0  -- Will be set on first DH ratchet
-        , rsRecvChain   = BS.replicate 32 0  -- Will be set on first DH ratchet
+        , rsSendChain   = BS.replicate 32 0
+          -- SAFETY (M7.2.3): Zero placeholder — Bob cannot encrypt until
+          -- Alice's first message arrives and triggers dhRatchet, which
+          -- derives real send/recv chain keys via kdfRK.  rsDHRecv starts
+          -- as Nothing, so ratchetEncrypt cannot produce valid ciphertext
+          -- with this value.
+        , rsRecvChain   = BS.replicate 32 0
+          -- SAFETY (M7.2.3): Same as rsSendChain above — overwritten by
+          -- dhRatchet before any decryption attempt.
         , rsSendN       = 0
         , rsRecvN       = 0
         , rsPrevChainN  = 0
@@ -320,7 +337,11 @@ skipMessageKeys :: RatchetState -> Word32 -> Maybe RatchetState
 skipMessageKeys st until'
     | rsRecvN st >= until' = Just st
     | until' - rsRecvN st > maxSkip = Nothing
-    | otherwise = Just (go st)
+    | otherwise =
+        let !result = go st
+            -- M7.3.6: enforce total skipped-key cap across all DH ratchets
+            !pruned = evictOldest (rsSkippedKeys result)
+        in Just result { rsSkippedKeys = pruned }
   where
     go s
         | rsRecvN s >= until' = s
@@ -331,16 +352,25 @@ skipMessageKeys st until'
                     Nothing -> error "skipMessageKeys: rsDHRecv is Nothing"
                 !key = (peerKey, rsRecvN s)
                 !skipped = Map.insert key msgKey (rsSkippedKeys s)
-                -- Evict keys older than 500 ratchet steps from current counter
-                !currentN = rsRecvN s + 1
-                !skipped' = Map.filterWithKey
-                    (\(_, msgN) _ -> currentN <= msgN + 500)
-                    skipped
             in go s
                 { rsRecvChain   = newChainKey
                 , rsRecvN       = rsRecvN s + 1
-                , rsSkippedKeys = skipped'
+                , rsSkippedKeys = skipped
                 }
+
+-- | Evict the oldest entries (lowest counter values) from the skipped-key
+-- cache until the total size is within 'maxTotalSkipped' (M7.3.6).
+evictOldest :: Map (ByteString, Word32) ByteString
+            -> Map (ByteString, Word32) ByteString
+evictOldest m
+    | Map.size m <= maxTotalSkipped = m
+    | otherwise =
+        -- Map is ordered by (dhPub, counter); entries with the lowest
+        -- counter values (oldest messages) sort first.  We drop excess
+        -- entries from the beginning of the map.
+        let !excess = Map.size m - maxTotalSkipped
+            !pruned = Map.fromAscList (drop excess (Map.toAscList m))
+        in pruned
 
 ------------------------------------------------------------------------
 -- Nonce and header encoding

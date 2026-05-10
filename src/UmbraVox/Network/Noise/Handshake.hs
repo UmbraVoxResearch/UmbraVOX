@@ -50,13 +50,26 @@ import UmbraVox.Protocol.Encoding (putWord32BE, getWord32BE)
 --
 -- The initiator already knows the responder's static public key.
 -- Sends message 1, receives message 2, derives session keys.
+--
+-- The @trustCheck@ callback is invoked with the responder's static public
+-- key after the handshake DH computations succeed, allowing the caller to
+-- verify the responder's identity matches expectations (e.g. pinned key,
+-- TOFU database). Return 'True' to accept, 'False' to abort.
 noiseHandshakeInitiator
     :: ByteString   -- ^ Our static secret key (32 bytes)
     -> ByteString   -- ^ Our static public key (32 bytes)
     -> ByteString      -- ^ Responder's static public key (32 bytes)
+    -> (ByteString -> IO Bool) -- ^ Trust check: verify responder's static key
     -> AnyTransport    -- ^ Network transport
     -> IO (Maybe NoiseState)
-noiseHandshakeInitiator iStaticSec iStaticPub rStaticPub transport = do
+noiseHandshakeInitiator iStaticSec iStaticPub rStaticPub trustCheck transport = do
+    -- M7.1.3 Identity binding: Both parties' static keys are bound into the
+    -- handshake hash early, per the Noise IK pattern:
+    --   - Responder's static key: mixed into h as a pre-message (h2 below)
+    --   - Initiator's static key: encrypted under es key and mixed in msg 1
+    -- This ensures the handshake transcript commits to both identities before
+    -- the ephemeral key exchange completes, preventing identity misbinding.
+
     -- Initialize handshake hash: h = SHA256(protocolName padded to 32)
     let !h0 = initHash
     -- Mix in prologue
@@ -90,11 +103,13 @@ noiseHandshakeInitiator iStaticSec iStaticPub rStaticPub transport = do
     sendFrame transport msg1
 
     -- Receive message 2: rEPub
-    msg2 <- recvFrame transport
-    -- Validate message length: need at least 32 bytes for responder ephemeral key
-    if BS.length msg2 < 32
-      then pure Nothing
-      else do
+    mMsg2 <- recvFrame transport
+    case mMsg2 of
+      Nothing -> pure Nothing
+      Just msg2
+        -- Validate message length: need at least 32 bytes for responder ephemeral key
+        | BS.length msg2 < 32 -> pure Nothing
+        | otherwise -> do
         let !rEPub = BS.take 32 msg2
 
         -- <- e: mix responder ephemeral into hash
@@ -109,17 +124,24 @@ noiseHandshakeInitiator iStaticSec iStaticPub rStaticPub transport = do
         let !dhSE = x25519 eSec rStaticPub
         let (!ck4, !_k4) = hkdfCK ck3 dhSE
 
-        -- Derive final send/recv keys with key separation
-        let (!sendEncKey, !sendMacKey, !recvEncKey, !recvMacKey) = splitKeys ck4
+        -- Verify responder identity before committing to session keys.
+        -- In IK pattern the responder's static key is pre-known, but the
+        -- trust callback lets the caller enforce pinning / TOFU policy.
+        trusted <- trustCheck rStaticPub
+        if not trusted
+          then pure Nothing
+          else do
+            -- Derive final send/recv keys with key separation
+            let (!sendEncKey, !sendMacKey, !recvEncKey, !recvMacKey) = splitKeys ck4
 
-        pure (Just NoiseState
-            { nsSendEncKey = sendEncKey
-            , nsSendMacKey = sendMacKey
-            , nsRecvEncKey = recvEncKey
-            , nsRecvMacKey = recvMacKey
-            , nsSendN      = 0
-            , nsRecvN      = 0
-            })
+            pure (Just NoiseState
+                { nsSendEncKey = sendEncKey
+                , nsSendMacKey = sendMacKey
+                , nsRecvEncKey = recvEncKey
+                , nsRecvMacKey = recvMacKey
+                , nsSendN      = 0
+                , nsRecvN      = 0
+                })
 
 ------------------------------------------------------------------------
 -- Handshake: Responder
@@ -142,11 +164,13 @@ noiseHandshakeResponder rStaticSec rStaticPub transport = do
     let !ck0 = initCK
 
     -- Receive message 1: iEPub || encStaticPub
-    msg1 <- recvFrame transport
-    -- Validate message length: need at least 32 (ephemeral) + 32 (ct) + 32 (mac)
-    if BS.length msg1 < (32 + 32 + macLen)
-      then pure Nothing
-      else do
+    mMsg1 <- recvFrame transport
+    case mMsg1 of
+      Nothing -> pure Nothing
+      Just msg1
+        -- Validate message length: need at least 32 (ephemeral) + 32 (ct) + 32 (mac)
+        | BS.length msg1 < (32 + 32 + macLen) -> pure Nothing
+        | otherwise -> do
         let !iEPub        = BS.take 32 msg1
             !encStaticPub = BS.drop 32 msg1
 
@@ -281,11 +305,16 @@ sendFrame t payload = do
 maxFrameSize :: Word32
 maxFrameSize = 65536
 
--- | Receive a length-prefixed frame. Rejects frames larger than 64 KiB.
-recvFrame :: AnyTransport -> IO ByteString
+-- | Receive a length-prefixed frame. Returns 'Nothing' if the length
+-- prefix is too short or the frame exceeds 64 KiB (prevents DoS via
+-- large allocations without crashing the process).
+recvFrame :: AnyTransport -> IO (Maybe ByteString)
 recvFrame t = do
     lenBS <- anyRecv t 4
-    let !len = getWord32BE lenBS
-    if len > maxFrameSize
-        then error ("recvFrame: frame too large (" ++ show len ++ " > " ++ show maxFrameSize ++ ")")
-        else anyRecv t (fromIntegral len)
+    if BS.length lenBS < 4
+        then pure Nothing
+        else do
+            let !len = getWord32BE lenBS
+            if len > maxFrameSize
+                then pure Nothing
+                else Just <$> anyRecv t (fromIntegral len)

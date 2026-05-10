@@ -15,6 +15,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import System.Directory (createDirectoryIfMissing, doesFileExist, getHomeDirectory)
 import System.FilePath ((</>), takeDirectory)
+import System.Posix.Files (ownerReadMode, ownerWriteMode, setFileMode, unionFileModes)
 
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 
@@ -42,10 +43,13 @@ loadIdentityKey = do
     loadIdentityKeyAt path
 
 -- | Save an identity key to a specific path.
+-- TODO: Encrypt identity key at rest when Storage.Encryption / passphrase
+--       integration via Anthony.hs lands.
 saveIdentityKeyAt :: FilePath -> IdentityKey -> IO ()
 saveIdentityKeyAt path ik = do
     createDirectoryIfMissing True (takeDirectory path)
     BS.writeFile path (encodeIdentityKey ik)
+    setFileMode path (ownerReadMode `unionFileModes` ownerWriteMode)
 
 -- | Load an identity key from a specific path.
 loadIdentityKeyAt :: FilePath -> IO (Maybe IdentityKey)

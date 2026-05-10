@@ -21,11 +21,12 @@ import Control.Concurrent.MVar (newMVar)
 import Control.Monad (when)
 import Data.Char (isSpace, toLower)
 import Data.IORef (newIORef, readIORef, writeIORef, modifyIORef')
-import Data.List (dropWhileEnd)
+import Data.List (dropWhileEnd, isInfixOf)
 import qualified Data.Map.Strict as Map
 import System.Directory (createDirectoryIfMissing, doesFileExist, getHomeDirectory)
 import System.Environment (lookupEnv)
 import System.FilePath (takeDirectory)
+import System.Posix.Files (ownerReadMode, ownerWriteMode, setFileMode, unionFileModes)
 import qualified Network.Socket as NS
 
 import UmbraVox.App.RuntimeLog (logEvent)
@@ -258,6 +259,8 @@ rememberPersistencePreferenceAt path enabled = do
         value = if enabled then "1\n" else "0\n"
     createDirectoryIfMissing True (takeDirectory prefPath)
     writeFile prefPath value `catch` \(_ :: SomeException) -> pure ()
+    setFileMode prefPath (ownerReadMode `unionFileModes` ownerWriteMode)
+        `catch` \(_ :: SomeException) -> pure ()
 
 persistencePreferencePath :: FilePath -> FilePath
 persistencePreferencePath path = path ++ ".pref"
@@ -315,7 +318,9 @@ restoreConversation cfg db (convId, _pubkey, name, _created) = do
         ]
 
 expandHome :: FilePath -> FilePath -> FilePath
-expandHome home ('~':'/':rest) = home ++ '/' : rest
+expandHome home ('~':'/':rest)
+    | ".." `isInfixOf` rest = home ++ "/.umbravox/umbravox.db"  -- safe fallback
+    | otherwise = home ++ '/' : rest
 expandHome _ path = path
 
 findAvailablePort :: [Int] -> IO Int
