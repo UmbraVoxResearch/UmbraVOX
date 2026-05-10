@@ -321,6 +321,42 @@ All 24 M7 fixes verified correct by re-audit.
   [x] M8.3.5 Reject empty HMAC key with explicit error (HMAC.hs:37-39).
 
 ================================================================================
+MILESTONE M9: SECURITY AUDIT ROUND 3 + AUTOMATED VERIFICATION
+================================================================================
+Note: Third-round code review + VM-based empirical verification via pcap,
+memory forensics, disk inspection, and attack simulation.
+
+[ ] M9.1 Code fixes (round 3)
+  [ ] M9.1.1 Fix QRCode safety number collision resistance — use HMAC-based derivation (QRCode.hs:39).
+  [ ] M9.1.2 Fix StealthAddress silent failure — return Maybe instead of BS.empty (StealthAddress.hs:140).
+  [ ] M9.1.3 Document GCM xBitMask loop index as public-only (GCM.hs:104).
+
+[ ] M9.2 Automated forensics tests
+  [x] M9.2.1 Create VM forensics script for disk/log/DB verification (scripts/vm-forensics-test.sh).
+  [ ] M9.2.2 Add pcap entropy analysis to PcapVerify (analyzeCiphertextEntropy).
+  [ ] M9.2.3 Add nonce uniqueness checking to PcapVerify (checkNonceUniqueness).
+  [ ] M9.2.4 Wire vm-forensics into Makefile target.
+
+[ ] M9.3 Attack simulation test suite
+  [ ] M9.3.1 Handshake replay rejection test.
+  [ ] M9.3.2 Oversized frame DoS rejection test.
+  [ ] M9.3.3 PEX injection with ipLen=255 rejection test.
+  [ ] M9.3.4 SQL injection via message content test.
+  [ ] M9.3.5 Ratchet counter exhaustion rejection test.
+  [ ] M9.3.6 Zero-length ciphertext rejection test.
+  [ ] M9.3.7 Truncated handshake msg2 rejection test.
+  [ ] M9.3.8 Noise msg2 trailing bytes rejection test.
+  [ ] M9.3.9 Path traversal DB path safe fallback test.
+  [ ] M9.3.10 MITM ephemeral key replacement detection test.
+
+[ ] M9.4 Automated fuzzing
+  [ ] M9.4.1 Wire format fuzzer — random bytes to decodeWire, verify no crash.
+  [ ] M9.4.2 PEX payload fuzzer — random bytes to decodePeerList, verify no crash.
+  [ ] M9.4.3 CBOR fuzzer — random bytes to decodeMessage, verify no crash.
+  [ ] M9.4.4 Handshake fuzzer — random bytes to recvFrame/recvBundle, verify no crash.
+  [ ] M9.4.5 Crypto input fuzzer — edge-case inputs to all 10 primitives, verify no crash.
+
+================================================================================
 OUTSIDE MVP (DEFERRED)
 ================================================================================
 
