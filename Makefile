@@ -66,7 +66,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak verify verify-haskell complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity vm-smoke vm-image-build vm-image-clean image-clean firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic clean cleandb cleanall help
+.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak verify verify-haskell complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity vm-smoke vm-image-build vm-image-clean image-clean firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -217,6 +217,7 @@ help:
 	@echo "    make firecracker-image-build Build Firecracker image"
 	@echo "    make vm-integration-test Run multi-VM integration test (INTEGRATION_AGENTS=3)"
 	@echo "    make vm-integration-test-dual-lan Run dual-LAN integration test (6 agents)"
+	@echo "    make vm-forensics   Run VM forensics verification (pcap, disk, log)"
 	@echo ""
 	@echo "  Maintenance:"
 	@echo "    make clean       Remove build artifacts + build/ + dist-newstyle"
@@ -818,6 +819,10 @@ vm-integration-test:
 vm-integration-test-dual-lan:
 	@echo -e "$(BLUE)[INTEGRATION]$(NC) Running dual-LAN integration test (6 agents)..."
 	@cabal run umbravox -- vm-integration-test --agents=6 --dual-lan
+
+vm-forensics:
+	@echo -e "$(BLUE)[FORENSICS]$(NC) Running VM forensics verification..."
+	@cabal run umbravox -- vm-forensics
 
 # --------------------------------------------------------------------------
 # Clean
