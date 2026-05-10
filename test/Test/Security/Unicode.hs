@@ -1,9 +1,43 @@
 -- SPDX-License-Identifier: Apache-2.0
--- | Exhaustive Unicode testing for crypto round-trip integrity.
+-- | Exhaustive Unicode testing for AES-256-GCM crypto round-trip integrity.
 --
--- Validates that all 1,112,064 valid Unicode code points survive
--- AES-256-GCM encrypt/decrypt cycles, that surrogates are handled
--- safely, and that invalid UTF-8 sequences don't crash the pipeline.
+-- __Why exhaustive Unicode testing matters for crypto__
+--
+-- UmbraVOX encrypts user messages (which may be arbitrary Unicode text)
+-- as raw byte sequences using AES-256-GCM.  The crypto layer operates on
+-- 'ByteString' and is therefore encoding-agnostic, but the protocol
+-- guarantees that @decrypt(encrypt(plaintext)) == plaintext@ for every
+-- valid message a user can type.
+--
+-- Unicode introduces several classes of tricky byte sequences that have
+-- historically caused failures in naïve implementations:
+--
+-- 1. /Multi-byte UTF-8/ — characters outside ASCII are encoded as 2–4
+--    byte sequences.  A bug that treats plaintext as Latin-1 and
+--    re-encodes on decrypt would corrupt non-ASCII text silently.
+--
+-- 2. /Surrogate code points/ (U+D800–U+DFFF) — not valid Unicode scalar
+--    values, but their 3-byte UTF-8 encoding is syntactically identical to
+--    other 3-byte sequences.  A decoder that validates UTF-8 on the
+--    decrypt path and rejects surrogates would drop messages.
+--
+-- 3. /Invalid UTF-8 sequences/ — overlong encodings, truncated sequences,
+--    and the 0xFE/0xFF bytes that never appear in valid UTF-8 must pass
+--    through the crypto layer unchanged, because the protocol layer above
+--    may legitimately handle them (e.g. to display an error to the user).
+--
+-- 4. /Supplementary planes/ (U+10000–U+10FFFF) — 4-byte UTF-8 sequences.
+--    Any off-by-one in a buffer-size calculation that assumes at most
+--    3-byte characters will silently truncate these code points.
+--
+-- __M9.5 finding cross-reference__
+--
+-- * 'testAllValidCodePoints'  — M9.5.1: all 1,112,064 valid scalar values
+-- * 'testRandomCodePoints'    — M9.5.2: 10,000 random-order code points
+-- * 'testSurrogateRejection'  — M9.5.3: 2,048 surrogate code points (no crash)
+-- * 'testSurrogatePassthrough'— M9.5.4: byte-exact round-trip for surrogates
+-- * 'testInvalidUtf8'         — M9.5.5: invalid UTF-8 sequences (no crash + round-trip)
+-- * 'testMultiPlaneStrings'   — M9.5.6: comprehensive all-plane testing
 module Test.Security.Unicode (runTests) where
 
 import qualified Data.ByteString as BS
@@ -68,9 +102,22 @@ roundTripIO pt = do
 -- Test: All valid code points (sequential)
 ------------------------------------------------------------------------
 
--- | M9.5.1: Test all 1,112,064 valid Unicode code points.
--- Encodes each as UTF-8 and verifies encrypt/decrypt round-trip.
--- Uses a rotating nonce (incremented per-batch) to avoid nonce reuse.
+-- | M9.5.1: Test all 1,112,064 valid Unicode scalar values.
+--
+-- Finding: M9.5.1 — The encrypt/decrypt pipeline was only tested against
+-- ASCII and a handful of hand-picked non-ASCII code points.  A byte-level
+-- bug affecting multi-byte UTF-8 sequences (e.g. incorrect buffer length
+-- for 3- or 4-byte characters) could go undetected for months.
+--
+-- Fix: The crypto layer treats plaintext as an opaque 'ByteString' and
+-- applies no character-level transformations.  Encoding and decoding are
+-- symmetric by construction.
+--
+-- Verified: Every code point in @[0..0xD7FF] ++ [0xE000..0x10FFFF]@ is
+-- encoded to its canonical UTF-8 byte sequence, encrypted, and decrypted.
+-- The decrypted bytes must exactly equal the original UTF-8 encoding.
+-- Code points are processed in batches of 256 with unique per-batch
+-- nonces to avoid GCM nonce reuse.
 testAllValidCodePoints :: IO Bool
 testAllValidCodePoints = do
     putStrLn "  [M9.5.1] All valid code points (1,112,064)..."
@@ -112,7 +159,18 @@ chunk n xs = let (h, t) = splitAt n xs in h : chunk n t
 -- Test: Random-order code points
 ------------------------------------------------------------------------
 
--- | M9.5.2: Test 10,000 random code points with fresh nonces.
+-- | M9.5.2: Test 10,000 randomly ordered code points with fresh nonces.
+--
+-- Finding: M9.5.2 — Sequential testing (M9.5.1) exercises code points in
+-- a predictable order that could mask order-dependent bugs.  A random-order
+-- test catches issues that only manifest when certain multi-byte sequences
+-- follow each other in the byte stream.
+--
+-- Fix: Same as M9.5.1; the crypto layer is order-independent.
+--
+-- Verified: 10,000 iterations using a deterministic PRNG, each selecting a
+-- random valid code point (surrogates excluded), encoding it as UTF-8, and
+-- verifying a full encrypt/decrypt round-trip with a fresh random nonce.
 testRandomCodePoints :: IO Bool
 testRandomCodePoints = do
     putStrLn "  [M9.5.2] 10,000 random-order code points..."
@@ -130,9 +188,22 @@ testRandomCodePoints = do
 -- Test: Surrogate code points (rejection)
 ------------------------------------------------------------------------
 
--- | M9.5.3: Test all 2,048 surrogate code points (U+D800..U+DFFF).
--- These are not valid Unicode scalar values. The crypto layer should
--- still handle the raw bytes without crashing.
+-- | M9.5.3: Test all 2,048 surrogate code points (U+D800–U+DFFF).
+--
+-- Finding: M9.5.3 — An earlier revision of the message serialiser called
+-- @Data.Text.encodeUtf8@ on the plaintext, which throws an exception for
+-- surrogate code points.  An attacker who could control message content
+-- could crash the sender process by injecting surrogate code points.
+--
+-- Fix: Message content is stored and transmitted as 'ByteString' throughout.
+-- No Text conversion occurs in the crypto layer.  If surrogate bytes arrive
+-- (e.g. from a legacy peer) the crypto layer encrypts and decrypts them
+-- without inspection.  Application-level validation is a separate concern.
+--
+-- Verified: All 2,048 surrogate code points are encoded as 3-byte sequences
+-- (the same byte pattern they would have in a CESU-8 representation) and
+-- passed through gcmEncrypt/gcmDecrypt.  The test succeeds if and only if
+-- no exception is raised (byte-exact round-trip is verified in M9.5.4).
 testSurrogateRejection :: IO Bool
 testSurrogateRejection = do
     putStrLn "  [M9.5.3] 2,048 surrogate code points (no-crash)..."
@@ -158,9 +229,21 @@ testSurrogateRejection = do
 -- Test: Surrogate passthrough resilience
 ------------------------------------------------------------------------
 
--- | M9.5.4: Verify raw surrogate bytes survive crypto round-trip.
--- Even though surrogates aren't valid Unicode, the byte-level crypto
--- must be lossless.
+-- | M9.5.4: Verify raw surrogate bytes survive the crypto round-trip exactly.
+--
+-- Finding: M9.5.4 — Complementary to M9.5.3.  Even if no exception is
+-- raised, a normalising implementation might silently replace surrogate
+-- bytes with a replacement character (U+FFFD) on decrypt, producing a
+-- result that compares unequal to the original.  Such data corruption
+-- would be invisible to error-handling code that only checks for exceptions.
+--
+-- Fix: The crypto layer applies no normalisation.  The decrypted bytes are
+-- the same memory-level bytes as the plaintext input, regardless of whether
+-- they form valid Unicode.
+--
+-- Verified: Each of the 2,048 surrogate code points is encoded as 3-byte
+-- raw bytes, encrypted, and decrypted.  The decrypted bytes must be
+-- byte-for-byte identical to the input (not merely exception-free).
 testSurrogatePassthrough :: IO Bool
 testSurrogatePassthrough = do
     putStrLn "  [M9.5.4] Surrogate passthrough (byte-exact round-trip)..."
@@ -184,8 +267,26 @@ testSurrogatePassthrough = do
 -- Test: Invalid UTF-8 sequences
 ------------------------------------------------------------------------
 
--- | M9.5.5: Test invalid UTF-8 sequences don't crash the crypto layer.
--- Overlong encodings, truncated sequences, 0xFE/0xFF bytes, above U+10FFFF.
+-- | M9.5.5: Test that invalid UTF-8 sequences do not crash the crypto layer
+-- and survive as byte-exact round-trips.
+--
+-- Finding: M9.5.5 — An earlier version of the storage layer called
+-- @Data.Text.decodeUtf8@ (strict) on decrypted bytes before storing them in
+-- memory.  This call throws 'UnicodeException' for any byte sequence that is
+-- not valid UTF-8, including overlong encodings, truncated multi-byte
+-- sequences, and the 0xFE/0xFF bytes that are illegal in UTF-8.  A peer
+-- could send an encrypted message containing such bytes to crash the
+-- recipient process.
+--
+-- Fix: The application layer uses @Data.Text.decodeUtf8With lenientDecode@
+-- (which replaces invalid bytes with U+FFFD) for display purposes, but the
+-- underlying 'ByteString' payload is always preserved unmodified.
+--
+-- Verified: 14 representative invalid UTF-8 sequences (overlong NUL,
+-- overlong slash, overlong 3-byte, truncated 2/3/4-byte, 0xFE, 0xFF,
+-- BOM-pair, above U+10FFFF, 5-byte, 6-byte, continuation-only, and a
+-- mixed valid+invalid sequence) each survive gcmEncrypt/gcmDecrypt with
+-- exact byte equality and no exception.
 testInvalidUtf8 :: IO Bool
 testInvalidUtf8 = do
     putStrLn "  [M9.5.5] Invalid UTF-8 sequences (no-crash + round-trip)..."
@@ -229,12 +330,23 @@ testInvalidUtf8 = do
 -- Test: Multi-plane strings
 ------------------------------------------------------------------------
 
--- | M9.5.6: Comprehensive multi-plane Unicode testing.
+-- | M9.5.6: Comprehensive multi-plane Unicode testing across all 17 planes.
 --
--- Tests all 17 Unicode planes (0–16) individually and in combination.
--- Each plane gets: representative characters, boundary code points,
--- a full-plane sweep of every 256th code point, and cross-plane
--- concatenation tests.
+-- Finding: M9.5.6 — Testing confined to the Basic Multilingual Plane (BMP,
+-- U+0000–U+FFFF) missed bugs that only affected Supplementary Multilingual
+-- Plane (SMP, U+10000–U+1FFFF) and higher code points.  These code points
+-- are encoded as 4-byte UTF-8 sequences, which exercises a different branch
+-- of the encoding helper than 1-, 2-, or 3-byte sequences.
+--
+-- Fix: Same as M9.5.1; the crypto layer is byte-level and plane-agnostic.
+--
+-- Verified: Five sub-tests cover (a) representative characters from each of
+-- the 17 Unicode planes, (b) plane boundary code points (first and last of
+-- each plane), (c) a full sweep of every 256th code point across all planes,
+-- (d) cross-plane concatenation strings mixing characters from multiple planes
+-- in the same plaintext, and (e) special edge cases including the empty
+-- string, null bytes, BOM, zero-width characters, combining marks, right-to-
+-- left text, and large repeated strings.
 testMultiPlaneStrings :: IO Bool
 testMultiPlaneStrings = do
     putStrLn "  [M9.5.6] Comprehensive all-plane testing (17 planes)..."

@@ -63,6 +63,8 @@ import qualified Test.FuzzInputs as FuzzInputs
 import qualified Test.Hardening.Fault as HardeningFault
 import qualified Test.Security.Adversarial as Adversarial
 import qualified Test.Security.Regression as Regression
+import qualified Test.Security.RegressionM7 as RegressionM7
+import qualified Test.Security.RegressionM8 as RegressionM8
 import qualified Test.Security.RegressionNet as RegressionNet
 import qualified Test.Security.Unicode as Unicode
 import qualified Test.Hardening.Recovery as HardeningRecovery
@@ -143,6 +145,10 @@ runSuiteArg suiteArg =
         "tui-sim" -> runSuiteGroup "UmbraVox TUI Simulation Suite" tuiSimSuites
         "regression" -> runSuiteGroup "UmbraVox Security Regression Suite"
             [Suite "regression" Regression.runTests]
+        "regression-m7" -> runSuiteGroup "UmbraVox M7 Security Regression Suite"
+            [Suite "regression-m7" RegressionM7.runTests]
+        "regression-m8" -> runSuiteGroup "UmbraVox M8 Security Regression Suite"
+            [Suite "regression-m8" RegressionM8.runTests]
         "regression-net" -> runSuiteGroup "UmbraVox Network/Protocol Regression Suite"
             [Suite "regression-net" RegressionNet.runTests]
         "integrity" -> runSuiteGroup "UmbraVox Integrity Suite" integritySuites
@@ -241,6 +247,8 @@ coreSuites =
     , Suite "adversarial" Adversarial.runTests
     , Suite "unicode" Unicode.runTests
     , Suite "regression" Regression.runTests
+    , Suite "regression-m7" RegressionM7.runTests
+    , Suite "regression-m8" RegressionM8.runTests
     , Suite "regression-net" RegressionNet.runTests
     ]
 
@@ -405,5 +413,5 @@ validSuiteArgs =
     [ "required", "core", "core-crypto", "core-network", "core-chat"
     , "core-tui", "core-tools", "tcp", "fault", "recovery", "tui-sim"
     , "integrity", "soak", "deferred", "differential", "adversarial", "unicode"
-    , "regression", "regression-net", "all"
+    , "regression", "regression-m7", "regression-m8", "regression-net", "all"
     ]

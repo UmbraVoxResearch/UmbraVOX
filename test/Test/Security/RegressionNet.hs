@@ -1,11 +1,26 @@
 -- SPDX-License-Identifier: Apache-2.0
--- | Regression tests for network and protocol security findings.
+-- | Security regression tests for M10 network and protocol findings.
 --
--- Covers:
---   M10.4.3  PEX oversized payload
---   M10.4.5  Anthony SQL injection via quote / containsDangerousSQL
---   M10.4.13 mDNS name sanitization
---   M10.4.14 Port parsing (safeReadPort)
+-- This module provides regression coverage for the network-layer
+-- vulnerabilities identified in audit round M10.  All tests are labelled
+-- with the finding reference they cover.
+--
+-- __Scope__
+--
+-- * M10.4.3  – PEX (Peer Exchange) oversized-payload handling
+-- * M10.4.5  – Anthony SQL injection via the internal @quote@ function
+-- * M10.4.13 – mDNS peer-name sanitization (control chars, length cap)
+-- * M10.4.14 – Port-string parsing (shared with Regression.hs, network view)
+--
+-- __How to read these tests__
+--
+-- Each section header names the finding.  The comment block immediately
+-- above each test function explains:
+--
+-- 1. Which finding it covers.
+-- 2. What the original vulnerability was.
+-- 3. How the production fix works.
+-- 4. What property this specific test verifies.
 module Test.Security.RegressionNet (runTests) where
 
 import Control.Exception (SomeException, catch, try)
@@ -61,9 +76,31 @@ runTests = do
 
 ------------------------------------------------------------------------
 -- M10.4.3  PEX oversized payload
+--
+-- Finding:    The Peer Exchange decoder read a 16-bit peer count from the
+--             payload header and then attempted to allocate that many
+--             entry structures before reading any entry data.  A crafted
+--             PEX message claiming 65,535 peers but containing only a few
+--             bytes of data caused the decoder to loop over missing bytes,
+--             consuming unbounded CPU and potentially crashing the process.
+--
+-- Fix:        decodePeerList now parses entries lazily: it reads the count
+--             header but then consumes entry bytes one at a time, stopping
+--             as soon as the ByteString is exhausted.  The result list
+--             cannot be longer than the available data, regardless of what
+--             the count field claims.  Additionally, an ipLen field
+--             exceeding the maximum IP address length (16 bytes for IPv6)
+--             causes the entry to be discarded rather than read past the
+--             buffer boundary.
+--
+-- Verified:   (a) a valid 3-peer list round-trips correctly (baseline),
+--             (b) a payload claiming 65,535 peers but containing only 100
+--             bytes produces far fewer than 65,535 decoded entries without
+--             crashing, (c) an empty ByteString returns an empty list.
 ------------------------------------------------------------------------
 
--- | A valid encoded peer list (3 direct peers) decodes correctly.
+-- | M10.4.3: A valid encoded peer list (3 direct peers) decodes correctly
+-- (baseline sanity check before exercising the oversized-payload guard).
 testPEXValidRoundTrip :: IO Bool
 testPEXValidRoundTrip = do
     let mkPeer ipOctets port tag = PeerInfo
@@ -94,9 +131,9 @@ testPEXValidRoundTrip = do
         _ -> putStrLn "  FAIL: PEX valid round-trip: wrong structure" >> pure False
     pure (r1 && r2)
 
--- | A ByteString with a count header claiming 65535 entries but only minimal
--- data must be handled gracefully — result count is far fewer than 65535
--- and no exception is thrown.
+-- | M10.4.3: A ByteString with a count header claiming 65535 entries but
+-- only minimal data must be handled gracefully — result count is far fewer
+-- than 65535 and no exception is thrown.
 testPEXOversizedPayload :: IO Bool
 testPEXOversizedPayload = do
     let countBytes = BS.pack [0xFF, 0xFF]   -- claim 65535 peers
@@ -112,7 +149,8 @@ testPEXOversizedPayload = do
                    True (length bigResult < 65535)
     pure (r1 && r2)
 
--- | An empty ByteString must return an empty peer list.
+-- | M10.4.3: An empty ByteString must return an empty peer list without
+-- crashing (no partial-read from a zero-length buffer).
 testPEXEmptyByteString :: IO Bool
 testPEXEmptyByteString =
     assertEq "PEX empty ByteString: empty result" [] (decodePeerList BS.empty)
@@ -120,29 +158,49 @@ testPEXEmptyByteString =
 ------------------------------------------------------------------------
 -- M10.4.5  Anthony SQL injection
 --
--- The production `quote` function (internal to UmbraVox.Storage.Anthony)
--- calls `error` on dangerous SQL.  We exercise it via the public
--- saveSetting / loadSetting API on a temporary database.
+-- Finding:    The Anthony settings store built SQL INSERT statements by
+--             naive string concatenation.  A setting value containing a
+--             single quote could break out of the SQL string literal, and
+--             a value containing "--" or a semicolon could inject
+--             arbitrary SQL, enabling an attacker who can control any
+--             stored setting to corrupt or exfiltrate the database.
 --
--- Dangerous inputs must throw a synchronous exception (caught with `try`).
--- Safe inputs must complete without error and round-trip correctly.
+-- Fix:        The internal @quote@ function now inspects every value
+--             before interpolation.  Single quotes are doubled (the SQL
+--             standard escape), which is safe for literal text.  Values
+--             that contain a semicolon, "--", or dangerous SQL keywords
+--             (DROP, DELETE, UPDATE, INSERT, ALTER, EXEC) after whitespace
+--             normalisation cause @quote@ to call @error@, producing a
+--             synchronous exception that the caller must handle.  This is
+--             a defence-in-depth measure; the primary defence is that no
+--             untrusted data should ever reach the settings store.
+--
+-- Test approach: we exercise the public saveSetting / loadSetting API on a
+-- temporary on-disk SQLite database.  Dangerous inputs must throw a
+-- synchronous exception (caught with @try@); safe inputs must complete
+-- without error and round-trip correctly.
 ------------------------------------------------------------------------
 
--- | Normal string: stored and retrieved intact.
+-- | M10.4.5: A normal ASCII string must be stored and retrieved intact
+-- (baseline sanity check that the fix does not break safe data).
 testSQLNormalString :: IO Bool
 testSQLNormalString = withTempDB "sql-normal" $ \db -> do
     saveSetting db "greeting" "hello world"
     val <- loadSetting db "greeting"
     assertEq "SQL normal string: round-trip" (Just "hello world") val
 
--- | String with embedded single quotes: stored via escaping, retrieved correctly.
+-- | M10.4.5: A string with an embedded single quote must be stored via
+-- quote-doubling and retrieved correctly.  Verifies that the escaping
+-- mechanism does not corrupt valid data containing apostrophes.
 testSQLSingleQuoteEscaped :: IO Bool
 testSQLSingleQuoteEscaped = withTempDB "sql-quote" $ \db -> do
     saveSetting db "msg" "it's fine"
     val <- loadSetting db "msg"
     assertEq "SQL single quote: round-trip" (Just "it's fine") val
 
--- | String containing "--" (SQL line comment marker) must be rejected.
+-- | M10.4.5: A value containing "--" (SQL line-comment marker) must be
+-- rejected by the @quote@ guard, raising a synchronous exception.
+-- Without the guard this would silently truncate the SQL statement.
 testSQLCommentRejected :: IO Bool
 testSQLCommentRejected = withTempDB "sql-comment" $ \db -> do
     result <- (try (saveSetting db "k" "value -- DROP TABLE peers") :: IO (Either SomeException ()))
@@ -150,7 +208,9 @@ testSQLCommentRejected = withTempDB "sql-comment" $ \db -> do
         Left  _ -> putStrLn "  PASS: SQL comment rejected" >> pure True
         Right _ -> assertEq "SQL comment: should have been rejected" True False
 
--- | String containing "; DROP" must be rejected.
+-- | M10.4.5: A value containing "; DROP" must be rejected.  The semicolon
+-- alone triggers the guard before the DROP keyword is examined, preventing
+-- multi-statement injection.
 testSQLDropRejected :: IO Bool
 testSQLDropRejected = withTempDB "sql-drop" $ \db -> do
     result <- (try (saveSetting db "k" "hello; DROP TABLE peers") :: IO (Either SomeException ()))
@@ -158,8 +218,9 @@ testSQLDropRejected = withTempDB "sql-drop" $ \db -> do
         Left  _ -> putStrLn "  PASS: SQL DROP rejected" >> pure True
         Right _ -> assertEq "SQL DROP: should have been rejected" True False
 
--- | String with tab followed by semicolon must be rejected
--- (the tab is normalised to a space before the semicolon check fires).
+-- | M10.4.5: A value containing a tab followed by a semicolon must be
+-- rejected.  The tab is normalised to a space during the keyword scan,
+-- confirming that whitespace-based bypass attempts are blocked.
 testSQLTabSemicolonRejected :: IO Bool
 testSQLTabSemicolonRejected = withTempDB "sql-tab-semi" $ \db -> do
     result <- (try (saveSetting db "k" "\t;") :: IO (Either SomeException ()))
@@ -167,8 +228,9 @@ testSQLTabSemicolonRejected = withTempDB "sql-tab-semi" $ \db -> do
         Left  _ -> putStrLn "  PASS: SQL tab+semicolon rejected" >> pure True
         Right _ -> assertEq "SQL tab+semicolon: should have been rejected" True False
 
--- | String with newline before DROP keyword must be rejected
--- (newline is normalised to space, then keyword check fires).
+-- | M10.4.5: A value containing a newline immediately before DROP must be
+-- rejected.  The newline is normalised to a space, confirming that
+-- newline-based bypass attempts (which some simple scanners miss) are blocked.
 testSQLNewlineDropRejected :: IO Bool
 testSQLNewlineDropRejected = withTempDB "sql-newline-drop" $ \db -> do
     result <- (try (saveSetting db "k" "\nDROP TABLE foo") :: IO (Either SomeException ()))
@@ -179,12 +241,25 @@ testSQLNewlineDropRejected = withTempDB "sql-newline-drop" $ \db -> do
 ------------------------------------------------------------------------
 -- M10.4.13  mDNS name sanitization
 --
--- buildAnnouncementWithName calls sanitizeName internally (strips control
--- characters, caps at 64 chars).  We verify by building an announcement and
--- parsing it back via parseAnnouncement.
+-- Finding:    mDNS peer-name fields were stored and re-broadcast without
+--             validation.  A malicious peer could advertise a name
+--             containing ASCII control characters (e.g. ANSI escape
+--             sequences) to corrupt terminal output on the receiving node,
+--             or a very long name to overflow fixed-size display buffers.
+--
+-- Fix:        buildAnnouncementWithName calls sanitizeName internally,
+--             which strips all non-printable ASCII characters (code points
+--             below 0x20 or above 0x7E) and caps the result at 64 characters
+--             before embedding the name in the mDNS payload.
+--
+-- Verified:   (a) a name containing control characters is stripped so that
+--             the parsed result contains only printable ASCII (or no name
+--             at all), (b) a name of 200 characters is capped to at most
+--             64 characters in the parsed result.
 ------------------------------------------------------------------------
 
--- | Control characters embedded in a name must not appear in the parsed result.
+-- | M10.4.13: Control characters embedded in a name must not appear in the
+-- parsed mDNS peer record; only printable ASCII (0x20–0x7E) is allowed.
 testMDNSControlCharsStripped :: IO Bool
 testMDNSControlCharsStripped = do
     let pubkey  = BS.pack [0x01, 0x02, 0x03, 0x04]
@@ -201,7 +276,8 @@ testMDNSControlCharsStripped = do
   where
     isPrintableAscii c = let cp = fromEnum c in cp >= 0x20 && cp <= 0x7E
 
--- | Names longer than 64 characters must be capped at 64 in the parsed result.
+-- | M10.4.13: Names longer than 64 characters must be capped at 64 in
+-- the parsed mDNS peer record to prevent buffer-overflow in display code.
 testMDNSNameLengthCapped :: IO Bool
 testMDNSNameLengthCapped = do
     let pubkey   = BS.pack [0x01, 0x02, 0x03, 0x04]
@@ -218,28 +294,48 @@ testMDNSNameLengthCapped = do
 
 ------------------------------------------------------------------------
 -- M10.4.14  Port parsing via UmbraVox.Protocol.Encoding.safeReadPort
+--
+-- (See also Test.Security.Regression for the crypto-layer view of this
+-- finding.  These tests exercise the same fix from the network layer,
+-- where port strings arrive from mDNS announcements and PEX payloads.)
+--
+-- Finding:    The original port parser used 'read' directly, which
+--             throws an exception on non-numeric input and accepted
+--             strings like "7853abc" by ignoring trailing characters.
+--
+-- Fix:        safeReadPort uses 'reads' and requires the unconsumed
+--             remainder to be empty.  Non-parseable input falls back to
+--             the first entry of defaultPorts.
+--
+-- Verified:   (a) a well-formed port number parses correctly, (b) "0"
+--             is accepted as an integer or falls back to the default,
+--             (c) an empty string falls back to the default, (d) a
+--             fully non-numeric string falls back to the default.
 ------------------------------------------------------------------------
 
--- | A well-formed port string parses to the expected integer.
+-- | M10.4.14: A well-formed port number string must parse to the expected
+-- integer value.
 testPortValid :: IO Bool
 testPortValid =
     assertEq "safeReadPort: 7853" 7853 (safeReadPort "7853")
 
--- | The string "0" is a valid integer; safeReadPort should return 0 or the
--- default (implementation may treat 0 as invalid).
+-- | M10.4.14: The string "0" is a valid integer; safeReadPort should
+-- return 0 or the default port (the implementation may treat 0 as invalid).
 testPortZero :: IO Bool
 testPortZero = do
     let result = safeReadPort "0"
     assertEq "safeReadPort zero: 0 or default"
              True (result == 0 || result == head defaultPorts)
 
--- | An empty string falls back to the first default port.
+-- | M10.4.14: An empty string must fall back to the first default port
+-- without crashing (the pre-fix 'read "" :: Int' throws an exception).
 testPortEmpty :: IO Bool
 testPortEmpty =
     assertEq "safeReadPort empty: default port"
              (head defaultPorts) (safeReadPort "")
 
--- | A non-numeric string falls back to the first default port.
+-- | M10.4.14: A fully non-numeric string must fall back to the first default
+-- port (no crash, no port injection via alphabet characters).
 testPortAlpha :: IO Bool
 testPortAlpha =
     assertEq "safeReadPort alpha: default port"

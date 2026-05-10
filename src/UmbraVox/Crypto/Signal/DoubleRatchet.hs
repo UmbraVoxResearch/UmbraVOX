@@ -14,6 +14,8 @@ module UmbraVox.Crypto.Signal.DoubleRatchet
     , ratchetInitBob
     , ratchetEncrypt
     , ratchetDecrypt
+      -- * Audited constants (exported for regression testing)
+    , maxTotalSkipped
     ) where
 
 import Control.Monad (when)
