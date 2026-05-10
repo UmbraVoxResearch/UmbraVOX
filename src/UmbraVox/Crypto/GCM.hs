@@ -98,6 +98,10 @@ gfMul xv yv = loop 0 gfZero yv
 
     -- | Extract bit i from x as a Word64 mask (0x0…0 or 0xF…F).
     -- No branch on secret data.
+    --
+    -- SAFETY: Loop index 'i' is always 0..127 (public, not derived from secrets).
+    -- The branch on 'i < 64' selects which Word64 half to read, which is
+    -- determined by iteration count, not by secret key material.
     {-# INLINE xBitMask #-}
     xBitMask :: Int -> Word64
     xBitMask i =
