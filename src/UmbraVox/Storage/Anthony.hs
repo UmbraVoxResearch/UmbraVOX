@@ -33,6 +33,7 @@ import qualified Data.ByteString.Char8 as C8
 import Data.Word (Word8)
 import System.Directory (findExecutable)
 import System.Process (readProcess)
+import System.Timeout (timeout)
 
 import UmbraVox.Protocol.Encoding (splitOn)
 import UmbraVox.Storage.Schema (schemaStatements)
@@ -213,7 +214,8 @@ parseTrustedRows s = concatMap parseTrustedRow (lines s)
             (hexPk:lbl:_) ->
                 case fromHex (C8.pack hexPk) of
                     Just pk -> [(pk, lbl)]
-                    Nothing -> []
+                    Nothing -> []  -- M8.3.2: malformed hex in DB row; silently skipped.
+                                   -- If key counts diverge, check DB integrity.
             _ -> []
 
 ------------------------------------------------------------------------
@@ -260,25 +262,38 @@ parseConversationRows s = concatMap parseConvRow (lines s)
 ------------------------------------------------------------------------
 
 -- | Execute a SQL statement (no result expected).
+-- Times out after 10 seconds to avoid indefinite hangs.
 runSQL :: AnthonyDB -> String -> IO ()
-runSQL db sql =
-    readProcess (dbAnthony db)
-        ["-batch", "-noheader", "-separator", "|", "-cmd", ".timeout 5000", dbPath db, sql] ""
-        >> pure ()
+runSQL db sql = do
+    result <- timeout 10000000 $  -- 10 seconds
+        readProcess (dbAnthony db)
+            ["-batch", "-noheader", "-separator", "|", "-cmd", ".timeout 5000", dbPath db, sql] ""
+    case result of
+        Just _  -> pure ()
+        Nothing -> ioError (userError "sqlite3 query timed out")
 
 -- | Execute a SQL statement without the dangerous-SQL check.
 -- Used internally for trusted DELETE operations on known-safe inputs.
+-- Times out after 10 seconds to avoid indefinite hangs.
 runSQLUnsafe :: AnthonyDB -> String -> IO ()
-runSQLUnsafe db sql =
-    readProcess (dbAnthony db)
-        ["-batch", "-noheader", "-separator", "|", "-cmd", ".timeout 5000", dbPath db, sql] ""
-        >> pure ()
+runSQLUnsafe db sql = do
+    result <- timeout 10000000 $  -- 10 seconds
+        readProcess (dbAnthony db)
+            ["-batch", "-noheader", "-separator", "|", "-cmd", ".timeout 5000", dbPath db, sql] ""
+    case result of
+        Just _  -> pure ()
+        Nothing -> ioError (userError "sqlite3 query timed out")
 
 -- | Execute a SQL query and return the raw output.
+-- Times out after 10 seconds to avoid indefinite hangs.
 querySQL :: AnthonyDB -> String -> IO String
-querySQL db sql =
-    readProcess (dbAnthony db)
-        ["-batch", "-noheader", "-separator", "|", "-cmd", ".timeout 5000", dbPath db, sql] ""
+querySQL db sql = do
+    result <- timeout 10000000 $  -- 10 seconds
+        readProcess (dbAnthony db)
+            ["-batch", "-noheader", "-separator", "|", "-cmd", ".timeout 5000", dbPath db, sql] ""
+    case result of
+        Just output -> pure output
+        Nothing     -> ioError (userError "sqlite3 query timed out")
 
 ------------------------------------------------------------------------
 -- Internal — SQL helpers
@@ -292,9 +307,12 @@ quote s
     | otherwise = "'" <> escapeQuotes s <> "'"
 
 -- | Check if a string contains semicolons or dangerous SQL keywords.
+-- Normalizes whitespace characters (\\n, \\r, \\t) to spaces before
+-- checking, to prevent bypasses via embedded newlines or tabs.
 containsDangerousSQL :: String -> Bool
 containsDangerousSQL s =
-    let upper = map toUpperChar s
+    let normalized = map (\c -> if c == '\n' || c == '\r' || c == '\t' then ' ' else c) s
+        upper = map toUpperChar normalized
     in ';' `elem` s
        || containsWord "DROP " upper
        || containsWord "DELETE " upper

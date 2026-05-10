@@ -19,6 +19,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.IORef (readIORef, writeIORef)
 import Data.List (intercalate, stripPrefix)
+import System.IO (hPutStrLn, stderr)
 import System.IO.Error (isUserError, ioeGetErrorString)
 import UmbraVox.App.RuntimeLog (logEvent)
 import UmbraVox.BuildProfile (buildSupportsPeerExchange)
@@ -126,33 +127,35 @@ acceptLoopTUI st ik port =
 
 acceptLoopBoundTUI :: AppState -> IdentityKey -> Int -> ProviderListener -> IO ()
 acceptLoopBoundTUI st ik port listener = do
-    logEvent (asConfig st) "listener.awaiting_transport" [("port", show port)]
-    at <- acceptWithProvider listener
-    let providerTag = runtimeProviderLabel
-        trustCheck :: ByteString -> IO Bool
-        trustCheck peerKey = do
-            mode <- readIORef (cfgConnectionMode (asConfig st))
-            case mode of
-                Swing       -> do
-                    emitStatus st ("Swing: accepted " ++ fingerprint peerKey)
-                    pure True
-                Promiscuous -> pure True
-                Selective   -> do
-                    emitStatus st ("Peer: " ++ fingerprint peerKey)
-                    pure True
-                Chaste      -> do
-                    keys <- readIORef (cfgTrustedKeys (asConfig st))
-                    pure (any (constantEq peerKey) keys)
-                Chastity    -> do
-                    keys <- readIORef (cfgTrustedKeys (asConfig st))
-                    pure (any (constantEq peerKey) keys)
-    logEvent (asConfig st) "transport.accepted.pre_auth" [("port", show port), ("provider", providerTag)]
-    session <- handshakeResponder at ik trustCheck
-    sid <- addSession (asConfig st) at session ("peer:" ++ show port)
-    tryPEXExchange (asConfig st) at
-    selectLast st
-    emitStatus st ("Session #" ++ show sid)
-    acceptLoopBoundTUI st ik port listener
+    running <- readIORef (asRunning st)
+    when running $ do
+        logEvent (asConfig st) "listener.awaiting_transport" [("port", show port)]
+        at <- acceptWithProvider listener
+        let providerTag = runtimeProviderLabel
+            trustCheck :: ByteString -> IO Bool
+            trustCheck peerKey = do
+                mode <- readIORef (cfgConnectionMode (asConfig st))
+                case mode of
+                    Swing       -> do
+                        emitStatus st ("Swing: accepted " ++ fingerprint peerKey)
+                        pure True
+                    Promiscuous -> pure True
+                    Selective   -> do
+                        emitStatus st ("Peer: " ++ fingerprint peerKey)
+                        pure True
+                    Chaste      -> do
+                        keys <- readIORef (cfgTrustedKeys (asConfig st))
+                        pure (any (constantEq peerKey) keys)
+                    Chastity    -> do
+                        keys <- readIORef (cfgTrustedKeys (asConfig st))
+                        pure (any (constantEq peerKey) keys)
+        logEvent (asConfig st) "transport.accepted.pre_auth" [("port", show port), ("provider", providerTag)]
+        session <- handshakeResponder at ik trustCheck
+        sid <- addSession (asConfig st) at session ("peer:" ++ show port)
+        tryPEXExchange (asConfig st) at
+        selectLast st
+        emitStatus st ("Session #" ++ show sid)
+        acceptLoopBoundTUI st ik port listener
 
 connectToPeer :: AppState -> String -> Maybe Int -> IO ()
 connectToPeer st h mPort =
@@ -284,11 +287,16 @@ connectGroupTargets :: AppState -> [String] -> IO ()
 connectGroupTargets st peers = do
     let peers' = filter (not . null) (map (dropWhile (== ' ')) peers)
     emitStatus st ("Connecting via " ++ runtimeProviderLabel ++ " to " ++ show (length peers') ++ " peers...")
-    void $ forkIO $ do
+    void $ forkIO $ (do
         ik <- getOrCreateIdentity (asConfig st)
         (successes, failures) <- connectGroupPeers st ik peers' 0 []
         when (successes > 0) $ selectLast st
         emitStatus st (formatGroupConnectStatus successes (length peers') failures)
+        ) `catch` (\(e :: SomeException) -> do
+            hPutStrLn stderr $ "Connection thread error: " ++ show e
+            logEvent (asConfig st) "transport.group_connect.thread_error"
+                [("reason", renderRuntimeError e)]
+            emitStatus st ("Group connect failed: " ++ renderRuntimeError e))
 
 defaultPortListLabel :: String
 defaultPortListLabel = intercalate ", " (map show defaultPorts)

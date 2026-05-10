@@ -121,7 +121,10 @@ decodeEntries n bs
         let !ipLen     = fromIntegral (BS.index bs 0)
             -- Minimum bytes needed: 1 (ipLen) + ipLen + 2 (port) + 32 (pubkey) + 8 (ts)
             !needed    = 1 + ipLen + 2 + 32 + 8
-        in if BS.length bs < needed
+            -- M8.2.1: Cap ipLen at 16 (max for IPv6); reject malformed entries
+        in if ipLen > 16
+           then []  -- reject: ipLen exceeds maximum IPv6 address size
+           else if BS.length bs < needed
            then []  -- Truncated entry; stop decoding
            else
             let !ip        = BS.take ipLen (BS.drop 1 bs)

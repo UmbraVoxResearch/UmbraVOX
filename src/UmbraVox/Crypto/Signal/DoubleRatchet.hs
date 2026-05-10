@@ -16,6 +16,7 @@ module UmbraVox.Crypto.Signal.DoubleRatchet
     , ratchetDecrypt
     ) where
 
+import Control.Monad (when)
 import Data.Bits (shiftR, (.&.))
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
@@ -209,7 +210,12 @@ ratchetInitBob sharedSecret bobSPKSecret =
 ratchetEncrypt :: RatchetState
                -> ByteString          -- ^ Plaintext
                -> IO (RatchetState, RatchetHeader, ByteString, ByteString)
-ratchetEncrypt st plaintext =
+ratchetEncrypt st plaintext = do
+    -- M8.1.1: Reject encryption when send counter is exhausted to prevent
+    -- counter overflow / nonce reuse.  Callers must perform a DH ratchet
+    -- (by exchanging messages) before reaching this limit.
+    when (rsSendN st >= 0xFFFFFFFE) $
+        error "ratchetEncrypt: send counter exhausted — ratchet must be refreshed"
     let -- Derive message key from sending chain
         !(newChainKey, msgKey) = kdfCK (rsSendChain st)
         -- Build header
@@ -229,7 +235,7 @@ ratchetEncrypt st plaintext =
             , rsSendN        = rsSendN st + 1
             , rsNonceCounter = rsNonceCounter st + 1
             }
-    in pure (st', header, ct, tag)
+    pure (st', header, ct, tag)
 
 ------------------------------------------------------------------------
 -- Decryption
@@ -242,7 +248,11 @@ ratchetDecrypt :: RatchetState
                -> ByteString          -- ^ Ciphertext
                -> ByteString          -- ^ GCM tag (16 bytes)
                -> IO (Maybe (RatchetState, ByteString))
-ratchetDecrypt st header ct tag =
+ratchetDecrypt st header ct tag = do
+    -- M8.1.1: Reject decryption when receive counter is exhausted to prevent
+    -- counter overflow.  A DH ratchet step resets the counter.
+    when (rsRecvN st >= 0xFFFFFFFE) $
+        error "ratchetDecrypt: receive counter exhausted — ratchet must be refreshed"
     -- Try skipped keys first
     case trySkippedKeys st header ct tag of
         Just result -> pure (Just result)
