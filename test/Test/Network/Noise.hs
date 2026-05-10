@@ -44,7 +44,7 @@ testHandshakeRoundTrip = do
         mSt <- noiseHandshakeResponder rSec rPub (AnyTransport tB)
         putMVar resultVar mSt
     -- Initiator handshake
-    mISt <- noiseHandshakeInitiator iSec iPub rPub (AnyTransport tA)
+    mISt <- noiseHandshakeInitiator iSec iPub rPub (\_ -> pure True) (AnyTransport tA)
     mRSt <- takeMVar resultVar
     case (mISt, mRSt) of
         (Nothing, _) -> do

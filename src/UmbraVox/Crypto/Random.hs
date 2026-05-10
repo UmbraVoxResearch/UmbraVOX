@@ -203,12 +203,18 @@ readEntropy n = do
                 else readLoop h (remaining - BS.length chunk) (acc <> chunk)
 
 -- | Seed (or reseed) the CSPRNG from fresh OS entropy.
+--
+-- Applies HKDF-Extract to concentrate entropy from /dev/urandom into
+-- a uniformly distributed key, guarding against potential bias in the
+-- raw entropy source.  PID is captured here for fork detection.
 seedCSPRNG :: IO CSPRNGState
 seedCSPRNG = do
     entropy <- readEntropy 44  -- 32 key + 12 nonce
     pid <- fromIntegral <$> getProcessID
-    let !key   = BS.take 32 entropy
-        !nonce = BS.drop 32 entropy
+    let !rawKey = BS.take 32 entropy
+        !nonce  = BS.drop 32 entropy
+        -- HKDF-Extract: concentrate entropy with a fixed salt
+        !key    = BS.take 32 (hkdfExtract (BS.pack [0..31]) rawKey)
     return CSPRNGState
         { csKey = key, csCounter = 0, csNonce = nonce
         , csBuffer = BS.empty, csOutputs = 0, csPID = pid }

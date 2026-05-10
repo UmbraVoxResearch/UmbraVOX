@@ -163,7 +163,7 @@ messageCount db convId = do
     output <- querySQL db
         ("SELECT COUNT(*) FROM messages WHERE conversation_id = "
          <> show convId)
-    pure (readInt (head (lines output ++ ["0"])))
+    pure (readInt (case lines output of { (x:_) -> x; [] -> "0" }))
 
 -- | Create or update a conversation record. Returns the conversation ID.
 saveConversation :: AnthonyDB -> Int -> String -> String -> Int -> IO ()
@@ -202,8 +202,7 @@ loadTrustedKeys db = do
 removeTrustedKey :: AnthonyDB -> ByteString -> IO ()
 removeTrustedKey db pubkey = do
     let hexKey = C8.unpack (toHex pubkey)
-    -- Use SELECT to verify key exists, then use raw SQL for delete
-    runSQLUnsafe db ("DELETE FROM trusted_keys WHERE pubkey = '" <> escapeQuotes hexKey <> "'")
+    runSQL db ("DELETE FROM trusted_keys WHERE pubkey = " <> quote hexKey)
 
 parseTrustedRows :: String -> [(ByteString, String)]
 parseTrustedRows s = concatMap parseTrustedRow (lines s)

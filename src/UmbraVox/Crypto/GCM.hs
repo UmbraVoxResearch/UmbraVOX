@@ -2,13 +2,14 @@
 -- | {-# REQ "CRYPTO-001" #-} AES-256-GCM (NIST SP 800-38D)
 --
 -- Galois/Counter Mode authenticated encryption with associated data.
--- Pure Haskell reference implementation. NOT constant-time.
+-- Pure Haskell reference implementation.
+-- GHASH multiplication is constant-time (no branching on secret data).
 module UmbraVox.Crypto.GCM
     ( gcmEncrypt
     , gcmDecrypt
     ) where
 
-import Data.Bits ((.&.), (.|.), shiftL, shiftR, testBit, xor)
+import Data.Bits ((.&.), (.|.), shiftL, shiftR, xor)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.List (foldl')
@@ -81,25 +82,42 @@ gfZero :: GF128
 gfZero = (0, 0)
 
 -- | GF(2^128) multiplication (schoolbook, MSB-first per NIST).
+--
+-- Constant-time: all selection is done via bitwise masking (no branching
+-- on secret data).  The 'negate' trick on Word64 works because
+-- @negate 0 = 0@ and @negate 1 = 0xFFFFFFFFFFFFFFFF@ in two's complement.
+--
+-- NOTE: Key zeroing is not performed here because Haskell ByteStrings
+-- are immutable and GC-managed.  True key zeroing requires FFI to
+-- memset_s / explicit_bzero; this is tracked as a known limitation.
 gfMul :: GF128 -> GF128 -> GF128
 gfMul xv yv = loop 0 gfZero yv
   where
     rPoly :: Word64
     rPoly = 0xe100000000000000
 
+    -- | Extract bit i from x as a Word64 mask (0x0…0 or 0xF…F).
+    -- No branch on secret data.
+    {-# INLINE xBitMask #-}
+    xBitMask :: Int -> Word64
+    xBitMask i =
+        let !w   = if i < 64 then fst xv else snd xv  -- public index
+            !bit = (w `shiftR` (63 - (i .&. 63))) .&. 1
+        in negate bit  -- 0 -> 0x0…0, 1 -> 0xF…F
+
     loop :: Int -> GF128 -> GF128 -> GF128
     loop 128 !z _ = z
     loop !i (!zh, !zl) (!yh, !yl) =
-        let !bitSet = if i < 64
-                      then testBit (fst xv) (63 - i)
-                      else testBit (snd xv) (127 - i)
-            !zh' = if bitSet then zh `xor` yh else zh
-            !zl' = if bitSet then zl `xor` yl else zl
-            !lsb = testBit yl 0
-            !nyh = yh `shiftR` 1
-            !nyl = (yl `shiftR` 1) .|.
-                   (if testBit yh 0 then 0x8000000000000000 else 0)
-            !nyh' = if lsb then nyh `xor` rPoly else nyh
+        -- Constant-time conditional XOR: z ^= (y & mask)
+        let !mask = xBitMask i
+            !zh'  = zh `xor` (yh .&. mask)
+            !zl'  = zl `xor` (yl .&. mask)
+            -- Constant-time right shift of y with reduction
+            !lsb    = yl .&. 1
+            !nyh    = yh `shiftR` 1
+            !nyl    = (yl `shiftR` 1) .|.
+                      ((yh .&. 1) `shiftL` 63)        -- carry from yh
+            !nyh'   = nyh `xor` (rPoly .&. negate lsb) -- reduce if lsb=1
         in loop (i + 1) (zh', zl') (nyh', nyl)
 
 ------------------------------------------------------------------------

@@ -44,6 +44,16 @@ type StorageKey = ByteString
 --
 -- Uses HKDF-SHA-256 Extract-then-Expand with domain-specific salt and
 -- info strings to produce a key suitable for AES-256-GCM.
+--
+-- The salt is a fixed domain separator.  Per-installation uniqueness
+-- comes from the identity secret (IKM), which is unique per user.
+-- This is the standard HKDF pattern: fixed salt + unique IKM = unique key.
+-- No per-installation random salt is needed because the IKM already
+-- provides full entropy separation between installations.
+--
+-- NOTE: Key zeroing is not performed because Haskell ByteStrings are
+-- immutable and GC-managed.  True key zeroing requires FFI to
+-- memset_s / explicit_bzero; this is tracked as a known limitation.
 deriveStorageKey :: ByteString -> StorageKey
 deriveStorageKey secret =
     let !prk = hkdfSHA256Extract (C8.pack "UmbraVox_StorageAEAD_v1_salt") secret

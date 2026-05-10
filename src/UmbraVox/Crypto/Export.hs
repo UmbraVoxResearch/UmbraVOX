@@ -26,11 +26,24 @@ headerLen = 44
 tagLen :: Int
 tagLen = 16
 
--- | Derive a 32-byte encryption key from password and salt via HKDF-SHA256.
+-- | Number of PBKDF2-style iterations for password-based key derivation.
+-- This hardens exports against offline brute-force attacks on weak passwords.
+exportIterations :: Int
+exportIterations = 100000
+
+-- | Derive a 32-byte encryption key from password and salt via iterated
+-- HKDF-SHA256 (PBKDF2-style).
+--
+-- The initial round performs HKDF-Extract(salt, password).  Subsequent
+-- rounds feed the running key back through HKDF-Extract to accumulate
+-- computational cost, making offline brute-force significantly harder.
 deriveKey :: ByteString -> ByteString -> ByteString
 deriveKey salt password =
-    let !prk = hkdfSHA256Extract salt password
-    in hkdfSHA256Expand prk exportInfo 32
+    let !initial = BS.take 32 (hkdfSHA256Extract salt password)
+        go :: Int -> ByteString -> ByteString
+        go 0 !key = key
+        go n !key = go (n - 1) (BS.take 32 (hkdfSHA256Extract key password))
+    in hkdfSHA256Expand (go exportIterations initial) exportInfo 32
 
 -- | Encrypt plaintext with a password for export.
 --

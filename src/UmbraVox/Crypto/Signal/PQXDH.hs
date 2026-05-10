@@ -17,8 +17,9 @@ import qualified Data.ByteString as BS
 import UmbraVox.Crypto.Curve25519 (x25519)
 import UmbraVox.Crypto.Ed25519 (ed25519Verify)
 import UmbraVox.Crypto.HKDF (hkdf)
-import UmbraVox.Crypto.MLKEM (MLKEMEncapKey, MLKEMDecapKey, MLKEMCiphertext,
+import UmbraVox.Crypto.MLKEM (MLKEMEncapKey, MLKEMDecapKey, MLKEMCiphertext(..),
                                mlkemEncaps, mlkemDecaps)
+import UmbraVox.Crypto.SHA256 (sha256)
 import UmbraVox.Crypto.Signal.X3DH (KeyPair(..), IdentityKey(..), generateKeyPair)
 
 ------------------------------------------------------------------------
@@ -55,24 +56,28 @@ pqxdhInfo = BS.pack (map (fromIntegral . fromEnum) "UmbraVox_PQXDH_v1")
 ------------------------------------------------------------------------
 
 -- | Derive the PQXDH master secret from DH outputs and ML-KEM shared secret.
--- ikm = 0xFF*32 || dh1 || dh2 || dh3 || [dh4] || pq_ss
+-- ikm = 0xFF*32 || dh1 || dh2 || dh3 || [dh4] || pq_ss || SHA256(pq_ct)
 -- salt = 0x00*32
 -- info = "UmbraVox_PQXDH_v1" || IK_A_pub || IK_B_pub (identity binding)
 -- output = 32 bytes
+--
+-- The SHA256(pq_ct) binding ensures both parties committed to the same
+-- PQ ciphertext, preventing substitution attacks on the KEM exchange.
 derivePQSecret :: ByteString   -- ^ dh1
                -> ByteString   -- ^ dh2
                -> ByteString   -- ^ dh3
                -> Maybe ByteString  -- ^ dh4 (optional)
                -> ByteString   -- ^ pq_ss (ML-KEM shared secret)
+               -> MLKEMCiphertext  -- ^ pq_ct (ML-KEM ciphertext, hashed into ikm)
                -> ByteString   -- ^ Initiator (Alice) X25519 identity public key
                -> ByteString   -- ^ Responder (Bob) X25519 identity public key
                -> ByteString   -- ^ 32-byte master secret
-derivePQSecret !dh1 !dh2 !dh3 !mDh4 !pqSS !aliceIKPub !bobIKPub =
+derivePQSecret !dh1 !dh2 !dh3 !mDh4 !pqSS !pqCt !aliceIKPub !bobIKPub =
     let !pad  = BS.replicate 32 0xff
         !salt = BS.replicate 32 0x00
         !ikm  = BS.concat $ [pad, dh1, dh2, dh3]
                           ++ maybe [] (:[]) mDh4
-                          ++ [pqSS]
+                          ++ [pqSS, sha256 (let MLKEMCiphertext ct = pqCt in ct)]
         !info = pqxdhInfo <> aliceIKPub <> bobIKPub
     in hkdf salt ikm info 32
 
@@ -111,8 +116,8 @@ initSession aliceIK bundle ekSecret mlkemRand =
         !mDh4 = fmap (x25519 (kpSecret ek)) (pqpkbOneTimePreKey bundle)
         -- ML-KEM encapsulation
         !(pqCt, pqSS) = mlkemEncaps (pqpkbPQPreKey bundle) mlkemRand
-        -- Derive master secret (with identity binding)
-        !masterSecret = derivePQSecret dh1 dh2 dh3 mDh4 pqSS
+        -- Derive master secret (with identity + ciphertext binding)
+        !masterSecret = derivePQSecret dh1 dh2 dh3 mDh4 pqSS pqCt
                             (ikX25519Public aliceIK) (pqpkbIdentityKey bundle)
     in PQXDHResult
         { pqxdhSharedSecret = masterSecret
@@ -145,4 +150,4 @@ pqxdhRespond bobIK spkSecret mOPKSecret pqDK aliceIKPub aliceEKPub pqCt =
         !mDh4 = fmap (\opkSec -> x25519 opkSec aliceEKPub) mOPKSecret
         -- ML-KEM decapsulation
         !pqSS = mlkemDecaps pqDK pqCt
-    in derivePQSecret dh1 dh2 dh3 mDh4 pqSS aliceIKPub (ikX25519Public bobIK)
+    in derivePQSecret dh1 dh2 dh3 mDh4 pqSS pqCt aliceIKPub (ikX25519Public bobIK)
