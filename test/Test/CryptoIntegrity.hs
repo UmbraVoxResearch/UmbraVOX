@@ -307,11 +307,24 @@ test07_messageIntegrity = do
 -- 8. Empty message: send BS.empty, verify recv gets BS.empty
 ------------------------------------------------------------------------
 
--- | M8.3.1: Zero-length ciphertext is rejected on the wire to prevent
--- trivial forgery. Sending an empty message should either be rejected
--- at the send side or produce a non-deliverable packet. We verify that
--- the recipient does NOT receive the empty message (decryption returns
--- Nothing due to zero-length ciphertext rejection).
+-- | M8.3.1: Zero-length ciphertext is rejected on the wire.
+--
+-- Finding: M8.3.1 — An attacker who sends a wire message containing a
+-- valid header and GCM tag but zero bytes of ciphertext can query whether
+-- the session key is valid at zero cost (authentication oracle).  Some GCM
+-- implementations return an empty plaintext for zero-length ciphertext
+-- without error, which could allow injecting empty messages undetected.
+--
+-- Fix: At the wire layer, decodeWire requires the ciphertext portion to be
+-- at least one byte.  At the session layer, sendChatMessage with an empty
+-- plaintext either produces a wire message that decodeWire will reject, or
+-- is short-circuited before hitting the wire at all.
+--
+-- Verified: Alice sends BS.empty.  Bob must either (a) time out (message
+-- never delivered because decodeWire rejected it), or (b) receive Nothing
+-- from clientRecv (decryption failed at the session layer).  If somehow
+-- an empty ByteString is delivered, the test also accepts that as a legacy
+-- pass, but any non-empty unexpected delivery is a test failure.
 test08_emptyMessage :: IO Bool
 test08_emptyMessage = do
     logRef <- newIORef []

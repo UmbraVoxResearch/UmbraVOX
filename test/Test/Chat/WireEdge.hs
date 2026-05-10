@@ -61,8 +61,23 @@ testDecodeOneByteTooShort =
     in assertEq "decodeWire (minWireSize-1) -> Nothing" Nothing (decodeWire bs)
 
 -- 3. decodeWire with exactly minWireSize bytes (0 ciphertext) -> Nothing
---    M8.3.1: zero-length ciphertext is intentionally rejected to prevent
---    trivial forgery / oracle attacks with an empty plaintext body.
+--
+-- M8.3.1: Zero-length ciphertext is intentionally rejected by decodeWire.
+--
+-- Finding: M8.3.1 — An attacker can construct a wire message that consists
+-- of only a valid-looking 40-byte header and 16-byte GCM tag with zero bytes
+-- of ciphertext body.  Passing this to gcmDecrypt reveals whether the
+-- session key is correct without conveying any user content — effectively
+-- a free authentication oracle.  Some GCM implementations also behave
+-- unexpectedly when the ciphertext length is zero (returning an empty
+-- plaintext rather than an error), which could allow empty-message forgery.
+--
+-- Fix: decodeWire checks that the ciphertext region (BS.length wire -
+-- headerSize - tagSize) is strictly positive.  A wire message of exactly
+-- minWireSize bytes (= headerSize + tagSize = 56 bytes) fails this check
+-- and returns Nothing without ever calling into the crypto layer.
+--
+-- Verified: A 56-byte all-zero ByteString returns Nothing.
 testDecodeMinSize :: IO Bool
 testDecodeMinSize =
     let bs     = BS.replicate minWireSize 0x00

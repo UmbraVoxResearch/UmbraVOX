@@ -14,6 +14,7 @@ module UmbraVox.App.Startup
     , resolveIdentityAt
     , restorePersistentState
     , restorePersistentStateAt
+    , expandHome
     ) where
 
 import Control.Exception (SomeException, catch)
