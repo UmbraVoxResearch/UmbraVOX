@@ -1,8 +1,10 @@
 -- SPDX-License-Identifier: Apache-2.0
 -- | {-# REQ "CRYPTO-011" #-} Poly1305 one-time authenticator (RFC 8439)
 --
--- Pure Haskell reference implementation using Integer arithmetic. NOT constant-time.
--- See: doc/spec/crypto.md
+-- NOT CONSTANT-TIME -- Pure Haskell reference implementation.
+-- Production builds MUST use FFI to constant-time C (see doc/CRYPTO-SAFETY.md).
+-- Timing side-channels exist in: S-box lookups, scalar multiply branching,
+-- polynomial arithmetic, and GHASH multiplication.
 module UmbraVox.Crypto.Poly1305
   ( poly1305
   ) where

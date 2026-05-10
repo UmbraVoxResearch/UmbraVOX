@@ -50,9 +50,12 @@ testRoundTrip = do
 
 testMigrationSafe :: IO Bool
 testMigrationSafe = do
+    -- M10.3.7: passthrough removed — non-UVENC1-prefixed values must yield
+    -- Nothing so that unencrypted or injected plaintext is never silently
+    -- accepted.
     let plain = "legacy plaintext value"
         result = decryptField key1 plain
-    assertEq "migrationSafe: plaintext passthrough" (Just plain) result
+    assertEq "migrationSafe: non-encrypted value yields Nothing" Nothing result
 
 testIsEncrypted :: IO Bool
 testIsEncrypted = do

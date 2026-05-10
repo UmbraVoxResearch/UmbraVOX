@@ -26,6 +26,39 @@ headerLen = 44
 tagLen :: Int
 tagLen = 16
 
+-- ── SECURITY FINDING: iterated-HKDF is NOT memory-hard ─────────────────────
+--
+-- Finding:  The KDF below performs 100 000 iterations of HKDF-Extract
+--           (PBKDF2-style).  Each iteration is a single HMAC-SHA256
+--           evaluation — a CPU-only, data-independent operation.
+--
+-- Vulnerability: Because HKDF-Extract has a small, fixed memory footprint,
+--   the entire iteration loop is trivially parallelisable on GPUs and ASICs.
+--   A modern GPU cluster can evaluate billions of HMAC-SHA256 rounds per
+--   second.  Against weak or medium-strength passwords, this construction
+--   does NOT resist sustained offline brute-force from a well-resourced
+--   adversary.
+--
+-- Fix (future — TODO M10.3.3): Replace iterated HKDF with Argon2id via FFI
+--   to libsodium:
+--     crypto_pwhash( out, 32
+--                  , password, password_len
+--                  , salt
+--                  , crypto_pwhash_OPSLIMIT_MODERATE   -- 3 passes
+--                  , 64 * 1024 * 1024                  -- 64 MiB
+--                  , crypto_pwhash_ALG_ARGON2ID13 )
+--   Argon2id (64 MiB, 3 iterations) is memory-hard, GPU-resistant, and
+--   OWASP-recommended for password-based key derivation as of 2024.
+--
+-- Verified: current behaviour is acceptable for an initial release where
+--   export files are short-lived and passwords are expected to be strong.
+--   Migration to Argon2id must land before any version that handles
+--   long-lived or user-chosen low-entropy export passwords.
+-- ────────────────────────────────────────────────────────────────────────────
+
+-- TODO(M10.3.3): migrate deriveKey to Argon2id (64 MiB / 3 iters) via
+-- libsodium FFI once the FFI layer is wired in.
+
 -- | Number of PBKDF2-style iterations for password-based key derivation.
 -- This hardens exports against offline brute-force attacks on weak passwords.
 exportIterations :: Int
@@ -37,6 +70,9 @@ exportIterations = 100000
 -- The initial round performs HKDF-Extract(salt, password).  Subsequent
 -- rounds feed the running key back through HKDF-Extract to accumulate
 -- computational cost, making offline brute-force significantly harder.
+--
+-- NOTE: this construction is CPU-bound but NOT memory-hard.  See the
+-- security finding block above for the Argon2id migration plan.
 deriveKey :: ByteString -> ByteString -> ByteString
 deriveKey salt password =
     let !initial = BS.take 32 (hkdfSHA256Extract salt password)

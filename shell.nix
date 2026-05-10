@@ -1,4 +1,28 @@
-{ pkgs ? import <nixpkgs> {} }:
+# Finding:   shell.nix previously used `import <nixpkgs> {}` which resolves
+#            against the operator's mutable ambient nixpkgs channel.  This
+#            means two developers (or two CI runs on different machines) can
+#            get different package versions despite using the same source tree.
+#
+# Fix:       Read the rev and narHash from flake.lock at evaluation time and
+#            fetch a reproducible nixpkgs tarball.  This makes `nix-shell`
+#            resolve the same package set as `nix develop` / `nix build`.
+#
+# Verified:  The lock file is tracked in git; any change to the pinned
+#            nixpkgs will produce a visible diff in flake.lock and shell.nix
+#            will automatically follow without a manual update here.
+#
+# NOTE:      If you need to use the ambient channel intentionally (e.g. for
+#            quick local experiments), pass `--arg pkgs 'import <nixpkgs> {}'`
+#            on the nix-shell command line.  The flake (`nix develop`) remains
+#            the canonical reproducible development path.
+{ pkgs ? let
+    lock     = builtins.fromJSON (builtins.readFile ./flake.lock);
+    nixpkgs  = fetchTarball {
+      url    = "https://github.com/NixOS/nixpkgs/archive/${lock.nodes.nixpkgs.locked.rev}.tar.gz";
+      sha256 = lock.nodes.nixpkgs.locked.narHash;
+    };
+  in import nixpkgs {}
+}:
 
 let
   # GHC 9.6 with the 'network' package (only non-boot dependency)

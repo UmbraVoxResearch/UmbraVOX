@@ -24,8 +24,30 @@ echo "  UmbraVOX Integration Test Agent"
 echo "========================================"
 
 # ── Load agent configuration ────────────────────────────────────────
+# Finding:   `source /mnt/bundle/agent.env` executes the file as a shell
+#            script.  A malformed or malicious agent.env (e.g. from a
+#            tampered release bundle) could execute arbitrary commands
+#            with the agent's privileges inside the VM.
+# Vulnerability: shell injection via arbitrary content in agent.env,
+#            including command substitutions, subshells, and redirections.
+# Fix:       Parse agent.env as strict key=value pairs.  Only export
+#            variables whose names begin with AGENT_ or UMBRAVOX_ to
+#            limit the blast radius if unexpected keys are present.
+#            Lines that do not match the key=value form are silently
+#            skipped, preventing syntax errors from halting the agent.
+# Verified:  IFS='=' splits only on the first '=' so values may contain
+#            '=' characters (e.g. base64 strings).  No subshell or
+#            arithmetic expansion occurs during parsing.
 if [ -f /mnt/bundle/agent.env ]; then
-    source /mnt/bundle/agent.env
+    while IFS='=' read -r key value; do
+        # Skip blank lines and comment lines
+        case "$key" in
+            ''|\#*) continue ;;
+        esac
+        case "$key" in
+            AGENT_*|UMBRAVOX_*) export "$key=$value" ;;
+        esac
+    done < /mnt/bundle/agent.env
 else
     echo "AGENT_RESULT=FAIL (no agent.env found)"
     exit 1

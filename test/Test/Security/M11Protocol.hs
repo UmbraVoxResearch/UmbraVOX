@@ -40,6 +40,7 @@ import Test.Util (assertEq, mkPRNG, nextBytes)
 import UmbraVox.Chat.Wire (decodeWire, headerSize, tagSize)
 import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
 import UmbraVox.Crypto.Ed25519 (ed25519PublicKey)
+import UmbraVox.Crypto.Ed25519 (ed25519Sign)
 import UmbraVox.Crypto.MLKEM
     ( MLKEMEncapKey(..), MLKEMDecapKey(..)
     , mlkemKeyGen
@@ -323,26 +324,28 @@ testPL003ReflectionAttack = do
 ------------------------------------------------------------------------
 -- PL-004: PQ downgrade — strip ML-KEM layer; must reject
 --
--- Finding:     A downgrade adversary strips the pqpkbPQPreKey field from
---              Bob's PQXDH bundle and replaces it with an all-zero encap
---              key, or constructs an initiation message without the KEM
---              ciphertext binding.  The adversary hopes that Alice will
---              fall back to a classical-only session.
+-- Finding:     A downgrade adversary intercepts Bob's PQXDH bundle and
+--              replaces pqpkbPQPreKey with an encap key for which they
+--              hold the decapsulation key.  The adversary hopes Alice will
+--              encapsulate under their key, giving the adversary pqSS and
+--              thus the full session key.
 --
--- Vulnerability: If pqxdhInitiate skipped the ML-KEM encapsulation when
---              the encap key was all zeros, the session key would not
---              include the quantum-hard component.
+-- Vulnerability: Without a signature covering pqpkbPQPreKey, an in-path
+--              attacker can trivially swap the encap key.  With only the
+--              classical X25519 DH terms guarding the session, the quantum-
+--              hard component is silently bypassed.
 --
--- Fix:         pqxdhInitiate always calls mlkemEncaps with the provided
---              pqpkbPQPreKey.  The KEM shared secret pqSS is unconditionally
---              included in derivePQSecret's ikm.  An all-zero encap key
---              produces a well-defined (but adversary-unknown) KEM shared
---              secret that is still mixed in.  The result is a session key
---              incompatible with what Bob would derive from his real KEM key.
+-- Fix (M10.2.1): pqpkbPQKeySignature carries an Ed25519 signature over
+--              the raw encap key bytes, produced by Bob's identity key.
+--              pqxdhInitiate verifies this signature BEFORE encapsulating.
+--              An attacker who swaps the encap key but cannot forge the
+--              signature (they lack Bob's ikEd25519Secret) causes
+--              pqxdhInitiate to return Nothing, aborting the handshake.
 --
--- Verified:    Alice uses Bob's legitimate bundle; attacker replaces
---              pqpkbPQPreKey with a fresh "attacker" key.  The shared
---              secrets derived with real vs. attacker KEM keys must differ.
+-- Verified:    (a) Legitimate bundle is accepted (positive control).
+--              (b) Bundle with swapped PQ key (no re-signing) is rejected
+--                  (pqxdhInitiate returns Nothing) — M10.2.1 prevents the
+--                  attack.
 ------------------------------------------------------------------------
 
 testPL004PQDowngrade :: IO Bool
@@ -358,6 +361,8 @@ testPL004PQDowngrade = do
         d <- randomBytes 32; z <- randomBytes 32
         pure (mlkemKeyGen d z)
 
+    let MLKEMEncapKey bobPQEncapBytes = bobPQEncap
+        bobPQSig = ed25519Sign (ikEd25519Secret bobIK) bobPQEncapBytes
     let !legitBundle = PQPreKeyBundle
             { pqpkbIdentityKey     = ikX25519Public bobIK
             , pqpkbSignedPreKey    = kpPublic bobSPK
@@ -365,13 +370,16 @@ testPL004PQDowngrade = do
             , pqpkbIdentityEd25519 = ikEd25519Public bobIK
             , pqpkbOneTimePreKey   = Nothing
             , pqpkbPQPreKey        = bobPQEncap
+            , pqpkbPQKeySignature  = bobPQSig
             }
 
-    -- Generate attacker's KEM key (downgrade: substitute a different encap key)
+    -- Attacker substitutes their own encap key but cannot re-sign it
+    -- (they don't hold Bob's ikEd25519Secret).
     (attackerPQEncap, _attackerPQDecap) <- do
         d <- randomBytes 32; z <- randomBytes 32
         pure (mlkemKeyGen d z)
 
+    -- Naive downgrade: swap PQ key, keep Bob's (now-invalid) signature.
     let !downgradedBundle = legitBundle { pqpkbPQPreKey = attackerPQEncap }
 
     -- Alice's identity
@@ -384,20 +392,21 @@ testPL004PQDowngrade = do
     ekSecret2 <- randomBytes 32
     mlkemR2   <- randomBytes 32
 
-    let mLegitResult     = pqxdhInitiate aliceIK legitBundle     ekSecret1 mlkemR1
-        mDowngradeResult = pqxdhInitiate aliceIK downgradedBundle ekSecret2 mlkemR2
+    let mLegitResult     = pqxdhInitiate aliceIK legitBundle      ekSecret1 mlkemR1
+        mDowngradeResult = pqxdhInitiate aliceIK downgradedBundle  ekSecret2 mlkemR2
 
-    case (mLegitResult, mDowngradeResult) of
-        (Just legitRes, Just downRes) -> do
-            -- The two session secrets must differ: different KEM keys produce
-            -- different pqSS values which are mixed into the master secret.
-            let legitimate = pqxdhSharedSecret legitRes
-                downgraded = pqxdhSharedSecret downRes
-            assertEq "PL-004 PQ downgrade: downgraded secret must differ from legitimate"
-                     True (legitimate /= downgraded)
-        _ -> do
-            putStrLn "  FAIL: PL-004 PQ downgrade: unexpected Nothing from pqxdhInitiate"
+    case mLegitResult of
+        Nothing -> do
+            putStrLn "  FAIL: PL-004 PQ downgrade: legitimate bundle was unexpectedly rejected"
             pure False
+        Just _ -> do
+            -- M10.2.1: the naive downgrade (swapped PQ key without re-signing) must
+            -- be rejected by the PQ prekey signature check.
+            ok1 <- assertEq "PL-004 PQ downgrade: legitimate bundle accepted"
+                            True True
+            ok2 <- assertEq "PL-004 PQ downgrade: key-swapped bundle rejected by M10.2.1 sig check"
+                            True (isNothing mDowngradeResult)
+            pure (ok1 && ok2)
 
 ------------------------------------------------------------------------
 -- PL-005: KCI (Key Compromise Impersonation)
@@ -672,6 +681,8 @@ testPL010PQXDHPrekeyReuse = do
     (bobPQEncap, _bobPQDecap) <- do
         d <- randomBytes 32; z <- randomBytes 32
         pure (mlkemKeyGen d z)
+    let MLKEMEncapKey bobPQEncapBytes2 = bobPQEncap
+        bobPQSig2 = ed25519Sign (ikEd25519Secret bobIK) bobPQEncapBytes2
 
     let !bundle = PQPreKeyBundle
             { pqpkbIdentityKey     = ikX25519Public bobIK
@@ -680,6 +691,7 @@ testPL010PQXDHPrekeyReuse = do
             , pqpkbIdentityEd25519 = ikEd25519Public bobIK
             , pqpkbOneTimePreKey   = Nothing
             , pqpkbPQPreKey        = bobPQEncap
+            , pqpkbPQKeySignature  = bobPQSig2
             }
 
     -- Alice
@@ -885,6 +897,8 @@ testPL022PQXDHSignatureBypass = do
     (bobPQEncap, _) <- do
         d <- randomBytes 32; z <- randomBytes 32
         pure (mlkemKeyGen d z)
+    let MLKEMEncapKey bobPQEncapBytes3 = bobPQEncap
+        validPQSig3 = ed25519Sign (ikEd25519Secret bobIK) bobPQEncapBytes3
 
     let !bundleValidSig = PQPreKeyBundle
             { pqpkbIdentityKey     = ikX25519Public bobIK
@@ -893,6 +907,7 @@ testPL022PQXDHSignatureBypass = do
             , pqpkbIdentityEd25519 = ikEd25519Public bobIK
             , pqpkbOneTimePreKey   = Nothing
             , pqpkbPQPreKey        = bobPQEncap
+            , pqpkbPQKeySignature  = validPQSig3
             }
 
     let !bundleZeroSig = bundleValidSig { pqpkbSPKSignature = zeroSig }

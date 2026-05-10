@@ -41,6 +41,7 @@ import qualified UmbraVox.Crypto.Poly1305 as Poly1305
 import qualified UmbraVox.Crypto.Random as Random
 import qualified UmbraVox.Crypto.SHA256 as SHA256
 import qualified UmbraVox.Crypto.SHA512 as SHA512
+import UmbraVox.Crypto.Ed25519 (ed25519Sign)
 import UmbraVox.Crypto.Signal.PQXDH (PQPreKeyBundle(..))
 import UmbraVox.Crypto.Signal.X3DH
     (IdentityKey(..), generateIdentityKey, generateKeyPair,
@@ -166,17 +167,19 @@ testCBORRoundTrip = do
 -- Test 5: Serialization consistency — serialize/deserialize bundle
 ------------------------------------------------------------------------
 
--- | Inline bundle serialization matching app/Main.hs format:
+-- | Inline bundle serialization matching Handshake.hs wire format:
 -- IK_x25519(32) | IK_ed25519(32) | SPK_pub(32) | SPK_sig(64)
--- | len(PQPK) as Word32 BE | PQPK | OPK flag+data
+-- | len(PQPK) as Word32 BE | PQPK | PQ_sig(64) | OPK flag+data
 serializeBundle :: IdentityKey -> ByteString -> ByteString
                -> MLKEMEncapKey -> Maybe ByteString -> ByteString
 serializeBundle ik spkPub spkSig (MLKEMEncapKey pqpk) mOpk =
-    BS.concat
+    let pqSig = ed25519Sign (ikEd25519Secret ik) pqpk
+    in BS.concat
         [ ikX25519Public ik, ikEd25519Public ik
         , spkPub, spkSig
         , putW32BE (fromIntegral (BS.length pqpk))
         , pqpk
+        , pqSig
         , encodeOpt mOpk
         ]
 
@@ -184,13 +187,15 @@ deserializeBundle :: ByteString -> Maybe PQPreKeyBundle
 deserializeBundle bs
     | BS.length bs < 165 = Nothing
     | otherwise =
-        let ikX   = bsSlice 0  32 bs
-            ikEd  = bsSlice 32 32 bs
-            spkP  = bsSlice 64 32 bs
-            sig   = bsSlice 96 64 bs
-            pqLen = fromIntegral (getW32BE (bsSlice 160 4 bs)) :: Int
-            rest  = BS.drop (164 + pqLen) bs
-        in if BS.length bs < 164 + pqLen + 1
+        let ikX      = bsSlice 0   32 bs
+            ikEd     = bsSlice 32  32 bs
+            spkP     = bsSlice 64  32 bs
+            sig      = bsSlice 96  64 bs
+            pqLen    = fromIntegral (getW32BE (bsSlice 160 4 bs)) :: Int
+            pqSigOff = 164 + pqLen
+            opkOff   = pqSigOff + 64
+            rest     = BS.drop opkOff bs
+        in if BS.length bs < opkOff + 1
            then Nothing
            else Just PQPreKeyBundle
                { pqpkbIdentityKey     = ikX
@@ -198,6 +203,7 @@ deserializeBundle bs
                , pqpkbSignedPreKey    = spkP
                , pqpkbSPKSignature    = sig
                , pqpkbPQPreKey        = MLKEMEncapKey (bsSlice 164 pqLen bs)
+               , pqpkbPQKeySignature  = bsSlice pqSigOff 64 bs
                , pqpkbOneTimePreKey   = decodeOpt rest
                }
 

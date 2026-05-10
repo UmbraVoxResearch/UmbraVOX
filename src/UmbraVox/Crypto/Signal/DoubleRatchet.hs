@@ -80,10 +80,15 @@ data RatchetState = RatchetState
       -- ^ Receiving message counter
     , rsPrevChainN  :: !Word32
       -- ^ Previous sending chain length (sent in header)
-    , rsSkippedKeys :: !(Map (ByteString, Word32) (ByteString, ByteString))
-      -- ^ Skipped message keys indexed by (DH public key, counter),
-      -- each entry is (msgKey, chainKey) — the chain key is stored so
-      -- the receiver can re-derive the nonce via makeNonce on replay.
+    , rsSkippedKeys :: !(Map (ByteString, Word32) (ByteString, ByteString, Word64))
+      -- ^ Skipped message keys indexed by (DH public key, counter).
+      -- Each entry is (msgKey, chainKey, insertSeq) — the chain key is
+      -- stored so trySkippedKeys can re-derive the nonce via makeNonce
+      -- on replay; insertSeq records insertion order for FIFO eviction.
+    , rsSkipSeq :: !Word64
+      -- ^ Monotonic counter incremented on each skipped-key insertion.
+      -- Used by 'evictOldest' to remove the truly oldest entry (by
+      -- insertion order) rather than evicting by map key ordering.
     , rsNonceCounter :: !Word64
       -- ^ Monotonic counter incremented on every encrypt, for auditing.
       -- Note: nonce uniqueness is guaranteed by the chain ratchet —
@@ -208,6 +213,7 @@ ratchetInitAlice sharedSecret bobSPK aliceDHSecret =
                 , rsRecvN       = 0
                 , rsPrevChainN  = 0
                 , rsSkippedKeys  = Map.empty
+                , rsSkipSeq      = 0
                 , rsNonceCounter = 0
                 }
 
@@ -238,6 +244,7 @@ ratchetInitBob sharedSecret bobSPKSecret =
         , rsRecvN       = 0
         , rsPrevChainN  = 0
         , rsSkippedKeys  = Map.empty
+        , rsSkipSeq      = 0
         , rsNonceCounter = 0
         }
 
@@ -393,7 +400,7 @@ trySkippedKeys st header ct tag =
     let !lookupKey = (rhDHPublic header, rhMsgN header)
     in case Map.lookup lookupKey (rsSkippedKeys st) of
         Nothing -> Nothing
-        Just (msgKey, chainKey) ->
+        Just (msgKey, chainKey, _insertSeq) ->
             -- Re-derive nonce from the stored chain key, matching the nonce
             -- used during encryption (M10.2.5: nonce comes from chain key).
             let !nonce = makeNonce chainKey (rhMsgN header)
@@ -431,27 +438,68 @@ skipMessageKeys st until'
                     Just pk -> pk
                     Nothing -> error "skipMessageKeys: impossible: rsDHRecv is Nothing (guarded above)"
                 !key = (peerKey, rsRecvN s)
-                -- Store (msgKey, chainKey) so trySkippedKeys can re-derive the nonce.
-                !skipped = Map.insert key (msgKey, oldChainKey) (rsSkippedKeys s)
+                !seq' = rsSkipSeq s
+                -- Store (msgKey, chainKey, seq') so trySkippedKeys can
+                -- re-derive the nonce and evictOldest can find the
+                -- truly oldest entry by insertion order.
+                !skipped = Map.insert key (msgKey, oldChainKey, seq') (rsSkippedKeys s)
             in go s
                 { rsRecvChain   = newChainKey
                 , rsRecvN       = rsRecvN s + 1
                 , rsSkippedKeys = skipped
+                , rsSkipSeq     = seq' + 1
                 }
 
--- | Evict the oldest entries (lowest counter values) from the skipped-key
--- cache until the total size is within 'maxTotalSkipped' (M7.3.6).
-evictOldest :: Map (ByteString, Word32) (ByteString, ByteString)
-            -> Map (ByteString, Word32) (ByteString, ByteString)
+-- Finding    M10.3.5 — 'evictOldest' evicted entries by Map ordering
+--            (lexicographic on the @(ByteString, Word32)@ key), which is
+--            DH-public-key order, not insertion order.  Under adversarial
+--            message scheduling an attacker could craft DH public keys that
+--            sort first in the map, repeatedly displacing legitimate skipped
+--            keys rather than the genuinely oldest ones, causing valid
+--            out-of-order messages to fail decryption.
+-- Vulnerability: Eviction by map key order rather than insertion order
+--            violates the FIFO contract expected by the Double Ratchet spec;
+--            legitimate messages can be silently dropped while adversarially
+--            crafted entries persist.
+-- Fix:       Each skipped-key entry now carries an insertion sequence number
+--            (@Word64@, stored as the third element of the map value).
+--            'evictOldest' finds the entry with the minimum sequence number
+--            (the oldest inserted) and removes it, iterating until the cache
+--            is within 'maxTotalSkipped'.  This is O(n) per eviction step but
+--            eviction is rare (only when the cache hits the cap).
+-- Verified:  'skipMessageKeys' increments 'rsSkipSeq' on each insertion;
+--            'evictOldest' removes the minimum-sequence entry until the cap
+--            is satisfied.
+--
+-- | Evict the oldest-inserted entries from the skipped-key cache until the
+-- total size is within 'maxTotalSkipped' (M7.3.6).
+--
+-- Eviction is by insertion order (minimum 'rsSkipSeq' value), not by map
+-- key order, so legitimate skipped messages are never displaced by
+-- adversarially crafted DH public keys.
+evictOldest :: Map (ByteString, Word32) (ByteString, ByteString, Word64)
+            -> Map (ByteString, Word32) (ByteString, ByteString, Word64)
 evictOldest m
     | Map.size m <= maxTotalSkipped = m
     | otherwise =
-        -- Map is ordered by (dhPub, counter); entries with the lowest
-        -- counter values (oldest messages) sort first.  We drop excess
-        -- entries from the beginning of the map.
-        let !excess = Map.size m - maxTotalSkipped
-            !pruned = Map.fromAscList (drop excess (Map.toAscList m))
-        in pruned
+        -- Find the key with the minimum insertion sequence number and delete it,
+        -- then recurse until we are within the cap.  Using foldlWithKey' keeps
+        -- the traversal strict and avoids building intermediate lists.
+        let oldestKey = Map.foldlWithKey' pickOldest Nothing m
+        in case oldestKey of
+            Nothing  -> m  -- Should be unreachable; map is non-empty here.
+            Just key -> evictOldest (Map.delete key m)
+  where
+    -- | Accumulate the key whose value has the smallest insertSeq.
+    pickOldest :: Maybe (ByteString, Word32)
+               -> (ByteString, Word32)
+               -> (ByteString, ByteString, Word64)
+               -> Maybe (ByteString, Word32)
+    pickOldest Nothing  k (_, _, sq)  = Just k `seq` sq `seq` Just k
+    pickOldest (Just bestK) k (_, _, sq) =
+        case Map.lookup bestK m of
+            Just (_, _, bestSq) -> if sq < bestSq then Just k else Just bestK
+            Nothing             -> Just k
 
 ------------------------------------------------------------------------
 -- Nonce and header encoding

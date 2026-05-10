@@ -16,6 +16,7 @@ import Control.Monad (unless)
 import UmbraVox.Chat.Session (ChatSession, initChatSession, initChatSessionBob)
 import UmbraVox.Crypto.MLKEM (mlkemKeyGen,
     MLKEMEncapKey(..), MLKEMDecapKey(..), MLKEMCiphertext(..))
+import UmbraVox.Crypto.Ed25519 (ed25519Sign)
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Crypto.Signal.PQXDH
     (PQPreKeyBundle(..), PQXDHResult(..), pqxdhInitiate, pqxdhRespond)
@@ -66,29 +67,44 @@ genPQPreKey = do
     d <- randomBytes 32; z <- randomBytes 32; pure $! mlkemKeyGen d z
 
 -- Prekey bundle wire format -----------------------------------------------
+-- Layout (byte offsets):
+--   0..31   IK_x25519 pub  (32 bytes)
+--  32..63   IK_ed25519 pub (32 bytes)
+--  64..95   SPK pub        (32 bytes)
+--  96..159  SPK sig        (64 bytes)
+-- 160..163  PQ encap key length (Word32 BE)
+-- 164..163+pqLen  PQ encap key bytes
+-- 164+pqLen..163+pqLen+64  PQ key Ed25519 sig (64 bytes, M10.2.1)
+-- 228+pqLen  OPK flag+data
 serializeBundle :: IdentityKey -> BS.ByteString -> BS.ByteString
                 -> MLKEMEncapKey -> Maybe BS.ByteString -> BS.ByteString
-serializeBundle ik spkPub spkSig (MLKEMEncapKey pqpk) mOpk = BS.concat
-    [ ikX25519Public ik, ikEd25519Public ik, spkPub, spkSig
-    , putW32BE (fromIntegral (BS.length pqpk)), pqpk
-    , maybe (BS.singleton 0x00) (\k -> BS.singleton 0x01 <> k) mOpk ]
+serializeBundle ik spkPub spkSig (MLKEMEncapKey pqpk) mOpk =
+    let !pqSig = ed25519Sign (ikEd25519Secret ik) pqpk
+    in BS.concat
+        [ ikX25519Public ik, ikEd25519Public ik, spkPub, spkSig
+        , putW32BE (fromIntegral (BS.length pqpk)), pqpk
+        , pqSig
+        , maybe (BS.singleton 0x00) (\k -> BS.singleton 0x01 <> k) mOpk ]
 
 deserializeBundle :: BS.ByteString -> Maybe PQPreKeyBundle
 deserializeBundle bs
     | BS.length bs < 165 = Nothing
     | otherwise =
-        let !pqLen = fromIntegral (getW32BE (bsSlice 160 4 bs)) :: Int
-            !rest  = BS.drop (164 + pqLen) bs
+        let !pqLen    = fromIntegral (getW32BE (bsSlice 160 4 bs)) :: Int
+            !pqSigOff = 164 + pqLen
+            !opkOff   = pqSigOff + 64
+            !rest     = BS.drop opkOff bs
             decOpk r | BS.null r         = Nothing
                      | BS.index r 0 == 1 = Just (BS.take 32 (BS.drop 1 r))
                      | otherwise         = Nothing
-        in if BS.length bs < 164 + pqLen + 1 then Nothing
+        in if BS.length bs < opkOff + 1 then Nothing
            else Just PQPreKeyBundle
-               { pqpkbIdentityKey     = bsSlice 0  32 bs
-               , pqpkbIdentityEd25519 = bsSlice 32 32 bs
-               , pqpkbSignedPreKey    = bsSlice 64 32 bs
-               , pqpkbSPKSignature    = bsSlice 96 64 bs
+               { pqpkbIdentityKey     = bsSlice 0   32 bs
+               , pqpkbIdentityEd25519 = bsSlice 32  32 bs
+               , pqpkbSignedPreKey    = bsSlice 64  32 bs
+               , pqpkbSPKSignature    = bsSlice 96  64 bs
                , pqpkbPQPreKey        = MLKEMEncapKey (bsSlice 164 pqLen bs)
+               , pqpkbPQKeySignature  = bsSlice pqSigOff 64 bs
                , pqpkbOneTimePreKey   = decOpk rest }
 
 -- PQXDH Handshake ---------------------------------------------------------

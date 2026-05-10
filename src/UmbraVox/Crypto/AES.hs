@@ -1,9 +1,10 @@
 -- SPDX-License-Identifier: Apache-2.0
 -- | {-# REQ "CRYPTO-001" #-} AES-256 block cipher (FIPS 197)
 --
--- Pure Haskell reference implementation. NOT constant-time.
--- The S-box is implemented as a lookup table; the pure Haskell path
--- is for verification only. Production uses FFI to constant-time C.
+-- NOT CONSTANT-TIME -- Pure Haskell reference implementation.
+-- Production builds MUST use FFI to constant-time C (see doc/CRYPTO-SAFETY.md).
+-- Timing side-channels exist in: S-box lookups, scalar multiply branching,
+-- polynomial arithmetic, and GHASH multiplication.
 module UmbraVox.Crypto.AES
     ( aesEncrypt
     , aesDecrypt
