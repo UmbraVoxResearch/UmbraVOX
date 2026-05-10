@@ -7,7 +7,8 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 
 import Test.Util
-import UmbraVox.Crypto.MLKEM (mlkemKeyGen, MLKEMDecapKey)
+import UmbraVox.Crypto.Ed25519 (ed25519Sign)
+import UmbraVox.Crypto.MLKEM (mlkemKeyGen, MLKEMEncapKey(..), MLKEMDecapKey)
 import UmbraVox.Crypto.Signal.DoubleRatchet
     (RatchetState, ratchetInitAlice, ratchetInitBob,
      ratchetEncrypt, ratchetDecrypt, RatchetHeader)
@@ -74,6 +75,8 @@ makeSetup g0 =
         spkKP   = generateKeyPair spkSec
         spkSig  = signPreKey bobIK (kpPublic spkKP)
         (pqEK, pqDK) = mlkemKeyGen mlkemD mlkemZ
+        MLKEMEncapKey pqEKBytes = pqEK
+        pqSig   = ed25519Sign (ikEd25519Secret bobIK) pqEKBytes
         bundle  = PQPreKeyBundle
             { pqpkbIdentityKey     = ikX25519Public bobIK
             , pqpkbSignedPreKey    = kpPublic spkKP
@@ -81,6 +84,7 @@ makeSetup g0 =
             , pqpkbIdentityEd25519 = ikEd25519Public bobIK
             , pqpkbOneTimePreKey   = Nothing
             , pqpkbPQPreKey        = pqEK
+            , pqpkbPQKeySignature  = pqSig
             }
     in SessionSetup aliceIK bobIK spkSec (kpPublic spkKP)
                     ekSec mlkRand pqDK bundle aDHSec

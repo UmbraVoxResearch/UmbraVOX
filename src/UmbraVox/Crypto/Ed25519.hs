@@ -1,8 +1,10 @@
 -- SPDX-License-Identifier: Apache-2.0
 -- | {-# REQ "CRYPTO-006" #-} Ed25519 (RFC 8032 Section 5.1, PureEd25519)
 --
--- Pure Haskell reference implementation. NOT constant-time.
--- Production builds use FFI to constant-time C (see attic/doc-legacy-2026-04-28/03-cryptography.md).
+-- NOT CONSTANT-TIME -- Pure Haskell reference implementation.
+-- Production builds MUST use FFI to constant-time C (see doc/CRYPTO-SAFETY.md).
+-- Timing side-channels exist in: S-box lookups, scalar multiply branching,
+-- polynomial arithmetic, and GHASH multiplication.
 module UmbraVox.Crypto.Ed25519
     ( ed25519Sign
     , ed25519Verify

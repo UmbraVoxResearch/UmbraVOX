@@ -37,13 +37,14 @@ import UmbraVox.Crypto.Signal.DoubleRatchet
     , ratchetInitAlice, ratchetInitBob
     , ratchetEncrypt, ratchetDecrypt
     )
+import UmbraVox.Crypto.Ed25519 (ed25519Sign)
 import UmbraVox.Crypto.Signal.PQXDH
     ( PQPreKeyBundle(..), PQXDHResult(..), pqxdhInitiate )
 import UmbraVox.Crypto.Signal.X3DH
     ( generateIdentityKey, generateKeyPair, signPreKey
     , IdentityKey(..), KeyPair(..)
     )
-import UmbraVox.Crypto.MLKEM (mlkemKeyGen)
+import UmbraVox.Crypto.MLKEM (mlkemKeyGen, MLKEMEncapKey(..))
 import UmbraVox.Network.PeerExchange (PeerInfo(..), encodePeerList, decodePeerList)
 
 -- Posix file stat for permission checking
@@ -469,9 +470,14 @@ testDoubleRatchetMaxTotalSkipped = do
         -- get evicted first.
         preMap  = Map.fromList
                     [ ((fakeKey, fromIntegral i), ( BS.replicate 32 (fromIntegral (i .&. 255))
-                                                   , BS.replicate 32 (fromIntegral ((i + 1) .&. 255)) ))
+                                                   , BS.replicate 32 (fromIntegral ((i + 1) .&. 255))
+                                                   , fromIntegral i ))
                     | i <- [0 :: Int .. 4959] ]
-        bobWithPreMap = bobSt0 { rsSkippedKeys = preMap }
+        -- rsSkipSeq must be set to 4960 so that skipMessageKeys assigns
+        -- sequence numbers 4960..5059 to the real skipped keys, making
+        -- the pre-populated fake entries (seq 0..4959) the oldest and
+        -- therefore the first to be evicted by evictOldest (M10.3.5).
+        bobWithPreMap = bobSt0 { rsSkippedKeys = preMap, rsSkipSeq = 4960 }
 
     result <- ratchetDecrypt bobWithPreMap hdrLast ctLast tagLast
     case result of
@@ -568,6 +574,8 @@ testPqxdhSharedSecretNonEmpty = do
     let mlkemD = BS.replicate 32 0x42
         mlkemZ = BS.replicate 32 0x43
         (ekPQ, _dkPQ) = mlkemKeyGen mlkemD mlkemZ
+        MLKEMEncapKey ekPQBytes = ekPQ
+        pqSig = ed25519Sign (ikEd25519Secret bobIK) ekPQBytes
     let bundle = PQPreKeyBundle
             { pqpkbIdentityKey     = ikX25519Public bobIK
             , pqpkbSignedPreKey    = kpPublic spk
@@ -575,6 +583,7 @@ testPqxdhSharedSecretNonEmpty = do
             , pqpkbIdentityEd25519 = ikEd25519Public bobIK
             , pqpkbOneTimePreKey   = Nothing
             , pqpkbPQPreKey        = ekPQ
+            , pqpkbPQKeySignature  = pqSig
             }
         ekSecret  = hexDecode "4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d"
         mlkemRand = BS.replicate 32 0x55

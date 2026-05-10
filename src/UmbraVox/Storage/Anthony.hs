@@ -59,8 +59,8 @@ import UmbraVox.Storage.Schema (schemaStatements)
 -- Fix: Added a 'Maybe StorageKey' field to 'AnthonyDB'.  When a key is present,
 -- 'saveMessage' encrypts content with 'encryptField' before inserting and
 -- 'loadMessages' decrypts each row with 'decryptField' after loading.  Rows
--- written without a key (or by older versions) pass through 'decryptField'
--- unchanged thanks to its legacy-plaintext passthrough behaviour.
+-- that do not carry the @UVENC1:@ prefix (e.g. written by older versions)
+-- are dropped by 'decryptField' returning Nothing (M10.3.7).
 --
 -- Verified: 'openDBWithKey' populates the key; 'openDB' sets it to 'Nothing'
 -- for backward-compat.  Tests that use 'openDB' continue to see plaintext
@@ -185,9 +185,9 @@ saveMessage db convId sender content timestamp = do
 -- Returns @(sender, content, timestamp)@ tuples, oldest first.
 --
 -- When the 'AnthonyDB' handle carries a 'StorageKey', each row's @content@
--- field is decrypted with 'decryptField'.  Legacy plaintext rows (written
--- before encryption was enabled) pass through unchanged.  Rows whose
--- ciphertext fails authentication are dropped and do not appear in the result.
+-- field is decrypted with 'decryptField'.  Rows that do not carry the
+-- @UVENC1:@ prefix, or whose ciphertext fails GCM authentication, are
+-- dropped and do not appear in the result (M10.3.7).
 loadMessages :: AnthonyDB -> Int -> Int -> IO [(String, String, Int)]
 loadMessages db convId limit = do
     output <- querySQL db

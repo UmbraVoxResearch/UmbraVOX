@@ -1,7 +1,10 @@
 -- SPDX-License-Identifier: Apache-2.0
 -- | {-# REQ "CRYPTO-010" #-} ML-KEM-768 (FIPS 203, formerly CRYSTALS-Kyber)
 --
--- Pure Haskell reference implementation. NOT constant-time.
+-- NOT CONSTANT-TIME -- Pure Haskell reference implementation.
+-- Production builds MUST use FFI to constant-time C (see doc/CRYPTO-SAFETY.md).
+-- Timing side-channels exist in: S-box lookups, scalar multiply branching,
+-- polynomial arithmetic, and GHASH multiplication.
 --
 -- Uses the correct FIPS 202 hash functions as required by FIPS 203:
 --   H = SHA3-256, G = SHA3-512, PRF/J = SHAKE-256, XOF = SHAKE-128.

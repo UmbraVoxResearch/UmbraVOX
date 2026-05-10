@@ -66,6 +66,12 @@ import qualified Test.Security.M11KeyMgmt as M11KeyMgmt
 import qualified Test.Security.M11NoiseDH as M11NoiseDH
 import qualified Test.Security.M11Protocol as M11Protocol
 import qualified Test.Security.M11High as M11High
+import qualified Test.Security.M11HighAuth as M11HighAuth
+import qualified Test.Security.M11HighFS as M11HighFS
+import qualified Test.Security.M11HighPQ as M11HighPQ
+import qualified Test.Security.M11HighProto as M11HighProto
+import qualified Test.Security.M11HighKeyImpl as M11HighKeyImpl
+import qualified Test.Security.M11HighSymHash as M11HighSymHash
 import qualified Test.Security.M11SideChannel as M11SideChannel
 import qualified Test.Security.M11Symmetric as M11Symmetric
 import qualified Test.Security.M11Asymmetric as M11Asymmetric
@@ -170,8 +176,20 @@ runSuiteArg suiteArg =
             [Suite "m11-protocol" M11Protocol.runTests]
         "m11-high" -> runSuiteGroup "UmbraVox M11 High-Priority Attack Suite"
             [Suite "m11-high" M11High.runTests]
+        "m11-high-auth" -> runSuiteGroup "UmbraVox M11 High-Priority Identity and Auth Attack Suite"
+            [Suite "m11-high-auth" M11HighAuth.runTests]
         "m11-noise-dh" -> runSuiteGroup "UmbraVox Noise IK DH-Leg Vector and Negative Tests"
             [Suite "m11-noise-dh" M11NoiseDH.runTests]
+        "m11-high-fs" -> runSuiteGroup "UmbraVox M11 High-Priority Forward Secrecy and Metadata/Traffic Suite"
+            [Suite "m11-high-fs" M11HighFS.runTests]
+        "m11-high-proto" -> runSuiteGroup "UmbraVox M11 High-Priority Protocol Attack Suite (batch 2)"
+            [Suite "m11-high-proto" M11HighProto.runTests]
+        "m11-high-keyimpl" -> runSuiteGroup "UmbraVox M11 High-Priority Key Management and Impl Bug Suite"
+            [Suite "m11-high-keyimpl" M11HighKeyImpl.runTests]
+        "m11-high-symhash" -> runSuiteGroup "UmbraVox M11 High-Priority Symmetric Crypto and Hash Attack Suite"
+            [Suite "m11-high-symhash" M11HighSymHash.runTests]
+        "m11-high-pq" -> runSuiteGroup "UmbraVox M11 High-Priority Post-Quantum Attack Suite"
+            [Suite "m11-high-pq" M11HighPQ.runTests]
         "integrity" -> runSuiteGroup "UmbraVox Integrity Suite" integritySuites
         "soak" -> runSuiteGroup "UmbraVox Soak Suite" soakSuites
         "differential" -> runSuiteGroup "UmbraVox Differential C vs Haskell Suite"
@@ -277,7 +295,13 @@ coreSuites =
     , Suite "m11-sidechannel" M11SideChannel.runTests
     , Suite "m11-protocol" M11Protocol.runTests
     , Suite "m11-high" M11High.runTests
+    , Suite "m11-high-auth" M11HighAuth.runTests
     , Suite "m11-noise-dh" M11NoiseDH.runTests
+    , Suite "m11-high-fs" M11HighFS.runTests
+    , Suite "m11-high-proto" M11HighProto.runTests
+    , Suite "m11-high-keyimpl" M11HighKeyImpl.runTests
+    , Suite "m11-high-symhash" M11HighSymHash.runTests
+    , Suite "m11-high-pq" M11HighPQ.runTests
     ]
 
 coreCryptoSuites :: [Suite]
@@ -445,5 +469,6 @@ validSuiteArgs =
     , "integrity", "soak", "deferred", "differential", "adversarial", "unicode"
     , "regression", "regression-m7", "regression-m8", "regression-net"
     , "m11-keymgmt", "m11-symmetric", "m11-asymmetric", "m11-sidechannel"
-    , "m11-protocol", "m11-high", "m11-noise-dh", "all"
+    , "m11-protocol", "m11-high", "m11-high-auth", "m11-noise-dh", "m11-high-fs", "m11-high-proto"
+    , "m11-high-keyimpl", "m11-high-symhash", "m11-high-pq", "all"
     ]

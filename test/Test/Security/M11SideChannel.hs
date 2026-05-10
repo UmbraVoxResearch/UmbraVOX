@@ -42,8 +42,9 @@ import UmbraVox.Crypto.ConstantTime (constantEq)
 import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
 import UmbraVox.Crypto.Ed25519 (ed25519Sign, ed25519Verify, ed25519PublicKey)
 import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
+import UmbraVox.Crypto.Ed25519 (ed25519Sign)
 import UmbraVox.Crypto.MLKEM
-    ( MLKEMCiphertext(..)
+    ( MLKEMEncapKey(..), MLKEMCiphertext(..)
     , mlkemKeyGen, mlkemEncaps, mlkemDecaps
     )
 import UmbraVox.Crypto.Signal.PQXDH
@@ -599,6 +600,8 @@ testSC019PQXDHEncapDecapAgreement = do
     let mlkemD = BS.replicate 32 0x42
         mlkemZ = BS.replicate 32 0x43
         (ekPQ, dkPQ) = mlkemKeyGen mlkemD mlkemZ
+        MLKEMEncapKey ekPQBytes = ekPQ
+        pqSig = ed25519Sign (ikEd25519Secret bobIK) ekPQBytes
 
     let bundle = PQPreKeyBundle
             { pqpkbIdentityKey     = ikX25519Public bobIK
@@ -607,6 +610,7 @@ testSC019PQXDHEncapDecapAgreement = do
             , pqpkbIdentityEd25519 = ikEd25519Public bobIK
             , pqpkbOneTimePreKey   = Nothing
             , pqpkbPQPreKey        = ekPQ
+            , pqpkbPQKeySignature  = pqSig
             }
 
     let ekSecret   = BS.replicate 32 0xE1

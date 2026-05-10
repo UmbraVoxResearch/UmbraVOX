@@ -183,10 +183,26 @@ case "$mode" in
     check_artifact
     if [[ -n "${UMBRAVOX_QEMU_SMOKE_RUNNER:-}" ]]; then
       echo "running QEMU smoke runner command from UMBRAVOX_QEMU_SMOKE_RUNNER"
+      # Finding:   UMBRAVOX_QEMU_SMOKE_RUNNER was passed verbatim to
+      #            `bash -lc`, allowing arbitrary shell expansion and
+      #            making it impossible to pass paths with spaces safely.
+      # Vulnerability: an attacker who controls the environment variable
+      #            (or a misconfigured CI job) could inject shell
+      #            metacharacters and execute arbitrary commands under
+      #            the login shell's PATH.
+      # Fix:       Validate that the value is a path to an existing
+      #            executable before use, then exec it directly so no
+      #            shell interpretation occurs.
+      # Verified:  `command -v` resolves PATH lookups; `test -x` covers
+      #            absolute paths; `exec` replaces the current process
+      #            with the runner, eliminating the sub-shell attack surface.
+      if ! command -v "$UMBRAVOX_QEMU_SMOKE_RUNNER" >/dev/null 2>&1 && \
+         ! test -x "$UMBRAVOX_QEMU_SMOKE_RUNNER"; then
+        die "UMBRAVOX_QEMU_SMOKE_RUNNER is not a valid executable: $UMBRAVOX_QEMU_SMOKE_RUNNER"
+      fi
       # Intended usage: provide a host-specific command that boots a prepared
       # guest image and performs in-guest bundle checks.
-      bash -lc "$UMBRAVOX_QEMU_SMOKE_RUNNER"
-      exit 0
+      exec "$UMBRAVOX_QEMU_SMOKE_RUNNER"
     fi
     if [[ -n "${UMBRAVOX_QEMU_KERNEL:-}" ]] || [[ -n "${UMBRAVOX_QEMU_INITRD:-}" ]] || [[ -n "${UMBRAVOX_QEMU_ROOTFS:-}" ]] || [[ -n "${UMBRAVOX_QEMU_APPEND:-}" ]] || [[ -n "${UMBRAVOX_QEMU_PROFILE:-}" ]]; then
       echo "running QEMU pinned-boot smoke path from UMBRAVOX_QEMU_* inputs"
@@ -213,8 +229,16 @@ EOF
     check_artifact
     if [[ -n "${UMBRAVOX_FIRECRACKER_SMOKE_RUNNER:-}" ]]; then
       echo "running Firecracker smoke runner command from UMBRAVOX_FIRECRACKER_SMOKE_RUNNER"
-      bash -lc "$UMBRAVOX_FIRECRACKER_SMOKE_RUNNER"
-      exit 0
+      # Finding:   UMBRAVOX_FIRECRACKER_SMOKE_RUNNER was passed verbatim
+      #            to `bash -lc` — same shell-injection surface as the
+      #            QEMU runner above.
+      # Fix:       Validate executable existence, then exec directly.
+      # Verified:  mirrors the QEMU runner fix; no shell metachar expansion.
+      if ! command -v "$UMBRAVOX_FIRECRACKER_SMOKE_RUNNER" >/dev/null 2>&1 && \
+         ! test -x "$UMBRAVOX_FIRECRACKER_SMOKE_RUNNER"; then
+        die "UMBRAVOX_FIRECRACKER_SMOKE_RUNNER is not a valid executable: $UMBRAVOX_FIRECRACKER_SMOKE_RUNNER"
+      fi
+      exec "$UMBRAVOX_FIRECRACKER_SMOKE_RUNNER"
     fi
     if [[ -n "${UMBRAVOX_FIRECRACKER_KERNEL:-}" ]] || [[ -n "${UMBRAVOX_FIRECRACKER_ROOTFS:-}" ]] || [[ -n "${UMBRAVOX_FIRECRACKER_CONFIG:-}" ]]; then
       echo "running Firecracker pinned-boot smoke path from UMBRAVOX_FIRECRACKER_* inputs"

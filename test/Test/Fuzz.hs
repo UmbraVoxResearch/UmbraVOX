@@ -19,7 +19,7 @@ import UmbraVox.Crypto.AES (aesEncrypt, aesDecrypt)
 import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
 import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
 import UmbraVox.Crypto.Ed25519 (ed25519Sign, ed25519Verify, ed25519PublicKey)
-import UmbraVox.Crypto.MLKEM (mlkemKeyGen, mlkemEncaps, mlkemDecaps)
+import UmbraVox.Crypto.MLKEM (mlkemKeyGen, mlkemEncaps, mlkemDecaps, MLKEMEncapKey(..))
 import UmbraVox.Crypto.HMAC (hmacSHA256, hmacSHA512)
 import UmbraVox.Crypto.HKDF (hkdf)
 import UmbraVox.Crypto.Poly1305 (poly1305)
@@ -324,6 +324,8 @@ fuzzPQXDH = checkProperty "PQXDH: initiate/respond derive same secret" iteration
             (mlkemD, g7)      = nextBytes 32 g6
             (mlkemZ, g8)      = nextBytes 32 g7
             (ek, dk)          = mlkemKeyGen mlkemD mlkemZ
+            MLKEMEncapKey ekBytes = ek
+            pqSig             = ed25519Sign (ikEd25519Secret bobIK) ekBytes
             -- Build PQ prekey bundle
             bundle = PQPreKeyBundle
                 { pqpkbIdentityKey     = ikX25519Public bobIK
@@ -332,6 +334,7 @@ fuzzPQXDH = checkProperty "PQXDH: initiate/respond derive same secret" iteration
                 , pqpkbIdentityEd25519 = ikEd25519Public bobIK
                 , pqpkbOneTimePreKey   = Just (kpPublic opk)
                 , pqpkbPQPreKey        = ek
+                , pqpkbPQKeySignature  = pqSig
                 }
             -- Alice's ephemeral secret and ML-KEM randomness
             (ekSecret, g9)    = nextBytes 32 g8

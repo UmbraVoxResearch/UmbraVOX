@@ -8,8 +8,8 @@
 -- expose plaintext secrets.
 --
 -- Encrypted fields carry the prefix @UVENC1:@ followed by hex-encoded
--- @nonce(12) || ciphertext || tag(16)@.  Legacy plaintext values pass
--- through 'decryptField' unchanged for migration safety.
+-- @nonce(12) || ciphertext || tag(16)@.  'decryptField' rejects any value
+-- that does not carry this prefix — all stored fields must be encrypted.
 module UmbraVox.Storage.Encryption
     ( StorageKey
     , deriveStorageKey
@@ -148,16 +148,33 @@ encryptField key plainStr = do
         !blob           = nonce <> ciphertext <> tag
     return (encPrefix ++ C8.unpack (toHex blob))
 
+-- Finding    M10.3.7 — 'decryptField' returned @Just input@ (plaintext
+--            passthrough) for any value that lacked the @UVENC1:@ prefix,
+--            treating unencrypted stored values as valid decrypted output.
+--            This was introduced as a migration shim before v0.1.0 but
+--            creates a silent data-integrity hole: a corrupt or injected
+--            plaintext record is indistinguishable from a successfully
+--            decrypted field.
+-- Vulnerability: An attacker (or bug) that writes a raw plaintext value
+--            into a storage field will have it silently accepted by callers
+--            that rely on 'decryptField' returning 'Nothing' to signal
+--            tampered or unencrypted data.  Pre-release code must enforce
+--            the invariant that all stored fields are encrypted.
+-- Fix:       'decryptField' now returns 'Nothing' for any input that does
+--            not carry the @UVENC1:@ prefix.  All stored data must be
+--            encrypted; there is no passthrough path.
+-- Verified:  'testMigrationSafe' updated to assert 'Nothing' for legacy
+--            plaintext; all other tests use 'encryptField' before storage.
+--
 -- | Decrypt a field value.
 --
--- * If the input does not start with @\"UVENC1:\"@, it is returned
---   unchanged ('Just') for migration-safe passthrough of legacy
---   plaintext.
--- * Returns 'Nothing' on malformed ciphertext or authentication
---   failure.
+-- Returns 'Nothing' for any input that does not start with @\"UVENC1:\"@
+-- (including legacy plaintext values), and 'Nothing' on malformed
+-- ciphertext or GCM authentication failure.  All stored fields must be
+-- encrypted — there is no passthrough path.
 decryptField :: StorageKey -> String -> Maybe String
 decryptField key input
-    | not (isEncryptedField input) = Just input
+    | not (isEncryptedField input) = Nothing
     | otherwise =
         let hexPart = drop (length encPrefix) input
         in case fromHex (C8.pack hexPart) of
