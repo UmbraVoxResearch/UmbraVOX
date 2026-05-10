@@ -240,7 +240,9 @@ parseOptionalName body =
         Nothing -> Nothing
 
 sanitizeName :: String -> String
-sanitizeName = map (\c -> if c == ';' || c == '\n' || c == '\r' then '_' else c)
+sanitizeName =
+    take 64
+    . filter (\c -> let cp = fromEnum c in cp >= 0x20 && cp <= 0x7E && c /= ';')
 
 -- | Extract and decode a hex-encoded field.
 parseHexField :: ByteString -> ByteString -> Maybe ByteString

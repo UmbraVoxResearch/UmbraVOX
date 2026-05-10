@@ -14,7 +14,8 @@ import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
 import qualified Data.Map.Strict as Map
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Word (Word8)
-import System.Directory (doesFileExist)
+import System.Directory (doesFileExist, canonicalizePath, getHomeDirectory)
+import Data.List (isPrefixOf)
 import UmbraVox.App.RuntimeLog (logEvent)
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Render (isPfx)
@@ -119,24 +120,32 @@ sendCurrentMessage st = do
                 let path = drop 6 buf
                 exists <- doesFileExist path
                 if exists then do
-                    contents <- BS.readFile path
-                    result <- sendToSession si (encodeFilePayload path contents)
-                    case result of
-                        SendUnavailable ->
-                            setStatusLocal st ("Session offline; reconnect required for " ++ siPeerName si)
-                        _ -> do
-                            now <- timestamp
-                            modifyIORef' (siHistory si)
-                                (("["++now++"] You: [sent file "++path++"]"):)
-                            logEvent cfg "message.send.file"
-                                [ ("session_id", show sid)
-                                , ("peer", siPeerName si)
-                                , ("path", path)
-                                , ("bytes", show (BS.length contents))
-                                ]
-                            writeIORef (asInputBuf st) ""
-                            writeIORef (asChatScroll st) 0
-                            persistMessageIfEnabled cfg sid "You" buf
+                    canonPath <- canonicalizePath path
+                    homeDir   <- getHomeDirectory
+                    cwd       <- canonicalizePath "."
+                    let allowed = homeDir `isPrefixOf` canonPath
+                                  || cwd   `isPrefixOf` canonPath
+                    if not allowed
+                        then setStatusLocal st "Access denied: file must be under home or working directory"
+                        else do
+                            contents <- BS.readFile canonPath
+                            result <- sendToSession si (encodeFilePayload canonPath contents)
+                            case result of
+                                SendUnavailable ->
+                                    setStatusLocal st ("Session offline; reconnect required for " ++ siPeerName si)
+                                _ -> do
+                                    now <- timestamp
+                                    modifyIORef' (siHistory si)
+                                        (("["++now++"] You: [sent file "++canonPath++"]"):)
+                                    logEvent cfg "message.send.file"
+                                        [ ("session_id", show sid)
+                                        , ("peer", siPeerName si)
+                                        , ("path", canonPath)
+                                        , ("bytes", show (BS.length contents))
+                                        ]
+                                    writeIORef (asInputBuf st) ""
+                                    writeIORef (asChatScroll st) 0
+                                    persistMessageIfEnabled cfg sid "You" buf
                 else setStatusLocal st "File not found"
             else do
                 result <- sendToSession si (encodeStringUtf8 buf)
