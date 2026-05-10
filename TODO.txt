@@ -292,6 +292,35 @@ protocol, security architecture, encryption protocol, input validation).
   [x] M7.4.4 Add process pooling or native SQLite bindings (Anthony.hs:264).
 
 ================================================================================
+MILESTONE M8: SECURITY AUDIT ROUND 2 FIXES
+================================================================================
+Note: Found by 5 deep-dive expert reviews (crypto re-audit, protocol re-audit,
+adversarial fuzzing, memory/resource safety, side-channel/timing analysis).
+All 24 M7 fixes verified correct by re-audit.
+
+[ ] M8.1 CRITICAL fixes
+  [ ] M8.1.1 Reject ratchet counter >= 0xFFFFFFFE to prevent nonce reuse on overflow (DoubleRatchet.hs:229).
+  [ ] M8.1.2 Fix Poly1305 key clamping mask per RFC 8439 Section 2.5.1 (Poly1305.hs:50-51).
+  [ ] M8.1.3 Validate payload length after recv in handshake (Handshake.hs:123-135).
+  [ ] M8.1.4 Fix containsDangerousSQL to handle newline/tab bypass (Anthony.hs:295-312).
+
+[ ] M8.2 HIGH fixes
+  [ ] M8.2.1 Cap PEX ipLen to 16 bytes max (PeerExchange.hs:121).
+  [ ] M8.2.2 Fix recvFrame off-by-one: reject len >= maxFrameSize (Handshake.hs:318).
+  [ ] M8.2.3 Add termination condition to acceptLoopBoundTUI (RuntimeNetwork.hs:127).
+  [ ] M8.2.4 Add timeout to runSQL/querySQL subprocess calls (Anthony.hs:263).
+  [ ] M8.2.5 Track and kill forked connection threads on shutdown (RuntimeNetwork.hs:164).
+  [ ] M8.2.6 Close socket on exception in connectAddr via bracket (Transport.hs:110).
+  [ ] M8.2.7 Reject Noise msg2 with unexpected trailing bytes (Handshake.hs:113).
+
+[ ] M8.3 MEDIUM fixes
+  [ ] M8.3.1 Reject zero-length ciphertext in decodeWire (Wire.hs:49-58).
+  [ ] M8.3.2 Log warning on trusted key hex parse failure (Anthony.hs:210-217).
+  [ ] M8.3.3 Use atomicWriteIORef for asLastRenderToken (Types.hs:103).
+  [ ] M8.3.4 Validate Keccak rate is multiple of 8 (Keccak.hs:304-306).
+  [ ] M8.3.5 Reject empty HMAC key with explicit error (HMAC.hs:37-39).
+
+================================================================================
 OUTSIDE MVP (DEFERRED)
 ================================================================================
 
