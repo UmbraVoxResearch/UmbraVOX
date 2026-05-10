@@ -35,7 +35,7 @@ key1 :: StorageKey
 key1 = testStorageKey
 
 key2 :: StorageKey
-key2 = deriveStorageKey (BS.pack [32..63])
+key2 = deriveStorageKey (BS.replicate 32 0x01) (BS.pack [32..63])
 
 ------------------------------------------------------------------------
 -- Tests
@@ -81,8 +81,9 @@ testLargeContent = do
 
 testDeriveKeyDeterministic :: IO Bool
 testDeriveKeyDeterministic = do
-    let k1 = deriveStorageKey (BS.pack [0..31])
-        k2 = deriveStorageKey (BS.pack [0..31])
+    let salt = BS.replicate 32 0xAB
+        k1 = deriveStorageKey salt (BS.pack [0..31])
+        k2 = deriveStorageKey salt (BS.pack [0..31])
     assertEq "deriveKey: deterministic" k1 k2
 
 testEncryptedPrefix :: IO Bool

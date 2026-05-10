@@ -200,7 +200,7 @@ fuzzParseAnnouncement = checkPropertyIO
     prop g = do
         let (bs, g1) = nextBytesRange 0 200 g
             (addr, _) = nextSockAddr g1
-        result <- try (evaluate (parseAnnouncement bs addr))
+        result <- try (evaluate (parseAnnouncement bs addr 0))
                       :: IO (Either SomeException (Maybe _))
         case result of
             Left _  -> pure False
@@ -221,11 +221,11 @@ fuzzBuildParseAnnouncement = checkPropertyIO
             payload = buildAnnouncement port pubkey
             addr = NS.SockAddrInet 5353
                        (NS.tupleToHostAddress (192, 168, 1, 42))
-        result <- try (evaluate (parseAnnouncement payload addr))
+        result <- try (evaluate (parseAnnouncement payload addr 0))
                       :: IO (Either SomeException (Maybe _))
         case result of
-            Left _       -> pure False
-            Right Nothing -> pure False
+            Left _         -> pure False
+            Right Nothing  -> pure False
             Right (Just _) -> pure True
 
 ------------------------------------------------------------------------

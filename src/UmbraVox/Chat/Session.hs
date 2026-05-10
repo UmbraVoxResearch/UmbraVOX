@@ -12,14 +12,15 @@ module UmbraVox.Chat.Session
 
 import Data.ByteString (ByteString)
 
-import UmbraVox.Chat.Wire (encodeWire, decodeWire)
+import UmbraVox.Chat.Wire (decodeWire, encodeWire)
 
 import UmbraVox.Crypto.Signal.DoubleRatchet
-    ( RatchetState(..)
+    ( RatchetError(..)
+    , RatchetState(..)
+    , ratchetDecrypt
+    , ratchetEncrypt
     , ratchetInitAlice
     , ratchetInitBob
-    , ratchetEncrypt
-    , ratchetDecrypt
     )
 
 -- | An active chat session backed by a Double Ratchet.
@@ -31,13 +32,14 @@ data ChatSession = ChatSession
 --
 -- @initChatSession sharedSecret ourDHPub peerDHPub@ creates a session
 -- where we act as Alice (initiator).
+-- Returns 'Nothing' if the initial DH output is all-zero (low-order point).
 initChatSession :: ByteString  -- ^ Shared secret from key agreement (32 bytes)
                 -> ByteString  -- ^ Our DH secret key (32 bytes)
                 -> ByteString  -- ^ Peer's DH public key (32 bytes)
-                -> IO ChatSession
-initChatSession sharedSecret ourDHSecret peerDHPub = do
-    let !st = ratchetInitAlice sharedSecret peerDHPub ourDHSecret
-    pure ChatSession { csRatchet = st }
+                -> IO (Maybe ChatSession)
+initChatSession sharedSecret ourDHSecret peerDHPub =
+    pure (fmap (\st -> ChatSession { csRatchet = st })
+               (ratchetInitAlice sharedSecret peerDHPub ourDHSecret))
 
 -- | Initialize a chat session for Bob (the responder).
 --
@@ -51,25 +53,30 @@ initChatSessionBob sharedSecret bobSPKSecret = do
     pure ChatSession { csRatchet = st }
 
 -- | Encrypt and send a chat message.
--- Returns the updated session and the serialized wire bytes
--- (header + ciphertext + tag).
+-- Returns @Right (updatedSession, wireBytes)@ on success, or
+-- @Left CounterExhausted@ when the ratchet send counter is exhausted.
 sendChatMessage :: ChatSession -> ByteString
-                -> IO (ChatSession, ByteString)
+                -> IO (Either RatchetError (ChatSession, ByteString))
 sendChatMessage session plaintext = do
-    (st', hdr, ct, tag) <- ratchetEncrypt (csRatchet session) plaintext
-    let !wire = encodeWire hdr ct tag
-    pure (session { csRatchet = st' }, wire)
+    result <- ratchetEncrypt (csRatchet session) plaintext
+    pure $ case result of
+        Left err               -> Left err
+        Right (st', hdr, ct, tag) ->
+            let !wire = encodeWire hdr ct tag
+            in Right (session { csRatchet = st' }, wire)
 
 -- | Decrypt a received chat message.
--- Returns @Just (updatedSession, plaintext)@ on success, @Nothing@ on
--- authentication failure.
+-- Returns @Right (Just (updatedSession, plaintext))@ on success,
+-- @Right Nothing@ on authentication failure, or
+-- @Left CounterExhausted@ when the ratchet receive counter is exhausted.
 recvChatMessage :: ChatSession -> ByteString
-                -> IO (Maybe (ChatSession, ByteString))
+                -> IO (Either RatchetError (Maybe (ChatSession, ByteString)))
 recvChatMessage session wire =
     case decodeWire wire of
-        Nothing -> pure Nothing
+        Nothing -> pure (Right Nothing)
         Just (hdr, ct, tag) -> do
             result <- ratchetDecrypt (csRatchet session) hdr ct tag
             pure $ case result of
-                Nothing           -> Nothing
-                Just (st', pt)    -> Just (session { csRatchet = st' }, pt)
+                Left err            -> Left err
+                Right Nothing       -> Right Nothing
+                Right (Just (st', pt)) -> Right (Just (session { csRatchet = st' }, pt))

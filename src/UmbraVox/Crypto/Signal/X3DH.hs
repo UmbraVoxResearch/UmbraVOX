@@ -61,23 +61,26 @@ data X3DHResult = X3DHResult
 ------------------------------------------------------------------------
 
 -- | Generate an X25519 keypair from a 32-byte secret.
+-- Basepoint multiplication cannot produce all-zero for any non-zero secret.
 generateKeyPair :: ByteString -> KeyPair
 generateKeyPair secret =
-    KeyPair
-        { kpSecret = secret
-        , kpPublic = x25519 secret x25519Basepoint
-        }
+    case x25519 secret x25519Basepoint of
+        Just pub -> KeyPair { kpSecret = secret, kpPublic = pub }
+        Nothing  -> error "generateKeyPair: x25519 basepoint returned all-zero (impossible)"
 
 -- | Generate an identity key from two 32-byte secrets:
 -- the first for Ed25519, the second for X25519.
 generateIdentityKey :: ByteString -> ByteString -> IdentityKey
 generateIdentityKey edSecret xSecret =
-    IdentityKey
-        { ikEd25519Secret = edSecret
-        , ikEd25519Public = ed25519PublicKey edSecret
-        , ikX25519Secret  = xSecret
-        , ikX25519Public  = x25519 xSecret x25519Basepoint
-        }
+    case x25519 xSecret x25519Basepoint of
+        Just xPub ->
+            IdentityKey
+                { ikEd25519Secret = edSecret
+                , ikEd25519Public = ed25519PublicKey edSecret
+                , ikX25519Secret  = xSecret
+                , ikX25519Public  = xPub
+                }
+        Nothing -> error "generateIdentityKey: x25519 basepoint returned all-zero (impossible)"
 
 ------------------------------------------------------------------------
 -- SPK signing
@@ -134,19 +137,22 @@ x3dhInitiate aliceIK bundle ekSecret =
     else
         let -- Step 2: Generate ephemeral keypair
             !ek = generateKeyPair ekSecret
-            -- Step 3: Compute DH values
-            !dh1 = x25519 (ikX25519Secret aliceIK) (pkbSignedPreKey bundle)
-            !dh2 = x25519 (kpSecret ek)             (pkbIdentityKey bundle)
-            !dh3 = x25519 (kpSecret ek)             (pkbSignedPreKey bundle)
-            !mDh4 = fmap (x25519 (kpSecret ek)) (pkbOneTimePreKey bundle)
-            -- Step 4: Derive master secret (with identity binding)
-            !masterSecret = deriveSecret dh1 dh2 dh3 mDh4
-                                (ikX25519Public aliceIK) (pkbIdentityKey bundle)
-        in Just X3DHResult
-            { x3dhSharedSecret = masterSecret
-            , x3dhEphemeralKey = kpPublic ek
-            , x3dhUsedOPK      = pkbOneTimePreKey bundle
-            }
+        -- Step 3: Compute DH values; abort if any yields all-zero (low-order point)
+        in do
+            !dh1  <- x25519 (ikX25519Secret aliceIK) (pkbSignedPreKey bundle)
+            !dh2  <- x25519 (kpSecret ek)             (pkbIdentityKey bundle)
+            !dh3  <- x25519 (kpSecret ek)             (pkbSignedPreKey bundle)
+            !mDh4 <- case pkbOneTimePreKey bundle of
+                         Nothing  -> Just Nothing
+                         Just opk -> fmap Just (x25519 (kpSecret ek) opk)
+            let -- Step 4: Derive master secret (with identity binding)
+                !masterSecret = deriveSecret dh1 dh2 dh3 mDh4
+                                    (ikX25519Public aliceIK) (pkbIdentityKey bundle)
+            Just X3DHResult
+                { x3dhSharedSecret = masterSecret
+                , x3dhEphemeralKey = kpPublic ek
+                , x3dhUsedOPK      = pkbOneTimePreKey bundle
+                }
 
 ------------------------------------------------------------------------
 -- X3DH Response (Bob's side)
@@ -162,11 +168,14 @@ x3dhRespond :: IdentityKey       -- ^ Bob's identity key
             -> Maybe ByteString  -- ^ Bob's OPK secret key (if used)
             -> ByteString        -- ^ Alice's X25519 identity public key
             -> ByteString        -- ^ Alice's ephemeral public key
-            -> ByteString        -- ^ Shared secret (32 bytes)
-x3dhRespond bobIK spkSecret mOPKSecret aliceIKPub aliceEKPub =
-    let -- Mirror the DH computations from Alice's perspective
-        !dh1 = x25519 spkSecret              aliceIKPub
-        !dh2 = x25519 (ikX25519Secret bobIK) aliceEKPub
-        !dh3 = x25519 spkSecret              aliceEKPub
-        !mDh4 = fmap (\opkSec -> x25519 opkSec aliceEKPub) mOPKSecret
-    in deriveSecret dh1 dh2 dh3 mDh4 aliceIKPub (ikX25519Public bobIK)
+            -> Maybe ByteString  -- ^ Shared secret (32 bytes), or Nothing on low-order point
+x3dhRespond bobIK spkSecret mOPKSecret aliceIKPub aliceEKPub = do
+    -- Mirror the DH computations from Alice's perspective
+    -- Abort if any DH yields all-zero (low-order point attack)
+    !dh1  <- x25519 spkSecret              aliceIKPub
+    !dh2  <- x25519 (ikX25519Secret bobIK) aliceEKPub
+    !dh3  <- x25519 spkSecret              aliceEKPub
+    !mDh4 <- case mOPKSecret of
+                 Nothing     -> Just Nothing
+                 Just opkSec -> fmap Just (x25519 opkSec aliceEKPub)
+    Just (deriveSecret dh1 dh2 dh3 mDh4 aliceIKPub (ikX25519Public bobIK))

@@ -110,7 +110,9 @@ testSY002GcmCounterWrap = do
     let sharedSecret  = BS.replicate 32 0xAA
         bobSPK        = BS.replicate 32 0xBB
         aliceDHSecret = BS.replicate 32 0xCC
-        baseState     = ratchetInitAlice sharedSecret bobSPK aliceDHSecret
+        baseState     = case ratchetInitAlice sharedSecret bobSPK aliceDHSecret of
+                            Just s  -> s
+                            Nothing -> error "testSY002: ratchetInitAlice returned Nothing"
         nearExhausted = baseState { rsSendN = (0xFFFFFFFE :: Word32) }
     result <- try (evaluate nearExhausted)
                   :: IO (Either SomeException RatchetState)
@@ -440,7 +442,9 @@ testSY024RatchetChainKeyNonZero = do
     let sharedSecret  = BS.pack [0x01..0x20]   -- 32 non-zero bytes
         bobSPK        = BS.pack [0x21..0x40]
         aliceDHSecret = BS.pack [0x41..0x60]
-        st = ratchetInitAlice sharedSecret bobSPK aliceDHSecret
+        st = case ratchetInitAlice sharedSecret bobSPK aliceDHSecret of
+                 Just s  -> s
+                 Nothing -> error "testSY024: ratchetInitAlice returned Nothing"
         chainKey = rsSendChain st
         allZero  = BS.all (== 0) chainKey
     ok1 <- assertEq "SY-024 Ratchet chain key: rsSendChain is 32 bytes"

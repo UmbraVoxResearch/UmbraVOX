@@ -18,6 +18,7 @@ import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.List (isInfixOf)
 import qualified Data.ByteString as BS
 import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 import UmbraVox.BuildProfile (loadPackagedPluginCatalog, loadPackagedPluginRuntimeCatalog)
 import UmbraVox.Network.ProviderCatalog
     ( loadTransportProviderCatalog
@@ -87,6 +88,7 @@ mkTestConfig = do
         <*> newIORef Nothing     -- cfgAnthonyDB
         <*> newIORef Promiscuous -- cfgConnectionMode
         <*> newIORef []          -- cfgTrustedKeys
+        <*> newIORef Set.empty   -- cfgTofoKeys
 
 -- | Add a loopback session with empty history.
 addTestSession :: AppConfig -> String -> IO SessionId
@@ -100,7 +102,10 @@ addTestSessionWithHistory cfg label history = do
     secret <- randomBytes 32
     dhSec <- randomBytes 32
     peerPub <- randomBytes 32
-    session <- initChatSession secret dhSec peerPub
+    mSession <- initChatSession secret dhSec peerPub
+    let session = case mSession of
+                      Just s  -> s
+                      Nothing -> error "addTestSessionWithHistory: initChatSession returned Nothing (impossible with random keys)"
     ref <- newIORef session
     lock <- newMVar ()
     histRef <- newIORef history

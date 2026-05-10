@@ -29,8 +29,13 @@ mkSessionPair g0 = do
     let (sharedSecret, g1) = nextBytes 32 g0
         (aliceDHSec,   g2) = nextBytes 32 g1
         (bobDHSec,     _)  = nextBytes 32 g2
-        bobDHPub = x25519 bobDHSec x25519Basepoint
-    alice <- initChatSession sharedSecret aliceDHSec bobDHPub
+        -- x25519 returns Maybe ByteString; the basepoint is non-degenerate so
+        -- the result is always Just for non-zero secrets.
+        Just bobDHPub = x25519 bobDHSec x25519Basepoint
+    mAlice <- initChatSession sharedSecret aliceDHSec bobDHPub
+    let alice = case mAlice of
+                    Just s  -> s
+                    Nothing -> error "mkSessionPair: initChatSession returned Nothing"
     let bobRatchet = ratchetInitBob sharedSecret bobDHSec
     pure (alice, BobState bobRatchet)
 
@@ -43,16 +48,20 @@ testSendRecvRoundTrip = do
     let g = mkPRNG 100
     (alice, bob) <- mkSessionPair g
     let msg = strToBS "Hello Bob!"
-    (_alice', wire) <- sendChatMessage alice msg
-    -- Bob decrypts using a ChatSession wrapping his ratchet state
-    let bobSession = ChatSession { csRatchet = bsRatchet bob }
-    result <- recvChatMessage bobSession wire
-    case result of
-        Nothing -> do
-            putStrLn "  FAIL: send/recv round-trip (decryption failed)"
-            pure False
-        Just (_, pt) ->
-            assertEq "send/recv round-trip" msg pt
+    sendResult <- sendChatMessage alice msg
+    case sendResult of
+        Left _ -> putStrLn "  FAIL: send/recv round-trip (send error)" >> pure False
+        Right (_alice', wire) -> do
+            -- Bob decrypts using a ChatSession wrapping his ratchet state
+            let bobSession = ChatSession { csRatchet = bsRatchet bob }
+            recvResult <- recvChatMessage bobSession wire
+            case recvResult of
+                Left _  -> putStrLn "  FAIL: send/recv round-trip (recv error)" >> pure False
+                Right Nothing -> do
+                    putStrLn "  FAIL: send/recv round-trip (decryption failed)"
+                    pure False
+                Right (Just (_, pt)) ->
+                    assertEq "send/recv round-trip" msg pt
 
 -- | Multiple messages in sequence.
 testMultipleMessages :: IO Bool
@@ -64,30 +73,42 @@ testMultipleMessages = do
         msg2 = strToBS "second message here"
         msg3 = strToBS "third"
     -- Message 1
-    (alice1, wire1) <- sendChatMessage alice0 msg1
-    r1 <- recvChatMessage bobSession0 wire1
-    case r1 of
-        Nothing -> do
-            putStrLn "  FAIL: multi-message 1 (decryption failed)"
-            pure False
-        Just (bobSession1, pt1) -> do
-            ok1 <- assertEq "multi-message 1" msg1 pt1
-            -- Message 2
-            (alice2, wire2) <- sendChatMessage alice1 msg2
-            r2 <- recvChatMessage bobSession1 wire2
-            case r2 of
-                Nothing -> do
-                    putStrLn "  FAIL: multi-message 2 (decryption failed)"
+    send1 <- sendChatMessage alice0 msg1
+    case send1 of
+        Left _ -> putStrLn "  FAIL: multi-message 1 (send error)" >> pure False
+        Right (alice1, wire1) -> do
+            r1 <- recvChatMessage bobSession0 wire1
+            case r1 of
+                Left _  -> putStrLn "  FAIL: multi-message 1 (recv error)" >> pure False
+                Right Nothing -> do
+                    putStrLn "  FAIL: multi-message 1 (decryption failed)"
                     pure False
-                Just (bobSession2, pt2) -> do
-                    ok2 <- assertEq "multi-message 2" msg2 pt2
-                    -- Message 3
-                    (_, wire3) <- sendChatMessage alice2 msg3
-                    r3 <- recvChatMessage bobSession2 wire3
-                    case r3 of
-                        Nothing -> do
-                            putStrLn "  FAIL: multi-message 3 (decryption failed)"
-                            pure False
-                        Just (_, pt3) -> do
-                            ok3 <- assertEq "multi-message 3" msg3 pt3
-                            pure (ok1 && ok2 && ok3)
+                Right (Just (bobSession1, pt1)) -> do
+                    ok1 <- assertEq "multi-message 1" msg1 pt1
+                    -- Message 2
+                    send2 <- sendChatMessage alice1 msg2
+                    case send2 of
+                        Left _ -> putStrLn "  FAIL: multi-message 2 (send error)" >> pure False
+                        Right (alice2, wire2) -> do
+                            r2 <- recvChatMessage bobSession1 wire2
+                            case r2 of
+                                Left _  -> putStrLn "  FAIL: multi-message 2 (recv error)" >> pure False
+                                Right Nothing -> do
+                                    putStrLn "  FAIL: multi-message 2 (decryption failed)"
+                                    pure False
+                                Right (Just (bobSession2, pt2)) -> do
+                                    ok2 <- assertEq "multi-message 2" msg2 pt2
+                                    -- Message 3
+                                    send3 <- sendChatMessage alice2 msg3
+                                    case send3 of
+                                        Left _ -> putStrLn "  FAIL: multi-message 3 (send error)" >> pure False
+                                        Right (_, wire3) -> do
+                                            r3 <- recvChatMessage bobSession2 wire3
+                                            case r3 of
+                                                Left _  -> putStrLn "  FAIL: multi-message 3 (recv error)" >> pure False
+                                                Right Nothing -> do
+                                                    putStrLn "  FAIL: multi-message 3 (decryption failed)"
+                                                    pure False
+                                                Right (Just (_, pt3)) -> do
+                                                    ok3 <- assertEq "multi-message 3" msg3 pt3
+                                                    pure (ok1 && ok2 && ok3)

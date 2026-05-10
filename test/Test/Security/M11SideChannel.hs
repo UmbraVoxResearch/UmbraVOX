@@ -310,12 +310,14 @@ testSC006X25519LowOrderRejection = do
                     pure True
 
 -- | Evaluate x25519, catching any exception.
+-- x25519 now returns Maybe ByteString (Nothing for all-zero / low-order point).
 safeX25519 :: BS.ByteString -> BS.ByteString -> IO (Either String BS.ByteString)
 safeX25519 scalar pt = do
-    result <- try (evaluate (x25519 scalar pt)) :: IO (Either SomeException BS.ByteString)
+    result <- try (evaluate (x25519 scalar pt)) :: IO (Either SomeException (Maybe BS.ByteString))
     pure (case result of
-              Left e  -> Left (show e)
-              Right r -> Right r)
+              Left e         -> Left (show e)
+              Right Nothing  -> Left "x25519: all-zero output (low-order point)"
+              Right (Just r) -> Right r)
 
 testSC006X25519RandomFunctional :: IO Bool
 testSC006X25519RandomFunctional = do
@@ -324,7 +326,10 @@ testSC006X25519RandomFunctional = do
                      ,0x3c, 0x16, 0xc1, 0x72, 0x51, 0xb2, 0x66, 0x45
                      ,0xdf, 0x4c, 0x2f, 0x87, 0xeb, 0xc0, 0x99, 0x2a
                      ,0xb1, 0x77, 0xfb, 0xa5, 0x1d, 0xb9, 0x2c, 0x2a]
-        pk = x25519 sk x25519Basepoint
+        -- x25519 returns Maybe; basepoint mult with non-zero scalar is always Just
+        pk = case x25519 sk x25519Basepoint of
+                 Just p  -> p
+                 Nothing -> BS.empty
     assertEq "SC-006 X25519 random scalar: public key is 32 bytes"
         32
         (BS.length pk)
@@ -615,12 +620,13 @@ testSC019PQXDHEncapDecapAgreement = do
             let aliceSS = pqxdhSharedSecret result
                 pqCt    = pqxdhPQCiphertext result
                 aliceEK = pqxdhEphemeralKey result
-                bobSS   = pqxdhRespond bobIK spkSec Nothing dkPQ
+                mBobSS  = pqxdhRespond bobIK spkSec Nothing dkPQ
                               (ikX25519Public aliceIK) aliceEK pqCt
             ok1 <- assertEq "SC-019 PQXDH shared secret: 32 bytes"
                        32 (BS.length aliceSS)
-            ok2 <- assertEq "SC-019 PQXDH encap/decap agree"
-                       aliceSS bobSS
+            ok2 <- case mBobSS of
+                       Nothing    -> putStrLn "  FAIL: SC-019 pqxdhRespond returned Nothing (low-order point)" >> pure False
+                       Just bobSS -> assertEq "SC-019 PQXDH encap/decap agree" aliceSS bobSS
             pure (ok1 && ok2)
 
 ------------------------------------------------------------------------

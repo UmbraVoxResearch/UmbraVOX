@@ -1,4 +1,5 @@
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE NumericUnderscores #-}
 -- | Tests for UmbraVox.Network.MDNS parsing helpers.
 --
 -- Does NOT test actual multicast (requires network); only exercises
@@ -50,13 +51,17 @@ runTests = do
         ]
     pure (and results)
 
+-- | Fixed test timestamp (arbitrary POSIX second value for deterministic tests).
+testNow :: Int
+testNow = 1_000_000
+
 -- | A valid announcement should parse successfully.
 testParseValid :: IO Bool
 testParseValid = do
     let pubkeyBytes = BS.pack [0xAB, 0xCD, 0xEF, 0x01]
         payload = buildAnnouncement 9000 pubkeyBytes
         srcAddr = NS.SockAddrInet 5353 (NS.tupleToHostAddress (192, 168, 1, 42))
-    case parseAnnouncement payload srcAddr of
+    case parseAnnouncement payload srcAddr testNow of
         Nothing -> do
             putStrLn "  FAIL: parseAnnouncement valid: expected Just, got Nothing"
             pure False
@@ -71,7 +76,7 @@ testParseValidWithName = do
     let pubkeyBytes = BS.pack [0xAB, 0xCD]
         payload = buildAnnouncementWithName 9001 "alice" pubkeyBytes
         srcAddr = NS.SockAddrInet 5353 (NS.tupleToHostAddress (192, 168, 1, 99))
-    case parseAnnouncement payload srcAddr of
+    case parseAnnouncement payload srcAddr testNow of
         Nothing -> do
             putStrLn "  FAIL: parseAnnouncement valid with name: expected Just, got Nothing"
             pure False
@@ -86,14 +91,14 @@ testParseInvalidNoService :: IO Bool
 testParseInvalidNoService = do
     let payload = C8.pack "garbage\nport=9000;pubkey=aabbccdd"
         srcAddr = NS.SockAddrInet 5353 (NS.tupleToHostAddress (10, 0, 0, 1))
-    assertEq "parseAnnouncement invalid service" Nothing (parseAnnouncement payload srcAddr)
+    assertEq "parseAnnouncement invalid service" Nothing (parseAnnouncement payload srcAddr testNow)
 
 -- | Payload with service name but missing fields should return Nothing.
 testParseInvalidNoFields :: IO Bool
 testParseInvalidNoFields = do
     let payload = C8.pack "_umbravox._tcp.local\nnothing=here"
         srcAddr = NS.SockAddrInet 5353 (NS.tupleToHostAddress (10, 0, 0, 1))
-    assertEq "parseAnnouncement missing fields" Nothing (parseAnnouncement payload srcAddr)
+    assertEq "parseAnnouncement missing fields" Nothing (parseAnnouncement payload srcAddr testNow)
 
 -- | safeReadPort with a valid port string.
 testSafeReadPortValid :: IO Bool
@@ -133,7 +138,7 @@ testBuildParseRoundtrip = do
         port = 7853
         payload = buildAnnouncement port pubkey
         srcAddr = NS.SockAddrInet 5353 (NS.tupleToHostAddress (10, 0, 0, 5))
-    case parseAnnouncement payload srcAddr of
+    case parseAnnouncement payload srcAddr testNow of
         Nothing -> putStrLn "  FAIL: round-trip: got Nothing" >> pure False
         Just peer -> do
             a <- assertEq "round-trip port" port (mdnsPort peer)
@@ -156,8 +161,8 @@ testDifferentPortsDistinct :: IO Bool
 testDifferentPortsDistinct = do
     let pubkey = BS.pack [0x11, 0x22]
         srcAddr = NS.SockAddrInet 5353 (NS.tupleToHostAddress (192, 168, 1, 1))
-        p1 = parseAnnouncement (buildAnnouncement 7853 pubkey) srcAddr
-        p2 = parseAnnouncement (buildAnnouncement 8080 pubkey) srcAddr
+        p1 = parseAnnouncement (buildAnnouncement 7853 pubkey) srcAddr testNow
+        p2 = parseAnnouncement (buildAnnouncement 8080 pubkey) srcAddr testNow
     case (p1, p2) of
         (Just a, Just b) -> assertEq "different ports" True (mdnsPort a /= mdnsPort b)
         _ -> putStrLn "  FAIL: different ports: parse failed" >> pure False
@@ -168,8 +173,8 @@ testDifferentPubkeysDistinct = do
     let srcAddr = NS.SockAddrInet 5353 (NS.tupleToHostAddress (192, 168, 1, 1))
         pk1 = BS.pack [0x11, 0x22]
         pk2 = BS.pack [0x33, 0x44]
-        p1 = parseAnnouncement (buildAnnouncement 7853 pk1) srcAddr
-        p2 = parseAnnouncement (buildAnnouncement 7853 pk2) srcAddr
+        p1 = parseAnnouncement (buildAnnouncement 7853 pk1) srcAddr testNow
+        p2 = parseAnnouncement (buildAnnouncement 7853 pk2) srcAddr testNow
     case (p1, p2) of
         (Just a, Just b) -> assertEq "different pubkeys" True (mdnsPubkey a /= mdnsPubkey b)
         _ -> putStrLn "  FAIL: different pubkeys: parse failed" >> pure False
@@ -182,8 +187,8 @@ testMultiplePeersDistinct = do
         addr1 = NS.SockAddrInet 5353 (NS.tupleToHostAddress (192, 168, 1, 10))
         addr2 = NS.SockAddrInet 5353 (NS.tupleToHostAddress (192, 168, 1, 20))
         addr3 = NS.SockAddrInet 5353 (NS.tupleToHostAddress (192, 168, 1, 30))
-    case (parseAnnouncement payload addr1, parseAnnouncement payload addr2,
-          parseAnnouncement payload addr3) of
+    case (parseAnnouncement payload addr1 testNow, parseAnnouncement payload addr2 testNow,
+          parseAnnouncement payload addr3 testNow) of
         (Just a, Just b, Just c) -> do
             ok1 <- assertEq "peer 1 IP" "192.168.1.10" (mdnsIP a)
             ok2 <- assertEq "peer 2 IP" "192.168.1.20" (mdnsIP b)
@@ -198,7 +203,7 @@ testSelfFilterByPort = do
         ourPubkey = BS.pack [0x01, 0x02]
         payload = buildAnnouncement ourPort ourPubkey
         srcAddr = NS.SockAddrInet 5353 (NS.tupleToHostAddress (127, 0, 0, 1))
-    case parseAnnouncement payload srcAddr of
+    case parseAnnouncement payload srcAddr testNow of
         Nothing -> putStrLn "  FAIL: self-filter: parse failed" >> pure False
         Just peer -> do
             a <- assertEq "self-filter: same port detected" ourPort (mdnsPort peer)
@@ -211,7 +216,7 @@ testSelfFilterByPubkey = do
     let ourPubkey = BS.pack [0xDE, 0xAD, 0xBE, 0xEF]
         payload = buildAnnouncement 9999 ourPubkey
         srcAddr = NS.SockAddrInet 5353 (NS.tupleToHostAddress (127, 0, 0, 1))
-    case parseAnnouncement payload srcAddr of
+    case parseAnnouncement payload srcAddr testNow of
         Nothing -> putStrLn "  FAIL: self-filter pubkey: parse failed" >> pure False
         Just peer -> do
             a <- assertEq "self-filter: pubkey matches" ourPubkey (mdnsPubkey peer)
@@ -225,7 +230,7 @@ testSelfFilterNegative = do
         ourPubkey = BS.pack [0xAA, 0xBB]
         payload = buildAnnouncement 9000 (BS.pack [0xCC, 0xDD])
         srcAddr = NS.SockAddrInet 5353 (NS.tupleToHostAddress (192, 168, 1, 77))
-    case parseAnnouncement payload srcAddr of
+    case parseAnnouncement payload srcAddr testNow of
         Nothing -> putStrLn "  FAIL: self-filter negative: parse failed" >> pure False
         Just peer -> assertEq "self-filter: remote peer not treated as self" False (isSelfAnnouncement ourPort ourPubkey peer)
 
@@ -236,9 +241,9 @@ testParseDifferentSourceAddrs = do
         localAddr = NS.SockAddrInet 5353 (NS.tupleToHostAddress (127, 0, 0, 1))
         lanAddr = NS.SockAddrInet 5353 (NS.tupleToHostAddress (192, 168, 0, 100))
         wanAddr = NS.SockAddrInet 5353 (NS.tupleToHostAddress (149, 28, 253, 186))
-    case (parseAnnouncement payload localAddr,
-          parseAnnouncement payload lanAddr,
-          parseAnnouncement payload wanAddr) of
+    case (parseAnnouncement payload localAddr testNow,
+          parseAnnouncement payload lanAddr testNow,
+          parseAnnouncement payload wanAddr testNow) of
         (Just a, Just b, Just c) -> do
             ok1 <- assertEq "local IP" "127.0.0.1" (mdnsIP a)
             ok2 <- assertEq "LAN IP" "192.168.0.100" (mdnsIP b)
@@ -296,7 +301,7 @@ applyDiscoveryStep
     -> (ByteString, NS.SockAddr)
     -> IO ()
 applyDiscoveryStep peersRef ourPort ourPubkey (payload, srcAddr) =
-    case parseAnnouncement payload srcAddr of
+    case parseAnnouncement payload srcAddr testNow of
         Just peer | not (isSelfAnnouncement ourPort ourPubkey peer) ->
-            updatePeerList peersRef peer
+            updatePeerList peersRef peer testNow
         _ -> pure ()

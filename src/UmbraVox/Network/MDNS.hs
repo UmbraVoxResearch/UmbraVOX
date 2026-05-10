@@ -28,6 +28,7 @@ import Data.Word (Word8, Word32)
 import Control.Concurrent (ThreadId, forkIO, killThread, threadDelay)
 import Control.Exception (SomeException, bracket, catch)
 import Control.Monad (forever, void)
+import Data.Time.Clock.POSIX (getPOSIXTime)
 import Foreign.C.Types (CInt(..))
 import Foreign.Marshal.Alloc (allocaBytes)
 import Foreign.Ptr (Ptr, castPtr)
@@ -64,6 +65,10 @@ serviceName = "_umbravox._tcp.local"
 -- | Announcement interval in microseconds (10 seconds for faster discovery).
 announceIntervalUs :: Int
 announceIntervalUs = 10 * 1000000
+
+-- | Number of announce intervals before a peer is considered stale (3 × 10s = 30s).
+peerEvictionSeconds :: Int
+peerEvictionSeconds = 3 * (announceIntervalUs `div` 1000000)
 
 ------------------------------------------------------------------------
 -- FFI for setsockopt (IP_ADD_MEMBERSHIP)
@@ -194,17 +199,27 @@ multicastDest =
 listenLoop :: NS.Socket -> MVar [MDNSPeer] -> Int -> ByteString -> IO ()
 listenLoop sock peersRef ourPort ourPubkey = forever $ do
     (payload, srcAddr) <- NSB.recvFrom sock 1500
-    case parseAnnouncement payload srcAddr of
+    -- Finding: mdnsLastSeen was hardcoded to 0, making the timestamp field
+    --   useless and preventing stale peer eviction.
+    -- Vulnerability: Without real timestamps, peers that have gone offline
+    --   remain in the list indefinitely, causing stale connection attempts.
+    -- Fix: Stamp each parsed peer with the current POSIX second and evict
+    --   peers not seen within 3 announce intervals (30 s) on each update.
+    -- Verified: 'parseAnnouncement' now takes an Int timestamp argument;
+    --   'updatePeerList' filters out peers older than 'peerEvictionSeconds'.
+    now <- fmap (floor :: Double -> Int) (fmap realToFrac getPOSIXTime)
+    case parseAnnouncement payload srcAddr now of
         Nothing   -> pure ()
         Just peer ->
             -- Skip our own announcements
             if isSelfAnnouncement ourPort ourPubkey peer
                 then pure ()
-                else updatePeerList peersRef peer
+                else updatePeerList peersRef peer now
 
 -- | Parse an incoming announcement payload into an 'MDNSPeer'.
-parseAnnouncement :: ByteString -> NS.SockAddr -> Maybe MDNSPeer
-parseAnnouncement payload srcAddr = do
+-- Takes the current POSIX second so the record is stamped on arrival.
+parseAnnouncement :: ByteString -> NS.SockAddr -> Int -> Maybe MDNSPeer
+parseAnnouncement payload srcAddr now = do
     -- Check that it starts with our service name.
     let (header, rest) = BS.breakSubstring "\n" payload
     if header /= serviceName || BS.null rest
@@ -220,7 +235,7 @@ parseAnnouncement payload srcAddr = do
                 , mdnsName     = mName
                 , mdnsIP       = ip
                 , mdnsPort     = safeReadPort (C8.unpack port)
-                , mdnsLastSeen = 0  -- Caller should stamp with current time
+                , mdnsLastSeen = now
                 }
 
 -- | Extract a field value from a semicolon-separated key=value string.
@@ -259,12 +274,15 @@ isSelfAnnouncement ourPort ourPubkey peer =
 -- Internal — peer list management
 ------------------------------------------------------------------------
 
--- | Insert or update a peer in the list.
+-- | Insert or update a peer in the list, and evict stale entries.
 --
--- Deduplicates by public key fingerprint.
-updatePeerList :: MVar [MDNSPeer] -> MDNSPeer -> IO ()
-updatePeerList ref peer = modifyMVar_ ref $ \peers -> pure $
-    let others = filter (\p -> mdnsPubkey p /= mdnsPubkey peer) peers
+-- Deduplicates by public key fingerprint.  Any peer whose 'mdnsLastSeen'
+-- timestamp is older than 'peerEvictionSeconds' relative to @now@ is
+-- removed at the same time.
+updatePeerList :: MVar [MDNSPeer] -> MDNSPeer -> Int -> IO ()
+updatePeerList ref peer now = modifyMVar_ ref $ \peers -> pure $
+    let freshEnough p = now - mdnsLastSeen p < peerEvictionSeconds
+        others = filter (\p -> mdnsPubkey p /= mdnsPubkey peer && freshEnough p) peers
     in  peer : others
 
 ------------------------------------------------------------------------

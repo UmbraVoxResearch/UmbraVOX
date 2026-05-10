@@ -60,7 +60,11 @@ addLoopbackSession :: AppConfig -> String -> IO SessionId
 addLoopbackSession cfg label = do
     sid <- readIORef (cfgNextId cfg); writeIORef (cfgNextId cfg) (sid+1)
     secret <- randomBytes 32; dhSec <- randomBytes 32; peerPub <- randomBytes 32
-    session <- initChatSession secret dhSec peerPub
+    -- Random keys are never all-zero, so initChatSession cannot return Nothing here.
+    mSession <- initChatSession secret dhSec peerPub
+    let session = case mSession of
+                      Just s  -> s
+                      Nothing -> error "addLoopbackSession: ratchet init with random keys returned Nothing (impossible)"
     ref <- newIORef session; histRef <- newIORef []; stRef <- newIORef Local
     lock <- newMVar ()
     let si = SessionInfo Nothing ref lock Nothing label histRef stRef
@@ -84,26 +88,30 @@ sendToSession :: SessionInfo -> BS.ByteString -> IO SendResult
 sendToSession si msg = do
     withMVar (siSessionLock si) $ \_ -> do
         session <- readIORef (siSession si)
-        (session', wire) <- sendChatMessage session msg
-        writeIORef (siSession si) session'
-        case siTransport si of
-            Just t  -> anySend t (encodeMessage wire) >> pure SendDelivered
-            Nothing -> do
+        sendResult <- sendChatMessage session msg
+        case sendResult of
+          Left _ratchetErr -> pure SendUnavailable
+          Right (session', wire) -> do
+            writeIORef (siSession si) session'
+            case siTransport si of
+              Just t  -> anySend t (encodeMessage wire) >> pure SendDelivered
+              Nothing -> do
                 status <- readIORef (siStatus si)
                 case status of
-                    Local -> do
-                        session2 <- readIORef (siSession si)
-                        result <- recvChatMessage session2 wire
-                        case result of
-                            Just (session3, _pt) -> writeIORef (siSession si) session3
-                            Nothing -> pure ()
-                        ts <- timestamp
-                        let savedLine = case payloadHistoryText msg of
-                                Right text -> ts ++ " [saved] " ++ text
-                                Left _ -> ts ++ " [saved] [invalid UTF-8 payload]"
-                        modifyIORef' (siHistory si) (savedLine :)
-                        pure SendStoredLocal
-                    _ -> pure SendUnavailable
+                  Local -> do
+                    session2 <- readIORef (siSession si)
+                    recvResult <- recvChatMessage session2 wire
+                    case recvResult of
+                        Left _ratchetErr2                -> pure ()
+                        Right (Just (session3, _pt))     -> writeIORef (siSession si) session3
+                        Right Nothing                    -> pure ()
+                    ts <- timestamp
+                    let savedLine = case payloadHistoryText msg of
+                            Right text -> ts ++ " [saved] " ++ text
+                            Left _     -> ts ++ " [saved] [invalid UTF-8 payload]"
+                    modifyIORef' (siHistory si) (savedLine :)
+                    pure SendStoredLocal
+                  _ -> pure SendUnavailable
 
 -- | Send the current input buffer as a message.
 sendCurrentMessage :: AppState -> IO ()
@@ -192,8 +200,9 @@ recvLoopTUI cfg sid peerName t ref lock histRef = go `catch` handler where
                     session <- readIORef ref
                     result <- recvChatMessage session payload
                     case result of
-                        Nothing -> pure Nothing
-                        Just (session', plaintext) -> do
+                        Left _ratchetErr             -> pure Nothing
+                        Right Nothing                -> pure Nothing
+                        Right (Just (session', plaintext)) -> do
                             writeIORef ref session'
                             pure (Just plaintext)
                 case result of

@@ -158,36 +158,32 @@ aliceScalar = hexDecode "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba
 -- | AS-001 (part a): the all-zero point is rejected.
 testAS001LowOrderPointZero :: IO Bool
 testAS001LowOrderPointZero = do
-    result <- try (evaluate (x25519 aliceScalar (BS.replicate 32 0x00)))
-              :: IO (Either SomeException ByteString)
+    let result = x25519 aliceScalar (BS.replicate 32 0x00)
     case result of
-        Left _ ->
-            putStrLn "  PASS: AS-001 zero point (0x00..00) -> rejected" >> pure True
-        Right _ ->
+        Nothing ->
+            putStrLn "  PASS: AS-001 zero point (0x00..00) -> rejected (Nothing)" >> pure True
+        Just _ ->
             putStrLn "  FAIL: AS-001 zero point (0x00..00) must be rejected" >> pure False
 
 -- | AS-001 (part b): the order-2 point (0x01 LE) is rejected.
 testAS001LowOrderPointOne :: IO Bool
 testAS001LowOrderPointOne = do
     let ptOne = BS.pack (0x01 : replicate 31 0x00)
-    result <- try (evaluate (x25519 aliceScalar ptOne))
-              :: IO (Either SomeException ByteString)
+    let result = x25519 aliceScalar ptOne
     case result of
-        Left _ ->
-            putStrLn "  PASS: AS-001 order-2 point (0x01) -> rejected" >> pure True
-        Right _ ->
+        Nothing ->
+            putStrLn "  PASS: AS-001 order-2 point (0x01) -> rejected (Nothing)" >> pure True
+        Just _ ->
             putStrLn "  FAIL: AS-001 order-2 point (0x01) must be rejected" >> pure False
 
 -- | AS-001 / AS-005 (all 8): every canonical low-order point is rejected.
 testAS001LowOrderPoints :: IO Bool
 testAS001LowOrderPoints = do
-    outcomes <- mapM (\pt -> do
-        r <- try (evaluate (x25519 aliceScalar pt))
-             :: IO (Either SomeException ByteString)
-        pure $ case r of
-            Left _  -> True   -- rejected, good
-            Right v -> v == BS.replicate 32 0  -- if not thrown, must be all-zero (then the check would catch it; but shouldn't reach here)
-        ) lowOrderPoints
+    let outcomes = map (\pt ->
+            case x25519 aliceScalar pt of
+                Nothing -> True   -- rejected with Nothing, good
+                Just _  -> False  -- should have been rejected
+            ) lowOrderPoints
     let allRejected = and outcomes
     if allRejected
         then putStrLn "  PASS: AS-001/AS-005 all 8 low-order points rejected" >> pure True
@@ -209,14 +205,13 @@ testAS001LowOrderPoints = do
 
 testAS002AllZeroDHRejected :: IO Bool
 testAS002AllZeroDHRejected = do
-    -- The all-zero u-coordinate is a low-order point; x25519 must reject it.
+    -- The all-zero u-coordinate is a low-order point; x25519 must reject it
+    -- by returning Nothing.
     let zeroPeer = BS.replicate 32 0x00
-    result <- try (evaluate (x25519 aliceScalar zeroPeer))
-              :: IO (Either SomeException ByteString)
-    case result of
-        Left _ ->
-            putStrLn "  PASS: AS-002 all-zero DH output -> error raised" >> pure True
-        Right v ->
+    case x25519 aliceScalar zeroPeer of
+        Nothing ->
+            putStrLn "  PASS: AS-002 all-zero DH output -> Nothing returned" >> pure True
+        Just v ->
             if v == BS.replicate 32 0
                 then putStrLn "  FAIL: AS-002 all-zero DH output returned rather than rejected" >> pure False
                 else putStrLn "  FAIL: AS-002 unexpected non-zero result for zero peer key" >> pure False
@@ -256,12 +251,10 @@ testAS004TwistPointMasked = do
         lastByte' = lastByte `xor` 0x80
         twistPub = BS.init bobPub `BS.snoc` lastByte'
     -- Both should produce the same output (masking absorbs the extra bit).
-    result1 <- try (evaluate (x25519 aliceScalar bobPub))
-               :: IO (Either SomeException ByteString)
-    result2 <- try (evaluate (x25519 aliceScalar twistPub))
-               :: IO (Either SomeException ByteString)
+    let result1 = x25519 aliceScalar bobPub
+        result2 = x25519 aliceScalar twistPub
     case (result1, result2) of
-        (Right ss1, Right ss2) ->
+        (Just ss1, Just ss2) ->
             -- Masking makes them equal; non-zero means a real DH happened.
             if ss1 == ss2 && ss1 /= BS.replicate 32 0
                 then putStrLn "  PASS: AS-004 twist point masked -> same shared secret as main-curve" >> pure True
@@ -270,9 +263,9 @@ testAS004TwistPointMasked = do
                     putStrLn $ "    ss (main-curve): " ++ show ss1
                     putStrLn $ "    ss (bit-255 set): " ++ show ss2
                     pure False
-        (Left _, _) ->
-            putStrLn "  FAIL: AS-004 main-curve DH unexpectedly raised exception" >> pure False
-        (_, Left _) ->
+        (Nothing, _) ->
+            putStrLn "  FAIL: AS-004 main-curve DH unexpectedly returned Nothing" >> pure False
+        (_, Nothing) ->
             -- The twist point happened to map to a low-order point after masking;
             -- that is still safe (the all-zero guard fires) but unusual.
             putStrLn "  PASS: AS-004 twist point masked -> low-order point rejected" >> pure True
@@ -484,12 +477,10 @@ testAS024AllZeroPeerKeyRejected = do
     -- not key-specific.
     let (sk, _) = nextBytes 32 (mkPRNG 0xCAFE)
         zeroPeer = BS.replicate 32 0x00
-    result <- try (evaluate (x25519 sk zeroPeer))
-              :: IO (Either SomeException ByteString)
-    case result of
-        Left _ ->
-            putStrLn "  PASS: AS-024 all-zero peer pubkey -> error (all-zero DH rejected)" >> pure True
-        Right v ->
+    case x25519 sk zeroPeer of
+        Nothing ->
+            putStrLn "  PASS: AS-024 all-zero peer pubkey -> Nothing (all-zero DH rejected)" >> pure True
+        Just v ->
             if v == BS.replicate 32 0
-                then putStrLn "  FAIL: AS-024 all-zero DH output returned without error" >> pure False
+                then putStrLn "  FAIL: AS-024 all-zero DH output returned without rejection" >> pure False
                 else putStrLn "  FAIL: AS-024 unexpected non-zero result for zero peer key" >> pure False

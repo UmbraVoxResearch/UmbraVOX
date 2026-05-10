@@ -237,7 +237,7 @@ testStorageRoundTrip = do
 -- authentication failure), not a garbage plaintext.
 testStorageWrongKey :: IO Bool
 testStorageWrongKey = do
-    let wrongKey = deriveStorageKey (BS.pack [99..130])
+    let wrongKey = deriveStorageKey (BS.replicate 32 0xFF) (BS.pack [99..130])
     ct <- encryptField testStorageKey "sensitive data"
     let result = decryptField wrongKey ct
     assertEq "M10.4.12 decryptField with wrong key -> Nothing"

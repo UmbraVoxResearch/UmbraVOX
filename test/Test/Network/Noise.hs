@@ -35,9 +35,10 @@ testHandshakeRoundTrip :: IO Bool
 testHandshakeRoundTrip = do
     (tA, tB) <- newLoopbackPair "noise-hs"
     let iSec = hexDecode "a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4"
-        iPub = x25519 iSec x25519Basepoint
+        -- x25519 returns Maybe; standard test vectors never produce all-zero
+        iPub = case x25519 iSec x25519Basepoint of Just p -> p; Nothing -> error "iPub: impossible"
         rSec = hexDecode "4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d"
-        rPub = x25519 rSec x25519Basepoint
+        rPub = case x25519 rSec x25519Basepoint of Just p -> p; Nothing -> error "rPub: impossible"
     -- Run responder in a background thread
     resultVar <- newEmptyMVar
     _ <- forkIO $ do

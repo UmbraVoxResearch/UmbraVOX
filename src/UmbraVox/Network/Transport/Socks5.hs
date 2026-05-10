@@ -104,10 +104,35 @@ handshake sock host port = do
     case hdr of
         (0x05 : status : _ : atyp : _) -> do
             if status /= 0x00
-                then throwIO (userError ("SOCKS5 CONNECT failed, status: "
-                                         ++ show status))
+                -- Finding: Raw SOCKS5 numeric status codes were included in
+                --   error messages (e.g. "status: 5"), leaking proxy
+                --   implementation details to callers and log consumers.
+                -- Vulnerability: Numeric codes can help an attacker fingerprint
+                --   the proxy software, understand internal routing topology,
+                --   or confirm the existence of specific target services.
+                -- Fix: Map codes 0x01-0x08 to fixed generic descriptions that
+                --   convey only what the caller needs to act on.  Unknown codes
+                --   produce a generic fallback without exposing the raw value.
+                -- Verified: Error strings below contain no numeric status codes.
+                then throwIO (userError ("SOCKS5 CONNECT failed: "
+                                         ++ socks5StatusMessage status))
                 else consumeBindAddr sock atyp
         _ -> throwIO (userError "SOCKS5 proxy: malformed CONNECT reply")
+
+-- | Map a SOCKS5 reply status code to an opaque human-readable message.
+-- Known codes 0x01-0x08 are described generically; unknown codes produce
+-- a fixed fallback string with no numeric value in the output.
+socks5StatusMessage :: Word8 -> String
+socks5StatusMessage code = case code of
+    0x01 -> "general failure"
+    0x02 -> "connection not allowed by ruleset"
+    0x03 -> "network unreachable"
+    0x04 -> "host unreachable"
+    0x05 -> "connection refused"
+    0x06 -> "TTL expired"
+    0x07 -> "command not supported"
+    0x08 -> "address type not supported"
+    _    -> "proxy error"
 
 -- | Consume remaining bind-address bytes from the CONNECT reply.
 consumeBindAddr :: NS.Socket -> Word8 -> IO ()

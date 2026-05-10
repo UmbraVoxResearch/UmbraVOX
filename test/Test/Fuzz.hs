@@ -157,14 +157,15 @@ fuzzAESGCM = checkProperty "AES-GCM: round-trip, tag=16, tamper rejected" iterat
 ------------------------------------------------------------------------
 
 fuzzX25519 :: IO Bool
-fuzzX25519 = checkProperty "X25519: output always 32 bytes" iterations prop
+fuzzX25519 = checkProperty "X25519: output is Nothing or 32 bytes" iterations prop
   where
     prop g =
         let (scalar, g1) = nextBytes 32 g
             (point, _)   = nextBytes 32 g1
-            out1 = x25519 scalar x25519Basepoint
-            out2 = x25519 scalar point
-        in BS.length out1 == 32 && BS.length out2 == 32
+            -- x25519 now returns Maybe ByteString; Nothing means all-zero DH
+            okLen Nothing   = True
+            okLen (Just bs) = BS.length bs == 32
+        in okLen (x25519 scalar x25519Basepoint) && okLen (x25519 scalar point)
 
 ------------------------------------------------------------------------
 -- 8. Ed25519 fuzz: sign then verify; flip bit -> verify fails
@@ -254,30 +255,47 @@ fuzzDoubleRatchet = checkPropertyIO "Double Ratchet: encrypt/decrypt round-trip"
         let (sharedSecret, g1) = nextBytes 32 g
             (bobSPKSecret, g2) = nextBytes 32 g1
             (aliceDHSecret, g3) = nextBytes 32 g2
-            bobSPKPublic = x25519 bobSPKSecret x25519Basepoint
-            alice0 = ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret
-            bob0   = ratchetInitBob sharedSecret bobSPKSecret
+            mBobSPKPub = x25519 bobSPKSecret x25519Basepoint
             -- Generate 3 random messages
             (msg1, g4) = nextBytesRange 1 200 g3
             (msg2, g5) = nextBytesRange 1 200 g4
             (msg3, _)  = nextBytesRange 1 200 g5
-        -- Encrypt and decrypt 3 messages
-        (alice1, h1, ct1, tag1) <- ratchetEncrypt alice0 msg1
-        r1 <- ratchetDecrypt bob0 h1 ct1 tag1
-        case r1 of
-            Nothing -> pure False
-            Just (bob1, pt1) -> do
-                (alice2, h2, ct2, tag2) <- ratchetEncrypt alice1 msg2
-                r2 <- ratchetDecrypt bob1 h2 ct2 tag2
-                case r2 of
-                    Nothing -> pure False
-                    Just (bob2, pt2) -> do
-                        (_alice3, h3, ct3, tag3) <- ratchetEncrypt alice2 msg3
-                        r3 <- ratchetDecrypt bob2 h3 ct3 tag3
-                        case r3 of
-                            Nothing -> pure False
-                            Just (_, pt3) ->
-                                pure (pt1 == msg1 && pt2 == msg2 && pt3 == msg3)
+        case mBobSPKPub of
+            Nothing -> pure True  -- degenerate key; skip
+            Just bobSPKPublic ->
+                case ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret of
+                    Nothing -> pure False  -- should not happen for random keys
+                    Just alice0 -> do
+                        let bob0 = ratchetInitBob sharedSecret bobSPKSecret
+                        -- Encrypt and decrypt 3 messages
+                        e1 <- ratchetEncrypt alice0 msg1
+                        case e1 of
+                            Left _ -> pure False
+                            Right (alice1, h1, ct1, tag1) -> do
+                                r1 <- ratchetDecrypt bob0 h1 ct1 tag1
+                                case r1 of
+                                    Left _ -> pure False
+                                    Right Nothing -> pure False
+                                    Right (Just (bob1, pt1)) -> do
+                                        e2 <- ratchetEncrypt alice1 msg2
+                                        case e2 of
+                                            Left _ -> pure False
+                                            Right (alice2, h2, ct2, tag2) -> do
+                                                r2 <- ratchetDecrypt bob1 h2 ct2 tag2
+                                                case r2 of
+                                                    Left _ -> pure False
+                                                    Right Nothing -> pure False
+                                                    Right (Just (bob2, pt2)) -> do
+                                                        e3 <- ratchetEncrypt alice2 msg3
+                                                        case e3 of
+                                                            Left _ -> pure False
+                                                            Right (_alice3, h3, ct3, tag3) -> do
+                                                                r3 <- ratchetDecrypt bob2 h3 ct3 tag3
+                                                                case r3 of
+                                                                    Left _ -> pure False
+                                                                    Right Nothing -> pure False
+                                                                    Right (Just (_, pt3)) ->
+                                                                        pure (pt1 == msg1 && pt2 == msg2 && pt3 == msg3)
 
 ------------------------------------------------------------------------
 -- 14. PQXDH fuzz: random keys -> initiate + respond -> same secret
@@ -322,7 +340,7 @@ fuzzPQXDH = checkProperty "PQXDH: initiate/respond derive same secret" iteration
             Nothing -> False  -- SPK signature should verify
             Just result ->
                 let aliceSecret = pqxdhSharedSecret result
-                    bobSecret   = pqxdhRespond
+                    mBobSecret  = pqxdhRespond
                         bobIK
                         (kpSecret spk)
                         (Just (kpSecret opk))
@@ -330,8 +348,10 @@ fuzzPQXDH = checkProperty "PQXDH: initiate/respond derive same secret" iteration
                         (ikX25519Public aliceIK)
                         (pqxdhEphemeralKey result)
                         (pqxdhPQCiphertext result)
-                in aliceSecret == bobSecret
-                   && BS.length aliceSecret == 32
+                in case mBobSecret of
+                    Nothing        -> False  -- DH all-zero should not occur with random keys
+                    Just bobSecret -> aliceSecret == bobSecret
+                                      && BS.length aliceSecret == 32
 
 ------------------------------------------------------------------------
 -- Helpers

@@ -64,16 +64,20 @@ testPQXDHAgreement = do
             putStrLn "  FAIL: PQXDH agreement (initiation returned Nothing)"
             pure False
         Just result -> do
-            -- Bob responds
-            let bobSecret = pqxdhRespond bobIK spkSec Nothing dkPQ
+            -- Bob responds (pqxdhRespond now returns Maybe ByteString)
+            case pqxdhRespond bobIK spkSec Nothing dkPQ
                     (ikX25519Public aliceIK)
                     (pqxdhEphemeralKey result)
-                    (pqxdhPQCiphertext result)
-            r1 <- assertEq "PQXDH secrets match"
-                    (pqxdhSharedSecret result) bobSecret
-            r2 <- assertEq "PQXDH secret is 32 bytes"
-                    32 (BS.length (pqxdhSharedSecret result))
-            pure (r1 && r2)
+                    (pqxdhPQCiphertext result) of
+                Nothing -> do
+                    putStrLn "  FAIL: PQXDH agreement (Bob response returned Nothing)"
+                    pure False
+                Just bobSecret -> do
+                    r1 <- assertEq "PQXDH secrets match"
+                            (pqxdhSharedSecret result) bobSecret
+                    r2 <- assertEq "PQXDH secret is 32 bytes"
+                            32 (BS.length (pqxdhSharedSecret result))
+                    pure (r1 && r2)
 
 -- | Invalid SPK signature causes pqxdhInitiate to return Nothing.
 testInvalidSPKReturnsNothing :: IO Bool
