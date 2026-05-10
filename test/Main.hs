@@ -62,6 +62,11 @@ import qualified Test.FuzzConnection as FuzzConnection
 import qualified Test.FuzzInputs as FuzzInputs
 import qualified Test.Hardening.Fault as HardeningFault
 import qualified Test.Security.Adversarial as Adversarial
+import qualified Test.Security.M11KeyMgmt as M11KeyMgmt
+import qualified Test.Security.M11Protocol as M11Protocol
+import qualified Test.Security.M11SideChannel as M11SideChannel
+import qualified Test.Security.M11Symmetric as M11Symmetric
+import qualified Test.Security.M11Asymmetric as M11Asymmetric
 import qualified Test.Security.Regression as Regression
 import qualified Test.Security.RegressionM7 as RegressionM7
 import qualified Test.Security.RegressionM8 as RegressionM8
@@ -151,6 +156,16 @@ runSuiteArg suiteArg =
             [Suite "regression-m8" RegressionM8.runTests]
         "regression-net" -> runSuiteGroup "UmbraVox Network/Protocol Regression Suite"
             [Suite "regression-net" RegressionNet.runTests]
+        "m11-keymgmt" -> runSuiteGroup "UmbraVox M11 Key Management and Impl Bug Attack Suite"
+            [Suite "m11-keymgmt" M11KeyMgmt.runTests]
+        "m11-symmetric" -> runSuiteGroup "UmbraVox M11 Symmetric Crypto Attack Suite"
+            [Suite "m11-symmetric" M11Symmetric.runTests]
+        "m11-asymmetric" -> runSuiteGroup "UmbraVox M11 Asymmetric Crypto Attack Suite"
+            [Suite "m11-asymmetric" M11Asymmetric.runTests]
+        "m11-sidechannel" -> runSuiteGroup "UmbraVox M11 Side-Channel Attack Suite"
+            [Suite "m11-sidechannel" M11SideChannel.runTests]
+        "m11-protocol" -> runSuiteGroup "UmbraVox M11 Protocol-Level Attack Suite"
+            [Suite "m11-protocol" M11Protocol.runTests]
         "integrity" -> runSuiteGroup "UmbraVox Integrity Suite" integritySuites
         "soak" -> runSuiteGroup "UmbraVox Soak Suite" soakSuites
         "differential" -> runSuiteGroup "UmbraVox Differential C vs Haskell Suite"
@@ -250,6 +265,11 @@ coreSuites =
     , Suite "regression-m7" RegressionM7.runTests
     , Suite "regression-m8" RegressionM8.runTests
     , Suite "regression-net" RegressionNet.runTests
+    , Suite "m11-keymgmt" M11KeyMgmt.runTests
+    , Suite "m11-symmetric" M11Symmetric.runTests
+    , Suite "m11-asymmetric" M11Asymmetric.runTests
+    , Suite "m11-sidechannel" M11SideChannel.runTests
+    , Suite "m11-protocol" M11Protocol.runTests
     ]
 
 coreCryptoSuites :: [Suite]
@@ -278,6 +298,8 @@ coreCryptoSuites =
     , Suite "signal-session" Session.runTests
     , Suite "security" Security.runTests
     , Suite "differential" Differential.runTests
+    , Suite "m11-symmetric" M11Symmetric.runTests
+    , Suite "m11-asymmetric" M11Asymmetric.runTests
     ]
 
 coreNetworkSuites :: [Suite]
@@ -413,5 +435,7 @@ validSuiteArgs =
     [ "required", "core", "core-crypto", "core-network", "core-chat"
     , "core-tui", "core-tools", "tcp", "fault", "recovery", "tui-sim"
     , "integrity", "soak", "deferred", "differential", "adversarial", "unicode"
-    , "regression", "regression-m7", "regression-m8", "regression-net", "all"
+    , "regression", "regression-m7", "regression-m8", "regression-net"
+    , "m11-keymgmt", "m11-symmetric", "m11-asymmetric", "m11-sidechannel"
+    , "m11-protocol", "all"
     ]
