@@ -30,8 +30,11 @@ module UmbraVox.Storage.Anthony
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as C8
+import Data.List (isInfixOf)
 import Data.Word (Word8)
 import System.Directory (findExecutable)
+import System.Posix.Files (setFileMode, ownerReadMode, ownerWriteMode, unionFileModes)
+import System.Posix.Types ()
 import System.Process (readProcess)
 import System.Timeout (timeout)
 
@@ -71,6 +74,7 @@ openDB path = do
     anthonyPath <- ensureAnthony
     let db = AnthonyDB { dbPath = path, dbAnthony = anthonyPath }
     mapM_ (runSQL db) schemaStatements
+    setFileMode path (ownerReadMode `unionFileModes` ownerWriteMode)
     pure db
 
 -- | Close the database handle.
@@ -272,18 +276,6 @@ runSQL db sql = do
         Just _  -> pure ()
         Nothing -> ioError (userError "sqlite3 query timed out")
 
--- | Execute a SQL statement without the dangerous-SQL check.
--- Used internally for trusted DELETE operations on known-safe inputs.
--- Times out after 10 seconds to avoid indefinite hangs.
-runSQLUnsafe :: AnthonyDB -> String -> IO ()
-runSQLUnsafe db sql = do
-    result <- timeout 10000000 $  -- 10 seconds
-        readProcess (dbAnthony db)
-            ["-batch", "-noheader", "-separator", "|", "-cmd", ".timeout 5000", dbPath db, sql] ""
-    case result of
-        Just _  -> pure ()
-        Nothing -> ioError (userError "sqlite3 query timed out")
-
 -- | Execute a SQL query and return the raw output.
 -- Times out after 10 seconds to avoid indefinite hangs.
 querySQL :: AnthonyDB -> String -> IO String
@@ -313,7 +305,9 @@ containsDangerousSQL :: String -> Bool
 containsDangerousSQL s =
     let normalized = map (\c -> if c == '\n' || c == '\r' || c == '\t' then ' ' else c) s
         upper = map toUpperChar normalized
-    in ';' `elem` s
+    in ';' `elem` normalized
+       || "--" `isInfixOf` normalized
+       || "/*" `isInfixOf` normalized
        || containsWord "DROP " upper
        || containsWord "DELETE " upper
        || containsWord "UPDATE " upper

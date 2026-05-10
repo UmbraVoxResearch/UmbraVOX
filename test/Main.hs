@@ -62,6 +62,8 @@ import qualified Test.FuzzConnection as FuzzConnection
 import qualified Test.FuzzInputs as FuzzInputs
 import qualified Test.Hardening.Fault as HardeningFault
 import qualified Test.Security.Adversarial as Adversarial
+import qualified Test.Security.Regression as Regression
+import qualified Test.Security.RegressionNet as RegressionNet
 import qualified Test.Security.Unicode as Unicode
 import qualified Test.Hardening.Recovery as HardeningRecovery
 import qualified Test.Hardening.Soak as HardeningSoak
@@ -139,6 +141,10 @@ runSuiteArg suiteArg =
         "fault" -> runSuiteGroup "UmbraVox Fault Hardening Suite" faultSuites
         "recovery" -> runSuiteGroup "UmbraVox Recovery Hardening Suite" recoverySuites
         "tui-sim" -> runSuiteGroup "UmbraVox TUI Simulation Suite" tuiSimSuites
+        "regression" -> runSuiteGroup "UmbraVox Security Regression Suite"
+            [Suite "regression" Regression.runTests]
+        "regression-net" -> runSuiteGroup "UmbraVox Network/Protocol Regression Suite"
+            [Suite "regression-net" RegressionNet.runTests]
         "integrity" -> runSuiteGroup "UmbraVox Integrity Suite" integritySuites
         "soak" -> runSuiteGroup "UmbraVox Soak Suite" soakSuites
         "differential" -> runSuiteGroup "UmbraVox Differential C vs Haskell Suite"
@@ -234,6 +240,8 @@ coreSuites =
     , Suite "differential" Differential.runTests
     , Suite "adversarial" Adversarial.runTests
     , Suite "unicode" Unicode.runTests
+    , Suite "regression" Regression.runTests
+    , Suite "regression-net" RegressionNet.runTests
     ]
 
 coreCryptoSuites :: [Suite]
@@ -385,7 +393,7 @@ deferredSuites =
     ]
 
 requiredSuites :: [Suite]
-requiredSuites = coreSuites ++ tcpSuites ++ faultSuites ++ recoverySuites
+requiredSuites = coreSuites ++ tcpSuites ++ faultSuites ++ recoverySuites ++ integritySuites
 
 allSuites :: [Suite]
 allSuites =
@@ -396,5 +404,6 @@ validSuiteArgs :: [String]
 validSuiteArgs =
     [ "required", "core", "core-crypto", "core-network", "core-chat"
     , "core-tui", "core-tools", "tcp", "fault", "recovery", "tui-sim"
-    , "integrity", "soak", "deferred", "differential", "adversarial", "unicode", "all"
+    , "integrity", "soak", "deferred", "differential", "adversarial", "unicode"
+    , "regression", "regression-net", "all"
     ]

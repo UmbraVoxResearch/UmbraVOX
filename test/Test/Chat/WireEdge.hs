@@ -60,20 +60,14 @@ testDecodeOneByteTooShort =
     let bs = BS.replicate (minWireSize - 1) 0x00
     in assertEq "decodeWire (minWireSize-1) -> Nothing" Nothing (decodeWire bs)
 
--- 3. decodeWire with exactly minWireSize bytes (0 ciphertext) -> Just with empty ct
+-- 3. decodeWire with exactly minWireSize bytes (0 ciphertext) -> Nothing
+--    M8.3.1: zero-length ciphertext is intentionally rejected to prevent
+--    trivial forgery / oracle attacks with an empty plaintext body.
 testDecodeMinSize :: IO Bool
 testDecodeMinSize =
     let bs     = BS.replicate minWireSize 0x00
         result = decodeWire bs
-    in case result of
-        Nothing -> do
-            putStrLn "  FAIL: decodeWire minWireSize -> expected Just, got Nothing"
-            pure False
-        Just (hdr, ct, tag) -> do
-            r1 <- assertEq "  minWireSize: ct is empty" BS.empty ct
-            r2 <- assertEq "  minWireSize: tag is 16 bytes" tagSize (BS.length tag)
-            r3 <- assertEq "  minWireSize: DH key is 32 bytes" 32 (BS.length (rhDHPublic hdr))
-            pure (r1 && r2 && r3)
+    in assertEq "decodeWire minWireSize (0 ct) -> Nothing (M8.3.1)" Nothing result
 
 -- 4. encodeWire/decodeWire round-trip for 1-byte ciphertext
 testRoundTrip1Byte :: IO Bool

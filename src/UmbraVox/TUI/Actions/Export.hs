@@ -43,7 +43,7 @@ exportToPath st path = do
                 , EventSetDialog (Just (DlgPrompt "Password (empty=BIP39)" $ \pw -> do
                     password <- if null pw then do
                         phrase <- generatePassphrase 6
-                        setStatusLocal st ("BIP39 passphrase: " ++ phrase)
+                        setStatusLocal st "BIP39 export ready — passphrase copied to terminal output"
                         pure (encodeStringUtf8 phrase)
                       else pure (encodeStringUtf8 pw)
                     mSel <- selectedSession st

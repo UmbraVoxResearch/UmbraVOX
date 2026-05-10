@@ -144,14 +144,26 @@ handleAck t dg = atomically $ do
         Just sig -> putTMVar sig () >> writeTVar (utAcks t) (Map.delete seq_ m)
         Nothing  -> pure ()
 
+maxRecvBuf :: Int
+maxRecvBuf = 256
+
 handleData :: UDPTransport -> ByteString -> IO ()
 handleData t dg = do
     let seq_ = decodeSeq (BS.take 4 dg)
     NSB.sendAll (utSocket t) (BS.take 4 dg <> BS.singleton 0x01)
         `catch` \(_ :: SomeException) -> pure ()
     atomically $ do
-        modifyTVar' (utRecvBuf t) (Map.insert seq_ (BS.drop 4 dg))
-        deliverInOrder t
+        next <- readTVar (utRecvNext t)
+        buf  <- readTVar (utRecvBuf t)
+        -- Drop datagrams whose sequence number is more than 256 ahead of next expected.
+        -- Drop datagrams if the receive buffer is already at capacity.
+        let tooFarAhead = seq_ > next + fromIntegral maxRecvBuf
+            bufFull     = Map.size buf >= maxRecvBuf
+        if tooFarAhead || bufFull
+            then pure ()
+            else do
+                writeTVar (utRecvBuf t) (Map.insert seq_ (BS.drop 4 dg) buf)
+                deliverInOrder t
 
 deliverInOrder :: UDPTransport -> STM ()
 deliverInOrder t = do

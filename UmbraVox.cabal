@@ -419,6 +419,8 @@ test-suite umbravox-test
     Test.Economics.Cycle
     Test.Economics.Onboarding
     Test.Security.Adversarial
+    Test.Security.Regression
+    Test.Security.RegressionNet
     Test.Security.Unicode
     CryptoGen
   build-depends:

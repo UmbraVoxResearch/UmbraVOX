@@ -88,9 +88,13 @@ exchangePeers tr ours = do
     lenBytes <- anyRecv tr 2
     case getBE16 lenBytes 0 of
         Nothing         -> pure []
-        Just payloadLen -> do
-            payload <- anyRecv tr payloadLen
-            pure (decodePeerList payload)
+        Just payloadLen ->
+            -- M8.2.2: Cap PEX payload to prevent oversized buffer allocation.
+            if payloadLen > 4096
+                then pure []
+                else do
+                    payload <- anyRecv tr payloadLen
+                    pure (decodePeerList payload)
 
 ------------------------------------------------------------------------
 -- Internal — per-entry encoding
