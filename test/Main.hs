@@ -62,6 +62,7 @@ import qualified Test.FuzzConnection as FuzzConnection
 import qualified Test.FuzzInputs as FuzzInputs
 import qualified Test.Hardening.Fault as HardeningFault
 import qualified Test.Security.Adversarial as Adversarial
+import qualified Test.Security.Unicode as Unicode
 import qualified Test.Hardening.Recovery as HardeningRecovery
 import qualified Test.Hardening.Soak as HardeningSoak
 import qualified Test.Hardening.TCP as HardeningTCP
@@ -142,6 +143,8 @@ runSuiteArg suiteArg =
         "soak" -> runSuiteGroup "UmbraVox Soak Suite" soakSuites
         "differential" -> runSuiteGroup "UmbraVox Differential C vs Haskell Suite"
             [Suite "differential" Differential.runTests]
+        "unicode" -> runSuiteGroup "UmbraVox Unicode Exhaustive Suite"
+            [Suite "unicode" Unicode.runTests]
         "deferred" -> runSuiteGroup "UmbraVox Deferred Stub Suite" deferredSuites
         "all" -> runSuiteGroup "UmbraVox Full Test Matrix"
             (requiredSuites ++ tuiSimSuites ++ integritySuites ++ soakSuites ++ deferredSuites)
@@ -230,6 +233,7 @@ coreSuites =
     , Suite "runtime-log" AppRuntimeLog.runTests
     , Suite "differential" Differential.runTests
     , Suite "adversarial" Adversarial.runTests
+    , Suite "unicode" Unicode.runTests
     ]
 
 coreCryptoSuites :: [Suite]
@@ -392,5 +396,5 @@ validSuiteArgs :: [String]
 validSuiteArgs =
     [ "required", "core", "core-crypto", "core-network", "core-chat"
     , "core-tui", "core-tools", "tcp", "fault", "recovery", "tui-sim"
-    , "integrity", "soak", "deferred", "differential", "adversarial", "all"
+    , "integrity", "soak", "deferred", "differential", "adversarial", "unicode", "all"
     ]
