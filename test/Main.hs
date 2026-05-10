@@ -63,6 +63,7 @@ import qualified Test.FuzzInputs as FuzzInputs
 import qualified Test.Hardening.Fault as HardeningFault
 import qualified Test.Security.Adversarial as Adversarial
 import qualified Test.Security.M11KeyMgmt as M11KeyMgmt
+import qualified Test.Security.M11NoiseDH as M11NoiseDH
 import qualified Test.Security.M11Protocol as M11Protocol
 import qualified Test.Security.M11High as M11High
 import qualified Test.Security.M11SideChannel as M11SideChannel
@@ -169,6 +170,8 @@ runSuiteArg suiteArg =
             [Suite "m11-protocol" M11Protocol.runTests]
         "m11-high" -> runSuiteGroup "UmbraVox M11 High-Priority Attack Suite"
             [Suite "m11-high" M11High.runTests]
+        "m11-noise-dh" -> runSuiteGroup "UmbraVox Noise IK DH-Leg Vector and Negative Tests"
+            [Suite "m11-noise-dh" M11NoiseDH.runTests]
         "integrity" -> runSuiteGroup "UmbraVox Integrity Suite" integritySuites
         "soak" -> runSuiteGroup "UmbraVox Soak Suite" soakSuites
         "differential" -> runSuiteGroup "UmbraVox Differential C vs Haskell Suite"
@@ -274,6 +277,7 @@ coreSuites =
     , Suite "m11-sidechannel" M11SideChannel.runTests
     , Suite "m11-protocol" M11Protocol.runTests
     , Suite "m11-high" M11High.runTests
+    , Suite "m11-noise-dh" M11NoiseDH.runTests
     ]
 
 coreCryptoSuites :: [Suite]
@@ -441,5 +445,5 @@ validSuiteArgs =
     , "integrity", "soak", "deferred", "differential", "adversarial", "unicode"
     , "regression", "regression-m7", "regression-m8", "regression-net"
     , "m11-keymgmt", "m11-symmetric", "m11-asymmetric", "m11-sidechannel"
-    , "m11-protocol", "m11-high", "all"
+    , "m11-protocol", "m11-high", "m11-noise-dh", "all"
     ]

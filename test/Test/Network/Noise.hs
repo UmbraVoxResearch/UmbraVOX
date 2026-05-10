@@ -71,24 +71,18 @@ testEncryptDecryptRoundTrip :: IO Bool
 testEncryptDecryptRoundTrip = checkPropertyIO
     "encrypt/decrypt round-trip (50 iterations)" 50 $ \g -> do
         let (sendEncKey, g1) = nextBytes 32 g
-            (sendMacKey, g2) = nextBytes 32 g1
-            (recvEncKey, g3) = nextBytes 32 g2
-            (recvMacKey, g4) = nextBytes 32 g3
-            (payload, _)     = nextBytesRange 1 200 g4
+            (recvEncKey, g2) = nextBytes 32 g1
+            (payload, _)     = nextBytesRange 1 200 g2
             senderSt = NoiseState
                 { nsSendEncKey    = sendEncKey
-                , nsSendMacKey    = sendMacKey
                 , nsRecvEncKey    = recvEncKey
-                , nsRecvMacKey    = recvMacKey
                 , nsSendN         = 0
                 , nsRecvN         = 0
                 , nsHandshakeHash = BS.replicate 32 0
                 }
             receiverSt = NoiseState
                 { nsSendEncKey    = recvEncKey
-                , nsSendMacKey    = recvMacKey
                 , nsRecvEncKey    = sendEncKey
-                , nsRecvMacKey    = sendMacKey
                 , nsSendN         = 0
                 , nsRecvN         = 0
                 , nsHandshakeHash = BS.replicate 32 0
@@ -102,24 +96,18 @@ testEncryptDecryptRoundTrip = checkPropertyIO
 testWrongKeyFails :: IO Bool
 testWrongKeyFails = do
     let sendEncKey = hexDecode "a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4"
-        sendMacKey = hexDecode "4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d"
         recvEncKey = hexDecode "b8b4e236805318e93f48bfbb365656ec1d068bf3d8cabb64dd1ba4523cec3a2a"
-        recvMacKey = hexDecode "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a"
         wrongKey   = hexDecode "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb"
         senderSt = NoiseState
             { nsSendEncKey    = sendEncKey
-            , nsSendMacKey    = sendMacKey
             , nsRecvEncKey    = recvEncKey
-            , nsRecvMacKey    = recvMacKey
             , nsSendN         = 0
             , nsRecvN         = 0
             , nsHandshakeHash = BS.replicate 32 0
             }
         badReceiverSt = NoiseState
             { nsSendEncKey    = recvEncKey
-            , nsSendMacKey    = recvMacKey
             , nsRecvEncKey    = wrongKey
-            , nsRecvMacKey    = wrongKey
             , nsSendN         = 0
             , nsRecvN         = 0
             , nsHandshakeHash = BS.replicate 32 0

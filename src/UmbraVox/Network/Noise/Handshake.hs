@@ -36,7 +36,6 @@ import UmbraVox.Network.Noise.State
     ( NoiseState(..)
     , prologue
     , protocolName
-    , macLen
     , packASCII
     )
 import UmbraVox.Network.TransportClass (AnyTransport, anySend, anyRecv)
@@ -164,14 +163,11 @@ noiseHandshakeInitiator iStaticSec iStaticPub rStaticPub trustCheck transport = 
                                 if not trusted
                                   then pure Nothing
                                   else do
-                                    -- Derive final send/recv keys with key separation
-                                    let (!sendEncKey, !sendMacKey, !recvEncKey, !recvMacKey) =
-                                            splitKeys ck4
+                                    -- Derive final send/recv keys (one per direction)
+                                    let (!sendEncKey, !recvEncKey) = splitKeys ck4
                                     pure (Just NoiseState
                                         { nsSendEncKey    = sendEncKey
-                                        , nsSendMacKey    = sendMacKey
                                         , nsRecvEncKey    = recvEncKey
-                                        , nsRecvMacKey    = recvMacKey
                                         , nsSendN         = 0
                                         , nsRecvN         = 0
                                         , nsHandshakeHash = h5
@@ -202,8 +198,8 @@ noiseHandshakeResponder rStaticSec rStaticPub transport = do
     case mMsg1 of
       Nothing -> pure Nothing
       Just msg1
-        -- Validate message length: need at least 32 (ephemeral) + 32 (ct) + 32 (mac)
-        | BS.length msg1 < (32 + 32 + macLen) -> pure Nothing
+        -- Validate message length: need at least 32 (ephemeral) + 32 (ct) + 32 (HMAC)
+        | BS.length msg1 < (32 + 32 + hsHmacLen) -> pure Nothing
         | otherwise -> do
             let !iEPub        = BS.take 32 msg1
                 !encStaticPub = BS.drop 32 msg1
@@ -257,15 +253,12 @@ noiseHandshakeResponder rStaticSec rStaticPub transport = do
                                     -- Send message 2: ePub
                                     sendFrame transport ePub
 
-                                    -- Derive final send/recv keys with key separation
-                                    -- Responder's send = initiator's recv and vice versa
-                                    let (!iSendEncKey, !iSendMacKey, !iRecvEncKey, !iRecvMacKey) =
-                                            splitKeys ck4
+                                    -- Derive final send/recv keys (one per direction).
+                                    -- Responder's send = initiator's recv and vice versa.
+                                    let (!iSendEncKey, !iRecvEncKey) = splitKeys ck4
                                     let !noiseState = NoiseState
                                             { nsSendEncKey    = iRecvEncKey
-                                            , nsSendMacKey    = iRecvMacKey
                                             , nsRecvEncKey    = iSendEncKey
-                                            , nsRecvMacKey    = iSendMacKey
                                             , nsSendN         = 0
                                             , nsRecvN         = 0
                                             , nsHandshakeHash = h5
@@ -303,16 +296,21 @@ hkdfCK !ck !ikm =
     in (ck', k)
 
 -- | Derive final send and recv keys from the final chaining key.
--- Returns (sendEncKey, sendMacKey, recvEncKey, recvMacKey) from initiator's
--- perspective. Key separation: encryption and MAC use independent keys.
-splitKeys :: ByteString -> (ByteString, ByteString, ByteString, ByteString)
+-- Returns (sendEncKey, recvEncKey) from initiator's perspective.
+-- With ChaCha20-Poly1305 AEAD a single key per direction suffices; the
+-- Poly1305 one-time key is derived internally from the encryption key.
+splitKeys :: ByteString -> (ByteString, ByteString)
 splitKeys !ck =
-    let !prk = hkdfSHA256Extract ck BS.empty
+    let !prk        = hkdfSHA256Extract ck BS.empty
         !sendEncKey = hkdfSHA256Expand prk (packASCII "enc-send") 32
-        !sendMacKey = hkdfSHA256Expand prk (packASCII "mac-send") 32
         !recvEncKey = hkdfSHA256Expand prk (packASCII "enc-recv") 32
-        !recvMacKey = hkdfSHA256Expand prk (packASCII "mac-recv") 32
-    in (sendEncKey, sendMacKey, recvEncKey, recvMacKey)
+    in (sendEncKey, recvEncKey)
+
+-- | HMAC-SHA256 tag length used in the Noise IK handshake (not the transport).
+-- The transport uses 16-byte Poly1305 tags (RFC 8439); the handshake uses
+-- 32-byte HMAC-SHA256 tags for encrypting the initiator's static public key.
+hsHmacLen :: Int
+hsHmacLen = 32
 
 -- | Encrypt data with a handshake key (ChaCha20 + HMAC for authentication).
 -- Uses a zero nonce since each handshake key is used only once.
@@ -327,9 +325,9 @@ encryptWithKey !k !h !plaintext =
 -- Returns 'Nothing' if the MAC does not match.
 decryptWithKey :: ByteString -> ByteString -> ByteString -> Maybe ByteString
 decryptWithKey !k !h !cipherMac
-    | BS.length cipherMac < macLen = Nothing
+    | BS.length cipherMac < hsHmacLen = Nothing
     | otherwise =
-        let !ctLen = BS.length cipherMac - macLen
+        let !ctLen = BS.length cipherMac - hsHmacLen
             !ct    = BS.take ctLen cipherMac
             !mac   = BS.drop ctLen cipherMac
             !expected = hmacSHA256 k (h <> ct)

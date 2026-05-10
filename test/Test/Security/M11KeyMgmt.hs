@@ -416,8 +416,11 @@ testKM021PQXDHMemoryInfo = do
 -- Fix:         splitKeys derives keys via HKDF-SHA256-Extract/Expand from
 --              the chaining key produced by the Noise_IK DH transcript.
 --              A non-degenerate chaining key (not all-zeros) will produce
---              non-zero, distinct HKDF outputs.
--- Verified:    A non-zero chaining key input to splitKeys produces four
+--              non-zero, distinct HKDF outputs.  With ChaCha20-Poly1305 AEAD
+--              (M10.1.7) splitKeys now returns two keys (one per direction)
+--              rather than four; the Poly1305 one-time key is derived
+--              internally from the ChaCha20 key and nonce.
+-- Verified:    A non-zero chaining key input to splitKeys produces two
 --              non-zero, mutually distinct 32-byte session keys.
 ------------------------------------------------------------------------
 
@@ -427,25 +430,19 @@ testKM022SessionKeyNonZero = do
     -- In the Noise_IK flow, ck4 is derived from multiple DH steps and
     -- cannot be all-zero unless all DH outputs are zero (a separate attack).
     let ck = BS.replicate 32 0xAB   -- non-degenerate chaining key
-        (sendEnc, sendMac, recvEnc, recvMac) = splitKeys ck
+        (sendEnc, recvEnc) = splitKeys ck
     ok1 <- assertEq "KM-022 splitKeys: sendEncKey is 32 bytes"
                32 (BS.length sendEnc)
-    ok2 <- assertEq "KM-022 splitKeys: sendMacKey is 32 bytes"
-               32 (BS.length sendMac)
-    ok3 <- assertEq "KM-022 splitKeys: recvEncKey is 32 bytes"
+    ok2 <- assertEq "KM-022 splitKeys: recvEncKey is 32 bytes"
                32 (BS.length recvEnc)
-    ok4 <- assertEq "KM-022 splitKeys: recvMacKey is 32 bytes"
-               32 (BS.length recvMac)
-    ok5 <- assertEq "KM-022 splitKeys: sendEncKey is non-zero"
+    ok3 <- assertEq "KM-022 splitKeys: sendEncKey is non-zero"
                False (sendEnc == BS.replicate 32 0x00)
-    ok6 <- assertEq "KM-022 splitKeys: recvEncKey is non-zero"
+    ok4 <- assertEq "KM-022 splitKeys: recvEncKey is non-zero"
                False (recvEnc == BS.replicate 32 0x00)
-    -- Confirm the four keys are mutually distinct (domain separation).
-    ok7 <- assertEq "KM-022 splitKeys: sendEncKey /= sendMacKey"
-               True (sendEnc /= sendMac)
-    ok8 <- assertEq "KM-022 splitKeys: sendEncKey /= recvEncKey"
+    -- Confirm the two keys are distinct (domain separation).
+    ok5 <- assertEq "KM-022 splitKeys: sendEncKey /= recvEncKey"
                True (sendEnc /= recvEnc)
-    pure (ok1 && ok2 && ok3 && ok4 && ok5 && ok6 && ok7 && ok8)
+    pure (ok1 && ok2 && ok3 && ok4 && ok5)
 
 ------------------------------------------------------------------------
 -- IB-001: Frame length off-by-one — len = maxFrameSize must be rejected
