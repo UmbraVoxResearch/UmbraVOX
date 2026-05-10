@@ -259,37 +259,37 @@ MILESTONE M7: SECURITY AUDIT FIXES
 Note: Issues found by 5 expert security reviews (cryptanalysis, network
 protocol, security architecture, encryption protocol, input validation).
 
-[ ] M7.1 CRITICAL fixes
-  [ ] M7.1.1 Encrypt identity keys at rest + set 0600 file permissions (KeyStore.hs:45).
-  [ ] M7.1.2 Add per-session binding to HKDF info strings in X3DH/PQXDH (X3DH.hs, PQXDH.hs).
-  [ ] M7.1.3 Fix Noise IK handshake identity binding asymmetry (Handshake.hs:64).
-  [ ] M7.1.4 Add bounds checking to PEX decoder before BS.index (PeerExchange.hs:103).
-  [ ] M7.1.5 Fix SQL injection in removeTrustedKey — use safe quote() (Anthony.hs:206).
+[x] M7.1 CRITICAL fixes
+  [x] M7.1.1 Encrypt identity keys at rest + set 0600 file permissions (KeyStore.hs:45).
+  [x] M7.1.2 Add per-session binding to HKDF info strings in X3DH/PQXDH (X3DH.hs, PQXDH.hs).
+  [x] M7.1.3 Fix Noise IK handshake identity binding asymmetry (Handshake.hs:64).
+  [x] M7.1.4 Add bounds checking to PEX decoder before BS.index (PeerExchange.hs:103).
+  [x] M7.1.5 Fix SQL injection in removeTrustedKey — use safe quote() (Anthony.hs:206).
 
-[ ] M7.2 HIGH fixes
-  [ ] M7.2.1 Add secure key zeroing after crypto operations (all crypto modules).
-  [ ] M7.2.2 Fix GF(2^128) timing side-channel in GHASH multiplication (GCM.hs:84).
-  [ ] M7.2.3 Never zero-initialize ratchet chain keys — derive from DH (DoubleRatchet.hs:152).
-  [ ] M7.2.4 Include nonce counter in nonce construction (DoubleRatchet.hs:357).
-  [ ] M7.2.5 Replace error() with Maybe in recvFrame (Handshake.hs:290).
-  [ ] M7.2.6 Mark SenderKeys as unimplemented stub, remove from active API (SenderKeys.hs).
+[x] M7.2 HIGH fixes
+  [x] M7.2.1 Add secure key zeroing after crypto operations (all crypto modules).
+  [x] M7.2.2 Fix GF(2^128) timing side-channel in GHASH multiplication (GCM.hs:84).
+  [x] M7.2.3 Never zero-initialize ratchet chain keys — derive from DH (DoubleRatchet.hs:152).
+  [x] M7.2.4 Include nonce counter in nonce construction (DoubleRatchet.hs:357).
+  [x] M7.2.5 Replace error() with Maybe in recvFrame (Handshake.hs:290).
+  [x] M7.2.6 Mark SenderKeys as unimplemented stub, remove from active API (SenderKeys.hs).
 
-[ ] M7.3 MEDIUM fixes
-  [ ] M7.3.1 Add HKDF-Extract to CSPRNG initial seeding (Random.hs:206).
-  [ ] M7.3.2 Capture PID in seedCSPRNG for fork detection (Random.hs:232).
-  [ ] M7.3.3 Use PBKDF2 for export encryption key derivation (Export.hs:32).
-  [ ] M7.3.4 Add per-installation random salt to storage key derivation (Encryption.hs:49).
-  [ ] M7.3.5 Enforce PEX 1-hop rule at send time (PeerExchange.hs:64).
-  [ ] M7.3.6 Cap skipped message key cache size with LRU eviction (DoubleRatchet.hs:318).
-  [ ] M7.3.7 Add session key confirmation HMAC after handshake (DoubleRatchet.hs).
-  [ ] M7.3.8 Validate database path — reject traversal (Startup.hs:91).
-  [ ] M7.3.9 Replace unsafe head with pattern matching (Anthony.hs:166).
+[x] M7.3 MEDIUM fixes
+  [x] M7.3.1 Add HKDF-Extract to CSPRNG initial seeding (Random.hs:206).
+  [x] M7.3.2 Capture PID in seedCSPRNG for fork detection (Random.hs:232).
+  [x] M7.3.3 Use PBKDF2 for export encryption key derivation (Export.hs:32).
+  [x] M7.3.4 Add per-installation random salt to storage key derivation (Encryption.hs:49).
+  [x] M7.3.5 Enforce PEX 1-hop rule at send time (PeerExchange.hs:64).
+  [x] M7.3.6 Cap skipped message key cache size with LRU eviction (DoubleRatchet.hs:318).
+  [x] M7.3.7 Add session key confirmation HMAC after handshake (DoubleRatchet.hs).
+  [x] M7.3.8 Validate database path — reject traversal (Startup.hs:91).
+  [x] M7.3.9 Replace unsafe head with pattern matching (Anthony.hs:166).
 
-[ ] M7.4 LOW fixes
-  [ ] M7.4.1 Add PQ ciphertext hash to PQXDH key derivation (PQXDH.hs:113).
-  [ ] M7.4.2 Add trust check on initiator side of handshake (Handshake.hs:115).
-  [ ] M7.4.3 Set 0600 permissions on persistence preference file (Startup.hs:263).
-  [ ] M7.4.4 Add process pooling or native SQLite bindings (Anthony.hs:264).
+[x] M7.4 LOW fixes
+  [x] M7.4.1 Add PQ ciphertext hash to PQXDH key derivation (PQXDH.hs:113).
+  [x] M7.4.2 Add trust check on initiator side of handshake (Handshake.hs:115).
+  [x] M7.4.3 Set 0600 permissions on persistence preference file (Startup.hs:263).
+  [x] M7.4.4 Add process pooling or native SQLite bindings (Anthony.hs:264).
 
 ================================================================================
 OUTSIDE MVP (DEFERRED)
