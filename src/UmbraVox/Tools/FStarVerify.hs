@@ -93,7 +93,7 @@ discoverModules dir = do
 -- | Specs that require significantly more Z3 time.
 -- These are verified last so other modules populate the cache first.
 heavySpecs :: [String]
-heavySpecs = ["Spec.Keccak"]
+heavySpecs = ["Spec.Keccak.Permutation"]
 
 -- | Check if a tool is available on PATH.
 checkTool :: String -> IO (Maybe FilePath)
