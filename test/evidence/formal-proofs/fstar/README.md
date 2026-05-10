@@ -62,7 +62,7 @@ independent cryptographic assurance.
 | ChaCha20 | RFC 8439 | Spec.ChaCha20.fst | Random.hs | probe/bridge only | 3 RFC | model + runtime evidence |
 | X25519 | RFC 7748 | Spec.X25519.fst | Curve25519.hs | probe/bridge only | 6 RFC | model + runtime evidence |
 | Ed25519 | RFC 8032 | Spec.Ed25519.fst | Ed25519.hs | n/a | 3 RFC | model + runtime evidence |
-| Keccak/SHA-3 | FIPS 202 | Spec.Keccak.fst | Keccak.hs | probe/bridge only | 10 NIST | model + runtime evidence |
+| Keccak/SHA-3 | FIPS 202 | Spec.Keccak.{Permutation,Sponge,SHA3}.fst | Keccak.hs | probe/bridge only | 10 NIST | model + runtime evidence |
 | ML-KEM-768 | FIPS 203 | Spec.MLKEM768.fst | MLKEM.hs | probe/bridge only | 8 self | model + runtime evidence |
 | VRF | RFC 9381 | **TODO** | **TODO** | TODO | - | not active |
 
@@ -145,14 +145,24 @@ independent cryptographic assurance.
 - Sign-then-verify roundtrip lemma
 - KAT vectors: RFC 8032 Section 7.1 Test Vectors 1-2
 
-### Spec.Keccak.fst
+### Spec.Keccak.Permutation.fst
 - Keccak-f[1600] permutation: theta, rho, pi, chi, iota
 - 24 round constants and 25 rotation offsets
+- State type (`keccak_state`), byte encoding helpers
+- Structural lemmas: state size, permutation size preservation, chi identity
+
+### Spec.Keccak.Sponge.fst
 - Sponge construction: pad10*1, absorb, squeeze
+- Padding structural lemmas (length divisibility, non-emptiness)
+
+### Spec.Keccak.SHA3.fst
 - SHA3-224/256/384/512 parameters (rate, suffix=0x06)
 - SHAKE-128/256 XOF parameters (rate, suffix=0x1F)
 - 7 KAT vectors (empty string for all variants + "abc" for SHA3-256)
 - Output length structural lemmas
+
+### Spec.Keccak.fst
+- Thin re-export wrapper opening Permutation, Sponge, and SHA3 sub-modules
 
 ## Running Verification
 

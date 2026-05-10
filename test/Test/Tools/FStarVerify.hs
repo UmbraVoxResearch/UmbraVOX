@@ -226,7 +226,10 @@ testCheckToolMissing = do
 fstarDir :: FilePath
 fstarDir = "test/evidence/formal-proofs/fstar"
 
--- | All 17 expected Spec modules in sorted order.
+-- | All 20 expected Spec modules in sorted order.
+-- Keccak is split into Permutation/Sponge/SHA3 sub-modules for faster
+-- per-module F* verification; the top-level Spec.Keccak is a thin wrapper.
+-- discoverModules sorts alphabetically then puts heavySpecs last.
 expectedModules :: [String]
 expectedModules =
     [ "Spec.AES256"
@@ -237,6 +240,9 @@ expectedModules =
     , "Spec.GaloisField"
     , "Spec.HKDF"
     , "Spec.HMAC"
+    , "Spec.Keccak"              -- thin re-export wrapper (fast)
+    , "Spec.Keccak.SHA3"         -- wrapper functions + KATs
+    , "Spec.Keccak.Sponge"       -- sponge construction
     , "Spec.MLKEM768"
     , "Spec.NoiseIK"
     , "Spec.PQXDH"
@@ -245,7 +251,7 @@ expectedModules =
     , "Spec.SHA512"
     , "Spec.X25519"
     , "Spec.X3DH"
-    , "Spec.Keccak"  -- heavy spec, verified last with higher z3rlimit
+    , "Spec.Keccak.Permutation"  -- heavy: permutation rounds, verified last
     ]
 
 testDiscoverModules :: IO Bool
@@ -259,5 +265,5 @@ testDiscoverModulesCount :: IO Bool
 testDiscoverModulesCount = do
     mods <- discoverModules fstarDir
     assertEq "discoverModules count"
-        17
+        20
         (length mods)
