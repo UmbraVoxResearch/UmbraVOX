@@ -126,9 +126,10 @@ scripts/nix-flake.sh flake show --no-write-lock-file
   Windows, and BSD remain informational.
 - `make platform-sanity` and `make sanity` check that the helper scripts and
   lane wiring are still present in the tree.
-- Release/readiness orchestration now routes through Haskell entrypoints
-  via `cabal run umbravox -- <command>`. Shell scripts in `scripts/` are
-  preserved for reference but are no longer the primary execution path.
+- Release/readiness orchestration is migrating to Haskell entrypoints
+  via `cabal run umbravox -- <command>`. Lane checks, SBOM, compliance,
+  and VM orchestration targets use Haskell; packaging and smoke targets
+  still invoke shell scripts in `scripts/` directly.
 - `make release-lane-readiness-haskell` is the current opt-in Haskell bridge
   for readiness checks; it shells out to the existing aggregate script.
 - `make build-haskell`, `make test-haskell`, and `make verify-haskell` are
@@ -203,11 +204,10 @@ scripts/nix-flake.sh flake show --no-write-lock-file
   native lanes and parity evidence exist.
 - The AppImage track is intentionally experimental and scaffold-only until
   support policy and parity evidence are proven.
-- The shell-to-Haskell migration is complete for all orchestration targets.
-  All Makefile targets now route through Haskell entrypoints. Shell scripts
-  are preserved in `scripts/` for reference only.
-- The readiness bridge is currently Haskell-backed only for the aggregate
-  readiness command; all other orchestration remains shell-driven.
+- The shell-to-Haskell migration is ongoing. Lane checks, SBOM, compliance,
+  VM orchestration, and traffic verification targets route through Haskell
+  entrypoints. Release packaging, smoke, and platform-lane targets still
+  invoke shell scripts directly.
 
 ## Release Target Posture
 

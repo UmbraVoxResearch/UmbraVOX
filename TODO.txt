@@ -331,11 +331,11 @@ memory forensics, disk inspection, and attack simulation.
   [x] M9.1.2 Fix StealthAddress silent failure — return Maybe instead of BS.empty (StealthAddress.hs:140).
   [x] M9.1.3 Document GCM xBitMask loop index as public-only (GCM.hs:104).
 
-[ ] M9.2 Automated forensics tests
+[x] M9.2 Automated forensics tests
   [x] M9.2.1 Create VM forensics script for disk/log/DB verification (scripts/vm-forensics-test.sh).
-  [ ] M9.2.2 Add pcap entropy analysis to PcapVerify (analyzeCiphertextEntropy).
-  [ ] M9.2.3 Add nonce uniqueness checking to PcapVerify (checkNonceUniqueness).
-  [ ] M9.2.4 Wire vm-forensics into Makefile target.
+  [x] M9.2.2 Add pcap entropy analysis to PcapVerify (analyzeCiphertextEntropy).
+  [x] M9.2.3 Add nonce uniqueness checking to PcapVerify (checkNonceUniqueness).
+  [x] M9.2.4 Wire vm-forensics into Makefile target and CLI bridge.
 
 [x] M9.3 Attack simulation test suite
   [x] M9.3.1 Handshake replay rejection test.

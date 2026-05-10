@@ -78,7 +78,7 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - Updated assurance matrix to reflect real C codegen implementations (no longer link probes) and differential testing framework.
 - All 10 generated C files now contain real algorithmic code from .spec files with NIST constants, round functions, and helper macros.
 - Restructured TODO.txt with Known Issues (B1), Blocked (X1-X3), and priority tracking sections.
-- Switched all Makefile orchestration targets from shell scripts to Haskell entrypoints; shell scripts preserved in scripts/ for reference only (M4.3.4 complete).
+- Switched select Makefile orchestration targets from shell scripts to Haskell entrypoints; shell scripts preserved in scripts/ for reference and packaging targets.
 - Marked Makefile as thin wrapper over Haskell orchestration (M4.3.3 complete); all new targets route through Haskell entrypoints.
 - Replaced placeholder SBOM/license compliance gates with real Haskell implementations that generate actual artifacts.
 - Updated flake.nix to expose vm-image package on x86_64-linux and added QEMU/Firecracker/genext2fs to devTools.
