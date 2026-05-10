@@ -302,7 +302,7 @@ buildFstarCacheInVM _repoRoot imagePath cacheStage = do
         , "-serial", "stdio"
         , "-drive", "if=virtio,format=qcow2,file=" ++ overlay
         , "-drive", "if=virtio,format=raw,file=" ++ srcDisk ++ ",readonly=on"
-        , "-drive", "if=virtio,format=raw,file=" ++ cacheImg
+        , "-drive", "if=virtio,format=raw,file=" ++ cacheImg ++ ",cache=writethrough"
         ]
     -- Extract .checked files from the ext2 cache image using debugfs (no root needed)
     hPutStrLn stderr "[VM-SMOKE] stage 1b: extracting F* cache from output disk..."
