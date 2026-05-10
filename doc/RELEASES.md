@@ -101,7 +101,7 @@ Image caching:
 
 - The VM image is cached at `build/vm/image` (a Nix store symlink)
 - It is only rebuilt when `flake.nix` or `flake.lock` change
-- Use `make image-clean` to force a rebuild on next invocation
+- Use `make vm-image-clean` to force a rebuild on next invocation
 
 This closes the gap between host-trusted builds and authoritative
 isolated release execution (M2.4).
@@ -213,7 +213,7 @@ To verify reproducibility manually:
 make vm-smoke  # produces build/releases/umbravox-*.tar.gz
 sha256sum build/releases/umbravox-*-linux-x86_64.tar.gz > /tmp/hash1.txt
 
-make image-clean && make vm-smoke
+make vm-image-clean && make vm-smoke
 sha256sum build/releases/umbravox-*-linux-x86_64.tar.gz > /tmp/hash2.txt
 
 diff /tmp/hash1.txt /tmp/hash2.txt

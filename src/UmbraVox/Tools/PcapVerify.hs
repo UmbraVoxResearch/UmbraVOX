@@ -39,6 +39,7 @@ defaultForbiddenStrings =
 
 -- | Verify that no plaintext leaks appear in captured pcap files.
 -- Looks for pcap files under @build/evidence/@.
+-- Also runs entropy analysis and nonce uniqueness checks.
 verifyTrafficEncryption :: IO ExitCode
 verifyTrafficEncryption = do
     let evidenceDir = "build" </> "evidence"
@@ -55,15 +56,59 @@ verifyTrafficEncryption = do
                     hPutStrLn stderr "[PCAP] SKIP: no pcap files in build/evidence/"
                     pure ExitSuccess
                 else do
-                    results <- mapM (\f -> analyzePcapFile (evidenceDir </> f) defaultForbiddenStrings) pcaps
-                    let passed = and results
-                    if passed
+                    let paths = map (evidenceDir </>) pcaps
+                    -- Phase 1: Plaintext leak check
+                    leakResults <- mapM (\f -> analyzePcapFile f defaultForbiddenStrings) paths
+                    let leaksPassed = and leakResults
+                    -- Phase 2: Entropy analysis
+                    entropyResults <- mapM analyzeAndCheckEntropy paths
+                    let entropyPassed = and entropyResults
+                    -- Phase 3: Nonce uniqueness
+                    nonceResults <- mapM checkAndReportNonces paths
+                    let noncesPassed = and nonceResults
+                    -- Summary
+                    let allPassed = leaksPassed && entropyPassed && noncesPassed
+                    if allPassed
                         then do
-                            hPutStrLn stderr $ "[PCAP] PASS: " ++ show (length pcaps) ++ " capture(s) verified clean"
+                            hPutStrLn stderr $ "[PCAP] PASS: " ++ show (length pcaps)
+                                ++ " capture(s) verified (plaintext + entropy + nonce)"
                             pure ExitSuccess
                         else do
-                            hPutStrLn stderr "[PCAP] FAIL: plaintext detected in captured traffic"
+                            hPutStrLn stderr "[PCAP] FAIL: verification failed"
                             pure (ExitFailure 1)
+
+-- | Run entropy analysis on a pcap and check threshold.
+-- Encrypted traffic should have Shannon entropy > 7.5 bits/byte.
+analyzeAndCheckEntropy :: FilePath -> IO Bool
+analyzeAndCheckEntropy path = do
+    result <- analyzeCiphertextEntropy path
+    case result of
+        Nothing -> pure True  -- skip, not fail
+        Just entropy
+            | entropy >= 7.5 -> do
+                hPutStrLn stderr $ "[PCAP-ENTROPY] PASS: " ++ path
+                    ++ " (entropy = " ++ show entropy ++ " >= 7.5)"
+                pure True
+            | otherwise -> do
+                hPutStrLn stderr $ "[PCAP-ENTROPY] FAIL: " ++ path
+                    ++ " (entropy = " ++ show entropy ++ " < 7.5 — possible plaintext)"
+                pure False
+
+-- | Run nonce uniqueness check on a pcap and report.
+checkAndReportNonces :: FilePath -> IO Bool
+checkAndReportNonces path = do
+    (total, unique, hasDups) <- checkNonceUniqueness path
+    if total == 0
+        then pure True  -- no packets to check
+        else if hasDups
+            then do
+                hPutStrLn stderr $ "[PCAP-NONCE] FAIL: " ++ path
+                    ++ " (" ++ show (total - unique) ++ " duplicate nonces out of " ++ show total ++ ")"
+                pure False
+            else do
+                hPutStrLn stderr $ "[PCAP-NONCE] PASS: " ++ path
+                    ++ " (" ++ show total ++ " nonces, all unique)"
+                pure True
 
 isPcap :: FilePath -> Bool
 isPcap f = takeExtension f `elem` [".pcap", ".pcapng"]

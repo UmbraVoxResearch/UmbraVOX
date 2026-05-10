@@ -74,6 +74,7 @@ runBridgeCommand "lane-firecracker" args = runLaneFirecracker args
 runBridgeCommand "gate-assurance" args = runGateAssurance args
 runBridgeCommand "vm-integration-test" args = runIntegrationTest args
 runBridgeCommand "verify-traffic" _ = verifyTrafficEncryption
+runBridgeCommand "vm-forensics" _ = verifyTrafficEncryption
 runBridgeCommand cmd _ = do
     hPutStrLn stderr $ "Unknown orchestration bridge command: " ++ cmd
     pure (ExitFailure 64)
