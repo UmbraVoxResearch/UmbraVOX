@@ -76,12 +76,15 @@ val bs_to_gf : b:seq UInt8.t{Seq.length b = 16} -> Tot gf128
 let bs_to_gf (b : seq UInt8.t{Seq.length b = 16}) : gf128 =
   (be_bytes_to_uint64 b 0, be_bytes_to_uint64 b 8)
 
-(** Convert a GF(2^128) element to a 16-byte sequence *)
+(** Convert a GF(2^128) element to a 16-byte sequence.
+    append of two 8-byte sequences has length 8+8 = 16. *)
 val gf_to_bs : gf128 -> Tot (s:seq UInt8.t{Seq.length s = 16})
 let gf_to_bs ((hi, lo) : gf128) : (s:seq UInt8.t{Seq.length s = 16}) =
-  assume (Seq.length (Seq.append (uint64_to_be_bytes hi)
-                                 (uint64_to_be_bytes lo)) = 16);
-  Seq.append (uint64_to_be_bytes hi) (uint64_to_be_bytes lo)
+  let hi_bytes = uint64_to_be_bytes hi in
+  let lo_bytes = uint64_to_be_bytes lo in
+  (* Seq.length hi_bytes = 8 and Seq.length lo_bytes = 8 by return type of
+     uint64_to_be_bytes; Seq.length (append a b) = length a + length b *)
+  Seq.append hi_bytes lo_bytes
 
 (** -------------------------------------------------------------------- **)
 (** GF(2^128) XOR                                                        **)
@@ -140,47 +143,58 @@ let gf_mul (x : gf128) (y : gf128) : gf128 =
 (** Properties of GF(2^128) operations                                   **)
 (** -------------------------------------------------------------------- **)
 
-(** XOR is commutative *)
+(** XOR is commutative — follows from UInt64.logxor commutativity *)
 val gf_xor_comm : a:gf128 -> b:gf128
     -> Lemma (gf_xor a b == gf_xor b a)
 let gf_xor_comm (ah, al) (bh, bl) =
-  assert (gf_xor (ah, al) (bh, bl) == (UInt64.logxor ah bh, UInt64.logxor al bl));
-  assert (gf_xor (bh, bl) (ah, al) == (UInt64.logxor bh ah, UInt64.logxor bl al));
-  assume (gf_xor (ah, al) (bh, bl) == gf_xor (bh, bl) (ah, al))
+  UInt.logxor_commutative #64 (UInt64.v ah) (UInt64.v bh);
+  UInt.logxor_commutative #64 (UInt64.v al) (UInt64.v bl)
 
-(** XOR is associative *)
+(** XOR is associative — follows from UInt64.logxor associativity *)
 val gf_xor_assoc : a:gf128 -> b:gf128 -> c:gf128
     -> Lemma (gf_xor a (gf_xor b c) == gf_xor (gf_xor a b) c)
 let gf_xor_assoc (ah, al) (bh, bl) (ch, cl) =
-  assume (gf_xor (ah, al) (gf_xor (bh, bl) (ch, cl)) ==
-          gf_xor (gf_xor (ah, al) (bh, bl)) (ch, cl))
+  UInt.logxor_associative #64 (UInt64.v ah) (UInt64.v bh) (UInt64.v ch);
+  UInt.logxor_associative #64 (UInt64.v al) (UInt64.v bl) (UInt64.v cl)
 
-(** Zero is the identity for XOR *)
+(** Zero is the identity for XOR — logxor a 0 = a *)
 val gf_xor_zero_identity : a:gf128
     -> Lemma (gf_xor a gf_zero == a)
 let gf_xor_zero_identity (ah, al) =
-  assume (gf_xor (ah, al) gf_zero == (ah, al))
+  UInt.logxor_lemma_1 #64 (UInt64.v ah);
+  UInt.logxor_lemma_1 #64 (UInt64.v al)
 
-(** Self-XOR yields zero *)
+(** Self-XOR yields zero — logxor a a = 0 *)
 val gf_xor_self_zero : a:gf128
     -> Lemma (gf_xor a a == gf_zero)
 let gf_xor_self_zero (ah, al) =
-  assume (gf_xor (ah, al) (ah, al) == gf_zero)
+  UInt.logxor_self #64 (UInt64.v ah);
+  UInt.logxor_self #64 (UInt64.v al)
 
 (** Multiplication by zero yields zero *)
 val gf_mul_zero : a:gf128
     -> Lemma (gf_mul a gf_zero == gf_zero)
 let gf_mul_zero a =
+  (* TODO: requires tactic-based proof — needs loop invariant that when V starts
+     as (0,0), all iterations maintain Z = 0 since gf_xor z (0,0) = z only when
+     the bit is not set, and V shifts always produce (0,0) when starting from (0,0) *)
   assume (gf_mul a gf_zero == gf_zero)
 
 (** Multiplication is commutative in GF(2^128) *)
 val gf_mul_comm : a:gf128 -> b:gf128
     -> Lemma (gf_mul a b == gf_mul b a)
 let gf_mul_comm a b =
+  (* TODO: requires tactic-based proof — commutativity of GF(2^128) multiplication
+     follows from the algebraic structure of the field but requires a non-trivial
+     inductive argument on the bit representation *)
   assume (gf_mul a b == gf_mul b a)
 
 (** Round-trip: bs_to_gf . gf_to_bs = id *)
 val gf_bs_roundtrip : x:gf128
     -> Lemma (bs_to_gf (gf_to_bs x) == x)
 let gf_bs_roundtrip x =
+  (* TODO: requires tactic-based proof — needs lemma that
+     be_bytes_to_uint64 (uint64_to_be_bytes w) 0 = w for all w,
+     which requires reasoning about the byte-serialisation/deserialisation
+     round-trip at each bit position *)
   assume (bs_to_gf (gf_to_bs x) == x)

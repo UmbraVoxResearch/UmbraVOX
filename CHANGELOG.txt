@@ -6,6 +6,24 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 
 ## [0.0.8] — 2026-05-10
 
+### Testing
+- M11 attack test plan: 280 items across 12 categories (SC, PL, SY, AS, KM, IB, PQ, HA, SM, MT, FS, IA).
+- M11 Critical tests: 64 tests (side-channel, protocol, symmetric, asymmetric, key management).
+- M11 High tests: ~180 tests across 16 modules (protocol, symmetric+hash, key mgmt, forward secrecy, post-quantum, identity/auth, Noise DH vectors, remaining SC/AS/KM/IB).
+- M11 Medium tests: ~42 tests covering all remaining medium-priority scenarios.
+- Regression test suites: M7 (17), M8 (13), M10 crypto (16), M10 network (15) = 61 regression tests.
+- Unicode exhaustive testing: all 1,112,064 code points + surrogates + invalid UTF-8 + all 17 planes.
+- All M11 implemented items marked complete in TODO.txt.
+
+### Formal Verification
+- M13 F* 100% coverage plan added to TODO (35 items across 6 phases).
+- M13 Phase 1 begun: replaced assumes with real Z3-discharged proofs in HMAC, HKDF, Poly1305, GaloisField specs.
+- GaloisField: gf_xor_comm, gf_xor_assoc, gf_xor_zero_identity, gf_xor_self_zero fully proved.
+- HKDF: counter bounds and ceil_div_bounds proved (removed 2 assumes).
+- HMAC: key-length branch pruned (removed 1 assume via type refinement).
+- Poly1305: key-size precondition enforced at type level (removed 1 assume).
+- SHA-256/512 equivalence lemma stubs + refinement spec added.
+
 ### Security
 - M10.1.2: Identity keys encrypted at rest with passphrase-derived AES-256-GCM AEAD.
 - M10.1.3: Pure-Haskell crypto primitives documented NOT constant-time; compile flag added.

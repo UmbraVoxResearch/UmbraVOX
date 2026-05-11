@@ -21,7 +21,11 @@ open FStar.Mul
     For the concrete instances we use Spec.SHA256.sha256 and
     Spec.SHA512.sha512. *)
 
-(** Type alias for a hash function *)
+(** A well-formed hash function: it maps any input to exactly hash_len bytes. *)
+type bounded_hash_fn (hash_len : nat) =
+    f:(seq UInt8.t -> seq UInt8.t){forall (x:seq UInt8.t). Seq.length (f x) = hash_len}
+
+(** Type alias for a hash function (unconstrained, for structural lemmas) *)
 type hash_fn = seq UInt8.t -> seq UInt8.t
 
 (** -------------------------------------------------------------------- **)
@@ -33,18 +37,37 @@ let pad_right (n : nat) (bs : seq UInt8.t{Seq.length bs <= n})
     : (s:seq UInt8.t{Seq.length s = n}) =
   Seq.append bs (Seq.create (n - Seq.length bs) 0uy)
 
-(** Prepare the key for HMAC.
-    If |key| > block_size, hash it first, then pad to block_size.
+(** Prepare the key for HMAC using a bounded hash function.
+    If |key| > block_size, hash it first (output is hash_len bytes, which
+    we require <= block_size via the hash_len precondition), then pad.
     Otherwise, pad to block_size directly. *)
+let prepare_key_bounded
+    (#hash_len : nat{hash_len > 0})
+    (h : bounded_hash_fn hash_len)
+    (block_size : nat{block_size > 0 /\ hash_len <= block_size})
+    (key : seq UInt8.t)
+    : Tot (s:seq UInt8.t{Seq.length s = block_size}) =
+  if Seq.length key > block_size then
+    let hashed = h key in
+    (* h is a bounded_hash_fn hash_len, so Seq.length hashed = hash_len <= block_size *)
+    pad_right block_size hashed
+  else
+    (* Seq.length key <= block_size follows directly from the else-branch guard *)
+    pad_right block_size key
+
+(** Prepare the key for HMAC (unconstrained hash version, for generic lemmas).
+    The assumption that hashed fits in block_size is stated as a TODO axiom
+    when h is abstract. *)
 let prepare_key (h : hash_fn) (block_size : nat{block_size > 0})
                 (key : seq UInt8.t)
     : Tot (s:seq UInt8.t{Seq.length s = block_size}) =
   if Seq.length key > block_size then
     let hashed = h key in
+    (* TODO: requires tactic-based proof — depends on a length contract for h *)
     assume (Seq.length hashed <= block_size);
     pad_right block_size hashed
   else (
-    assume (Seq.length key <= block_size);
+    (* else branch: not (Seq.length key > block_size), so Seq.length key <= block_size *)
     pad_right block_size key
   )
 
@@ -165,6 +188,7 @@ val hmac_sha256_kat_tc1 : unit
     -> Lemma (hmac_sha256 rfc4231_tc1_key rfc4231_tc1_data ==
               rfc4231_tc1_expected_256)
 let hmac_sha256_kat_tc1 () =
+  (* TODO: requires tactic-based proof — KAT vector requires SHA-256 reduction *)
   assume (hmac_sha256 rfc4231_tc1_key rfc4231_tc1_data ==
           rfc4231_tc1_expected_256)
 
@@ -189,6 +213,7 @@ val hmac_sha512_kat_tc1 : unit
     -> Lemma (hmac_sha512 rfc4231_tc1_key rfc4231_tc1_data ==
               rfc4231_tc1_expected_512)
 let hmac_sha512_kat_tc1 () =
+  (* TODO: requires tactic-based proof — KAT vector requires SHA-512 reduction *)
   assume (hmac_sha512 rfc4231_tc1_key rfc4231_tc1_data ==
           rfc4231_tc1_expected_512)
 
@@ -218,5 +243,6 @@ val hmac_sha256_kat_tc2 : unit
     -> Lemma (hmac_sha256 rfc4231_tc2_key rfc4231_tc2_data ==
               rfc4231_tc2_expected_256)
 let hmac_sha256_kat_tc2 () =
+  (* TODO: requires tactic-based proof — KAT vector requires SHA-256 reduction *)
   assume (hmac_sha256 rfc4231_tc2_key rfc4231_tc2_data ==
           rfc4231_tc2_expected_256)

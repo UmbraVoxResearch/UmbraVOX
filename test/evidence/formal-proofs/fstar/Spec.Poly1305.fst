@@ -46,8 +46,8 @@ let fmul (a b : felem) : felem =
 (** Decode a little-endian byte sequence to a natural number *)
 val le_to_nat : seq UInt8.t -> Tot nat
 let le_to_nat bs =
-  assume (True);
-  0  (* abstract -- specified by structure lemma below *)
+  (* Abstract specification: value is determined by structure lemma *)
+  0
 
 (** Encode a natural number as n little-endian bytes *)
 val nat_to_le : n:nat -> v:nat -> Tot (seq UInt8.t)
@@ -58,6 +58,7 @@ let nat_to_le n v =
 val le_roundtrip_lemma : n:nat -> v:nat
     -> Lemma (True)
 let le_roundtrip_lemma n v =
+  (* TODO: requires tactic-based proof — le_to_nat and nat_to_le are abstract *)
   assume (le_to_nat (nat_to_le n v) = v % pow2 (8 * n))
 
 (** -------------------------------------------------------------------- **)
@@ -74,10 +75,12 @@ assume val bitwise_and : nat -> nat -> Tot nat
 val clamp_r : nat -> Tot nat
 let clamp_r r = bitwise_and r clamp_mask
 
-(** Clamping produces a value with specific bits cleared *)
+(** Clamping produces a value bounded by the mask.
+    This follows from the semantics of bitwise AND: (a & b) <= b for all a, b. *)
 val clamp_r_bound_lemma : r:nat
     -> Lemma (clamp_r r <= clamp_mask)
 let clamp_r_bound_lemma r =
+  (* TODO: requires tactic-based proof — depends on bitwise_and axiom semantics *)
   assume (clamp_r r <= clamp_mask)
 
 (** -------------------------------------------------------------------- **)
@@ -121,20 +124,26 @@ let finalize acc s =
 
 (** -------------------------------------------------------------------- **)
 (** Full Poly1305 MAC                                                    **)
+(**                                                                       **)
+(** Poly1305(key, msg) where key = r[0..15] || s[0..15]                  **)
+(** The key must be exactly key_size = 32 bytes.                          **)
 (** -------------------------------------------------------------------- **)
 
 (** Poly1305(key, msg) where key = r[0..15] || s[0..15] *)
-val poly1305 : key:seq UInt8.t
+val poly1305 : key:seq UInt8.t{Seq.length key = key_size}
     -> msg:seq UInt8.t
     -> Tot (seq UInt8.t)
 let poly1305 key msg =
-  assume (Seq.length key >= 32);
+  (* key_size = 32, so Seq.length key = 32 >= 32 is satisfied by the precondition *)
   let r_bytes = Seq.slice key 0 16 in
   let s_bytes = Seq.slice key 16 32 in
   let r = clamp_r (le_to_nat r_bytes) in
   let s = le_to_nat s_bytes in
   let acc = process_blocks r 0 msg in
   let tag = finalize acc s in
+  (* nat_to_le n always produces a seq of length n by construction *)
+  assert_norm (tag_size = 16);
+  (* TODO: requires tactic-based proof — nat_to_le length contract is abstract *)
   assume (Seq.length (nat_to_le tag_size tag) = tag_size);
   nat_to_le tag_size tag
 
@@ -194,7 +203,18 @@ let rfc8439_expected_tag : seq UInt8.t =
     0xc2uy; 0x2buy; 0x8buy; 0xafuy; 0x0cuy; 0x01uy; 0x27uy; 0xa9uy
   ]
 
+(** The key has exactly 32 bytes — needed for poly1305_rfc8439_kat *)
+let _ = assert_norm (List.Tot.length [
+    0x85uy; 0xd6uy; 0xbeuy; 0x78uy; 0x57uy; 0x55uy; 0x6duy; 0x33uy;
+    0x7fuy; 0x44uy; 0x52uy; 0xfeuy; 0x42uy; 0xd5uy; 0x06uy; 0xa8uy;
+    0x01uy; 0x03uy; 0x80uy; 0x8auy; 0xfbuy; 0x0duy; 0xb2uy; 0xfduy;
+    0x4auy; 0xbfuy; 0xf6uy; 0xafuy; 0x41uy; 0x49uy; 0xf5uy; 0x1buy
+  ] = 32)
+
 val poly1305_rfc8439_kat : unit
-    -> Lemma (poly1305 rfc8439_key rfc8439_msg == rfc8439_expected_tag)
+    -> Lemma (requires Seq.length rfc8439_key = key_size)
+             (ensures  poly1305 rfc8439_key rfc8439_msg == rfc8439_expected_tag)
 let poly1305_rfc8439_kat () =
+  (* TODO: requires tactic-based proof — needs full Poly1305 reduction over
+     the concrete field GF(2^130-5) with the abstract le_to_nat and bitwise_and *)
   assume (poly1305 rfc8439_key rfc8439_msg == rfc8439_expected_tag)
