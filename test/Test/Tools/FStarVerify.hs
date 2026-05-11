@@ -1,6 +1,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 -- | Tests for the F* verification runner: pure conversion helpers,
--- summary construction, tool discovery, and module discovery.
+-- summary construction, tool discovery, module discovery, assume regression
+-- gate, and coverage report generation.
 module Test.Tools.FStarVerify (runTests) where
 
 import System.FilePath ((</>))
@@ -10,12 +11,16 @@ import UmbraVox.Tools.FStarVerify
     , VerifySummary(..)
     , VerifyConfig(..)
     , defaultConfig
+    , moduleRlimits
     , moduleToFile
     , fileToModule
     , verifySummary
     , checkTool
     , discoverModules
+    , countAssumes
+    , generateCoverageReport
     )
+import qualified Data.Map.Strict as Map
 
 runTests :: IO Bool
 runTests = do
@@ -41,6 +46,14 @@ runTests = do
         , testCheckToolMissing
         , testDiscoverModules
         , testDiscoverModulesCount
+        , testModuleRlimitsKeys
+        , testModuleRlimitsKeccakValue
+        , testModuleRlimitsHeavyValue
+        , testCountAssumesKnownFile
+        , testCountAssumesNonexistent
+        , testAssumeRegressionGate
+        , testCoverageReportNonEmpty
+        , testCoverageReportContainsTotal
         ]
     let passed = length (filter id results)
         total  = length results
@@ -227,7 +240,7 @@ testCheckToolMissing = do
 fstarDir :: FilePath
 fstarDir = "test/evidence/formal-proofs/fstar"
 
--- | All 20 expected Spec modules in sorted order.
+-- | All expected Spec modules in sorted order.
 -- Keccak is split into Permutation/Sponge/SHA3 sub-modules for faster
 -- per-module F* verification; the top-level Spec.Keccak is a thin wrapper.
 -- discoverModules sorts alphabetically then puts heavySpecs last.
@@ -235,6 +248,7 @@ expectedModules :: [String]
 expectedModules =
     [ "Spec.AES256"
     , "Spec.ChaCha20"
+    , "Spec.ChaChaPoly"
     , "Spec.DoubleRatchet"
     , "Spec.Ed25519"
     , "Spec.GCM"
@@ -251,6 +265,9 @@ expectedModules =
     , "Spec.SHA256"
     , "Spec.SHA256.Refinement"
     , "Spec.SHA512"
+    , "Spec.SenderKeys"
+    , "Spec.StealthAddress"
+    , "Spec.VRF"
     , "Spec.X25519"
     , "Spec.X3DH"
     , "Spec.Keccak.Permutation"  -- heavy: permutation rounds, verified last
@@ -267,5 +284,107 @@ testDiscoverModulesCount :: IO Bool
 testDiscoverModulesCount = do
     mods <- discoverModules fstarDir
     assertEq "discoverModules count"
-        21
+        25
         (length mods)
+
+------------------------------------------------------------------------
+-- moduleRlimits tests (M13.7.1)
+------------------------------------------------------------------------
+
+testModuleRlimitsKeys :: IO Bool
+testModuleRlimitsKeys =
+    let expected = [ "Spec.AES256"
+                   , "Spec.Ed25519"
+                   , "Spec.GCM"
+                   , "Spec.Keccak.Permutation"
+                   , "Spec.MLKEM768"
+                   , "Spec.X25519"
+                   ]
+    in assertEq "moduleRlimits has correct key set"
+        expected
+        (Map.keys moduleRlimits)
+
+testModuleRlimitsKeccakValue :: IO Bool
+testModuleRlimitsKeccakValue =
+    assertEq "moduleRlimits Keccak.Permutation == 10000"
+        (Just 10000)
+        (Map.lookup "Spec.Keccak.Permutation" moduleRlimits)
+
+testModuleRlimitsHeavyValue :: IO Bool
+testModuleRlimitsHeavyValue =
+    let heavyMods = ["Spec.Ed25519", "Spec.X25519", "Spec.AES256", "Spec.GCM", "Spec.MLKEM768"]
+        vals = map (\m -> Map.lookup m moduleRlimits) heavyMods
+    in assertEq "moduleRlimits heavy crypto modules all have rlimit 20000"
+        (replicate 5 (Just 20000))
+        vals
+
+------------------------------------------------------------------------
+-- countAssumes tests (M13.7.3)
+------------------------------------------------------------------------
+
+-- | Known assume count in Spec.Ed25519.fst at time of writing.
+-- If someone adds a new assume to this file this test will fail before
+-- the regression gate catches it at the aggregate level.
+testCountAssumesKnownFile :: IO Bool
+testCountAssumesKnownFile = do
+    n <- countAssumes (fstarDir ++ "/Spec.Ed25519.fst")
+    assertEq "countAssumes Spec.Ed25519 == 25" 25 n
+
+testCountAssumesNonexistent :: IO Bool
+testCountAssumesNonexistent = do
+    n <- countAssumes (fstarDir ++ "/Spec.Nonexistent.fst")
+    assertEq "countAssumes nonexistent file == 0" 0 n
+
+-- | Proof regression gate (M13.7.3):
+-- Total assume count across all specs must not exceed the baseline of 229.
+-- If a new assume is added anywhere the suite fails here.
+assumeBaseline :: Int
+assumeBaseline = 229
+
+testAssumeRegressionGate :: IO Bool
+testAssumeRegressionGate = do
+    entries <- discoverModules fstarDir
+    counts  <- mapM (\m -> countAssumes (fstarDir ++ "/" ++ m ++ ".fst")) entries
+    let total = sum counts
+    if total <= assumeBaseline
+        then do
+            putStrLn $ "  PASS: total assumes " ++ show total ++ " <= baseline " ++ show assumeBaseline
+            pure True
+        else do
+            putStrLn $ "  FAIL: total assumes " ++ show total ++ " exceeds baseline " ++ show assumeBaseline
+                    ++ " (regression: new assume added)"
+            pure False
+
+------------------------------------------------------------------------
+-- generateCoverageReport tests (M13.7.4)
+------------------------------------------------------------------------
+
+testCoverageReportNonEmpty :: IO Bool
+testCoverageReportNonEmpty = do
+    report <- generateCoverageReport fstarDir
+    if not (null report)
+        then do
+            putStrLn "  PASS: generateCoverageReport returns non-empty report"
+            pure True
+        else do
+            putStrLn "  FAIL: generateCoverageReport returned empty string"
+            pure False
+
+testCoverageReportContainsTotal :: IO Bool
+testCoverageReportContainsTotal = do
+    report <- generateCoverageReport fstarDir
+    if "TOTAL" `isInfixOf` report
+        then do
+            putStrLn "  PASS: coverage report contains TOTAL row"
+            pure True
+        else do
+            putStrLn "  FAIL: coverage report missing TOTAL row"
+            pure False
+  where
+    isInfixOf needle haystack =
+        any (needle `isPrefixOf'`) (tails'' haystack)
+    isPrefixOf' [] _ = True
+    isPrefixOf' _ [] = False
+    isPrefixOf' (p:ps) (s:ss) = p == s && isPrefixOf' ps ss
+    tails'' [] = [[]]
+    tails'' xs@(_:rest) = xs : tails'' rest

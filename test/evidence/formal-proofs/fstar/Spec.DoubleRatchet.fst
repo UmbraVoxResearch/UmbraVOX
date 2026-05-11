@@ -83,20 +83,30 @@ val kdf_ck_length_lemma : ck:seq UInt8.t{Seq.length ck = chain_key_size}
 let kdf_ck_length_lemma ck = ()
 
 (** Successive kdf_ck calls produce distinct chain keys
-    (collision resistance of HMAC-SHA256) *)
+    (collision resistance of HMAC-SHA256).
+    Note: in this spec hmac_sha256 is abstract (returns all zeros), so
+    ck1 == ck trivially in the model.  The property holds under the
+    assumption that HMAC-SHA256 is collision-resistant; we state it as
+    an axiom here because it requires a concrete HMAC instantiation. *)
 val kdf_ck_distinct_lemma :
     ck:seq UInt8.t{Seq.length ck = chain_key_size}
     -> Lemma (let (ck1, mk1) = kdf_ck ck in
               ck1 =!= ck)
 let kdf_ck_distinct_lemma ck =
+  (* Collision resistance of HMAC-SHA256: HMAC(ck, 0x01) != ck for all
+     non-trivial ck.  This is a cryptographic assumption, not provable
+     from the abstract model here. *)
   assume (let (ck1, _) = kdf_ck ck in ck1 =!= ck)
 
-(** Message key and chain key are derived from different HMAC inputs *)
+(** Message key and chain key are derived from different HMAC inputs
+    (0x02 vs 0x01), so they are distinct under HMAC collision resistance. *)
 val kdf_ck_independence_lemma :
     ck:seq UInt8.t{Seq.length ck = chain_key_size}
     -> Lemma (let (ck', mk) = kdf_ck ck in
               ck' =!= mk)
 let kdf_ck_independence_lemma ck =
+  (* HMAC(ck, 0x01) != HMAC(ck, 0x02) because the inputs differ and HMAC is
+     a PRF.  This is a cryptographic assumption. *)
   assume (let (ck', mk) = kdf_ck ck in ck' =!= mk)
 
 (** -------------------------------------------------------------------- **)
@@ -126,9 +136,13 @@ val kdf_rk_length_lemma :
               Seq.length rk' = root_key_size /\
               Seq.length ck' = chain_key_size)
 let kdf_rk_length_lemma rk dh =
-  assume (let (rk', ck') = kdf_rk rk dh in
-          Seq.length rk' = root_key_size /\
-          Seq.length ck' = chain_key_size)
+  let prk = hkdf_extract rk dh in
+  let okm = hkdf_expand prk ratchet_info 64 in
+  let rk' = Seq.slice okm 0 32 in
+  let ck' = Seq.slice okm 32 64 in
+  assert (Seq.length okm = 64);
+  assert (Seq.length rk' = 32);
+  assert (Seq.length ck' = 32)
 
 (** -------------------------------------------------------------------- **)
 (** Message Key Derivation                                               **)
@@ -157,13 +171,38 @@ let rec derive_msg_key chain_key n =
 (** computing ck_{i-1} requires inverting HMAC-SHA256.                   **)
 (** -------------------------------------------------------------------- **)
 
+(** Forward secrecy: chain key advancement is one-way.
+    Knowing ck_i = kdf_ck^i(ck_0) does not reveal ck_{i-1} or earlier
+    message keys, because HMAC-SHA256 is a one-way function (PRF assumption).
+    We state the structural property: the chain key at step n+1 is derived
+    deterministically from the chain key at step n via kdf_ck. *)
+val forward_secrecy_structural :
+    ck:seq UInt8.t{Seq.length ck = chain_key_size}
+    -> n:nat
+    -> Lemma
+        (ensures (let (ck', mk) = derive_msg_key ck n in
+                  Seq.length ck' = chain_key_size /\ Seq.length mk = msg_key_size))
+        (decreases n)
+let rec forward_secrecy_structural ck n =
+  if n = 0 then
+    kdf_ck_length_lemma ck
+  else begin
+    kdf_ck_length_lemma ck;
+    let (ck', _) = kdf_ck ck in
+    assert (Seq.length ck' = chain_key_size);
+    forward_secrecy_structural ck' (n - 1)
+  end
+
+(** The one-way property of chain key advancement is a cryptographic
+    assumption (pre-image resistance of HMAC-SHA256). *)
 val forward_secrecy_assumption :
     ck:seq UInt8.t{Seq.length ck = chain_key_size}
     -> Lemma (True)
 let forward_secrecy_assumption ck =
-  (* HMAC-SHA256 is a one-way function: given HMAC(ck, 0x02),
-     recovering ck is computationally infeasible. *)
-  assume (True)
+  (* HMAC-SHA256 is a one-way function: given HMAC(ck, 0x01),
+     recovering ck is computationally infeasible.  This is a security
+     assumption about the underlying hash function, not a structural fact. *)
+  ()
 
 (** -------------------------------------------------------------------- **)
 (** Break-in recovery property                                           **)
@@ -173,11 +212,21 @@ let forward_secrecy_assumption ck =
 (** key cannot derive the new one without the new DH secret.             **)
 (** -------------------------------------------------------------------- **)
 
+(** Structural: kdf_rk produces a fresh root key and chain key from the
+    current root key and a DH output.  The lengths are correct. *)
+val break_in_recovery_structural :
+    rk:seq UInt8.t{Seq.length rk = root_key_size}
+    -> dh:seq UInt8.t{Seq.length dh = key_size}
+    -> Lemma (let (rk', ck') = kdf_rk rk dh in
+              Seq.length rk' = root_key_size /\ Seq.length ck' = chain_key_size)
+let break_in_recovery_structural rk dh = kdf_rk_length_lemma rk dh
+
 val break_in_recovery_assumption :
     rk:seq UInt8.t{Seq.length rk = root_key_size}
     -> dh:seq UInt8.t{Seq.length dh = key_size}
     -> Lemma (True)
 let break_in_recovery_assumption rk dh =
-  (* The new root key depends on a fresh DH output, which requires
-     knowledge of the new ephemeral secret key. *)
-  assume (True)
+  (* The new root key is derived via HKDF from the fresh DH output, which
+     requires the new ephemeral secret.  This is a security property of
+     HKDF as a PRF, not dischargeable from the abstract model. *)
+  ()

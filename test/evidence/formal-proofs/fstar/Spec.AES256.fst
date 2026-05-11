@@ -186,36 +186,39 @@ val aes_expand_key : key:seq UInt8.t{Seq.length key = key_size}
 let aes_expand_key (key : seq UInt8.t{Seq.length key = key_size})
     : key_schedule =
   let total_words = 4 * (nr + 1) in  (* 60 *)
-  let rec build (acc : seq UInt32.t) (i : nat)
+  (* We use an accumulator that carries the length invariant as a refinement:
+     acc has exactly i words at each recursive call.  F* can verify index
+     accesses acc.(i-1) and acc.(i-nk) because i >= nk >= 1 in each branch. *)
+  let rec build
+      (i   : nat{i <= total_words})
+      (acc : seq UInt32.t{Seq.length acc = i})
       : Tot (s:seq UInt32.t{Seq.length s = total_words})
             (decreases (total_words - i)) =
-    if i >= total_words then
-      (assume (Seq.length acc = total_words); acc)
+    if i = total_words then
+      acc
     else if i < nk then
-      build (Seq.snoc acc (be_bytes_to_uint32 key (i * 4))) (i + 1)
+      build (i + 1) (Seq.snoc acc (be_bytes_to_uint32 key (i * 4)))
     else if i % nk = 0 then (
-      assume (Seq.length acc >= i);
-      let prev = Seq.index acc (i - 1) in
+      (* i >= nk = 8, so i-1 >= 0 and i-nk >= 0 *)
+      let prev    = Seq.index acc (i - 1) in
       let prev_nk = Seq.index acc (i - nk) in
       let w_i = UInt32.logxor prev_nk
                   (UInt32.logxor (sub_word (rot_word prev))
                                  (rcon (i / nk))) in
-      build (Seq.snoc acc w_i) (i + 1)
+      build (i + 1) (Seq.snoc acc w_i)
     ) else if i % nk = 4 then (
-      assume (Seq.length acc >= i);
-      let prev = Seq.index acc (i - 1) in
+      let prev    = Seq.index acc (i - 1) in
       let prev_nk = Seq.index acc (i - nk) in
       let w_i = UInt32.logxor prev_nk (sub_word prev) in
-      build (Seq.snoc acc w_i) (i + 1)
+      build (i + 1) (Seq.snoc acc w_i)
     ) else (
-      assume (Seq.length acc >= i);
-      let prev = Seq.index acc (i - 1) in
+      let prev    = Seq.index acc (i - 1) in
       let prev_nk = Seq.index acc (i - nk) in
       let w_i = UInt32.logxor prev_nk prev in
-      build (Seq.snoc acc w_i) (i + 1)
+      build (i + 1) (Seq.snoc acc w_i)
     )
   in
-  build Seq.empty 0
+  build 0 Seq.empty
 
 (** -------------------------------------------------------------------- **)
 (** AES state: 16 bytes in column-major order                            **)
@@ -387,15 +390,20 @@ let inv_cipher_round (ks : key_schedule) (round : nat{round >= 1 /\ round < nr})
 val inv_cipher : ks:key_schedule -> st:aes_state -> Tot aes_state
 let inv_cipher (ks : key_schedule) (st : aes_state) : aes_state =
   let s0 = add_round_key ks nr st in
-  let rec do_rounds (s : aes_state) (r : nat{r >= 1})
+  (* Invariant: r ranges from (nr-1) down to 2.
+     Each iteration requires r >= 1 /\ r < nr for inv_cipher_round.
+     We carry r < nr as a refinement: starting at nr-1 < nr, and
+     each step decrements r, so r - 1 < nr as well.
+     The loop terminates when r <= 1 (i.e. r = 1). *)
+  let rec do_rounds (s : aes_state) (r : nat{r >= 1 /\ r < nr})
       : Tot aes_state (decreases r) =
     if r <= 1 then s
-    else (
-      assume (r < nr);
+    else
+      (* r >= 2, so r - 1 >= 1; r < nr, so r - 1 < nr *)
       let s' = inv_cipher_round ks r s in
       do_rounds s' (r - 1)
-    )
   in
+  (* nr - 1 = 13, which satisfies 1 <= 13 < 14 = nr *)
   let s_mid = do_rounds s0 (nr - 1) in
   add_round_key ks 0 (inv_sub_bytes (inv_shift_rows s_mid))
 
@@ -410,7 +418,8 @@ let aes_encrypt (key : seq UInt8.t{Seq.length key = key_size})
                 (plaintext : seq UInt8.t{Seq.length plaintext = block_size})
     : (ct:seq UInt8.t{Seq.length ct = block_size}) =
   let ks = aes_expand_key key in
-  assume (Seq.length (cipher ks plaintext) = block_size);
+  (* cipher returns aes_state = seq UInt8.t{Seq.length s = 16} = block_size,
+     so no assume is needed — the return type carries the length refinement. *)
   cipher ks plaintext
 
 val aes_decrypt : key:seq UInt8.t{Seq.length key = key_size}
@@ -420,25 +429,54 @@ let aes_decrypt (key : seq UInt8.t{Seq.length key = key_size})
                 (ciphertext : seq UInt8.t{Seq.length ciphertext = block_size})
     : (pt:seq UInt8.t{Seq.length pt = block_size}) =
   let ks = aes_expand_key key in
-  assume (Seq.length (inv_cipher ks ciphertext) = block_size);
+  (* inv_cipher returns aes_state, so length is guaranteed by the return type. *)
   inv_cipher ks ciphertext
 
 (** -------------------------------------------------------------------- **)
 (** Correctness properties                                               **)
 (** -------------------------------------------------------------------- **)
 
-(** S-box and inverse S-box are inverses *)
+(** S-box and inverse S-box are inverses.
+    Both tables are fully concrete (256-entry lists), so for any concrete
+    byte value the composition reduces by assert_norm.  For an arbitrary
+    UInt8.t b we use a case split over all 256 possible values.
+    TODO: A decision-procedure proof by exhaustive assert_norm case split
+    over UInt8.v b = 0 .. 255 would work in principle but requires 256
+    assert_norm calls or a tactic.  As a clean middle ground we use a
+    single assert_norm on the entire 256-element lookup table property:
+    the claim holds because both sbox_table and inv_sbox_table are fully
+    inline concrete lists, and the composition inv_sbox_table[sbox_table[i]]
+    equals i for all i, which assert_norm can verify for all 256 values.
+    However, F* assert_norm is limited to terms that normalise in the kernel
+    and does not loop over universally quantified nat ranges without tactics.
+    We therefore retain assume with a detailed TODO for a tactic proof. *)
 val sbox_inv_sbox_roundtrip : b:UInt8.t
     -> Lemma (inv_sub_byte (sub_byte b) == b)
 let sbox_inv_sbox_roundtrip b =
+  (* TODO: Prove by exhaustive case split: for each v in 0..255,
+     assert_norm (inv_sub_byte (sub_byte (UInt8.uint_to_t v)) == UInt8.uint_to_t v).
+     This is blocked on F* lacking a built-in exhaustive UInt8 case tactic.
+     The property is mathematically certain (the FIPS 197 S-box was constructed
+     to be a bijection, and our table values are copied verbatim from the spec). *)
   assume (inv_sub_byte (sub_byte b) == b)
 
 val inv_sbox_sbox_roundtrip : b:UInt8.t
     -> Lemma (sub_byte (inv_sub_byte b) == b)
 let inv_sbox_sbox_roundtrip b =
+  (* TODO: same approach as sbox_inv_sbox_roundtrip — exhaustive case split needed *)
   assume (sub_byte (inv_sub_byte b) == b)
 
-(** Encryption followed by decryption is the identity *)
+(** Encryption followed by decryption is the identity.
+    TODO: A complete proof requires showing that:
+      (1) inv_cipher is the functional inverse of cipher for any key schedule, and
+      (2) the key schedule computed by aes_expand_key is deterministic and the
+          same schedule is used in both directions.
+    Property (1) is the FIPS 197 correctness theorem.  It is a structural
+    lemma on the interleaving of SubBytes/ShiftRows/MixColumns with their
+    inverses across 14 rounds.  The proof requires either:
+      - A tactic-based round-induction proof, or
+      - Applying the concrete KAT vectors and using injectivity.
+    Retained as assume pending a tactic proof. *)
 val encrypt_decrypt_roundtrip :
     key:seq UInt8.t{Seq.length key = key_size}
     -> pt:seq UInt8.t{Seq.length pt = block_size}
@@ -446,7 +484,8 @@ val encrypt_decrypt_roundtrip :
 let encrypt_decrypt_roundtrip key pt =
   assume (aes_decrypt key (aes_encrypt key pt) == pt)
 
-(** Decryption followed by encryption is the identity *)
+(** Decryption followed by encryption is the identity.
+    TODO: Same as encrypt_decrypt_roundtrip — requires FIPS 197 structural proof. *)
 val decrypt_encrypt_roundtrip :
     key:seq UInt8.t{Seq.length key = key_size}
     -> ct:seq UInt8.t{Seq.length ct = block_size}
@@ -500,6 +539,14 @@ val aes256_kat_encrypt : unit
               aes_encrypt fips197_c3_key fips197_c3_plaintext ==
               fips197_c3_ciphertext)
 let aes256_kat_encrypt () =
+  (* TODO: All inputs (key, plaintext, expected ciphertext) are fully concrete
+     literal sequences.  In principle assert_norm can evaluate aes_encrypt on
+     concrete inputs, but the full AES-256 key schedule (60 words) + 14 rounds
+     of SubBytes/ShiftRows/MixColumns produce a term too large for Z3's
+     bitvector normaliser within the current z3rlimit budget.
+     A native_norm tactic call would solve this directly.  Retained as assume
+     until a tactic-based assert_norm or a norm [delta; zeta; iota; primops]
+     call with lifted z3rlimit is added. *)
   assume (kat_key_ok /\ kat_pt_ok ==>
           aes_encrypt fips197_c3_key fips197_c3_plaintext ==
           fips197_c3_ciphertext)
@@ -509,6 +556,7 @@ val aes256_kat_decrypt : unit
               aes_decrypt fips197_c3_key fips197_c3_ciphertext ==
               fips197_c3_plaintext)
 let aes256_kat_decrypt () =
+  (* TODO: same as aes256_kat_encrypt — concrete evaluation blocked by z3rlimit *)
   assume (kat_key_ok /\ kat_ct_ok ==>
           aes_decrypt fips197_c3_key fips197_c3_ciphertext ==
           fips197_c3_plaintext)
@@ -519,6 +567,7 @@ val aes256_kat_roundtrip : unit
                (aes_encrypt fips197_c3_key fips197_c3_plaintext) ==
               fips197_c3_plaintext)
 let aes256_kat_roundtrip () =
+  (* TODO: same as aes256_kat_encrypt — concrete evaluation blocked by z3rlimit *)
   assume (kat_key_ok /\ kat_pt_ok ==>
           aes_decrypt fips197_c3_key
            (aes_encrypt fips197_c3_key fips197_c3_plaintext) ==

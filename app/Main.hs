@@ -124,11 +124,13 @@ main = do
             exitWith =<< runBridgeCommand "verify-traffic" rest
         ("vm-forensics" : rest) ->
             exitWith =<< runBridgeCommand "vm-forensics" rest
+        ("fstar-report" : rest) ->
+            exitWith =<< runBridgeCommand "fstar-report" rest
         ("release-bridge" : cmd : rest) ->
             exitWith =<< runBridgeCommand cmd rest
         (cmd : _) -> do
             putStrLn $ "Unknown command: " ++ cmd
-            putStrLn "Try: build, test, verify, release-lane-readiness, vm-smoke, vm-image-build, vm-image-clean, firecracker-smoke, firecracker-image-build, release-sbom-generate, release-license-bundle-generate, release-license-check, release-linking, release-manifest, release-checksums, smoke-linux, smoke-appimage, lane-qemu, lane-firecracker, gate-assurance, vm-integration-test, verify-traffic, vm-forensics"
+            putStrLn "Try: build, test, verify, fstar-report, release-lane-readiness, vm-smoke, vm-image-build, vm-image-clean, firecracker-smoke, firecracker-image-build, release-sbom-generate, release-license-bundle-generate, release-license-check, release-linking, release-manifest, release-checksums, smoke-linux, smoke-appimage, lane-qemu, lane-firecracker, gate-assurance, vm-integration-test, verify-traffic, vm-forensics"
             exitWith (ExitFailure 64)
 
 runUi :: UiFlags -> IO ()

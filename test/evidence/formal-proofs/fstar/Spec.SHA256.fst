@@ -647,10 +647,11 @@ let abc_input : seq UInt8.t =
 
 val sha256_kat_abc : unit
     -> Lemma (sha256 abc_input == expected_abc_digest)
+(* KAT: assert_norm attempted at z3rlimit 50000; blocked because Spec.SHA256.pad
+   contains `assume (len * 8 < pow2 64)` which prevents full normalization.
+   Replacing that overflow assumption with a refinement-type bound would unblock
+   assert_norm here.  Until then, this KAT is axiomatically asserted. *)
 let sha256_kat_abc () =
-  (* This lemma asserts the KAT vector.  Full normalization requires
-     F* to evaluate the spec on the concrete input.  In practice this
-     is discharged by normalize_term or by an SMT hint. *)
   assume (sha256 abc_input == expected_abc_digest)
 
 (** KAT 2: SHA-256("")
@@ -666,6 +667,7 @@ let expected_empty_digest : seq UInt8.t =
 
 val sha256_kat_empty : unit
     -> Lemma (sha256 Seq.empty == expected_empty_digest)
+(* KAT: assert_norm blocked — same pad overflow assume as sha256_kat_abc. *)
 let sha256_kat_empty () =
   assume (sha256 Seq.empty == expected_empty_digest)
 
@@ -693,6 +695,9 @@ let input_448bit : seq UInt8.t =
 
 val sha256_kat_448bit : unit
     -> Lemma (sha256 input_448bit == expected_448bit_digest)
+(* KAT: assert_norm blocked — same pad overflow assume as sha256_kat_abc.
+   This is a two-block input (56 bytes padded to 128 bytes), so normalization
+   would also need process_blocks_count to recurse, further increasing cost. *)
 let sha256_kat_448bit () =
   assume (sha256 input_448bit == expected_448bit_digest)
 
@@ -738,9 +743,12 @@ let round_step_state_bounded wv kt wt = ()
 val round_step_words_32bit : wv:hash_state -> kt:UInt32.t -> wt:UInt32.t
     -> (i:nat{i < 8})
     -> Lemma (UInt32.v (Seq.index (round_step_explicit wv kt wt) i) < pow2 32)
-#push-options "--admit_smt_queries true"
+#push-options "--z3rlimit 10000"
 let round_step_words_32bit wv kt wt i =
-  assume (UInt32.v (Seq.index (round_step_explicit wv kt wt) i) < pow2 32)
+  (* Seq.index of hash_state returns UInt32.t.  UInt32.v has return type
+     uint_t 32 = n':nat{n' < pow2 32} by definition.  Z3 closes this goal
+     via the uint_t refinement axiom. *)
+  ()
 #pop-options
 
 (** Lemma 2a: Schedule words for t = 0..15 are the direct big-endian
@@ -794,12 +802,30 @@ val compress_is_foldback_of_rounds : h:hash_state
          Seq.index (compress h block) i ==
          UInt32.add_mod (Seq.index h i) (Seq.index (compress_core h block) i)
        )
-#push-options "--admit_smt_queries true"
+#push-options "--z3rlimit 40000 --z3cliopt 'smt.arith.nl=false'"
 let compress_is_foldback_of_rounds h block i =
-  (* compress = compress_foldback h (compress_core h block)
-     compress_foldback[i] = add_mod(h[i], wv[i]) by definition *)
-  assume (
-    Seq.index (compress h block) i ==
-    UInt32.add_mod (Seq.index h i) (Seq.index (compress_core h block) i)
-  )
+  (* compress h block = compress_foldback h (compress_core h block) by definition.
+     compress_foldback builds mk_hash_state from add_mod of corresponding words.
+     The sequence indexing follows from seq_of_list structure: for each i < 8,
+     Seq.index (mk_hash_state a0..a7) i = ai = add_mod h[i] wv[i]. *)
+  let wv = compress_core h block in
+  let h0 = Seq.index h 0 in let h1 = Seq.index h 1 in
+  let h2 = Seq.index h 2 in let h3 = Seq.index h 3 in
+  let h4 = Seq.index h 4 in let h5 = Seq.index h 5 in
+  let h6 = Seq.index h 6 in let h7 = Seq.index h 7 in
+  let wv0 = Seq.index wv 0 in let wv1 = Seq.index wv 1 in
+  let wv2 = Seq.index wv 2 in let wv3 = Seq.index wv 3 in
+  let wv4 = Seq.index wv 4 in let wv5 = Seq.index wv 5 in
+  let wv6 = Seq.index wv 6 in let wv7 = Seq.index wv 7 in
+  let r = mk_hash_state
+    (UInt32.add_mod h0 wv0) (UInt32.add_mod h1 wv1)
+    (UInt32.add_mod h2 wv2) (UInt32.add_mod h3 wv3)
+    (UInt32.add_mod h4 wv4) (UInt32.add_mod h5 wv5)
+    (UInt32.add_mod h6 wv6) (UInt32.add_mod h7 wv7) in
+  assert (compress h block == r);
+  let l = [UInt32.add_mod h0 wv0; UInt32.add_mod h1 wv1;
+            UInt32.add_mod h2 wv2; UInt32.add_mod h3 wv3;
+            UInt32.add_mod h4 wv4; UInt32.add_mod h5 wv5;
+            UInt32.add_mod h6 wv6; UInt32.add_mod h7 wv7] in
+  FStar.Seq.Properties.lemma_seq_of_list_index l i
 #pop-options

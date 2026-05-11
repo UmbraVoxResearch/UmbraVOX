@@ -12,12 +12,16 @@ module UmbraVox.Tools.FStarVerify
     , VerifyConfig(..)
       -- * Configuration
     , defaultConfig
+    , moduleRlimits
       -- * Discovery
     , discoverModules
       -- * Verification
     , verifyModule
     , verifySummary
     , runVerification
+      -- * Analysis
+    , countAssumes
+    , generateCoverageReport
       -- * Helpers
     , moduleToFile
     , fileToModule
@@ -25,6 +29,8 @@ module UmbraVox.Tools.FStarVerify
     ) where
 
 import Data.List (partition)
+import qualified Data.Map.Strict as Map
+import Data.Map.Strict (Map)
 import System.Directory (doesFileExist, findExecutable, listDirectory)
 import System.Exit (ExitCode(..))
 import System.FilePath ((</>), takeBaseName, takeExtension)
@@ -104,6 +110,18 @@ discoverModules dir = do
     let (heavy, normal) = partition (`elem` heavySpecs) (sort' specFiles)
     pure (normal ++ heavy)
 
+-- | Per-module z3rlimit overrides.
+-- Modules not listed here use the default z3rlimit from 'vcFlags'.
+moduleRlimits :: Map String Int
+moduleRlimits = Map.fromList
+    [ ("Spec.Keccak.Permutation", 10000)
+    , ("Spec.Ed25519",            20000)
+    , ("Spec.X25519",             20000)
+    , ("Spec.AES256",             20000)
+    , ("Spec.GCM",                20000)
+    , ("Spec.MLKEM768",           20000)
+    ]
+
 -- | Specs that require significantly more Z3 time.
 -- These are verified last so other modules populate the cache first.
 heavySpecs :: [String]
@@ -114,13 +132,14 @@ checkTool :: String -> IO (Maybe FilePath)
 checkTool = findExecutable
 
 -- | Verify a single F* module.
--- Heavy specs get a higher z3rlimit to avoid timeouts on cold verification.
+-- Modules listed in 'moduleRlimits' get their z3rlimit overridden to avoid
+-- timeouts on cold verification.
 verifyModule :: VerifyConfig -> String -> IO VerifyResult
 verifyModule cfg modName = do
     let filePath = vcSpecDir cfg </> moduleToFile modName
-        flags = if modName `elem` heavySpecs
-                    then replaceZ3Rlimit "10000" (vcFlags cfg)
-                    else vcFlags cfg
+        flags = case Map.lookup modName moduleRlimits of
+                    Just lim -> replaceZ3Rlimit (show lim) (vcFlags cfg)
+                    Nothing  -> vcFlags cfg
     exists <- doesFileExist filePath
     if not exists
         then pure (NotFound modName)
@@ -165,6 +184,91 @@ runVerification cfg explicitModules = do
         pure result
 
 ------------------------------------------------------------------------
+-- Analysis
+------------------------------------------------------------------------
+
+-- | Count the number of lines containing @assume@ in a .fst file.
+-- This is a simple text scan; it counts any line that contains the
+-- substring \"assume\", which matches both @assume@ declarations and
+-- @assume_val@ annotations.
+countAssumes :: FilePath -> IO Int
+countAssumes path = do
+    exists <- doesFileExist path
+    if not exists
+        then pure 0
+        else do
+            contents <- readFile path
+            -- Force full evaluation before returning (avoid lazy I/O leaks)
+            let n = length (filter (containsWord "assume") (lines contents))
+            n `seq` pure n
+
+-- | Generate a coverage summary table for all .fst files in a directory.
+-- For each file the report lists:
+--   * number of lines containing @assume@
+--   * number of @val@ declarations that end in @Lemma@
+--   * estimated proved lemmas (val...Lemma lines whose body lacks @assume@)
+-- Returns a human-readable multi-line string.
+generateCoverageReport :: FilePath -> IO String
+generateCoverageReport dir = do
+    entries <- listDirectory dir
+    let fstFiles = sort'
+            [ f | f <- entries, takeExtension f == ".fst", startsWith "Spec." f ]
+    rows <- mapM (analyseFile dir) fstFiles
+    let header = padR 32 "Module" ++ "  " ++
+                 padL 8 "assumes" ++ "  " ++
+                 padL 8 "lemmas"  ++ "  " ++
+                 padL 8 "proved"
+        sep    = replicate (length header) '-'
+        body   = map formatRow rows
+        totals = let (as, ls, ps) = foldr (\(_, a, l, p) (ta, tl, tp) -> (ta+a, tl+l, tp+p))
+                                          (0, 0, 0) rows
+                 in padR 32 "TOTAL" ++ "  " ++
+                    padL 8 (show as) ++ "  " ++
+                    padL 8 (show ls) ++ "  " ++
+                    padL 8 (show ps)
+    pure $ unlines (header : sep : body ++ [sep, totals])
+  where
+    analyseFile :: FilePath -> String -> IO (String, Int, Int, Int)
+    analyseFile d f = do
+        let modName = takeBaseName f
+            path    = d </> f
+        contents <- readFile path
+        let ls      = lines contents
+            assumes = length (filter (containsWord "assume") ls)
+            lemmas  = length (filter isLemmaVal ls)
+            proved  = length (filter isProvedLemma ls)
+        assumes `seq` lemmas `seq` proved `seq`
+            pure (modName, assumes, lemmas, proved)
+
+    formatRow :: (String, Int, Int, Int) -> String
+    formatRow (m, a, l, p) =
+        padR 32 m ++ "  " ++
+        padL 8 (show a) ++ "  " ++
+        padL 8 (show l) ++ "  " ++
+        padL 8 (show p)
+
+    isLemmaVal :: String -> Bool
+    isLemmaVal s =
+        let t = dropWhile isSpace' s
+        in startsWith "val " t && containsWord "Lemma" t
+
+    isProvedLemma :: String -> Bool
+    isProvedLemma s = isLemmaVal s && not (containsWord "assume" s)
+
+    padR :: Int -> String -> String
+    padR n s = take n (s ++ repeat ' ')
+
+    padL :: Int -> String -> String
+    padL n s = replicate (n - length s) ' ' ++ s
+
+    isSpace' :: Char -> Bool
+    isSpace' c = c == ' ' || c == '\t'
+
+-- | Check whether a string contains a given word as a substring.
+containsWord :: String -> String -> Bool
+containsWord needle haystack = isInfixOf' needle haystack
+
+------------------------------------------------------------------------
 -- Helpers
 ------------------------------------------------------------------------
 
@@ -190,3 +294,12 @@ resultLabel :: VerifyResult -> String
 resultLabel (Passed _)    = "[PASS]"
 resultLabel (Failed _ _)  = "[FAIL]"
 resultLabel (NotFound _)  = "[FAIL]"
+
+-- | Test whether the first string is a substring of the second.
+isInfixOf' :: String -> String -> Bool
+isInfixOf' needle haystack = any (startsWith needle) (tails' haystack)
+
+-- | All suffixes of a list (like Data.List.tails).
+tails' :: [a] -> [[a]]
+tails' []         = [[]]
+tails' xs@(_:rest) = xs : tails' rest

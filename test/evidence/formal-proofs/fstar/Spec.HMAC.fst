@@ -187,8 +187,13 @@ let rfc4231_tc1_expected_256 : seq UInt8.t =
 val hmac_sha256_kat_tc1 : unit
     -> Lemma (hmac_sha256 rfc4231_tc1_key rfc4231_tc1_data ==
               rfc4231_tc1_expected_256)
+(* KAT: assert_norm attempted at z3rlimit 50000; blocked because the call chain
+   hmac_sha256 -> hmac -> prepare_key -> sha256 -> pad contains
+   `assume (len * 8 < pow2 64)` inside Spec.SHA256.pad, which halts normalization.
+   Additionally, prepare_key (unconstrained version) itself has an assume on the
+   hashed-key length.  Full evaluation requires replacing these with refinement
+   witnesses; z3rlimit > 50000 alone is insufficient. *)
 let hmac_sha256_kat_tc1 () =
-  (* TODO: requires tactic-based proof — KAT vector requires SHA-256 reduction *)
   assume (hmac_sha256 rfc4231_tc1_key rfc4231_tc1_data ==
           rfc4231_tc1_expected_256)
 
@@ -212,8 +217,10 @@ let rfc4231_tc1_expected_512 : seq UInt8.t =
 val hmac_sha512_kat_tc1 : unit
     -> Lemma (hmac_sha512 rfc4231_tc1_key rfc4231_tc1_data ==
               rfc4231_tc1_expected_512)
+(* KAT: assert_norm blocked — same reasons as hmac_sha256_kat_tc1 but via
+   Spec.SHA512.pad which has two assume calls (overflow and alignment).
+   z3rlimit > 50000 insufficient; requires concrete pad implementation. *)
 let hmac_sha512_kat_tc1 () =
-  (* TODO: requires tactic-based proof — KAT vector requires SHA-512 reduction *)
   assume (hmac_sha512 rfc4231_tc1_key rfc4231_tc1_data ==
           rfc4231_tc1_expected_512)
 
@@ -242,7 +249,7 @@ let rfc4231_tc2_expected_256 : seq UInt8.t =
 val hmac_sha256_kat_tc2 : unit
     -> Lemma (hmac_sha256 rfc4231_tc2_key rfc4231_tc2_data ==
               rfc4231_tc2_expected_256)
+(* KAT: assert_norm blocked — same reasons as hmac_sha256_kat_tc1. *)
 let hmac_sha256_kat_tc2 () =
-  (* TODO: requires tactic-based proof — KAT vector requires SHA-256 reduction *)
   assume (hmac_sha256 rfc4231_tc2_key rfc4231_tc2_data ==
           rfc4231_tc2_expected_256)
