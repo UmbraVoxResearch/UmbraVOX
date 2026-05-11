@@ -396,7 +396,7 @@ M12 Architecture: TUI/Headless Decoupling
   [x] M12.4.8 HKDF info strings documented in App.Defaults (kept in crypto modules to avoid circular imports).
   [x] M12.4.9 CLI flags (--port, --debug-log) override config file; config overrides defaults.
 
-[ ] M12.5 Verify clean separation
+[x] M12.5 Verify clean separation
   [x] M12.5.1 App, Protocol, Crypto, Network, Storage — zero TUI imports (Startup fixed).
   [x] M12.5.2 Runtime/Headless.hs has zero TUI imports (uses Network.Listener + App.State).
   [x] M12.5.3 No hardcoded config values remain in library code (centralized in App.Defaults).
@@ -406,7 +406,7 @@ M12 Architecture: TUI/Headless Decoupling
 M10 Security Audit Round 4 (2026-05-10)
 --------------------------------------------------------------------------------
 
-[ ] M10.1 Critical fixes
+[x] M10.1 Critical fixes
   [x] M10.1.1 Noise IK: fix `se` leg to use initiator static × responder ephemeral (Handshake.hs:125).
   [x] M10.1.2 KeyStore: encrypt identity keys at rest with passphrase-derived AEAD (KeyStore.hs:29,51).
   [x] M10.1.3 Crypto: gate pure-Haskell primitives behind compile flag; document NOT constant-time prominently.
@@ -420,7 +420,7 @@ M10 Security Audit Round 4 (2026-05-10)
   [x] M10.1.11 Noise: document the nonce invariant (AEAD story) in module-level Haddock.
   [x] M10.1.12 Noise: fix protocolName to "Noise_IK_25519_ChaChaPoly_SHA256".
 
-[ ] M10.2 High-priority fixes
+[x] M10.2 High-priority fixes
   [x] M10.2.1 PQXDH: add Ed25519 signature on PQ prekey and verify in pqxdhInitiate (PQXDH.hs:36).
   [x] M10.2.2 DoubleRatchet: replace counter-exhaustion `error` with Either/ExceptT (DoubleRatchet.hs:217,254).
   [x] M10.2.3 DoubleRatchet: unify nonce construction (standard 4-zero + 8-byte-LE-counter).
@@ -438,7 +438,7 @@ M10 Security Audit Round 4 (2026-05-10)
   [x] M10.2.15 TUI: derive safety number from verified peer key, not display name (Dialog.hs:212).
   [x] M10.2.16 Scripts: validate UMBRAVOX_QEMU_SMOKE_RUNNER as executable path (release-smoke-microvm.sh:188).
 
-[ ] M10.3 Medium-priority fixes
+[x] M10.3 Medium-priority fixes
   [x] M10.3.1 Curve25519: return Maybe on all-zero DH output instead of error.
   [x] M10.3.2 MLKEM: return Maybe from bsSlice on out-of-bounds instead of BS.empty.
   [x] M10.3.3 Export: document iterated-HKDF limitation; add TODO for Argon2id migration.
@@ -717,9 +717,9 @@ CAT-6: IMPLEMENTATION BUGS (overflow, off-by-one, type confusion, memory)
 [x] IB-011  CBOR decoding stack overflow: deeply nested CBOR structure; verify bounded recursion. [High]
 [x] IB-012  Wire decoding zero-length ciphertext: send wire frame with 0-byte ciphertext; verify rejection (M8.3.1). [High]
 [x] IB-013  SQL injection via message content: insert SQL metacharacters in message body; verify safe quoting (M7.1.5). [Critical]
-[ ] IB-014  SQL comment injection: insert -- or /* */ in query fields; verify normalized blocking (M10.2.7). [Critical]
+[x] IB-014  SQL comment injection: insert -- or /* */ in query fields; verify normalized blocking (M10.2.7). [Critical]
 [x] IB-015  SQL semicolon injection: insert semicolon in query; verify detection after normalization. [High]
-[ ] IB-016  Path traversal in DB path: supply ../../etc/passwd as DB path; verify rejection (M7.3.8). [Critical]
+[x] IB-016  Path traversal in DB path: supply ../../etc/passwd as DB path; verify rejection (M7.3.8). [Critical]
 [x] IB-017  Path traversal in /file command: supply relative path; verify canonicalizePath + allowlist (M10.2.14). [High]
 [x] IB-018  mDNS NUL injection: embed NUL byte in mDNS service name; verify sanitization (M10.3.8). [High]
 [x] IB-019  mDNS ANSI escape injection: embed escape codes in mDNS name; verify stripping. [High]
@@ -841,7 +841,7 @@ CAT-11: FORWARD SECRECY VIOLATIONS
 [x] FS-010  Export key forward secrecy: exported key file compromise must not decrypt past messages. [High]
 [ ] FS-011  OPK forward secrecy: compromise OPK after session; past session must remain confidential. [Critical]
 [x] FS-012  Ratchet step frequency: verify ratchet advances on every received message, not batched. [High]
-[ ] FS-013  Chain key non-reversibility: given chain key CK_N, verify CK_{N-1} cannot be derived. [Critical]
+[x] FS-013  Chain key non-reversibility: given chain key CK_N, verify CK_{N-1} cannot be derived. [Critical]
 [ ] FS-014  Noise ephemeral key forward secrecy: Noise ephemeral keys erased after handshake; verify. [Critical]
 [x] FS-015  Break-in recovery: after chain key compromise, a DH ratchet step must restore security; verify with test. [High]
 
