@@ -34,7 +34,7 @@ import System.Posix.Files
 import System.Posix.Process (getProcessID)
 
 import UmbraVox.BuildProfile (BuildPluginId(..), pluginEnabled)
-import UmbraVox.TUI.Types (AppConfig(..))
+import UmbraVox.App.Config (AppConfig(..))
 
 runtimeLogLock :: MVar ()
 runtimeLogLock = unsafePerformIO (newMVar ())

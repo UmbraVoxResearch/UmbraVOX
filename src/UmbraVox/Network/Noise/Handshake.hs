@@ -26,6 +26,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Word (Word32)
 
+import UmbraVox.App.Defaults (maxFrameSize)
 import UmbraVox.Crypto.ConstantTime (constantEq)
 import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
 import UmbraVox.Crypto.HKDF (hkdfSHA256Extract, hkdfSHA256Expand)
@@ -346,10 +347,6 @@ sendFrame t payload = do
     let !len = fromIntegral (BS.length payload) :: Word32
     anySend t (putWord32BE len)
     anySend t payload
-
--- | Maximum frame size (64 KiB) to prevent DoS via large allocations.
-maxFrameSize :: Word32
-maxFrameSize = 65536
 
 -- | Receive a length-prefixed frame. Returns 'Nothing' if the length
 -- prefix is too short or the frame exceeds 64 KiB (prevents DoS via

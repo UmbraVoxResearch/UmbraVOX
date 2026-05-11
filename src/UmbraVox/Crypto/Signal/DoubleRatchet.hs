@@ -26,6 +26,7 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Word (Word32, Word64)
 
+import UmbraVox.App.Defaults (defaultMaxSkip, defaultMaxTotalSkipped)
 import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
 import UmbraVox.Crypto.GCM (gcmDecrypt, gcmEncrypt)
 import UmbraVox.Crypto.HKDF (hkdfExpand, hkdfExtract)
@@ -120,14 +121,16 @@ nonceInfo :: ByteString
 nonceInfo = "UmbraVox_Nonce_v1"
 
 -- | Maximum number of skipped message keys to store per ratchet step.
+-- Sourced from 'UmbraVox.App.Defaults.defaultMaxSkip'.
 maxSkip :: Word32
-maxSkip = 1000
+maxSkip = defaultMaxSkip
 
 -- | Maximum total entries in the skipped-key cache across all DH ratchets.
 -- Prevents unbounded memory growth from an adversary triggering many
 -- small skips across many ratchet epochs (M7.3.6).
+-- Sourced from 'UmbraVox.App.Defaults.defaultMaxTotalSkipped'.
 maxTotalSkipped :: Int
-maxTotalSkipped = 5000
+maxTotalSkipped = defaultMaxTotalSkipped
 
 ------------------------------------------------------------------------
 -- KDF helpers

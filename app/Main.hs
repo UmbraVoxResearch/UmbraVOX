@@ -17,6 +17,7 @@ import UmbraVox.TUI.Input (eventLoop)
 import UmbraVox.TUI.RuntimeNetwork (startListenerIfNeeded)
 import UmbraVox.TUI.RuntimeSettings (restartMDNS)
 import UmbraVox.Tools.ReleaseBridge (runBridgeCommand)
+import UmbraVox.App.State (newCoreState)
 import UmbraVox.Runtime.Headless (initCoreRuntime)
 import UmbraVox.App.Startup
     ( applyPersistenceAnswer
@@ -99,19 +100,20 @@ runUi = do
     (initRows, initCols) <- getTermSize
     let (r0, c0) = clampSize initRows initCols
     termRef <- newIORef (initRows, initCols)
-    st <- AppState cfg <$> newIORef 0 <*> newIORef ContactPane
-                       <*> newIORef "" <*> newIORef ""
-                       <*> newIORef 0 <*> newIORef ""
-                       <*> newIORef True <*> newIORef Nothing
-                       <*> newIORef 0
-                       <*> newIORef ""
-                       <*> newIORef (calcLayout r0 c0)
-                       <*> newIORef 0
-                       <*> pure termRef
-                       <*> newIORef Nothing  -- asMenuOpen
-                       <*> newIORef 0        -- asMenuIndex
-                       <*> newIORef 0        -- asDialogTab
-                       <*> newIORef Nothing  -- asLastRenderToken
+    coreState <- newCoreState cfg
+    st <- AppState coreState <$> newIORef 0 <*> newIORef ContactPane
+                             <*> newIORef "" <*> newIORef ""
+                             <*> newIORef 0 <*> newIORef ""
+                             <*> newIORef Nothing  -- asDialogMode
+                             <*> newIORef 0
+                             <*> newIORef ""
+                             <*> newIORef (calcLayout r0 c0)
+                             <*> newIORef 0
+                             <*> pure termRef
+                             <*> newIORef Nothing  -- asMenuOpen
+                             <*> newIORef 0        -- asMenuIndex
+                             <*> newIORef 0        -- asDialogTab
+                             <*> newIORef Nothing  -- asLastRenderToken
     -- identity already initialized by initCoreRuntime above
     when debugLogging $ logEvent cfg "app.start" []
     activeListenPort <- readIORef (cfgListenPort cfg)

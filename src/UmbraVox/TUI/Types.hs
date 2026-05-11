@@ -11,57 +11,29 @@ module UmbraVox.TUI.Types
     , menuTabUnderlineIndex
     , menuTabItems
     , AppState(..)
+    , asConfig
+    , asRunning
     , DialogMode(..)
     , AppConfig(..)
     , Layout(..)
     , InputEvent(..)
     ) where
 
-import Control.Concurrent (ThreadId)
-import Control.Concurrent.MVar (MVar)
-import Data.ByteString (ByteString)
 import Data.IORef (IORef)
-import Data.Map.Strict (Map)
-import qualified Data.Set as Set
+
 import UmbraVox.BuildProfile
-    ( BuildPlugin, BuildPluginId(..), PackagedPluginRuntime, PluginManifest, pluginEnabled )
-import UmbraVox.Chat.Session (ChatSession)
-import UmbraVox.Crypto.Signal.X3DH (IdentityKey)
-import UmbraVox.Network.ProviderCatalog
-    ( CachedTransportProvider, ProviderManifest, TransportProvider )
-import UmbraVox.Network.TransportClass (AnyTransport)
-import UmbraVox.Network.MDNS (MDNSPeer)
-import UmbraVox.Storage.Anthony (AnthonyDB)
+    ( BuildPluginId(..), pluginEnabled )
 
-type SessionId = Int
-
-data ContactStatus = Online | Offline | Local | Group | LAN | PEX
-    deriving stock (Eq)
-
-statusTag :: ContactStatus -> String
-statusTag Online  = " \x25CF"   -- ● filled circle
-statusTag Offline = " \x25CB"   -- ○ empty circle
-statusTag Local   = " \x1F512"  -- 🔒 lock
-statusTag Group   = " \x1F465"  -- 👥 people
-statusTag LAN     = " \x1F5A7"  -- 🖧 network
-statusTag PEX     = " \x1F517"  -- 🔗 link
-
-data SessionInfo = SessionInfo
-    { siTransport :: Maybe AnyTransport, siSession :: IORef ChatSession
-    , siSessionLock :: MVar ()
-    , siRecvTid :: Maybe ThreadId, siPeerName :: String
-    , siHistory :: IORef [String], siStatus :: IORef ContactStatus }
+-- Re-export domain types from their new neutral namespaces.
+-- Existing imports of UmbraVox.TUI.Types continue to work unchanged.
+import UmbraVox.App.Types
+    ( ContactStatus(..), statusTag, SessionInfo(..) )
+import UmbraVox.App.Config
+    ( SessionId, ConnectionMode(..), AppConfig(..) )
+import UmbraVox.App.State
+    ( CoreState(..) )
 
 data Pane = ContactPane | ChatPane deriving stock (Eq, Show, Enum, Bounded)
-
--- | Connection trust modes, ordered most open to most locked down.
--- Swing:       Accept all + auto PEX peer exchange + mDNS on
--- Promiscuous: Accept all connections automatically + mDNS on
--- Selective:   Accept with fingerprint confirmation + mDNS on
--- Chaste:      Trusted keys only, silent reject, mDNS off
--- Chastity:    Trusted keys only + ephemeral (no DB, no persistence)
-data ConnectionMode = Swing | Promiscuous | Selective | Chaste | Chastity
-    deriving stock (Eq, Show, Enum, Bounded)
 
 data MenuTab = MenuHelp | MenuContacts | MenuChat | MenuPrefs | MenuQuit
     deriving stock (Eq, Show, Enum, Bounded)
@@ -87,11 +59,20 @@ menuTabItems MenuPrefs
     ++ if pluginEnabled PluginChatTransfer then ["Export Chat", "Import Chat"] else []
 menuTabItems MenuQuit     = ["Quit"]
 
+-- | Full application state: domain state wrapped in 'CoreState' plus
+-- TUI-only presentation fields.
+--
+-- Use 'asConfig' to reach the 'AppConfig' and 'asRunning' to reach the
+-- lifecycle flag — both delegate to 'asCoreState'.  Existing code that
+-- uses @asConfig st@ or @asRunning st@ continues to compile without change.
 data AppState = AppState
-    { asConfig :: AppConfig, asSelected :: IORef Int, asFocus :: IORef Pane
+    { asCoreState :: !CoreState
+      -- ^ Domain state (config, sessions, DB handle, running flag).
+      --   Shared with the headless runtime via 'UmbraVox.App.State.CoreState'.
+    , asSelected :: IORef Int, asFocus :: IORef Pane
     , asInputBuf :: IORef String, asDialogBuf :: IORef String
     , asChatScroll :: IORef Int
-    , asStatusMsg :: IORef String, asRunning :: IORef Bool
+    , asStatusMsg :: IORef String
     , asDialogMode :: IORef (Maybe DialogMode)
     , asBrowsePage :: IORef Int
     , asBrowseFilter :: IORef String
@@ -104,8 +85,18 @@ data AppState = AppState
     , asLastRenderToken :: IORef (Maybe String)
       -- ^ Strict: writers must evaluate the token with a bang pattern
       --   before storing (e.g. @let !tok = …; writeIORef ref (Just tok)@)
-      --   to avoid IORef space leaks.
+      --   to avoid IORef space leak.
     }
+
+-- | Accessor: domain configuration, delegating to 'asCoreState'.
+-- Keeps all existing @asConfig st@ call sites working without modification.
+asConfig :: AppState -> AppConfig
+asConfig = csConfig . asCoreState
+
+-- | Accessor: running flag, delegating to 'asCoreState'.
+-- Keeps all existing @asRunning st@ call sites working without modification.
+asRunning :: AppState -> IORef Bool
+asRunning = csRunning . asCoreState
 
 data DialogMode = DlgHelp | DlgAbout | DlgSettings | DlgVerify | DlgNewConn
     | DlgKeys | DlgBrowse | DlgPrompt String (String -> IO ())
@@ -130,56 +121,6 @@ instance Show DialogMode where
     show DlgKeys         = "DlgKeys"
     show DlgBrowse       = "DlgBrowse"
     show (DlgPrompt s _) = "DlgPrompt " ++ show s ++ " <callback>"
-
-data AppConfig = AppConfig
-    { cfgListenPort  :: IORef Int
-    , cfgDisplayName :: IORef String
-    , cfgIdentity    :: IORef (Maybe IdentityKey)
-    , cfgSessions    :: IORef (Map SessionId SessionInfo)
-    , cfgNextId      :: IORef SessionId
-    , cfgDebugLogging :: IORef Bool
-    , cfgDebugLogPath :: IORef FilePath
-    -- Discovery settings
-    , cfgMDNSEnabled :: IORef Bool
-    , cfgPEXEnabled  :: IORef Bool
-    , cfgDBEnabled   :: IORef Bool
-    , cfgDBPath      :: IORef String
-    , cfgPersistencePreference :: IORef (Maybe Bool)
-    , cfgPackagedPluginCatalog :: IORef [(BuildPlugin, PluginManifest)]
-    , cfgPackagedPluginRuntimeCatalog :: IORef [PackagedPluginRuntime]
-    , cfgTransportProviderCatalog :: IORef [(TransportProvider, ProviderManifest)]
-    , cfgTransportProviderRuntimeCatalog :: IORef [CachedTransportProvider]
-    -- Discovery state
-    , cfgListenerThread :: IORef (Maybe ThreadId)
-    , cfgMDNSThread  :: IORef (Maybe ThreadId)
-    , cfgMDNSPeers   :: IORef [MDNSPeer]
-    -- Retention settings
-    , cfgRetentionDays    :: IORef Int              -- days to keep messages (0 = forever)
-    , cfgAutoSaveMessages :: IORef Bool             -- auto-save messages to DB
-    , cfgAnthonyDB        :: IORef (Maybe AnthonyDB) -- DB handle
-    -- Security
-    , cfgConnectionMode   :: IORef ConnectionMode
-    , cfgTrustedKeys      :: IORef [ByteString]
-    -- Finding: M10.2.13 — Selective mode previously accepted every peer without
-    -- remembering whether a given key had been seen before, making it equivalent
-    -- to Promiscuous.  There was no mechanism to detect a key-change attack where
-    -- a second peer claims the same identity with a different key.
-    --
-    -- Vulnerability: Without a per-session TOFU set an attacker could present an
-    -- arbitrary key and be accepted silently on every connection.  A key-change
-    -- (man-in-the-middle substitution) would also go undetected.
-    --
-    -- Fix: 'cfgTofoKeys' is an IORef holding the set of peer public keys that
-    -- have been accepted under Selective mode in this session.  On first
-    -- connection a key is added; on repeat connection the same key is accepted.
-    -- A different key claiming a previously-seen slot is rejected (see
-    -- 'RuntimeNetwork.hs' trustCheck).
-    --
-    -- Verified: 'newDefaultAppConfig' initialises the set to empty; the trust
-    -- check in 'acceptLoopBoundTUI' inserts on first encounter and rejects
-    -- conflicting keys on subsequent encounters.
-    , cfgTofoKeys         :: IORef (Set.Set ByteString)
-    }
 
 data Layout = Layout
     { lCols :: Int     -- ^ total terminal columns

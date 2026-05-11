@@ -36,7 +36,7 @@ import UmbraVox.TUI.Input (handleDialog, handleNewConnDlg)
 import UmbraVox.TUI.RuntimeNetwork (acceptLoopTUI, startListenerIfNeeded)
 import UmbraVox.TUI.Types
     ( AppState(..), AppConfig(..), DialogMode(..), InputEvent(..)
-    , SessionInfo(..), ContactStatus(..)
+    , SessionInfo(..), ContactStatus(..), asConfig
     )
 
 runTests :: IO Bool

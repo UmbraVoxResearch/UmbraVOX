@@ -39,6 +39,7 @@ import System.Posix.Types ()
 import System.Process (readProcess)
 import System.Timeout (timeout)
 
+import UmbraVox.App.Defaults (sqliteTimeoutMicros)
 import UmbraVox.Protocol.Encoding (splitOn)
 import UmbraVox.Storage.Encryption (StorageKey, encryptField, decryptField)
 import UmbraVox.Storage.Schema (schemaStatements)
@@ -325,7 +326,7 @@ parseConversationRows s = concatMap parseConvRow (lines s)
 -- Times out after 10 seconds to avoid indefinite hangs.
 runSQL :: AnthonyDB -> String -> IO ()
 runSQL db sql = do
-    result <- timeout 10000000 $  -- 10 seconds
+    result <- timeout sqliteTimeoutMicros $
         readProcess (dbAnthony db)
             ["-batch", "-noheader", "-separator", "|", "-cmd", ".timeout 5000", dbPath db, sql] ""
     case result of
@@ -336,7 +337,7 @@ runSQL db sql = do
 -- Times out after 10 seconds to avoid indefinite hangs.
 querySQL :: AnthonyDB -> String -> IO String
 querySQL db sql = do
-    result <- timeout 10000000 $  -- 10 seconds
+    result <- timeout sqliteTimeoutMicros $
         readProcess (dbAnthony db)
             ["-batch", "-noheader", "-separator", "|", "-cmd", ".timeout 5000", dbPath db, sql] ""
     case result of

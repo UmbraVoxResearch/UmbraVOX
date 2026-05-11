@@ -48,9 +48,11 @@ import UmbraVox.Storage.Anthony
     ( AnthonyDB, loadConversations, loadMessages
     , loadTrustedKeys, openDB, saveSetting
     )
-import UmbraVox.TUI.Types
-    ( AppConfig(..), SessionInfo(..), ContactStatus(..), ConnectionMode(..) )
-import UmbraVox.TUI.Handshake (genIdentity)
+import UmbraVox.App.Config
+    ( AppConfig(..), ConnectionMode(..) )
+import UmbraVox.App.Types
+    ( SessionInfo(..), ContactStatus(..) )
+import UmbraVox.Protocol.Handshake (genIdentity)
 import UmbraVox.Protocol.Encoding (defaultPorts)
 import UmbraVox.Network.ProviderCatalog
     ( CachedTransportProvider(..), ProviderManifest, TransportProvider

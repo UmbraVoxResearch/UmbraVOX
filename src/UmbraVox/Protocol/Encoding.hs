@@ -20,6 +20,8 @@ import qualified Data.ByteString as BS
 import Data.Char (isSpace)
 import Data.Word (Word32, Word64)
 
+import UmbraVox.App.Defaults (defaultPort)
+
 -- | Encode a Word32 as 4 big-endian bytes.
 putWord32BE :: Word32 -> ByteString
 putWord32BE !w = BS.pack
@@ -67,7 +69,7 @@ safeReadPort str = case reads str of
 -- | Default port sequence to try when connecting without an explicit port.
 -- Tries the primary UmbraVOX port first, then common alternatives.
 defaultPorts :: [Int]
-defaultPorts = [7853, 7854, 7855, 9999, 7856, 7857, 7858, 7859, 7860]
+defaultPorts = defaultPort : [7854, 7855, 9999, 7856, 7857, 7858, 7859, 7860]
 
 -- | Parse a "host:port" string into (host, Maybe port).
 -- If no port is given, returns Nothing so the caller can try the default sequence.

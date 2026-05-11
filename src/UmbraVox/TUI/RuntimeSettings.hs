@@ -23,6 +23,7 @@ import Data.Char (toLower)
 import Data.IORef (IORef, readIORef, writeIORef, modifyIORef')
 import qualified Data.Map.Strict as Map
 import Data.Time.Clock.POSIX (getPOSIXTime)
+import UmbraVox.App.Defaults (mdnsPollIntervalUs)
 import UmbraVox.App.RuntimeLog (logEvent)
 import UmbraVox.BuildProfile
     ( BuildPluginId(..), pluginEnabled, pluginUnavailableStatus
@@ -79,7 +80,7 @@ mdnsManagerWorker st port name pubkey = do
     (forever $ do
         peers <- getDiscoveredPeers peersRef
         writeIORef (cfgMDNSPeers (asConfig st)) peers
-        threadDelay 5000000)
+        threadDelay mdnsPollIntervalUs)
         `finally` stopMDNS mdnsTid
 
 togglePersistentStorage :: AppState -> IO ()
