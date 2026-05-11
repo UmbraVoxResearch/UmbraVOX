@@ -19,6 +19,7 @@ module Spec.ChaChaPoly
 open FStar.Seq
 open FStar.UInt8
 open FStar.Mul
+open FStar.List.Tot
 
 (** -------------------------------------------------------------------- **)
 (** Dependencies                                                         **)
@@ -149,10 +150,21 @@ let flip_byte s i =
 val flip_byte_neq : s:seq UInt8.t -> i:nat{i < Seq.length s}
     -> Lemma (flip_byte s i <> s)
 let flip_byte_neq s i =
-  (* Seq.upd at position i changes index i; XOR with 0xff is a bijection,
-     so the byte value differs.  Formal proof requires FStar.UInt8 lemmas
-     on logxor; we assume the obvious arithmetic fact. *)
-  assume (flip_byte s i <> s)
+  (* Structural proof:
+     1. b' = logxor b 0xff = lognot b  (XOR with all-ones is bitwise NOT).
+     2. logxor (lognot b) b = 0xff <> 0x00, so lognot b <> b.
+     3. flip_byte s i and s agree everywhere except index i, where they are
+        b' and b respectively.  Since b' <> b, the sequences are different. *)
+  let b  = Seq.index s i in
+  let b' = UInt8.logxor b 0xffuy in
+  assert (b' = UInt8.lognot b);
+  assert (UInt8.logxor (UInt8.lognot b) b = 0xffuy);
+  assert (b' <> b);
+  assert (Seq.index (flip_byte s i) i = b');
+  assert (Seq.index (flip_byte s i) i <> Seq.index s i);
+  let s' = flip_byte s i in
+  introduce s' = s ==> False
+  with _. (assert (Seq.index s' i = Seq.index s i))
 
 (** Mutating the ciphertext causes decryption to fail. *)
 val tag_forgery_ct
@@ -266,14 +278,28 @@ let _ = assert_norm (List.Tot.length [
 (** KAT: the key/nonce sizes satisfy the preconditions. *)
 val rfc8439_key_length : unit -> Lemma (Seq.length rfc8439_aead_key = key_size)
 let rfc8439_key_length () =
-  (* TODO: requires tactic-based proof — seq_of_list length depends on
-     the concrete list length established by assert_norm above *)
-  assume (Seq.length rfc8439_aead_key = key_size)
+  (* Structural proof: FStar.Seq.Properties.lemma_list_seq_bij establishes that
+     Seq.length (seq_of_list l) = List.Tot.length l for any list l.
+     assert_norm reduces the concrete List.Tot.length at elaboration time. *)
+  let l = [
+    0x80uy; 0x81uy; 0x82uy; 0x83uy; 0x84uy; 0x85uy; 0x86uy; 0x87uy;
+    0x88uy; 0x89uy; 0x8auy; 0x8buy; 0x8cuy; 0x8duy; 0x8euy; 0x8fuy;
+    0x90uy; 0x91uy; 0x92uy; 0x93uy; 0x94uy; 0x95uy; 0x96uy; 0x97uy;
+    0x98uy; 0x99uy; 0x9auy; 0x9buy; 0x9cuy; 0x9duy; 0x9euy; 0x9fuy
+  ] in
+  assert_norm (List.Tot.length l = 32);
+  FStar.Seq.Properties.lemma_list_seq_bij l
 
 val rfc8439_nonce_length : unit -> Lemma (Seq.length rfc8439_aead_nonce = nonce_size)
 let rfc8439_nonce_length () =
-  (* TODO: requires tactic-based proof — seq_of_list length *)
-  assume (Seq.length rfc8439_aead_nonce = nonce_size)
+  (* Structural proof: same technique via lemma_list_seq_bij. *)
+  let l = [
+    0x07uy; 0x00uy; 0x00uy; 0x00uy;
+    0x40uy; 0x41uy; 0x42uy; 0x43uy;
+    0x44uy; 0x45uy; 0x46uy; 0x47uy
+  ] in
+  assert_norm (List.Tot.length l = 12);
+  FStar.Seq.Properties.lemma_list_seq_bij l
 
 (** -------------------------------------------------------------------- **)
 (** Correspondence to Haskell implementation                             **)

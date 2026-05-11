@@ -436,61 +436,171 @@ let aes_decrypt (key : seq UInt8.t{Seq.length key = key_size})
 (** Correctness properties                                               **)
 (** -------------------------------------------------------------------- **)
 
-(** S-box and inverse S-box are inverses.
-    Both tables are fully concrete (256-entry lists), so for any concrete
-    byte value the composition reduces by assert_norm.  For an arbitrary
-    UInt8.t b we use a case split over all 256 possible values.
-    TODO: A decision-procedure proof by exhaustive assert_norm case split
-    over UInt8.v b = 0 .. 255 would work in principle but requires 256
-    assert_norm calls or a tactic.  As a clean middle ground we use a
-    single assert_norm on the entire 256-element lookup table property:
-    the claim holds because both sbox_table and inv_sbox_table are fully
-    inline concrete lists, and the composition inv_sbox_table[sbox_table[i]]
-    equals i for all i, which assert_norm can verify for all 256 values.
-    However, F* assert_norm is limited to terms that normalise in the kernel
-    and does not loop over universally quantified nat ranges without tactics.
-    We therefore retain assume with a detailed TODO for a tactic proof. *)
+(** -------------------------------------------------------------------- **)
+(** S-box roundtrip helpers                                              **)
+(**                                                                       **)
+(** Strategy:                                                             **)
+(**  1. Define roundtrip check functions in terms of List.Tot.index on   **)
+(**     the raw sbox_list / inv_sbox_list literals (avoids Seq.index      **)
+(**     opaqueness for the normaliser).                                   **)
+(**  2. Use assert_norm to verify the check for all 256 concrete nat      **)
+(**     indices, packaged as a List.Tot.for_all over [0;1;...;255].      **)
+(**  3. Connect List.Tot.index on the lists to sub_byte/inv_sub_byte via  **)
+(**     the SMTPat on lemma_seq_of_list_index (automatically in Z3).      **)
+(**  4. Use for_all_mem + UInt8 injectivity to derive the per-byte lemma. **)
+(** -------------------------------------------------------------------- **)
+
+(** Concrete list of nat indices [0;1;...;255] for driving the for_all check. *)
+private let all_nat_indices_256 : list nat = [
+    0;1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;
+    16;17;18;19;20;21;22;23;24;25;26;27;28;29;30;31;
+    32;33;34;35;36;37;38;39;40;41;42;43;44;45;46;47;
+    48;49;50;51;52;53;54;55;56;57;58;59;60;61;62;63;
+    64;65;66;67;68;69;70;71;72;73;74;75;76;77;78;79;
+    80;81;82;83;84;85;86;87;88;89;90;91;92;93;94;95;
+    96;97;98;99;100;101;102;103;104;105;106;107;108;109;110;111;
+    112;113;114;115;116;117;118;119;120;121;122;123;124;125;126;127;
+    128;129;130;131;132;133;134;135;136;137;138;139;140;141;142;143;
+    144;145;146;147;148;149;150;151;152;153;154;155;156;157;158;159;
+    160;161;162;163;164;165;166;167;168;169;170;171;172;173;174;175;
+    176;177;178;179;180;181;182;183;184;185;186;187;188;189;190;191;
+    192;193;194;195;196;197;198;199;200;201;202;203;204;205;206;207;
+    208;209;210;211;212;213;214;215;216;217;218;219;220;221;222;223;
+    224;225;226;227;228;229;230;231;232;233;234;235;236;237;238;239;
+    240;241;242;243;244;245;246;247;248;249;250;251;252;253;254;255
+  ]
+
+private let _ = assert_norm (List.Tot.length all_nat_indices_256 = 256)
+
+(** Length facts for sbox_list and inv_sbox_list, to satisfy List.Tot.index preconditions. *)
+private let sbox_list_length_256 : squash (List.Tot.length sbox_list = 256) =
+  assert_norm (List.Tot.length sbox_list = 256)
+private let inv_sbox_list_length_256 : squash (List.Tot.length inv_sbox_list = 256) =
+  assert_norm (List.Tot.length inv_sbox_list = 256)
+
+(** Roundtrip check: inv_sbox(sbox(i)) = i for index i, using list indexing.
+    Takes an unrefined nat so it can be passed directly to List.Tot.for_all.
+    Returns false for i >= 256 (unreachable in practice). *)
+private let sbox_inv_check_at (i : nat) : bool =
+  if i >= 256 then false
+  else begin
+    assert_norm (List.Tot.length sbox_list = 256);
+    assert_norm (List.Tot.length inv_sbox_list = 256);
+    let s  = UInt8.v (List.Tot.index sbox_list i) in
+    (* s = UInt8.v (...) so s < 256 = length inv_sbox_list *)
+    let si = UInt8.v (List.Tot.index inv_sbox_list s) in
+    si = i
+  end
+
+(** Roundtrip check: sbox(inv_sbox(i)) = i for index i. *)
+private let inv_sbox_check_at (i : nat) : bool =
+  if i >= 256 then false
+  else begin
+    assert_norm (List.Tot.length sbox_list = 256);
+    assert_norm (List.Tot.length inv_sbox_list = 256);
+    let s  = UInt8.v (List.Tot.index inv_sbox_list i) in
+    let si = UInt8.v (List.Tot.index sbox_list s) in
+    si = i
+  end
+
+(** Exhaustive check: sbox_inv_check_at holds for all indices 0..255.
+    assert_norm normalises the for_all over the concrete list via delta+iota+zeta. *)
+#push-options "--z3rlimit 50000"
+private let sbox_inv_roundtrip_all : squash (
+    List.Tot.for_all sbox_inv_check_at all_nat_indices_256 = true) =
+  assert_norm (List.Tot.for_all sbox_inv_check_at all_nat_indices_256 = true)
+#pop-options
+
+(** Exhaustive check: inv_sbox_check_at holds for all indices 0..255. *)
+#push-options "--z3rlimit 50000"
+private let inv_sbox_roundtrip_all : squash (
+    List.Tot.for_all inv_sbox_check_at all_nat_indices_256 = true) =
+  assert_norm (List.Tot.for_all inv_sbox_check_at all_nat_indices_256 = true)
+#pop-options
+
+(** Every i in 0..255 appears as an element of all_nat_indices_256.
+    We prove List.Tot.mem i all_nat_indices_256 = true by assert_norm applied
+    to the concrete equality mem i l <==> i is literally in [0..255];
+    then mem_memP (SMTPat) gives memP.  Since assert_norm cannot handle
+    an abstract i, we use the alternative: state the property as a
+    norm-verified fact on the concrete list length and membership via Z3. *)
+#push-options "--z3rlimit 50000"
+private let nat_index_in_list (i : nat{i < 256})
+    : Lemma (List.Tot.memP i all_nat_indices_256) =
+  (* mem_memP: mem i l <==> memP i l  (has SMTPat, so Z3 uses it automatically) *)
+  (* Z3 can verify: forall i:nat. i < 256 ==> mem i all_nat_indices_256 = true
+     by case analysis on the 256 cases.  With rlimit 50000 this is feasible. *)
+  assert (List.Tot.mem i all_nat_indices_256 = true);
+  List.Tot.Properties.mem_memP i all_nat_indices_256
+#pop-options
+
+(** Connecting list-based roundtrip to Seq.index / sub_byte / inv_sub_byte.
+    The SMTPat on Seq.Properties.lemma_seq_of_list_index fires automatically,
+    giving Z3: Seq.index (Seq.seq_of_list l) i == List.Tot.index l i.
+    This lets Z3 relate sub_byte b (= Seq.index sbox_table (UInt8.v b))
+    to List.Tot.index sbox_list (UInt8.v b). *)
+#push-options "--z3rlimit 50000"
 val sbox_inv_sbox_roundtrip : b:UInt8.t
     -> Lemma (inv_sub_byte (sub_byte b) == b)
 let sbox_inv_sbox_roundtrip b =
-  (* TODO: Prove by exhaustive case split: for each v in 0..255,
-     assert_norm (inv_sub_byte (sub_byte (UInt8.uint_to_t v)) == UInt8.uint_to_t v).
-     This is blocked on F* lacking a built-in exhaustive UInt8 case tactic.
-     The property is mathematically certain (the FIPS 197 S-box was constructed
-     to be a bijection, and our table values are copied verbatim from the spec). *)
-  assume (inv_sub_byte (sub_byte b) == b)
+  let i = UInt8.v b in
+  (* UInt8.v b < 256 by the UInt8.t refinement *)
+  (* Step 1: i is in all_nat_indices_256 *)
+  nat_index_in_list i;
+  (* Step 2: for_all_mem derives sbox_inv_check_at i = true from the exhaustive check *)
+  List.Tot.for_all_mem sbox_inv_check_at all_nat_indices_256;
+  (* Step 3: unfold sbox_inv_check_at i to get the concrete equality:
+             UInt8.v (List.Tot.index inv_sbox_list (UInt8.v (List.Tot.index sbox_list i))) = i *)
+  (* Step 4: lemma_seq_of_list_index SMTPat gives Z3:
+             Seq.index sbox_table i == List.Tot.index sbox_list i, so
+             sub_byte b == List.Tot.index sbox_list i and
+             inv_sub_byte (sub_byte b) == List.Tot.index inv_sbox_list (UInt8.v (List.Tot.index sbox_list i)) *)
+  Seq.Properties.lemma_seq_of_list_index sbox_list i;
+  Seq.Properties.lemma_seq_of_list_index inv_sbox_list (UInt8.v (List.Tot.index sbox_list i));
+  (* Step 5: UInt8.v_inj closes inv_sub_byte (sub_byte b) == b *)
+  UInt8.v_inj (inv_sub_byte (sub_byte b)) b
+#pop-options
 
+(** Inverse direction: sub_byte (inv_sub_byte b) == b. *)
+#push-options "--z3rlimit 50000"
 val inv_sbox_sbox_roundtrip : b:UInt8.t
     -> Lemma (sub_byte (inv_sub_byte b) == b)
 let inv_sbox_sbox_roundtrip b =
-  (* TODO: same approach as sbox_inv_sbox_roundtrip — exhaustive case split needed *)
-  assume (sub_byte (inv_sub_byte b) == b)
+  let i = UInt8.v b in
+  nat_index_in_list i;
+  List.Tot.for_all_mem inv_sbox_check_at all_nat_indices_256;
+  Seq.Properties.lemma_seq_of_list_index inv_sbox_list i;
+  Seq.Properties.lemma_seq_of_list_index sbox_list (UInt8.v (List.Tot.index inv_sbox_list i));
+  UInt8.v_inj (sub_byte (inv_sub_byte b)) b
+#pop-options
 
 (** Encryption followed by decryption is the identity.
-    TODO: A complete proof requires showing that:
-      (1) inv_cipher is the functional inverse of cipher for any key schedule, and
-      (2) the key schedule computed by aes_expand_key is deterministic and the
-          same schedule is used in both directions.
-    Property (1) is the FIPS 197 correctness theorem.  It is a structural
-    lemma on the interleaving of SubBytes/ShiftRows/MixColumns with their
-    inverses across 14 rounds.  The proof requires either:
-      - A tactic-based round-induction proof, or
-      - Applying the concrete KAT vectors and using injectivity.
-    Retained as assume pending a tactic proof. *)
+    A complete proof requires showing that inv_cipher is the functional
+    inverse of cipher for any key schedule (FIPS 197 correctness theorem).
+    This is a structural lemma on the interleaving of SubBytes/ShiftRows/
+    MixColumns with their inverses across 14 rounds, requiring either a
+    tactic-based round-induction proof or a concrete KAT injectivity argument.
+    Retained as assume pending a tactic-based proof. *)
 val encrypt_decrypt_roundtrip :
     key:seq UInt8.t{Seq.length key = key_size}
     -> pt:seq UInt8.t{Seq.length pt = block_size}
     -> Lemma (aes_decrypt key (aes_encrypt key pt) == pt)
 let encrypt_decrypt_roundtrip key pt =
+  (* TODO: Structural proof by round induction — each cipher_round/inv_cipher_round
+     pair cancels, relying on sbox_inv_sbox_roundtrip, inv_shift_rows/shift_rows
+     inverses, inv_mix_columns/mix_columns inverses, and XOR self-inverse for
+     add_round_key.  Requires tactic-based round induction over nr = 14 rounds. *)
   assume (aes_decrypt key (aes_encrypt key pt) == pt)
 
 (** Decryption followed by encryption is the identity.
-    TODO: Same as encrypt_decrypt_roundtrip — requires FIPS 197 structural proof. *)
+    Same proof obligation as encrypt_decrypt_roundtrip, other direction.
+    Retained as assume pending a tactic-based proof. *)
 val decrypt_encrypt_roundtrip :
     key:seq UInt8.t{Seq.length key = key_size}
     -> ct:seq UInt8.t{Seq.length ct = block_size}
     -> Lemma (aes_encrypt key (aes_decrypt key ct) == ct)
 let decrypt_encrypt_roundtrip key ct =
+  (* TODO: Structural proof by round induction — symmetric to encrypt_decrypt_roundtrip. *)
   assume (aes_encrypt key (aes_decrypt key ct) == ct)
 
 (** Key expansion produces exactly 60 words *)
@@ -539,14 +649,13 @@ val aes256_kat_encrypt : unit
               aes_encrypt fips197_c3_key fips197_c3_plaintext ==
               fips197_c3_ciphertext)
 let aes256_kat_encrypt () =
-  (* TODO: All inputs (key, plaintext, expected ciphertext) are fully concrete
-     literal sequences.  In principle assert_norm can evaluate aes_encrypt on
-     concrete inputs, but the full AES-256 key schedule (60 words) + 14 rounds
-     of SubBytes/ShiftRows/MixColumns produce a term too large for Z3's
-     bitvector normaliser within the current z3rlimit budget.
-     A native_norm tactic call would solve this directly.  Retained as assume
-     until a tactic-based assert_norm or a norm [delta; zeta; iota; primops]
-     call with lifted z3rlimit is added. *)
+  (* All inputs are fully concrete literal sequences.  In principle assert_norm
+     can evaluate aes_encrypt by reducing the key schedule (60 words) and all
+     14 cipher rounds using F*'s kernel primops normaliser.  In practice, the
+     full AES-256 computation produces a normalisation term too large for Z3's
+     bitvector solver within any practical z3rlimit budget.  A `native_norm`
+     tactic call (extracting to OCaml and running natively) would solve this
+     directly.  Retained as assume until a native_norm-based proof is added. *)
   assume (kat_key_ok /\ kat_pt_ok ==>
           aes_encrypt fips197_c3_key fips197_c3_plaintext ==
           fips197_c3_ciphertext)
@@ -556,7 +665,9 @@ val aes256_kat_decrypt : unit
               aes_decrypt fips197_c3_key fips197_c3_ciphertext ==
               fips197_c3_plaintext)
 let aes256_kat_decrypt () =
-  (* TODO: same as aes256_kat_encrypt — concrete evaluation blocked by z3rlimit *)
+  (* Same as aes256_kat_encrypt: concrete evaluation of inv_cipher across 14
+     rounds is blocked by normaliser budget.  Retained as assume pending
+     a native_norm-based proof. *)
   assume (kat_key_ok /\ kat_ct_ok ==>
           aes_decrypt fips197_c3_key fips197_c3_ciphertext ==
           fips197_c3_plaintext)
@@ -567,7 +678,9 @@ val aes256_kat_roundtrip : unit
                (aes_encrypt fips197_c3_key fips197_c3_plaintext) ==
               fips197_c3_plaintext)
 let aes256_kat_roundtrip () =
-  (* TODO: same as aes256_kat_encrypt — concrete evaluation blocked by z3rlimit *)
+  (* Follows from aes256_kat_encrypt + aes256_kat_decrypt, both blocked by
+     the same normaliser budget constraint.  Retained as assume pending
+     a native_norm-based proof. *)
   assume (kat_key_ok /\ kat_pt_ok ==>
           aes_decrypt fips197_c3_key
            (aes_encrypt fips197_c3_key fips197_c3_plaintext) ==

@@ -47,7 +47,8 @@ let prologue : seq UInt8.t =
 (** SHA-256 hash *)
 val sha256 : msg:seq UInt8.t -> Tot (s:seq UInt8.t{Seq.length s = 32})
 let sha256 msg =
-  assume (Seq.length (Seq.create 32 0uy) = 32);
+  (* Seq.create 32 0uy has length 32 by the definition of Seq.create;
+     the refinement is established by the return value alone. *)
   Seq.create 32 0uy
 
 (** X25519 scalar multiplication *)
@@ -76,7 +77,8 @@ let chacha20_encrypt key nonce counter plaintext = plaintext
 val hmac_sha256 : key:seq UInt8.t -> msg:seq UInt8.t
     -> Tot (s:seq UInt8.t{Seq.length s = 32})
 let hmac_sha256 key msg =
-  assume (Seq.length (Seq.create 32 0uy) = 32);
+  (* Seq.create 32 0uy has length 32 by the definition of Seq.create;
+     the refinement is established by the return value alone. *)
   Seq.create 32 0uy
 
 (** -------------------------------------------------------------------- **)
@@ -84,12 +86,19 @@ let hmac_sha256 key msg =
 (** -------------------------------------------------------------------- **)
 
 (** Initial handshake hash: pad protocol_name to 32 bytes if <= 32,
-    otherwise SHA-256 hash it. *)
-val init_hash : seq UInt8.t
+    otherwise SHA-256 hash it.
+    The result always has exactly 32 bytes:
+    - In the padding branch: Seq.length (protocol_name ++ create (32 - len) 0uy)
+        = len + (32 - len) = 32 (structural arithmetic).
+    - In the SHA-256 branch: sha256 always returns 32 bytes (from its refinement). *)
+val init_hash : s:seq UInt8.t{Seq.length s = 32}
 let init_hash =
   if Seq.length protocol_name <= 32 then
     let padding = Seq.create (32 - Seq.length protocol_name) 0uy in
-    assume (Seq.length (Seq.append protocol_name padding) = 32);
+    (* Structural fact: Seq.length (append a b) = Seq.length a + Seq.length b,
+       and Seq.length (create n v) = n, so length here is
+       Seq.length protocol_name + (32 - Seq.length protocol_name) = 32. *)
+    assert (Seq.length (Seq.append protocol_name padding) = 32);
     Seq.append protocol_name padding
   else
     sha256 protocol_name
@@ -224,7 +233,9 @@ let noise_decrypt recv_key nonce_ctr ciphertext_mac =
     let mac = Seq.slice ciphertext_mac ct_len (Seq.length ciphertext_mac) in
     let nonce = Seq.create 12 0uy in
     let expected = hmac_sha256 recv_key (Seq.append nonce ct) in
-    assume (Seq.length expected = mac_len);
+    (* hmac_sha256 has type Tot (s:seq UInt8.t{Seq.length s = 32}),
+       and mac_len = 32, so this follows from the return-type refinement. *)
+    assert (Seq.length expected = mac_len);
     if mac = expected then
       Some (chacha20_encrypt recv_key nonce 1 ct)
     else None

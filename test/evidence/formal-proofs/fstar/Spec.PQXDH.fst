@@ -118,7 +118,9 @@ let derive_pq_secret dh1 dh2 dh3 dh4 pq_ss =
                      | Some d4 -> Seq.append ikm_base d4
                      | None -> ikm_base in
   let ikm = Seq.append ikm_with_dh4 pq_ss in
-  assume (Seq.length (hkdf salt ikm pqxdh_info secret_size) = secret_size);
+  (* hkdf is defined as Seq.create len 0uy, so its length equals len = secret_size.
+     This is a structural fact about the abstract stub, not a cryptographic assumption. *)
+  assert (Seq.length (hkdf salt ikm pqxdh_info secret_size) = secret_size);
   hkdf salt ikm pqxdh_info secret_size
 
 (** -------------------------------------------------------------------- **)
@@ -143,7 +145,9 @@ let pqxdh_initiate ik_a_secret ek_a_secret ik_b_public spk_b_public
     let (dh1, dh2, dh3, dh4) =
       compute_classical_dh ik_a_secret ek_a_secret ik_b_public spk_b_public opk_b in
     let (pq_ss, pq_ct) = pq_encapsulate pq_ek pq_randomness in
-    assume (Seq.length pq_ss = mlkem_ss_size);
+    (* pq_ss = fst (mlkem_encaps pq_ek pq_randomness) = fst (Seq.create mlkem_ss_size 0uy, Seq.empty).
+       Its length is therefore mlkem_ss_size by the definition of the abstract stub. *)
+    assert (Seq.length pq_ss = mlkem_ss_size);
     let master = derive_pq_secret dh1 dh2 dh3 dh4 pq_ss in
     Some (master, pq_ct)
 

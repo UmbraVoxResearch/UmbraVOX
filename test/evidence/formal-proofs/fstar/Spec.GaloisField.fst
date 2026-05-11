@@ -175,9 +175,23 @@ let gf_xor_self_zero (ah, al) =
 val gf_mul_zero : a:gf128
     -> Lemma (gf_mul a gf_zero == gf_zero)
 let gf_mul_zero a =
-  (* TODO: requires tactic-based proof — needs loop invariant that when V starts
-     as (0,0), all iterations maintain Z = 0 since gf_xor z (0,0) = z only when
-     the bit is not set, and V shifts always produce (0,0) when starting from (0,0) *)
+  (* Proof sketch (loop invariant argument):
+     gf_mul a gf_zero calls loop 0 gf_zero gf_zero.
+     Loop invariant: for all i in 0..128,
+       if V starts as gf_zero, then V remains gf_zero throughout.
+     Proof of invariant:
+       gf_test_bit gf_zero i = false for all i (both 64-bit words are 0,
+         logand with 1 = 0 regardless of shift amount).
+       Therefore z' = z at every step (the "if bit then gf_xor z v" branch
+         is never taken, so z stays gf_zero).
+       gf_shift_right gf_zero = gf_zero: shift_right 0 = 0, logor 0 0 = 0.
+       The lsb of gf_zero is 0 (logand 0uL 1uL = 0uL), so v'' = v' = gf_zero.
+     By induction on 128 - i: loop i gf_zero gf_zero = gf_zero for all i.
+     Hence gf_mul a gf_zero = loop 0 gf_zero gf_zero = gf_zero.
+     Z3 cannot close the recursive loop unrolling for depth 128 within
+     practical rlimit.  A tactic proof with a fuel-bounded unfolding or an
+     explicit induction lemma is needed.  The mathematical argument is
+     complete; implementation deferred pending tactic support. *)
   assume (gf_mul a gf_zero == gf_zero)
 
 (** Multiplication is commutative in GF(2^128) *)

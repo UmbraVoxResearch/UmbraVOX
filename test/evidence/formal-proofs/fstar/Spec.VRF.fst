@@ -223,11 +223,13 @@ val vrf_verify_output_length : pk:public_key -> msg:seq UInt8.t -> pi:vrf_proof
         | None   -> True
         | Some b -> Seq.length b = beta_size)
 let vrf_verify_output_length pk msg pi =
-  (* vrf_verify returns proof_to_hash(pi) on success; its length = beta_size. *)
-  assume (
-    match vrf_verify pk msg pi with
-    | None   -> True
-    | Some b -> Seq.length b = beta_size)
+  (* Structural proof: vrf_verify returns Tot (option vrf_output) where
+     vrf_output = s:seq UInt8.t{Seq.length s = beta_size}.
+     In the Some branch, b has type vrf_output, so Seq.length b = beta_size
+     holds by the refinement type — no SMT query needed. *)
+  match vrf_verify pk msg pi with
+  | None   -> ()
+  | Some _ -> ()
 
 (** -------------------------------------------------------------------- **)
 (** Correspondence to Haskell implementation                             **)

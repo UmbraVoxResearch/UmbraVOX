@@ -153,21 +153,53 @@ let be_bytes_to_uint64 (b : seq UInt8.t) (i : nat{i + 8 <= Seq.length b})
 let pad_zero_length (msg_len : nat) : nat =
   (111 - msg_len) % 128
 
-val pad : msg:seq UInt8.t
-       -> Tot (padded:seq UInt8.t{Seq.length padded % block_size = 0})
-let pad (msg : seq UInt8.t) : (padded:seq UInt8.t{Seq.length padded % block_size = 0}) =
-  let len = Seq.length msg in
-  assume (len * 8 >= 0 /\ len * 8 < pow2 64);
-  let bit_len = FStar.UInt64.uint_to_t (len * 8) in
-  let pad_zeros = Seq.create (pad_zero_length len) 0uy in
-  let len_hi = uint64_to_be_bytes 0uL in   (* upper 64 bits of 128-bit length *)
+(** mk_padded carries the exact refinement type so `pad` can delegate the
+    alignment obligation to it.  The zlen precondition ensures the raw
+    arithmetic holds; the refinement type on the result carries
+    Seq.length padded % block_size = 0 so pad just has to supply the right zlen. *)
+let mk_padded
+    (msg : seq UInt8.t)
+    (bit_len : UInt64.t)
+    (zlen : nat{(Seq.length msg + 1 + zlen + 16) % block_size = 0})
+    : Tot (padded:seq UInt8.t{
+        Seq.length padded = Seq.length msg + 1 + zlen + 16 /\
+        Seq.length padded % block_size = 0
+      })
+=
+  let pad_zeros = Seq.create zlen 0uy in
+  let len_hi = uint64_to_be_bytes 0uL in
   let len_lo = uint64_to_be_bytes bit_len in
   let padded = Seq.append msg
     (Seq.append (Seq.create 1 0x80uy)
       (Seq.append pad_zeros
         (Seq.append len_hi len_lo))) in
-  assume (Seq.length padded % block_size = 0);
+  assert_norm (Seq.length padded = Seq.length msg + 1 + zlen + 16);
+  assert_norm (Seq.length padded % block_size = 0);
   padded
+
+(** SHA-512 pads to 128-byte blocks.  The precondition Seq.length msg < pow2 61
+    ensures len * 8 < pow2 61 * 8 = pow2 64, so the 64-bit bit-length lo word
+    does not overflow; the upper 64 bits are zero for all practical messages. *)
+val pad : msg:seq UInt8.t{Seq.length msg < pow2 61}
+       -> Tot (padded:seq UInt8.t{Seq.length padded % block_size = 0})
+let pad (msg : seq UInt8.t{Seq.length msg < pow2 61})
+    : (padded:seq UInt8.t{Seq.length padded % block_size = 0}) =
+  let len = Seq.length msg in
+  (* len < pow2 61 => len * 8 < pow2 61 * 8 = pow2 64 *)
+  FStar.Math.Lemmas.lemma_mult_lt_right 8 len (pow2 61);
+  FStar.Math.Lemmas.pow2_plus 61 3;
+  assert_norm (pow2 3 = 8);
+  assert (len * 8 < pow2 64);
+  let bit_len = FStar.UInt64.uint_to_t (len * 8) in
+  let rem = len % block_size in
+  if rem <= 111 then
+    let zlen = 111 - rem in
+    assert_norm ((len - rem + 128) % block_size = 0);
+    mk_padded msg bit_len zlen
+  else
+    let zlen = 239 - rem in
+    assert_norm ((len - rem + 256) % block_size = 0);
+    mk_padded msg bit_len zlen
 
 (** -------------------------------------------------------------------- **)
 (** Message schedule                                                     **)
@@ -465,9 +497,13 @@ let process_blocks (h : hash_state)
   assert_norm (Seq.length padded = blocks * block_size);
   process_blocks_count h padded blocks
 
-(** SHA-512: hash an arbitrary-length message to a 64-byte digest *)
-val sha512 : msg:seq UInt8.t -> Tot (digest:seq UInt8.t{Seq.length digest = hash_size})
-let sha512 (msg : seq UInt8.t) : (digest:seq UInt8.t{Seq.length digest = hash_size}) =
+(** SHA-512: hash an arbitrary-length message to a 64-byte digest.
+    The precondition msg < 2^61 bytes ensures the 64-bit lo word of the
+    128-bit length field does not overflow (FIPS 180-4 §5.1.2). *)
+val sha512 : msg:seq UInt8.t{Seq.length msg < pow2 61}
+          -> Tot (digest:seq UInt8.t{Seq.length digest = hash_size})
+let sha512 (msg : seq UInt8.t{Seq.length msg < pow2 61})
+    : (digest:seq UInt8.t{Seq.length digest = hash_size}) =
   let padded = pad msg in
   let final_hash = process_blocks init_hash padded in
   hash_to_bytes final_hash
@@ -476,11 +512,11 @@ let sha512 (msg : seq UInt8.t) : (digest:seq UInt8.t{Seq.length digest = hash_si
 (** Correctness properties and lemmas                                    **)
 (** -------------------------------------------------------------------- **)
 
-val pad_length_lemma : msg:seq UInt8.t
+val pad_length_lemma : msg:seq UInt8.t{Seq.length msg < pow2 61}
     -> Lemma (Seq.length (pad msg) % block_size = 0)
 let pad_length_lemma msg = ()
 
-val sha512_output_length : msg:seq UInt8.t
+val sha512_output_length : msg:seq UInt8.t{Seq.length msg < pow2 61}
     -> Lemma (Seq.length (sha512 msg) = hash_size)
 let sha512_output_length msg = ()
 
@@ -515,14 +551,17 @@ let expected_abc_digest_512 : seq UInt8.t =
 let abc_input : seq UInt8.t =
   of_byte_list [0x61uy; 0x62uy; 0x63uy]
 
+let _ = assert_norm (Seq.length abc_input = 3)
+let _ = assert_norm (Seq.length abc_input < pow2 61)
+
 val sha512_kat_abc : unit
     -> Lemma (sha512 abc_input == expected_abc_digest_512)
-(* KAT: assert_norm attempted at z3rlimit 50000; blocked because Spec.SHA512.pad
-   contains two internal assumes (overflow and block-alignment) that prevent full
-   normalization.  Replacing those with refinement-type witnesses would unblock
-   assert_norm here.  Until then, this KAT is axiomatically asserted. *)
+#push-options "--fuel 100 --ifuel 100 --z3rlimit 100000"
 let sha512_kat_abc () =
-  assume (sha512 abc_input == expected_abc_digest_512)
+  (* abc_input has 3 bytes, well below pow2 61.  pad now has proper refinement
+     types (no internal assume), so assert_norm can normalise the full computation. *)
+  assert_norm (sha512 abc_input == expected_abc_digest_512)
+#pop-options
 
 (** KAT 2: SHA-512("")
     Expected: cf83e135... *)
@@ -538,11 +577,15 @@ let expected_empty_digest_512 : seq UInt8.t =
     0xa5uy; 0x38uy; 0x32uy; 0x7auy; 0xf9uy; 0x27uy; 0xdauy; 0x3euy
   ]
 
+let _ = assert_norm (Seq.length (Seq.empty #UInt8.t) = 0)
+let _ = assert_norm (Seq.length (Seq.empty #UInt8.t) < pow2 61)
+
 val sha512_kat_empty : unit
-    -> Lemma (sha512 Seq.empty == expected_empty_digest_512)
-(* KAT: assert_norm blocked — same pad assumes as sha512_kat_abc. *)
+    -> Lemma (sha512 (Seq.empty #UInt8.t) == expected_empty_digest_512)
+#push-options "--fuel 100 --ifuel 100 --z3rlimit 100000"
 let sha512_kat_empty () =
-  assume (sha512 Seq.empty == expected_empty_digest_512)
+  assert_norm (sha512 (Seq.empty #UInt8.t) == expected_empty_digest_512)
+#pop-options
 
 (** -------------------------------------------------------------------- **)
 (** M6.3.3 -- Equivalence lemmas for round-state transitions             **)
@@ -565,9 +608,12 @@ val round_step_words_64bit : wv:hash_state
     -> w:seq UInt64.t{Seq.length w = 80}
     -> (i:nat{i < 8})
     -> Lemma (UInt64.v (Seq.index (round_step wv t w) i) < pow2 64)
-#push-options "--admit_smt_queries true"
+#push-options "--z3rlimit 10000"
 let round_step_words_64bit wv t w i =
-  assume (UInt64.v (Seq.index (round_step wv t w) i) < pow2 64)
+  (* Seq.index of hash_state returns UInt64.t.  UInt64.v has return type
+     uint_t 64 = n':nat{n' < pow2 64} by definition.  Z3 closes this goal
+     via the uint_t refinement axiom. *)
+  ()
 #pop-options
 
 (** Lemma 2a: Schedule words for t = 0..15 are the direct big-endian
@@ -576,9 +622,30 @@ let round_step_words_64bit wv t w i =
 val schedule_low_words_spec : block:seq UInt8.t{Seq.length block = block_size}
     -> t:nat{t < 16}
     -> Lemma (Seq.index (schedule block) t = be_bytes_to_uint64 block (8 * t))
-#push-options "--admit_smt_queries true"
+#push-options "--z3rlimit 40000"
 let schedule_low_words_spec block t =
-  assume (Seq.index (schedule block) t = be_bytes_to_uint64 block (8 * t))
+  (* schedule block = schedule_prefix80 (schedule_prefix64 (schedule_prefix48 (schedule_prefix32 p16)))
+     where p16 = initial_schedule_prefix block.
+     Each prefix-extension step only appends words; for t < 16 the index is
+     preserved through Seq.append/snoc operations.
+     initial_schedule_prefix = seq_of_list [be_bytes_to_uint64 block 0; ... 120].
+     lemma_seq_of_list_index gives the element at position t. *)
+  let p16 = initial_schedule_prefix block in
+  let l16 = [
+    be_bytes_to_uint64 block 0;   be_bytes_to_uint64 block 8;
+    be_bytes_to_uint64 block 16;  be_bytes_to_uint64 block 24;
+    be_bytes_to_uint64 block 32;  be_bytes_to_uint64 block 40;
+    be_bytes_to_uint64 block 48;  be_bytes_to_uint64 block 56;
+    be_bytes_to_uint64 block 64;  be_bytes_to_uint64 block 72;
+    be_bytes_to_uint64 block 80;  be_bytes_to_uint64 block 88;
+    be_bytes_to_uint64 block 96;  be_bytes_to_uint64 block 104;
+    be_bytes_to_uint64 block 112; be_bytes_to_uint64 block 120
+  ] in
+  assert (p16 == Seq.seq_of_list l16);
+  FStar.Seq.Properties.lemma_seq_of_list_index l16 t;
+  (* Now: Seq.index p16 t = List.Tot.index l16 t = be_bytes_to_uint64 block (8*t).
+     The schedule extends p16 with Seq.snoc steps; for t < 16, Seq.index is preserved. *)
+  assert (Seq.index (schedule block) t = Seq.index p16 t)
 #pop-options
 
 (** Lemma 2b: Schedule words for t = 16..79 satisfy the recursive expansion
@@ -593,16 +660,17 @@ val schedule_high_words_spec : block:seq UInt8.t{Seq.length block = block_size}
              (UInt64.add_mod (ssig1 (Seq.index w (t - 2))) (Seq.index w (t - 7)))
              (UInt64.add_mod (ssig0 (Seq.index w (t - 15))) (Seq.index w (t - 16)))
        )
-#push-options "--admit_smt_queries true"
+(* Z3 timeout at rlimit 80000 for abstract t: the snoc-chain unfolding of the
+   schedule requires Z3 to perform 64 case-splits, which diverges.
+   A full proof requires an inductive snoc-preservation lemma (tactic-based). *)
 let schedule_high_words_spec block t =
+  let w = schedule block in
   assume (
-    let w = schedule block in
     Seq.index w t ==
       UInt64.add_mod
         (UInt64.add_mod (ssig1 (Seq.index w (t - 2))) (Seq.index w (t - 7)))
         (UInt64.add_mod (ssig0 (Seq.index w (t - 15))) (Seq.index w (t - 16)))
   )
-#pop-options
 
 (** Lemma 3: The compression function output at each index equals
     initial-hash word + working-state word (mod 2^64).
@@ -616,11 +684,31 @@ val compress_is_foldback_of_rounds : h:hash_state
          Seq.index (compress h block) i ==
          UInt64.add_mod (Seq.index h i) (Seq.index wv i)
        )
-#push-options "--admit_smt_queries true"
+#push-options "--z3rlimit 40000 --z3cliopt 'smt.arith.nl=false'"
 let compress_is_foldback_of_rounds h block i =
-  assume (
-    let wv = rounds h (schedule block) in
-    Seq.index (compress h block) i ==
-    UInt64.add_mod (Seq.index h i) (Seq.index wv i)
-  )
+  (* compress h block = compress_foldback h (rounds h (schedule block)) by definition.
+     compress_foldback builds mk_hash_state from add_mod of corresponding words.
+     The sequence indexing follows from seq_of_list structure: for each i < 8,
+     Seq.index (mk_hash_state a0..a7) i = ai = add_mod h[i] wv[i]. *)
+  let w = schedule block in
+  let wv = rounds h w in
+  let h0 = Seq.index h 0 in let h1 = Seq.index h 1 in
+  let h2 = Seq.index h 2 in let h3 = Seq.index h 3 in
+  let h4 = Seq.index h 4 in let h5 = Seq.index h 5 in
+  let h6 = Seq.index h 6 in let h7 = Seq.index h 7 in
+  let wv0 = Seq.index wv 0 in let wv1 = Seq.index wv 1 in
+  let wv2 = Seq.index wv 2 in let wv3 = Seq.index wv 3 in
+  let wv4 = Seq.index wv 4 in let wv5 = Seq.index wv 5 in
+  let wv6 = Seq.index wv 6 in let wv7 = Seq.index wv 7 in
+  let r = mk_hash_state
+    (UInt64.add_mod h0 wv0) (UInt64.add_mod h1 wv1)
+    (UInt64.add_mod h2 wv2) (UInt64.add_mod h3 wv3)
+    (UInt64.add_mod h4 wv4) (UInt64.add_mod h5 wv5)
+    (UInt64.add_mod h6 wv6) (UInt64.add_mod h7 wv7) in
+  assert (compress h block == r);
+  let l = [UInt64.add_mod h0 wv0; UInt64.add_mod h1 wv1;
+            UInt64.add_mod h2 wv2; UInt64.add_mod h3 wv3;
+            UInt64.add_mod h4 wv4; UInt64.add_mod h5 wv5;
+            UInt64.add_mod h6 wv6; UInt64.add_mod h7 wv7] in
+  FStar.Seq.Properties.lemma_seq_of_list_index l i
 #pop-options

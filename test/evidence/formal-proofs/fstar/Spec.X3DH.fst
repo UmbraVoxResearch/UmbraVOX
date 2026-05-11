@@ -36,14 +36,15 @@ val x25519 : secret:seq UInt8.t{Seq.length secret = key_size}
     -> public_key:seq UInt8.t{Seq.length public_key = key_size}
     -> Tot (s:seq UInt8.t{Seq.length s = key_size})
 let x25519 secret public_key =
-  assume (True);
+  (* Abstract stub: Seq.create key_size 0uy trivially satisfies the length
+     refinement, so no assume is needed here. *)
   Seq.create key_size 0uy  (* abstract -- specified by Spec.X25519 *)
 
 (** Ed25519 signature verification *)
 val ed25519_verify : public_key:seq UInt8.t -> msg:seq UInt8.t
     -> sig_bytes:seq UInt8.t -> Tot bool
 let ed25519_verify public_key msg sig_bytes =
-  assume (True);
+  (* Abstract stub returning true: no assume required. *)
   true  (* abstract -- specified by Spec.Ed25519 *)
 
 (** HKDF key derivation *)
@@ -118,7 +119,9 @@ let derive_secret dh1 dh2 dh3 dh4 =
   let ikm = match dh4 with
             | Some d4 -> Seq.append ikm_base d4
             | None -> ikm_base in
-  assume (Seq.length (hkdf salt ikm x3dh_info secret_size) = secret_size);
+  (* hkdf is defined as Seq.create len 0uy, so its length equals len = secret_size.
+     This is a structural fact about the abstract stub, not a cryptographic assumption. *)
+  assert (Seq.length (hkdf salt ikm x3dh_info secret_size) = secret_size);
   hkdf salt ikm x3dh_info secret_size
 
 (** -------------------------------------------------------------------- **)

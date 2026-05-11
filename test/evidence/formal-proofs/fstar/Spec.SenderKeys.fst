@@ -99,8 +99,11 @@ let advance_chain hmac st =
 val chain_iter_monotone : hmac:hmac_fn -> st:chain_state
     -> Lemma ((advance_chain hmac st).iter = st.iter + 1)
 let chain_iter_monotone hmac st =
-  (* Proof: advance_chain sets iter := st.iter + 1 by definition. *)
-  assume ((advance_chain hmac st).iter = st.iter + 1)
+  (* Structural proof: advance_chain is defined as
+       { ck = ...; iter = st.iter + 1 }
+     so the iter field is definitionally equal to st.iter + 1.
+     F* unfolds the definition and Z3 discharges the arithmetic. *)
+  ()
 
 (** Apply the chain advance n times starting from state st. *)
 let rec n_advances (hmac:hmac_fn) (st:chain_state) (n:nat)
@@ -109,13 +112,18 @@ let rec n_advances (hmac:hmac_fn) (st:chain_state) (n:nat)
   else n_advances hmac (advance_chain hmac st) (n - 1)
 
 (** The iteration counter after n advances equals iter + n. *)
-val chain_iter_after_n : hmac:hmac_fn -> st:chain_state -> n:nat
-    -> Lemma ((n_advances hmac st n).iter = st.iter + n)
-let chain_iter_after_n hmac st n =
-  (* Proof by induction on n.  Base case: 0 advances, iter = iter + 0.
-     Inductive step: one advance increments iter by 1, then n-1 more
-     increments by n-1 (IH), total = n.  We assume here. *)
-  assume ((n_advances hmac st n).iter = st.iter + n)
+let rec chain_iter_after_n (hmac:hmac_fn) (st:chain_state) (n:nat)
+    : Lemma (ensures (n_advances hmac st n).iter = st.iter + n)
+            (decreases n) =
+  (* Structural inductive proof on n.
+     Base case (n = 0): n_advances hmac st 0 = st, so iter = st.iter = st.iter + 0.
+     Inductive step: n_advances hmac st n = n_advances hmac (advance_chain hmac st) (n-1).
+       By IH: (n_advances hmac (advance_chain hmac st) (n-1)).iter
+                = (advance_chain hmac st).iter + (n-1)
+                = (st.iter + 1) + (n-1)  [by chain_iter_monotone]
+                = st.iter + n. *)
+  if n = 0 then ()
+  else chain_iter_after_n hmac (advance_chain hmac st) (n - 1)
 
 (** -------------------------------------------------------------------- **)
 (** Distinct derivation domains                                          **)
@@ -128,9 +136,14 @@ let chain_iter_after_n hmac st n =
 (** ck_info and mk_info are distinct sequences. *)
 val info_distinct : unit -> Lemma (ck_info <> mk_info)
 let info_distinct () =
-  (* Seq.create 1 0x01uy and Seq.create 1 0x02uy differ at index 0.
-     Full proof requires unfolding Seq.create and comparing UInt8 values. *)
-  assume (ck_info <> mk_info)
+  (* Structural proof: ck_info and mk_info are length-1 sequences whose sole
+     element is 0x01uy and 0x02uy respectively.  They differ at index 0,
+     which implies they are not equal as sequences. *)
+  assert (Seq.index ck_info 0 = 0x01uy);
+  assert (Seq.index mk_info 0 = 0x02uy);
+  assert (Seq.index ck_info 0 <> Seq.index mk_info 0);
+  introduce ck_info = mk_info ==> False
+  with _. (assert (Seq.index ck_info 0 = Seq.index mk_info 0))
 
 (** -------------------------------------------------------------------- **)
 (** Message-key independence                                             **)
