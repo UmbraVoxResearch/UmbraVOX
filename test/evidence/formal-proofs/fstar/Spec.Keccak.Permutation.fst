@@ -7,6 +7,12 @@
  * Keccak-f[1600] permutation.
  *
  * Reference: FIPS 202, Sections 3.2, 3.4
+ *
+ * M13.2.3 proof work:
+ *   - keccak_f1600_preserves_size: proved by return-type refinement (no assume)
+ *   - pi_table bounds: proved via assert_norm on all 25 concrete values (no assume)
+ *   - pi state length: proved by Seq.lemma_upd_len (no assume)
+ *   - chi_identity: proved by Seq.seq_of_list_index + case split on x (no assume)
  *)
 module Spec.Keccak.Permutation
 
@@ -14,6 +20,8 @@ open FStar.Seq
 open FStar.UInt8
 open FStar.UInt64
 open FStar.Mul
+
+#push-options "--z3rlimit 50000 --fuel 1 --ifuel 1"
 
 (** -------------------------------------------------------------------- **)
 (** Constants                                                             **)
@@ -75,6 +83,36 @@ let pi_table : (s:seq nat{Seq.length s = 25}) =
   ] in
   let _ = assert_norm (List.Tot.length l = 25) in
   Seq.seq_of_list l
+
+(** All entries of pi_table are < 25: proved by assert_norm on all 25 values. *)
+let pi_table_bounds_lemma (i : nat{i < 25})
+    : Lemma (Seq.index pi_table i < 25) =
+  (* Each concrete index reduces by normalization. *)
+  assert_norm (Seq.index pi_table 0  < 25);
+  assert_norm (Seq.index pi_table 1  < 25);
+  assert_norm (Seq.index pi_table 2  < 25);
+  assert_norm (Seq.index pi_table 3  < 25);
+  assert_norm (Seq.index pi_table 4  < 25);
+  assert_norm (Seq.index pi_table 5  < 25);
+  assert_norm (Seq.index pi_table 6  < 25);
+  assert_norm (Seq.index pi_table 7  < 25);
+  assert_norm (Seq.index pi_table 8  < 25);
+  assert_norm (Seq.index pi_table 9  < 25);
+  assert_norm (Seq.index pi_table 10 < 25);
+  assert_norm (Seq.index pi_table 11 < 25);
+  assert_norm (Seq.index pi_table 12 < 25);
+  assert_norm (Seq.index pi_table 13 < 25);
+  assert_norm (Seq.index pi_table 14 < 25);
+  assert_norm (Seq.index pi_table 15 < 25);
+  assert_norm (Seq.index pi_table 16 < 25);
+  assert_norm (Seq.index pi_table 17 < 25);
+  assert_norm (Seq.index pi_table 18 < 25);
+  assert_norm (Seq.index pi_table 19 < 25);
+  assert_norm (Seq.index pi_table 20 < 25);
+  assert_norm (Seq.index pi_table 21 < 25);
+  assert_norm (Seq.index pi_table 22 < 25);
+  assert_norm (Seq.index pi_table 23 < 25);
+  assert_norm (Seq.index pi_table 24 < 25)
 
 (** -------------------------------------------------------------------- **)
 (** Keccak state type                                                     **)
@@ -206,7 +244,9 @@ let rho (st : keccak_state) : keccak_state =
 (** -------------------------------------------------------------------- **)
 
 (** Pi: permute lane positions.
-    dst[y + 5*((2*x + 3*y) mod 5)] = src[x + 5*y] *)
+    dst[y + 5*((2*x + 3*y) mod 5)] = src[x + 5*y]
+    pi_table_bounds_lemma proves all destination indices < 25;
+    Seq.lemma_upd_len proves Seq.upd preserves length. *)
 let pi (st : keccak_state) : keccak_state =
   let dst (i : nat{i < 25}) : UInt64.t =
     (* Find which source index maps to destination i via pi_table *)
@@ -220,9 +260,9 @@ let pi (st : keccak_state) : keccak_state =
     if i >= 25 then dst
     else
       let dst_idx = Seq.index pi_table i in
-      assume (dst_idx < 25);
+      pi_table_bounds_lemma i;
       let dst' = Seq.upd dst dst_idx (Seq.index src i) in
-      assume (Seq.length dst' = 25);
+      Seq.lemma_len_upd dst_idx (Seq.index src i) dst;
       apply_pi src dst' (i + 1)
   in
   apply_pi st result 0
@@ -295,11 +335,12 @@ val keccak_state_size_lemma : st:keccak_state
     -> Lemma (Seq.length st = 25)
 let keccak_state_size_lemma st = ()
 
-(** Keccak-f[1600] preserves state size *)
+(** Keccak-f[1600] preserves state size.
+    Proved by the return-type refinement: keccak_f1600 returns keccak_state,
+    which is defined as (s:seq UInt64.t{Seq.length s = 25}). No assume needed. *)
 val keccak_f1600_preserves_size : st:keccak_state
     -> Lemma (Seq.length (keccak_f1600 st) = 25)
-let keccak_f1600_preserves_size st =
-  assume (Seq.length (keccak_f1600 st) = 25)
+let keccak_f1600_preserves_size st = ()
 
 (** The round constants table has exactly 24 entries *)
 val round_constants_length_lemma : unit
@@ -316,7 +357,11 @@ val pi_table_length_lemma : unit
     -> Lemma (Seq.length pi_table = 25)
 let pi_table_length_lemma () = ()
 
-(** Chi satisfies the non-linear mixing identity *)
+(** Chi satisfies the non-linear mixing identity.
+    Proved by: (1) unfolding chi_row to reveal the explicit list construction,
+    (2) applying Seq.seq_of_list_index to map Seq.index to List.Tot.index,
+    (3) case-splitting on x in {0,1,2,3,4} to evaluate the list index,
+    (4) using assert_norm to discharge the modular arithmetic for (x+1)%5, (x+2)%5. *)
 val chi_identity : st:keccak_state -> y:nat{y < 5} -> x:nat{x < 5}
     -> Lemma (
         let base = 5 * y in
@@ -327,10 +372,41 @@ val chi_identity : st:keccak_state -> y:nat{y < 5} -> x:nat{x < 5}
               (UInt64.lognot (Seq.index st (base + ((x + 1) % 5))))
               (Seq.index st (base + ((x + 2) % 5)))))
 let chi_identity st y x =
-  assume (let base = 5 * y in
-          let row = chi_row st y in
-          Seq.index row x ==
-            UInt64.logxor (Seq.index st (base + x))
-              (UInt64.logand
-                (UInt64.lognot (Seq.index st (base + ((x + 1) % 5))))
-                (Seq.index st (base + ((x + 2) % 5)))))
+  let base = 5 * y in
+  let t0 = Seq.index st (base + 0) in
+  let t1 = Seq.index st (base + 1) in
+  let t2 = Seq.index st (base + 2) in
+  let t3 = Seq.index st (base + 3) in
+  let t4 = Seq.index st (base + 4) in
+  let l = [
+    UInt64.logxor t0 (UInt64.logand (UInt64.lognot t1) t2);
+    UInt64.logxor t1 (UInt64.logand (UInt64.lognot t2) t3);
+    UInt64.logxor t2 (UInt64.logand (UInt64.lognot t3) t4);
+    UInt64.logxor t3 (UInt64.logand (UInt64.lognot t4) t0);
+    UInt64.logxor t4 (UInt64.logand (UInt64.lognot t0) t1)
+  ] in
+  assert_norm (List.Tot.length l = 5);
+  (* chi_row st y = Seq.seq_of_list l by definition *)
+  let row = chi_row st y in
+  (* Use Seq.seq_of_list_index to reduce Seq.index (seq_of_list l) x *)
+  Seq.lemma_seq_of_list_index l x;
+  (* Now Seq.index row x = List.Tot.index l x *)
+  (* Case split on x to evaluate List.Tot.index and the modular arithmetic *)
+  if x = 0 then (
+    assert_norm ((0 + 1) % 5 = 1);
+    assert_norm ((0 + 2) % 5 = 2)
+  ) else if x = 1 then (
+    assert_norm ((1 + 1) % 5 = 2);
+    assert_norm ((1 + 2) % 5 = 3)
+  ) else if x = 2 then (
+    assert_norm ((2 + 1) % 5 = 3);
+    assert_norm ((2 + 2) % 5 = 4)
+  ) else if x = 3 then (
+    assert_norm ((3 + 1) % 5 = 4);
+    assert_norm ((3 + 2) % 5 = 0)
+  ) else (
+    assert_norm ((4 + 1) % 5 = 0);
+    assert_norm ((4 + 2) % 5 = 1)
+  )
+
+#pop-options
