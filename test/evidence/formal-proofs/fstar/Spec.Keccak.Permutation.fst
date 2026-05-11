@@ -71,48 +71,54 @@ let rotation_offsets : (s:seq nat{Seq.length s = 25}) =
   let _ = assert_norm (List.Tot.length l = 25) in
   Seq.seq_of_list l
 
+(** Pi permutation table backing list (exposed for index lemmas). *)
+let pi_table_list : list nat =
+  [ 0; 10; 20;  5; 15;   (* src 0..4  -> dst *)
+   16;  1; 11; 21;  6;   (* src 5..9  -> dst *)
+    7; 17;  2; 12; 22;   (* src 10..14 -> dst *)
+   23;  8; 18;  3; 13;   (* src 15..19 -> dst *)
+   14; 24;  9; 19;  4 ]  (* src 20..24 -> dst *)
+
+let _ = assert_norm (List.Tot.length pi_table_list = 25)
+
 (** Pi permutation table: maps source index (x + 5*y) to destination index
     (y + 5*((2*x + 3*y) mod 5)).  Precomputed for all 25 positions. *)
 let pi_table : (s:seq nat{Seq.length s = 25}) =
-  let l = [
-     0; 10; 20;  5; 15;   (* src 0..4  -> dst *)
-    16;  1; 11; 21;  6;   (* src 5..9  -> dst *)
-     7; 17;  2; 12; 22;   (* src 10..14 -> dst *)
-    23;  8; 18;  3; 13;   (* src 15..19 -> dst *)
-    14; 24;  9; 19;  4    (* src 20..24 -> dst *)
-  ] in
-  let _ = assert_norm (List.Tot.length l = 25) in
-  Seq.seq_of_list l
+  assert_norm (List.Tot.length pi_table_list = 25);
+  Seq.seq_of_list pi_table_list
 
-(** All entries of pi_table are < 25: proved by assert_norm on all 25 values. *)
+(** All entries of pi_table are < 25: proved by unfolding to list + case split. *)
 let pi_table_bounds_lemma (i : nat{i < 25})
     : Lemma (Seq.index pi_table i < 25) =
-  (* Each concrete index reduces by normalization. *)
-  assert_norm (Seq.index pi_table 0  < 25);
-  assert_norm (Seq.index pi_table 1  < 25);
-  assert_norm (Seq.index pi_table 2  < 25);
-  assert_norm (Seq.index pi_table 3  < 25);
-  assert_norm (Seq.index pi_table 4  < 25);
-  assert_norm (Seq.index pi_table 5  < 25);
-  assert_norm (Seq.index pi_table 6  < 25);
-  assert_norm (Seq.index pi_table 7  < 25);
-  assert_norm (Seq.index pi_table 8  < 25);
-  assert_norm (Seq.index pi_table 9  < 25);
-  assert_norm (Seq.index pi_table 10 < 25);
-  assert_norm (Seq.index pi_table 11 < 25);
-  assert_norm (Seq.index pi_table 12 < 25);
-  assert_norm (Seq.index pi_table 13 < 25);
-  assert_norm (Seq.index pi_table 14 < 25);
-  assert_norm (Seq.index pi_table 15 < 25);
-  assert_norm (Seq.index pi_table 16 < 25);
-  assert_norm (Seq.index pi_table 17 < 25);
-  assert_norm (Seq.index pi_table 18 < 25);
-  assert_norm (Seq.index pi_table 19 < 25);
-  assert_norm (Seq.index pi_table 20 < 25);
-  assert_norm (Seq.index pi_table 21 < 25);
-  assert_norm (Seq.index pi_table 22 < 25);
-  assert_norm (Seq.index pi_table 23 < 25);
-  assert_norm (Seq.index pi_table 24 < 25)
+  (* Unfold Seq.index pi_table i = List.Tot.index pi_table_list i *)
+  assert_norm (pi_table == Seq.seq_of_list pi_table_list);
+  Seq.lemma_seq_of_list_index pi_table_list i;
+  (* Now Seq.index pi_table i = List.Tot.index pi_table_list i; case split. *)
+  if      i = 0  then assert_norm (List.Tot.index pi_table_list 0  < 25)
+  else if i = 1  then assert_norm (List.Tot.index pi_table_list 1  < 25)
+  else if i = 2  then assert_norm (List.Tot.index pi_table_list 2  < 25)
+  else if i = 3  then assert_norm (List.Tot.index pi_table_list 3  < 25)
+  else if i = 4  then assert_norm (List.Tot.index pi_table_list 4  < 25)
+  else if i = 5  then assert_norm (List.Tot.index pi_table_list 5  < 25)
+  else if i = 6  then assert_norm (List.Tot.index pi_table_list 6  < 25)
+  else if i = 7  then assert_norm (List.Tot.index pi_table_list 7  < 25)
+  else if i = 8  then assert_norm (List.Tot.index pi_table_list 8  < 25)
+  else if i = 9  then assert_norm (List.Tot.index pi_table_list 9  < 25)
+  else if i = 10 then assert_norm (List.Tot.index pi_table_list 10 < 25)
+  else if i = 11 then assert_norm (List.Tot.index pi_table_list 11 < 25)
+  else if i = 12 then assert_norm (List.Tot.index pi_table_list 12 < 25)
+  else if i = 13 then assert_norm (List.Tot.index pi_table_list 13 < 25)
+  else if i = 14 then assert_norm (List.Tot.index pi_table_list 14 < 25)
+  else if i = 15 then assert_norm (List.Tot.index pi_table_list 15 < 25)
+  else if i = 16 then assert_norm (List.Tot.index pi_table_list 16 < 25)
+  else if i = 17 then assert_norm (List.Tot.index pi_table_list 17 < 25)
+  else if i = 18 then assert_norm (List.Tot.index pi_table_list 18 < 25)
+  else if i = 19 then assert_norm (List.Tot.index pi_table_list 19 < 25)
+  else if i = 20 then assert_norm (List.Tot.index pi_table_list 20 < 25)
+  else if i = 21 then assert_norm (List.Tot.index pi_table_list 21 < 25)
+  else if i = 22 then assert_norm (List.Tot.index pi_table_list 22 < 25)
+  else if i = 23 then assert_norm (List.Tot.index pi_table_list 23 < 25)
+  else               assert_norm (List.Tot.index pi_table_list 24 < 25)
 
 (** -------------------------------------------------------------------- **)
 (** Keccak state type                                                     **)
