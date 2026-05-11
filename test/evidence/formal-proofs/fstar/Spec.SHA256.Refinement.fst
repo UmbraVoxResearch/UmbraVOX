@@ -30,18 +30,18 @@ open Spec.SHA256
     It is definitionally equal to Spec.SHA256.sha256 — we introduce it
     as an alias so the refinement lemma can reference it by a name that
     clearly signals "this is the specification side of the refinement". *)
-let sha256_ref (msg : seq UInt8.t)
+let sha256_ref (msg : seq UInt8.t{Seq.length msg < pow2 61})
     : (digest:seq UInt8.t{Seq.length digest = hash_size}) =
   Spec.SHA256.sha256 msg
 
 (** sha256_ref produces exactly hash_size (32) bytes for any input. *)
-val sha256_ref_length : msg:seq UInt8.t
+val sha256_ref_length : msg:seq UInt8.t{Seq.length msg < pow2 61}
     -> Lemma (Seq.length (sha256_ref msg) = hash_size)
 let sha256_ref_length msg = ()
 
 (** sha256_ref preserves padding block-alignment at the intermediate
     padded-message level. *)
-val sha256_ref_pad_aligned : msg:seq UInt8.t
+val sha256_ref_pad_aligned : msg:seq UInt8.t{Seq.length msg < pow2 61}
     -> Lemma (Seq.length (pad msg) % block_size = 0)
 let sha256_ref_pad_aligned msg = ()
 
@@ -89,7 +89,7 @@ assume val haskell_sha256 : haskell_bytestring -> haskell_bytestring
         (test/Spec/SHA256Spec.hs) and the property-based tests.
     (3) The statement documents the intended semantic obligation so that
         any future machine-checked refinement path has a clear target. *)
-val sha256_haskell_refines_spec : msg:seq UInt8.t
+val sha256_haskell_refines_spec : msg:seq UInt8.t{Seq.length msg < pow2 61}
     -> Lemma (
          seq_of_bs (haskell_sha256 (bs_of_seq msg)) == sha256_ref msg
        )
@@ -105,7 +105,7 @@ let sha256_haskell_refines_spec msg =
 #pop-options
 
 (** Corollary: the Haskell output length is always hash_size (32) bytes. *)
-val sha256_haskell_output_length : msg:seq UInt8.t
+val sha256_haskell_output_length : msg:seq UInt8.t{Seq.length msg < pow2 61}
     -> Lemma (Seq.length (seq_of_bs (haskell_sha256 (bs_of_seq msg))) = hash_size)
 #push-options "--admit_smt_queries true"
 let sha256_haskell_output_length msg =
@@ -125,6 +125,9 @@ let sha256_haskell_output_length msg =
 let abc_input_ref : seq UInt8.t =
   Seq.seq_of_list [0x61uy; 0x62uy; 0x63uy]
 
+let _ = assert_norm (Seq.length abc_input_ref = 3)
+let _ = assert_norm (Seq.length abc_input_ref < pow2 61)
+
 val sha256_refinement_kat_abc : unit
     -> Lemma (
          seq_of_bs (haskell_sha256 (bs_of_seq abc_input_ref))
@@ -134,13 +137,17 @@ let sha256_refinement_kat_abc () =
   sha256_haskell_refines_spec abc_input_ref
 
 (** The reference and Haskell implementations agree on the KAT for "". *)
+let empty_input_ref : seq UInt8.t = Seq.empty
+let _ = assert_norm (Seq.length empty_input_ref = 0)
+let _ = assert_norm (Seq.length empty_input_ref < pow2 61)
+
 val sha256_refinement_kat_empty : unit
     -> Lemma (
-         seq_of_bs (haskell_sha256 (bs_of_seq Seq.empty))
-           == sha256_ref Seq.empty
+         seq_of_bs (haskell_sha256 (bs_of_seq empty_input_ref))
+           == sha256_ref empty_input_ref
        )
 let sha256_refinement_kat_empty () =
-  sha256_haskell_refines_spec Seq.empty
+  sha256_haskell_refines_spec empty_input_ref
 
 (** Compression-step refinement: the F* compress function and the Haskell
     `compress` function agree on the state transition for a single block.
@@ -155,7 +162,7 @@ let compress_step_refinement h block =
 
 (** Padding refinement: the F* pad function produces a block-aligned
     sequence, matching the Haskell pad implementation's contract. *)
-val pad_refinement : msg:seq UInt8.t
+val pad_refinement : msg:seq UInt8.t{Seq.length msg < pow2 61}
     -> Lemma (
          Seq.length (pad msg) % block_size = 0 /\
          Seq.length (pad msg) >= block_size

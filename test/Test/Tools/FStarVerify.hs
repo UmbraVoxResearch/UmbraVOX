@@ -256,9 +256,6 @@ expectedModules =
     , "Spec.HKDF"
     , "Spec.HMAC"
     , "Spec.Keccak"              -- thin re-export wrapper (fast)
-    , "Spec.Keccak.SHA3"         -- wrapper functions + KATs
-    , "Spec.Keccak.Sponge"       -- sponge construction
-    , "Spec.MLKEM768"
     , "Spec.NoiseIK"
     , "Spec.PQXDH"
     , "Spec.Poly1305"
@@ -270,7 +267,10 @@ expectedModules =
     , "Spec.VRF"
     , "Spec.X25519"
     , "Spec.X3DH"
-    , "Spec.Keccak.Permutation"  -- heavy: permutation rounds, verified last
+    , "Spec.Keccak.Permutation"  -- heavy: verified last
+    , "Spec.Keccak.SHA3"         -- heavy
+    , "Spec.Keccak.Sponge"       -- heavy
+    , "Spec.MLKEM768"            -- heavy
     ]
 
 testDiscoverModules :: IO Bool
@@ -297,6 +297,8 @@ testModuleRlimitsKeys =
                    , "Spec.Ed25519"
                    , "Spec.GCM"
                    , "Spec.Keccak.Permutation"
+                   , "Spec.Keccak.SHA3"
+                   , "Spec.Keccak.Sponge"
                    , "Spec.MLKEM768"
                    , "Spec.X25519"
                    ]
@@ -306,16 +308,16 @@ testModuleRlimitsKeys =
 
 testModuleRlimitsKeccakValue :: IO Bool
 testModuleRlimitsKeccakValue =
-    assertEq "moduleRlimits Keccak.Permutation == 10000"
-        (Just 10000)
+    assertEq "moduleRlimits Keccak.Permutation == 50000"
+        (Just 50000)
         (Map.lookup "Spec.Keccak.Permutation" moduleRlimits)
 
 testModuleRlimitsHeavyValue :: IO Bool
 testModuleRlimitsHeavyValue =
-    let heavyMods = ["Spec.Ed25519", "Spec.X25519", "Spec.AES256", "Spec.GCM", "Spec.MLKEM768"]
+    let heavyMods = ["Spec.Ed25519", "Spec.X25519", "Spec.AES256", "Spec.GCM"]
         vals = map (\m -> Map.lookup m moduleRlimits) heavyMods
     in assertEq "moduleRlimits heavy crypto modules all have rlimit 20000"
-        (replicate 5 (Just 20000))
+        (replicate 4 (Just 20000))
         vals
 
 ------------------------------------------------------------------------
