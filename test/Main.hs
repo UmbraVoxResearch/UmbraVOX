@@ -72,6 +72,7 @@ import qualified Test.Security.M11HighPQ as M11HighPQ
 import qualified Test.Security.M11HighProto as M11HighProto
 import qualified Test.Security.M11HighKeyImpl as M11HighKeyImpl
 import qualified Test.Security.M11HighSymHash as M11HighSymHash
+import qualified Test.Security.M11Medium as M11Medium
 import qualified Test.Security.M11SideChannel as M11SideChannel
 import qualified Test.Security.M11Symmetric as M11Symmetric
 import qualified Test.Security.M11Asymmetric as M11Asymmetric
@@ -190,6 +191,8 @@ runSuiteArg suiteArg =
             [Suite "m11-high-symhash" M11HighSymHash.runTests]
         "m11-high-pq" -> runSuiteGroup "UmbraVox M11 High-Priority Post-Quantum Attack Suite"
             [Suite "m11-high-pq" M11HighPQ.runTests]
+        "m11-medium" -> runSuiteGroup "UmbraVox M11 Medium-Priority Attack Suite"
+            [Suite "m11-medium" M11Medium.runTests]
         "integrity" -> runSuiteGroup "UmbraVox Integrity Suite" integritySuites
         "soak" -> runSuiteGroup "UmbraVox Soak Suite" soakSuites
         "differential" -> runSuiteGroup "UmbraVox Differential C vs Haskell Suite"
@@ -302,6 +305,7 @@ coreSuites =
     , Suite "m11-high-keyimpl" M11HighKeyImpl.runTests
     , Suite "m11-high-symhash" M11HighSymHash.runTests
     , Suite "m11-high-pq" M11HighPQ.runTests
+    , Suite "m11-medium" M11Medium.runTests
     ]
 
 coreCryptoSuites :: [Suite]
@@ -470,5 +474,5 @@ validSuiteArgs =
     , "regression", "regression-m7", "regression-m8", "regression-net"
     , "m11-keymgmt", "m11-symmetric", "m11-asymmetric", "m11-sidechannel"
     , "m11-protocol", "m11-high", "m11-high-auth", "m11-noise-dh", "m11-high-fs", "m11-high-proto"
-    , "m11-high-keyimpl", "m11-high-symhash", "m11-high-pq", "all"
+    , "m11-high-keyimpl", "m11-high-symhash", "m11-high-pq", "m11-medium", "all"
     ]

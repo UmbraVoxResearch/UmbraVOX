@@ -249,6 +249,7 @@ expectedModules =
     , "Spec.PQXDH"
     , "Spec.Poly1305"
     , "Spec.SHA256"
+    , "Spec.SHA256.Refinement"
     , "Spec.SHA512"
     , "Spec.X25519"
     , "Spec.X3DH"
@@ -266,5 +267,5 @@ testDiscoverModulesCount :: IO Bool
 testDiscoverModulesCount = do
     mods <- discoverModules fstarDir
     assertEq "discoverModules count"
-        20
+        21
         (length mods)
