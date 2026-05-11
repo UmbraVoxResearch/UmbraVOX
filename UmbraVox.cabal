@@ -159,8 +159,10 @@ library
     UmbraVox.Network.Sync
     UmbraVox.Network.MDNS
     UmbraVox.Network.PeerExchange
+    UmbraVox.Network.Listener
     -- App / Config
     UmbraVox.App.Config
+    UmbraVox.App.ConfigFile
     UmbraVox.App.Defaults
     UmbraVox.App.State
     UmbraVox.App.Types

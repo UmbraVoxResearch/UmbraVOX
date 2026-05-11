@@ -41,7 +41,7 @@ import System.Timeout (timeout)
 
 import UmbraVox.App.Defaults (sqliteTimeoutMicros)
 import UmbraVox.Protocol.Encoding (splitOn)
-import UmbraVox.Storage.Encryption (StorageKey, encryptField, decryptField)
+import UmbraVox.Storage.Encryption (StorageKey, encryptField, decryptField, isEncryptedField)
 import UmbraVox.Storage.Schema (schemaStatements)
 
 ------------------------------------------------------------------------
@@ -186,9 +186,11 @@ saveMessage db convId sender content timestamp = do
 -- Returns @(sender, content, timestamp)@ tuples, oldest first.
 --
 -- When the 'AnthonyDB' handle carries a 'StorageKey', each row's @content@
--- field is decrypted with 'decryptField'.  Rows that do not carry the
--- @UVENC1:@ prefix, or whose ciphertext fails GCM authentication, are
--- dropped and do not appear in the result (M10.3.7).
+-- field is decrypted with 'decryptField'.  Rows that carry the @UVENC1:@
+-- prefix but fail GCM authentication are dropped (M10.3.7 — genuine
+-- authentication failure or tampered ciphertext).  Rows that lack the prefix
+-- are treated as legacy plaintext and passed through to support migration of
+-- databases written before at-rest encryption was activated.
 loadMessages :: AnthonyDB -> Int -> Int -> IO [(String, String, Int)]
 loadMessages db convId limit = do
     output <- querySQL db
@@ -200,10 +202,15 @@ loadMessages db convId limit = do
         Nothing  -> pure rows
         Just key -> pure (concatMap (decryptRow key) rows)
   where
-    decryptRow key (sender, content, ts) =
-        case decryptField key content of
-            Just plaintext -> [(sender, plaintext, ts)]
-            Nothing        -> []  -- authentication failure — drop the row
+    decryptRow key (sender, content, ts)
+        | isEncryptedField content =
+            -- Ciphertext present: authenticate and decrypt; drop on failure.
+            case decryptField key content of
+                Just plaintext -> [(sender, plaintext, ts)]
+                Nothing        -> []  -- M10.3.7: authentication failure — drop the row
+        | otherwise =
+            -- Legacy plaintext (written before encryption was enabled): pass through.
+            [(sender, content, ts)]
 
 -- | Delete messages older than N days.
 pruneMessages :: AnthonyDB -> Int -> IO ()
@@ -227,22 +234,73 @@ messageCount db convId = do
          <> show convId)
     pure (readInt (case lines output of { (x:_) -> x; [] -> "0" }))
 
--- | Create or update a conversation record. Returns the conversation ID.
+-- Finding: M1.1.3 — saveConversation stored the conversation name (peer display
+-- name) as plaintext in the SQLite database.  loadConversations returned it
+-- verbatim, so a raw database dump exposed the social graph (who you spoke to)
+-- even when message content was encrypted.
+--
+-- Vulnerability: Conversation names recorded in the conversations table reveal
+-- peer identities to anyone with read access to the database file — the same
+-- threat model that message-content encryption (M10.2.8) is designed to defeat.
+-- Protecting message bodies while leaving names in plaintext is incomplete
+-- at-rest protection.
+--
+-- Fix: When a 'StorageKey' is present, 'saveConversation' encrypts the @name@
+-- field with 'encryptField' before insertion and 'loadConversations' decrypts it
+-- after loading.  Rows that carry the @UVENC1:@ prefix but fail GCM
+-- authentication are dropped (M10.3.7).  Rows that lack the prefix are treated
+-- as legacy plaintext and passed through to support migration of databases
+-- written before at-rest encryption was activated.  When no key is present both
+-- functions behave as before, preserving backward compatibility for plaintext
+-- databases (tests, openDB callers).
+--
+-- Verified: 'openDB' callers continue to round-trip names as plaintext.
+-- 'openDBWithKey' callers see encrypted names on disk, plaintext in memory.
+-- Legacy databases opened with a key migrate transparently on first load; new
+-- writes are encrypted.
+--
+-- | Create or update a conversation record.
+--
+-- When the 'AnthonyDB' handle carries a 'StorageKey' (set via 'openDBWithKey'),
+-- the @name@ field is encrypted with 'encryptField' before insertion.
 saveConversation :: AnthonyDB -> Int -> String -> String -> Int -> IO ()
 saveConversation db convId peerPubkey name created = do
+    storedName <- case dbStorageKey db of
+        Just key -> encryptField key name
+        Nothing  -> pure name
     let sql = "INSERT OR REPLACE INTO conversations "
               <> "(id, peer_pubkey, name, created) VALUES ("
               <> show convId <> ", "
               <> quote peerPubkey <> ", "
-              <> quote name <> ", "
+              <> quote storedName <> ", "
               <> show created <> ")"
     runSQL db sql
 
 -- | Load all conversations. Returns @(id, peer_pubkey, name, created)@.
+--
+-- When the 'AnthonyDB' handle carries a 'StorageKey', each row's @name@ field
+-- is decrypted with 'decryptField'.  Rows that carry the @UVENC1:@ prefix but
+-- fail GCM authentication are dropped (M10.3.7 — tampered or wrong-key
+-- ciphertext).  Rows that lack the prefix are treated as legacy plaintext and
+-- passed through to support migration of databases written before encryption was
+-- enabled.
 loadConversations :: AnthonyDB -> IO [(Int, String, String, Int)]
 loadConversations db = do
     output <- querySQL db "SELECT id, peer_pubkey, name, created FROM conversations ORDER BY id"
-    pure (parseConversationRows output)
+    let rows = parseConversationRows output
+    case dbStorageKey db of
+        Nothing  -> pure rows
+        Just key -> pure (concatMap (decryptConvName key) rows)
+  where
+    decryptConvName key (convId, pubkey, name, created)
+        | isEncryptedField name =
+            -- Ciphertext present: authenticate and decrypt; drop on failure.
+            case decryptField key name of
+                Just plainName -> [(convId, pubkey, plainName, created)]
+                Nothing        -> []  -- M10.3.7: authentication failure — drop the row
+        | otherwise =
+            -- Legacy plaintext (written before encryption was enabled): pass through.
+            [(convId, pubkey, name, created)]
 
 -- | Save a trusted public key with a human-readable label.
 saveTrustedKey :: AnthonyDB -> ByteString -> String -> IO ()

@@ -19,7 +19,7 @@ MILESTONE M1: MVP ASSURANCE CLOSEOUT (BLOCKS PUBLICATION)
 [~] M1.1 Persistence confidentiality (application-layer, non-SQLCipher claim)
   [x] M1.1.1 Finalize at-rest model statement (SQLite format unchanged; AEAD at app layer).
   [x] M1.1.2 Add persistence crypto helper module (reuse existing runtime crypto path).
-  [~] M1.1.3 Encrypt/decrypt message content on save/load with migration-safe handling.
+  [~] M1.1.3 Encrypt/decrypt message content on save/load — INDEFINITELY DEFERRED (Anthony to be replaced with direct sqlite).
     Note: Encryption module complete; Anthony.hs integration deferred pending upstream patches.
   [x] M1.1.4 Add deterministic test-key injection path gated as non-production only.
   [x] M1.1.5 Add DB assertions proving ciphertext-at-rest for protected fields.
@@ -383,22 +383,22 @@ M12 Architecture: TUI/Headless Decoupling
   [x] M12.3.1 Create UmbraVox.App.State with CoreState (config + running flag).
   [x] M12.3.2 TUI.Types.AppState wraps CoreState + TUI-specific fields.
   [x] M12.3.3 Headless.hs uses CoreState for scenario runners.
-  [ ] M12.3.4 RuntimeNetwork uses CoreState (not AppState) for listener/acceptor — deferred (requires deeper refactor of status emission).
+  [x] M12.3.4 RuntimeNetwork uses CoreState (not AppState) for listener/acceptor via Network.Listener.
 
 [x] M12.4 Externalize all configuration
   [x] M12.4.1 Audit codebase for hardcoded config: ports, paths, timeouts, limits, intervals.
   [x] M12.4.2 Create UmbraVox.App.Defaults with all default values as named constants.
-  [ ] M12.4.3 AppConfig loads from config file (~/.umbravox/config) with defaults fallback.
-  [ ] M12.4.4 Config file format: simple key=value or TOML (no external deps).
+  [x] M12.4.3 AppConfig loads from config file (~/.umbravox/config) with defaults fallback.
+  [x] M12.4.4 Config file format: simple key=value (# comments, blank lines skipped).
   [x] M12.4.5 Remove hardcoded port 7853 from Transport.hs (use config).
   [x] M12.4.6 Remove hardcoded maxFrameSize, maxSkip, maxTotalSkipped, maxInboundConnections.
   [x] M12.4.7 Remove hardcoded timeout values (sqlite 10s, mDNS intervals).
   [x] M12.4.8 HKDF info strings documented in App.Defaults (kept in crypto modules to avoid circular imports).
-  [ ] M12.4.9 CLI flags override config file values; config file overrides defaults.
+  [x] M12.4.9 CLI flags (--port, --debug-log) override config file; config overrides defaults.
 
 [ ] M12.5 Verify clean separation
   [x] M12.5.1 App, Protocol, Crypto, Network, Storage — zero TUI imports (Startup fixed).
-  [ ] M12.5.2 Runtime/Headless.hs still imports TUI.Types + TUI.RuntimeNetwork (needs M12.3.4).
+  [x] M12.5.2 Runtime/Headless.hs has zero TUI imports (uses Network.Listener + App.State).
   [x] M12.5.3 No hardcoded config values remain in library code (centralized in App.Defaults).
   [x] M12.5.4 All tests pass after refactor.
 
@@ -818,4 +818,4 @@ OUTSIDE MVP (DEFERRED)
   [ ] M4.2.3 Reproducibility rebuild-and-compare lane.
 
 [!] Persistence integration (needs upstream)
-  [ ] M1.1.3 Anthony.hs encryption integration.
+  [~] M1.1.3 Anthony.hs encryption integration — INDEFINITELY DEFERRED (Anthony to be replaced with direct sqlite).
