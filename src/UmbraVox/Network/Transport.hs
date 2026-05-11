@@ -27,13 +27,12 @@ import qualified Network.Socket as NS
 import qualified Network.Socket.ByteString as NSB
 import System.Timeout (timeout)
 
+import UmbraVox.App.Defaults
+    ( defaultPort
+    , connectTimeoutUs
+    , connectTryPortTimeoutUs
+    )
 import UmbraVox.Network.TransportClass (TransportHandle(..))
-
-connectTimeoutUs :: Int
-connectTimeoutUs = 8 * 1000000
-
-connectTryPortTimeoutUs :: Int
-connectTryPortTimeoutUs = 2 * 1000000
 
 -- | A TCP transport handle.
 data TCPTransport = TCPTransport
@@ -153,8 +152,8 @@ connectTryPorts host ports = connectTryPortsWithProgress host ports (\_ -> pure 
 
 connectTryPortsWithProgress :: String -> [Int] -> (Int -> IO ()) -> IO TCPTransport
 connectTryPortsWithProgress host [] reportPort = do
-    reportPort 7853
-    connectWithTimeoutUs connectTryPortTimeoutUs host 7853
+    reportPort defaultPort
+    connectWithTimeoutUs connectTryPortTimeoutUs host defaultPort
 connectTryPortsWithProgress host [p] reportPort = do
     reportPort p
     connectWithTimeoutUs connectTryPortTimeoutUs host p
@@ -163,7 +162,7 @@ connectTryPortsWithProgress host (p:ps) reportPort = do
   where
     go errs [] =
         case reverse errs of
-            [] -> connect host 7853
+            [] -> connect host defaultPort
             (lastErr:_) ->
                 ioError (userError
                     ("connect failed to " ++ host ++ " on ports "

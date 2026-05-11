@@ -19,6 +19,7 @@ import Data.List (isInfixOf)
 import qualified Data.ByteString as BS
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
+import UmbraVox.App.State (newCoreState)
 import UmbraVox.BuildProfile (loadPackagedPluginCatalog, loadPackagedPluginRuntimeCatalog)
 import UmbraVox.Network.ProviderCatalog
     ( loadTransportProviderCatalog
@@ -34,15 +35,15 @@ import UmbraVox.Network.MDNS (MDNSPeer(..))
 mkTestState :: IO AppState
 mkTestState = do
     cfg <- mkTestConfig
+    coreState <- newCoreState cfg
     let lay = calcTestLayout
-    AppState cfg
+    AppState coreState
         <$> newIORef 0           -- asSelected
         <*> newIORef ContactPane -- asFocus
         <*> newIORef ""          -- asInputBuf
         <*> newIORef ""          -- asDialogBuf
         <*> newIORef 0           -- asChatScroll
         <*> newIORef ""          -- asStatusMsg
-        <*> newIORef True        -- asRunning
         <*> newIORef Nothing     -- asDialogMode
         <*> newIORef 0           -- asBrowsePage
         <*> newIORef ""          -- asBrowseFilter

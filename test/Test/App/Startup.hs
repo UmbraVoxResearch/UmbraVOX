@@ -45,6 +45,7 @@ import UmbraVox.Storage.Anthony
 import UmbraVox.TUI.Actions.Session (sendCurrentMessage)
 import UmbraVox.TUI.Handshake (fingerprint)
 import UmbraVox.TUI.Layout (calcLayout)
+import UmbraVox.App.State (newCoreState)
 import UmbraVox.TUI.Types (AppConfig(..), AppState(..), ContactStatus(..), Pane(..), SessionInfo(..))
 
 runTests :: IO Bool
@@ -236,13 +237,13 @@ testRestoredOfflineSessionsFailClosedOnSend = withDB "umbravox-startup-restored-
     writeIORef (cfgAutoSaveMessages cfg) True
     seedPersistentDB dbPath
     restored <- restorePersistentStateAt cfg dbPath
+    cs <- newCoreState cfg
     selectedRef <- newIORef 0
     focusRef <- newIORef ChatPane
     inputRef <- newIORef "after-restart"
     dialogBufRef <- newIORef ""
     chatScrollRef <- newIORef 0
     statusRef <- newIORef ""
-    runningRef <- newIORef True
     dialogModeRef <- newIORef Nothing
     browsePageRef <- newIORef 0
     browseFilterRef <- newIORef ""
@@ -253,8 +254,8 @@ testRestoredOfflineSessionsFailClosedOnSend = withDB "umbravox-startup-restored-
     menuIndexRef <- newIORef 0
     dialogTabRef <- newIORef 0
     renderTokenRef <- newIORef Nothing
-    let st = AppState cfg selectedRef focusRef inputRef dialogBufRef chatScrollRef
-            statusRef runningRef dialogModeRef browsePageRef browseFilterRef
+    let st = AppState cs selectedRef focusRef inputRef dialogBufRef chatScrollRef
+            statusRef dialogModeRef browsePageRef browseFilterRef
             layoutRef contactScrollRef termSizeRef menuOpenRef menuIndexRef
             dialogTabRef renderTokenRef
     sendCurrentMessage st

@@ -19,11 +19,13 @@ import qualified Network.Socket as NS
 import qualified Network.Socket.ByteString as NSB
 import System.Timeout (timeout)
 
+import UmbraVox.App.Defaults (socks5HandshakeTimeoutUs)
 import UmbraVox.Network.TransportClass (TransportHandle(..))
 
--- | Timeout for the SOCKS5 handshake phase (10 seconds).
+-- | Timeout for the SOCKS5 handshake phase.
+-- Sourced from 'UmbraVox.App.Defaults.socks5HandshakeTimeoutUs'.
 handshakeTimeoutUs :: Int
-handshakeTimeoutUs = 10 * 1000000
+handshakeTimeoutUs = socks5HandshakeTimeoutUs
 
 -- | Default SOCKS5 proxy address for a local Tor daemon.
 defaultSocks5Proxy :: (String, Int)

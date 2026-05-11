@@ -159,6 +159,11 @@ library
     UmbraVox.Network.Sync
     UmbraVox.Network.MDNS
     UmbraVox.Network.PeerExchange
+    -- App / Config
+    UmbraVox.App.Config
+    UmbraVox.App.Defaults
+    UmbraVox.App.State
+    UmbraVox.App.Types
     -- Chat
     UmbraVox.App.RuntimeLog
     UmbraVox.App.Startup
@@ -184,6 +189,7 @@ library
     UmbraVox.Protocol.MessageFormat
     UmbraVox.Protocol.QRCode
     UmbraVox.Protocol.WireFormat
+    UmbraVox.Protocol.Handshake
     -- TUI
     UmbraVox.TUI.Types
     UmbraVox.TUI.Constants

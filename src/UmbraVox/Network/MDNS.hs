@@ -37,6 +37,8 @@ import qualified Network.Socket as NS
 import Network.Socket (tupleToHostAddress)
 import qualified Network.Socket.ByteString as NSB
 
+import UmbraVox.App.Defaults (mdnsAnnounceIntervalUs, mdnsPeerEvictionSeconds)
+
 ------------------------------------------------------------------------
 -- Types
 ------------------------------------------------------------------------
@@ -62,13 +64,15 @@ mdnsPort_ = 5353
 serviceName :: ByteString
 serviceName = "_umbravox._tcp.local"
 
--- | Announcement interval in microseconds (10 seconds for faster discovery).
+-- | Announcement interval in microseconds.
+-- Sourced from 'UmbraVox.App.Defaults.mdnsAnnounceIntervalUs'.
 announceIntervalUs :: Int
-announceIntervalUs = 10 * 1000000
+announceIntervalUs = mdnsAnnounceIntervalUs
 
--- | Number of announce intervals before a peer is considered stale (3 × 10s = 30s).
+-- | Seconds before a peer is evicted from the peer list.
+-- Sourced from 'UmbraVox.App.Defaults.mdnsPeerEvictionSeconds'.
 peerEvictionSeconds :: Int
-peerEvictionSeconds = 3 * (announceIntervalUs `div` 1000000)
+peerEvictionSeconds = mdnsPeerEvictionSeconds
 
 ------------------------------------------------------------------------
 -- FFI for setsockopt (IP_ADD_MEMBERSHIP)

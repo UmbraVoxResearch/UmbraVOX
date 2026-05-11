@@ -23,6 +23,7 @@ import qualified Data.Set as Set
 import Data.List (intercalate, stripPrefix)
 import System.IO (hPutStrLn, stderr)
 import System.IO.Error (isUserError, ioeGetErrorString)
+import UmbraVox.App.Defaults (maxInboundConnections)
 import UmbraVox.App.RuntimeLog (logEvent)
 import UmbraVox.BuildProfile (buildSupportsPeerExchange)
 import UmbraVox.Network.PeerExchange (PeerInfo(..), exchangePeers)
@@ -147,8 +148,7 @@ acceptLoopTUI st ik port = do
 --   any authentication work, the TVar is local to each listener bracket so
 --   independent listeners do not share quota, and `finally` guarantees the
 --   decrement runs on both clean exit and exception paths.
-maxInboundConnections :: Int
-maxInboundConnections = 64
+-- Limit sourced from 'UmbraVox.App.Defaults.maxInboundConnections'.
 
 acceptLoopBoundTUI :: AppState -> IdentityKey -> Int -> TVar Int -> ProviderListener -> IO ()
 acceptLoopBoundTUI st ik port connCount listener = do

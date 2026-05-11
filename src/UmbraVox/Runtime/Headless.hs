@@ -18,9 +18,12 @@ import qualified Data.Map.Strict as Map
 import System.Exit (ExitCode(..))
 
 import UmbraVox.App.Startup (newDefaultAppConfig, initializeLocalIdentity)
+import UmbraVox.App.Config (AppConfig(..))
+import UmbraVox.App.State (CoreState(..), newCoreState)
+import UmbraVox.App.Types (SessionInfo(..))
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey)
 import UmbraVox.TUI.Types
-    ( AppConfig(..), AppState(..), Layout(..), Pane(..), SessionInfo(..) )
+    ( AppState(..), Layout(..), Pane(..) )
 import UmbraVox.TUI.RuntimeNetwork (startListenerIfNeeded)
 
 -- | Configuration for a headless UmbraVOX node.
@@ -34,8 +37,8 @@ data HeadlessConfig = HeadlessConfig
 
 -- | Initialize the core runtime: create config and identity.
 -- Both the TUI and headless runtimes share this init path.
--- The caller is responsible for building an AppState (with real or dummy
--- TUI fields) and starting the listener/mDNS afterwards.
+-- Returns an 'AppConfig' for callers that need direct access, plus the
+-- resolved identity key.
 initCoreRuntime :: Maybe Int -> IO (AppConfig, IdentityKey)
 initCoreRuntime mPort = do
     appCfg <- newDefaultAppConfig
@@ -55,8 +58,9 @@ runHeadlessNode cfg = do
     (appCfg, identity) <- initCoreRuntime (Just (hcPort cfg))
     putStrLn "[HEADLESS] identity initialized"
 
-    -- 2. Create dummy AppState (no TUI)
-    st <- createHeadlessState appCfg
+    -- 2. Build CoreState — no dummy TUI fields needed
+    cs <- newCoreState appCfg
+    st <- createHeadlessState cs
 
     -- 3. Start listener
     activePort <- readIORef (cfgListenPort appCfg)
@@ -69,26 +73,26 @@ runHeadlessNode cfg = do
 
     -- 6. Run scenario
     case hcScenario cfg of
-        "listen"   -> runListenScenario st cfg
-        "exchange" -> runExchangeScenario st cfg
-        _          -> runListenScenario st cfg
+        "listen"   -> runListenScenario cs cfg
+        "exchange" -> runExchangeScenario cs cfg
+        _          -> runListenScenario cs cfg
 
     putStrLn "[HEADLESS] done"
     pure ExitSuccess
 
--- | Construct an 'AppState' with dummy values for all TUI-specific fields.
--- Network functions only read 'asConfig', so the dummy fields are safe.
-createHeadlessState :: AppConfig -> IO AppState
-createHeadlessState appCfg = do
+-- | Wrap a 'CoreState' in a minimal 'AppState' for use with network functions
+-- that still accept 'AppState'.  Only the domain-level 'CoreState' is
+-- meaningful; all TUI-only fields are harmless dummies that are never read.
+createHeadlessState :: CoreState -> IO AppState
+createHeadlessState cs = do
     termRef <- newIORef (24, 80)
-    AppState appCfg
+    AppState cs
         <$> newIORef 0              -- asSelected
         <*> newIORef ContactPane    -- asFocus
         <*> newIORef ""             -- asInputBuf
         <*> newIORef ""             -- asDialogBuf
         <*> newIORef 0              -- asChatScroll
         <*> newIORef ""             -- asStatusMsg
-        <*> newIORef True           -- asRunning
         <*> newIORef Nothing        -- asDialogMode
         <*> newIORef 0              -- asBrowsePage
         <*> newIORef ""             -- asBrowseFilter
@@ -101,20 +105,20 @@ createHeadlessState appCfg = do
         <*> newIORef Nothing        -- asLastRenderToken
 
 -- | Listen scenario: hold the port open for the configured timeout.
-runListenScenario :: AppState -> HeadlessConfig -> IO ()
-runListenScenario _st cfg = do
+runListenScenario :: CoreState -> HeadlessConfig -> IO ()
+runListenScenario _cs cfg = do
     putStrLn $ "[HEADLESS] listen scenario: waiting " ++ show (hcTimeout cfg) ++ "s"
     when (hcTimeout cfg > 0) $ threadDelay (hcTimeout cfg * 1000000)
 
 -- | Exchange scenario: wait for peer connections, then report session count.
-runExchangeScenario :: AppState -> HeadlessConfig -> IO ()
-runExchangeScenario st cfg = do
+runExchangeScenario :: CoreState -> HeadlessConfig -> IO ()
+runExchangeScenario cs cfg = do
     putStrLn "[HEADLESS] exchange scenario: waiting for peers..."
     -- Wait for connections (capped at 30s or configured timeout)
     let waitTime = min 30 (hcTimeout cfg)
     when (waitTime > 0) $ threadDelay (waitTime * 1000000)
     -- Check sessions
-    sessions <- readIORef (cfgSessions (asConfig st))
+    sessions <- readIORef (cfgSessions (csConfig cs))
     let count = Map.size sessions
     putStrLn $ "[HEADLESS] connected peers: " ++ show count
     -- Report each session (actual message exchange requires completed handshake)

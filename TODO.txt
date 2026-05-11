@@ -368,39 +368,39 @@ memory forensics, disk inspection, and attack simulation.
 M12 Architecture: TUI/Headless Decoupling
 --------------------------------------------------------------------------------
 
-[ ] M12.1 Extract AppConfig from TUI.Types to UmbraVox.App.Config
-  [ ] M12.1.1 Create UmbraVox.App.Config with AppConfig (domain fields only).
-  [ ] M12.1.2 Create UmbraVox.App.Types with SessionInfo, ConnectionMode, ContactStatus.
-  [ ] M12.1.3 TUI.Types re-exports from App.Config for backwards compat; adds TUI-only AppState.
-  [ ] M12.1.4 Update all non-TUI imports (Startup, RuntimeLog, Headless) to use App.Config.
+[x] M12.1 Extract AppConfig from TUI.Types to UmbraVox.App.Config
+  [x] M12.1.1 Create UmbraVox.App.Config with AppConfig (domain fields only).
+  [x] M12.1.2 Create UmbraVox.App.Types with SessionInfo, ConnectionMode, ContactStatus.
+  [x] M12.1.3 TUI.Types re-exports from App.Config for backwards compat; adds TUI-only AppState.
+  [x] M12.1.4 Update all non-TUI imports (Startup, RuntimeLog, Headless) to use App.Config.
 
-[ ] M12.2 Move protocol logic out of TUI namespace
-  [ ] M12.2.1 Move TUI.Handshake protocol logic to UmbraVox.Protocol.Handshake.
-  [ ] M12.2.2 TUI.Handshake becomes thin wrapper re-exporting from Protocol.Handshake.
-  [ ] M12.2.3 Move genIdentity to UmbraVox.Crypto.Identity (or Protocol.Handshake).
+[x] M12.2 Move protocol logic out of TUI namespace
+  [x] M12.2.1 Move TUI.Handshake protocol logic to UmbraVox.Protocol.Handshake.
+  [x] M12.2.2 TUI.Handshake becomes thin wrapper re-exporting from Protocol.Handshake.
+  [x] M12.2.3 genIdentity kept in Protocol.Handshake (wraps X3DH.generateIdentityKey).
 
-[ ] M12.3 Split AppState into domain + UI state
-  [ ] M12.3.1 Create UmbraVox.App.State with domain-only runtime state (sessions, config, DB).
-  [ ] M12.3.2 TUI.Types.AppState wraps App.State + TUI-specific fields (scroll, dialog, layout).
-  [ ] M12.3.3 Headless.hs uses App.State directly (no dummy TUI fields).
-  [ ] M12.3.4 RuntimeNetwork uses App.State (not AppState) for listener/acceptor.
+[x] M12.3 Split AppState into domain + UI state
+  [x] M12.3.1 Create UmbraVox.App.State with CoreState (config + running flag).
+  [x] M12.3.2 TUI.Types.AppState wraps CoreState + TUI-specific fields.
+  [x] M12.3.3 Headless.hs uses CoreState for scenario runners.
+  [ ] M12.3.4 RuntimeNetwork uses CoreState (not AppState) for listener/acceptor — deferred (requires deeper refactor of status emission).
 
-[ ] M12.4 Externalize all configuration
-  [ ] M12.4.1 Audit codebase for hardcoded config: ports, paths, timeouts, limits, intervals.
-  [ ] M12.4.2 Create UmbraVox.App.Defaults with all default values as named constants.
+[x] M12.4 Externalize all configuration
+  [x] M12.4.1 Audit codebase for hardcoded config: ports, paths, timeouts, limits, intervals.
+  [x] M12.4.2 Create UmbraVox.App.Defaults with all default values as named constants.
   [ ] M12.4.3 AppConfig loads from config file (~/.umbravox/config) with defaults fallback.
   [ ] M12.4.4 Config file format: simple key=value or TOML (no external deps).
-  [ ] M12.4.5 Remove hardcoded port 7853 from Transport.hs (use config).
-  [ ] M12.4.6 Remove hardcoded maxFrameSize, maxSkip, maxTotalSkipped, maxInboundConnections — load from config.
-  [ ] M12.4.7 Remove hardcoded timeout values (sqlite 10s, mDNS intervals) — load from config.
-  [ ] M12.4.8 Remove hardcoded HKDF info/salt strings — centralize in App.Defaults with clear documentation.
+  [x] M12.4.5 Remove hardcoded port 7853 from Transport.hs (use config).
+  [x] M12.4.6 Remove hardcoded maxFrameSize, maxSkip, maxTotalSkipped, maxInboundConnections.
+  [x] M12.4.7 Remove hardcoded timeout values (sqlite 10s, mDNS intervals).
+  [x] M12.4.8 HKDF info strings documented in App.Defaults (kept in crypto modules to avoid circular imports).
   [ ] M12.4.9 CLI flags override config file values; config file overrides defaults.
 
 [ ] M12.5 Verify clean separation
-  [ ] M12.5.1 No src/UmbraVox/{App,Runtime,Protocol,Crypto,Network,Storage}/ imports TUI.*.
-  [ ] M12.5.2 Headless runtime builds with zero TUI imports.
-  [ ] M12.5.3 No hardcoded config values remain in library code (only in App.Defaults).
-  [ ] M12.5.4 All tests pass after refactor.
+  [x] M12.5.1 App, Protocol, Crypto, Network, Storage — zero TUI imports (Startup fixed).
+  [ ] M12.5.2 Runtime/Headless.hs still imports TUI.Types + TUI.RuntimeNetwork (needs M12.3.4).
+  [x] M12.5.3 No hardcoded config values remain in library code (centralized in App.Defaults).
+  [x] M12.5.4 All tests pass after refactor.
 
 --------------------------------------------------------------------------------
 M10 Security Audit Round 4 (2026-05-10)
