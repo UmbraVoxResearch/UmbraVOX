@@ -517,6 +517,10 @@ let abc_input : seq UInt8.t =
 
 val sha512_kat_abc : unit
     -> Lemma (sha512 abc_input == expected_abc_digest_512)
+(* KAT: assert_norm attempted at z3rlimit 50000; blocked because Spec.SHA512.pad
+   contains two internal assumes (overflow and block-alignment) that prevent full
+   normalization.  Replacing those with refinement-type witnesses would unblock
+   assert_norm here.  Until then, this KAT is axiomatically asserted. *)
 let sha512_kat_abc () =
   assume (sha512 abc_input == expected_abc_digest_512)
 
@@ -536,6 +540,7 @@ let expected_empty_digest_512 : seq UInt8.t =
 
 val sha512_kat_empty : unit
     -> Lemma (sha512 Seq.empty == expected_empty_digest_512)
+(* KAT: assert_norm blocked — same pad assumes as sha512_kat_abc. *)
 let sha512_kat_empty () =
   assume (sha512 Seq.empty == expected_empty_digest_512)
 

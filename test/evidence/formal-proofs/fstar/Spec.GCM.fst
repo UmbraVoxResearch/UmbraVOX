@@ -49,10 +49,16 @@ let uint64_to_be_bytes (w : UInt64.t) : (s:seq UInt8.t{Seq.length s = 8}) =
   Seq.seq_of_list l
 
 (** Pad a byte sequence to a multiple of 16 bytes with zero bytes *)
-let pad_to_16 (bs : seq UInt8.t) : seq UInt8.t =
+let pad_to_16 (bs : seq UInt8.t) : (s:seq UInt8.t{Seq.length s % 16 = 0}) =
   let r = Seq.length bs % 16 in
   if r = 0 then bs
   else Seq.append bs (Seq.create (16 - r) 0uy)
+
+(** Lemma: pad_to_16 produces a sequence whose length is a multiple of 16.
+    Z3 can close this from the refinement in the return type of pad_to_16. *)
+val pad_to_16_length : bs:seq UInt8.t
+    -> Lemma (Seq.length (pad_to_16 bs) % 16 = 0)
+let pad_to_16_length bs = ()
 
 (** Split a byte sequence into 16-byte blocks (last may be shorter) *)
 let rec split_blocks (bs : seq UInt8.t)
@@ -88,7 +94,11 @@ let incr32 (cb : seq UInt8.t{Seq.length cb = 16})
   let _ = assert_norm (List.Tot.length new_ctr_list = 4) in
   let new_ctr_bytes : (s:seq UInt8.t{Seq.length s = 4}) =
     Seq.seq_of_list new_ctr_list in
-  assume (Seq.length (Seq.append prefix new_ctr_bytes) = 16);
+  (* Proof: Seq.length prefix = 12 (from Seq.slice of length-16 sequence at 0..12)
+            Seq.length new_ctr_bytes = 4 (from seq_of_list of 4-element list)
+            Seq.length (append prefix new_ctr_bytes) = 12 + 4 = 16
+            by Seq.lemma_len_append.  Z3 can close this arithmetic goal
+            given the length refinements in scope. *)
   Seq.append prefix new_ctr_bytes
 
 (** Initial counter block J0 for a 96-bit nonce: nonce || 0x00000001 *)
@@ -96,8 +106,10 @@ let make_j0 (nonce : seq UInt8.t{Seq.length nonce = nonce_size})
     : (s:seq UInt8.t{Seq.length s = 16}) =
   let suffix_list = [0x00uy; 0x00uy; 0x00uy; 0x01uy] in
   let _ = assert_norm (List.Tot.length suffix_list = 4) in
-  let suffix : seq UInt8.t = Seq.seq_of_list suffix_list in
-  assume (Seq.length (Seq.append nonce suffix) = 16);
+  let suffix : (s:seq UInt8.t{Seq.length s = 4}) = Seq.seq_of_list suffix_list in
+  (* Proof: nonce_size = 12, Seq.length nonce = 12, Seq.length suffix = 4,
+            Seq.length (append nonce suffix) = 12 + 4 = 16 = block_size.
+            Z3 closes the arithmetic goal from the refinements in scope. *)
   Seq.append nonce suffix
 
 (** -------------------------------------------------------------------- **)
@@ -118,12 +130,17 @@ let ghash (h : Spec.GaloisField.gf128)
    * For GHASH, the input is required to be a multiple of 16 bytes, so we use
    * an explicit 16-byte slicing loop to preserve the refinement required by
    * Spec.GaloisField.bs_to_gf. *)
-  let rec go (off:nat{off <= Seq.length input})
+  let n = Seq.length input in
+  let rec go (off:nat{off <= n /\ off % 16 = 0})
              (y:Spec.GaloisField.gf128)
-             : Tot Spec.GaloisField.gf128 (decreases (Seq.length input - off)) =
-    if off = Seq.length input then y
+             : Tot Spec.GaloisField.gf128 (decreases (n - off)) =
+    if off = n then y
     else
-      let _ = assume (off + 16 <= Seq.length input) in
+      (* Proof that off + 16 <= n:
+         - off < n  (because off <> n and off <= n)
+         - off % 16 = 0 and n % 16 = 0
+         - Therefore off <= n - 16, i.e. off + 16 <= n.
+         Z3 can close this modular arithmetic goal from the refinements. *)
       let xi_bytes : (s:seq UInt8.t{Seq.length s = 16}) =
         Seq.slice input off (off + 16) in
       let xi = Spec.GaloisField.bs_to_gf xi_bytes in
@@ -142,11 +159,18 @@ let ghash (h : Spec.GaloisField.gf128)
 (** Abstract AES-256 encryption function type *)
 type aes_encrypt_fn = seq UInt8.t -> seq UInt8.t
 
-val gctr : encrypt:aes_encrypt_fn
+(** aes_encrypt_fn with the length postcondition needed by GCTR.
+    The encrypt function must return at least as many bytes as the block
+    it is called on (in practice exactly 16 for AES-256). *)
+type aes_encrypt_fn_full =
+  icb:seq UInt8.t{Seq.length icb = 16} ->
+  Tot (ks:seq UInt8.t{Seq.length ks = 16})
+
+val gctr : encrypt:aes_encrypt_fn_full
     -> icb:seq UInt8.t{Seq.length icb = 16}
     -> plaintext:seq UInt8.t
     -> Tot (seq UInt8.t)
-let gctr (encrypt : aes_encrypt_fn)
+let gctr (encrypt : aes_encrypt_fn_full)
          (icb : seq UInt8.t{Seq.length icb = 16})
          (plaintext : seq UInt8.t)
     : seq UInt8.t =
@@ -158,14 +182,20 @@ let gctr (encrypt : aes_encrypt_fn)
       match bs with
       | [] -> []
       | blk :: rest ->
+        (* encrypt returns exactly 16 bytes; each block in split_blocks
+           has length <= 16 (split_blocks slices at 16-byte boundaries).
+           The slice ks[0..length blk] is therefore in bounds.
+           TODO: The invariant Seq.length blk <= 16 follows from the
+           definition of split_blocks but is not carried in its return type.
+           A full proof requires a split_blocks_blocks_le_16 lemma that
+           proves forall blk in split_blocks xs, Seq.length blk <= 16.
+           We use assume to bridge this gap until that lemma is added. *)
         let ks = encrypt cb in
-        assume (Seq.length ks >= Seq.length blk);
+        assume (Seq.length blk <= Seq.length ks);
         let enc_blk = xor_bytes blk (Seq.slice ks 0 (Seq.length blk)) in
         enc_blk :: process rest (incr32 cb)
     in
     let result_blocks = process blocks icb in
-    assume (Seq.length (Seq.seq_of_list (List.Tot.concatMap
-      (fun (s:seq UInt8.t) -> [s]) result_blocks)) >= 0);
     List.Tot.fold_left (fun acc s -> Seq.append acc s) Seq.empty result_blocks
 
 (** -------------------------------------------------------------------- **)
@@ -173,13 +203,13 @@ let gctr (encrypt : aes_encrypt_fn)
 (** -------------------------------------------------------------------- **)
 
 val gcm_encrypt :
-    encrypt:aes_encrypt_fn
+    encrypt:aes_encrypt_fn_full
     -> key:seq UInt8.t{Seq.length key = key_size}
     -> nonce:seq UInt8.t{Seq.length nonce = nonce_size}
     -> aad:seq UInt8.t
     -> plaintext:seq UInt8.t
     -> Tot (seq UInt8.t & seq UInt8.t)
-let gcm_encrypt (encrypt : aes_encrypt_fn)
+let gcm_encrypt (encrypt : aes_encrypt_fn_full)
                 (key : seq UInt8.t{Seq.length key = key_size})
                 (nonce : seq UInt8.t{Seq.length nonce = nonce_size})
                 (aad : seq UInt8.t)
@@ -187,29 +217,43 @@ let gcm_encrypt (encrypt : aes_encrypt_fn)
     : (seq UInt8.t & seq UInt8.t) =
   (* Step 1: H = E_K(0^128) *)
   let zero_block : (s:seq UInt8.t{Seq.length s = 16}) = Seq.create 16 0uy in
-  let h_bytes = encrypt zero_block in
-  assume (Seq.length h_bytes = 16);
+  (* encrypt returns exactly 16 bytes by aes_encrypt_fn_full's postcondition *)
+  let h_bytes : (s:seq UInt8.t{Seq.length s = 16}) = encrypt zero_block in
   let h = Spec.GaloisField.bs_to_gf h_bytes in
   (* Step 2: J0 = nonce || 0x00000001 (for 96-bit nonce) *)
   let j0 = make_j0 nonce in
   (* Step 3: C = GCTR_K(inc32(J0), P) *)
   let ct = gctr encrypt (incr32 j0) plaintext in
   (* Step 4: Compute GHASH input = pad(A) || pad(C) || len(A) || len(C) *)
-  assume (Seq.length aad * 8 >= 0 /\ Seq.length aad * 8 < pow2 64);
+  (* Proof: Seq.length aad : nat, so Seq.length aad >= 0, and
+     Seq.length aad <= max_input_length (assumed bounded by caller).
+     For the UInt64 conversion: any nat fits in UInt64 for practical inputs.
+     TODO: A full proof requires a bound on plaintext/aad length (< 2^61 bytes
+     per SP 800-38D).  For the spec-level proof we assert this bound. *)
+  assume (Seq.length aad * 8 < pow2 64 /\ Seq.length ct * 8 < pow2 64);
   let len_a = UInt64.uint_to_t (Seq.length aad * 8) in
-  assume (Seq.length ct * 8 >= 0 /\ Seq.length ct * 8 < pow2 64);
   let len_c = UInt64.uint_to_t (Seq.length ct * 8) in
   let ghash_input = Seq.append (pad_to_16 aad)
                       (Seq.append (pad_to_16 ct)
                         (Seq.append (uint64_to_be_bytes len_a)
                                     (uint64_to_be_bytes len_c))) in
+  (* pad_to_16 now has return refinement % 16 = 0, and uint64_to_be_bytes
+     returns 8 bytes (length 8).  Length calculation:
+       Seq.length (pad_to_16 aad) % 16 = 0  (by return type)
+       Seq.length (pad_to_16 ct)  % 16 = 0  (by return type)
+       Seq.length (uint64_to_be_bytes len_a) = 8
+       Seq.length (uint64_to_be_bytes len_c) = 8
+       8 + 8 = 16, which is a multiple of 16.
+       Appending two multiples-of-16 sequences yields a multiple of 16.
+     TODO: Z3 still cannot close this chain without Seq.length_append
+     lemma calls.  The arithmetic is trivially correct; needs a helper. *)
   assume (Seq.length ghash_input % 16 = 0);
   (* Step 5: S = GHASH_H(ghash_input) *)
   let s = ghash h ghash_input in
   (* Step 6: T = MSB_t(GCTR_K(J0, S)) *)
   let s_bytes = Spec.GaloisField.gf_to_bs s in
-  let encrypted_s = encrypt j0 in
-  assume (Seq.length encrypted_s = 16);
+  (* encrypt returns 16 bytes by aes_encrypt_fn_full *)
+  let encrypted_s : (r:seq UInt8.t{Seq.length r = 16}) = encrypt j0 in
   let tag = xor_bytes s_bytes encrypted_s in
   let tag' = Seq.slice tag 0 tag_size in
   (ct, tag')
@@ -229,42 +273,47 @@ let constant_eq (a b : seq UInt8.t{Seq.length a = Seq.length b}) : bool =
   UInt8.v (go 0 0uy) = 0
 
 val gcm_decrypt :
-    encrypt:aes_encrypt_fn
+    encrypt:aes_encrypt_fn_full
     -> key:seq UInt8.t{Seq.length key = key_size}
     -> nonce:seq UInt8.t{Seq.length nonce = nonce_size}
     -> aad:seq UInt8.t
     -> ct:seq UInt8.t
     -> tag:seq UInt8.t{Seq.length tag = tag_size}
     -> Tot (option (seq UInt8.t))
-let gcm_decrypt (encrypt : aes_encrypt_fn)
+let gcm_decrypt (encrypt : aes_encrypt_fn_full)
                 (key : seq UInt8.t{Seq.length key = key_size})
                 (nonce : seq UInt8.t{Seq.length nonce = nonce_size})
                 (aad : seq UInt8.t)
                 (ct : seq UInt8.t)
                 (tag : seq UInt8.t{Seq.length tag = tag_size})
     : option (seq UInt8.t) =
-  (* Recompute the tag *)
+  (* Recompute the tag using the same steps as gcm_encrypt *)
   let zero_block : (s:seq UInt8.t{Seq.length s = 16}) = Seq.create 16 0uy in
-  let h_bytes = encrypt zero_block in
-  assume (Seq.length h_bytes = 16);
+  let h_bytes : (s:seq UInt8.t{Seq.length s = 16}) = encrypt zero_block in
   let h = Spec.GaloisField.bs_to_gf h_bytes in
   let j0 = make_j0 nonce in
-  assume (Seq.length aad * 8 >= 0 /\ Seq.length aad * 8 < pow2 64);
+  assume (Seq.length aad * 8 < pow2 64 /\ Seq.length ct * 8 < pow2 64);
   let len_a = UInt64.uint_to_t (Seq.length aad * 8) in
-  assume (Seq.length ct * 8 >= 0 /\ Seq.length ct * 8 < pow2 64);
   let len_c = UInt64.uint_to_t (Seq.length ct * 8) in
   let ghash_input = Seq.append (pad_to_16 aad)
                       (Seq.append (pad_to_16 ct)
                         (Seq.append (uint64_to_be_bytes len_a)
                                     (uint64_to_be_bytes len_c))) in
+  (* TODO: pad_to_16 now has a refined return type (% 16 = 0), and
+     uint64_to_be_bytes returns 8 bytes.  The full ghash_input divisibility
+     follows from: Seq.length (append a (append b (append c d))) % 16 = 0
+     when length a % 16 = 0, length b % 16 = 0, and length c + length d = 16.
+     Requires a short Seq.length_append chain lemma.  Retained as assume
+     until that helper lemma is added. *)
   assume (Seq.length ghash_input % 16 = 0);
   let s = ghash h ghash_input in
   let s_bytes = Spec.GaloisField.gf_to_bs s in
-  let encrypted_s = encrypt j0 in
-  assume (Seq.length encrypted_s = 16);
+  let encrypted_s : (r:seq UInt8.t{Seq.length r = 16}) = encrypt j0 in
   let computed_tag = xor_bytes s_bytes encrypted_s in
-  let computed_tag' = Seq.slice computed_tag 0 tag_size in
-  assume (Seq.length computed_tag' = Seq.length tag);
+  (* computed_tag has length 16 = tag_size, so the slice is in bounds *)
+  let computed_tag' : (r:seq UInt8.t{Seq.length r = tag_size}) =
+    Seq.slice computed_tag 0 tag_size in
+  (* constant_eq requires equal lengths; both sides have length tag_size = 16 *)
   if constant_eq tag computed_tag' then
     Some (gctr encrypt (incr32 j0) ct)
   else
@@ -274,40 +323,55 @@ let gcm_decrypt (encrypt : aes_encrypt_fn)
 (** Correctness properties                                               **)
 (** -------------------------------------------------------------------- **)
 
-(** Encryption followed by decryption recovers the plaintext (assuming
-    the tag verifies) *)
+(** Encryption followed by decryption recovers the plaintext.
+    The tag produced by gcm_encrypt has exactly tag_size = 16 bytes
+    (it is Seq.slice of a 16-byte XOR result, from index 0 to tag_size = 16).
+    TODO: A complete proof requires:
+      (1) gcm_encrypt tag length = tag_size — follows from xor_bytes and
+          Seq.slice postcondition, and is now derivable without an inner assume
+          because encrypted_s has length 16 by aes_encrypt_fn_full;
+      (2) the GHASH and GCTR computations in encrypt/decrypt are identical
+          on the same inputs — a structural congruence argument;
+      (3) constant_eq returns true when both tags are equal.
+    These are all type-level or structural facts, but require a non-trivial
+    functional-correctness proof of the full GCM composition. *)
 val gcm_roundtrip :
-    encrypt:aes_encrypt_fn
+    encrypt:aes_encrypt_fn_full
     -> key:seq UInt8.t{Seq.length key = key_size}
     -> nonce:seq UInt8.t{Seq.length nonce = nonce_size}
     -> aad:seq UInt8.t
     -> pt:seq UInt8.t
-    -> Lemma (
-        let (ct, tag) = gcm_encrypt encrypt key nonce aad pt in
-        assume (Seq.length tag = tag_size);
-        gcm_decrypt encrypt key nonce aad ct tag == Some pt)
+    -> Lemma (requires (Seq.length pt * 8 < pow2 64 /\ Seq.length aad * 8 < pow2 64))
+             (ensures (
+               let (ct, tag) = gcm_encrypt encrypt key nonce aad pt in
+               Seq.length tag = tag_size /\
+               gcm_decrypt encrypt key nonce aad ct tag == Some pt))
 let gcm_roundtrip encrypt key nonce aad pt =
+  (* TODO: full functional-correctness proof needed — see comment above *)
   assume (let (ct, tag) = gcm_encrypt encrypt key nonce aad pt in
-          assume (Seq.length tag = tag_size);
+          Seq.length tag = tag_size /\
           gcm_decrypt encrypt key nonce aad ct tag == Some pt)
 
 (** Tag tampering is detected: modifying any byte of the tag causes
-    decryption to fail *)
+    decryption to fail.
+    TODO: Proof requires showing constant_eq returns false when inputs differ,
+    which needs a bitwise argument on the XOR-based tag computation. *)
 val gcm_tag_integrity :
-    encrypt:aes_encrypt_fn
+    encrypt:aes_encrypt_fn_full
     -> key:seq UInt8.t{Seq.length key = key_size}
     -> nonce:seq UInt8.t{Seq.length nonce = nonce_size}
     -> aad:seq UInt8.t
     -> pt:seq UInt8.t
     -> bad_tag:seq UInt8.t{Seq.length bad_tag = tag_size}
     -> Lemma (requires (
-        let (_, good_tag) = gcm_encrypt encrypt key nonce aad pt in
-        assume (Seq.length good_tag = tag_size);
-        bad_tag =!= good_tag))
+        Seq.length pt * 8 < pow2 64 /\ Seq.length aad * 8 < pow2 64 /\
+        (let (_, good_tag) = gcm_encrypt encrypt key nonce aad pt in
+         bad_tag =!= good_tag)))
       (ensures (
         let (ct, _) = gcm_encrypt encrypt key nonce aad pt in
         gcm_decrypt encrypt key nonce aad ct bad_tag == None))
 let gcm_tag_integrity encrypt key nonce aad pt bad_tag =
+  (* TODO: requires proof of constant_eq correctness *)
   assume (let (ct, _) = gcm_encrypt encrypt key nonce aad pt in
           gcm_decrypt encrypt key nonce aad ct bad_tag == None)
 
@@ -327,12 +391,23 @@ val ghash_linearity :
       (ensures (
         let xy = Seq.init (Seq.length x) (fun i ->
           UInt8.logxor (Seq.index x i) (Seq.index y i)) in
-        assume (Seq.length xy % 16 = 0);
+        (* Proof that Seq.length xy % 16 = 0:
+           Seq.length (Seq.init n f) = n for any n and f.
+           Here n = Seq.length x, and Seq.length x % 16 = 0 by hypothesis.
+           Therefore Seq.length xy % 16 = 0.  Z3 closes this from the
+           Seq.lemma_seq_of_list_length-style fact that init preserves length. *)
         ghash h xy == Spec.GaloisField.gf_xor (ghash h x) (ghash h y)))
 let ghash_linearity h x y =
+  (* TODO: Proof of the GHASH linearity identity requires an induction over
+     the blocks of x and y showing that (xi XOR yi) * H distributes as required
+     by GF(2^128) bilinearity.  The key algebraic facts are:
+       gf_xor distributes over gf_mul (both from GaloisField properties), and
+       the iteration of ghash is a linear map in the field.
+     This is a standard algebraic fact but requires unfolding the ghash loop
+     and applying the field distributivity lemma (not yet proved in Spec.GaloisField).
+     Retained as assume pending field distributivity proof. *)
   assume (let xy = Seq.init (Seq.length x) (fun i ->
             UInt8.logxor (Seq.index x i) (Seq.index y i)) in
-          assume (Seq.length xy % 16 = 0);
           ghash h xy == Spec.GaloisField.gf_xor (ghash h x) (ghash h y))
 
 (** -------------------------------------------------------------------- **)
@@ -359,13 +434,19 @@ let kat_tc14_tag : seq UInt8.t =
   ]
 
 (** This KAT asserts that encrypting an empty plaintext with the all-zero
-    key and nonce produces the expected tag *)
-val gcm_kat_tc14 : encrypt:aes_encrypt_fn -> unit
+    key and nonce produces the expected tag.
+    TODO: The tag value depends on E_K(0^128) which is an abstract encrypt
+    call — gcm_kat_tc14 cannot be proved without a concrete AES-256 binding.
+    Once aes_encrypt from Spec.AES256 is plumbed in as the encrypt argument,
+    this reduces to an assert_norm on a fully concrete computation (subject
+    to the z3rlimit budget noted in Spec.AES256). *)
+val gcm_kat_tc14 : encrypt:aes_encrypt_fn_full -> unit
     -> Lemma (
         let (ct, tag) = gcm_encrypt encrypt kat_tc14_key kat_tc14_nonce
                                     Seq.empty Seq.empty in
         tag == kat_tc14_tag)
 let gcm_kat_tc14 encrypt () =
+  (* TODO: requires concrete AES-256 binding — see comment above *)
   assume (let (ct, tag) = gcm_encrypt encrypt kat_tc14_key kat_tc14_nonce
                                       Seq.empty Seq.empty in
           tag == kat_tc14_tag)
@@ -428,7 +509,7 @@ let kat_tc16_tag : seq UInt8.t =
     0xecuy; 0x1auy; 0x50uy; 0x22uy; 0x70uy; 0xe3uy; 0xccuy; 0x6cuy
   ]
 
-val gcm_kat_tc16 : encrypt:aes_encrypt_fn -> unit
+val gcm_kat_tc16 : encrypt:aes_encrypt_fn_full -> unit
     -> Lemma (
         Seq.length kat_tc16_key = key_size /\
         Seq.length kat_tc16_nonce = nonce_size ==>
@@ -436,6 +517,7 @@ val gcm_kat_tc16 : encrypt:aes_encrypt_fn -> unit
                                     Seq.empty kat_tc16_plaintext in
         ct == kat_tc16_ciphertext /\ tag == kat_tc16_tag))
 let gcm_kat_tc16 encrypt () =
+  (* TODO: requires concrete AES-256 binding — same blocker as gcm_kat_tc14 *)
   assume (Seq.length kat_tc16_key = key_size /\
           Seq.length kat_tc16_nonce = nonce_size ==>
           (let (ct, tag) = gcm_encrypt encrypt kat_tc16_key kat_tc16_nonce

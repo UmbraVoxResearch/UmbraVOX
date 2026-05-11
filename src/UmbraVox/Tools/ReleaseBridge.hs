@@ -5,6 +5,7 @@ module UmbraVox.Tools.ReleaseBridge
     , runOrchestratedBuild
     , runOrchestratedTest
     , runOrchestratedVerify
+    , runFStarReport
     , runVMSmoke
     , runVMImageClean
     , ensureVMImage
@@ -37,6 +38,7 @@ import System.Process (CreateProcess(..), StdStream(Inherit), createProcess,
 import System.Timeout (timeout)
 
 import UmbraVox.Tools.Compliance (generateSBOM, generateLicenseBundle, checkLicensePolicy, analyzeLinkingObligations)
+import UmbraVox.Tools.FStarVerify (generateCoverageReport)
 import UmbraVox.Tools.PcapVerify (verifyTrafficEncryption)
 import UmbraVox.Tools.Provenance (generateReleaseManifest, emitReleaseChecksums)
 
@@ -75,6 +77,7 @@ runBridgeCommand "gate-assurance" args = runGateAssurance args
 runBridgeCommand "vm-integration-test" args = runIntegrationTest args
 runBridgeCommand "verify-traffic" _ = verifyTrafficEncryption
 runBridgeCommand "vm-forensics" _ = verifyTrafficEncryption
+runBridgeCommand "fstar-report" _ = runFStarReport
 runBridgeCommand cmd _ = do
     hPutStrLn stderr $ "Unknown orchestration bridge command: " ++ cmd
     pure (ExitFailure 64)
@@ -120,6 +123,22 @@ runOrchestratedVerify :: [String] -> IO ExitCode
 runOrchestratedVerify _ = do
     hPutStrLn stderr "[HASKELL-ORCH] verify: cabal run fstar-verify"
     runScript "cabal" ["run", "fstar-verify"]
+
+-- | Generate and print the F* spec coverage report.
+-- Lists each .fst file with assume count, lemma count, and proved-lemma estimate.
+runFStarReport :: IO ExitCode
+runFStarReport = do
+    repoRoot <- getCurrentDirectory
+    let specDir = repoRoot </> "test" </> "evidence" </> "formal-proofs" </> "fstar"
+    exists <- doesDirectoryExist specDir
+    if not exists
+        then do
+            hPutStrLn stderr $ "[FSTAR-REPORT] spec directory not found: " ++ specDir
+            pure (ExitFailure 1)
+        else do
+            report <- generateCoverageReport specDir
+            putStr report
+            pure ExitSuccess
 
 runScript :: FilePath -> [String] -> IO ExitCode
 runScript script args = do

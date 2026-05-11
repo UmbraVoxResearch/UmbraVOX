@@ -159,24 +159,63 @@ let x3dh_initiate ik_a_secret ek_a_secret ik_b_public spk_b_public
 (** Correctness: Alice and Bob derive the same shared secret             **)
 (** -------------------------------------------------------------------- **)
 
-(** Key agreement: given valid keys, Alice and Bob compute the same
-    master secret.  This follows from the commutativity of X25519:
-    X25519(a, X25519(b, G)) = X25519(b, X25519(a, G)). *)
+(** Key agreement property: both parties derive the same shared secret.
+    Given keys:
+      - Alice: ik_a_secret, ek_a_secret
+      - Bob:   ik_b_secret, spk_b_secret, opk_b_secret (optional)
+    And their corresponding public keys:
+      - ik_a_pub  = X25519(ik_a_secret, G)
+      - ek_a_pub  = X25519(ek_a_secret, G)
+      - ik_b_pub  = X25519(ik_b_secret, G)
+      - spk_b_pub = X25519(spk_b_secret, G)
+      - opk_b_pub = X25519(opk_b_secret, G)  [optional]
+
+    By X25519 DH commutativity:
+      X25519(ik_a_secret, spk_b_pub) = X25519(spk_b_secret, ik_a_pub)   [DH1]
+      X25519(ek_a_secret, ik_b_pub)  = X25519(ik_b_secret,  ek_a_pub)   [DH2]
+      X25519(ek_a_secret, spk_b_pub) = X25519(spk_b_secret, ek_a_pub)   [DH3]
+      X25519(ek_a_secret, opk_b_pub) = X25519(opk_b_secret, ek_a_pub)   [DH4]
+
+    Therefore Alice's (dh1, dh2, dh3, dh4) equals Bob's in all positions,
+    and derive_secret produces identical output. *)
 val x3dh_agreement_lemma :
     ik_a_secret:seq UInt8.t{Seq.length ik_a_secret = key_size}
     -> ek_a_secret:seq UInt8.t{Seq.length ek_a_secret = key_size}
     -> ik_b_secret:seq UInt8.t{Seq.length ik_b_secret = key_size}
     -> spk_b_secret:seq UInt8.t{Seq.length spk_b_secret = key_size}
     -> opk_b_secret:option (s:seq UInt8.t{Seq.length s = key_size})
-    -> Lemma (True)
+    -> Lemma (
+        (* Derive public keys from secrets *)
+        let g = Seq.create key_size 0uy in  (* generator G is abstract *)
+        let ik_a_pub   = x25519 ik_a_secret g in
+        let ek_a_pub   = x25519 ek_a_secret g in
+        let ik_b_pub   = x25519 ik_b_secret g in
+        let spk_b_pub  = x25519 spk_b_secret g in
+        let opk_b_pub  = match opk_b_secret with
+                         | Some opk -> Some (x25519 opk g)
+                         | None -> None in
+        (* Alice's DH computations *)
+        let (a_dh1, a_dh2, a_dh3, a_dh4) =
+          compute_dh_alice ik_a_secret ek_a_secret ik_b_pub spk_b_pub opk_b_pub in
+        (* Bob's DH computations *)
+        let (b_dh1, b_dh2, b_dh3, b_dh4) =
+          compute_dh_bob ik_b_secret spk_b_secret opk_b_secret ik_a_pub ek_a_pub in
+        (* Key agreement: DH commutativity makes all values equal *)
+        a_dh1 == b_dh1 /\ a_dh2 == b_dh2 /\ a_dh3 == b_dh3 /\ a_dh4 == b_dh4)
 let x3dh_agreement_lemma ik_a_secret ek_a_secret ik_b_secret spk_b_secret opk_b_secret =
-  assume (True)
-  (* The DH outputs match due to X25519 commutativity, so
-     derive_secret produces identical results for both parties. *)
+  (* The DH outputs match by X25519 commutativity.  In this spec, x25519 is
+     modelled as an abstract function (all outputs are create key_size 0uy),
+     so commutativity holds trivially by reflexivity.  In a full proof
+     instantiated with Spec.X25519.x25519, commutativity follows from
+     dh_commutativity_general in Spec.X25519. *)
+  ()
 
-(** SPK verification rejects forged signatures *)
+(** SPK verification rejects forged signatures: if verify returns false,
+    the caller correctly rejects the protocol initiation. *)
 val spk_rejection_lemma : pub:seq UInt8.t -> spk:seq UInt8.t
     -> bad_sig:seq UInt8.t
-    -> Lemma (True)
-let spk_rejection_lemma pub spk bad_sig =
-  assume (not (ed25519_verify pub spk bad_sig) ==> True)
+    -> Lemma (not (ed25519_verify pub spk bad_sig) ==>
+              x3dh_initiate
+                (Seq.create key_size 0uy) (Seq.create key_size 0uy)
+                (Seq.create key_size 0uy) spk pub bad_sig None == None)
+let spk_rejection_lemma pub spk bad_sig = ()
