@@ -50,20 +50,46 @@ let hkdf_extract (hmac : hmac_fn) (hash_len : nat{hash_len > 0})
 (** where N = ceil(L / HashLen)                                          **)
 (** -------------------------------------------------------------------- **)
 
-(** Compute HKDF-Expand T-blocks iteratively *)
+(** Compute HKDF-Expand T-blocks iteratively.
+    counter is in [1, n], and n <= 255 < 256 = pow2 8, so the recursive
+    call site has counter < n <= 255, giving counter < pow2 8. *)
+#push-options "--z3rlimit 10000"
 let rec expand_loop (hmac : hmac_fn)
                     (prk : seq UInt8.t) (info : seq UInt8.t)
                     (prev : seq UInt8.t)
-                    (counter : nat{counter >= 1 /\ counter <= 256})
-                    (n : nat{n >= 1 /\ n <= 255})
+                    (counter : nat{counter >= 1 /\ counter <= 255})
+                    (n : nat{n >= 1 /\ n <= 255 /\ counter <= n})
     : Tot (seq UInt8.t) (decreases (n + 1 - counter)) =
+  (* counter <= n <= 255 < 256 = pow2 8, so counter < pow2 8 *)
+  assert_norm (pow2 8 = 256);
   let t_i = hmac prk (Seq.append prev
                        (Seq.append info
-                         (Seq.create 1 (assume (counter >= 0 /\ counter < pow2 8); FStar.UInt8.uint_to_t counter)))) in
+                         (Seq.create 1 (FStar.UInt8.uint_to_t counter)))) in
   if counter >= n then
     t_i
   else
     Seq.append t_i (expand_loop hmac prk info t_i (counter + 1) n)
+#pop-options
+
+(** Ceiling division: ceil(a / b) when b > 0 *)
+let ceil_div (a : nat) (b : pos) : nat =
+  if a % b = 0 then a / b else a / b + 1
+
+(** Prove that when len > 0 and hash_len > 0 and len <= 255 * hash_len,
+    the ceiling n = ceil(len / hash_len) satisfies 1 <= n <= 255. *)
+val ceil_div_bounds_lemma : len:nat{len > 0} -> hash_len:pos
+    -> Lemma
+        (requires len <= 255 * hash_len)
+        (ensures (let n = ceil_div len hash_len in n >= 1 /\ n <= 255))
+let ceil_div_bounds_lemma len hash_len =
+  let n = ceil_div len hash_len in
+  (* n >= 1: len > 0 so len / hash_len >= 0; if len % hash_len = 0 then
+     n = len/hash_len >= 1 (since len >= 1 and hash_len >= 1 implies
+     len/hash_len >= 1 when len >= hash_len, or len % hash_len != 0).
+     We handle both sub-cases. *)
+  assert (n >= 1);
+  (* n <= 255: from len <= 255 * hash_len we get len / hash_len <= 255 *)
+  assert (n <= 255)
 
 val hkdf_expand : hmac:hmac_fn -> hash_len:nat{hash_len > 0}
     -> prk:seq UInt8.t -> info:seq UInt8.t
@@ -73,10 +99,11 @@ let hkdf_expand (hmac : hmac_fn) (hash_len : nat{hash_len > 0})
                 (prk : seq UInt8.t) (info : seq UInt8.t)
                 (len : nat{len > 0 /\ len <= 255 * hash_len})
     : (s:seq UInt8.t{Seq.length s = len}) =
-  let n : nat = if len % hash_len = 0 then len / hash_len
-                else len / hash_len + 1 in
-  assume (n >= 1 /\ n <= 255);
+  let n = ceil_div len hash_len in
+  ceil_div_bounds_lemma len hash_len;
   let expanded = expand_loop hmac prk info Seq.empty 1 n in
+  (* TODO: requires tactic-based proof — length of expand_loop output depends
+     on the concrete output length of hmac, which is abstract here *)
   assume (Seq.length expanded >= len);
   Seq.slice expanded 0 len
 
@@ -220,6 +247,7 @@ val hkdf_sha256_kat_tc1_extract : unit
     -> Lemma (hkdf_sha256_extract rfc5869_tc1_salt rfc5869_tc1_ikm ==
               rfc5869_tc1_prk)
 let hkdf_sha256_kat_tc1_extract () =
+  (* TODO: requires tactic-based proof — KAT vector requires SHA-256 reduction *)
   assume (hkdf_sha256_extract rfc5869_tc1_salt rfc5869_tc1_ikm ==
           rfc5869_tc1_prk)
 
@@ -227,6 +255,7 @@ val hkdf_sha256_kat_tc1_expand : unit
     -> Lemma (hkdf_sha256_expand rfc5869_tc1_prk rfc5869_tc1_info 42 ==
               rfc5869_tc1_okm)
 let hkdf_sha256_kat_tc1_expand () =
+  (* TODO: requires tactic-based proof — KAT vector requires SHA-256 reduction *)
   assume (hkdf_sha256_expand rfc5869_tc1_prk rfc5869_tc1_info 42 ==
           rfc5869_tc1_okm)
 
@@ -234,5 +263,6 @@ val hkdf_sha256_kat_tc1_full : unit
     -> Lemma (hkdf_sha256 rfc5869_tc1_salt rfc5869_tc1_ikm
                           rfc5869_tc1_info 42 == rfc5869_tc1_okm)
 let hkdf_sha256_kat_tc1_full () =
+  (* TODO: requires tactic-based proof — KAT vector requires SHA-256 reduction *)
   assume (hkdf_sha256 rfc5869_tc1_salt rfc5869_tc1_ikm
                       rfc5869_tc1_info 42 == rfc5869_tc1_okm)
