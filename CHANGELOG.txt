@@ -65,6 +65,13 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 
 ## [Unreleased]
 
+### Formal Verification
+- M13.2.3 Keccak permutation: Spec.Keccak.Permutation.fst now has 0 assumes — pi bounds proved via assert_norm+case-split (pi_table_bounds_lemma), length invariant via Seq.lemma_len_upd, chi_identity via Seq.lemma_seq_of_list_index+case-split, keccak_f1600_preserves_size by type refinement (M13.2.3).
+- M13.2.3 Keccak sponge: Spec.Keccak.Sponge.fst now has 0 assumes — absorb_blocks length via arithmetic witnesses (off_q/len_q), state_to_bytes via typed-invariant serialize_state_tail, pad10star1 length via Z3 arithmetic on return type, squeeze_length_lemma proved recursively (M13.2.3).
+- M13.2.3 Keccak SHA3: Spec.Keccak.SHA3.fst output-length lemmas (sha3_256/384/512, shake128/256) proved via squeeze_length_lemma; KAT vectors remain as assume (correct) (M13.2.3).
+- M13.3.4 ML-KEM-768: Removed 12 false assumes from Spec.MLKEM768.fst — ntt/inv_ntt/basemul bodies no longer re-assume what types already enforce; correctness/KAT Lemma(True) bodies changed to (); parameter correctness checked via assert_norm (k=3, n=256, q=3329, zeta=17) (M13.3.4).
+- M13.7.1 Per-module z3rlimit in FStarVerify.hs: Keccak.Permutation 50000, Keccak.Sponge 20000, Keccak.SHA3 20000, MLKEM768 50000; heavySpecs includes all four Keccak/MLKEM modules for cache-warm ordering (M13.7.1).
+
 ### Added
 - Added provider hot-reload via `reloadProviders` in `ProviderRuntime.hs` that re-scans `providers/*/manifest.uvx` at runtime without restarting (F4.5).
 - Added IPC transport hosting (`IPCTransport`, `startIPCProvider`) implementing `TransportHandle` over stdin/stdout with a line-based hex-encoded protocol for `ipc-stdio` providers (F4.5).

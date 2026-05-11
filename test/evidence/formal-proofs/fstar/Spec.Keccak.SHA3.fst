@@ -94,36 +94,54 @@ let shake_256 (msg : seq UInt8.t) (output_len : nat) : seq UInt8.t =
 val sha3_256_output_length : msg:seq UInt8.t
     -> Lemma (Seq.length (sha3_256 msg) = 32)
 let sha3_256_output_length msg =
-  assume (Seq.length (sha3_256 msg) = 32)
+  squeeze_length_lemma sha3_256_rate
+    (absorb_blocks sha3_256_rate empty_state
+       (pad10star1 sha3_256_rate sha3_suffix msg) 0)
+    sha3_256_outlen
 
 (** SHA3-512 output is always 64 bytes *)
 val sha3_512_output_length : msg:seq UInt8.t
     -> Lemma (Seq.length (sha3_512 msg) = 64)
 let sha3_512_output_length msg =
-  assume (Seq.length (sha3_512 msg) = 64)
+  squeeze_length_lemma sha3_512_rate
+    (absorb_blocks sha3_512_rate empty_state
+       (pad10star1 sha3_512_rate sha3_suffix msg) 0)
+    sha3_512_outlen
 
 (** SHA3-224 output is always 28 bytes *)
 val sha3_224_output_length : msg:seq UInt8.t
     -> Lemma (Seq.length (sha3_224 msg) = 28)
 let sha3_224_output_length msg =
-  assume (Seq.length (sha3_224 msg) = 28)
+  squeeze_length_lemma sha3_224_rate
+    (absorb_blocks sha3_224_rate empty_state
+       (pad10star1 sha3_224_rate sha3_suffix msg) 0)
+    sha3_224_outlen
 
 (** SHA3-384 output is always 48 bytes *)
 val sha3_384_output_length : msg:seq UInt8.t
     -> Lemma (Seq.length (sha3_384 msg) = 48)
 let sha3_384_output_length msg =
-  assume (Seq.length (sha3_384 msg) = 48)
+  squeeze_length_lemma sha3_384_rate
+    (absorb_blocks sha3_384_rate empty_state
+       (pad10star1 sha3_384_rate sha3_suffix msg) 0)
+    sha3_384_outlen
 
 (** SHAKE output length matches the requested length *)
 val shake128_output_length : msg:seq UInt8.t -> n:nat
     -> Lemma (Seq.length (shake_128 msg n) = n)
 let shake128_output_length msg n =
-  assume (Seq.length (shake_128 msg n) = n)
+  squeeze_length_lemma shake128_rate
+    (absorb_blocks shake128_rate empty_state
+       (pad10star1 shake128_rate shake_suffix msg) 0)
+    n
 
 val shake256_output_length : msg:seq UInt8.t -> n:nat
     -> Lemma (Seq.length (shake_256 msg n) = n)
 let shake256_output_length msg n =
-  assume (Seq.length (shake_256 msg n) = n)
+  squeeze_length_lemma shake256_rate
+    (absorb_blocks shake256_rate empty_state
+       (pad10star1 shake256_rate shake_suffix msg) 0)
+    n
 
 (** -------------------------------------------------------------------- **)
 (** KAT Test Vectors (NIST CSRC / FIPS 202 examples)                     **)
