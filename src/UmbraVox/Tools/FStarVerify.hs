@@ -114,18 +114,25 @@ discoverModules dir = do
 -- Modules not listed here use the default z3rlimit from 'vcFlags'.
 moduleRlimits :: Map String Int
 moduleRlimits = Map.fromList
-    [ ("Spec.Keccak.Permutation", 10000)
+    [ ("Spec.Keccak.Permutation", 50000)
+    , ("Spec.Keccak.Sponge",      20000)
+    , ("Spec.Keccak.SHA3",        20000)
     , ("Spec.Ed25519",            20000)
     , ("Spec.X25519",             20000)
     , ("Spec.AES256",             20000)
     , ("Spec.GCM",                20000)
-    , ("Spec.MLKEM768",           20000)
+    , ("Spec.MLKEM768",           50000)
     ]
 
 -- | Specs that require significantly more Z3 time.
 -- These are verified last so other modules populate the cache first.
 heavySpecs :: [String]
-heavySpecs = ["Spec.Keccak.Permutation"]
+heavySpecs =
+    [ "Spec.Keccak.Permutation"
+    , "Spec.Keccak.Sponge"
+    , "Spec.Keccak.SHA3"
+    , "Spec.MLKEM768"
+    ]
 
 -- | Check if a tool is available on PATH.
 checkTool :: String -> IO (Maybe FilePath)
