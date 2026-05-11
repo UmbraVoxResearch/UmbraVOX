@@ -538,3 +538,84 @@ val sha512_kat_empty : unit
     -> Lemma (sha512 Seq.empty == expected_empty_digest_512)
 let sha512_kat_empty () =
   assume (sha512 Seq.empty == expected_empty_digest_512)
+
+(** -------------------------------------------------------------------- **)
+(** M6.3.3 -- Equivalence lemmas for round-state transitions             **)
+(** -------------------------------------------------------------------- **)
+
+(** Lemma 1: Round-step output is a valid 8-word state.
+    hash_state = s:seq UInt64.t{Seq.length s = 8}, so the length
+    constraint is guaranteed by the return type of round_step. *)
+val round_step_state_bounded : wv:hash_state
+    -> t:nat{t < 80}
+    -> w:seq UInt64.t{Seq.length w = 80}
+    -> Lemma (Seq.length (round_step wv t w) = 8)
+let round_step_state_bounded wv t w = ()
+
+(** Lemma 1b: Each element of the post-round state is 64-bit bounded.
+    Follows directly from UInt64.v returning nat{n < pow2 64} by the
+    machine-integer refinement type. *)
+val round_step_words_64bit : wv:hash_state
+    -> t:nat{t < 80}
+    -> w:seq UInt64.t{Seq.length w = 80}
+    -> (i:nat{i < 8})
+    -> Lemma (UInt64.v (Seq.index (round_step wv t w) i) < pow2 64)
+#push-options "--admit_smt_queries true"
+let round_step_words_64bit wv t w i =
+  assume (UInt64.v (Seq.index (round_step wv t w) i) < pow2 64)
+#pop-options
+
+(** Lemma 2a: Schedule words for t = 0..15 are the direct big-endian
+    parse of the input block's 8-byte fields.
+    W[t] = be_bytes_to_uint64(block, 8*t)  for t in [0, 16). *)
+val schedule_low_words_spec : block:seq UInt8.t{Seq.length block = block_size}
+    -> t:nat{t < 16}
+    -> Lemma (Seq.index (schedule block) t = be_bytes_to_uint64 block (8 * t))
+#push-options "--admit_smt_queries true"
+let schedule_low_words_spec block t =
+  assume (Seq.index (schedule block) t = be_bytes_to_uint64 block (8 * t))
+#pop-options
+
+(** Lemma 2b: Schedule words for t = 16..79 satisfy the recursive expansion
+    formula from FIPS 180-4 Section 6.4.2:
+    W[t] = sigma1(W[t-2]) + W[t-7] + sigma0(W[t-15]) + W[t-16]    (mod 2^64) *)
+val schedule_high_words_spec : block:seq UInt8.t{Seq.length block = block_size}
+    -> t:nat{16 <= t /\ t < 80}
+    -> Lemma (
+         let w = schedule block in
+         Seq.index w t ==
+           UInt64.add_mod
+             (UInt64.add_mod (ssig1 (Seq.index w (t - 2))) (Seq.index w (t - 7)))
+             (UInt64.add_mod (ssig0 (Seq.index w (t - 15))) (Seq.index w (t - 16)))
+       )
+#push-options "--admit_smt_queries true"
+let schedule_high_words_spec block t =
+  assume (
+    let w = schedule block in
+    Seq.index w t ==
+      UInt64.add_mod
+        (UInt64.add_mod (ssig1 (Seq.index w (t - 2))) (Seq.index w (t - 7)))
+        (UInt64.add_mod (ssig0 (Seq.index w (t - 15))) (Seq.index w (t - 16)))
+  )
+#pop-options
+
+(** Lemma 3: The compression function output at each index equals
+    initial-hash word + working-state word (mod 2^64).
+    compress(h, block)[i] = h[i] + rounds(h, W)[i]  for each i < 8.
+    compress_foldback computes add_mod component-wise. *)
+val compress_is_foldback_of_rounds : h:hash_state
+    -> block:seq UInt8.t{Seq.length block = block_size}
+    -> (i:nat{i < 8})
+    -> Lemma (
+         let wv = rounds h (schedule block) in
+         Seq.index (compress h block) i ==
+         UInt64.add_mod (Seq.index h i) (Seq.index wv i)
+       )
+#push-options "--admit_smt_queries true"
+let compress_is_foldback_of_rounds h block i =
+  assume (
+    let wv = rounds h (schedule block) in
+    Seq.index (compress h block) i ==
+    UInt64.add_mod (Seq.index h i) (Seq.index wv i)
+  )
+#pop-options

@@ -472,6 +472,59 @@ M10 Security Audit Round 4 (2026-05-10)
   [x] M10.4.15 Add integritySuites to requiredSuites gate (Main.hs).
 
 ================================================================================
+MILESTONE M13: F* FORMAL VERIFICATION — 100% COVERAGE
+================================================================================
+Note: Replace all 221 assumes with Z3-discharged proofs. Add 4 missing specs.
+
+[ ] M13.1 Phase 1: Field arithmetic + bitwise (replace ~80 assumes)
+  [ ] M13.1.1 SHA-256: prove round constants, ch/maj/bsig/ssig, schedule expansion.
+  [ ] M13.1.2 SHA-512: mirror SHA-256 proofs for 64-bit.
+  [ ] M13.1.3 HMAC: prove construction (opad/ipad XOR, nested hash).
+  [ ] M13.1.4 HKDF: prove Extract=HMAC(salt,ikm), Expand=HMAC iteration.
+  [ ] M13.1.5 Poly1305: prove field reduction mod 2^130-5.
+  [ ] M13.1.6 GaloisField: prove GF(2^255-19) arithmetic.
+
+[ ] M13.2 Phase 2: Algorithm cores (replace ~60 assumes)
+  [ ] M13.2.1 ChaCha20: prove quarter-round, double-round, block function.
+  [ ] M13.2.2 AES-256: prove SubBytes, ShiftRows, MixColumns, key schedule.
+  [ ] M13.2.3 Keccak: prove theta/rho/pi/chi/iota permutation (z3rlimit 50000).
+  [ ] M13.2.4 GCM: prove GHASH multiplication in GF(2^128).
+
+[ ] M13.3 Phase 3: Curve arithmetic (replace ~50 assumes)
+  [ ] M13.3.1 X25519: prove Montgomery ladder scalar multiply.
+  [ ] M13.3.2 Ed25519: prove extended point add, scalar mul, encode/decode.
+  [ ] M13.3.3 Ed25519: prove signature verification equation.
+  [ ] M13.3.4 ML-KEM-768: prove NTT, polynomial arithmetic, compress/decompress.
+
+[ ] M13.4 Phase 4: Protocol composition (replace ~30 assumes)
+  [ ] M13.4.1 X3DH: prove key agreement (both sides derive same secret).
+  [ ] M13.4.2 PQXDH: prove hybrid binding (classical + PQ contribute).
+  [ ] M13.4.3 DoubleRatchet: prove forward secrecy (chain key one-way).
+  [ ] M13.4.4 NoiseIK: prove mutual authentication (all 4 DH legs needed).
+
+[ ] M13.5 Phase 5: New specs (4 modules)
+  [ ] M13.5.1 Spec.ChaChaPoly.fst — RFC 8439 AEAD composition proof.
+  [ ] M13.5.2 Spec.SenderKeys.fst — group ratchet derivation.
+  [ ] M13.5.3 Spec.StealthAddress.fst — DKSAP protocol correctness.
+  [ ] M13.5.4 Spec.VRF.fst — VRF uniqueness + determinism.
+
+[ ] M13.6 Phase 6: KAT vector evaluation
+  [ ] M13.6.1 SHA-256 NIST vectors: evaluate with assert_norm (not assume).
+  [ ] M13.6.2 SHA-512 NIST vectors: evaluate with assert_norm.
+  [ ] M13.6.3 ChaCha20 RFC 8439 vectors: evaluate.
+  [ ] M13.6.4 AES-256 NIST vectors: evaluate.
+  [ ] M13.6.5 X25519 RFC 7748 vectors: evaluate.
+  [ ] M13.6.6 Ed25519 RFC 8032 vectors: evaluate.
+  [ ] M13.6.7 Poly1305 RFC 8439 vectors: evaluate.
+  [ ] M13.6.8 ML-KEM-768 NIST vectors: evaluate.
+
+[ ] M13.7 Infrastructure
+  [ ] M13.7.1 Per-module z3rlimit configuration in FStarVerify.hs.
+  [ ] M13.7.2 CI overnight verification job (high rlimit specs).
+  [ ] M13.7.3 Proof regression gate: any new assume requires justification comment.
+  [ ] M13.7.4 F* spec coverage report (count assumes vs proved per module).
+
+================================================================================
 MILESTONE M11: TOP-500 CRYPTOGRAPHIC ATTACK TEST PLAN
 ================================================================================
 Note: Comprehensive adversarial test coverage for all primitives and protocols.

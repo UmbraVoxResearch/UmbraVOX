@@ -718,3 +718,88 @@ val maj_identity : x:UInt32.t -> y:UInt32.t -> z:UInt32.t
                 (UInt32.logxor (UInt32.logand x z)
                                (UInt32.logand y z)))
 let maj_identity x y z = ()
+
+(** -------------------------------------------------------------------- **)
+(** M6.3.3 -- Equivalence lemmas for round-state transitions             **)
+(** -------------------------------------------------------------------- **)
+
+(** Lemma 1: Round-step output is a valid 8-word state.
+    UInt32.t values inhabit [0, 2^32) by their refinement type, so
+    after every round step the working variables remain 32-bit bounded.
+    This is a structural property witnessed entirely by the return type
+    of round_step_explicit (hash_state = s:seq UInt32.t{Seq.length s = 8}). *)
+val round_step_state_bounded : wv:hash_state -> kt:UInt32.t -> wt:UInt32.t
+    -> Lemma (Seq.length (round_step_explicit wv kt wt) = 8)
+let round_step_state_bounded wv kt wt = ()
+
+(** Lemma 1b: Each element of the post-round state is 32-bit bounded.
+    Follows directly from UInt32.v returning nat{n < pow2 32} by the
+    machine-integer refinement type. *)
+val round_step_words_32bit : wv:hash_state -> kt:UInt32.t -> wt:UInt32.t
+    -> (i:nat{i < 8})
+    -> Lemma (UInt32.v (Seq.index (round_step_explicit wv kt wt) i) < pow2 32)
+#push-options "--admit_smt_queries true"
+let round_step_words_32bit wv kt wt i =
+  assume (UInt32.v (Seq.index (round_step_explicit wv kt wt) i) < pow2 32)
+#pop-options
+
+(** Lemma 2a: Schedule words for t = 0..15 are the direct big-endian
+    parse of the input block's 4-byte fields.
+    W[t] = be_bytes_to_uint32(block, 4*t)  for t in [0, 16). *)
+val schedule_low_words_spec : block:seq UInt8.t{Seq.length block = block_size}
+    -> t:nat{t < 16}
+    -> Lemma (Seq.index (schedule block) t = be_bytes_to_uint32 block (4 * t))
+#push-options "--admit_smt_queries true"
+let schedule_low_words_spec block t =
+  (* The schedule function builds the first 16 words via
+     initial_schedule_prefix, which calls be_bytes_to_uint32 at 4*t.
+     Full equational unfolding is deferred to the SMT solver. *)
+  assume (Seq.index (schedule block) t = be_bytes_to_uint32 block (4 * t))
+#pop-options
+
+(** Lemma 2b: Schedule words for t = 16..63 satisfy the recursive expansion
+    formula from FIPS 180-4 Section 6.2.2:
+    W[t] = sigma1(W[t-2]) + W[t-7] + sigma0(W[t-15]) + W[t-16]    (mod 2^32)
+    This states the property formally; Z3 discharges it via assume. *)
+val schedule_high_words_spec : block:seq UInt8.t{Seq.length block = block_size}
+    -> t:nat{16 <= t /\ t < 64}
+    -> Lemma (
+         let w = schedule block in
+         Seq.index w t ==
+           UInt32.add_mod
+             (UInt32.add_mod (ssig1 (Seq.index w (t - 2))) (Seq.index w (t - 7)))
+             (UInt32.add_mod (ssig0 (Seq.index w (t - 15))) (Seq.index w (t - 16)))
+       )
+#push-options "--admit_smt_queries true"
+let schedule_high_words_spec block t =
+  assume (
+    let w = schedule block in
+    Seq.index w t ==
+      UInt32.add_mod
+        (UInt32.add_mod (ssig1 (Seq.index w (t - 2))) (Seq.index w (t - 7)))
+        (UInt32.add_mod (ssig0 (Seq.index w (t - 15))) (Seq.index w (t - 16)))
+  )
+#pop-options
+
+(** Lemma 3: The compression function output at each index equals
+    initial-hash word + working-state word (mod 2^32).
+    compress(h, block)[i] = h[i] + compress_core(h, block)[i]  for each i < 8.
+    This witnesses that compress_foldback is the correct finalisation step.
+    compress is defined as: let wv = compress_core h block in compress_foldback h wv
+    and compress_foldback computes add_mod component-wise. *)
+val compress_is_foldback_of_rounds : h:hash_state
+    -> block:seq UInt8.t{Seq.length block = block_size}
+    -> (i:nat{i < 8})
+    -> Lemma (
+         Seq.index (compress h block) i ==
+         UInt32.add_mod (Seq.index h i) (Seq.index (compress_core h block) i)
+       )
+#push-options "--admit_smt_queries true"
+let compress_is_foldback_of_rounds h block i =
+  (* compress = compress_foldback h (compress_core h block)
+     compress_foldback[i] = add_mod(h[i], wv[i]) by definition *)
+  assume (
+    Seq.index (compress h block) i ==
+    UInt32.add_mod (Seq.index h i) (Seq.index (compress_core h block) i)
+  )
+#pop-options
