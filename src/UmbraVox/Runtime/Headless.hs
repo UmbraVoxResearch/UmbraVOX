@@ -13,18 +13,17 @@ module UmbraVox.Runtime.Headless
 
 import Control.Concurrent (threadDelay)
 import Control.Monad (forM_, when)
-import Data.IORef (newIORef, readIORef, writeIORef)
+import Data.IORef (readIORef, writeIORef)
 import qualified Data.Map.Strict as Map
 import System.Exit (ExitCode(..))
 
-import UmbraVox.App.Startup (newDefaultAppConfig, initializeLocalIdentity)
 import UmbraVox.App.Config (AppConfig(..))
+import UmbraVox.App.ConfigFile (loadConfigFile, applyConfigFile)
+import UmbraVox.App.Startup (newDefaultAppConfig, initializeLocalIdentity)
 import UmbraVox.App.State (CoreState(..), newCoreState)
 import UmbraVox.App.Types (SessionInfo(..))
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey)
-import UmbraVox.TUI.Types
-    ( AppState(..), Layout(..), Pane(..) )
-import UmbraVox.TUI.RuntimeNetwork (startListenerIfNeeded)
+import UmbraVox.Network.Listener (startListener, noopCallbacks)
 
 -- | Configuration for a headless UmbraVOX node.
 data HeadlessConfig = HeadlessConfig
@@ -42,6 +41,10 @@ data HeadlessConfig = HeadlessConfig
 initCoreRuntime :: Maybe Int -> IO (AppConfig, IdentityKey)
 initCoreRuntime mPort = do
     appCfg <- newDefaultAppConfig
+    -- Layer 1: apply config file (overrides compile-time defaults)
+    fileCfg <- loadConfigFile
+    applyConfigFile fileCfg appCfg
+    -- Layer 2: apply explicit port override from caller (CLI flags etc.)
     case mPort of
         Just p  -> writeIORef (cfgListenPort appCfg) p
         Nothing -> pure ()
@@ -58,13 +61,12 @@ runHeadlessNode cfg = do
     (appCfg, identity) <- initCoreRuntime (Just (hcPort cfg))
     putStrLn "[HEADLESS] identity initialized"
 
-    -- 2. Build CoreState — no dummy TUI fields needed
+    -- 2. Build CoreState — no TUI fields needed
     cs <- newCoreState appCfg
-    st <- createHeadlessState cs
 
-    -- 3. Start listener
+    -- 3. Start listener using no-op callbacks (headless has no status bar)
     activePort <- readIORef (cfgListenPort appCfg)
-    _ <- startListenerIfNeeded st identity activePort "headless"
+    _ <- startListener cs noopCallbacks identity activePort "headless"
     putStrLn $ "[HEADLESS] listening on port " ++ show activePort
 
     -- 5. Connect to seed peers
@@ -80,29 +82,11 @@ runHeadlessNode cfg = do
     putStrLn "[HEADLESS] done"
     pure ExitSuccess
 
--- | Wrap a 'CoreState' in a minimal 'AppState' for use with network functions
--- that still accept 'AppState'.  Only the domain-level 'CoreState' is
--- meaningful; all TUI-only fields are harmless dummies that are never read.
-createHeadlessState :: CoreState -> IO AppState
-createHeadlessState cs = do
-    termRef <- newIORef (24, 80)
-    AppState cs
-        <$> newIORef 0              -- asSelected
-        <*> newIORef ContactPane    -- asFocus
-        <*> newIORef ""             -- asInputBuf
-        <*> newIORef ""             -- asDialogBuf
-        <*> newIORef 0              -- asChatScroll
-        <*> newIORef ""             -- asStatusMsg
-        <*> newIORef Nothing        -- asDialogMode
-        <*> newIORef 0              -- asBrowsePage
-        <*> newIORef ""             -- asBrowseFilter
-        <*> newIORef (Layout 0 0 0 0 0) -- asLayout (dummy)
-        <*> newIORef 0              -- asContactScroll
-        <*> pure termRef            -- asTermSize (dummy 24x80)
-        <*> newIORef Nothing        -- asMenuOpen
-        <*> newIORef 0              -- asMenuIndex
-        <*> newIORef 0              -- asDialogTab
-        <*> newIORef Nothing        -- asLastRenderToken
+-- | Return the 'CoreState' as-is.  Kept for API compatibility with callers
+-- that previously needed a dummy 'AppState'; now that 'startListener' accepts
+-- 'CoreState' directly this is a no-op wrapper.
+createHeadlessState :: CoreState -> IO CoreState
+createHeadlessState = pure
 
 -- | Listen scenario: hold the port open for the configured timeout.
 runListenScenario :: CoreState -> HeadlessConfig -> IO ()

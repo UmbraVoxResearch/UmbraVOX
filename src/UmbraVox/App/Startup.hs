@@ -43,11 +43,13 @@ import UmbraVox.Crypto.KeyStore
     , loadIdentityKeyAt, saveIdentityKeyAt
     )
 import UmbraVox.Crypto.Random (randomBytes)
-import UmbraVox.Crypto.Signal.X3DH (IdentityKey)
+import UmbraVox.Crypto.Signal.X3DH (IdentityKey, ikEd25519Secret)
 import UmbraVox.Storage.Anthony
     ( AnthonyDB, loadConversations, loadMessages
-    , loadTrustedKeys, openDB, saveSetting
+    , loadTrustedKeys, openDB, openDBWithKey, saveSetting
     )
+import UmbraVox.Storage.Encryption
+    ( getOrCreateSalt, deriveStorageKey )
 import UmbraVox.App.Config
     ( AppConfig(..), ConnectionMode(..) )
 import UmbraVox.App.Types
@@ -229,10 +231,42 @@ restorePersistentStateAt cfg path =
         writeIORef (cfgDBEnabled cfg) False
         pure 0
 
+-- Finding: M1.1.3 — restorePersistentStateAtUnsafe opened the database with
+-- 'openDB', which stores no encryption key in the 'AnthonyDB' handle.  Even
+-- though 'Storage.Encryption' and the encrypted 'saveMessage'/'loadMessages'
+-- paths existed, the application never supplied a key at startup, so all
+-- production data was written and read as plaintext.
+--
+-- Vulnerability: At-rest encryption for message content and conversation names
+-- was fully implemented in the storage layer but never activated at the
+-- application level, making the feature a dead letter.  Any process with read
+-- access to the database file (backup, snooping daemon, offline disk access)
+-- could read all messages and peer names verbatim.
+--
+-- Fix: When the local identity key is available in 'cfgIdentity', derive a
+-- 'StorageKey' from the identity's Ed25519 secret and a per-install random
+-- salt (loaded or created by 'getOrCreateSalt').  Open the database with
+-- 'openDBWithKey' so that all subsequent reads and writes use AEAD encryption.
+-- When no identity is loaded (e.g. during isolated unit tests that seed the DB
+-- without an identity), fall back to 'openDB' to preserve backward
+-- compatibility.
+--
+-- Verified: Existing tests that use 'mkTestConfig' (cfgIdentity = Nothing) and
+-- 'seedPersistentDB' (openDB, plaintext) continue to pass via the fallback path.
+-- Production flow (initializeLocalIdentity → restorePersistentState) activates
+-- the encrypted path.
 restorePersistentStateAtUnsafe :: AppConfig -> FilePath -> IO Int
 restorePersistentStateAtUnsafe cfg path = do
     createDirectoryIfMissing True (takeDirectory path)
-    db <- openDB path
+    mIdentity <- readIORef (cfgIdentity cfg)
+    db <- case mIdentity of
+        Just ik -> do
+            let saltPath = path ++ ".salt"
+            salt <- getOrCreateSalt saltPath
+            let storageKey = deriveStorageKey salt (ikEd25519Secret ik)
+            openDBWithKey path storageKey
+        Nothing ->
+            openDB path
     writeIORef (cfgAnthonyDB cfg) (Just db)
     writeIORef (cfgDBEnabled cfg) True
     writeIORef (cfgPersistencePreference cfg) (Just True)
