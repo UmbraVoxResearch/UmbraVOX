@@ -56,17 +56,12 @@ let quarter_round a0 b0 c0 d0 =
 (** Quarter round test vector (RFC 8439 Section 2.1.1):
     Input:  (0x11111111, 0x01020304, 0x9b8d6f43, 0x01234567)
     Output: (0xea2a92f4, 0xcb1cf8ce, 0x4581472e, 0x5881c4bb) *)
-(* KAT: assert_norm attempted but fails — UInt32.add_mod, logxor, and rotate_left
-   are machine-integer primitives that F*'s built-in normalizer does not reduce
-   to concrete values (they require Z3 bitvector reasoning or norm [primops]).
-   norm [delta; iota; zeta; primops] was also attempted at z3rlimit 50000;
-   F* Error 19 "Assertion failed" results.  Retained as assume. *)
 val qr_test : unit ->
   Lemma (quarter_round 0x11111111ul 0x01020304ul 0x9b8d6f43ul 0x01234567ul
          = (0xea2a92f4ul, 0xcb1cf8ceul, 0x4581472eul, 0x5881c4bbul))
-let qr_test () =
-  assume (quarter_round 0x11111111ul 0x01020304ul 0x9b8d6f43ul 0x01234567ul
-          = (0xea2a92f4ul, 0xcb1cf8ceul, 0x4581472eul, 0x5881c4bbul))
+#push-options "--z3rlimit 50000"
+let qr_test () = ()
+#pop-options
 
 (** -------------------------------------------------------------------- **)
 (** Double round: column round + diagonal round                           **)
@@ -173,6 +168,7 @@ let le_uint32_to_bytes w =
     Each word contributes 4 bytes; total = 16 * 4 = 64.
     Built by explicitly appending each word's 4 bytes in order. *)
 val serialize_state : state -> Tot (s:seq UInt8.t{length s = block_size})
+#push-options "--z3rlimit 50000"
 let serialize_state (st : state) : (r:seq UInt8.t{length r = block_size}) =
   let w0  = le_uint32_to_bytes (index st  0) in
   let w1  = le_uint32_to_bytes (index st  1) in
@@ -206,10 +202,10 @@ let serialize_state (st : state) : (r:seq UInt8.t{length r = block_size}) =
                             (Seq.append w13
                               (Seq.append w14 w15)))))))))))))) in
   (* Each w_i has length 4; 16 words * 4 bytes = 64 = block_size.
-     F* cannot close this arithmetic goal automatically across the nested
-     appends without a custom lemma.  Asserted here; tracked for future proof. *)
-  assume (length r = block_size);
+     lemma_len_append fires via SMTPat for each Seq.append level;
+     Z3 resolves the 15-level chain of 4+4+...+4 = 64. *)
   r
+#pop-options
 
 (** Pointwise map2 over sequences of equal length.
     Defined concretely using Seq.init. *)
@@ -257,6 +253,7 @@ val chacha20_encrypt : key:seq UInt8.t{length key = key_size}
                     -> plaintext:seq UInt8.t
                     -> Tot (ct:seq UInt8.t{length ct = length plaintext})
                           (decreases (length plaintext))
+#push-options "--z3rlimit 50000"
 let rec chacha20_encrypt key nonce counter plaintext =
   if length plaintext = 0 then
     Seq.empty
@@ -268,15 +265,13 @@ let rec chacha20_encrypt key nonce counter plaintext =
       let blk = Seq.slice plaintext 0 block_size in
       let rest = Seq.slice plaintext block_size (length plaintext) in
       let enc_blk = xor_with_keystream blk ks in
-      (* TODO: Z3 cannot close the length arithmetic goal that
-         length enc_blk + length (recursive result) = length plaintext
-         without a custom sequence-concatenation lemma.  The recursive
-         structure is correct; the refinement is asserted here. *)
-      assume (length (Seq.append enc_blk
-               (chacha20_encrypt key nonce (UInt32.add_mod counter 1ul) rest))
-              = length plaintext);
+      (* lemma_len_append fires via SMTPat; length blk = block_size (from slice),
+         length rest = length plaintext - block_size (from slice),
+         length enc_blk = length blk (from xor_with_keystream refinement).
+         Z3 closes: block_size + (length plaintext - block_size) = length plaintext. *)
       Seq.append enc_blk
         (chacha20_encrypt key nonce (UInt32.add_mod counter 1ul) rest)
+#pop-options
 
 (** Encryption is its own inverse (XOR is involutory).
     TODO: This is a semantic property of the full cipher that requires

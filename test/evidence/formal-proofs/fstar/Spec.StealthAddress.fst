@@ -219,24 +219,24 @@ val scan_correctness
        | Some sa ->
          scan_for_payment scan_secret spend_pub sa.sa_ephemeral sa.sa_address = true)
 let scan_correctness eph_secret scan_secret spend_pub =
-  (* Proof sketch:
-     1. eph_public = x25519_base(eph_secret) by definition.
-     2. sender_S   = x25519(eph_secret, scan_pub)
-                   = x25519(eph_secret, x25519_base(scan_secret))
-     3. recip_S    = x25519(scan_secret, eph_public)
-                   = x25519(scan_secret, x25519_base(eph_secret))
-     4. By x25519_dh_comm: sender_S = recip_S.
-     5. Same S => same stealth_scalar s => same ed25519_derive_point s spend_pub.
-     6. scan_for_payment computes seq_eq expected candidate_p with
-        expected = ed25519_derive_point s spend_pub = sa.sa_address.
-     7. seq_eq_iff: seq_eq returns true iff sequences are equal.
-     Full proof requires unfolding derive_stealth_address and scan_for_payment. *)
-  assume (
-    let scan_pub = x25519_base scan_secret in
-    match derive_stealth_address eph_secret scan_pub spend_pub with
-    | None    -> True
-    | Some sa ->
-      scan_for_payment scan_secret spend_pub sa.sa_ephemeral sa.sa_address = true)
+  (* Structural proof:
+     1. Apply x25519_dh_comm eph_secret scan_secret to establish that
+        x25519 eph_secret (x25519_base scan_secret) = x25519 scan_secret (x25519_base eph_secret).
+     2. Unfold derive_stealth_address: in the Some branch, shared_secret is the result
+        of x25519 eph_secret scan_pub and sa.sa_ephemeral = x25519_base eph_secret.
+     3. In scan_for_payment, x25519 scan_secret sa.sa_ephemeral
+        = x25519 scan_secret (x25519_base eph_secret) = Some shared_secret (by dh_comm).
+     4. Both sides compute derive_stealth_scalar and ed25519_derive_point on shared_secret,
+        so expected = sa.sa_address.
+     5. seq_eq_iff gives seq_eq sa.sa_address sa.sa_address = true (reflexivity). *)
+  let scan_pub = x25519_base scan_secret in
+  x25519_dh_comm eph_secret scan_secret;
+  match x25519 eph_secret scan_pub with
+  | None -> ()
+  | Some shared_secret ->
+    seq_eq_iff
+      (ed25519_derive_point (derive_stealth_scalar shared_secret) spend_pub)
+      (ed25519_derive_point (derive_stealth_scalar shared_secret) spend_pub)
 
 (** -------------------------------------------------------------------- **)
 (** Unlinkability: two derivations produce different addresses           **)
@@ -305,17 +305,21 @@ val view_tag_match
            | Some shared_secret ->
                sa.sa_view_tag = derive_view_tag shared_secret)
 let view_tag_match eph_secret scan_secret spend_pub =
-  (* Proof: both sides compute derive_view_tag on the same shared secret S,
-     which is determined by DH commutativity (proven in scan_correctness). *)
-  assume (
-    let scan_pub = x25519_base scan_secret in
-    match derive_stealth_address eph_secret scan_pub spend_pub with
-    | None    -> True
-    | Some sa ->
-        match x25519 scan_secret sa.sa_ephemeral with
-        | None -> True
-        | Some shared_secret ->
-            sa.sa_view_tag = derive_view_tag shared_secret)
+  (* Structural proof:
+     1. Apply x25519_dh_comm to establish sender and recipient derive the same S.
+     2. In the derive_stealth_address Some branch:
+        - sa.sa_ephemeral = x25519_base eph_secret
+        - sa.sa_view_tag  = derive_view_tag shared_secret  (where shared_secret = x25519 eph_secret scan_pub)
+     3. x25519 scan_secret sa.sa_ephemeral
+        = x25519 scan_secret (x25519_base eph_secret)
+        = x25519 eph_secret (x25519_base scan_secret)   [by dh_comm]
+        = x25519 eph_secret scan_pub = Some shared_secret.
+     4. derive_view_tag shared_secret = derive_view_tag shared_secret (trivial equality). *)
+  let scan_pub = x25519_base scan_secret in
+  x25519_dh_comm eph_secret scan_secret;
+  match x25519 eph_secret scan_pub with
+  | None -> ()
+  | Some _shared_secret -> ()
 
 (** -------------------------------------------------------------------- **)
 (** Spending key derivation                                              **)

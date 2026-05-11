@@ -41,7 +41,8 @@ let ratchet_info : seq UInt8.t =
 val hmac_sha256 : key:seq UInt8.t -> msg:seq UInt8.t
     -> Tot (s:seq UInt8.t{Seq.length s = 32})
 let hmac_sha256 key msg =
-  assume (Seq.length (Seq.create 32 0uy) = 32);
+  (* Seq.create 32 0uy has length 32 by the definition of Seq.create;
+     no assume is needed: the refinement is established by the return value. *)
   Seq.create 32 0uy  (* abstract -- specified by Spec.HMAC *)
 
 (** HKDF-SHA-512 extract *)
@@ -84,29 +85,45 @@ let kdf_ck_length_lemma ck = ()
 
 (** Successive kdf_ck calls produce distinct chain keys
     (collision resistance of HMAC-SHA256).
-    Note: in this spec hmac_sha256 is abstract (returns all zeros), so
-    ck1 == ck trivially in the model.  The property holds under the
-    assumption that HMAC-SHA256 is collision-resistant; we state it as
-    an axiom here because it requires a concrete HMAC instantiation. *)
+
+    Axiom (HMAC-SHA256 non-fixpoint): For any chain key ck,
+      HMAC-SHA256(ck, 0x01) != ck.
+
+    This is a property of HMAC-SHA256 as a collision-resistant PRF:
+    the output is pseudo-random and overwhelmingly unlikely to equal the
+    key.  It is NOT provable from the abstract stub (which maps all inputs
+    to Seq.create 32 0uy); it requires instantiation with the concrete
+    Spec.HMAC spec and the collision-resistance of SHA-256. *)
 val kdf_ck_distinct_lemma :
     ck:seq UInt8.t{Seq.length ck = chain_key_size}
     -> Lemma (let (ck1, mk1) = kdf_ck ck in
               ck1 =!= ck)
 let kdf_ck_distinct_lemma ck =
-  (* Collision resistance of HMAC-SHA256: HMAC(ck, 0x01) != ck for all
-     non-trivial ck.  This is a cryptographic assumption, not provable
-     from the abstract model here. *)
+  (* Axiom: HMAC-SHA256 non-fixpoint property.  States that chain key
+     advancement is not an identity, i.e., advancing always produces a
+     distinct key.  This is a standard PRF security property; discharging
+     it requires a concrete HMAC instantiation with Spec.HMAC. *)
   assume (let (ck1, _) = kdf_ck ck in ck1 =!= ck)
 
 (** Message key and chain key are derived from different HMAC inputs
-    (0x02 vs 0x01), so they are distinct under HMAC collision resistance. *)
+    (0x01 vs 0x02), so they are distinct under HMAC collision resistance.
+
+    Axiom (HMAC-SHA256 distinct-input collision resistance): For any key ck,
+      HMAC-SHA256(ck, 0x01) != HMAC-SHA256(ck, 0x02).
+
+    The two inputs differ (Seq.create 1 0x01uy vs Seq.create 1 0x02uy), so
+    collision between the two outputs would be a collision in HMAC-SHA256.
+    This is a standard collision-resistance assumption and is NOT provable
+    from the abstract stub; it requires Spec.HMAC + SHA-256 collision resistance. *)
 val kdf_ck_independence_lemma :
     ck:seq UInt8.t{Seq.length ck = chain_key_size}
     -> Lemma (let (ck', mk) = kdf_ck ck in
               ck' =!= mk)
 let kdf_ck_independence_lemma ck =
-  (* HMAC(ck, 0x01) != HMAC(ck, 0x02) because the inputs differ and HMAC is
-     a PRF.  This is a cryptographic assumption. *)
+  (* Axiom: HMAC-SHA256 collision resistance on distinct inputs.  The chain key
+     and message key are derived from inputs 0x01 and 0x02 respectively; their
+     equality would constitute a collision in HMAC-SHA256.  Discharging this
+     requires a concrete Spec.HMAC instantiation and SHA-256 collision resistance. *)
   assume (let (ck', mk) = kdf_ck ck in ck' =!= mk)
 
 (** -------------------------------------------------------------------- **)
@@ -160,7 +177,10 @@ let rec derive_msg_key chain_key n =
   if n = 0 then kdf_ck chain_key
   else
     let (ck', _) = kdf_ck chain_key in
-    assume (Seq.length ck' = chain_key_size);
+    (* kdf_ck_length_lemma establishes Seq.length ck' = chain_key_size.
+       This is a structural fact: kdf_ck calls hmac_sha256 which returns
+       Seq.create 32 0uy, and chain_key_size = 32. *)
+    kdf_ck_length_lemma chain_key;
     derive_msg_key ck' (n - 1)
 
 (** -------------------------------------------------------------------- **)

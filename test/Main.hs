@@ -83,6 +83,7 @@ import qualified Test.Security.M11HighRemaining as M11HighRemaining
 import qualified Test.Security.M11HighSMFSIA as M11HighSMFSIA
 import qualified Test.Security.M11HighCrypto3 as M11HighCrypto3
 import qualified Test.Security.M11HighKM3 as M11HighKM3
+import qualified Test.Security.M11Final as M11Final
 import qualified Test.Security.Regression as Regression
 import qualified Test.Security.RegressionM7 as RegressionM7
 import qualified Test.Security.RegressionM8 as RegressionM8
@@ -214,6 +215,8 @@ runSuiteArg suiteArg =
             [Suite "m11-high-crypto3" M11HighCrypto3.runTests]
         "m11-high-km3" -> runSuiteGroup "UmbraVox M11 High-Priority Key Management and Impl Bug Suite (batch 3)"
             [Suite "m11-high-km3" M11HighKM3.runTests]
+        "m11-final" -> runSuiteGroup "UmbraVox M11 Final Unimplemented Attack Tests"
+            [Suite "m11-final" M11Final.runTests]
         "integrity" -> runSuiteGroup "UmbraVox Integrity Suite" integritySuites
         "soak" -> runSuiteGroup "UmbraVox Soak Suite" soakSuites
         "differential" -> runSuiteGroup "UmbraVox Differential C vs Haskell Suite"
@@ -334,6 +337,7 @@ coreSuites =
     , Suite "m11-high-smfsia" M11HighSMFSIA.runTests
     , Suite "m11-high-crypto3" M11HighCrypto3.runTests
     , Suite "m11-high-km3" M11HighKM3.runTests
+    , Suite "m11-final" M11Final.runTests
     ]
 
 coreCryptoSuites :: [Suite]
@@ -504,5 +508,5 @@ validSuiteArgs =
     , "m11-protocol", "m11-high", "m11-high-auth", "m11-noise-dh", "m11-high-fs", "m11-high-proto"
     , "m11-high-keyimpl", "m11-high-symhash", "m11-high-pq", "m11-high-pqhash", "m11-medium", "m11-high-sc2"
     , "m11-high-as2", "m11-high-remaining", "m11-high-smfsia", "m11-high-crypto3"
-    , "m11-high-km3", "all"
+    , "m11-high-km3", "m11-final", "all"
     ]
