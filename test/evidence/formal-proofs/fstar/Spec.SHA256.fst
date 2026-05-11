@@ -178,12 +178,20 @@ let mk_padded
   padded
 
 (** Pad a message per FIPS 180-4 Section 5.1.1.
-    Result length is a multiple of block_size (64). *)
-val pad : msg:seq UInt8.t
+    Result length is a multiple of block_size (64).
+    The precondition Seq.length msg < pow2 61 is a conservative bound ensuring
+    the 64-bit bit-length field (FIPS 180-4 section 5.1.1) does not overflow:
+    bit_len = len * 8 < pow2 61 * 8 = pow2 64. *)
+val pad : msg:seq UInt8.t{Seq.length msg < pow2 61}
        -> Tot (padded:seq UInt8.t{Seq.length padded % block_size = 0})
-let pad (msg : seq UInt8.t) : (padded:seq UInt8.t{Seq.length padded % block_size = 0}) =
+let pad (msg : seq UInt8.t{Seq.length msg < pow2 61})
+    : (padded:seq UInt8.t{Seq.length padded % block_size = 0}) =
   let len = Seq.length msg in
-  assume (len * 8 < pow2 64);
+  (* len < pow2 61, so len * 8 < (pow2 61) * 8 = pow2 61 * pow2 3 = pow2 64 *)
+  FStar.Math.Lemmas.lemma_mult_lt_right 8 len (pow2 61);
+  FStar.Math.Lemmas.pow2_plus 61 3;
+  assert_norm (pow2 3 = 8);
+  assert (len * 8 < pow2 64);
   let bit_len = FStar.UInt64.uint_to_t (len * 8) in
   let rem = len % block_size in
   if rem <= 55 then
@@ -592,9 +600,13 @@ let process_blocks (h : hash_state)
   assert_norm (Seq.length padded = blocks * block_size);
   process_blocks_count h padded blocks
 
-(** SHA-256: hash an arbitrary-length message to a 32-byte digest *)
-val sha256 : msg:seq UInt8.t -> Tot (digest:seq UInt8.t{Seq.length digest = hash_size})
-let sha256 (msg : seq UInt8.t) : (digest:seq UInt8.t{Seq.length digest = hash_size}) =
+(** SHA-256: hash an arbitrary-length message to a 32-byte digest.
+    The precondition msg < 2^61 bytes ensures the 64-bit bit-length
+    field in the padding does not overflow (FIPS 180-4 §5.1.1). *)
+val sha256 : msg:seq UInt8.t{Seq.length msg < pow2 61}
+          -> Tot (digest:seq UInt8.t{Seq.length digest = hash_size})
+let sha256 (msg : seq UInt8.t{Seq.length msg < pow2 61})
+    : (digest:seq UInt8.t{Seq.length digest = hash_size}) =
   let padded = pad msg in
   let final_hash = process_blocks init_hash padded in
   hash_to_bytes final_hash
@@ -604,15 +616,35 @@ let sha256 (msg : seq UInt8.t) : (digest:seq UInt8.t{Seq.length digest = hash_si
 (** -------------------------------------------------------------------- **)
 
 (** Padding output length is always a multiple of the block size *)
-val pad_length_lemma : msg:seq UInt8.t
+val pad_length_lemma : msg:seq UInt8.t{Seq.length msg < pow2 61}
     -> Lemma (Seq.length (pad msg) % block_size = 0)
 let pad_length_lemma msg = ()
 
 (** Padding always produces at least one block *)
-val pad_nonempty_lemma : msg:seq UInt8.t
+val pad_nonempty_lemma : msg:seq UInt8.t{Seq.length msg < pow2 61}
     -> Lemma (Seq.length (pad msg) >= block_size)
+#push-options "--z3rlimit 20000"
 let pad_nonempty_lemma msg =
-  assume (Seq.length (pad msg) >= block_size)
+  (* pad msg branches on rem = (Seq.length msg) % block_size:
+     - rem <= 55: length = len + 1 + (55 - rem) + 8 = len + 64 - rem.
+       Since rem = len % 64, len >= rem, so length >= rem + 64 - rem = 64.
+     - rem > 55: length = len + 1 + (119 - rem) + 8 = len + 128 - rem.
+       Since len >= rem, length >= 128 - rem + rem = 128 >= 64.
+     mk_padded carries the exact length in its refinement type. *)
+  let len = Seq.length msg in
+  let rem = len % block_size in
+  if rem <= 55 then begin
+    let zlen = 55 - rem in
+    FStar.Math.Lemmas.lemma_mod_lt len block_size;
+    assert (len >= rem);
+    assert (Seq.length (pad msg) = len + 1 + zlen + 8)
+  end else begin
+    let zlen = 119 - rem in
+    FStar.Math.Lemmas.lemma_mod_lt len block_size;
+    assert (len >= rem);
+    assert (Seq.length (pad msg) = len + 1 + zlen + 8)
+  end
+#pop-options
 
 (** The init_hash state has exactly 8 words *)
 val init_hash_length_lemma : unit
@@ -620,7 +652,7 @@ val init_hash_length_lemma : unit
 let init_hash_length_lemma () = ()
 
 (** Output of sha256 is always exactly hash_size (32) bytes *)
-val sha256_output_length : msg:seq UInt8.t
+val sha256_output_length : msg:seq UInt8.t{Seq.length msg < pow2 61}
     -> Lemma (Seq.length (sha256 msg) = hash_size)
 let sha256_output_length msg = ()
 
@@ -645,14 +677,17 @@ let expected_abc_digest : seq UInt8.t =
 let abc_input : seq UInt8.t =
   of_byte_list [0x61uy; 0x62uy; 0x63uy]  (* "abc" *)
 
+let _ = assert_norm (Seq.length abc_input = 3)
+let _ = assert_norm (Seq.length abc_input < pow2 61)
+
 val sha256_kat_abc : unit
     -> Lemma (sha256 abc_input == expected_abc_digest)
-(* KAT: assert_norm attempted at z3rlimit 50000; blocked because Spec.SHA256.pad
-   contains `assume (len * 8 < pow2 64)` which prevents full normalization.
-   Replacing that overflow assumption with a refinement-type bound would unblock
-   assert_norm here.  Until then, this KAT is axiomatically asserted. *)
+#push-options "--fuel 100 --ifuel 100 --z3rlimit 100000"
 let sha256_kat_abc () =
-  assume (sha256 abc_input == expected_abc_digest)
+  (* abc_input has 3 bytes, well below the pow2 61 bound.
+     assert_norm evaluates sha256 on the concrete input and checks the digest. *)
+  assert_norm (sha256 abc_input == expected_abc_digest)
+#pop-options
 
 (** KAT 2: SHA-256("")
     Expected: e3b0c442 98fc1c14 9afbf4c8 996fb924
@@ -665,11 +700,17 @@ let expected_empty_digest : seq UInt8.t =
     0xa4uy; 0x95uy; 0x99uy; 0x1buy; 0x78uy; 0x52uy; 0xb8uy; 0x55uy
   ]
 
+let empty_input : seq UInt8.t = Seq.empty
+let _ = assert_norm (Seq.length empty_input = 0)
+let _ = assert_norm (Seq.length empty_input < pow2 61)
+
 val sha256_kat_empty : unit
-    -> Lemma (sha256 Seq.empty == expected_empty_digest)
-(* KAT: assert_norm blocked — same pad overflow assume as sha256_kat_abc. *)
+    -> Lemma (sha256 empty_input == expected_empty_digest)
+#push-options "--fuel 100 --ifuel 100 --z3rlimit 100000"
 let sha256_kat_empty () =
-  assume (sha256 Seq.empty == expected_empty_digest)
+  (* empty_input has 0 bytes.  assert_norm evaluates sha256 on the empty string. *)
+  assert_norm (sha256 empty_input == expected_empty_digest)
+#pop-options
 
 (** KAT 3: SHA-256("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")
     Expected: 248d6a61 d20638b8 e5c02693 0c3e6039
@@ -693,13 +734,17 @@ let input_448bit : seq UInt8.t =
     0x6duy; 0x6euy; 0x6fuy; 0x70uy; 0x6euy; 0x6fuy; 0x70uy; 0x71uy
   ]
 
+let _ = assert_norm (Seq.length input_448bit = 56)
+let _ = assert_norm (Seq.length input_448bit < pow2 61)
+
 val sha256_kat_448bit : unit
     -> Lemma (sha256 input_448bit == expected_448bit_digest)
-(* KAT: assert_norm blocked — same pad overflow assume as sha256_kat_abc.
-   This is a two-block input (56 bytes padded to 128 bytes), so normalization
-   would also need process_blocks_count to recurse, further increasing cost. *)
+#push-options "--fuel 100 --ifuel 100 --z3rlimit 100000"
 let sha256_kat_448bit () =
-  assume (sha256 input_448bit == expected_448bit_digest)
+  (* input_448bit has 56 bytes (two-block padding path).
+     assert_norm evaluates the full two-block SHA-256 computation. *)
+  assert_norm (sha256 input_448bit == expected_448bit_digest)
+#pop-options
 
 (** -------------------------------------------------------------------- **)
 (** Structural properties                                                **)
@@ -757,12 +802,30 @@ let round_step_words_32bit wv kt wt i =
 val schedule_low_words_spec : block:seq UInt8.t{Seq.length block = block_size}
     -> t:nat{t < 16}
     -> Lemma (Seq.index (schedule block) t = be_bytes_to_uint32 block (4 * t))
-#push-options "--admit_smt_queries true"
+#push-options "--z3rlimit 40000"
 let schedule_low_words_spec block t =
-  (* The schedule function builds the first 16 words via
-     initial_schedule_prefix, which calls be_bytes_to_uint32 at 4*t.
-     Full equational unfolding is deferred to the SMT solver. *)
-  assume (Seq.index (schedule block) t = be_bytes_to_uint32 block (4 * t))
+  (* schedule block = schedule_prefix64 (schedule_prefix48 (schedule_prefix32 p16))
+     where p16 = initial_schedule_prefix block.
+     Each prefix-extension step only appends words; for t < 16 the index is
+     preserved through Seq.append/snoc operations.
+     initial_schedule_prefix = seq_of_list [be_bytes_to_uint32 block 0; ... 60].
+     lemma_seq_of_list_index gives the element at position t. *)
+  let p16 = initial_schedule_prefix block in
+  let l16 = [
+    be_bytes_to_uint32 block 0;  be_bytes_to_uint32 block 4;
+    be_bytes_to_uint32 block 8;  be_bytes_to_uint32 block 12;
+    be_bytes_to_uint32 block 16; be_bytes_to_uint32 block 20;
+    be_bytes_to_uint32 block 24; be_bytes_to_uint32 block 28;
+    be_bytes_to_uint32 block 32; be_bytes_to_uint32 block 36;
+    be_bytes_to_uint32 block 40; be_bytes_to_uint32 block 44;
+    be_bytes_to_uint32 block 48; be_bytes_to_uint32 block 52;
+    be_bytes_to_uint32 block 56; be_bytes_to_uint32 block 60
+  ] in
+  assert (p16 == Seq.seq_of_list l16);
+  FStar.Seq.Properties.lemma_seq_of_list_index l16 t;
+  (* Now: Seq.index p16 t = List.Tot.index l16 t = be_bytes_to_uint32 block (4*t).
+     The schedule extends p16 with Seq.snoc steps; for t < 16, Seq.index is preserved. *)
+  assert (Seq.index (schedule block) t = Seq.index p16 t)
 #pop-options
 
 (** Lemma 2b: Schedule words for t = 16..63 satisfy the recursive expansion
@@ -778,15 +841,21 @@ val schedule_high_words_spec : block:seq UInt8.t{Seq.length block = block_size}
              (UInt32.add_mod (ssig1 (Seq.index w (t - 2))) (Seq.index w (t - 7)))
              (UInt32.add_mod (ssig0 (Seq.index w (t - 15))) (Seq.index w (t - 16)))
        )
-#push-options "--admit_smt_queries true"
+#push-options "--z3rlimit 80000"
 let schedule_high_words_spec block t =
-  assume (
-    let w = schedule block in
-    Seq.index w t ==
-      UInt32.add_mod
-        (UInt32.add_mod (ssig1 (Seq.index w (t - 2))) (Seq.index w (t - 7)))
-        (UInt32.add_mod (ssig0 (Seq.index w (t - 15))) (Seq.index w (t - 16)))
-  )
+  (* The schedule is built by extend_schedule_prefix at each step.
+     At step t, the prefix has length t and its last element was added as
+     next_schedule_word prefix t.  The full schedule slice [0..t] equals the
+     partial prefix, so indices t-2, t-7, t-15, t-16 all fall in the prefix. *)
+  let p16 = initial_schedule_prefix block in
+  let p32 = schedule_prefix32 p16 in
+  let p48 = schedule_prefix48 p32 in
+  let p64 = schedule_prefix64 p48 in
+  let w = schedule block in
+  (* By construction: each element at index t (>= 16) of the full schedule
+     was added by next_schedule_word applied to the prefix of length t. *)
+  assert (Seq.length w = 64);
+  assert (w == p64)
 #pop-options
 
 (** Lemma 3: The compression function output at each index equals
