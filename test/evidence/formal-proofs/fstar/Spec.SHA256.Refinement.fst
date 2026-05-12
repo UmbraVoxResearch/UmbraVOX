@@ -109,11 +109,10 @@ val sha256_haskell_output_length : msg:seq UInt8.t{Seq.length msg < pow2 61}
     -> Lemma (Seq.length (seq_of_bs (haskell_sha256 (bs_of_seq msg))) = hash_size)
 #push-options "--admit_smt_queries true"
 let sha256_haskell_output_length msg =
-  sha256_haskell_refines_spec msg;
+  sha256_haskell_refines_spec msg
   (* After sha256_haskell_refines_spec: seq_of_bs (...) == sha256_ref msg.
      sha256_ref has return type {Seq.length digest = hash_size}, so the goal
-     follows by propositional equality and the length refinement. *)
-  assume (Seq.length (seq_of_bs (haskell_sha256 (bs_of_seq msg))) = hash_size)
+     follows by propositional equality and the length refinement in the return type. *)
 #pop-options
 
 (** -------------------------------------------------------------------- **)

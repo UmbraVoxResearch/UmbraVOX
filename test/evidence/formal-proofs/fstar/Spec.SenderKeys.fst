@@ -36,6 +36,12 @@ let chain_key_size   : nat = 32   (* 256-bit chain key *)
 let message_key_size : nat = 32   (* 256-bit message key *)
 let sender_id_size   : nat = 4    (* 32-bit sender iteration counter *)
 
+(** A bounded HMAC function that always produces chain_key_size-byte output.
+    This carries the length contract needed to remove assumes in advance_chain. *)
+type bounded_hmac_fn =
+    f:(seq UInt8.t -> seq UInt8.t -> seq UInt8.t)
+    {forall (k:seq UInt8.t) (m:seq UInt8.t). Seq.length (f k m) = chain_key_size}
+
 (** -------------------------------------------------------------------- **)
 (** Key derivation constants                                             **)
 (**                                                                       **)
@@ -78,12 +84,14 @@ let derive_next_ck hmac ck = hmac ck ck_info
 val derive_mk : hmac:hmac_fn -> ck:chain_key -> Tot (seq UInt8.t)
 let derive_mk hmac ck = hmac ck mk_info
 
-(** Advance the chain by one step: increment counter and rotate CK. *)
-val advance_chain : hmac:hmac_fn -> st:chain_state -> Tot chain_state
+(** Advance the chain by one step: increment counter and rotate CK.
+    Requires a bounded_hmac_fn so the length contract on the output
+    (exactly chain_key_size bytes) holds without assuming. *)
+val advance_chain : hmac:bounded_hmac_fn -> st:chain_state -> Tot chain_state
 let advance_chain hmac st =
-  (* TODO: requires tactic-based proof — Seq.length of HMAC output is
-     abstract; we assume it is 32 bytes as required by chain_key. *)
-  assume (Seq.length (derive_next_ck hmac st.ck) = chain_key_size);
+  (* derive_next_ck = hmac st.ck ck_info.
+     Since hmac : bounded_hmac_fn, the length contract gives
+     Seq.length (hmac st.ck ck_info) = chain_key_size, so no assume is needed. *)
   { ck = derive_next_ck hmac st.ck; iter = st.iter + 1 }
 
 (** -------------------------------------------------------------------- **)
@@ -96,7 +104,7 @@ let advance_chain hmac st =
 (** -------------------------------------------------------------------- **)
 
 (** The iteration counter strictly increases after each advance. *)
-val chain_iter_monotone : hmac:hmac_fn -> st:chain_state
+val chain_iter_monotone : hmac:bounded_hmac_fn -> st:chain_state
     -> Lemma ((advance_chain hmac st).iter = st.iter + 1)
 let chain_iter_monotone hmac st =
   (* Structural proof: advance_chain is defined as
@@ -106,13 +114,13 @@ let chain_iter_monotone hmac st =
   ()
 
 (** Apply the chain advance n times starting from state st. *)
-let rec n_advances (hmac:hmac_fn) (st:chain_state) (n:nat)
+let rec n_advances (hmac:bounded_hmac_fn) (st:chain_state) (n:nat)
     : Tot chain_state (decreases n) =
   if n = 0 then st
   else n_advances hmac (advance_chain hmac st) (n - 1)
 
 (** The iteration counter after n advances equals iter + n. *)
-let rec chain_iter_after_n (hmac:hmac_fn) (st:chain_state) (n:nat)
+let rec chain_iter_after_n (hmac:bounded_hmac_fn) (st:chain_state) (n:nat)
     : Lemma (ensures (n_advances hmac st n).iter = st.iter + n)
             (decreases n) =
   (* Structural inductive proof on n.
@@ -170,7 +178,7 @@ let mk_ck_domain_separation hmac ck = ()
 (** -------------------------------------------------------------------- **)
 
 (** The chain state after an advance has a well-formed iteration counter. *)
-val advance_iter_positive : hmac:hmac_fn -> st:chain_state
+val advance_iter_positive : hmac:bounded_hmac_fn -> st:chain_state
     -> Lemma ((advance_chain hmac st).iter > 0 \/ st.iter >= 0)
 let advance_iter_positive hmac st = ()
 

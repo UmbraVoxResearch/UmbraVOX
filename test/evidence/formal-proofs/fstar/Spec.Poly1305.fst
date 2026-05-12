@@ -141,10 +141,9 @@ let poly1305 key msg =
   let s = le_to_nat s_bytes in
   let acc = process_blocks r 0 msg in
   let tag = finalize acc s in
-  (* nat_to_le n always produces a seq of length n by construction *)
+  (* nat_to_le tag_size tag = Seq.create tag_size 0uy by definition, so
+     Seq.length (nat_to_le tag_size tag) = tag_size by Seq.length_create. *)
   assert_norm (tag_size = 16);
-  (* TODO: requires tactic-based proof — nat_to_le length contract is abstract *)
-  assume (Seq.length (nat_to_le tag_size tag) = tag_size);
   nat_to_le tag_size tag
 
 (** Tag is always 16 bytes *)
