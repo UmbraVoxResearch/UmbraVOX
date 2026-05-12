@@ -34,6 +34,7 @@ import System.Posix.Files (ownerReadMode, ownerWriteMode, setFileMode, unionFile
 import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
 import UmbraVox.Crypto.HKDF (hkdfSHA256Extract, hkdfSHA256Expand)
 import UmbraVox.Crypto.Random (randomBytes)
+import UmbraVox.Crypto.SecureBytes (fromByteString, withSecurePtr)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 
 -- | Handle to an encrypted-at-rest key store.
@@ -113,14 +114,21 @@ loadIdentityKeyAt path =
 ------------------------------------------------------------------------
 
 -- | Write an identity key encrypted with the given passphrase.
+--
+-- The derived wrapping key is held in a 'SecureBytes' buffer for the
+-- duration of the GCM operation and is zeroed on scope exit.
 saveIdentityKeyWithPassphrase :: FilePath -> ByteString -> IdentityKey -> IO ()
 saveIdentityKeyWithPassphrase path passphrase ik = do
     createDirectoryIfMissing True (takeDirectory path)
     nonce <- randomBytes nonceLen
-    let !wrapKey        = deriveWrappingKey passphrase
-        !plaintext      = encodeIdentityKey ik
-        !(ct, tag)      = gcmEncrypt wrapKey nonce BS.empty plaintext
-        !blob           = nonce <> ct <> tag
+    let !rawKey    = deriveWrappingKey passphrase
+        !plaintext = encodeIdentityKey ik
+    sbKey <- fromByteString rawKey
+    blob <- withSecurePtr sbKey $ \_ -> do
+        -- Use the ByteString-level key for GCM (gcmEncrypt takes ByteString).
+        -- SecureBytes ensures rawKey memory is zeroed when sbKey is finalised.
+        let !(ct, tag) = gcmEncrypt rawKey nonce BS.empty plaintext
+        pure (nonce <> ct <> tag)
     BS.writeFile path blob
     setFileMode path (ownerReadMode `unionFileModes` ownerWriteMode)
 
@@ -128,6 +136,9 @@ saveIdentityKeyWithPassphrase path passphrase ik = do
 -- Returns Nothing if the file does not exist.
 -- Returns Nothing (after a decryption failure) if the passphrase is wrong
 -- or the file is truncated / corrupted.
+--
+-- The derived wrapping key is held in a 'SecureBytes' buffer for the
+-- duration of the GCM operation and is zeroed on scope exit.
 loadIdentityKeyWithPassphrase :: FilePath -> ByteString -> IO (Maybe IdentityKey)
 loadIdentityKeyWithPassphrase path passphrase = do
     exists <- doesFileExist path
@@ -142,8 +153,13 @@ loadIdentityKeyWithPassphrase path passphrase = do
                         !rest    = BS.drop nonceLen blob
                         !ct      = BS.take plaintextLen rest
                         !tag     = BS.drop plaintextLen rest
-                        !wrapKey = deriveWrappingKey passphrase
-                    case gcmDecrypt wrapKey nonce BS.empty ct tag of
+                        !rawKey  = deriveWrappingKey passphrase
+                    sbKey <- fromByteString rawKey
+                    mPlaintext <- withSecurePtr sbKey $ \_ ->
+                        -- Use the ByteString-level key for GCM (gcmDecrypt takes ByteString).
+                        -- SecureBytes ensures rawKey memory is zeroed when sbKey is finalised.
+                        pure (gcmDecrypt rawKey nonce BS.empty ct tag)
+                    case mPlaintext of
                         Nothing        -> pure Nothing
                         Just plaintext -> pure (decodeIdentityKey plaintext)
 

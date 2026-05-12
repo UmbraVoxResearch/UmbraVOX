@@ -60,6 +60,39 @@ val pad_to_16_length : bs:seq UInt8.t
     -> Lemma (Seq.length (pad_to_16 bs) % 16 = 0)
 let pad_to_16_length bs = ()
 
+(** Helper: appending two sequences whose lengths are both multiples of n
+    yields a sequence whose length is also a multiple of n. *)
+val append_mod_lemma : n:pos -> a:seq UInt8.t -> b:seq UInt8.t
+    -> Lemma (requires Seq.length a % n = 0 /\ Seq.length b % n = 0)
+             (ensures  (Seq.length (Seq.append a b)) % n = 0)
+let append_mod_lemma n a b =
+  (* Seq.length (append a b) = Seq.length a + Seq.length b by FStar.Seq.Base.
+     Since both are multiples of n, their sum is also a multiple of n:
+     (k1 * n + k2 * n) % n = (k1 + k2) * n % n = 0. Z3 arithmetic closes this. *)
+  Seq.lemma_len_append a b
+
+(** Helper: the GCM GHASH input has length divisible by 16.
+    ghash_input = pad_to_16(aad) ++ pad_to_16(ct) ++ be64(len_a) ++ be64(len_c)
+    Each of the four pieces has length % 16 = 0 (the last two together = 16).
+    This lemma is used to discharge the two assume (... % 16 = 0) calls in
+    gcm_encrypt and gcm_decrypt. *)
+val ghash_input_mod16 :
+    aad_padded:seq UInt8.t{Seq.length aad_padded % 16 = 0}
+    -> ct_padded:seq UInt8.t{Seq.length ct_padded % 16 = 0}
+    -> len_a_bytes:seq UInt8.t{Seq.length len_a_bytes = 8}
+    -> len_c_bytes:seq UInt8.t{Seq.length len_c_bytes = 8}
+    -> Lemma (
+        Seq.length (Seq.append aad_padded
+                     (Seq.append ct_padded
+                       (Seq.append len_a_bytes len_c_bytes))) % 16 = 0)
+let ghash_input_mod16 aad_padded ct_padded len_a_bytes len_c_bytes =
+  (* len_a_bytes ++ len_c_bytes has length 8+8 = 16, which is 0 mod 16. *)
+  Seq.lemma_len_append len_a_bytes len_c_bytes;
+  (* ct_padded ++ (len_a_bytes ++ len_c_bytes): both parts are 0 mod 16. *)
+  Seq.lemma_len_append ct_padded (Seq.append len_a_bytes len_c_bytes);
+  (* aad_padded ++ (...): both parts are 0 mod 16. *)
+  Seq.lemma_len_append aad_padded (Seq.append ct_padded (Seq.append len_a_bytes len_c_bytes))
+
 (** Split a byte sequence into 16-byte blocks (last may be shorter) *)
 let rec split_blocks (bs : seq UInt8.t)
     : Tot (list (seq UInt8.t)) (decreases (Seq.length bs)) =
@@ -371,17 +404,11 @@ let gcm_encrypt (encrypt : aes_encrypt_fn_full)
                       (Seq.append (pad_to_16 ct)
                         (Seq.append (uint64_to_be_bytes len_a)
                                     (uint64_to_be_bytes len_c))) in
-  (* pad_to_16 now has return refinement % 16 = 0, and uint64_to_be_bytes
-     returns 8 bytes (length 8).  Length calculation:
-       Seq.length (pad_to_16 aad) % 16 = 0  (by return type)
-       Seq.length (pad_to_16 ct)  % 16 = 0  (by return type)
-       Seq.length (uint64_to_be_bytes len_a) = 8
-       Seq.length (uint64_to_be_bytes len_c) = 8
-       8 + 8 = 16, which is a multiple of 16.
-       Appending two multiples-of-16 sequences yields a multiple of 16.
-     TODO: Z3 still cannot close this chain without Seq.length_append
-     lemma calls.  The arithmetic is trivially correct; needs a helper. *)
-  assume (Seq.length ghash_input % 16 = 0);
+  (* Discharge the divisibility by 16 using the ghash_input_mod16 helper.
+     pad_to_16 aad and pad_to_16 ct have length % 16 = 0 by their return types.
+     uint64_to_be_bytes len_a and len_c each have length = 8. *)
+  ghash_input_mod16 (pad_to_16 aad) (pad_to_16 ct)
+                    (uint64_to_be_bytes len_a) (uint64_to_be_bytes len_c);
   (* Step 5: S = GHASH_H(ghash_input) *)
   let s = ghash h ghash_input in
   (* Step 6: T = MSB_t(GCTR_K(J0, S)) *)
@@ -433,13 +460,9 @@ let gcm_decrypt (encrypt : aes_encrypt_fn_full)
                       (Seq.append (pad_to_16 ct)
                         (Seq.append (uint64_to_be_bytes len_a)
                                     (uint64_to_be_bytes len_c))) in
-  (* TODO: pad_to_16 now has a refined return type (% 16 = 0), and
-     uint64_to_be_bytes returns 8 bytes.  The full ghash_input divisibility
-     follows from: Seq.length (append a (append b (append c d))) % 16 = 0
-     when length a % 16 = 0, length b % 16 = 0, and length c + length d = 16.
-     Requires a short Seq.length_append chain lemma.  Retained as assume
-     until that helper lemma is added. *)
-  assume (Seq.length ghash_input % 16 = 0);
+  (* Discharge the divisibility by 16 using the ghash_input_mod16 helper. *)
+  ghash_input_mod16 (pad_to_16 aad) (pad_to_16 ct)
+                    (uint64_to_be_bytes len_a) (uint64_to_be_bytes len_c);
   let s = ghash h ghash_input in
   let s_bytes = Spec.GaloisField.gf_to_bs s in
   let encrypted_s : (r:seq UInt8.t{Seq.length r = 16}) = encrypt j0 in

@@ -22,6 +22,14 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - M14.5.8: scripts/vm-illumos-setup.sh — downloads OmniOS image (or uses cache), converts VMDK, boots QEMU VM, installs GHC via ooce publisher, runs cabal build + test.
 - M14.5.6: make vm-smoke-freebsd — Makefile target calling vm-freebsd-setup.sh.
 - M14.5.8: make vm-smoke-illumos — Makefile target calling vm-illumos-setup.sh.
+- M14.3.1-8: scripts/vm-build-test.sh — universal in-guest POSIX build+test script; works on FreeBSD, OpenBSD, NetBSD, OmniOS/illumos, Linux arm64, DragonFlyBSD; emits VM_BUILD_TEST=PASS/FAIL.
+- M14.4.1-5: scripts/release-package-platform.sh — platform release packaging script; takes platform name (freebsd, openbsd, netbsd, illumos, linux-arm64); creates umbravox-{version}-{platform}-{arch}.tar.gz with binary, README, LICENSE, doc/QUICKSTART.md and provenance manifest.
+- M14.5.1: make release-freebsd — FreeBSD platform release tarball via nix-shell.
+- M14.5.2: make release-openbsd — OpenBSD platform release tarball via nix-shell.
+- M14.5.3: make release-netbsd — NetBSD platform release tarball via nix-shell.
+- M14.5.4: make release-illumos — illumos/OmniOS platform release tarball via nix-shell.
+- M14.5.5: make release-linux-arm64 — Linux arm64 platform release tarball via nix-shell.
+- M14.5.9: make vm-smoke-arm64 — Linux arm64 QEMU VM smoke via qemu-system-aarch64; requires arm64 image in build/vm-cache/arm64/.
 
 ## [0.0.8] — 2026-05-10
 

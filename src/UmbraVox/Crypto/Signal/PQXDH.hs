@@ -86,11 +86,19 @@ pqxdhInfo = BS.pack (map (fromIntegral . fromEnum) "UmbraVox_PQXDH_v1")
 --
 -- The SHA256(pq_ct) binding ensures both parties committed to the same
 -- PQ ciphertext, preventing substitution attacks on the KEM exchange.
+--
+-- SecureBytes migration (M15.3.3): the @pq_ss@ argument is the raw ML-KEM
+-- shared secret — the most sensitive intermediate value in PQXDH.  Once
+-- 'mlkemEncaps' / 'mlkemDecaps' can return their shared secret wrapped in
+-- 'UmbraVox.Crypto.SecureBytes.SecureBytes', this function should accept
+-- @SecureBytes@ for @pq_ss@ (and for the DH outputs) and zero them
+-- immediately after HKDF expansion.  Coordinate this with the MLKEM module.
 derivePQSecret :: ByteString   -- ^ dh1
                -> ByteString   -- ^ dh2
                -> ByteString   -- ^ dh3
                -> Maybe ByteString  -- ^ dh4 (optional)
                -> ByteString   -- ^ pq_ss (ML-KEM shared secret)
+                               -- TODO(M15.3): accept SecureBytes here (see note above)
                -> MLKEMCiphertext  -- ^ pq_ct (ML-KEM ciphertext, hashed into ikm)
                -> ByteString   -- ^ Initiator (Alice) X25519 identity public key
                -> ByteString   -- ^ Responder (Bob) X25519 identity public key

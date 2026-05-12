@@ -49,6 +49,11 @@
 #   make release-macos-terminal - Build a macOS terminal source release tarball
 #   make release-bsd-terminal - Build a BSD terminal source release tarball
 #   make release-freedos - Build a FreeDOS research/source release zip
+#   make release-freebsd - Build a FreeBSD platform release tarball (M14.4.1)
+#   make release-openbsd - Build an OpenBSD platform release tarball (M14.4.2)
+#   make release-netbsd  - Build a NetBSD platform release tarball (M14.4.3)
+#   make release-illumos - Build an illumos/OmniOS platform release tarball (M14.4.4)
+#   make release-linux-arm64 - Build a Linux arm64 platform release tarball (M14.4.5)
 #   make release      - Build all release artifacts
 #   make platform-lane-qemu - Run the QEMU release-lane host prerequisite script
 #   make platform-lane-firecracker - Run the Firecracker release-lane host prerequisite script
@@ -67,7 +72,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity vm-smoke vm-image-build vm-image-clean image-clean firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly clean cleandb cleanall help
+.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 sanity vm-smoke vm-image-build vm-image-clean image-clean firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -188,6 +193,11 @@ help:
 	@echo "    make release-macos-terminal Build macOS terminal source release tarball"
 	@echo "    make release-bsd-terminal Build BSD terminal source release tarball"
 	@echo "    make release-freedos Build FreeDOS research/source release zip"
+	@echo "    make release-freebsd Build FreeBSD platform release tarball (M14.4.1)"
+	@echo "    make release-openbsd Build OpenBSD platform release tarball (M14.4.2)"
+	@echo "    make release-netbsd  Build NetBSD platform release tarball (M14.4.3)"
+	@echo "    make release-illumos Build illumos/OmniOS platform release tarball (M14.4.4)"
+	@echo "    make release-linux-arm64 Build Linux arm64 platform release tarball (M14.4.5)"
 	@echo "    make release     Build all release artifacts"
 	@echo ""
 	@echo "  Quality Gates:"
@@ -225,6 +235,7 @@ help:
 	@echo "    make vm-smoke-openbsd Run OpenBSD 7.x QEMU VM smoke (M14.2.2)"
 	@echo "    make vm-smoke-netbsd Run NetBSD 10.x QEMU VM smoke (M14.2.3)"
 	@echo "    make vm-smoke-dragonfly Run DragonFlyBSD 6.x QEMU VM smoke (M14.2.4, INFO if GHC unavailable)"
+	@echo "    make vm-smoke-arm64     Run Linux arm64 QEMU VM smoke via qemu-system-aarch64 (M14.5.9)"
 	@echo ""
 	@echo "  Maintenance:"
 	@echo "    make clean       Remove build artifacts + build/ + dist-newstyle"
@@ -734,6 +745,73 @@ release-bsd-terminal:
 release-freedos:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Building FreeDOS research/source release..."
 	@./scripts/release-package.sh freedos
+
+# --------------------------------------------------------------------------
+# Platform Release Packaging (M14.4.1-5)
+# --------------------------------------------------------------------------
+
+release-freebsd:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Building FreeBSD platform release tarball (M14.4.1)..."
+	@chmod +x ./scripts/release-package-platform.sh
+	@nix-shell --run "./scripts/release-package-platform.sh freebsd"
+
+release-openbsd:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Building OpenBSD platform release tarball (M14.4.2)..."
+	@chmod +x ./scripts/release-package-platform.sh
+	@nix-shell --run "./scripts/release-package-platform.sh openbsd"
+
+release-netbsd:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Building NetBSD platform release tarball (M14.4.3)..."
+	@chmod +x ./scripts/release-package-platform.sh
+	@nix-shell --run "./scripts/release-package-platform.sh netbsd"
+
+release-illumos:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Building illumos/OmniOS platform release tarball (M14.4.4)..."
+	@chmod +x ./scripts/release-package-platform.sh
+	@nix-shell --run "./scripts/release-package-platform.sh illumos"
+
+release-linux-arm64:
+	@echo -e "$(BLUE)[RELEASE]$(NC) Building Linux arm64 platform release tarball (M14.4.5)..."
+	@chmod +x ./scripts/release-package-platform.sh
+	@nix-shell --run "./scripts/release-package-platform.sh linux-arm64"
+
+# --------------------------------------------------------------------------
+# Linux arm64 VM Smoke (M14.5.9)
+# --------------------------------------------------------------------------
+
+vm-smoke-arm64:
+	@echo -e "$(BLUE)[VM-ARM64]$(NC) Running Linux arm64 QEMU VM smoke (M14.5.9)..."
+	@echo -e "$(YELLOW)[VM-ARM64]$(NC) NOTE: requires qemu-system-aarch64 and an aarch64 NixOS image."
+	@echo -e "$(YELLOW)[VM-ARM64]$(NC) Image: nix build .#vm-image-aarch64 (requires aarch64 builder or binfmt_misc)."
+	@chmod +x ./scripts/vm-build-test.sh
+	@nix-shell --run "\
+		ARCH_IMAGE=\$$(find build/vm-cache/arm64 -name '*.img' -o -name '*.qcow2' 2>/dev/null | head -1); \
+		if [ -z \"\$$ARCH_IMAGE\" ]; then \
+			echo '[VM-ARM64] No arm64 image found under build/vm-cache/arm64/'; \
+			echo '[VM-ARM64] Build with: nix build .#vm-image-aarch64'; \
+			echo '[VM-ARM64] Then copy the result to build/vm-cache/arm64/'; \
+			exit 1; \
+		fi; \
+		echo '[VM-ARM64] Image: '\"\$$ARCH_IMAGE\"; \
+		qemu-system-aarch64 \
+			-machine virt \
+			-cpu cortex-a72 \
+			-m 2048 \
+			-smp 2 \
+			-nographic \
+			-drive if=virtio,format=raw,file=\"\$$ARCH_IMAGE\" \
+			-netdev user,id=net0 \
+			-device virtio-net-pci,netdev=net0 \
+			-kernel \"\$$(find build/vm-cache/arm64 -name 'bzImage' -o -name 'Image' 2>/dev/null | head -1)\" \
+			-append 'console=ttyAMA0 root=/dev/vda panic=1' \
+			-serial mon:stdio \
+		2>&1 | tee build/vm-cache/arm64/smoke.log; \
+		if grep -q 'VM_BUILD_TEST=PASS' build/vm-cache/arm64/smoke.log 2>/dev/null; then \
+			echo '[VM-ARM64] arm64 smoke: PASS'; \
+		else \
+			echo '[VM-ARM64] arm64 smoke: FAIL'; \
+			exit 1; \
+		fi"
 
 # --------------------------------------------------------------------------
 # Quality Gate (all checks)

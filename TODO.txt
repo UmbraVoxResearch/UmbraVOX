@@ -934,7 +934,8 @@ MILESTONE M14: PLATFORM EXPANSION — VM RUNNERS + ILLUMOS + BSDs
   [ ] M14.2.7 nix/vm-openindiana.nix — OpenIndiana QEMU image with GHC + deps.
   [ ] M14.2.8 nix/vm-linux-arm64.nix — Linux aarch64 QEMU image.
 
-[ ] M14.3 Build + test verification per platform
+[~] M14.3 Build + test verification per platform
+  Note: scripts/vm-build-test.sh created as universal in-guest build+test script (M14.3.1-8 scaffold).
   [ ] M14.3.1 FreeBSD: cabal build + test pass in VM.
   [ ] M14.3.2 OpenBSD: cabal build + test pass in VM.
   [ ] M14.3.3 NetBSD: cabal build + test pass in VM.
@@ -944,23 +945,24 @@ MILESTONE M14: PLATFORM EXPANSION — VM RUNNERS + ILLUMOS + BSDs
   [ ] M14.3.7 OpenIndiana: cabal build + test pass in VM.
   [ ] M14.3.8 Linux arm64: cabal build + test pass in VM.
 
-[ ] M14.4 Release packaging per platform
-  [ ] M14.4.1 FreeBSD release tarball (scripts/release-package.sh freebsd).
+[~] M14.4 Release packaging per platform
+  Note: scripts/release-package-platform.sh created; tarball contents and manifest wired (M14.4.1-5 scaffold).
+  [ ] M14.4.1 FreeBSD release tarball (scripts/release-package-platform.sh freebsd).
   [ ] M14.4.2 OpenBSD release tarball.
   [ ] M14.4.3 NetBSD release tarball.
   [ ] M14.4.4 OmniOS/illumos release tarball.
   [ ] M14.4.5 Linux arm64 release tarball.
 
-[ ] M14.5 Makefile targets
-  [ ] M14.5.1 make release-freebsd — FreeBSD source+binary release.
-  [ ] M14.5.2 make release-openbsd — OpenBSD source release.
-  [ ] M14.5.3 make release-netbsd — NetBSD source release.
-  [ ] M14.5.4 make release-illumos — illumos (OmniOS/SmartOS/OpenIndiana) source release.
-  [ ] M14.5.5 make release-linux-arm64 — Linux arm64 release.
+[~] M14.5 Makefile targets
+  [x] M14.5.1 make release-freebsd — FreeBSD source+binary release.
+  [x] M14.5.2 make release-openbsd — OpenBSD source release.
+  [x] M14.5.3 make release-netbsd — NetBSD source release.
+  [x] M14.5.4 make release-illumos — illumos (OmniOS/SmartOS/OpenIndiana) source release.
+  [x] M14.5.5 make release-linux-arm64 — Linux arm64 release.
   [x] M14.5.6 make vm-smoke-freebsd — FreeBSD VM smoke test.
   [ ] M14.5.7 make vm-smoke-openbsd — OpenBSD VM smoke test.
   [x] M14.5.8 make vm-smoke-illumos — illumos VM smoke test.
-  [ ] M14.5.9 make vm-smoke-arm64 — Linux arm64 VM smoke test.
+  [x] M14.5.9 make vm-smoke-arm64 — Linux arm64 VM smoke test (scaffold; requires arm64 image).
 
 [ ] M14.6 WebAssembly target
   [ ] M14.6.1 GHC WASM backend (ghc-wasm) build configuration.

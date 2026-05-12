@@ -68,17 +68,34 @@ data RatchetError
 ------------------------------------------------------------------------
 
 -- | Full Double Ratchet state for one party.
+--
+-- SecureBytes migration (M15.3.3): the following fields hold live key
+-- material and should eventually be wrapped in 'UmbraVox.Crypto.SecureBytes.SecureBytes'
+-- so that their memory is zeroed when the ratchet state is discarded:
+--
+--   * 'rsDHSend' — the fst (X25519 secret) half of the sending DH keypair.
+--   * 'rsRootKey' — the 32-byte root key.
+--   * 'rsSendChain' — the 32-byte sending chain key.
+--   * 'rsRecvChain' — the 32-byte receiving chain key.
+--
+-- Changing these fields requires updating 'RatchetPersist' serialisation,
+-- the @Map@ key type for 'rsSkippedKeys', and every pattern-match site —
+-- treat this as a coordinated refactor, not a drop-in replacement.
 data RatchetState = RatchetState
     { rsDHSend      :: !(ByteString, ByteString)
       -- ^ (secret, public) X25519 sending keypair
+      -- TODO(M15.3): wrap the secret half in SecureBytes (see module note above)
     , rsDHRecv      :: !(Maybe ByteString)
       -- ^ Peer's current X25519 public key (Nothing before first message)
     , rsRootKey     :: !ByteString
       -- ^ 32-byte root key
+      -- TODO(M15.3): wrap in SecureBytes (see module note above)
     , rsSendChain   :: !ByteString
       -- ^ 32-byte sending chain key
+      -- TODO(M15.3): wrap in SecureBytes (see module note above)
     , rsRecvChain   :: !ByteString
       -- ^ 32-byte receiving chain key
+      -- TODO(M15.3): wrap in SecureBytes (see module note above)
     , rsSendN       :: !Word32
       -- ^ Sending message counter
     , rsRecvN       :: !Word32

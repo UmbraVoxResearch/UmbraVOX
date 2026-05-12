@@ -33,10 +33,25 @@ data KeyPair = KeyPair
     }
 
 -- | An identity key bundle: Ed25519 keypair for signing, X25519 keypair for DH.
+--
+-- SecureBytes migration (M15.3.3): both secret fields hold long-lived identity
+-- key material and should eventually be wrapped in
+-- 'UmbraVox.Crypto.SecureBytes.SecureBytes' so that their memory is zeroed
+-- when the bundle is discarded:
+--
+--   * 'ikEd25519Secret' — Ed25519 secret scalar used in signing.
+--   * 'ikX25519Secret'  — X25519 secret scalar used in DH (x3dhInitiate / x3dhRespond).
+--
+-- These fields are also persisted via 'UmbraVox.Crypto.KeyStore' (which already
+-- wraps the derived wrapping key in SecureBytes as of M15.3.2) and are
+-- referenced throughout the Signal protocol — coordinate the migration with
+-- PQXDH, DoubleRatchet, and KeyStore before changing field types.
 data IdentityKey = IdentityKey
     { ikEd25519Secret :: !ByteString  -- ^ 32-byte Ed25519 secret key
+                                      -- TODO(M15.3): wrap in SecureBytes (see module note above)
     , ikEd25519Public :: !ByteString  -- ^ 32-byte Ed25519 public key
     , ikX25519Secret  :: !ByteString  -- ^ 32-byte X25519 secret key
+                                      -- TODO(M15.3): wrap in SecureBytes (see module note above)
     , ikX25519Public  :: !ByteString  -- ^ 32-byte X25519 public key
     }
 
