@@ -39,10 +39,23 @@ import UmbraVox.Crypto.SHA512 (sha512)
 ------------------------------------------------------------------------
 
 -- | Stealth meta-address: scan keypair (X25519) + spend keypair (Ed25519).
+--
+-- SecureBytes migration (M15.3.3): the following fields hold live secret key
+-- material and should eventually be wrapped in 'UmbraVox.Crypto.SecureBytes.SecureBytes'
+-- so that their memory is zeroed when the key bundle is discarded:
+--
+--   * 'skScanSecret'  — 32-byte X25519 secret (used in 'scanForPayment').
+--   * 'skSpendSecret' — 32-byte Ed25519 seed   (used to derive spend keys).
+--
+-- Both fields participate in 'deriving stock Show', which would expose raw
+-- secret bytes; that derivation should also be removed or replaced with a
+-- redacted instance when the migration is done.
 data StealthKeys = StealthKeys
     { skScanSecret  :: !ByteString  -- ^ 32 bytes, X25519 secret
+                                    -- TODO(M15.3): wrap in SecureBytes (see module note above)
     , skScanPublic  :: !ByteString  -- ^ 32 bytes, X25519 public
     , skSpendSecret :: !ByteString  -- ^ 32 bytes, Ed25519 secret (seed)
+                                    -- TODO(M15.3): wrap in SecureBytes (see module note above)
     , skSpendPublic :: !ByteString  -- ^ 32 bytes, Ed25519 public
     } deriving stock (Show)
 

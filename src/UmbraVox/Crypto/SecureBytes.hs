@@ -6,16 +6,14 @@
 -- This is a best-effort defence against key material persisting on the heap
 -- after a value is no longer referenced.
 --
--- == Limitation: not @explicit_bzero@
+-- == Secure zeroing via C FFI
 --
--- The zeroing finalizer uses 'pokeByteOff' in a strict loop.  GHC may
--- legally elide writes to memory it determines is dead after the last live
--- use of the 'ForeignPtr', so this approach does NOT provide the same
--- guarantee as @explicit_bzero(3)@ (Linux) or @SecureZeroMemory@ (Windows),
--- which are specifically designed to resist dead-store elimination.
--- Production deployments that require strong erasure guarantees must replace
--- the finalizer body with an FFI call to one of those platform functions.
--- That work is tracked as a known limitation in @doc/CRYPTO-SAFETY.md@ §4.
+-- The zeroing finalizer calls 'c_secure_zero', a C helper that writes zeros
+-- through a @volatile@ pointer.  A compiler is not permitted to remove writes
+-- through a @volatile@ pointer even when it proves the memory is dead after
+-- the call, so this provides the same dead-store-elimination resistance as
+-- @explicit_bzero(3)@ (Linux) or @SecureZeroMemory@ (Windows) on platforms
+-- that do not expose those extensions.  See @csrc/secure_zero.c@.
 module UmbraVox.Crypto.SecureBytes
     ( SecureBytes
     , newSecureBytes
@@ -30,10 +28,22 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Word (Word8)
 import qualified Foreign.Concurrent as FC
+import Foreign.C.Types (CSize(..))
 import Foreign.ForeignPtr (ForeignPtr, withForeignPtr)
 import Foreign.Marshal.Alloc (free, mallocBytes)
+import Foreign.Marshal.Utils (copyBytes)
 import Foreign.Ptr (Ptr, castPtr)
-import Foreign.Storable (pokeByteOff)
+
+------------------------------------------------------------------------
+-- C FFI
+------------------------------------------------------------------------
+
+-- | C helper that zeros @len@ bytes at @ptr@ via a volatile write loop.
+-- The volatile writes cannot be optimised away by the C compiler, giving
+-- the same dead-store-elimination resistance as @explicit_bzero(3)@.
+-- Implemented in @csrc/secure_zero.c@.
+foreign import ccall "umbravox_secure_zero"
+    c_secure_zero :: Ptr Word8 -> CSize -> IO ()
 
 ------------------------------------------------------------------------
 -- Type
@@ -61,12 +71,12 @@ data SecureBytes = SecureBytes
 newSecureBytes :: Int -> IO SecureBytes
 newSecureBytes n = do
     p  <- mallocBytes n :: IO (Ptr Word8)
-    -- Zero the freshly-allocated buffer.
-    zeroPtr p n
+    -- Zero the freshly-allocated buffer via the C volatile write loop.
+    c_secure_zero p (fromIntegral n)
     -- Attach a finalizer that zeros the buffer again and then frees it.
     -- Foreign.Concurrent.newForeignPtr takes a plain IO () action, unlike the
     -- Foreign.ForeignPtr variant which requires a C-level FunPtr.
-    fp <- FC.newForeignPtr p (zeroPtr p n >> free p)
+    fp <- FC.newForeignPtr p (c_secure_zero p (fromIntegral n) >> free p)
     pure (SecureBytes fp n)
 
 -- | Wrap an existing 'ByteString' into a 'SecureBytes'.
@@ -77,8 +87,9 @@ fromByteString :: ByteString -> IO SecureBytes
 fromByteString bs = do
     let len = BS.length bs
     sb <- newSecureBytes len
-    withForeignPtr (_sbPtr sb) $ \p ->
-        mapM_ (\i -> pokeByteOff p i (BS.index bs i)) [0 .. len - 1]
+    BS.useAsCStringLen bs $ \(src, _) ->
+        withForeignPtr (_sbPtr sb) $ \dst ->
+            copyBytes dst (castPtr src) len
     pure sb
 
 -- | Copy the contents of a 'SecureBytes' into a regular 'ByteString'.
@@ -107,20 +118,9 @@ withSecurePtr (SecureBytes fp _) = withForeignPtr fp
 -- After 'zeroAndFree' the 'SecureBytes' value must not be used.
 zeroAndFree :: SecureBytes -> IO ()
 zeroAndFree (SecureBytes fp len) =
-    withForeignPtr fp $ \p -> zeroPtr p len
+    withForeignPtr fp $ \p -> c_secure_zero p (fromIntegral len)
 
 -- | Return the length of the buffer in bytes.
 secureBytesLength :: SecureBytes -> Int
 secureBytesLength = _sbLen
 
-------------------------------------------------------------------------
--- Internal helpers
-------------------------------------------------------------------------
-
--- | Write zero to each byte in the range @[p, p+n)@.
---
--- Uses 'mapM_' over a strict list so each write is forced in order,
--- reducing (but not eliminating) the chance that the optimiser elides them.
--- See the module note on @explicit_bzero@ for the production upgrade path.
-zeroPtr :: Ptr Word8 -> Int -> IO ()
-zeroPtr p n = mapM_ (\i -> pokeByteOff p i (0 :: Word8)) [0 .. n - 1]
