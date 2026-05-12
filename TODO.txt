@@ -870,12 +870,91 @@ CAT-12: IDENTITY AND AUTHENTICATION ATTACKS (MITM, impersonation, trust model)
 [x] IA-020  Noise IK initiator trust bypass: verify initiator checks responder static key against trust store (M7.4.2). [Critical]
 
 ================================================================================
-OUTSIDE MVP (DEFERRED)
+MILESTONE M14: PLATFORM EXPANSION — VM RUNNERS + ILLUMOS + BSDs
 ================================================================================
 
-[!] Platform runner evidence (needs hardware)
-  [ ] M3.1.1.b Linux x86_64 dedicated runner evidence.
-  [ ] M3.1.2 Linux arm64 native runner lane.
+[ ] M14.1 VM runner infrastructure
+  [ ] M14.1.1 QEMU VM runner for Linux x86_64 (dedicated evidence from VM smoke).
+  [ ] M14.1.2 QEMU VM runner for Linux arm64 (aarch64 emulation via qemu-system-aarch64).
+  [ ] M14.1.3 QEMU VM runner for FreeBSD x86_64.
+  [ ] M14.1.4 QEMU VM runner for OpenBSD x86_64.
+  [ ] M14.1.5 QEMU VM runner for NetBSD x86_64.
+  [ ] M14.1.6 QEMU VM runner for DragonFlyBSD x86_64.
+  [ ] M14.1.7 QEMU VM runner for OmniOS (illumos) x86_64.
+  [ ] M14.1.8 QEMU VM runner for SmartOS (illumos) x86_64.
+  [ ] M14.1.9 QEMU VM runner for OpenIndiana (illumos) x86_64.
+
+[ ] M14.2 Nix VM images per platform
+  [ ] M14.2.1 nix/vm-freebsd.nix — FreeBSD QEMU image with GHC + deps.
+  [ ] M14.2.2 nix/vm-openbsd.nix — OpenBSD QEMU image with GHC + deps.
+  [ ] M14.2.3 nix/vm-netbsd.nix — NetBSD QEMU image with GHC + deps.
+  [ ] M14.2.4 nix/vm-dragonfly.nix — DragonFlyBSD QEMU image with GHC + deps.
+  [ ] M14.2.5 nix/vm-omnios.nix — OmniOS QEMU image with GHC + deps.
+  [ ] M14.2.6 nix/vm-smartos.nix — SmartOS QEMU image with GHC + deps.
+  [ ] M14.2.7 nix/vm-openindiana.nix — OpenIndiana QEMU image with GHC + deps.
+  [ ] M14.2.8 nix/vm-linux-arm64.nix — Linux aarch64 QEMU image.
+
+[ ] M14.3 Build + test verification per platform
+  [ ] M14.3.1 FreeBSD: cabal build + test pass in VM.
+  [ ] M14.3.2 OpenBSD: cabal build + test pass in VM.
+  [ ] M14.3.3 NetBSD: cabal build + test pass in VM.
+  [ ] M14.3.4 DragonFlyBSD: cabal build + test pass in VM.
+  [ ] M14.3.5 OmniOS: cabal build + test pass in VM.
+  [ ] M14.3.6 SmartOS: cabal build + test pass in VM.
+  [ ] M14.3.7 OpenIndiana: cabal build + test pass in VM.
+  [ ] M14.3.8 Linux arm64: cabal build + test pass in VM.
+
+[ ] M14.4 Release packaging per platform
+  [ ] M14.4.1 FreeBSD release tarball (scripts/release-package.sh freebsd).
+  [ ] M14.4.2 OpenBSD release tarball.
+  [ ] M14.4.3 NetBSD release tarball.
+  [ ] M14.4.4 OmniOS/illumos release tarball.
+  [ ] M14.4.5 Linux arm64 release tarball.
+
+[ ] M14.5 Makefile targets
+  [ ] M14.5.1 make release-freebsd — FreeBSD source+binary release.
+  [ ] M14.5.2 make release-openbsd — OpenBSD source release.
+  [ ] M14.5.3 make release-netbsd — NetBSD source release.
+  [ ] M14.5.4 make release-illumos — illumos (OmniOS/SmartOS/OpenIndiana) source release.
+  [ ] M14.5.5 make release-linux-arm64 — Linux arm64 release.
+  [ ] M14.5.6 make vm-smoke-freebsd — FreeBSD VM smoke test.
+  [ ] M14.5.7 make vm-smoke-openbsd — OpenBSD VM smoke test.
+  [ ] M14.5.8 make vm-smoke-illumos — illumos VM smoke test.
+  [ ] M14.5.9 make vm-smoke-arm64 — Linux arm64 VM smoke test.
+
+[ ] M14.6 WebAssembly target
+  [ ] M14.6.1 GHC WASM backend (ghc-wasm) build configuration.
+  [ ] M14.6.2 Compile UmbraVox core library to WASM (crypto + protocol, no network/TUI).
+  [ ] M14.6.3 WASM test harness: run crypto test suite in wasmtime/wasmer.
+  [ ] M14.6.4 Browser integration scaffold: wasm-bindgen or JS FFI wrapper.
+  [ ] M14.6.5 WASM release artifact: umbravox-core.wasm + JS glue.
+  [ ] M14.6.6 Size budget: target < 2MB for core WASM module.
+
+[ ] M14.7 Multi-architecture support
+  [ ] M14.7.1 Linux x86_64 (native — primary).
+  [ ] M14.7.2 Linux aarch64/arm64 (QEMU emulation or cross-compile).
+  [ ] M14.7.3 Linux riscv64 (QEMU emulation).
+  [ ] M14.7.4 Linux ppc64le (QEMU emulation).
+  [ ] M14.7.5 Linux s390x (QEMU emulation, if GHC supports).
+  [ ] M14.7.6 FreeBSD amd64 + aarch64.
+  [ ] M14.7.7 OpenBSD amd64 + arm64.
+  [ ] M14.7.8 NetBSD amd64 + aarch64 + sparc64 (if GHC supports).
+  [ ] M14.7.9 illumos amd64 (OmniOS/SmartOS/OpenIndiana — x86_64 only currently).
+  [ ] M14.7.10 macOS x86_64 + aarch64 (Apple Silicon).
+  [ ] M14.7.11 Windows x86_64 + aarch64 (WoA).
+
+[ ] M14.8 Platform compatibility
+  [ ] M14.8.1 Audit codebase for Linux-specific syscalls (epoll, inotify, etc.).
+  [ ] M14.8.2 Replace System.Posix.Files with cross-platform alternatives where possible.
+  [ ] M14.8.3 Conditional compilation for platform-specific code (#ifdef).
+  [ ] M14.8.4 Test network stack differences (kqueue vs epoll vs /dev/poll).
+  [ ] M14.8.5 Verify mDNS works on BSD/illumos (multicast group join differences).
+  [ ] M14.8.6 Verify POSIX signal handling on illumos (SIGWINCH, etc.).
+  [ ] M14.8.7 Test terminal handling differences (terminfo/termcap on BSD/illumos).
+
+================================================================================
+OUTSIDE MVP (DEFERRED)
+================================================================================
 
 [!] Provenance signing and attestation (needs policy)
   [ ] M4.2.2 Sign manifest/checksums.
