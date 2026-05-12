@@ -54,8 +54,14 @@ val pad16_length_mod : bs:seq UInt8.t
     -> Lemma (Seq.length (pad16 bs) % 16 = 0)
 let pad16_length_mod bs = ()
 
-(** Encode a natural number as 8 bytes little-endian. *)
-assume val le64 : nat -> Tot (s:seq UInt8.t{Seq.length s = 8})
+(** Encode a natural number as 8 bytes little-endian.
+    Matches the le64 helper in buildPolyMsg in ChaChaPoly.hs.
+    Seq.init 8 f has length 8 by the Seq.init refinement type. *)
+let le64 (n : nat) : (s:seq UInt8.t{Seq.length s = 8}) =
+  let byte_at (i : nat{i < 8}) : UInt8.t =
+    FStar.UInt8.uint_to_t ((n / pow2 (8 * i)) % 256)
+  in
+  Seq.init 8 (fun i -> byte_at i)
 
 (** Build the Poly1305 input message per RFC 8439 §2.8.1. *)
 val build_poly_msg : aad:seq UInt8.t -> ct:seq UInt8.t -> Tot (seq UInt8.t)
