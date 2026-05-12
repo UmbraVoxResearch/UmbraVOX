@@ -90,8 +90,8 @@ testF4OpensPrefs = do
 testF5NoOp :: IO Bool
 testF5NoOp = do
     st <- mkTestState; handleNormal st KeyF5
-    m <- readIORef (asMenuOpen st)
-    assertEq "F5 no-op" Nothing m
+    dlg <- readIORef (asDialogMode st)
+    assertEq "F5 opens regen key dialog" True (dlg == Just DlgRegenKey)
 
 testUnknownKeyNoOp :: IO Bool
 testUnknownKeyNoOp = do

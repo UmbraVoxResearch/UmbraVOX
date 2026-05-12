@@ -523,7 +523,7 @@ let gcm_encrypt_tag_length encrypt key nonce aad pt =
 val constant_eq_correct :
     a:seq UInt8.t
     -> b:seq UInt8.t{Seq.length b = Seq.length a}
-    -> Lemma (constant_eq a b == (a == b))
+    -> Lemma ((constant_eq a b = true) <==> (a == b))
 let constant_eq_correct a b =
   (* Proof sketch:
      (=>) constant_eq a b = true means the fold accumulator stayed 0,
@@ -536,7 +536,7 @@ let constant_eq_correct a b =
      with the loop invariant that go i acc = 0 iff a[0..i) == b[0..i).
      This is a standard but non-trivial bit-vector induction in F*.
      Stated as assume pending the UInt8 loop invariant proof. *)
-  assume (constant_eq a b == (a == b))
+  assume ((constant_eq a b = true) <==> (a == b))
 
 (** Sub-lemma: gcm_encrypt and gcm_decrypt compute the same GHASH tag.
     When encrypt/nonce/aad/ct are fixed, both functions compute

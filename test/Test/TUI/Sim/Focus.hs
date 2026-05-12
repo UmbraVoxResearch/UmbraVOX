@@ -35,12 +35,12 @@ testTabChatToContact = do
     st <- mkTestState; writeIORef (asFocus st) ChatPane
     handleNormal st KeyTab
     f <- readIORef (asFocus st)
-    assertEq "tab: chat -> contact" ContactPane f
+    assertEq "tab: chat -> identity" IdentityPane f
 
 testTabRoundtrip :: IO Bool
 testTabRoundtrip = do
     st <- mkTestState
-    handleNormal st KeyTab >> handleNormal st KeyTab
+    handleNormal st KeyTab >> handleNormal st KeyTab >> handleNormal st KeyTab
     f <- readIORef (asFocus st)
     assertEq "tab roundtrip" ContactPane f
 

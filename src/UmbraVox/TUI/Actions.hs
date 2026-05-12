@@ -5,7 +5,7 @@ module UmbraVox.TUI.Actions
     , module UmbraVox.TUI.Actions.Export
       -- * Dialog openers
     , startNewConn, showHelp, showAbout, startSettings, startBrowse
-    , startVerify, startKeysView
+    , startVerify, startKeysView, openRegenKeyDialog, regenIdentityKey
       -- * Contact management
     , renameContact, selectLast, adjustContactScroll
       -- * App lifecycle
@@ -60,6 +60,21 @@ startKeysView st = do
             ik <- genIdentity
             writeIORef (cfgIdentity (asConfig st)) (Just ik)
         Just _  -> pure ()
+
+openRegenKeyDialog :: AppState -> IO ()
+openRegenKeyDialog st = do
+    writeIORef (asRegenCheckbox st) False
+    applyRuntimeEvents st [EventSetDialog (Just DlgRegenKey)]
+
+regenIdentityKey :: AppState -> IO ()
+regenIdentityKey st = do
+    ik <- genIdentity
+    writeIORef (cfgIdentity (asConfig st)) (Just ik)
+    -- Clear all existing sessions since the old identity is gone
+    writeIORef (cfgSessions (asConfig st)) mempty
+    writeIORef (asDialogMode st) Nothing
+    writeIORef (asRegenCheckbox st) False
+    setStatus st "Identity regenerated. All sessions cleared."
 
 -- Contact management ------------------------------------------------------
 

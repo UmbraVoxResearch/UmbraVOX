@@ -18,9 +18,12 @@ import UmbraVox.TUI.Layout (clampSize, sizeValid, calcLayout)
 import UmbraVox.TUI.Text (displayWidth, trimToWidth)
 import UmbraVox.TUI.Dialog (showOverlay, renderHelpOverlay, renderAboutOverlay, renderKeysOverlay,
     renderSettingsOverlay, renderNewConnOverlay, renderVerifyOverlay,
-    renderBrowseOverlay, renderPromptOverlay, renderDropdown,
+    renderBrowseOverlay, renderPromptOverlay, renderRegenKeyOverlay, renderDropdown,
     helpOverlayLines, aboutOverlayLines, newConnOverlayLines, keysOverlayLines,
-    verifyOverlayLines, promptOverlayLines, settingsOverlayLines, browseOverlayLines)
+    verifyOverlayLines, promptOverlayLines, settingsOverlayLines, browseOverlayLines,
+    regenKeyOverlayLines)
+import UmbraVox.Protocol.QRCode (generateSafetyNumber, renderFingerprint, generateQRCode, renderQRCode)
+import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 import UmbraVox.Version (versionFull)
 
 -- | Prefix check — used by Actions.hs for input parsing.
@@ -91,6 +94,37 @@ renderContactCell lay entries sel focus cScroll row = do
         putStr cell; resetSGR
     else putStr (replicate (lw - 2) ' ')
 
+-- | Build the lines for the inline identity panel given an optional IdentityKey.
+-- Returns exactly 'identityH - 1' content lines (the separator row is drawn separately).
+identityPanelLines :: Layout -> Maybe IdentityKey -> Pane -> [String]
+identityPanelLines lay mIk focus =
+    let innerW = lLeftW lay - 2
+        btnText = "[ Regenerate (F5) ]"
+        btnPad = padR innerW btnText
+        noIdLines = padR innerW "No identity yet." : replicate (lIdentityH lay - 2) (replicate innerW ' ')
+    in case mIk of
+        Nothing -> noIdLines
+        Just ik ->
+            let x25519Lns = renderFingerprint (ikX25519Public ik)
+                ed25519Lns = renderFingerprint (ikEd25519Public ik)
+                safetyNum = generateSafetyNumber (ikX25519Public ik) (ikX25519Public ik)
+                qrLns = renderQRCode (generateQRCode safetyNum)
+                labelStyle lbl = padR innerW lbl
+                keyLines =
+                    [ labelStyle "X25519:" ]
+                    ++ map (padR innerW) x25519Lns
+                    ++ [ labelStyle "Ed25519:" ]
+                    ++ map (padR innerW) ed25519Lns
+                    ++ [ replicate innerW ' ' ]
+                    ++ map (padR innerW) qrLns
+                    ++ [ replicate innerW ' ' ]
+                    ++ [ (if focus == IdentityPane then btnPad else padR innerW btnText) ]
+                -- pad or trim to fit available height
+                available = lIdentityH lay - 1
+                trimmed = take available keyLines
+                padded = trimmed ++ replicate (available - length trimmed) (replicate innerW ' ')
+            in padded
+
 -- | Render one content row: left contact + divider + right chat
 renderPaneRow :: Layout -> [(SessionId, SessionInfo)] -> Maybe SessionInfo
               -> Int -> Pane -> Int -> Int -> Int -> IO ()
@@ -101,8 +135,11 @@ renderPaneRow lay entries selSi sel focus scroll' cScroll row = do
     goto contentRow 1
     -- Left border
     setFg 36; putStr "\x2502"; resetSGR
-    -- Contact cell
-    renderContactCell lay entries sel focus cScroll row
+    -- Contact cell (only in the contacts area — rows above the identity panel)
+    let contactsH = chatH' - lIdentityH lay
+    if row < contactsH
+        then renderContactCell lay entries sel focus cScroll row
+        else putStr (replicate (lLeftW lay - 2) ' ')
     -- Divider
     setFg 36; putStr "\x2502"; resetSGR
     -- Chat message
@@ -117,6 +154,32 @@ renderPaneRow lay entries selSi sel focus scroll' cScroll row = do
     putStr (padR (rw - 1) msg)
     -- Right border
     setFg 36; putStr "\x2502"; resetSGR
+
+-- | Render the identity panel separator and content rows, left side only.
+-- Called after renderPaneRow has already drawn all content rows (the right
+-- pane chat messages in those rows are preserved).
+renderIdentityPanel :: Layout -> AppState -> Maybe IdentityKey -> IO ()
+renderIdentityPanel lay st mIk = do
+    focus <- readIORef (asFocus st)
+    let lw = lLeftW lay
+        chatH' = lChatH lay
+        contactsH = chatH' - lIdentityH lay
+        sepRow = contactsH + 2  -- +2 because row 1 = menu, content starts at row 2
+        innerW = lw - 2
+        panelLines = identityPanelLines lay mIk focus
+    -- Separator between contacts and identity panel (left side only)
+    goto sepRow 1; setFg 36
+    putStr $ "\x251C" ++ replicate innerW '\x2500' ++ "\x253C"
+    resetSGR
+    -- Identity panel content rows (left side only)
+    forM_ (zip [0..] panelLines) $ \(i, line) -> do
+        let panelRow = sepRow + 1 + i
+        goto panelRow 1
+        setFg 36; putStr "\x2502"; resetSGR
+        let isBtnLine = padR innerW "[ Regenerate (F5) ]" == line
+        when (focus == IdentityPane && isBtnLine) $ bold >> setFg 32
+        putStr line; resetSGR
+        goto panelRow (lw); setFg 36; putStr "\x2502"; resetSGR
 
 -- | Mid-border separator between content and input row
 renderMidBorder :: Layout -> Int -> IO ()
@@ -206,6 +269,8 @@ render st = do
         dlgBuf <- readIORef (asDialogBuf st)
         browsePage <- readIORef (asBrowsePage st)
         browseFilter <- readIORef (asBrowseFilter st)
+        mIk <- readIORef (cfgIdentity (asConfig st))
+        regenCb <- readIORef (asRegenCheckbox st)
         dialogToken <- case dlg of
             Just DlgHelp -> pure helpOverlayLines
             Just DlgAbout -> pure aboutOverlayLines
@@ -214,6 +279,7 @@ render st = do
             Just DlgNewConn -> pure newConnOverlayLines
             Just DlgKeys -> keysOverlayLines st
             Just DlgBrowse -> browseOverlayLines st
+            Just DlgRegenKey -> regenKeyOverlayLines regenCb
             Just (DlgPrompt title _) -> pure (promptOverlayLines title dlgBuf)
             Nothing -> pure []
         let entries = Map.toList sessions
@@ -221,13 +287,15 @@ render st = do
             selSi = if sel >= 0 && sel < length entries
                     then Map.lookup (fst (entries !! sel)) sessions else Nothing
             nSessions = length entries
+            identityToken = maybe "nokey" (\ik -> show (ikX25519Public ik)) mIk
         sessionTokens <- mapM sessionRenderToken entries
         let token =
                 "ok|" ++ show rows ++ "|" ++ show cols ++ "|" ++ show focus ++ "|"
                 ++ show sel ++ "|" ++ show scroll ++ "|" ++ show cScroll ++ "|"
                 ++ show mOpen ++ "|" ++ show menuIdx ++ "|" ++ show dlg ++ "|"
                 ++ show browsePage ++ "|" ++ browseFilter ++ "|" ++ buf ++ "|" ++ dlgBuf ++ "|"
-                ++ status ++ "|" ++ show dialogToken ++ "|" ++ show sessionTokens
+                ++ status ++ "|" ++ show dialogToken ++ "|" ++ show sessionTokens ++ "|"
+                ++ identityToken ++ "|" ++ show regenCb
         when (lastToken /= Just token) $ do
             writeIORef (asLastRenderToken st) (Just token)
             goto 1 1
@@ -236,6 +304,9 @@ render st = do
             -- Rows 2..chatH'+1: content rows (contacts + chat)
             forM_ [0..chatH'-1] $ \row ->
                 renderPaneRow lay entries selSi sel focus scroll cScroll row
+            -- Identity panel (left side of the bottom lIdentityH rows)
+            when (lIdentityH lay > 0) $
+                renderIdentityPanel lay st mIk
             -- Separator
             renderMidBorder lay chatH'
             -- Input row
@@ -257,6 +328,7 @@ render st = do
                 Just DlgNewConn  -> renderNewConnOverlay lay
                 Just DlgVerify   -> renderVerifyOverlay lay st
                 Just DlgBrowse   -> renderBrowseOverlay lay st
+                Just DlgRegenKey -> renderRegenKeyOverlay lay st
                 Just (DlgPrompt title _) ->
                     renderPromptOverlay lay title dlgBuf
                 Nothing -> pure ()

@@ -11,6 +11,7 @@ module UmbraVox.TUI.Dialog
     , renderSettingsOverlay, renderKeysOverlay, renderBrowseOverlay
     , keysOverlayLines, verifyOverlayLines, promptOverlayLines
     , settingsOverlayLines, browseOverlayLines
+    , regenKeyOverlayLines, renderRegenKeyOverlay
     , renderPromptOverlay
     , renderDropdown
     ) where
@@ -33,10 +34,11 @@ import UmbraVox.Network.ProviderCatalog
     , renderProviderEndpoint, tpClass, tpName
     )
 import UmbraVox.Network.ProviderRuntime (activeRuntimeProvider)
+import qualified UmbraVox.Version
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Terminal (goto, setFg, resetSGR, bold, padR, csi)
 import UmbraVox.TUI.Layout (dropdownCol)
-import UmbraVox.TUI.Constants (maxOverlayW, overlayMinMargin, minDropdownW)
+import UmbraVox.TUI.Constants (maxOverlayW, minDropdownW)
 import UmbraVox.TUI.PaginatedList (slicePage, psItems, psPage, psTotalPages)
 import UmbraVox.TUI.Text (displayWidth, trimToWidth)
 import UmbraVox.Protocol.QRCode (generateSafetyNumber, renderSafetyNumber,
@@ -51,14 +53,12 @@ import qualified Data.ByteString as BS
 -- Overlays ----------------------------------------------------------------
 overlayBounds :: Layout -> Int -> (Int, Int, Int, Int)
 overlayBounds lay lineCount =
-    let chatLeft = lLeftW lay + 1
-        chatWidth = max 20 (lRightW lay - 1)
-        chatTop = 2
-        chatHeight = max 6 (lRows lay - 2)
-        w = max 20 (min maxOverlayW (chatWidth - overlayMinMargin))
-        h = lineCount + 2
-        r0 = max chatTop (chatTop + ((chatHeight - h) `div` 2))
-        c0 = max chatLeft (chatLeft + ((chatWidth - w) `div` 2))
+    let cols = lCols lay
+        rows = lRows lay
+        w = min (cols - 4) maxOverlayW
+        h = min (rows - 4) (lineCount + 4)
+        r0 = max 1 ((rows - h) `div` 2)
+        c0 = max 1 ((cols - w) `div` 2)
     in (r0, c0, w, h)
 
 overlayCloseBounds :: Layout -> Int -> (Int, Int, Int)
@@ -133,36 +133,46 @@ settingsTabLabels
 
 showOverlay :: Layout -> String -> [String] -> IO ()
 showOverlay lay title lns = do
-    let (r0, c0, w, _) = overlayBounds lay (length lns)
+    let (r0, c0, w, h) = overlayBounds lay (length lns)
         innerW = w - 2
+        -- Title in top border: ┌─ Title ──────────┐
         closeText = "[X]"
-        titleText = " " ++ trimToWidth (max 0 (innerW - displayWidth closeText - 1)) title
-        top = "\x2554" ++ titleText
-              ++ replicate (max 0 (innerW - displayWidth titleText - displayWidth closeText)) '\x2550'
-              ++ closeText ++ "\x2557"
-        bot = "\x255A" ++ replicate innerW '\x2550' ++ "\x255D"
-        ovRows = map (\l -> "\x2551 " ++ padR (w - 3) l ++ "\x2551") lns
+        titleSeg = "\x2500 " ++ title ++ " "
+        fillLen = max 0 (innerW - displayWidth titleSeg - displayWidth closeText)
+        top = "\x250C" ++ titleSeg
+              ++ replicate fillLen '\x2500'
+              ++ closeText ++ "\x2510"
+        bot = "\x2514" ++ replicate innerW '\x2500' ++ "\x2518"
+        -- Pad content lines to fit the dialog, trimming if needed
+        contentH = h - 2  -- rows available for content (inside top/bottom borders)
+        padded = take contentH (lns ++ repeat "")
+        ovRows = map (\l -> "\x2502 " ++ padR (innerW - 1) (trimToWidth (innerW - 1) l) ++ "\x2502") padded
     forM_ (zip [0..] (top : ovRows ++ [bot])) $ \(i,line) ->
         goto (r0+i) c0 >> setFg 36 >> bold >> putStr line >> resetSGR
     hFlush stdout
 
 helpOverlayLines :: [String]
 helpOverlayLines =
-    [ "Navigation:"
-    , "  Tab         Switch pane (Contacts/Chat)"
-    , "  Up/Down     Navigate / scroll"
-    , "  Enter       Send message / select"
-    , "  Esc         Close dialog / menu"
+    [ " Navigation"
+    , "   Tab              Switch focus: Contacts pane / Chat pane"
+    , "   Up / Down        Move selection or scroll messages"
+    , "   PgUp / PgDn      Scroll chat history one screen at a time"
+    , "   Enter            Send message (Chat pane) / open session (Contacts pane)"
+    , "   Backspace        Delete last character in input"
+    , "   Esc              Close dialog, dismiss menu, or clear input"
     , ""
-    , "Menus:"
-    , "  F1 Help     F2 Contacts   F3 Chat"
-    , "  F4 Prefs    Q Quit"
-    , "  Arrow keys to navigate, Enter to select"
+    , " Menu bar  (F-keys or underlined letter)"
+    , "   F1 / H           Help overlay (this screen)"
+    , "   F2 / C           Contacts menu  (new session, browse peers, verify)"
+    , "   F3 / T           Chat menu  (session info, export, clear)"
+    , "   F4 / P           Preferences / settings overlay"
+    , "   Q                Quit UmbraVOX"
+    , "   Left / Right     Navigate open menu items"
     , ""
-    , "Shortcuts:"
-    , "  Ctrl+N  New connection"
-    , "  Ctrl+G  Group chat"
-    , "  Ctrl+Q  Quit"
+    , " Keyboard shortcuts"
+    , "   Ctrl+N           Start a new connection"
+    , "   Ctrl+G           Open group chat"
+    , "   Ctrl+Q           Quit immediately"
     , ""
     , "[ Close ]" ]
 
@@ -171,26 +181,202 @@ renderHelpOverlay lay = showOverlay lay "Help" helpOverlayLines
 
 aboutOverlayLines :: [String]
 aboutOverlayLines =
-    [ " UmbraVOX"
-    , " Post-Quantum Encrypted Messaging"
+    [ " UmbraVOX  \x2014  Post-Quantum Encrypted Messaging"
+    , " " ++ UmbraVox.Version.versionFull
     , ""
-    , " Research-oriented encrypted messaging MVP"
+    , " Copyright (c) 2026 Cyanitol and the UmbraVOX contributors"
     , ""
-    , " License"
-    , "   Apache License"
-    , "   Version 2.0, January 2004"
-    , "   See LICENSE for full terms"
+    , " Research-oriented encrypted messaging MVP featuring:"
+    , "   \x2022  Signal Double Ratchet + ML-KEM-768 post-quantum key encapsulation"
+    , "   \x2022  X3DH key agreement with Ed25519 / X25519 identity keys"
+    , "   \x2022  Pluggable transport providers (direct, overlay, bridge)"
+    , "   \x2022  Optional ephemeral-only mode  \x2014  no on-disk persistence"
     , ""
+    ] ++ apacheLicenseLines ++
+    [ ""
     , "[ Close ]" ]
+
+-- | Full Apache 2.0 license text for display in the About overlay.
+apacheLicenseLines :: [String]
+apacheLicenseLines =
+    [ "                          Apache License"
+    , "                    Version 2.0, January 2004"
+    , "                 http://www.apache.org/licenses/"
+    , ""
+    , "TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION"
+    , ""
+    , "1. Definitions."
+    , ""
+    , "   \"License\" shall mean the terms and conditions for use, reproduction,"
+    , "   and distribution as defined by Sections 1 through 9 of this document."
+    , ""
+    , "   \"Licensor\" shall mean the copyright owner or entity authorized by"
+    , "   the copyright owner that is granting the License."
+    , ""
+    , "   \"Legal Entity\" shall mean the union of the acting entity and all"
+    , "   other entities that control, are controlled by, or are under common"
+    , "   control with that entity. For the purposes of this definition,"
+    , "   \"control\" means (i) the power, direct or indirect, to cause the"
+    , "   direction or management of such entity, whether by contract or"
+    , "   otherwise, or (ii) ownership of fifty percent (50%) or more of the"
+    , "   outstanding shares, or (iii) beneficial ownership of such entity."
+    , ""
+    , "   \"You\" (or \"Your\") shall mean an individual or Legal Entity"
+    , "   exercising permissions granted by this License."
+    , ""
+    , "   \"Source\" form shall mean the preferred form for making modifications,"
+    , "   including but not limited to software source code, documentation"
+    , "   source, and configuration files."
+    , ""
+    , "   \"Object\" form shall mean any form resulting from mechanical"
+    , "   transformation or translation of a Source form, including but"
+    , "   not limited to compiled object code, generated documentation,"
+    , "   and conversions to other media types."
+    , ""
+    , "   \"Work\" shall mean the work of authorship, whether in Source or"
+    , "   Object form, made available under the License, as indicated by a"
+    , "   copyright notice that is included in or attached to the work."
+    , ""
+    , "   \"Derivative Works\" shall mean any work, whether in Source or Object"
+    , "   form, that is based on (or derived from) the Work and for which the"
+    , "   editorial revisions, annotations, elaborations, or other modifications"
+    , "   represent, as a whole, an original work of authorship. For the purposes"
+    , "   of this License, Derivative Works shall not include works that remain"
+    , "   separable from, or merely link (or bind by name) to the interfaces of,"
+    , "   the Work and Derivative Works thereof."
+    , ""
+    , "   \"Contribution\" shall mean any work of authorship, including the"
+    , "   original version of the Work and any modifications or additions to that"
+    , "   Work or Derivative Works thereof, that is intentionally submitted to"
+    , "   Licensor for inclusion in the Work by the copyright owner or by an"
+    , "   individual or Legal Entity authorized to submit on behalf of the"
+    , "   copyright owner."
+    , ""
+    , "   \"Contributor\" shall mean Licensor and any individual or Legal Entity"
+    , "   on behalf of whom a Contribution has been received by the Licensor and"
+    , "   subsequently incorporated within the Work."
+    , ""
+    , "2. Grant of Copyright License. Subject to the terms and conditions of"
+    , "   this License, each Contributor hereby grants to You a perpetual,"
+    , "   worldwide, non-exclusive, no-charge, royalty-free, irrevocable"
+    , "   copyright license to reproduce, prepare Derivative Works of,"
+    , "   publicly display, publicly perform, sublicense, and distribute the"
+    , "   Work and such Derivative Works in Source or Object form."
+    , ""
+    , "3. Grant of Patent License. Subject to the terms and conditions of"
+    , "   this License, each Contributor hereby grants to You a perpetual,"
+    , "   worldwide, non-exclusive, no-charge, royalty-free, irrevocable"
+    , "   (except as stated in this section) patent license to make, have made,"
+    , "   use, offer to sell, sell, import, and otherwise transfer the Work,"
+    , "   where such license applies only to those patent claims licensable"
+    , "   by such Contributor that are necessarily infringed by their"
+    , "   Contribution(s) alone or by combination of their Contribution(s)"
+    , "   with the Work to which such Contribution(s) was submitted. If You"
+    , "   institute patent litigation against any entity (including a cross-claim"
+    , "   or counterclaim in a lawsuit) alleging that the Work or a Contribution"
+    , "   incorporated within the Work constitutes direct or contributory patent"
+    , "   infringement, then any patent licenses granted to You under this"
+    , "   License for that Work shall terminate as of the date such litigation"
+    , "   is filed."
+    , ""
+    , "4. Redistribution. You may reproduce and distribute copies of the Work"
+    , "   or Derivative Works thereof in any medium, with or without"
+    , "   modifications, and in Source or Object form, provided that You meet"
+    , "   the following conditions:"
+    , ""
+    , "   (a) You must give any other recipients of the Work or Derivative Works"
+    , "       a copy of this License; and"
+    , ""
+    , "   (b) You must cause any modified files to carry prominent notices"
+    , "       stating that You changed the files; and"
+    , ""
+    , "   (c) You must retain, in the Source form of any Derivative Works that"
+    , "       You distribute, all copyright, patent, trademark, and attribution"
+    , "       notices from the Source form of the Work, excluding those notices"
+    , "       that do not pertain to any part of the Derivative Works; and"
+    , ""
+    , "   (d) If the Work includes a \"NOTICE\" text file as part of its"
+    , "       distribution, then any Derivative Works that You distribute must"
+    , "       include a readable copy of the attribution notices contained within"
+    , "       such NOTICE file, excluding those notices that do not pertain to"
+    , "       any part of the Derivative Works, in at least one of the following"
+    , "       places: within a NOTICE text file distributed as part of the"
+    , "       Derivative Works; within the Source form or documentation, if"
+    , "       provided along with the Derivative Works; or, within a display"
+    , "       generated by the Derivative Works, if and wherever such third-party"
+    , "       notices normally appear. The contents of the NOTICE file are for"
+    , "       informational purposes only and do not modify the License. You may"
+    , "       add Your own attribution notices within Derivative Works that You"
+    , "       distribute, alongside or as an addendum to the NOTICE text from"
+    , "       the Work, provided that such additional attribution notices cannot"
+    , "       be construed as modifying the License."
+    , ""
+    , "   You may add Your own copyright statement to Your modifications and may"
+    , "   provide additional or different license terms and conditions for use,"
+    , "   reproduction, or distribution of Your modifications, or for any such"
+    , "   Derivative Works as a whole, provided Your use, reproduction, and"
+    , "   distribution of the Work otherwise complies with the conditions stated"
+    , "   in this License."
+    , ""
+    , "5. Submission of Contributions. Unless You explicitly state otherwise,"
+    , "   any Contribution intentionally submitted for inclusion in the Work by"
+    , "   You to the Licensor shall be under the terms and conditions of this"
+    , "   License, without any additional terms or conditions. Notwithstanding"
+    , "   the above, nothing herein shall supersede or modify the terms of any"
+    , "   separate license agreement you may have executed with Licensor"
+    , "   regarding such Contributions."
+    , ""
+    , "6. Trademarks. This License does not grant permission to use the trade"
+    , "   names, trademarks, service marks, or product names of the Licensor,"
+    , "   except as required for reasonable and customary use in describing the"
+    , "   origin of the Work and reproducing the content of the NOTICE file."
+    , ""
+    , "7. Disclaimer of Warranty. Unless required by applicable law or agreed"
+    , "   to in writing, Licensor provides the Work (and each Contributor"
+    , "   provides its Contributions) on an \"AS IS\" BASIS, WITHOUT WARRANTIES"
+    , "   OR CONDITIONS OF ANY KIND, either express or implied, including,"
+    , "   without limitation, any warranties or conditions of TITLE,"
+    , "   NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A PARTICULAR"
+    , "   PURPOSE. You are solely responsible for determining the"
+    , "   appropriateness of using or redistributing the Work and assume any"
+    , "   risks associated with Your exercise of permissions under this License."
+    , ""
+    , "8. Limitation of Liability. In no event and under no legal theory,"
+    , "   whether in tort (including negligence), contract, or otherwise,"
+    , "   unless required by applicable law (such as deliberate and grossly"
+    , "   negligent acts) or agreed to in writing, shall any Contributor be"
+    , "   liable to You for damages, including any direct, indirect, special,"
+    , "   incidental, or consequential damages of any character arising as a"
+    , "   result of this License or out of the use or inability to use the"
+    , "   Work (including but not limited to damages for loss of goodwill,"
+    , "   work stoppage, computer failure or malfunction, or any and all other"
+    , "   commercial damages or losses), even if such Contributor has been"
+    , "   advised of the possibility of such damages."
+    , ""
+    , "9. Accepting Warranty or Additional Liability. While redistributing the"
+    , "   Work or Derivative Works thereof, You may choose to offer, and charge"
+    , "   a fee for, acceptance of support, warranty, indemnity, or other"
+    , "   liability obligations and/or rights consistent with this License."
+    , "   However, in accepting such obligations, You may act only on Your own"
+    , "   behalf and on Your sole responsibility, not on behalf of any other"
+    , "   Contributor, and only if You agree to indemnify, defend, and hold each"
+    , "   Contributor harmless for any liability incurred by, or claims asserted"
+    , "   against, such Contributor by reason of your accepting any such"
+    , "   warranty or additional liability."
+    , ""
+    , "END OF TERMS AND CONDITIONS"
+    ]
 
 renderAboutOverlay :: Layout -> IO ()
 renderAboutOverlay lay = showOverlay lay "About UmbraVOX" aboutOverlayLines
 
 newConnOverlayLines :: [String]
 newConnOverlayLines =
-    [ " 1. Private (secure notes, local only)"
-    , " 2. Single  (connect to one peer)"
-    , " 3. Group   (connect to multiple peers)"
+    [ " Choose a conversation type:"
+    , ""
+    , "   1. Private   \x2014  secure local notes (no peer, stored on this device only)"
+    , "   2. Single    \x2014  end-to-end encrypted session with one remote peer"
+    , "   3. Group     \x2014  multi-party encrypted conversation (Sender Keys)"
     , ""
     , "[ Private ]  [ Single ]  [ Group ]  [ Cancel ]" ]
 
@@ -576,6 +762,33 @@ promptOverlayLines _ buf =
 
 renderPromptOverlay :: Layout -> String -> String -> IO ()
 renderPromptOverlay lay title buf = showOverlay lay title (promptOverlayLines title buf)
+
+-- | Lines for the key-regeneration confirmation dialog.
+-- The checkbox state is shown inline; the "Yes" button is only labelled
+-- actionable when the checkbox is checked.
+regenKeyOverlayLines :: Bool -> IO [String]
+regenKeyOverlayLines checked =
+    pure
+        [ "WARNING: This will generate a new identity key."
+        , "All existing sessions will be invalidated."
+        , ""
+        , checkboxLine
+        , ""
+        , buttonLine
+        ]
+  where
+    checkboxLine
+        | checked   = "[x] I understand this action is irreversible"
+        | otherwise = "[ ] I understand this action is irreversible"
+    buttonLine
+        | checked   = "[ Yes, Regenerate ]  [ Cancel ]"
+        | otherwise = "  (check the box to enable)   [ Cancel ]"
+
+renderRegenKeyOverlay :: Layout -> AppState -> IO ()
+renderRegenKeyOverlay lay st = do
+    checked <- readIORef (asRegenCheckbox st)
+    lns <- regenKeyOverlayLines checked
+    showOverlay lay "Regenerate Identity Key" lns
 
 -- | Render a dropdown menu below its tab position
 renderDropdown :: Layout -> MenuTab -> Int -> IO ()

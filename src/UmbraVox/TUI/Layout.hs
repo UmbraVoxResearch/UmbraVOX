@@ -17,15 +17,23 @@ sizeValid :: Int -> Int -> Bool
 sizeValid rows cols = rows >= minTermRows && rows <= maxTermRows
                    && cols >= minTermCols && cols <= maxTermCols
 
+-- | Height of the identity panel (including the leading separator row).
+-- 1 separator + 2 X25519 rows + 1 label + 2 Ed25519 rows + 1 label
+-- + 1 blank + 13 QR rows + 1 blank + 1 button row = 23 rows total.
+-- We clamp so contacts always get at least a few rows.
+identityPanelH :: Int -> Int
+identityPanelH chatH = min 23 (max 0 (chatH - 4))
+
 -- | Compute the layout geometry from terminal dimensions.
 -- Row budget: 1 menu + 1 separator + (chatH rows of content) + 1 input + 1 status
 calcLayout :: Int -> Int -> Layout
 calcLayout rows cols = Layout
-    { lCols   = cols
-    , lRows   = rows
-    , lLeftW  = leftW
-    , lRightW = cols - leftW
-    , lChatH  = rows - 4  -- 1 menu + 1 separator + 1 input + 1 status
+    { lCols      = cols
+    , lRows      = rows
+    , lLeftW     = leftW
+    , lRightW    = cols - leftW
+    , lChatH     = rows - 4  -- 1 menu + 1 separator + 1 input + 1 status
+    , lIdentityH = identityPanelH (rows - 4)
     }
   where
     leftW = max minLeftPaneW (cols `div` leftPaneRatio)

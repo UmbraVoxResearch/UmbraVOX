@@ -609,7 +609,11 @@ let basepoint_on_curve () =
 val identity_on_curve : unit
     -> Lemma (on_curve 0 1 == true)
 let identity_on_curve () =
-  assume (on_curve 0 1 == true)
+  (* Computation: on_curve 0 1 = (fsqr 1 - fsqr 0 + prime) % prime = 1,
+     and rhs = (1 + curve_d * fsqr 0 * fsqr 1) % prime = (1 + 0) % prime = 1.
+     The term curve_d * 0 collapses to 0 immediately, so assert_norm closes this
+     without expanding the 255-bit prime. *)
+  assert_norm (on_curve 0 1 == true)
 
 (** The group order property: [L]B = identity.
     L is the order of the basepoint B on the Ed25519 curve.
