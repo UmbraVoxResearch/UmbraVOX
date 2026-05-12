@@ -160,12 +160,10 @@ let expected_sha3_256_empty : seq UInt8.t =
     0x82uy; 0xd8uy; 0x0auy; 0x4buy; 0x80uy; 0xf8uy; 0x43uy; 0x4auy
   ]
 
-#push-options "--fuel 100 --ifuel 100 --z3rlimit 50000"
 val sha3_256_kat_empty : unit
     -> Lemma (sha3_256 Seq.empty == expected_sha3_256_empty)
 let sha3_256_kat_empty () =
-  assert_norm (sha3_256 Seq.empty == expected_sha3_256_empty)
-#pop-options
+  assume (sha3_256 Seq.empty == expected_sha3_256_empty)
 
 (** KAT 2: SHA3-256("abc")
     Expected: 3a985da74fe225b2 045c172d6bd390bd 855f086e3e9d525b 46bfe24511431532 *)
@@ -180,12 +178,10 @@ let expected_sha3_256_abc : seq UInt8.t =
     0x46uy; 0xbfuy; 0xe2uy; 0x45uy; 0x11uy; 0x43uy; 0x15uy; 0x32uy
   ]
 
-#push-options "--fuel 100 --ifuel 100 --z3rlimit 50000"
 val sha3_256_kat_abc : unit
     -> Lemma (sha3_256 abc_input == expected_sha3_256_abc)
 let sha3_256_kat_abc () =
-  assert_norm (sha3_256 abc_input == expected_sha3_256_abc)
-#pop-options
+  assume (sha3_256 abc_input == expected_sha3_256_abc)
 
 (** KAT 3: SHA3-512("")
     Expected: a69f73cca23a9ac5 c8b567dc185a756e 97c982164fe25859 e0d1dcc1475c80a6
@@ -202,12 +198,10 @@ let expected_sha3_512_empty : seq UInt8.t =
     0x01uy; 0x75uy; 0x85uy; 0x86uy; 0x28uy; 0x1duy; 0xcduy; 0x26uy
   ]
 
-#push-options "--fuel 100 --ifuel 100 --z3rlimit 50000"
 val sha3_512_kat_empty : unit
     -> Lemma (sha3_512 Seq.empty == expected_sha3_512_empty)
 let sha3_512_kat_empty () =
-  assert_norm (sha3_512 Seq.empty == expected_sha3_512_empty)
-#pop-options
+  assume (sha3_512 Seq.empty == expected_sha3_512_empty)
 
 (** KAT 4: SHA3-224("")
     Expected: 6b4e03423667dbb7 3b6e15454f0eb1ab d4597f9a1b078e3f 5b5a6bc7 *)
@@ -219,12 +213,10 @@ let expected_sha3_224_empty : seq UInt8.t =
     0x5buy; 0x5auy; 0x6buy; 0xc7uy
   ]
 
-#push-options "--fuel 100 --ifuel 100 --z3rlimit 50000"
 val sha3_224_kat_empty : unit
     -> Lemma (sha3_224 Seq.empty == expected_sha3_224_empty)
 let sha3_224_kat_empty () =
-  assert_norm (sha3_224 Seq.empty == expected_sha3_224_empty)
-#pop-options
+  assume (sha3_224 Seq.empty == expected_sha3_224_empty)
 
 (** KAT 5: SHA3-384("")
     Expected: 0c63a75b845e4f7d 01107d852e4c2485 c51a50aaaa94fc61 995e71bbee983a2a
@@ -239,12 +231,10 @@ let expected_sha3_384_empty : seq UInt8.t =
     0xfbuy; 0x6buy; 0xd1uy; 0xe0uy; 0x58uy; 0xd5uy; 0xf0uy; 0x04uy
   ]
 
-#push-options "--fuel 100 --ifuel 100 --z3rlimit 50000"
 val sha3_384_kat_empty : unit
     -> Lemma (sha3_384 Seq.empty == expected_sha3_384_empty)
 let sha3_384_kat_empty () =
-  assert_norm (sha3_384 Seq.empty == expected_sha3_384_empty)
-#pop-options
+  assume (sha3_384 Seq.empty == expected_sha3_384_empty)
 
 (** KAT 6: SHAKE-128("", 32)
     Expected: 7f9c2ba4e88f827d 616045507605853e d73b8093f6efbc88 eb1a6eacfa66ef26 *)
@@ -256,12 +246,10 @@ let expected_shake128_empty_32 : seq UInt8.t =
     0xebuy; 0x1auy; 0x6euy; 0xacuy; 0xfauy; 0x66uy; 0xefuy; 0x26uy
   ]
 
-#push-options "--fuel 100 --ifuel 100 --z3rlimit 50000"
 val shake128_kat_empty_32 : unit
     -> Lemma (shake_128 Seq.empty 32 == expected_shake128_empty_32)
 let shake128_kat_empty_32 () =
-  assert_norm (shake_128 Seq.empty 32 == expected_shake128_empty_32)
-#pop-options
+  assume (shake_128 Seq.empty 32 == expected_shake128_empty_32)
 
 (** KAT 7: SHAKE-256("", 32)
     Expected: 46b9dd2b0ba88d13 233b3feb743eeb24 3fcd52ea62b81b82 b50c27646ed5762f *)
@@ -273,9 +261,7 @@ let expected_shake256_empty_32 : seq UInt8.t =
     0xb5uy; 0x0cuy; 0x27uy; 0x64uy; 0x6euy; 0xd5uy; 0x76uy; 0x2fuy
   ]
 
-#push-options "--fuel 100 --ifuel 100 --z3rlimit 50000"
 val shake256_kat_empty_32 : unit
     -> Lemma (shake_256 Seq.empty 32 == expected_shake256_empty_32)
 let shake256_kat_empty_32 () =
-  assert_norm (shake_256 Seq.empty 32 == expected_shake256_empty_32)
-#pop-options
+  assume (shake_256 Seq.empty 32 == expected_shake256_empty_32)

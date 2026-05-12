@@ -111,15 +111,74 @@ let hmac (h : hash_fn) (block_size : nat{block_size > 0})
 (** Concrete instances                                                   **)
 (** -------------------------------------------------------------------- **)
 
-(** HMAC-SHA-256: block size = 64 bytes, output = 32 bytes *)
+(** Total wrapper for SHA-256: returns sha256(msg) for practical inputs (< 2^61 bytes),
+    or a 32-byte zero sequence for astronomically large inputs.
+    This satisfies bounded_hash_fn 32 universally.
+    The conditional branch for huge inputs is unreachable in all practical uses.
+    Note: Spec.SHA256.hash_size = 32 (literal), so both branches return 32 bytes. *)
+let sha256_total_impl (msg : seq UInt8.t)
+    : (s:seq UInt8.t{Seq.length s = 32}) =
+  if Seq.length msg < pow2 61 then begin
+    (* In this branch, Seq.length msg < pow2 61 holds, so sha256 msg is valid *)
+    let h = Spec.SHA256.sha256 msg in
+    (* h : {Seq.length h = Spec.SHA256.hash_size} = {Seq.length h = 32} *)
+    assert (Seq.length h = 32);
+    h
+  end else
+    Seq.create 32 0uy
+
+let sha256_total : bounded_hash_fn 32 = sha256_total_impl
+
+(** Total wrapper for SHA-512: same as sha256_total but for SHA-512. *)
+let sha512_total_impl (msg : seq UInt8.t)
+    : (s:seq UInt8.t{Seq.length s = 64}) =
+  if Seq.length msg < pow2 61 then begin
+    let res = Spec.SHA512.sha512 msg in
+    assert_norm (Spec.SHA512.hash_size = 64);
+    res
+  end else
+    Seq.create 64 0uy
+
+let sha512_total : bounded_hash_fn 64 = sha512_total_impl
+
+(** HMAC-SHA-256 (bounded): uses prepare_key_bounded to carry the output-length
+    invariant, eliminating the assume in the generic prepare_key. *)
+val hmac_sha256_bounded : key:seq UInt8.t -> msg:seq UInt8.t
+    -> Tot (s:seq UInt8.t{Seq.length s = 32})
+let hmac_sha256_bounded (key : seq UInt8.t) (msg : seq UInt8.t)
+    : (s:seq UInt8.t{Seq.length s = 32}) =
+  let block_size : nat = 64 in
+  let key' = prepare_key_bounded sha256_total block_size key in
+  let ipad_key = xor_bytes key' (ipad block_size) in
+  let opad_key = xor_bytes key' (opad block_size) in
+  let inner = sha256_total (Seq.append ipad_key msg) in
+  (* sha256_total returns exactly 32 bytes — Seq.length inner = 32 *)
+  sha256_total (Seq.append opad_key inner)
+
+(** HMAC-SHA-512 (bounded): uses prepare_key_bounded, output is always 64 bytes. *)
+val hmac_sha512_bounded : key:seq UInt8.t -> msg:seq UInt8.t
+    -> Tot (s:seq UInt8.t{Seq.length s = 64})
+let hmac_sha512_bounded (key : seq UInt8.t) (msg : seq UInt8.t)
+    : (s:seq UInt8.t{Seq.length s = 64}) =
+  let block_size : nat = 128 in
+  let key' = prepare_key_bounded sha512_total block_size key in
+  let ipad_key = xor_bytes key' (ipad block_size) in
+  let opad_key = xor_bytes key' (opad block_size) in
+  let inner = sha512_total (Seq.append ipad_key msg) in
+  (* sha512_total returns exactly 64 bytes — Seq.length inner = 64 *)
+  sha512_total (Seq.append opad_key inner)
+
+(** HMAC-SHA-256: block size = 64 bytes, output = 32 bytes.
+    Uses sha256_total as the underlying hash so that prepare_key can be
+    called without the `Seq.length msg < pow2 61` precondition. *)
 val hmac_sha256 : key:seq UInt8.t -> msg:seq UInt8.t -> Tot (seq UInt8.t)
 let hmac_sha256 (key : seq UInt8.t) (msg : seq UInt8.t) : seq UInt8.t =
-  hmac Spec.SHA256.sha256 64 key msg
+  hmac sha256_total 64 key msg
 
-(** HMAC-SHA-512: block size = 128 bytes, output = 64 bytes *)
+(** HMAC-SHA-512: block size = 128 bytes, output = 64 bytes. *)
 val hmac_sha512 : key:seq UInt8.t -> msg:seq UInt8.t -> Tot (seq UInt8.t)
 let hmac_sha512 (key : seq UInt8.t) (msg : seq UInt8.t) : seq UInt8.t =
-  hmac Spec.SHA512.sha512 128 key msg
+  hmac sha512_total 128 key msg
 
 (** -------------------------------------------------------------------- **)
 (** Correctness properties                                               **)
