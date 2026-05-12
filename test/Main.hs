@@ -34,6 +34,7 @@ import qualified Test.Crypto.HKDF as HKDF
 import qualified Test.Crypto.HMAC as HMAC
 import qualified Test.Crypto.Keccak as Keccak
 import qualified Test.Crypto.KeyStore as KeyStore
+import qualified Test.Crypto.RatchetPersist as RatchetPersist
 import qualified Test.Crypto.MLKEM as MLKEM
 import qualified Test.Crypto.PQWrapper as PQWrapper
 import qualified Test.Crypto.PQXDH as PQXDH
@@ -266,6 +267,7 @@ coreSuites =
     , Suite "chacha20" ChaCha20.runTests
     , Suite "x3dh" X3DH.runTests
     , Suite "double-ratchet" DoubleRatchet.runTests
+    , Suite "ratchet-persist" RatchetPersist.runTests
     , Suite "mlkem" MLKEM.runTests
     , Suite "keccak" Keccak.runTests
     , Suite "poly1305" Poly1305.runTests
@@ -353,6 +355,7 @@ coreCryptoSuites =
     , Suite "chacha20" ChaCha20.runTests
     , Suite "x3dh" X3DH.runTests
     , Suite "double-ratchet" DoubleRatchet.runTests
+    , Suite "ratchet-persist" RatchetPersist.runTests
     , Suite "mlkem" MLKEM.runTests
     , Suite "keccak" Keccak.runTests
     , Suite "poly1305" Poly1305.runTests

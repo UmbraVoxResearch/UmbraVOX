@@ -1,6 +1,8 @@
 # Build artifacts
 dist-newstyle/
 build/
+cabal.project.local
+cabal.project.local~
 *.hi
 *.o
 *.dyn_hi

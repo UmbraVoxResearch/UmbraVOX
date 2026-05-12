@@ -186,6 +186,16 @@ globalCSPRNG = unsafePerformIO (newMVar Nothing)
 
 -- | Read entropy from @\/dev\/urandom@, retrying until exactly @n@ bytes
 -- are obtained (handles partial reads from the OS).
+--
+-- Finding: An implicit assumption that @\/dev\/urandom@ exists was never
+--   documented, leaving it unclear whether this function is portable.
+-- Vulnerability: None — @\/dev\/urandom@ is available on all POSIX platforms
+--   targeted by UmbraVOX (Linux, macOS, FreeBSD, OpenBSD, NetBSD,
+--   illumos/Solaris).  It is a mandatory POSIX extension on all modern BSDs
+--   and is present on every macOS and Linux kernel since the early 1990s.
+--   No code change is needed; this comment records the audit finding.
+-- Fix: Documentation only — no code change required.
+-- Verified: Confirmed @\/dev\/urandom@ presence on all CI target platforms.
 readEntropy :: Int -> IO ByteString
 readEntropy n = do
     result <- withBinaryFile "/dev/urandom" ReadMode (\h -> readLoop h n BS.empty)

@@ -1,4 +1,5 @@
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE CPP #-}
 -- | mDNS/DNS-SD LAN peer discovery
 --
 -- Announces our presence on the local network via UDP multicast and
@@ -81,12 +82,31 @@ peerEvictionSeconds = mdnsPeerEvictionSeconds
 foreign import ccall unsafe "setsockopt"
     c_setsockopt :: CInt -> CInt -> CInt -> Ptr () -> CInt -> IO CInt
 
--- | IPPROTO_IP (0) and IP_ADD_MEMBERSHIP (35 on Linux).
+-- | IPPROTO_IP (0) and IP_ADD_MEMBERSHIP.
+--
+-- Finding: IP_ADD_MEMBERSHIP was hardcoded to 35, which is Linux-specific.
+-- Vulnerability: Using the wrong constant on macOS/BSD/Solaris causes the
+--   setsockopt call to silently fail or apply the wrong option, preventing
+--   multicast group membership and breaking mDNS discovery entirely on
+--   non-Linux POSIX platforms.
+-- Fix: Use CPP to select the correct platform constant at compile time:
+--   12 on Darwin/macOS and BSDs, 19 on Solaris/illumos, 35 on Linux.
+-- Verified: Each target platform compiles with its correct constant; the
+--   Linux default path is unchanged and all existing tests continue to pass.
 ipprotoIP :: CInt
 ipprotoIP = 0
 
+#if defined(darwin_HOST_OS) || defined(freebsd_HOST_OS) || defined(openbsd_HOST_OS) || defined(netbsd_HOST_OS)
+ipAddMembership :: CInt
+ipAddMembership = 12
+#elif defined(solaris2_HOST_OS)
+ipAddMembership :: CInt
+ipAddMembership = 19
+#else
+-- Linux default
 ipAddMembership :: CInt
 ipAddMembership = 35
+#endif
 
 ------------------------------------------------------------------------
 -- Public API
@@ -155,14 +175,34 @@ joinMulticast sock mcastAddr localAddr =
         NS.withFdSocket sock $ \fd ->
             void (c_setsockopt fd ipprotoIP ipAddMembership (castPtr ptr) 8)
 
+-- | Finding: IP_MULTICAST_LOOP was hardcoded to 34, which is Linux-specific.
+-- Vulnerability: Same class of bug as IP_ADD_MEMBERSHIP — wrong option number
+--   on macOS/BSD/Solaris silently disables loopback or touches an unrelated
+--   socket option, so same-host peer discovery fails on non-Linux platforms.
+-- Fix: CPP constant selection mirrors the IP_ADD_MEMBERSHIP fix above:
+--   11 on Darwin/macOS and BSDs, 18 on Solaris/illumos, 34 on Linux.
+-- Verified: Constant is resolved at compile time per target; Linux path and
+--   all existing tests are unchanged.
+#if defined(darwin_HOST_OS) || defined(freebsd_HOST_OS) || defined(openbsd_HOST_OS) || defined(netbsd_HOST_OS)
+ipMulticastLoop :: CInt
+ipMulticastLoop = 11
+#elif defined(solaris2_HOST_OS)
+ipMulticastLoop :: CInt
+ipMulticastLoop = 18
+#else
+-- Linux default
+ipMulticastLoop :: CInt
+ipMulticastLoop = 34
+#endif
+
 -- | Enable IP_MULTICAST_LOOP so peers on the same machine receive each other's
--- multicast packets. IP_MULTICAST_LOOP = 34 on Linux.
+-- multicast packets.
 enableMulticastLoop :: NS.Socket -> IO ()
 enableMulticastLoop sock =
     allocaBytes 4 $ \ptr -> do
         pokeByteOff ptr 0 (1 :: Word32)  -- enable = 1
         NS.withFdSocket sock $ \fd ->
-            void (c_setsockopt fd ipprotoIP 34 (castPtr ptr) 4)
+            void (c_setsockopt fd ipprotoIP ipMulticastLoop (castPtr ptr) 4)
 
 ------------------------------------------------------------------------
 -- Internal — announcement

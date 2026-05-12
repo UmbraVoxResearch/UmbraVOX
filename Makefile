@@ -24,6 +24,7 @@
 #   make test-deferred - Run preserved deferred blockchain/economics suites
 #   make test-differential - Run differential C vs Haskell tests
 #   make soak         - Run the long soak suite and write an artifact report
+#   make mcdc-report  - Build with HPC coverage and emit per-module expression report
 #   make verify       - Run F* formal verification (17 modules)
 #   make verify-haskell - Opt-in bridge wrapper for Haskell verification orchestration
 #   make complexity   - Check cyclomatic complexity (<= 8 for all functions)
@@ -66,7 +67,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak verify verify-haskell complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity vm-smoke vm-image-build vm-image-clean image-clean firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly clean cleandb cleanall help
+.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity vm-smoke vm-image-build vm-image-clean image-clean firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -165,6 +166,7 @@ help:
 	@echo "    make test-deferred Run preserved deferred blockchain/economics suites"
 	@echo "    make test-differential Run differential C vs Haskell tests"
 	@echo "    make soak        Run long soak suite and write artifact report"
+	@echo "    make mcdc-report Build with HPC coverage and emit per-module expression report"
 	@echo "    make codegen     Generate Haskell + C + FFI from .spec files"
 	@echo "    make evidence    Run quality and write a publication evidence bundle"
 	@echo "    make release-linux Build portable Linux x86_64 terminal bundle"
@@ -365,6 +367,43 @@ soak: build
 	@echo -e "$(BLUE)[SOAK]$(NC) Running soak suite..."
 	@$(SUITE_LOCK) bash -c 'mkdir -p $(TEST_ARTIFACT_DIR); \
 	$(call run_test_suite,soak) 2>&1 | tee $(TEST_ARTIFACT_DIR)/soak-report.txt'
+
+# --------------------------------------------------------------------------
+# MC/DC Coverage (HPC)
+# --------------------------------------------------------------------------
+#
+# DO-178C DAL A requires Modified Condition/Decision Coverage (MC/DC).
+# GHC's HPC tool provides expression-level and branch coverage, which is
+# the closest structural coverage available for Haskell source code.
+#
+# See doc/DO-178C-COVERAGE.md for the gap analysis and plan.
+#
+# Build workaround: --enable-coverage triggers a full library rebuild.
+# A plain `cabal build all` must run first so the autogen/ headers exist
+# before the C FFI sources are compiled under --enable-coverage.  The
+# configure step pre-creates the autogen directory; -j1 avoids the race
+# condition where a parallel build removes the .tmp object before the
+# rename completes.
+
+mcdc-report:
+	@echo -e "$(BLUE)[COVERAGE]$(NC) Building with HPC coverage (configure + build + test)..."
+	@cabal configure --enable-coverage
+	@cabal build all -j1 --enable-coverage 2>&1 | tail -5
+	@echo -e "$(BLUE)[COVERAGE]$(NC) Running required test suite with HPC instrumentation..."
+	@cabal test umbravox-test --enable-coverage --test-options='required' -j1 2>&1 | tail -10
+	@echo -e "$(BLUE)[COVERAGE]$(NC) Generating per-module expression coverage report..."
+	@tix=$$(find dist-newstyle -name '*.tix' -path '*/umbravox-test*' | head -1); \
+	mix_lib=$$(find dist-newstyle -path '*/extra-compilation-artifacts/hpc/vanilla/mix' -not -path '*/umbravox-test*' | head -1); \
+	mix_test=$$(find dist-newstyle -path '*/umbravox-test*/extra-compilation-artifacts/hpc/vanilla/mix' | head -1); \
+	if [ -z "$$tix" ]; then \
+		echo -e "$(RED)[COVERAGE]$(NC) No .tix file found — test run may have failed."; \
+		exit 1; \
+	fi; \
+	echo -e "$(GREEN)[COVERAGE]$(NC) Tix: $$tix"; \
+	hpc report "$$tix" --per-module \
+		$$([ -n "$$mix_lib" ] && echo "--hpcdir=$$mix_lib") \
+		$$([ -n "$$mix_test" ] && echo "--hpcdir=$$mix_test"); \
+	echo -e "$(GREEN)[COVERAGE]$(NC) HTML report: $$(find dist-newstyle -name 'hpc_index.html' | head -1)"
 
 # --------------------------------------------------------------------------
 # F* Formal Verification

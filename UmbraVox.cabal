@@ -67,6 +67,7 @@ library
   hs-source-dirs:   src
   exposed-modules:
     -- Crypto primitives
+    UmbraVox.Crypto.SecureBytes
     UmbraVox.Crypto.Warning
     UmbraVox.Crypto.SHA256
     UmbraVox.Crypto.SHA512
@@ -92,6 +93,7 @@ library
     UmbraVox.Crypto.Signal.DoubleRatchet
     UmbraVox.Crypto.Signal.SenderKeys
     UmbraVox.Crypto.Signal.Session
+    UmbraVox.Crypto.RatchetPersist
     UmbraVox.Crypto.PQWrapper
     UmbraVox.Crypto.KeyStore
     -- Active generated coverage spans the preserved Haskell, C, and FFI
@@ -346,6 +348,7 @@ test-suite umbravox-test
     Test.Crypto.ChaCha20
     Test.Crypto.Signal.X3DH
     Test.Crypto.Signal.DoubleRatchet
+    Test.Crypto.RatchetPersist
     Test.Crypto.Keccak
     Test.Crypto.MLKEM
     Test.Crypto.Poly1305
