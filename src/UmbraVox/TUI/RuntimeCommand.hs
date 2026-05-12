@@ -79,8 +79,7 @@ commandForMenuItem _ _            = Nothing
 
 menuPrefsCommands :: [RuntimeCommand]
 menuPrefsCommands =
-    [CmdOpenSettings, CmdOpenKeys]
-    ++ (if pluginEnabled PluginDiscovery then [CmdToggleMDNS] else [])
+    [CmdOpenSettings]
     ++ (if pluginEnabled PluginChatTransfer then [CmdExportChat, CmdImportChat] else [])
 
 (!!?) :: [a] -> Int -> Maybe a

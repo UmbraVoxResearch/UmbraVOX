@@ -5,6 +5,7 @@ module UmbraVox.TUI.Dialog
     , overlayButtonAt
     , overlayButtonAtLine
     , overlayScrollbarBounds
+    , wrapOverlayLines
     , settingsTabLabels
     , showOverlay
     , showOverlayScrolled
@@ -14,13 +15,14 @@ module UmbraVox.TUI.Dialog
     , keysOverlayLines, verifyOverlayLines, promptOverlayLines
     , settingsOverlayLines, browseOverlayLines
     , regenKeyOverlayLines, renderRegenKeyOverlay
+    , exportWarnOverlayLines, exportKeysOverlayLines
     , renderPromptOverlay
     , renderDropdown
     ) where
 
 import Control.Monad (forM_, when)
 import Data.IORef (readIORef)
-import Data.Char (toLower)
+import Data.Char (toLower, isSpace)
 import Data.List (dropWhileEnd, intercalate)
 import System.IO (hFlush, stdout)
 import UmbraVox.BuildProfile
@@ -39,10 +41,10 @@ import UmbraVox.Network.ProviderRuntime (activeRuntimeProvider)
 import qualified UmbraVox.Version
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Terminal (goto, setFg, resetSGR, bold, padR, csi)
-import UmbraVox.TUI.Layout (dropdownCol)
+import UmbraVox.TUI.Layout (dropdownCol, chatPaneBounds)
 import UmbraVox.TUI.Constants (maxOverlayW, minDropdownW)
 import UmbraVox.TUI.PaginatedList (slicePage, psItems, psPage, psTotalPages)
-import UmbraVox.TUI.Text (displayWidth, trimToWidth)
+import UmbraVox.TUI.Text (displayWidth, trimToWidth, splitAtWidth)
 import UmbraVox.Protocol.QRCode (generateSafetyNumber, renderSafetyNumber,
                                     renderFingerprint, generateQRCode, renderQRCode)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
@@ -51,16 +53,16 @@ import UmbraVox.Crypto.Signal.DoubleRatchet (RatchetState(..))
 import UmbraVox.Network.MDNS (MDNSPeer(..))
 import qualified Data.Map.Strict as Map
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as C8
 
 -- Overlays ----------------------------------------------------------------
 overlayBounds :: Layout -> Int -> (Int, Int, Int, Int)
 overlayBounds lay lineCount =
-    let cols = lCols lay
-        rows = lRows lay
-        w = min (cols - 4) maxOverlayW
-        h = min (rows - 4) (lineCount + 4)
-        r0 = max 1 ((rows - h) `div` 2)
-        c0 = max 1 ((cols - w) `div` 2)
+    let (chatR0, chatC0, chatW, chatH) = chatPaneBounds lay
+        w = max 1 (min (chatW - 2) maxOverlayW)
+        h = max 1 (min (chatH - 2) (lineCount + 4))
+        r0 = chatR0 + max 0 ((chatH - h) `div` 2)
+        c0 = chatC0 + max 0 ((chatW - w) `div` 2)
     in (r0, c0, w, h)
 
 overlayCloseBounds :: Layout -> Int -> (Int, Int, Int)
@@ -71,8 +73,7 @@ overlayCloseBounds lay lineCount =
         startCol = c0 + 1 + max 0 (innerW - displayWidth closeText)
     in (r0, startCol, startCol + displayWidth closeText - 1)
 
--- | Return the terminal column and the range of rows occupied by the
--- vertical scrollbar track for a scrollable overlay.
+-- | Return the terminal column and full track row range for a scrollable overlay.
 -- Returns (col, trackTop, trackBot) where the track spans trackTop..trackBot.
 -- Returns Nothing when the content fits on screen (no scrollbar needed).
 overlayScrollbarBounds :: Layout -> Int -> Int -> Maybe (Int, Int, Int)
@@ -84,33 +85,36 @@ overlayScrollbarBounds lay totalLines scrollOff =
         trackBot = r0 + h - 2
     in if totalLines <= contentH
         then Nothing
-        else let thumbH   = max 1 (contentH * contentH `div` totalLines)
-                 maxOff   = max 0 (totalLines - contentH)
-                 off      = min maxOff (max 0 scrollOff)
-                 thumbTop = trackTop + (off * (contentH - thumbH) `div` maxOff)
-             in Just (sbCol, thumbTop, thumbTop + thumbH - 1)
+        else Just (sbCol, trackTop, trackBot)
 
 overlayButtonAt :: Layout -> [String] -> Int -> Int -> Maybe String
 overlayButtonAt lay lns row col = do
-    lineIx <- overlayContentLine lay (length lns) row col
+    let wrapped = wrapOverlayLines (wrapWidth lay) lns
+    lineIx <- overlayContentLine lay (length wrapped) row col
     overlayButtonAtLine lay lns lineIx row col
 
 overlayButtonAtLine :: Layout -> [String] -> Int -> Int -> Int -> Maybe String
 overlayButtonAtLine lay lns lineIx row col
-    | lineIx < 0 || lineIx >= length lns = Nothing
+    | lineIx < 0 || lineIx >= length wrapped = Nothing
     | otherwise =
-        let (r0, c0, _, _) = overlayBounds lay (length lns)
-            line = lns !! lineIx
+        let (r0, c0, _, _) = overlayBounds lay (length wrapped)
+            line = wrapped !! lineIx
             targetRow = r0 + 1 + lineIx
             relCol = col - (c0 + 2)
         in if row /= targetRow || relCol < 0
             then Nothing
             else buttonAtColumn relCol (lineButtons line)
   where
+    wrapped = wrapOverlayLines (wrapWidth lay) lns
     buttonAtColumn _ [] = Nothing
     buttonAtColumn x ((label, startCol, endCol):rest)
         | x >= startCol && x <= endCol = Just label
         | otherwise = buttonAtColumn x rest
+
+wrapWidth :: Layout -> Int
+wrapWidth lay =
+    let (_, _, w, _) = overlayBounds lay 0
+    in max 1 (w - 3)
 
 overlayContentLine :: Layout -> Int -> Int -> Int -> Maybe Int
 overlayContentLine lay lineCount row col =
@@ -165,7 +169,11 @@ showOverlay lay title lns = showOverlayScrolled lay title lns 0
 -- are drawn on the rightmost content column inside the right border.
 showOverlayScrolled :: Layout -> String -> [String] -> Int -> IO ()
 showOverlayScrolled lay title lns scrollOff = do
-    let totalLines  = length lns
+    let rawLineCount = length lns
+        (_, _, w0, _) = overlayBounds lay rawLineCount
+        wrapWidth = max 1 (w0 - 3)
+        wrapped = wrapOverlayLines wrapWidth lns
+        totalLines = length wrapped
         (r0, c0, w, h) = overlayBounds lay totalLines
         innerW = w - 2
         contentH = h - 2  -- rows available for content (inside top/bottom borders)
@@ -173,7 +181,7 @@ showOverlayScrolled lay title lns scrollOff = do
         maxOff   = max 0 (totalLines - contentH)
         off      = min maxOff (max 0 scrollOff)
         -- Slice the visible window
-        visible  = take contentH (drop off lns ++ repeat "")
+        visible  = take contentH (drop off wrapped ++ repeat "")
         -- Scroll indicator state
         canScrollUp   = off > 0
         canScrollDown = off + contentH < totalLines
@@ -220,6 +228,58 @@ showOverlayScrolled lay title lns scrollOff = do
                 then setFg 37 >> bold >> putStr "\x2588" >> resetSGR  -- bright white thumb █
                 else csi "2m" >> setFg 37 >> putStr "\x2502" >> resetSGR  -- dim track │
     hFlush stdout
+
+wrapOverlayLines :: Int -> [String] -> [String]
+wrapOverlayLines width = concatMap (wrapOverlayLine width)
+
+wrapOverlayLine :: Int -> String -> [String]
+wrapOverlayLine width line
+    | width <= 0 = [""]
+    | null line = [""]
+    | shouldKeepAsIs line = [line]
+    | otherwise =
+        let indent = takeWhile isSpace line
+            body = dropWhile isSpace line
+            bodyW = max 1 (width - displayWidth indent)
+        in map (indent ++) (wrapBody bodyW body)
+  where
+    shouldKeepAsIs s =
+        '[' `elem` s && ']' `elem` s
+
+wrapBody :: Int -> String -> [String]
+wrapBody _ [] = [""]
+wrapBody width s = case breakLine width s of
+    (chunk, "") -> [chunk]
+    (chunk, rest) ->
+        let rest' = dropWhile isSpace rest
+        in chunk : wrapBody width rest'
+
+breakLine :: Int -> String -> (String, String)
+breakLine width s = go 0 [] Nothing s
+  where
+    go _ acc _ [] = (reverse acc, [])
+    go curW acc lastSpace (ch:rest)
+        | ch == ' ' =
+            let nextW = curW + 1
+            in if nextW > width
+                then splitAtLastSpace acc lastSpace (ch:rest)
+                else go nextW (ch:acc) (Just (length acc)) rest
+        | otherwise =
+            let chW = displayWidth [ch]
+                nextW = curW + chW
+            in if nextW > width
+                then splitAtLastSpace acc lastSpace (ch:rest)
+                else go nextW (ch:acc) lastSpace rest
+
+    splitAtLastSpace acc Nothing rest =
+        let (a, b) = splitAtWidth width (reverse acc ++ rest)
+        in (a, b)
+    splitAtLastSpace acc (Just spaceIx) rest =
+        let full = reverse acc ++ rest
+            (a, b) = splitAt spaceIx full
+        in (trimRight a, dropWhile isSpace b)
+
+    trimRight = dropWhileEnd isSpace
 
 helpOverlayLines :: [String]
 helpOverlayLines =
@@ -746,7 +806,66 @@ keysOverlayLines st = do
                 [ "X25519 fingerprint:" ] ++ x25519Lines ++
                 [ "", "Ed25519 fingerprint:" ] ++ ed25519Lines ++
                 [ "", "QR Code (X25519):" ] ++ map ("  " ++) qrLines ++
-                [ "", "[ Close ]" ]
+                [ ""
+                , "[ Regenerate (F5) ]  [ Export Keys ]  [ Import Keys ]  [ Close ]"
+                ]
+
+exportWarnOverlayLines :: Bool -> [String]
+exportWarnOverlayLines checked =
+    [ "WARNING: Exporting private keys can permanently compromise identity safety."
+    , "Anyone with this material can impersonate this identity."
+    , ""
+    , if checked then "[x] I understand and accept this risk"
+                 else "[ ] I understand and accept this risk"
+    , ""
+    , if checked then "[ Continue Export ]  [ Cancel ]"
+                 else "  (check the box to enable)   [ Cancel ]"
+    ]
+
+exportKeysOverlayLines :: AppState -> IO [String]
+exportKeysOverlayLines st = do
+    mIk <- readIORef (cfgIdentity (asConfig st))
+    case mIk of
+        Nothing -> pure ["No identity generated yet.", "", "[ Close ]" ]
+        Just ik -> do
+            let payload = encodeIdentityHex ik
+                qrPayload = encodeIdentityNumeric payload
+                qrLines = renderQRCode (generateQRCode qrPayload)
+            pure $
+                [ "Export Identity Keys (private + public)"
+                , "Manual entry payload (hex):"
+                , payload
+                , ""
+                , "QR payload (numeric):"
+                , qrPayload
+                , ""
+                , "QR code:"
+                ] ++ map ("  " ++) qrLines ++ ["", "[ Close ]"]
+
+encodeIdentityHex :: IdentityKey -> String
+encodeIdentityHex ik = C8.unpack (hexLower bytes)
+  where
+    bytes = BS.concat
+        [ ikEd25519Secret ik
+        , ikEd25519Public ik
+        , ikX25519Secret ik
+        , ikX25519Public ik
+        ]
+    hexLower = BS.concatMap (\b -> BS.pack [hexNibble (b `div` 16), hexNibble (b `mod` 16)])
+    hexNibble n
+        | n < 10 = 48 + n
+        | otherwise = 87 + n
+numericDigits :: String -> String
+numericDigits = filter (\c -> c >= '0' && c <= '9')
+
+encodeIdentityNumeric :: String -> String
+encodeIdentityNumeric = concatMap enc
+  where
+    enc c
+        | c >= '0' && c <= '9' = ['0', c]
+        | c >= 'a' && c <= 'f' = ['1', toEnum (fromEnum '0' + fromEnum c - fromEnum 'a')]
+        | c >= 'A' && c <= 'F' = enc (toEnum (fromEnum c + 32))
+        | otherwise = "99"
 
 browseOverlayLines :: AppState -> IO [String]
 browseOverlayLines st = do

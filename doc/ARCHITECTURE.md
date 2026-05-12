@@ -3,7 +3,8 @@
 ## Runtime Stack
 
 ```text
-TUI
+TUI (interactive surface)
+  -> Runtime.Headless (terminal-independent runtime core)
   -> Chat session and contact flows
   -> Signal protocol state
   -> PQ wrapper
@@ -11,6 +12,31 @@ TUI
   -> TCP sockets
   -> Temporary sqlite3-backed persistence
 ```
+
+## UI/Runtime Separation
+
+- `UmbraVox.Runtime.Headless` owns runtime bootstrap and non-interactive
+  execution paths.
+- `UmbraVox.TUI.*` owns rendering, input handling, and menu/dialog interaction.
+- Shared behavior (network, chat flow, identity/session plumbing) remains below
+  the UI boundary so integration tests and VM orchestration can run without a
+  terminal UI.
+
+This boundary is intentional: feature behavior should be implemented in shared
+runtime/application layers, while TUI code stays focused on presentation.
+
+## Responsive Grid Architecture (TUI)
+
+The active TUI uses a responsive grid layout strategy:
+
+- Wide viewports present multi-pane composition for concurrent context (contacts,
+  conversation, and status).
+- Reduced viewports rebalance panes into compact/stacked layouts while
+  preserving keyboard navigation.
+- Modal overlays and menu flows remain consistent across breakpoints.
+
+Responsive behavior is UI-only. Runtime, wire behavior, and assurance boundaries
+are unchanged by layout mode.
 
 ## Release Orchestration
 

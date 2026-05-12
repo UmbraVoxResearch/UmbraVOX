@@ -35,8 +35,6 @@ runTests = do
         -- DB path
         , testDBPathSetsRestartStatus
         , testDebugLogPathUpdate
-        -- Keys view
-        , testKeysViewOpens
         -- Clear history
         , testClearHistoryYES
         , testClearHistoryNo
@@ -266,18 +264,6 @@ testDebugLogPathUpdate = do
     ok1 <- assertEq "debug log path updated" "build/custom-runtime.log" path
     ok2 <- assertEq "debug log path status" "Runtime log path updated" status
     pure (ok1 && ok2)
-
-------------------------------------------------------------------------
--- Keys view (option '0')
-------------------------------------------------------------------------
-
-testKeysViewOpens :: IO Bool
-testKeysViewOpens = do
-    st <- mkTestState
-    writeIORef (asDialogMode st) (Just DlgSettings)
-    handleSettingsDlg st (KeyChar '0')
-    dlg <- readIORef (asDialogMode st)
-    assertEq "keys view opens DlgKeys" True (isDlgKeys dlg)
 
 ------------------------------------------------------------------------
 -- Clear history (option '9')

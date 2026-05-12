@@ -214,6 +214,7 @@ library
       UmbraVox.TUI.PaginatedList
       UmbraVox.TUI.Terminal
       UmbraVox.TUI.Layout
+      UmbraVox.TUI.LayoutGrid
       UmbraVox.TUI.Dialog
       UmbraVox.TUI.Menu
       UmbraVox.TUI.RuntimeCommand

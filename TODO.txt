@@ -3,7 +3,7 @@ UmbraVOX Active TODO
 Purpose: active work only. Completed and historical items are tracked in CHANGELOG.txt.
 
 Status: [ ] pending, [~] in progress, [!] blocked
-Last updated: 2026-05-09
+Last updated: 2026-05-12
 
 Rules
 -----
@@ -11,6 +11,12 @@ Rules
 - Use `nix-shell` for build/test/release commands.
 - Keep codegen surfaces wired truthfully; do not overstate assurance claims.
 - When a task is complete, remove it from TODO and record the outcome under CHANGELOG.txt (`Unreleased`), then roll into a version section at tag time.
+
+Active documentation alignment (architecture/UI/runtime)
+--------------------------------------------------------
+- [x] Document responsive TUI grid architecture in README and doc/ARCHITECTURE.
+- [x] Document explicit TUI/headless runtime separation boundary in README and doc/ARCHITECTURE.
+- [x] Keep documentation updates non-cryptographic and non-spec touching.
 
 ================================================================================
 MILESTONE M1: MVP ASSURANCE CLOSEOUT (BLOCKS PUBLICATION)

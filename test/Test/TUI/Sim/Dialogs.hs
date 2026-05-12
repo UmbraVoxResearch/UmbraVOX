@@ -18,12 +18,13 @@ import UmbraVox.Network.TransportClass (AnyTransport(..), anyClose)
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Storage.Anthony (openDB, closeDB, saveMessage, messageCount)
 import UmbraVox.TUI.Actions (startBrowse, startSettings)
+import UmbraVox.TUI.Layout (calcLayout)
 import UmbraVox.TUI.Dialog
-    ( browseOverlayLines, overlayBounds, overlayCloseBounds, settingsOverlayLines
-    , helpOverlayLines, newConnOverlayLines, promptOverlayLines
+    ( browseOverlayLines, overlayBounds, overlayCloseBounds, overlayScrollbarBounds, settingsOverlayLines
+    , helpOverlayLines, newConnOverlayLines, promptOverlayLines, wrapOverlayLines, overlayButtonAtLine
     )
 import UmbraVox.TUI.Types
-import UmbraVox.TUI.Input (handleDialog, handleSettingsDlg, handleNewConnDlg, handleNormal)
+import UmbraVox.TUI.Input (handleDialog, handleSettingsDlg, handleNewConnDlg, handleNormal, handleMouseDrag)
 
 runTests :: IO Bool
 runTests = do
@@ -36,12 +37,15 @@ runTests = do
         , testDlgKeysAnyKeyCloses
         , testDlgVerifyAnyKeyCloses
         , testDlgHelpMouseTopXCloses
+        , testDlgHelpScrollbarDrag
+        , testDlgWrapPreservesCloseHitRegion
         , testDlgBrowseEscCloses
         , testBrowseSearchPrompt
         , testBrowseMouseFooterPrev
         , testBrowseMouseFooterNext
         , testBrowseMouseFooterClear
         , testBrowseMouseFooterClose
+        , testBrowseScrollbarDrag
         , testBrowseDigitConnectsVisiblePeer
         , testBrowseDigitClampsStalePage
         , testBrowseInvalidDigitSetsStatus
@@ -73,7 +77,6 @@ runTests = do
         , testSettingsTabRightSwitchesOverlay
         , testSettingsTabMouseSwitchesOverlay
         , testStartSettingsResetsTab
-        , testSettingsKeysOpens
         , testSettingsUnknownCloses
         , testSettingsMouseOptionOpensPrompt
         , testSettingsMouseCloseButton
@@ -87,6 +90,11 @@ runTests = do
         , testNewConnMouseCancelCloses
         ]
     pure (and results)
+
+overlayWrapWidthForTest :: Layout -> Int
+overlayWrapWidthForTest lay =
+    let (_, _, w, _) = overlayBounds lay 0
+    in max 1 (w - 3)
 
 -- Dialog lifecycle --------------------------------------------------------
 
@@ -126,6 +134,43 @@ testDlgHelpMouseTopXCloses = do
     handleNormal st (KeyMouseLeft r cStart)
     dlg <- readIORef (asDialogMode st)
     assertEq "DlgHelp mouse top [X] closes" True (isDlgNothing dlg)
+
+testDlgHelpScrollbarDrag :: IO Bool
+testDlgHelpScrollbarDrag = do
+    st <- mkTestState
+    let smallLay = calcLayout 24 80
+    writeIORef (asLayout st) smallLay
+    writeIORef (asDialogMode st) (Just DlgHelp)
+    let wrapWidth = overlayWrapWidthForTest smallLay
+        wrapped = wrapOverlayLines wrapWidth helpOverlayLines
+        lineCount = length wrapped
+    case overlayScrollbarBounds smallLay lineCount 0 of
+        Nothing -> assertEq "DlgHelp scrollbar drag precondition" True False
+        Just (sbCol, trackTop, trackBot) -> do
+            let row = trackTop + max 0 ((trackBot - trackTop) `div` 2)
+            handleMouseDrag st row sbCol
+            off <- readIORef (asDialogScroll st)
+            assertEq "DlgHelp scrollbar drag updates offset" True (off > 0)
+
+testDlgWrapPreservesCloseHitRegion :: IO Bool
+testDlgWrapPreservesCloseHitRegion = do
+    let smallLay = calcLayout 24 60
+        lines0 =
+            [ "This is a deliberately long modal line that should wrap across multiple rows in a narrow terminal so the close button still lands on the right rendered row."
+            , ""
+            , "[ Close ]"
+            ]
+        wrapWidth = overlayWrapWidthForTest smallLay
+        wrapped = wrapOverlayLines wrapWidth lines0
+        lineCount = length wrapped
+        footerIx = lineCount - 1
+        (r0, c0, _, _) = overlayBounds smallLay lineCount
+        row = r0 + 1 + footerIx
+        col = c0 + 2 + findSubstringPos "[ Close ]" (wrapped !! footerIx) + 1
+    hit <- pure (overlayButtonAtLine smallLay lines0 footerIx row col == Just "Close")
+    a <- assertEq "wrapped modal grows rendered row count" True (lineCount > length lines0)
+    b <- assertEq "wrapped modal close button still hit-testable" True hit
+    pure (a && b)
 
 testDlgBrowseEscCloses :: IO Bool
 testDlgBrowseEscCloses = do
@@ -202,6 +247,18 @@ testBrowseMouseFooterClose = do
     handleNormal st (KeyMouseLeft row col)
     dlg <- readIORef (asDialogMode st)
     assertEq "DlgBrowse mouse footer close closes dialog" True (isDlgNothing dlg)
+
+testBrowseScrollbarDrag :: IO Bool
+testBrowseScrollbarDrag = do
+    st <- mkTestState
+    seedBrowsePeers st 24
+    startBrowse st
+    lines' <- browseOverlayLines st
+    let totalLines = length (wrapOverlayLines (overlayWrapWidthForTest calcTestLayout) lines')
+        Just (sbCol, _trackTop, trackBot) = overlayScrollbarBounds calcTestLayout totalLines 0
+    handleMouseDrag st trackBot sbCol
+    scroll <- readIORef (asDialogScroll st)
+    assertEq "DlgBrowse scrollbar drag updates scroll" True (scroll > 0)
 
 testBrowseDigitConnectsVisiblePeer :: IO Bool
 testBrowseDigitConnectsVisiblePeer = do
@@ -314,9 +371,14 @@ testBrowseMouseSearchClickOpensPrompt :: IO Bool
 testBrowseMouseSearchClickOpensPrompt = do
     st <- mkTestState
     startBrowse st
-    lines' <- browseOverlayLines st
-    let (r0, c0, _, _) = overlayBounds calcTestLayout (length lines')
-    handleNormal st (KeyMouseLeft (r0 + 3) (c0 + 10))
+    rawLines <- browseOverlayLines st
+    let lines' = wrapOverlayLines (overlayWrapWidthForTest calcTestLayout) rawLines
+        lineIx = findLineContaining "[ Search ]" lines'
+        line = lines' !! lineIx
+        (r0, c0, _, _) = overlayBounds calcTestLayout (length lines')
+        row = r0 + 1 + lineIx
+        col = c0 + 2 + findSubstringPos "[ Search ]" line + 1
+    handleNormal st (KeyMouseLeft row col)
     dlg <- readIORef (asDialogMode st)
     assertEq "DlgBrowse mouse search opens prompt" True
         (isDlgPromptWithSubstring "Search peers" dlg)
@@ -609,13 +671,6 @@ testStartSettingsResetsTab = do
     ok2 <- assertEq "startSettings opens settings dialog" True (isDlgSettings dlg)
     pure (ok1 && ok2)
 
-testSettingsKeysOpens :: IO Bool
-testSettingsKeysOpens = do
-    st <- mkTestState; writeIORef (asDialogMode st) (Just DlgSettings)
-    handleSettingsDlg st (KeyChar '0')
-    dlg <- readIORef (asDialogMode st)
-    assertEq "settings '0' opens keys" True (isDlgKeys dlg)
-
 testSettingsUnknownCloses :: IO Bool
 testSettingsUnknownCloses = do
     st <- mkTestState; writeIORef (asDialogMode st) (Just DlgSettings)
@@ -695,9 +750,13 @@ testNewConnUnknownCloses = do
 testNewConnMouseOptionOpensPrompt :: IO Bool
 testNewConnMouseOptionOpensPrompt = do
     st <- mkTestState
-    let (r0, c0, _, _) = overlayBounds calcTestLayout 5
+    let lines' = wrapOverlayLines (overlayWrapWidthForTest calcTestLayout) newConnOverlayLines
+        lineIx = findLineIndex "   2. [ Single ]   Connect to one peer (host[:port])" lines'
+        (r0, c0, _, _) = overlayBounds calcTestLayout (length lines')
+        row = r0 + 1 + lineIx
+        col = c0 + 8
     writeIORef (asDialogMode st) (Just DlgNewConn)
-    handleNormal st (KeyMouseLeft (r0 + 2) (c0 + 8))
+    handleNormal st (KeyMouseLeft row col)
     dlg <- readIORef (asDialogMode st)
     assertEq "newconn mouse single option opens prompt" True (isDlgPromptWithSubstring "host" dlg)
 
@@ -730,6 +789,14 @@ findLineIndex needle = go 0
     go _ [] = 0
     go n (line:rest)
         | line == needle = n
+        | otherwise = go (n + 1) rest
+
+findLineContaining :: String -> [String] -> Int
+findLineContaining needle = go 0
+  where
+    go _ [] = 0
+    go n (line:rest)
+        | needle `isIn` line = n
         | otherwise = go (n + 1) rest
 
 findSubstringPos :: String -> String -> Int

@@ -7,6 +7,7 @@ import Test.Util (assertEq)
 import Test.TUI.Sim.Util
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Input (handleContact)
+import UmbraVox.TUI.Layout (calcLayout)
 
 runTests :: IO Bool
 runTests = do
@@ -20,6 +21,9 @@ runTests = do
         , testContactEnterSwitchesPane
         , testContactEnterResetsScroll
         , testContactDownClampAtEnd
+        , testContactPageDownUsesResponsiveVisibleRows
+        , testContactPageUpUsesResponsiveVisibleRows
+        , testContactPageDownAdjustsContactScroll
         ]
     pure (and results)
 
@@ -78,3 +82,38 @@ testContactDownClampAtEnd = do
     handleContact st KeyDown
     sel <- readIORef (asSelected st)
     assertEq "contact down clamp at 2" 2 sel
+
+testContactPageDownUsesResponsiveVisibleRows :: IO Bool
+testContactPageDownUsesResponsiveVisibleRows = do
+    st <- mkTestState
+    mapM_ (\i -> addTestSession (asConfig st) ("peer-" ++ show i)) [1 .. 20 :: Int]
+    writeIORef (asLayout st) (calcLayout 24 80)
+    writeIORef (asSelected st) 0
+    handleContact st KeyPageDown
+    sel <- readIORef (asSelected st)
+    -- At 24x80: visRows = lChatH - lIdentityH = 13
+    assertEq "contact page down moves by responsive page height" 13 sel
+
+testContactPageUpUsesResponsiveVisibleRows :: IO Bool
+testContactPageUpUsesResponsiveVisibleRows = do
+    st <- mkTestState
+    mapM_ (\i -> addTestSession (asConfig st) ("peer-" ++ show i)) [1 .. 20 :: Int]
+    writeIORef (asLayout st) (calcLayout 24 80)
+    writeIORef (asSelected st) 15
+    handleContact st KeyPageUp
+    sel <- readIORef (asSelected st)
+    assertEq "contact page up moves by responsive page height" 2 sel
+
+testContactPageDownAdjustsContactScroll :: IO Bool
+testContactPageDownAdjustsContactScroll = do
+    st <- mkTestState
+    mapM_ (\i -> addTestSession (asConfig st) ("peer-" ++ show i)) [1 .. 60 :: Int]
+    writeIORef (asLayout st) (calcLayout 24 80)
+    writeIORef (asSelected st) 0
+    writeIORef (asContactScroll st) 0
+    handleContact st KeyPageDown
+    sel <- readIORef (asSelected st)
+    off <- readIORef (asContactScroll st)
+    ok1 <- assertEq "contact page down updates selection" 13 sel
+    ok2 <- assertEq "contact page down keeps selection visible via scroll" 1 off
+    pure (ok1 && ok2)

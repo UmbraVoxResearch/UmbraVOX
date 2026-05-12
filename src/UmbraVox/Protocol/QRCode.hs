@@ -45,12 +45,14 @@ generateSafetyNumber ours theirs =
     byteToDigit :: Word8 -> Char
     byteToDigit w = toEnum (fromEnum '0' + fromIntegral w `mod` 10)
 
--- | Format a 60-digit safety number as 6 rows of 2 groups (5 digits each).
+-- | Format a 60-digit safety number as 5 columns of 5-digit groups.
+-- 12 groups total -> 3 rendered rows (5 + 5 + 2 groups), preserving order.
 renderSafetyNumber :: String -> [String]
-renderSafetyNumber digits = map formatRow (groups 10 digits)
+renderSafetyNumber digits = map formatRow (groups 25 digits)
   where
-    formatRow row = let (a, b) = splitAt 5 row
-                    in "  " ++ a ++ " " ++ b
+    formatRow row =
+        let gs = groups 5 row
+        in "  " ++ intercalate " " gs
     groups _ [] = []
     groups n xs = let (g, rest) = splitAt n xs in g : groups n rest
 

@@ -6,7 +6,7 @@ import Data.IORef (readIORef, writeIORef)
 import Test.Util (assertEq)
 import Test.TUI.Sim.Util
 import UmbraVox.TUI.Actions (startBrowse)
-import UmbraVox.TUI.Dialog (browseOverlayLines, overlayBounds, settingsOverlayLines)
+import UmbraVox.TUI.Dialog (browseOverlayLines, overlayBounds, settingsOverlayLines, wrapOverlayLines)
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Menu (handleMenu, toggleMenu, openMenu, executeMenuItem)
 import UmbraVox.TUI.Input (handleNormal)
@@ -30,8 +30,7 @@ runTests = do
         , testMenuChatNew
         , testMenuChatRename
         , testMenuPrefsSettings
-        , testMenuPrefsKeys
-        , testMenuPrefsMDNSToggle
+        , testMenuPrefsNoMDNSToggle
         , testMenuPrefsExportChat
         , testMenuPrefsExportChatNoSelection
         , testMenuPrefsImportChat
@@ -43,6 +42,7 @@ runTests = do
         , testMenuMouseClickTab
         , testMenuMouseClickQuitTab
         , testMenuMouseClickDropdownItem
+        , testMenuMouseClickIdentityRegenButton
         , testMouseClickPaneFocusAndSelection
         , testMouseClickBrowsePeerSelection
         , testMouseClickSettingsOption
@@ -69,7 +69,7 @@ testMenuDownClamps = do
     handleMenu st KeyDown >> handleMenu st KeyDown >> handleMenu st KeyDown
     handleMenu st KeyDown >> handleMenu st KeyDown >> handleMenu st KeyDown
     idx <- readIORef (asMenuIndex st)
-    assertEq "menu down clamps at 4" 4 idx
+    assertEq "menu down clamps at 2" 2 idx
 
 testMenuUpClamps :: IO Bool
 testMenuUpClamps = do
@@ -148,25 +148,16 @@ testMenuPrefsSettings = do
     dlg <- readIORef (asDialogMode st)
     assertEq "prefs settings opens DlgSettings" True (isDlgSettings dlg)
 
-testMenuPrefsKeys :: IO Bool
-testMenuPrefsKeys = do
-    st <- mkTestState; executeMenuItem st MenuPrefs 1
-    dlg <- readIORef (asDialogMode st)
-    assertEq "prefs keys opens DlgKeys" True (isDlgKeys dlg)
-
-testMenuPrefsMDNSToggle :: IO Bool
-testMenuPrefsMDNSToggle = do
-    st <- mkTestState
-    before <- readIORef (cfgMDNSEnabled (asConfig st))
-    executeMenuItem st MenuPrefs 2
-    after <- readIORef (cfgMDNSEnabled (asConfig st))
-    assertEq "prefs mDNS toggles" True (before /= after)
+testMenuPrefsNoMDNSToggle :: IO Bool
+testMenuPrefsNoMDNSToggle = do
+    let prefsItems = menuTabItems MenuPrefs
+    assertEq "prefs menu omits mDNS toggle" False ("mDNS Toggle" `elem` prefsItems)
 
 testMenuPrefsExportChat :: IO Bool
 testMenuPrefsExportChat = do
     st <- mkTestState
     _ <- addTestSession (asConfig st) "peer-1"
-    executeMenuItem st MenuPrefs 3
+    executeMenuItem st MenuPrefs 1
     dlg <- readIORef (asDialogMode st)
     assertEq "prefs export chat opens prompt" True (isDlgPrompt dlg)
 
@@ -175,7 +166,7 @@ testMenuPrefsExportChatNoSelection = do
     st <- mkTestState
     _ <- addTestSession (asConfig st) "peer-1"
     writeIORef (asSelected st) (-1)
-    executeMenuItem st MenuPrefs 3
+    executeMenuItem st MenuPrefs 1
     dlg <- readIORef (asDialogMode st)
     status <- readIORef (asStatusMsg st)
     ok1 <- assertEq "prefs export chat no selection stays closed" True (isDlgNothing dlg)
@@ -186,7 +177,7 @@ testMenuPrefsImportChat :: IO Bool
 testMenuPrefsImportChat = do
     st <- mkTestState
     _ <- addTestSession (asConfig st) "peer-1"
-    executeMenuItem st MenuPrefs 4
+    executeMenuItem st MenuPrefs 2
     dlg <- readIORef (asDialogMode st)
     assertEq "prefs import chat opens prompt" True (isDlgPrompt dlg)
 
@@ -195,7 +186,7 @@ testMenuPrefsImportChatNoSelection = do
     st <- mkTestState
     _ <- addTestSession (asConfig st) "peer-1"
     writeIORef (asSelected st) (-1)
-    executeMenuItem st MenuPrefs 4
+    executeMenuItem st MenuPrefs 2
     dlg <- readIORef (asDialogMode st)
     status <- readIORef (asStatusMsg st)
     ok1 <- assertEq "prefs import chat no selection stays closed" True (isDlgNothing dlg)
@@ -251,13 +242,29 @@ testMenuMouseClickDropdownItem = do
     st <- mkTestState
     openMenu st MenuPrefs
     -- Prefs dropdown starts near col 100 in row 3 (items begin row 3).
-    -- Row 4 is item index 1 => "Keys".
-    handleNormal st (KeyMouseLeft 4 101)
+    -- Row 3 is item index 0 => "Settings".
+    handleNormal st (KeyMouseLeft 3 101)
     dlg <- readIORef (asDialogMode st)
     m <- readIORef (asMenuOpen st)
-    ok1 <- assertEq "mouse dropdown click executes item" True (isDlgKeys dlg)
+    ok1 <- assertEq "mouse dropdown click executes item" True (isDlgSettings dlg)
     ok2 <- assertEq "mouse dropdown click closes menu" Nothing m
     pure (ok1 && ok2)
+
+testMenuMouseClickIdentityRegenButton :: IO Bool
+testMenuMouseClickIdentityRegenButton = do
+    st <- mkTestState
+    let lay = calcTestLayout
+        chatTop = 2
+        identBottom = chatTop + lChatH lay - 1
+        btnText :: String
+        btnText = "[ Regenerate (F5) ]"
+        btnW = length btnText
+        leftInnerStart = 2
+        btnStart = leftInnerStart + max 0 ((lLeftW lay - 2 - btnW) `div` 2)
+        btnCol = btnStart + (btnW `div` 2)
+    handleNormal st (KeyMouseLeft identBottom btnCol)
+    dlg <- readIORef (asDialogMode st)
+    assertEq "mouse click identity regen button opens dialog" True (dlg == Just DlgRegenKey)
 
 testMouseClickPaneFocusAndSelection :: IO Bool
 testMouseClickPaneFocusAndSelection = do
@@ -279,10 +286,11 @@ testMouseClickBrowsePeerSelection = do
     st <- mkTestState
     seedBrowsePeers st 1
     startBrowse st
-    lines' <- browseOverlayLines st
-    let (r0, c0, _, _) = overlayBounds calcTestLayout (length lines')
-        firstPeerContentLine = 5
-    handleNormal st (KeyMouseLeft (r0 + 1 + firstPeerContentLine) (c0 + 4))
+    rawLines <- browseOverlayLines st
+    let lines' = wrapOverlayLines (overlayWrapWidthForTest calcTestLayout) rawLines
+        (r0, c0, _, _) = overlayBounds calcTestLayout (length lines')
+        peerLine = findLineContaining "0. peer-0" lines'
+    handleNormal st (KeyMouseLeft (r0 + 1 + peerLine) (c0 + 4))
     dlg <- readIORef (asDialogMode st)
     status <- readIORef (asStatusMsg st)
     ok1 <- assertEq "mouse click browse peer closes dialog" True (isDlgNothing dlg)
@@ -313,3 +321,16 @@ findLineIndex needle = go 0
     go n (line:rest)
         | line == needle = n
         | otherwise = go (n + 1) rest
+
+findLineContaining :: String -> [String] -> Int
+findLineContaining needle = go 0
+  where
+    go _ [] = 0
+    go n (line:rest)
+        | needle `prefixOf` line = n
+        | otherwise = go (n + 1) rest
+
+overlayWrapWidthForTest :: Layout -> Int
+overlayWrapWidthForTest lay =
+    let (_, _, w, _) = overlayBounds lay 0
+    in max 1 (w - 3)
