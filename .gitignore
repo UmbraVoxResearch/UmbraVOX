@@ -13,3 +13,4 @@ test/evidence/formal-proofs/fstar/_output/
 *.pref
 nix/fstar-cache/
 *.checked
+*.tix
