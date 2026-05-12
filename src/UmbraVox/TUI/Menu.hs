@@ -11,6 +11,11 @@ import UmbraVox.TUI.RuntimeCommand (commandForMenuItem, runRuntimeCommand, Runti
 
 -- Menu handling -----------------------------------------------------------
 
+clampMenuIndexForTab :: MenuTab -> Int -> Int
+clampMenuIndexForTab tab i =
+    let maxIdx = max 0 (length (menuTabItems tab) - 1)
+    in max 0 (min maxIdx i)
+
 -- | Toggle a menu tab open/closed
 toggleMenu :: AppState -> MenuTab -> IO ()
 toggleMenu st tab = do
@@ -22,7 +27,7 @@ toggleMenu st tab = do
 openMenu :: AppState -> MenuTab -> IO ()
 openMenu st tab = do
     writeIORef (asMenuOpen st) (Just tab)
-    writeIORef (asMenuIndex st) 0
+    writeIORef (asMenuIndex st) (clampMenuIndexForTab tab 0)
 
 closeMenu :: AppState -> IO ()
 closeMenu st = writeIORef (asMenuOpen st) Nothing
@@ -33,13 +38,15 @@ handleMenu st key = case key of
     KeyEscape  -> closeMenu st
     KeyLeft    -> moveMenuTab st (-1)
     KeyRight   -> moveMenuTab st 1
-    KeyUp      -> modifyIORef' (asMenuIndex st) (\i -> max 0 (i - 1))
+    KeyUp      -> do
+        mTab <- readIORef (asMenuOpen st)
+        case mTab of
+            Just tab -> modifyIORef' (asMenuIndex st) (\i -> clampMenuIndexForTab tab (i - 1))
+            Nothing -> pure ()
     KeyDown    -> do
-        tab <- readIORef (asMenuOpen st)
-        case tab of
-            Just t -> do
-                let maxIdx = length (menuTabItems t) - 1
-                modifyIORef' (asMenuIndex st) (\i -> min maxIdx (i + 1))
+        mTab <- readIORef (asMenuOpen st)
+        case mTab of
+            Just tab -> modifyIORef' (asMenuIndex st) (\i -> clampMenuIndexForTab tab (i + 1))
             Nothing -> pure ()
     KeyEnter   -> activateMenuItem st
     -- F-keys switch directly to that tab
@@ -68,7 +75,7 @@ moveMenuTab st dir = do
                 idx' = (idx + dir) `mod` length tabs
                 newTab = toEnum idx'
             writeIORef (asMenuOpen st) (Just newTab)
-            writeIORef (asMenuIndex st) 0
+            writeIORef (asMenuIndex st) (clampMenuIndexForTab newTab 0)
 
 -- | Activate the currently selected menu item
 activateMenuItem :: AppState -> IO ()
@@ -79,9 +86,9 @@ activateMenuItem st = do
     case mTab of
         Nothing -> pure ()
         Just tab -> do
-            let items = menuTabItems tab
-            if idx < length items
-                then executeMenuItem st tab idx
+            let idx' = clampMenuIndexForTab tab idx
+            if idx' < length (menuTabItems tab)
+                then executeMenuItem st tab idx'
                 else pure ()
 
 -- | Execute a menu action based on tab and item index.

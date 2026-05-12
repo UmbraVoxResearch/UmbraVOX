@@ -38,6 +38,7 @@ runTests = do
         , testDlgVerifyAnyKeyCloses
         , testDlgHelpMouseTopXCloses
         , testDlgHelpScrollbarDrag
+        , testDlgHelpScrollbarClickIgnoresAdjacentColumn
         , testDlgWrapPreservesCloseHitRegion
         , testDlgBrowseEscCloses
         , testBrowseSearchPrompt
@@ -46,6 +47,7 @@ runTests = do
         , testBrowseMouseFooterClear
         , testBrowseMouseFooterClose
         , testBrowseScrollbarDrag
+        , testBrowseScrollKeyClampsAtBounds
         , testBrowseDigitConnectsVisiblePeer
         , testBrowseDigitClampsStalePage
         , testBrowseInvalidDigitSetsStatus
@@ -151,6 +153,23 @@ testDlgHelpScrollbarDrag = do
             handleMouseDrag st row sbCol
             off <- readIORef (asDialogScroll st)
             assertEq "DlgHelp scrollbar drag updates offset" True (off > 0)
+
+testDlgHelpScrollbarClickIgnoresAdjacentColumn :: IO Bool
+testDlgHelpScrollbarClickIgnoresAdjacentColumn = do
+    st <- mkTestState
+    let smallLay = calcLayout 24 80
+    writeIORef (asLayout st) smallLay
+    writeIORef (asDialogMode st) (Just DlgHelp)
+    let wrapWidth = overlayWrapWidthForTest smallLay
+        wrapped = wrapOverlayLines wrapWidth helpOverlayLines
+        lineCount = length wrapped
+    case overlayScrollbarBounds smallLay lineCount 0 of
+        Nothing -> assertEq "DlgHelp scrollbar adjacent-column precondition" True False
+        Just (sbCol, trackTop, trackBot) -> do
+            let row = trackTop + max 0 ((trackBot - trackTop) `div` 2)
+            handleNormal st (KeyMouseLeft row (sbCol - 1))
+            off <- readIORef (asDialogScroll st)
+            assertEq "DlgHelp scrollbar only tracks exact scrollbar column" 0 off
 
 testDlgWrapPreservesCloseHitRegion :: IO Bool
 testDlgWrapPreservesCloseHitRegion = do
@@ -259,6 +278,24 @@ testBrowseScrollbarDrag = do
     handleMouseDrag st trackBot sbCol
     scroll <- readIORef (asDialogScroll st)
     assertEq "DlgBrowse scrollbar drag updates scroll" True (scroll > 0)
+
+testBrowseScrollKeyClampsAtBounds :: IO Bool
+testBrowseScrollKeyClampsAtBounds = do
+    st <- mkTestState
+    seedBrowsePeers st 40
+    startBrowse st
+    sequence_ (replicate 200 (handleDialog st KeyDown))
+    lines' <- browseOverlayLines st
+    let totalLines = length (wrapOverlayLines (overlayWrapWidthForTest calcTestLayout) lines')
+        (_, _, _, h) = overlayBounds calcTestLayout totalLines
+        contentH = h - 2
+        maxOff = max 0 (totalLines - contentH)
+    offAfterDown <- readIORef (asDialogScroll st)
+    sequence_ (replicate 200 (handleDialog st KeyUp))
+    offAfterUp <- readIORef (asDialogScroll st)
+    a <- assertEq "DlgBrowse down-scroll clamps at max offset" maxOff offAfterDown
+    b <- assertEq "DlgBrowse up-scroll clamps at zero" 0 offAfterUp
+    pure (a && b)
 
 testBrowseDigitConnectsVisiblePeer :: IO Bool
 testBrowseDigitConnectsVisiblePeer = do

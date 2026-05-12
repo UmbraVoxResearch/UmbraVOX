@@ -42,6 +42,7 @@ runTests = do
         , testMenuMouseClickTab
         , testMenuMouseClickQuitTab
         , testMenuMouseClickDropdownItem
+        , testMenuMouseClickOutsideDropdownClosesWithoutAction
         , testMenuMouseClickIdentityRegenButton
         , testMouseClickPaneFocusAndSelection
         , testMouseClickBrowsePeerSelection
@@ -248,6 +249,17 @@ testMenuMouseClickDropdownItem = do
     m <- readIORef (asMenuOpen st)
     ok1 <- assertEq "mouse dropdown click executes item" True (isDlgSettings dlg)
     ok2 <- assertEq "mouse dropdown click closes menu" Nothing m
+    pure (ok1 && ok2)
+
+testMenuMouseClickOutsideDropdownClosesWithoutAction :: IO Bool
+testMenuMouseClickOutsideDropdownClosesWithoutAction = do
+    st <- mkTestState
+    openMenu st MenuPrefs
+    handleNormal st (KeyMouseLeft 3 99)
+    dlg <- readIORef (asDialogMode st)
+    m <- readIORef (asMenuOpen st)
+    ok1 <- assertEq "mouse click outside dropdown closes menu" Nothing m
+    ok2 <- assertEq "mouse click outside dropdown does not execute action" True (isDlgNothing dlg)
     pure (ok1 && ok2)
 
 testMenuMouseClickIdentityRegenButton :: IO Bool

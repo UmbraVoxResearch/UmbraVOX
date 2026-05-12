@@ -1,7 +1,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 module UmbraVox.TUI.Layout
     ( clampSize, sizeValid, calcLayout, dropdownCol, inputAreaRows
-    , chatPaneBounds
+    , chatPaneBounds, contactsPaneBounds, actionsPaneBounds
     ) where
 
 import UmbraVox.TUI.Constants
@@ -75,4 +75,24 @@ chatPaneBounds lay =
         c0 = lLeftW lay + 1       -- divider at lLeftW, interior starts after it
         w  = max 1 (lRightW lay - 1)
         h  = max 1 (lChatH lay)
+    in (r0, c0, w, h)
+
+-- | Interior bounds of the contacts pane (left side), excluding borders.
+-- Returns (row0, col0, width, height).
+contactsPaneBounds :: Layout -> (Int, Int, Int, Int)
+contactsPaneBounds lay =
+    let r0 = 2
+        c0 = 2
+        w  = max 1 (lLeftW lay - 2)
+        h  = max 1 (lChatH lay - lIdentityH lay)
+    in (r0, c0, w, h)
+
+-- | Interior bounds of the action strip in the left pane, excluding borders.
+-- Returns (row0, col0, width, height).
+actionsPaneBounds :: Layout -> (Int, Int, Int, Int)
+actionsPaneBounds lay =
+    let r0 = lChatH lay + 3
+        c0 = 2
+        w  = max 1 (lLeftW lay - 2)
+        h  = inputAreaRows
     in (r0, c0, w, h)
