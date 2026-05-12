@@ -82,15 +82,43 @@ assume val decode_le : bytes32 -> Tot nat
 (** HKDF domain separation info strings                                  **)
 (** -------------------------------------------------------------------- **)
 
-(** "UmbraVox_ViewTag_v2" as a byte sequence. *)
-assume val view_tag_info : seq UInt8.t
+(** "UmbraVox_ViewTag_v2" as a concrete byte sequence (19 bytes).
+    ASCII: U m b r a V o x _ V i e w T a g _ v 2
+           55 6d 62 72 61 56 6f 78 5f 56 69 65 77 54 61 67 5f 76 32
+    Matches viewTagInfo in src/UmbraVox/Crypto/StealthAddress.hs. *)
+let view_tag_info : seq UInt8.t =
+  let l = [
+    0x55uy; 0x6duy; 0x62uy; 0x72uy; 0x61uy; 0x56uy; 0x6fuy; 0x78uy;
+    0x5fuy; 0x56uy; 0x69uy; 0x65uy; 0x77uy; 0x54uy; 0x61uy; 0x67uy;
+    0x5fuy; 0x76uy; 0x32uy
+  ] in
+  let _ = assert_norm (List.Tot.length l = 19) in
+  Seq.seq_of_list l
 
-(** "UmbraVox_StealthKey_v1" as a byte sequence. *)
-assume val stealth_key_info : seq UInt8.t
+(** "UmbraVox_StealthKey_v1" as a concrete byte sequence (22 bytes).
+    ASCII: U m b r a V o x _ S t e a l t h K e y _ v 1
+           55 6d 62 72 61 56 6f 78 5f 53 74 65 61 6c 74 68 4b 65 79 5f 76 31
+    Matches stealthKeyInfo in src/UmbraVox/Crypto/StealthAddress.hs. *)
+let stealth_key_info : seq UInt8.t =
+  let l = [
+    0x55uy; 0x6duy; 0x62uy; 0x72uy; 0x61uy; 0x56uy; 0x6fuy; 0x78uy;
+    0x5fuy; 0x53uy; 0x74uy; 0x65uy; 0x61uy; 0x6cuy; 0x74uy; 0x68uy;
+    0x4buy; 0x65uy; 0x79uy; 0x5fuy; 0x76uy; 0x31uy
+  ] in
+  let _ = assert_norm (List.Tot.length l = 22) in
+  Seq.seq_of_list l
 
-(** The two info strings are distinct (domain separation). *)
-assume val info_strings_distinct : unit
+(** The two info strings are distinct (domain separation).
+    Proved by length: |view_tag_info| = 19 ≠ 22 = |stealth_key_info|. *)
+val info_strings_distinct : unit
     -> Lemma (view_tag_info <> stealth_key_info)
+let info_strings_distinct () =
+  (* The two sequences have different lengths (19 vs 22), so they cannot be equal.
+     Both are seq_of_list of their respective lists; assert_norm evaluates lengths. *)
+  assert_norm (Seq.length view_tag_info = 19);
+  assert_norm (Seq.length stealth_key_info = 22);
+  introduce view_tag_info = stealth_key_info ==> False
+  with _h. (assert (Seq.length view_tag_info = Seq.length stealth_key_info))
 
 (** -------------------------------------------------------------------- **)
 (** Protocol building blocks                                             **)

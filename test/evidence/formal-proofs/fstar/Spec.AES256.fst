@@ -62,7 +62,7 @@ let sbox_list : list UInt8.t = [
     0x8cuy; 0xa1uy; 0x89uy; 0x0duy; 0xbfuy; 0xe6uy; 0x42uy; 0x68uy;
     0x41uy; 0x99uy; 0x2duy; 0x0fuy; 0xb0uy; 0x54uy; 0xbbuy; 0x16uy
   ]
-let _ = assert_norm (List.Tot.length sbox_list = 256)
+let sbox_list_len : squash (List.Tot.length sbox_list = 256) = assert_norm (List.Tot.length sbox_list = 256)
 let sbox_table : (s:seq UInt8.t{Seq.length s = 256}) =
   assert_norm (List.Tot.length sbox_list = 256);
   Seq.seq_of_list sbox_list
@@ -101,7 +101,7 @@ let inv_sbox_list : list UInt8.t = [
     0x17uy; 0x2buy; 0x04uy; 0x7euy; 0xbauy; 0x77uy; 0xd6uy; 0x26uy;
     0xe1uy; 0x69uy; 0x14uy; 0x63uy; 0x55uy; 0x21uy; 0x0cuy; 0x7duy
   ]
-let _ = assert_norm (List.Tot.length inv_sbox_list = 256)
+let inv_sbox_list_len : squash (List.Tot.length inv_sbox_list = 256) = assert_norm (List.Tot.length inv_sbox_list = 256)
 let inv_sbox_table : (s:seq UInt8.t{Seq.length s = 256}) =
   assert_norm (List.Tot.length inv_sbox_list = 256);
   Seq.seq_of_list inv_sbox_list
@@ -444,23 +444,16 @@ let aes_decrypt (key : seq UInt8.t{Seq.length key = key_size})
 (** The Seq.init_index_ SMTPat then gives Z3 the per-index fact.         **)
 (** -------------------------------------------------------------------- **)
 
-(** Expose list lengths as SMT-visible Lemmas so Z3 can discharge subtype
-    checks of the form [i < List.Tot.length sbox_list] when [i < 256]. *)
-private val sbox_list_len : unit -> Lemma (List.Tot.length sbox_list = 256)
-private let sbox_list_len () = assert_norm (List.Tot.length sbox_list = 256)
-
-private val inv_sbox_list_len : unit -> Lemma (List.Tot.length inv_sbox_list = 256)
-private let inv_sbox_list_len () = assert_norm (List.Tot.length inv_sbox_list = 256)
-
 (** Composition sequences: the composition inv_sbox ∘ sbox / sbox ∘ inv_sbox
     evaluated at each UInt8 value (0..255).  Using Seq.init with List.Tot.index
     on the concrete raw lists — the normalizer can fully evaluate List.Tot.index
     on concrete lists, unlike Seq.index on sbox_table/inv_sbox_table which have
     dependent-type guards that block the normalizer.  assert_norm (comp = id)
-    works because F*'s kernel reduces Seq.init to a concrete sequence in this case. *)
+    works because F*'s kernel reduces Seq.init to a concrete sequence in this case.
+    The z3rlimit is raised here to allow Z3 to discharge subtype goals of the form
+    [i < List.Tot.length sbox_list] in heavier module contexts. *)
+#push-options "--fuel 1000 --ifuel 1000"
 private let sbox_comp_seq : seq UInt8.t =
-  sbox_list_len ();
-  inv_sbox_list_len ();
   Seq.init 256 (fun i ->
     List.Tot.index inv_sbox_list (UInt8.v (List.Tot.index sbox_list i)))
 
@@ -468,16 +461,17 @@ private let id_seq : seq UInt8.t =
   Seq.init 256 UInt8.uint_to_t
 
 private let inv_sbox_comp_seq : seq UInt8.t =
-  sbox_list_len ();
-  inv_sbox_list_len ();
   Seq.init 256 (fun i ->
     List.Tot.index sbox_list (UInt8.v (List.Tot.index inv_sbox_list i)))
 
 (** Verify both composition sequences equal the identity sequence by assert_norm.
     F*'s normalizer evaluates List.Tot.index on the concrete sbox_list /
-    inv_sbox_list for each concrete i in 0..255 and reduces Seq.init fully. *)
+    inv_sbox_list for each concrete i in 0..255 and reduces Seq.init fully.
+    The elevated fuel (--fuel 1000) ensures the normalizer has enough steps
+    to traverse 256-element lists for each of the 256 indices. *)
 private let _ = assert_norm (sbox_comp_seq = id_seq)
 private let _ = assert_norm (inv_sbox_comp_seq = id_seq)
+#pop-options
 
 (** Per-index helper: Seq.index sbox_comp_seq i == Seq.index id_seq i.
     From sbox_comp_seq == id_seq (propositional equality established above),

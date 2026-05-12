@@ -885,11 +885,11 @@ MILESTONE M14: PLATFORM EXPANSION — VM RUNNERS + ILLUMOS + BSDs
   [ ] M14.1.9 QEMU VM runner for OpenIndiana (illumos) x86_64.
 
 [ ] M14.2 Nix VM images per platform
-  [ ] M14.2.1 nix/vm-freebsd.nix — FreeBSD QEMU image with GHC + deps.
-  [ ] M14.2.2 nix/vm-openbsd.nix — OpenBSD QEMU image with GHC + deps.
-  [ ] M14.2.3 nix/vm-netbsd.nix — NetBSD QEMU image with GHC + deps.
-  [ ] M14.2.4 nix/vm-dragonfly.nix — DragonFlyBSD QEMU image with GHC + deps.
-  [ ] M14.2.5 nix/vm-omnios.nix — OmniOS QEMU image with GHC + deps.
+  [x] M14.2.1 nix/vm-freebsd.nix — FreeBSD QEMU image with GHC + deps.
+  [x] M14.2.2 nix/vm-openbsd.nix — OpenBSD QEMU image with GHC + deps.
+  [x] M14.2.3 nix/vm-netbsd.nix — NetBSD QEMU image with GHC + deps.
+  [x] M14.2.4 nix/vm-dragonfly.nix — DragonFlyBSD QEMU image with GHC + deps. (INFO: GHC pkg availability not guaranteed; exits 0 with notice if missing)
+  [x] M14.2.5 nix/vm-omnios.nix — OmniOS QEMU image with GHC + deps.
   [ ] M14.2.6 nix/vm-smartos.nix — SmartOS QEMU image with GHC + deps.
   [ ] M14.2.7 nix/vm-openindiana.nix — OpenIndiana QEMU image with GHC + deps.
   [ ] M14.2.8 nix/vm-linux-arm64.nix — Linux aarch64 QEMU image.
@@ -917,9 +917,9 @@ MILESTONE M14: PLATFORM EXPANSION — VM RUNNERS + ILLUMOS + BSDs
   [ ] M14.5.3 make release-netbsd — NetBSD source release.
   [ ] M14.5.4 make release-illumos — illumos (OmniOS/SmartOS/OpenIndiana) source release.
   [ ] M14.5.5 make release-linux-arm64 — Linux arm64 release.
-  [ ] M14.5.6 make vm-smoke-freebsd — FreeBSD VM smoke test.
+  [x] M14.5.6 make vm-smoke-freebsd — FreeBSD VM smoke test.
   [ ] M14.5.7 make vm-smoke-openbsd — OpenBSD VM smoke test.
-  [ ] M14.5.8 make vm-smoke-illumos — illumos VM smoke test.
+  [x] M14.5.8 make vm-smoke-illumos — illumos VM smoke test.
   [ ] M14.5.9 make vm-smoke-arm64 — Linux arm64 VM smoke test.
 
 [ ] M14.6 WebAssembly target
