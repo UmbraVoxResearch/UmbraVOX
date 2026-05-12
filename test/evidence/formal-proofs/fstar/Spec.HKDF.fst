@@ -23,6 +23,13 @@ open FStar.Mul
 (** Type alias for an HMAC function: key -> message -> tag *)
 type hmac_fn = seq UInt8.t -> seq UInt8.t -> seq UInt8.t
 
+(** A bounded HMAC function: output always has exactly hash_len bytes.
+    This type captures the length postcondition that the unconstrained
+    hmac_fn cannot express. *)
+type bounded_hmac_fn (hash_len : nat) =
+    f:(seq UInt8.t -> seq UInt8.t -> seq UInt8.t){
+        forall (k:seq UInt8.t) (m:seq UInt8.t). Seq.length (f k m) = hash_len}
+
 (** -------------------------------------------------------------------- **)
 (** RFC 5869, Section 2.2 -- HKDF-Extract                                **)
 (**                                                                       **)
@@ -71,6 +78,38 @@ let rec expand_loop (hmac : hmac_fn)
     Seq.append t_i (expand_loop hmac prk info t_i (counter + 1) n)
 #pop-options
 
+(** Bounded expand loop: uses a bounded_hmac_fn to carry the length invariant.
+    Each T(i) = hmac prk (...) has exactly hash_len bytes by the bounded_hmac_fn
+    postcondition.  The output has length (n - counter + 1) * hash_len. *)
+#push-options "--z3rlimit 10000"
+let rec expand_loop_bounded
+    (#hash_len : nat{hash_len > 0})
+    (hmac : bounded_hmac_fn hash_len)
+    (prk : seq UInt8.t) (info : seq UInt8.t)
+    (prev : seq UInt8.t)
+    (counter : nat{counter >= 1 /\ counter <= 255})
+    (n : nat{n >= 1 /\ n <= 255 /\ counter <= n})
+    : Tot (s:seq UInt8.t{Seq.length s = (n - counter + 1) * hash_len})
+          (decreases (n + 1 - counter)) =
+  assert_norm (pow2 8 = 256);
+  let t_i = hmac prk (Seq.append prev
+                       (Seq.append info
+                         (Seq.create 1 (FStar.UInt8.uint_to_t counter)))) in
+  (* hmac is a bounded_hmac_fn hash_len, so Seq.length t_i = hash_len *)
+  if counter >= n then
+    (* n - counter + 1 = 1, so length = 1 * hash_len = hash_len = Seq.length t_i *)
+    t_i
+  else begin
+    let rest = expand_loop_bounded hmac prk info t_i (counter + 1) n in
+    (* Seq.length rest = (n - (counter + 1) + 1) * hash_len = (n - counter) * hash_len
+       Seq.length (append t_i rest) = hash_len + (n - counter) * hash_len
+                                    = (1 + n - counter) * hash_len
+                                    = (n - counter + 1) * hash_len *)
+    Seq.lemma_len_append t_i rest;
+    Seq.append t_i rest
+  end
+#pop-options
+
 (** Ceiling division: ceil(a / b) when b > 0 *)
 let ceil_div (a : nat) (b : pos) : nat =
   if a % b = 0 then a / b else a / b + 1
@@ -107,6 +146,31 @@ let hkdf_expand (hmac : hmac_fn) (hash_len : nat{hash_len > 0})
   assume (Seq.length expanded >= len);
   Seq.slice expanded 0 len
 
+(** Bounded expand: uses bounded_hmac_fn to carry the length postcondition,
+    eliminating the assume on expanded length. *)
+val hkdf_expand_bounded :
+    #hash_len:nat{hash_len > 0}
+    -> hmac:bounded_hmac_fn hash_len
+    -> prk:seq UInt8.t -> info:seq UInt8.t
+    -> len:nat{len > 0 /\ len <= 255 * hash_len}
+    -> Tot (s:seq UInt8.t{Seq.length s = len})
+let hkdf_expand_bounded #hash_len (hmac : bounded_hmac_fn hash_len)
+                         (prk : seq UInt8.t) (info : seq UInt8.t)
+                         (len : nat{len > 0 /\ len <= 255 * hash_len})
+    : (s:seq UInt8.t{Seq.length s = len}) =
+  let n = ceil_div len hash_len in
+  ceil_div_bounds_lemma len hash_len;
+  let expanded = expand_loop_bounded hmac prk info Seq.empty 1 n in
+  (* expanded has length (n - 1 + 1) * hash_len = n * hash_len.
+     n = ceil(len / hash_len), so n * hash_len >= len.
+     Proof: n = ceil_div len hash_len.
+       If len % hash_len = 0 then n = len/hash_len, n * hash_len = len.
+       If len % hash_len > 0 then n = len/hash_len + 1,
+         n * hash_len = (len/hash_len + 1) * hash_len > len.
+     In both cases n * hash_len >= len. Z3 arithmetic closes this. *)
+  Seq.lemma_len_slice expanded 0 len;
+  Seq.slice expanded 0 len
+
 (** -------------------------------------------------------------------- **)
 (** Combined Extract-then-Expand                                         **)
 (** -------------------------------------------------------------------- **)
@@ -126,7 +190,9 @@ let hkdf (hmac : hmac_fn) (hash_len : nat{hash_len > 0})
 (** Concrete instances                                                   **)
 (** -------------------------------------------------------------------- **)
 
-(** HKDF with HMAC-SHA-512 (hash_len = 64) *)
+(** HKDF with HMAC-SHA-512 (hash_len = 64)
+    Uses hmac_sha512_bounded (which uses prepare_key_bounded) to eliminate
+    the assume on expanded-key length in hkdf_expand. *)
 val hkdf_sha512_extract : salt:seq UInt8.t -> ikm:seq UInt8.t -> Tot (seq UInt8.t)
 let hkdf_sha512_extract salt ikm =
   hkdf_extract Spec.HMAC.hmac_sha512 64 salt ikm
@@ -135,15 +201,18 @@ val hkdf_sha512_expand : prk:seq UInt8.t -> info:seq UInt8.t
     -> len:nat{len > 0 /\ len <= 255 * 64}
     -> Tot (s:seq UInt8.t{Seq.length s = len})
 let hkdf_sha512_expand prk info len =
-  hkdf_expand Spec.HMAC.hmac_sha512 64 prk info len
+  hkdf_expand_bounded #64 Spec.HMAC.hmac_sha512_bounded prk info len
 
 val hkdf_sha512 : salt:seq UInt8.t -> ikm:seq UInt8.t -> info:seq UInt8.t
     -> len:nat{len > 0 /\ len <= 255 * 64}
     -> Tot (s:seq UInt8.t{Seq.length s = len})
 let hkdf_sha512 salt ikm info len =
-  hkdf Spec.HMAC.hmac_sha512 64 salt ikm info len
+  let prk = hkdf_extract Spec.HMAC.hmac_sha512 64 salt ikm in
+  hkdf_expand_bounded #64 Spec.HMAC.hmac_sha512_bounded prk info len
 
-(** HKDF with HMAC-SHA-256 (hash_len = 32) *)
+(** HKDF with HMAC-SHA-256 (hash_len = 32)
+    Uses hmac_sha256_bounded (which uses prepare_key_bounded) to eliminate
+    the assume on expanded-key length in hkdf_expand. *)
 val hkdf_sha256_extract : salt:seq UInt8.t -> ikm:seq UInt8.t -> Tot (seq UInt8.t)
 let hkdf_sha256_extract salt ikm =
   hkdf_extract Spec.HMAC.hmac_sha256 32 salt ikm
@@ -152,13 +221,14 @@ val hkdf_sha256_expand : prk:seq UInt8.t -> info:seq UInt8.t
     -> len:nat{len > 0 /\ len <= 255 * 32}
     -> Tot (s:seq UInt8.t{Seq.length s = len})
 let hkdf_sha256_expand prk info len =
-  hkdf_expand Spec.HMAC.hmac_sha256 32 prk info len
+  hkdf_expand_bounded #32 Spec.HMAC.hmac_sha256_bounded prk info len
 
 val hkdf_sha256 : salt:seq UInt8.t -> ikm:seq UInt8.t -> info:seq UInt8.t
     -> len:nat{len > 0 /\ len <= 255 * 32}
     -> Tot (s:seq UInt8.t{Seq.length s = len})
 let hkdf_sha256 salt ikm info len =
-  hkdf Spec.HMAC.hmac_sha256 32 salt ikm info len
+  let prk = hkdf_extract Spec.HMAC.hmac_sha256 32 salt ikm in
+  hkdf_expand_bounded #32 Spec.HMAC.hmac_sha256_bounded prk info len
 
 (** -------------------------------------------------------------------- **)
 (** Correctness properties                                               **)
