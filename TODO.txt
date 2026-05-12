@@ -472,6 +472,36 @@ M10 Security Audit Round 4 (2026-05-10)
   [x] M10.4.15 Add integritySuites to requiredSuites gate (Main.hs).
 
 ================================================================================
+MILESTONE M15: SPEC COMPLIANCE — CRITICAL GAPS FROM ATTIC AUDIT
+================================================================================
+Note: Findings from attic/doc-legacy spec comparison (2026-05-11).
+
+[ ] M15.1 Counter persistence (CRITICAL — nonce reuse on crash)
+  [ ] M15.1.1 DoubleRatchet: persist rsSendN to disk BEFORE encryption (write-ahead).
+  [ ] M15.1.2 Atomic file write with fsync for ratchet state (prevent partial writes).
+  [ ] M15.1.3 On startup, load persisted counter; reject stale/missing counter files.
+  [ ] M15.1.4 Test: simulate crash after encrypt, verify counter not reused on reload.
+  [ ] M15.1.5 Test: concurrent encrypt threads don't race on counter file.
+
+[ ] M15.2 Nonce format spec update (HIGH — code is correct, spec is outdated)
+  [ ] M15.2.1 Update attic/hardening/07-nonce-safety.md to document current format:
+              zeros[4] || HKDF(chainKey, "UmbraVox_Nonce_v1")[0:8] XOR counter_LE[8].
+  [ ] M15.2.2 Document rationale: HKDF > truncated SHA256, LE matches Noise §11.3.
+  [ ] M15.2.3 Add nonce construction to doc/CRYPTO-SAFETY.md as authoritative reference.
+
+[ ] M15.3 Key erasure (HIGH — requires FFI to C)
+  [ ] M15.3.1 Create UmbraVox.Crypto.SecureBytes module with:
+              - Pinned ForeignPtr allocation (no GC copying)
+              - mlock to prevent swap
+              - explicit_bzero on finalization
+  [ ] M15.3.2 Replace ByteString with SecureBytes for: rsDHSend, rsRootKey,
+              rsSendChain, rsRecvChain, skScanSecret, skSpendSecret.
+  [ ] M15.3.3 Wrap GCM/ChaCha20 key parameters in SecureBytes.
+  [ ] M15.3.4 Add C helper: umbravox_secure_zero(void *ptr, size_t len).
+  [ ] M15.3.5 Test: verify allocated secure memory is zeroed after free (valgrind/asan).
+  [ ] M15.3.6 Test: verify mlock prevents swap-out (check /proc/self/status VmLck).
+
+================================================================================
 MILESTONE M13: F* FORMAL VERIFICATION — 100% COVERAGE
 ================================================================================
 Note: Replace all 221 assumes with Z3-discharged proofs. Add 4 missing specs.
