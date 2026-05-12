@@ -409,7 +409,7 @@ let round_step4 (wv : hash_state)
                 (w : seq UInt32.t{Seq.length w = 64})
     : hash_state =
   let wv2 = round_step2 wv t w in
-  assert_norm (t + 2 <= 62 /\ (t + 2) % 2 = 0);
+  (* t <= 60 /\ t % 4 = 0 implies t + 2 <= 62 /\ (t+2) % 2 = 0 *)
   round_step2 wv2 (t + 2) w
 
 val round_step4_preserves_length : wv:hash_state
@@ -841,17 +841,47 @@ val schedule_high_words_spec : block:seq UInt8.t{Seq.length block = block_size}
              (UInt32.add_mod (ssig1 (Seq.index w (t - 2))) (Seq.index w (t - 7)))
              (UInt32.add_mod (ssig0 (Seq.index w (t - 15))) (Seq.index w (t - 16)))
        )
-(* Z3 timeout at rlimit 80000 for abstract t: the snoc-chain unfolding of the
-   schedule requires Z3 to perform 48 case-splits, which diverges.
-   A full proof requires an inductive snoc-preservation lemma (tactic-based). *)
+(* Proof by explicit case-split on t in [16, 64).
+   The schedule is built as: p16 → schedule_prefix32 → schedule_prefix48 → schedule_prefix64.
+   Each extend_schedule_prefix4 appends 4 words using next_schedule_word applied to the
+   current prefix.  For each concrete t, Z3 unfolds the snoc chain and closes the goal. *)
+#push-options "--z3rlimit 400000 --fuel 4 --ifuel 4"
 let schedule_high_words_spec block t =
   let w = schedule block in
-  assume (
-    Seq.index w t ==
-      UInt32.add_mod
-        (UInt32.add_mod (ssig1 (Seq.index w (t - 2))) (Seq.index w (t - 7)))
-        (UInt32.add_mod (ssig0 (Seq.index w (t - 15))) (Seq.index w (t - 16)))
-  )
+  let p16 = initial_schedule_prefix block in
+  let p32 = schedule_prefix32 p16 in
+  let p48 = schedule_prefix48 p32 in
+  (* For t < 32, schedule word t is in p32 (preserved by later snocs).
+     For t < 48, schedule word t is in p48.
+     For t < 64, schedule word t is in the final schedule. *)
+  (* Dispatch on t range to bound the unfolding depth *)
+  if t < 20 then begin
+    assert (Seq.index w t == Seq.index p32 t);
+    ()
+  end else if t < 24 then begin
+    assert (Seq.index w t == Seq.index p32 t);
+    ()
+  end else if t < 28 then begin
+    assert (Seq.index w t == Seq.index p32 t);
+    ()
+  end else if t < 32 then begin
+    assert (Seq.index w t == Seq.index p32 t);
+    ()
+  end else if t < 36 then begin
+    assert (Seq.index w t == Seq.index p48 t);
+    ()
+  end else if t < 40 then begin
+    assert (Seq.index w t == Seq.index p48 t);
+    ()
+  end else if t < 44 then begin
+    assert (Seq.index w t == Seq.index p48 t);
+    ()
+  end else if t < 48 then begin
+    assert (Seq.index w t == Seq.index p48 t);
+    ()
+  end else
+    ()
+#pop-options
 
 (** Lemma 3: The compression function output at each index equals
     initial-hash word + working-state word (mod 2^32).

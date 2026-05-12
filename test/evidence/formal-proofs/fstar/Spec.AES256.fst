@@ -444,48 +444,72 @@ let aes_decrypt (key : seq UInt8.t{Seq.length key = key_size})
 (** The Seq.init_index_ SMTPat then gives Z3 the per-index fact.         **)
 (** -------------------------------------------------------------------- **)
 
-(** Composition sequence: inv_sbox ∘ sbox applied to all 256 byte values.
-    Defined via Seq.init so that Z3 knows index i = f(uint_to_t i)
-    from the init_index_ SMTPat. *)
-private let sbox_comp_seq : seq UInt8.t =
-  Seq.init 256 (fun i -> inv_sub_byte (sub_byte (UInt8.uint_to_t i)))
+(** Expose list lengths as SMT-visible Lemmas so Z3 can discharge subtype
+    checks of the form [i < List.Tot.length sbox_list] when [i < 256]. *)
+private val sbox_list_len : unit -> Lemma (List.Tot.length sbox_list = 256)
+private let sbox_list_len () = assert_norm (List.Tot.length sbox_list = 256)
 
-(** The identity sequence: Seq.init 256 UInt8.uint_to_t.
-    Seq.init_index_ SMTPat: Seq.index (Seq.init n f) i = f i. *)
+private val inv_sbox_list_len : unit -> Lemma (List.Tot.length inv_sbox_list = 256)
+private let inv_sbox_list_len () = assert_norm (List.Tot.length inv_sbox_list = 256)
+
+(** Composition sequences: the composition inv_sbox ∘ sbox / sbox ∘ inv_sbox
+    evaluated at each UInt8 value (0..255).  Using Seq.init with List.Tot.index
+    on the concrete raw lists — the normalizer can fully evaluate List.Tot.index
+    on concrete lists, unlike Seq.index on sbox_table/inv_sbox_table which have
+    dependent-type guards that block the normalizer.  assert_norm (comp = id)
+    works because F*'s kernel reduces Seq.init to a concrete sequence in this case. *)
+private let sbox_comp_seq : seq UInt8.t =
+  sbox_list_len ();
+  inv_sbox_list_len ();
+  Seq.init 256 (fun i ->
+    List.Tot.index inv_sbox_list (UInt8.v (List.Tot.index sbox_list i)))
+
 private let id_seq : seq UInt8.t =
   Seq.init 256 UInt8.uint_to_t
 
-(** Inverse composition sequence: sbox ∘ inv_sbox. *)
 private let inv_sbox_comp_seq : seq UInt8.t =
-  Seq.init 256 (fun i -> sub_byte (inv_sub_byte (UInt8.uint_to_t i)))
+  sbox_list_len ();
+  inv_sbox_list_len ();
+  Seq.init 256 (fun i ->
+    List.Tot.index sbox_list (UInt8.v (List.Tot.index inv_sbox_list i)))
 
 (** Verify both composition sequences equal the identity sequence by assert_norm.
-    F*'s normalizer evaluates inv_sub_byte(sub_byte(uint_to_t i)) for each concrete i. *)
+    F*'s normalizer evaluates List.Tot.index on the concrete sbox_list /
+    inv_sbox_list for each concrete i in 0..255 and reduces Seq.init fully. *)
 private let _ = assert_norm (sbox_comp_seq = id_seq)
 private let _ = assert_norm (inv_sbox_comp_seq = id_seq)
 
+(** Per-index helper: Seq.index sbox_comp_seq i == Seq.index id_seq i.
+    From sbox_comp_seq == id_seq (propositional equality established above),
+    Z3 derives this by congruence. *)
+private val sbox_comp_index_eq : i:nat{i < 256}
+    -> Lemma (Seq.index sbox_comp_seq i == Seq.index id_seq i)
+private let sbox_comp_index_eq i =
+  assert (sbox_comp_seq == id_seq)
+
+(** Symmetric helper for inv_sbox_comp_seq. *)
+private val inv_sbox_comp_index_eq : i:nat{i < 256}
+    -> Lemma (Seq.index inv_sbox_comp_seq i == Seq.index id_seq i)
+private let inv_sbox_comp_index_eq i =
+  assert (inv_sbox_comp_seq == id_seq)
+
 (** S-box and inverse S-box are inverses (forward direction).
     Proof:
-    1. sbox_comp_seq = id_seq  (from assert_norm above)
-    2. Seq.index sbox_comp_seq i = inv_sub_byte(sub_byte(uint_to_t i))  (init_index_ SMTPat)
-    3. Seq.index id_seq i = uint_to_t i  (init_index_ SMTPat)
-    4. So inv_sub_byte(sub_byte(uint_to_t (UInt8.v b))) = uint_to_t (UInt8.v b)
-    5. UInt8.uv_inv b: uint_to_t (UInt8.v b) = b
-    6. Therefore inv_sub_byte(sub_byte b) = b, concluded by v_inj. *)
+    sbox_comp_index_eq i:  Seq.index sbox_comp_seq i == Seq.index id_seq i
+    Seq.init_index_ (id_seq): Seq.index id_seq i == UInt8.uint_to_t i
+    Seq.init_index_ (sbox_comp_seq): Seq.index sbox_comp_seq i
+        == List.Tot.index inv_sbox_list (UInt8.v (List.Tot.index sbox_list i))
+    seq_of_list SMTPat: Seq.index sbox_table i == List.Tot.index sbox_list i
+    seq_of_list SMTPat: Seq.index inv_sbox_table k == List.Tot.index inv_sbox_list k
+    Chain: inv_sub_byte (sub_byte b) == UInt8.uint_to_t i == b (by uv_inv and v_inj). *)
 #push-options "--z3rlimit 50000"
 val sbox_inv_sbox_roundtrip : b:UInt8.t
     -> Lemma (inv_sub_byte (sub_byte b) == b)
 let sbox_inv_sbox_roundtrip b =
   let i = UInt8.v b in
-  (* init_index_ has SMTPat, so Z3 auto-derives:
-       Seq.index sbox_comp_seq i = inv_sub_byte(sub_byte(uint_to_t i))
-       Seq.index id_seq i = uint_to_t i
-     sbox_comp_seq = id_seq  (from assert_norm)
-     uv_inv (SMTPat): uint_to_t (UInt8.v b) == b
-     v_inj: UInt8.v x = UInt8.v y ==> x == y *)
-  UInt8.uv_inv b;
-  Seq.init_index_ 256 (fun j -> inv_sub_byte (sub_byte (UInt8.uint_to_t j))) i;
+  sbox_comp_index_eq i;
   Seq.init_index_ 256 UInt8.uint_to_t i;
+  UInt8.uv_inv b;
   UInt8.v_inj (inv_sub_byte (sub_byte b)) b
 #pop-options
 
@@ -495,9 +519,9 @@ val inv_sbox_sbox_roundtrip : b:UInt8.t
     -> Lemma (sub_byte (inv_sub_byte b) == b)
 let inv_sbox_sbox_roundtrip b =
   let i = UInt8.v b in
-  UInt8.uv_inv b;
-  Seq.init_index_ 256 (fun j -> sub_byte (inv_sub_byte (UInt8.uint_to_t j))) i;
+  inv_sbox_comp_index_eq i;
   Seq.init_index_ 256 UInt8.uint_to_t i;
+  UInt8.uv_inv b;
   UInt8.v_inj (sub_byte (inv_sub_byte b)) b
 #pop-options
 
