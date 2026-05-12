@@ -2,6 +2,7 @@
 module UmbraVox.TUI.Text
     ( displayWidth
     , trimToWidth
+    , splitAtWidth
     , padRight
     ) where
 
@@ -18,6 +19,17 @@ trimToWidth width = go 0
         | chWidth == 0 = ch : go acc rest
         | acc + chWidth <= width = ch : go (acc + chWidth) rest
         | otherwise = []
+      where
+        chWidth = charWidth ch
+
+splitAtWidth :: Int -> String -> (String, String)
+splitAtWidth width = go 0 []
+  where
+    go _ acc [] = (reverse acc, [])
+    go accW acc (ch:rest)
+        | chWidth == 0 = go accW (ch:acc) rest
+        | accW + chWidth <= width = go (accW + chWidth) (ch:acc) rest
+        | otherwise = (reverse acc, ch:rest)
       where
         chWidth = charWidth ch
 

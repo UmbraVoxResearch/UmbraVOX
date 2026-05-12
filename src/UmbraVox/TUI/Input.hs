@@ -2,7 +2,7 @@
 module UmbraVox.TUI.Input
     ( readKey, readCSI, readSS3, drainSeq
     , eventLoop
-    , handleNormal, handleContact, handleChat, handleDialog
+    , handleNormal, handleContact, handleChat, handleDialog, handleMouseDrag
     , handleSettingsDlg, handleNewConnDlg
     , closeDialog, scrollDialog
     , strip'
@@ -13,7 +13,7 @@ import Control.Monad (void, when, unless)
 import Data.Bits ((.&.))
 import qualified Data.ByteString as BS
 import Data.Char (isDigit, toLower)
-import Data.List (isPrefixOf)
+import Data.List (isPrefixOf, isInfixOf)
 import Data.IORef (readIORef, writeIORef, modifyIORef')
 import qualified Data.Map.Strict as Map
 import System.IO (stdin, hReady)
@@ -29,14 +29,21 @@ import UmbraVox.TUI.Dialog
     , overlayScrollbarBounds, settingsOverlayLines
     , helpOverlayLines, aboutOverlayLines, newConnOverlayLines
     , verifyOverlayLines, keysOverlayLines, promptOverlayLines, settingsTabLabels
-    , regenKeyOverlayLines
+    , regenKeyOverlayLines, exportWarnOverlayLines, exportKeysOverlayLines
+    , wrapOverlayLines
     )
 import UmbraVox.TUI.Constants (maxInputLen, maxDialogBufLen, minDropdownW)
 import UmbraVox.TUI.Actions (addSecureNotes, sendCurrentMessage,
     setStatus, adjustContactScroll, openRegenKeyDialog, regenIdentityKey)
 import UmbraVox.TUI.Layout (dropdownCol)
+import qualified UmbraVox.TUI.Layout as Layout
 import UmbraVox.Network.MDNS (MDNSPeer(..))
 import UmbraVox.Protocol.Encoding (splitOn, parseHostPort)
+import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
+import qualified Data.ByteString as BS
+
+data GridRegion = RegionContacts | RegionActions | RegionChat | RegionOverlay
+    deriving stock (Eq, Show)
 
 -- Input handling ----------------------------------------------------------
 readKey :: IO InputEvent
@@ -131,6 +138,10 @@ parseMouseCSI raw =
                                 then KeyMouseScrollUp y x
                             else if isWheel && term == 'M' && wheelDown
                                 then KeyMouseScrollDown y x
+                            else if term == 'M' && isMotion && button == 0
+                                then KeyMouseDrag y x
+                            else if term == 'm' && button == 3
+                                then KeyMouseRelease y x
                             else if term == 'M' && button == 0 && not isWheel && not isMotion
                                 then KeyMouseLeft y x
                                 else KeyIgnored
@@ -152,16 +163,18 @@ eventLoop st = do
                 case key of
                     KeyIgnored -> pure ()
                     KeyMouseLeft row col -> handleMouseClick st row col
-                    KeyMouseScrollUp _ _ -> do
+                    KeyMouseDrag row col -> handleMouseDrag st row col
+                    KeyMouseRelease _ _ -> pure ()
+                    KeyMouseScrollUp row col -> do
                         dlg <- readIORef (asDialogMode st)
                         case dlg of
                             Just _ -> scrollDialog st (-3)
-                            Nothing -> pure ()
-                    KeyMouseScrollDown _ _ -> do
+                            Nothing -> handlePaneMouseWheel st row col (-3)
+                    KeyMouseScrollDown row col -> do
                         dlg <- readIORef (asDialogMode st)
                         case dlg of
                             Just _ -> scrollDialog st 3
-                            Nothing -> pure ()
+                            Nothing -> handlePaneMouseWheel st row col 3
                     _ -> do
                         dlg <- readIORef (asDialogMode st)
                         case dlg of
@@ -192,7 +205,7 @@ handleNormal st key = do
         KeyF2    -> toggleMenu st MenuContacts
         KeyF3    -> toggleMenu st MenuChat
         KeyF4    -> toggleMenu st MenuPrefs
-        KeyF5    -> openRegenKeyDialog st
+        KeyF5    -> writeIORef (asDialogMode st) (Just DlgKeys)
         KeyEscape -> do
             dlg <- readIORef (asDialogMode st)
             case dlg of
@@ -203,12 +216,95 @@ handleNormal st key = do
             ChatPane     -> handleChat st key
             IdentityPane -> handleIdentity st key
 
+dialogLineCount :: AppState -> DialogMode -> IO Int
+dialogLineCount _ DlgHelp = pure (length helpOverlayLines)
+dialogLineCount _ DlgAbout = pure (length aboutOverlayLines)
+dialogLineCount st DlgSettings = length <$> settingsOverlayLines st
+dialogLineCount st DlgVerify = length <$> verifyOverlayLines st
+dialogLineCount _ DlgNewConn = pure (length newConnOverlayLines)
+dialogLineCount st DlgKeys = length <$> keysOverlayLines st
+dialogLineCount st DlgBrowse = length <$> browseOverlayLines st
+dialogLineCount st DlgRegenKey = do
+    checked <- readIORef (asRegenCheckbox st)
+    length <$> regenKeyOverlayLines checked
+dialogLineCount _ DlgExportWarn = pure (length (exportWarnOverlayLines False))
+dialogLineCount st DlgExportKeys = length <$> exportKeysOverlayLines st
+dialogLineCount st (DlgPrompt title _) = do
+    buf <- readIORef (asDialogBuf st)
+    pure (length (promptOverlayLines title buf))
+
+dialogLines :: AppState -> DialogMode -> IO [String]
+dialogLines _  DlgHelp = pure helpOverlayLines
+dialogLines _  DlgAbout = pure aboutOverlayLines
+dialogLines st DlgSettings = settingsOverlayLines st
+dialogLines st DlgVerify = verifyOverlayLines st
+dialogLines _  DlgNewConn = pure newConnOverlayLines
+dialogLines st DlgKeys = keysOverlayLines st
+dialogLines st DlgBrowse = browseOverlayLines st
+dialogLines st DlgRegenKey = do
+    checked <- readIORef (asRegenCheckbox st)
+    regenKeyOverlayLines checked
+dialogLines st DlgExportWarn = do
+    checked <- readIORef (asRegenCheckbox st)
+    pure (exportWarnOverlayLines checked)
+dialogLines st DlgExportKeys = exportKeysOverlayLines st
+dialogLines st (DlgPrompt title _) = do
+    buf <- readIORef (asDialogBuf st)
+    pure (promptOverlayLines title buf)
+
+dialogRenderedLines :: Layout -> [String] -> [String]
+dialogRenderedLines lay rawLines =
+    let (_, _, w, _) = overlayBounds lay (length rawLines)
+        wrapWidth = max 1 (w - 3)
+    in wrapOverlayLines wrapWidth rawLines
+
+gridRegionsFor :: Layout -> Maybe Rect -> [ (GridRegion, Rect) ]
+gridRegionsFor lay mOverlay =
+    maybe id (\ov -> ((RegionOverlay, ov):)) mOverlay
+        [ (RegionContacts, contactsRect)
+        , (RegionActions, actionsRect)
+        , (RegionChat, chatRect)
+        ]
+  where
+    chatTop = 2
+    chatBottom = chatTop + lChatH lay - 1
+    contactsBottom = chatTop + (lChatH lay - lIdentityH lay) - 1
+    leftInnerStart = 2
+    leftInnerEnd = lLeftW lay - 1
+    rightInnerStart = lLeftW lay + 2
+    contactsRect = Rect chatTop contactsBottom leftInnerStart leftInnerEnd
+    actionsTop = lChatH lay + 3
+    actionsBottom = actionsTop + Layout.inputAreaRows - 1
+    actionsRect = Rect actionsTop actionsBottom leftInnerStart leftInnerEnd
+    chatRect = Rect chatTop actionsBottom rightInnerStart (lCols lay)
+
+gridRegionAt :: Layout -> Maybe Rect -> Int -> Int -> Maybe GridRegion
+gridRegionAt lay mOverlay row col = go (gridRegionsFor lay mOverlay)
+  where
+    go [] = Nothing
+    go ((k, r):rest)
+        | rectContains r row col = Just k
+        | otherwise = go rest
+
+dropdownRect :: Layout -> MenuTab -> Rect
+dropdownRect lay tab =
+    Rect itemStartRow itemEndRow dropCol (dropCol + boxW - 1)
+  where
+    items = menuTabItems tab
+    boxW = max minDropdownW (maximum (map length items) + 4)
+    dropCol = dropdownCol (lCols lay) tab
+    itemStartRow = 3
+    itemEndRow = itemStartRow + length items - 1
+
 handleMouseClick :: AppState -> Int -> Int -> IO ()
 handleMouseClick st row col = do
     lay <- readIORef (asLayout st)
     dlg <- readIORef (asDialogMode st)
     case dlg of
-        Just mode -> handleDialogMouseClick st lay mode row col
+        Just mode -> do
+            rawLines <- dialogLines st mode
+            let rows = dialogRenderedLines lay rawLines
+            handleDialogMouseClick st lay mode rows rawLines row col
         Nothing -> do
             if row == 1
                 then handleMenuBarClick st lay col
@@ -216,15 +312,45 @@ handleMouseClick st row col = do
                     mOpen <- readIORef (asMenuOpen st)
                     case mOpen of
                         Just tab -> do
-                            handled <- handleDropdownClick st lay tab row col
-                            when (not handled) $ do
-                                closeMenu st
-                                handlePaneClick st lay row col
+                            let region = gridRegionAt lay (Just (dropdownRect lay tab)) row col
+                            case region of
+                                Just RegionOverlay -> do
+                                    handled <- handleDropdownClick st lay tab row col
+                                    unless handled (closeMenu st)
+                                _ -> do
+                                    closeMenu st
+                                    handlePaneClick st lay row col
                         Nothing -> handlePaneClick st lay row col
 
-handleDialogMouseClick :: AppState -> Layout -> DialogMode -> Int -> Int -> IO ()
-handleDialogMouseClick st lay dlg row col = do
-    lineCount <- dialogLineCount st dlg
+handleMouseDrag :: AppState -> Int -> Int -> IO ()
+handleMouseDrag st row col = do
+    lay <- readIORef (asLayout st)
+    dlg <- readIORef (asDialogMode st)
+    case dlg of
+        Just mode -> do
+            rawLines <- dialogLines st mode
+            let rows = dialogRenderedLines lay rawLines
+            handleDialogDrag st lay rows row col
+        Nothing -> pure ()
+
+handleDialogDrag :: AppState -> Layout -> [String] -> Int -> Int -> IO ()
+handleDialogDrag st lay rows row col = do
+    let lineCount = length rows
+    scrollOff <- readIORef (asDialogScroll st)
+    let mSb = overlayScrollbarBounds lay lineCount scrollOff
+    case mSb of
+        Just (sbCol, trackTop, trackBot)
+            | col == sbCol && row >= trackTop && row <= trackBot -> do
+                let trackH  = trackBot - trackTop + 1
+                    maxOff  = max 0 (lineCount - trackH)
+                    newOff  = (row - trackTop) * maxOff `div` max 1 (trackH - 1)
+                writeIORef (asDialogScroll st) (max 0 (min maxOff newOff))
+            | otherwise -> pure ()
+        Nothing -> pure ()
+
+handleDialogMouseClick :: AppState -> Layout -> DialogMode -> [String] -> [String] -> Int -> Int -> IO ()
+handleDialogMouseClick st lay dlg rows rawLines row col = do
+    let lineCount = length rows
     closedByX <- handleOverlayTopClose st lay lineCount row col
     unless closedByX $ do
         -- Check for a click on the scrollbar track and jump offset if so.
@@ -241,17 +367,20 @@ handleDialogMouseClick st lay dlg row col = do
             _ -> pure False
         unless sbHandled $
             case dlg of
-                DlgBrowse        -> handleDlgBrowseClick st lay lineCount row col
-                DlgSettings      -> handleDlgSettingsClick st lay lineCount row col
-                DlgNewConn       -> handleDlgNewConnClick st lay lineCount row col
-                DlgPrompt title cb -> handleDlgPromptClick st lay lineCount row col title cb
-                DlgRegenKey      -> handleDlgRegenKeyClick st lay lineCount row col
-                _                -> handleDlgCloseOnly st lay dlg lineCount row col
+                DlgBrowse        -> handleDlgBrowseClick st lay lineCount rows rawLines row col
+                DlgSettings      -> handleDlgSettingsClick st lay lineCount rows rawLines row col
+                DlgNewConn       -> handleDlgNewConnClick st lay lineCount rows rawLines row col
+                DlgKeys          -> handleDlgKeysClick st lay lineCount rows rawLines row col
+                DlgPrompt title cb -> handleDlgPromptClick st lay lineCount rows rawLines row col title cb
+                DlgRegenKey      -> handleDlgRegenKeyClick st lay lineCount rows rawLines row col
+                DlgExportWarn    -> handleDlgExportWarnClick st lay lineCount rows row col
+                DlgExportKeys    -> handleDlgCloseOnly st lay DlgExportKeys lineCount rows rawLines row col
+                _                -> handleDlgCloseOnly st lay dlg lineCount rows rawLines row col
 
-handleDlgCloseOnly :: AppState -> Layout -> DialogMode -> Int -> Int -> Int -> IO ()
-handleDlgCloseOnly st lay dlg lineCount row col = do
+handleDlgCloseOnly :: AppState -> Layout -> DialogMode -> Int -> [String] -> [String] -> Int -> Int -> IO ()
+handleDlgCloseOnly st lay dlg lineCount _rows rawLines row col = do
     lines' <- closeOnlyLines st dlg
-    when (overlayButtonHit lay lineCount row col (length lines' - 1) lines' "close") $
+    when (overlayButtonHit lay lineCount row col (lineCount - 1) lines' "close") $
         closeDialog st
 
 closeOnlyLines :: AppState -> DialogMode -> IO [String]
@@ -262,13 +391,14 @@ closeOnlyLines st DlgVerify  = verifyOverlayLines st
 closeOnlyLines st DlgRegenKey = do
     checked <- readIORef (asRegenCheckbox st)
     regenKeyOverlayLines checked
+closeOnlyLines _  DlgExportWarn = pure (exportWarnOverlayLines False)
+closeOnlyLines st DlgExportKeys = exportKeysOverlayLines st
 closeOnlyLines _  _          = pure []
 
-handleDlgBrowseClick :: AppState -> Layout -> Int -> Int -> Int -> IO ()
-handleDlgBrowseClick st lay lineCount row col = do
-    lines' <- browseOverlayLines st
-    let footerIx = length lines' - 1
-        btn = overlayButtonHit lay lineCount row col footerIx lines'
+handleDlgBrowseClick :: AppState -> Layout -> Int -> [String] -> [String] -> Int -> Int -> IO ()
+handleDlgBrowseClick st lay lineCount rows rawLines row col = do
+    let footerIx = lineCount - 1
+        btn = overlayButtonHit lay lineCount row col footerIx rawLines
     case lookup True [ (btn "prev",   stepBrowsePage st (-1))
                      , (btn "next",   stepBrowsePage st 1)
                      , (btn "search", openBrowseSearchPrompt st)
@@ -277,18 +407,19 @@ handleDlgBrowseClick st lay lineCount row col = do
                      ] of
         Just action -> action
         Nothing -> case overlayContentLine lay lineCount row col of
-            Just 2 -> openBrowseSearchPrompt st
             Just lineIx -> do
-                visible <- currentBrowsePeers st
-                let peerIx = lineIx - 5
-                when (peerIx >= 0 && peerIx < length visible) $
-                    selectBrowsePeerByDigit st (toEnum (fromEnum '0' + peerIx))
+                let lineText = rows !! lineIx
+                case lineOptionKey lineText of
+                    Just c -> selectBrowsePeerByDigit st c
+                    Nothing
+                        | "Search:" `isInfixOf` lineText -> openBrowseSearchPrompt st
+                        | otherwise -> pure ()
             Nothing -> pure ()
 
-handleDlgSettingsClick :: AppState -> Layout -> Int -> Int -> Int -> IO ()
-handleDlgSettingsClick st lay lineCount row col = do
+handleDlgSettingsClick :: AppState -> Layout -> Int -> [String] -> [String] -> Int -> Int -> IO ()
+handleDlgSettingsClick st lay lineCount _rows rawLines row col = do
     lines' <- settingsOverlayLines st
-    case overlayButtonAtLine lay lines' 0 row col of
+    case overlayButtonAtLine lay rawLines 0 row col of
         Just tabLabel -> handleSettingsTabClick st tabLabel
         Nothing -> handleSettingsBodyClick st lay lineCount lines' row col
 
@@ -300,7 +431,7 @@ handleSettingsTabClick st tabLabel =
 
 handleSettingsBodyClick :: AppState -> Layout -> Int -> [String] -> Int -> Int -> IO ()
 handleSettingsBodyClick st lay lineCount lines' row col =
-    let footerIx = length lines' - 1
+    let footerIx = lineCount - 1
     in if overlayButtonHit lay lineCount row col footerIx lines' "close"
         then closeDialog st
         else case overlayContentLine lay lineCount row col of
@@ -310,11 +441,10 @@ handleSettingsBodyClick st lay lineCount lines' row col =
                     Nothing -> pure ()
             Nothing -> pure ()
 
-handleDlgNewConnClick :: AppState -> Layout -> Int -> Int -> Int -> IO ()
-handleDlgNewConnClick st lay lineCount row col = do
-    let lines' = newConnOverlayLines
-        footerIx = length lines' - 1
-        btn = overlayButtonHit lay lineCount row col footerIx lines'
+handleDlgNewConnClick :: AppState -> Layout -> Int -> [String] -> [String] -> Int -> Int -> IO ()
+handleDlgNewConnClick st lay lineCount rows rawLines row col = do
+    let footerIx = lineCount - 1
+        btn = overlayButtonHit lay lineCount row col footerIx rawLines
     case lookup True [ (btn "private", handleNewConnDlg st (KeyChar '1'))
                      , (btn "single",  handleNewConnDlg st (KeyChar '2'))
                      , (btn "group",   handleNewConnDlg st (KeyChar '3'))
@@ -322,16 +452,32 @@ handleDlgNewConnClick st lay lineCount row col = do
                      ] of
         Just action -> action
         Nothing -> case overlayContentLine lay lineCount row col of
-            Just 0 -> handleNewConnDlg st (KeyChar '1')
-            Just 1 -> handleNewConnDlg st (KeyChar '2')
-            Just 2 -> handleNewConnDlg st (KeyChar '3')
+            Just lineIx ->
+                case lineOptionKey (rows !! lineIx) of
+                    Just '1' -> handleNewConnDlg st (KeyChar '1')
+                    Just '2' -> handleNewConnDlg st (KeyChar '2')
+                    Just '3' -> handleNewConnDlg st (KeyChar '3')
+                    _ -> pure ()
             _      -> pure ()
 
-handleDlgPromptClick :: AppState -> Layout -> Int -> Int -> Int -> String -> (String -> IO ()) -> IO ()
-handleDlgPromptClick st lay lineCount row col title cb = do
+handleDlgKeysClick :: AppState -> Layout -> Int -> [String] -> [String] -> Int -> Int -> IO ()
+handleDlgKeysClick st lay lineCount _rows rawLines row col = do
+    let footerIx = lineCount - 1
+        btn = overlayButtonHit lay lineCount row col footerIx rawLines
+    case lookup True
+            [ (btn "regenerate (f5)", openRegenKeyDialog st)
+            , (btn "export keys", writeIORef (asRegenCheckbox st) False >> writeIORef (asDialogMode st) (Just DlgExportWarn))
+            , (btn "import keys", handleKeysDlg st (KeyChar 'i'))
+            , (btn "close", closeDialog st)
+            ] of
+        Just action -> action
+        Nothing -> pure ()
+
+handleDlgPromptClick :: AppState -> Layout -> Int -> [String] -> [String] -> Int -> Int -> String -> (String -> IO ()) -> IO ()
+handleDlgPromptClick st lay lineCount _rows rawLines row col title cb = do
     buf <- readIORef (asDialogBuf st)
     let lines' = promptOverlayLines title buf
-        footerIx = length lines' - 1
+        footerIx = lineCount - 1
     if overlayButtonHit lay lineCount row col footerIx lines' "ok"
         then submitPrompt st cb
     else if overlayButtonHit lay lineCount row col footerIx lines' "cancel"
@@ -340,16 +486,19 @@ handleDlgPromptClick st lay lineCount row col title cb = do
             closeDialog st
     else pure ()
 
-handleDlgRegenKeyClick :: AppState -> Layout -> Int -> Int -> Int -> IO ()
-handleDlgRegenKeyClick st lay lineCount row col = do
+handleDlgRegenKeyClick :: AppState -> Layout -> Int -> [String] -> [String] -> Int -> Int -> IO ()
+handleDlgRegenKeyClick st lay lineCount rows rawLines row col = do
     checked <- readIORef (asRegenCheckbox st)
     lns <- regenKeyOverlayLines checked
-    let checkboxIx = 3  -- line index of the checkbox line
-        footerIx = length lns - 1
+    let footerIx = lineCount - 1
         btn = overlayButtonHit lay lineCount row col footerIx lns
     -- Clicking the checkbox line toggles it
     case overlayContentLine lay lineCount row col of
-        Just li | li == checkboxIx -> modifyIORef' (asRegenCheckbox st) not
+        Just li ->
+            let lineText = strip' (rows !! li)
+            in if "[ ]" `isPrefixOf` lineText || "[x]" `isPrefixOf` lineText
+                then modifyIORef' (asRegenCheckbox st) not
+                else pure ()
         _ -> pure ()
     -- Buttons
     case lookup True [ (btn "yes, regenerate", regenIdentityKey st)
@@ -358,20 +507,24 @@ handleDlgRegenKeyClick st lay lineCount row col = do
         Just action -> action
         Nothing     -> pure ()
 
-dialogLineCount :: AppState -> DialogMode -> IO Int
-dialogLineCount _ DlgHelp = pure (length helpOverlayLines)
-dialogLineCount _ DlgAbout = pure (length aboutOverlayLines)
-dialogLineCount st DlgSettings = length <$> settingsOverlayLines st
-dialogLineCount st DlgVerify = length <$> verifyOverlayLines st
-dialogLineCount _ DlgNewConn = pure (length newConnOverlayLines)
-dialogLineCount st DlgKeys = length <$> keysOverlayLines st
-dialogLineCount st DlgBrowse = length <$> browseOverlayLines st
-dialogLineCount st DlgRegenKey = do
+handleDlgExportWarnClick :: AppState -> Layout -> Int -> [String] -> Int -> Int -> IO ()
+handleDlgExportWarnClick st lay lineCount rows row col = do
     checked <- readIORef (asRegenCheckbox st)
-    length <$> regenKeyOverlayLines checked
-dialogLineCount st (DlgPrompt title _) = do
-    buf <- readIORef (asDialogBuf st)
-    pure (length (promptOverlayLines title buf))
+    let lns = exportWarnOverlayLines checked
+        footerIx = lineCount - 1
+        btn = overlayButtonHit lay lineCount row col footerIx lns
+    case overlayContentLine lay lineCount row col of
+        Just li ->
+            let lineText = strip' (rows !! li)
+            in if "[ ]" `isPrefixOf` lineText || "[x]" `isPrefixOf` lineText
+                then modifyIORef' (asRegenCheckbox st) not
+                else pure ()
+        _ -> pure ()
+    case lookup True [ (btn "continue export", writeIORef (asDialogMode st) (Just DlgExportKeys))
+                     , (btn "cancel", closeDialog st)
+                     ] of
+        Just action -> action
+        Nothing -> pure ()
 
 handleOverlayTopClose :: AppState -> Layout -> Int -> Int -> Int -> IO Bool
 handleOverlayTopClose st lay lineCount row col = do
@@ -439,27 +592,47 @@ handleDropdownClick st lay tab row col = do
 handlePaneClick :: AppState -> Layout -> Int -> Int -> IO ()
 handlePaneClick st lay row col = do
     let chatTop = 2
-        chatH' = lChatH lay
-        identH = lIdentityH lay
-        contactsBottom = chatTop + (chatH' - identH) - 1  -- last row of contacts area
-        identSepRow = contactsBottom + 1                   -- separator row
-        identBottom = chatTop + chatH' - 1                -- last row of identity panel
-        chatBottom = chatTop + chatH' - 1
-        inputRow = chatH' + 3
-        leftInnerStart = 2
-        leftInnerEnd = lLeftW lay - 1
-        rightInnerStart = lLeftW lay + 2
-    if row >= chatTop && row <= chatBottom
-        then if col >= leftInnerStart && col <= leftInnerEnd
-            then if row <= contactsBottom
+        contactsBottom = chatTop + (lChatH lay - lIdentityH lay) - 1
+        identSepRow = contactsBottom + 1
+        inputTop = lChatH lay + 3
+        row1Text :: String
+        row1Text = "[ Regenerate (F5) ]  [ Export Keys ]"
+        row1W = length row1Text
+        row1Start = 2 + max 0 ((lLeftW lay - 2 - row1W) `div` 2)
+        regenText :: String
+        regenText = "[ Regenerate (F5) ]"
+        exportText :: String
+        exportText = "[ Export Keys ]"
+        importText :: String
+        importText = "[ Import Keys ]"
+        regenStart = row1Start
+        regenEnd = regenStart + length regenText - 1
+        exportStart = regenEnd + 3
+        exportEnd = exportStart + length exportText - 1
+        importW = length importText
+        importStart = 2 + max 0 ((lLeftW lay - 2 - importW) `div` 2)
+        importEnd = importStart + length importText - 1
+    case gridRegionAt lay Nothing row col of
+        Just RegionContacts ->
+            if row <= contactsBottom
                 then selectContactByRow st (row - chatTop)
-                else if row > identSepRow && row <= identBottom
+                else if row > identSepRow
                     then writeIORef (asFocus st) IdentityPane
                     else pure ()
-            else when (col >= rightInnerStart) $
-                writeIORef (asFocus st) ChatPane
-        else when (row == inputRow && col >= rightInnerStart) $
-            writeIORef (asFocus st) ChatPane
+        Just RegionActions ->
+            if row == inputTop
+                then if col >= regenStart && col <= regenEnd
+                    then openRegenKeyDialog st
+                    else if col >= exportStart && col <= exportEnd
+                        then writeIORef (asRegenCheckbox st) False >> writeIORef (asDialogMode st) (Just DlgExportWarn)
+                        else pure ()
+                else if row == inputTop + 1
+                    then if col >= importStart && col <= importEnd
+                        then handleKeysDlg st (KeyChar 'i')
+                        else pure ()
+                else pure ()
+        Just RegionChat -> writeIORef (asFocus st) ChatPane
+        _ -> pure ()
 
 selectContactByRow :: AppState -> Int -> IO ()
 selectContactByRow st rowOffset = do
@@ -500,8 +673,33 @@ handleContact st key = do
         KeyDown  -> do
             modifyIORef' (asSelected st) (\i -> min (max 0 (n-1)) (i+1))
             adjustContactScroll st visRows
+        KeyPageUp -> do
+            modifyIORef' (asSelected st) (\i -> max 0 (i - max 1 visRows))
+            adjustContactScroll st visRows
+        KeyPageDown -> do
+            modifyIORef' (asSelected st) (\i -> min (max 0 (n-1)) (i + max 1 visRows))
+            adjustContactScroll st visRows
         KeyEnter -> writeIORef (asFocus st) ChatPane >> writeIORef (asChatScroll st) 0
         _ -> pure ()
+
+handlePaneMouseWheel :: AppState -> Int -> Int -> Int -> IO ()
+handlePaneMouseWheel st row col delta = do
+    lay <- readIORef (asLayout st)
+    sessions <- readIORef (cfgSessions (asConfig st))
+    let contactsH = lChatH lay - lIdentityH lay
+    if gridRegionAt lay Nothing row col == Just RegionContacts
+        then do
+            let total = Map.size sessions
+                maxOff = max 0 (total - contactsH)
+            modifyIORef' (asContactScroll st) (\off -> max 0 (min maxOff (off + delta)))
+            -- Keep selected contact on-screen when wheel scrolling contacts.
+            sel <- readIORef (asSelected st)
+            off <- readIORef (asContactScroll st)
+            let visTop = off
+                visBot = off + max 0 (contactsH - 1)
+            when (sel < visTop || sel > visBot) $
+                writeIORef (asSelected st) (max 0 (min (max 0 (total - 1)) visTop))
+        else pure ()
 
 handleIdentity :: AppState -> InputEvent -> IO ()
 handleIdentity st key = case key of
@@ -554,7 +752,7 @@ handleDialog st key = do
         -- Read-only dialogs: arrow/page keys scroll; any other key closes.
         Just DlgHelp   -> handleScrollableReadOnly st key DlgHelp
         Just DlgAbout  -> handleScrollableReadOnly st key DlgAbout
-        Just DlgKeys   -> handleScrollableReadOnly st key DlgKeys
+        Just DlgKeys   -> handleScrollableInteractive st key (handleKeysDlg st key)
         Just DlgVerify -> handleScrollableReadOnly st key DlgVerify
         -- Interactive dialogs: scroll keys are intercepted for Up/Down only;
         -- PageUp/PageDown are passed through to dialog-specific handlers.
@@ -562,6 +760,8 @@ handleDialog st key = do
         Just DlgSettings -> handleScrollableInteractive st key (handleSettingsDlg st key)
         Just DlgNewConn  -> handleScrollableInteractive st key (handleNewConnDlg st key)
         Just DlgRegenKey -> handleScrollableInteractive st key (handleRegenKeyDlg st key)
+        Just DlgExportWarn -> handleScrollableInteractive st key (handleExportWarnDlg st key)
+        Just DlgExportKeys -> handleScrollableReadOnly st key DlgExportKeys
         Just (DlgPrompt _ cb) ->
             handleScrollableInteractive st key $ case key of
                 KeyEnter     -> submitPrompt st cb
@@ -611,6 +811,67 @@ handleRegenKeyDlg st KeyEnter = do
     checked <- readIORef (asRegenCheckbox st)
     when checked (regenIdentityKey st)
 handleRegenKeyDlg _ _ = pure ()
+
+handleKeysDlg :: AppState -> InputEvent -> IO ()
+handleKeysDlg st (KeyChar 'r') = openRegenKeyDialog st
+handleKeysDlg st (KeyChar 'R') = openRegenKeyDialog st
+handleKeysDlg st (KeyChar 'e') = writeIORef (asRegenCheckbox st) False >> writeIORef (asDialogMode st) (Just DlgExportWarn)
+handleKeysDlg st (KeyChar 'E') = handleKeysDlg st (KeyChar 'e')
+handleKeysDlg st (KeyChar 'i') = do
+    writeIORef (asDialogBuf st) ""
+    writeIORef (asDialogMode st) (Just (DlgPrompt "Import Identity Key (hex payload)" $ \val ->
+        case decodeIdentityHex val of
+            Just ik -> writeIORef (cfgIdentity (asConfig st)) (Just ik) >> setStatus st "Identity key imported."
+            Nothing -> setStatus st "Invalid key payload."))
+handleKeysDlg st (KeyChar 'I') = handleKeysDlg st (KeyChar 'i')
+handleKeysDlg _ _ = pure ()
+
+handleExportWarnDlg :: AppState -> InputEvent -> IO ()
+handleExportWarnDlg st (KeyChar ' ') = modifyIORef' (asRegenCheckbox st) not
+handleExportWarnDlg st (KeyChar 'x') = modifyIORef' (asRegenCheckbox st) not
+handleExportWarnDlg st (KeyChar 'X') = modifyIORef' (asRegenCheckbox st) not
+handleExportWarnDlg st KeyEnter = do
+    checked <- readIORef (asRegenCheckbox st)
+    when checked (writeIORef (asDialogMode st) (Just DlgExportKeys))
+handleExportWarnDlg _ _ = pure ()
+
+decodeIdentityHex :: String -> Maybe IdentityKey
+decodeIdentityHex input = do
+    let compact = filter (/= ' ') input
+    hexText <- if all isDigit compact && even (length compact)
+        then decodeIdentityNumeric compact
+        else Just (map toLower compact)
+    bytes <- fromHex hexText
+    if BS.length bytes /= 128 then Nothing else
+        Just IdentityKey
+            { ikEd25519Secret = BS.take 32 bytes
+            , ikEd25519Public = BS.take 32 (BS.drop 32 bytes)
+            , ikX25519Secret  = BS.take 32 (BS.drop 64 bytes)
+            , ikX25519Public  = BS.drop 96 bytes
+            }
+  where
+    fromHex [] = Just BS.empty
+    fromHex [_] = Nothing
+    fromHex (a:b:rest) = do
+        hi <- nibble a
+        lo <- nibble b
+        tailBs <- fromHex rest
+        pure (BS.cons (fromIntegral (hi * 16 + lo)) tailBs)
+    nibble c
+        | c >= '0' && c <= '9' = Just (fromEnum c - fromEnum '0')
+        | c >= 'a' && c <= 'f' = Just (10 + fromEnum c - fromEnum 'a')
+        | otherwise = Nothing
+
+decodeIdentityNumeric :: String -> Maybe String
+decodeIdentityNumeric [] = Just []
+decodeIdentityNumeric [_] = Nothing
+decodeIdentityNumeric (a:b:rest) = do
+    ch <- case a of
+        '0' | b >= '0' && b <= '9' -> Just b
+        '1' | b >= '0' && b <= '5' -> Just (toEnum (fromEnum 'a' + fromEnum b - fromEnum '0'))
+        _ -> Nothing
+    tailTxt <- decodeIdentityNumeric rest
+    pure (ch : tailTxt)
 
 handleSettingsDlg :: AppState -> InputEvent -> IO ()
 handleSettingsDlg st KeyLeft = shiftSettingsTab st (-1)
@@ -673,8 +934,6 @@ handleSettingsDlg st (KeyChar 'b') = do
 handleSettingsDlg st (KeyChar 'B') = handleSettingsDlg st (KeyChar 'b')
 handleSettingsDlg st (KeyChar 'c') = runRuntimeCommand st CmdCycleConnectionMode
 handleSettingsDlg st (KeyChar 'C') = handleSettingsDlg st (KeyChar 'c')
-handleSettingsDlg st (KeyChar '0') =
-    writeIORef (asDialogMode st) (Just DlgKeys)
 handleSettingsDlg _ _ = pure ()
 
 shiftSettingsTab :: AppState -> Int -> IO ()

@@ -985,6 +985,8 @@ clean:
 	@cabal clean 2>/dev/null || true
 	@rm -rf build
 	@rm -rf dist-newstyle
+	@rm -f ./*.tix
+	@find . -maxdepth 2 -type f -name "*.tix" -delete 2>/dev/null || true
 	@rm -rf $(FSTAR_DIR)/_cache $(FSTAR_DIR)/_output
 	@echo -e "$(GREEN)[CLEAN]$(NC) Done. (VM image not removed; use make image-clean)"
 

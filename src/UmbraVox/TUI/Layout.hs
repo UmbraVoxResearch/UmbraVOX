@@ -1,10 +1,15 @@
 -- SPDX-License-Identifier: Apache-2.0
 module UmbraVox.TUI.Layout
-    ( clampSize, sizeValid, calcLayout, dropdownCol
+    ( clampSize, sizeValid, calcLayout, dropdownCol, inputAreaRows
+    , chatPaneBounds
     ) where
 
 import UmbraVox.TUI.Constants
+import UmbraVox.TUI.LayoutGrid (Bounds(..), TrackSpec(..), resolveTrackSizes)
 import UmbraVox.TUI.Types (Layout(..), MenuTab(..), menuTabLabel)
+
+inputAreaRows :: Int
+inputAreaRows = 11
 
 -- | Clamp terminal dimensions to supported bounds.
 clampSize :: Int -> Int -> (Int, Int)
@@ -18,25 +23,38 @@ sizeValid rows cols = rows >= minTermRows && rows <= maxTermRows
                    && cols >= minTermCols && cols <= maxTermCols
 
 -- | Height of the identity panel (including the leading separator row).
--- 1 separator + 2 X25519 rows + 1 label + 2 Ed25519 rows + 1 label
--- + 1 blank + 13 QR rows + 1 blank + 1 button row = 23 rows total.
--- We clamp so contacts always get at least a few rows.
+-- Keep this compact so the contacts list remains the primary left-pane surface.
+-- Layout target:
+--   separator(1) + QR(14) + standard+safety+fp(6) + compact action strip(2)
+-- ~= 23 rows max in normal terminals.
 identityPanelH :: Int -> Int
-identityPanelH chatH = min 23 (max 0 (chatH - 4))
+identityPanelH chatH = min 23 (max 0 (chatH - 10))
 
 -- | Compute the layout geometry from terminal dimensions.
--- Row budget: 1 menu + 1 separator + (chatH rows of content) + 1 input + 1 status
+-- Row budget: 1 menu + 1 separator + (chatH rows of content) + inputAreaRows + 1 status
 calcLayout :: Int -> Int -> Layout
 calcLayout rows cols = Layout
     { lCols      = cols
     , lRows      = rows
     , lLeftW     = leftW
-    , lRightW    = cols - leftW
-    , lChatH     = rows - 4  -- 1 menu + 1 separator + 1 input + 1 status
+    , lRightW    = rightW
+    , lChatH     = chatH
     , lIdentityH = identityPanelH (rows - 4)
     }
   where
-    leftW = max minLeftPaneW (cols `div` leftPaneRatio)
+    rowTracks =
+        [ Fixed 1
+        , Fixed 1
+        , Flexible Bounds { bMin = 0, bMax = max 0 rows }
+        , Fixed inputAreaRows
+        , Fixed 1
+        ]
+    colTracks =
+        [ Flexible Bounds { bMin = max minLeftPaneW (cols `div` leftPaneRatio), bMax = max 0 cols }
+        , Flexible Bounds { bMin = 0, bMax = max 0 cols }
+        ]
+    [_, _, chatH, _, _] = resolveTrackSizes rows rowTracks
+    [leftW, rightW] = resolveTrackSizes cols colTracks
 
 -- | Compute the column position for a dropdown menu under the given tab.
 -- Tabs are right-justified in the header, so include left-side fill padding.
@@ -48,3 +66,13 @@ dropdownCol totalW tab =
         tabsContentW = 1 + sum (map (\l -> length l + 1) labels)
         fillW = max 0 (totalW - tabsContentW - 2)
     in 3 + fillW + sum (map (\l -> length l + 1) preceding)
+
+-- | Interior bounds of the chat pane (right side), excluding borders.
+-- Returns (row0, col0, width, height).
+chatPaneBounds :: Layout -> (Int, Int, Int, Int)
+chatPaneBounds lay =
+    let r0 = 2                    -- row 1 is menu bar
+        c0 = lLeftW lay + 1       -- divider at lLeftW, interior starts after it
+        w  = max 1 (lRightW lay - 1)
+        h  = max 1 (lChatH lay)
+    in (r0, c0, w, h)

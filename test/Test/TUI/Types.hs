@@ -41,14 +41,15 @@ runTests = do
     p7 <- testCalcLayoutDimensions
     p8 <- testCalcLayoutMinSize
     p9 <- testSizeValid
-    p10 <- testMenuTabEnum
-    p11 <- testMenuTabItems
-    p12 <- testMenuTabLabel
-    p13 <- testMenuQuitUnderline
-    p14 <- testDropdownAnchorTracksRightJustifiedTabs
-    p15 <- testBuildPluginRegistry
-    p16 <- testTransportProviderRegistry
-    pure (p1 && p2 && p3 && p4 && p5 && p6 && p7 && p8 && p9 && p10 && p11 && p12 && p13 && p14 && p15 && p16)
+    p10 <- testCalcLayoutIdentityPanelResponsive
+    p11 <- testMenuTabEnum
+    p12 <- testMenuTabItems
+    p13 <- testMenuTabLabel
+    p14 <- testMenuQuitUnderline
+    p15 <- testDropdownAnchorTracksRightJustifiedTabs
+    p16 <- testBuildPluginRegistry
+    p17 <- testTransportProviderRegistry
+    pure (p1 && p2 && p3 && p4 && p5 && p6 && p7 && p8 && p9 && p10 && p11 && p12 && p13 && p14 && p15 && p16 && p17)
 
 testStatusTagOnline :: IO Bool
 testStatusTagOnline = assertEq "statusTag Online"  " \x25CF"   (statusTag Online)
@@ -97,6 +98,15 @@ testSizeValid = do
     b <- assertEq "sizeValid 10 40"  False (sizeValid 10 40)
     c <- assertEq "sizeValid 50 200" True  (sizeValid 50 200)
     pure (a && b && c)
+
+testCalcLayoutIdentityPanelResponsive :: IO Bool
+testCalcLayoutIdentityPanelResponsive = do
+    let layouts = map (uncurry calcLayout) [(24, 80), (32, 120), (50, 200)]
+        ok = all (\lay -> lIdentityH lay >= 0
+                       && lIdentityH lay <= max 0 (lChatH lay - 1)
+                       && lLeftW lay > 0
+                       && lRightW lay > 0) layouts
+    assertEq "identity panel stays within chat bounds across sizes" True ok
 
 -- | MenuTab enum covers all 5 tabs.
 testMenuTabEnum :: IO Bool
@@ -153,7 +163,7 @@ testBuildPluginRegistry = do
     d <- assertEq "chat transfer plugin present" True ("Chat Export/Import" `elem` names)
     e <- assertEq "all plugins enabled in standard build" 7 (length enabledPlugins)
     f <- assertEq "no disabled plugins in standard build" 0 (length disabledPlugins)
-    g <- assertEq "prefs menu shows discovery toggle from registry" True ("mDNS Toggle" `elem` prefsItems)
+    g <- assertEq "prefs menu omits discovery toggle" False ("mDNS Toggle" `elem` prefsItems)
     h <- assertEq "prefs menu shows export from registry" True ("Export Chat" `elem` prefsItems)
     i <- assertEq "prefs menu shows import from registry" True ("Import Chat" `elem` prefsItems)
     j <- assertEq "extension registry size" 4 (length extensionPluginRegistry)

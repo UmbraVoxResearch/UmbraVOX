@@ -232,6 +232,29 @@ src/UmbraVox/
   Version.hs       Build version information
 ```
 
+### Runtime Surfaces
+
+UmbraVOX is organized around two runtime surfaces:
+
+- `Runtime/Headless` is the terminal-independent core runtime used for
+  orchestration, integration scenarios, and non-interactive execution.
+- `TUI/` is the interactive terminal presentation layer and input loop built on
+  top of shared runtime/chat/network modules.
+
+This separation keeps core behavior testable in headless environments while the
+TUI remains a thin interactive shell over the same messaging path.
+
+### Responsive Grid Layout (TUI)
+
+The TUI layout is a responsive grid that adapts by terminal size class:
+
+- Wide terminals render a multi-pane grid (menus/contacts/chat/status).
+- Narrow terminals collapse to a stacked or focus-priority arrangement.
+- Dialog and overlay flows keep keyboard-first behavior across both modes.
+
+Layout adaptation is presentation-only and does not change protocol, session,
+or cryptographic behavior.
+
 ## Encryption Pipeline
 
 ```text

@@ -16,6 +16,8 @@ module UmbraVox.TUI.Types
     , DialogMode(..)
     , AppConfig(..)
     , Layout(..)
+    , Rect(..)
+    , rectContains
     , InputEvent(..)
     ) where
 
@@ -54,8 +56,7 @@ menuTabItems MenuHelp     = ["Help", "About"]
 menuTabItems MenuContacts = ["Browse", "Verify"]
 menuTabItems MenuChat     = ["New", "Rename", "Send", "Clear Input"]
 menuTabItems MenuPrefs
-    = ["Settings", "Keys"]
-    ++ (if pluginEnabled PluginDiscovery then ["mDNS Toggle"] else [])
+    = ["Settings"]
     ++ if pluginEnabled PluginChatTransfer then ["Export Chat", "Import Chat"] else []
 menuTabItems MenuQuit     = ["Quit"]
 
@@ -104,7 +105,8 @@ asRunning :: AppState -> IORef Bool
 asRunning = csRunning . asCoreState
 
 data DialogMode = DlgHelp | DlgAbout | DlgSettings | DlgVerify | DlgNewConn
-    | DlgKeys | DlgBrowse | DlgRegenKey | DlgPrompt String (String -> IO ())
+    | DlgKeys | DlgBrowse | DlgRegenKey | DlgExportWarn | DlgExportKeys
+    | DlgPrompt String (String -> IO ())
 
 instance Eq DialogMode where
     DlgHelp       == DlgHelp       = True
@@ -115,6 +117,8 @@ instance Eq DialogMode where
     DlgKeys       == DlgKeys       = True
     DlgBrowse     == DlgBrowse     = True
     DlgRegenKey   == DlgRegenKey   = True
+    DlgExportWarn == DlgExportWarn = True
+    DlgExportKeys == DlgExportKeys = True
     DlgPrompt a _ == DlgPrompt b _ = a == b
     _             == _             = False
 
@@ -127,6 +131,8 @@ instance Show DialogMode where
     show DlgKeys         = "DlgKeys"
     show DlgBrowse       = "DlgBrowse"
     show DlgRegenKey     = "DlgRegenKey"
+    show DlgExportWarn   = "DlgExportWarn"
+    show DlgExportKeys   = "DlgExportKeys"
     show (DlgPrompt s _) = "DlgPrompt " ++ show s ++ " <callback>"
 
 data Layout = Layout
@@ -138,11 +144,25 @@ data Layout = Layout
     , lIdentityH :: Int   -- ^ height of the inline identity panel (rows, including separator)
     } deriving stock (Eq)
 
+-- | Terminal-space rectangle used by input hit-testing and menu/dropdown geometry.
+data Rect = Rect
+    { rectTop :: Int
+    , rectBottom :: Int
+    , rectLeft :: Int
+    , rectRight :: Int
+    } deriving stock (Eq, Show)
+
+rectContains :: Rect -> Int -> Int -> Bool
+rectContains r row col =
+    row >= rectTop r && row <= rectBottom r && col >= rectLeft r && col <= rectRight r
+
 data InputEvent = KeyChar Char | KeyEnter | KeyTab | KeyBackspace | KeyEscape
     | KeyUp | KeyDown | KeyLeft | KeyRight
     | KeyPageUp | KeyPageDown
     | KeyCtrlN | KeyCtrlG | KeyCtrlQ | KeyCtrlD
     | KeyMouseLeft Int Int        -- row, col (1-based terminal coordinates)
+    | KeyMouseDrag Int Int        -- row, col (drag with button held)
+    | KeyMouseRelease Int Int     -- row, col (mouse release)
     | KeyMouseScrollUp Int Int    -- row, col (wheel scroll up)
     | KeyMouseScrollDown Int Int  -- row, col (wheel scroll down)
     | KeyIgnored

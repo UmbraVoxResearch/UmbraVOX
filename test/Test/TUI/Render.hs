@@ -43,6 +43,7 @@ runTests = do
         , testCalcLayoutWidthSum
         , testCalcLayoutLeftMinimum
         , testCalcLayoutEdgeToEdge
+        , testCalcLayoutResponsiveGridBias
         , testStatusBarConnTagNormal
         , testStatusBarConnTagChastity
         , testStatusBarConnTagExplicitEphemeral
@@ -172,6 +173,14 @@ testCalcLayoutEdgeToEdge = do
     let lay = calcLayout 50 100
     a <- assertEq "calcLayout lCols == cols" 100 (lCols lay)
     b <- assertEq "calcLayout lRows == rows" 50 (lRows lay)
+    pure (a && b)
+
+testCalcLayoutResponsiveGridBias :: IO Bool
+testCalcLayoutResponsiveGridBias = do
+    let compact = calcLayout 24 80
+        wide = calcLayout 24 240
+    a <- assertEq "responsive grid keeps left pane floor" True (lLeftW compact >= 20 && lLeftW wide >= 20)
+    b <- assertEq "responsive grid allocates added width to chat pane" True (lRightW wide > lRightW compact)
     pure (a && b)
 
 testStatusBarConnTagNormal :: IO Bool
