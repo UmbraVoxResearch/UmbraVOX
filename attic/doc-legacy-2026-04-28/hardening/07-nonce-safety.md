@@ -1,5 +1,13 @@
 # Hardening-07: GCM Nonce Safety
 
+> **SUPERSEDED** — The nonce constructions described in this document were a
+> design sketch and do not reflect the shipped implementation.  The authoritative
+> reference is `doc/CRYPTO-SAFETY.md` (added 2026-05-10).  In particular, the
+> `chain_id || message_number` big-endian layout in §1.1 was replaced by the
+> `zeros[4] || HKDF(zeros, chainKey, "UmbraVox_Nonce_v1")[0:8] XOR LE64(counter)`
+> construction documented in `doc/CRYPTO-SAFETY.md` §1.1.  Do not use this file
+> as an implementation reference.
+
 **Severity:** CATASTROPHIC if violated
 **Scope:** All AES-256-GCM encryption in Signal Double Ratchet and PQ outer wrapper
 **Source requirements:** NIST SP 800-38D Section 8.2; Proof-07 Section 5.2; `doc/03-cryptography.md` lines 126-158

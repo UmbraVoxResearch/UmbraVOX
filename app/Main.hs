@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 module Main (main) where
 
 import Control.Monad (when)
@@ -64,9 +65,21 @@ applyUiFlags flags appCfg = do
     -- has no runtime effect until cfgMaxConnections is added to AppConfig.
     pure ()
 
--- SIGWINCH = 28 on Linux/macOS (not exported by all versions of System.Posix.Signals)
+-- Finding: sigWINCH was hardcoded to 28, which is correct for Linux and macOS
+--   but wrong for Solaris/illumos where SIGWINCH = 20.
+-- Vulnerability: On Solaris the wrong signal number is registered, so terminal
+--   resize events are never caught (or the wrong signal handler fires), causing
+--   the TUI to render at a stale terminal size for the lifetime of the process.
+-- Fix: CPP selects signal number 20 on Solaris/illumos and 28 everywhere else.
+-- Verified: Linux/macOS path is unchanged (28); Solaris path compiles to 20;
+--   existing tests pass on Linux.
+#if defined(solaris2_HOST_OS)
+sigWINCH :: CInt
+sigWINCH = 20
+#else
 sigWINCH :: CInt
 sigWINCH = 28
+#endif
 
 main :: IO ()
 main = do

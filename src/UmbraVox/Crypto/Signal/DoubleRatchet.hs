@@ -57,6 +57,10 @@ data RatchetError
       -- be refreshed via a new DH exchange before further use.
     | DecryptionFailed
       -- ^ GCM tag verification failed (ciphertext tampered or wrong key).
+    | PersistenceError String
+      -- ^ Counter persistence failed before encryption; the plaintext
+      -- has NOT been encrypted.  Callers must not retry with the same
+      -- counter without first resolving the underlying I/O failure.
     deriving stock (Show, Eq)
 
 ------------------------------------------------------------------------
