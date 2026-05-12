@@ -255,10 +255,11 @@ testRestoredOfflineSessionsFailClosedOnSend = withDB "umbravox-startup-restored-
     dialogTabRef <- newIORef 0
     renderTokenRef <- newIORef Nothing
     regenCheckboxRef <- newIORef False
+    dialogScrollRef <- newIORef 0
     let st = AppState cs selectedRef focusRef inputRef dialogBufRef chatScrollRef
             statusRef dialogModeRef browsePageRef browseFilterRef
             layoutRef contactScrollRef termSizeRef menuOpenRef menuIndexRef
-            dialogTabRef renderTokenRef regenCheckboxRef
+            dialogTabRef renderTokenRef regenCheckboxRef dialogScrollRef
     sendCurrentMessage st
     sessions <- readIORef (cfgSessions cfg)
     let (_, aliceSi) = head (Map.toAscList sessions)

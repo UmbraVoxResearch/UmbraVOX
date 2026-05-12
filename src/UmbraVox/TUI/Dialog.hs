@@ -4,8 +4,10 @@ module UmbraVox.TUI.Dialog
     , overlayCloseBounds
     , overlayButtonAt
     , overlayButtonAtLine
+    , overlayScrollbarBounds
     , settingsTabLabels
     , showOverlay
+    , showOverlayScrolled
     , helpOverlayLines, aboutOverlayLines, newConnOverlayLines
     , renderHelpOverlay, renderAboutOverlay, renderNewConnOverlay, renderVerifyOverlay
     , renderSettingsOverlay, renderKeysOverlay, renderBrowseOverlay
@@ -68,6 +70,25 @@ overlayCloseBounds lay lineCount =
         closeText = "[X]"
         startCol = c0 + 1 + max 0 (innerW - displayWidth closeText)
     in (r0, startCol, startCol + displayWidth closeText - 1)
+
+-- | Return the terminal column and the range of rows occupied by the
+-- vertical scrollbar track for a scrollable overlay.
+-- Returns (col, trackTop, trackBot) where the track spans trackTop..trackBot.
+-- Returns Nothing when the content fits on screen (no scrollbar needed).
+overlayScrollbarBounds :: Layout -> Int -> Int -> Maybe (Int, Int, Int)
+overlayScrollbarBounds lay totalLines scrollOff =
+    let (r0, c0, w, h) = overlayBounds lay totalLines
+        contentH = h - 2
+        sbCol    = c0 + w - 1   -- right border column
+        trackTop = r0 + 1
+        trackBot = r0 + h - 2
+    in if totalLines <= contentH
+        then Nothing
+        else let thumbH   = max 1 (contentH * contentH `div` totalLines)
+                 maxOff   = max 0 (totalLines - contentH)
+                 off      = min maxOff (max 0 scrollOff)
+                 thumbTop = trackTop + (off * (contentH - thumbH) `div` maxOff)
+             in Just (sbCol, thumbTop, thumbTop + thumbH - 1)
 
 overlayButtonAt :: Layout -> [String] -> Int -> Int -> Maybe String
 overlayButtonAt lay lns row col = do
@@ -132,23 +153,72 @@ settingsTabLabels
     | otherwise = ["Simple", "Discovery", "Storage", "Security", "Advanced"]
 
 showOverlay :: Layout -> String -> [String] -> IO ()
-showOverlay lay title lns = do
-    let (r0, c0, w, h) = overlayBounds lay (length lns)
+showOverlay lay title lns = showOverlayScrolled lay title lns 0
+
+-- | Render a modal overlay dialog box with optional vertical scrolling.
+-- 'scrollOff' is the number of content lines to skip from the top.
+-- Scroll indicators (\x25b2/\x25bc) appear in the left border margin when
+-- more content exists above or below the visible window.
+-- A "Lines N-M of T" label is shown in the bottom border when the content
+-- does not fit on screen.
+-- When content exceeds the visible area a scrollbar track (│) and thumb (█)
+-- are drawn on the rightmost content column inside the right border.
+showOverlayScrolled :: Layout -> String -> [String] -> Int -> IO ()
+showOverlayScrolled lay title lns scrollOff = do
+    let totalLines  = length lns
+        (r0, c0, w, h) = overlayBounds lay totalLines
         innerW = w - 2
-        -- Title in top border: ┌─ Title ──────────┐
+        contentH = h - 2  -- rows available for content (inside top/bottom borders)
+        -- Clamp scroll offset to valid range
+        maxOff   = max 0 (totalLines - contentH)
+        off      = min maxOff (max 0 scrollOff)
+        -- Slice the visible window
+        visible  = take contentH (drop off lns ++ repeat "")
+        -- Scroll indicator state
+        canScrollUp   = off > 0
+        canScrollDown = off + contentH < totalLines
+        needsScrollbar = totalLines > contentH
+        -- Scrollbar geometry
+        trackH   = contentH
+        thumbSz  = max 1 (trackH * contentH `div` max 1 totalLines)
+        thumbPos = if maxOff == 0 then 0
+                   else off * (trackH - thumbSz) `div` max 1 maxOff
+        -- Text area is narrowed by 1 when the scrollbar is shown
+        textW = if needsScrollbar then innerW - 2 else innerW - 1
+        -- Top border: ┌─ Title ──────────[X]┐
         closeText = "[X]"
-        titleSeg = "\x2500 " ++ title ++ " "
-        fillLen = max 0 (innerW - displayWidth titleSeg - displayWidth closeText)
+        titleSeg  = "\x2500 " ++ title ++ " "
+        fillLen   = max 0 (innerW - displayWidth titleSeg - displayWidth closeText)
         top = "\x250C" ++ titleSeg
               ++ replicate fillLen '\x2500'
               ++ closeText ++ "\x2510"
-        bot = "\x2514" ++ replicate innerW '\x2500' ++ "\x2518"
-        -- Pad content lines to fit the dialog, trimming if needed
-        contentH = h - 2  -- rows available for content (inside top/bottom borders)
-        padded = take contentH (lns ++ repeat "")
-        ovRows = map (\l -> "\x2502 " ++ padR (innerW - 1) (trimToWidth (innerW - 1) l) ++ "\x2502") padded
+        -- Bottom border: show position label when content exceeds dialog height
+        bot = if totalLines > contentH
+                then let posLabel = " Lines " ++ show (off + 1) ++ "-"
+                                    ++ show (min totalLines (off + contentH))
+                                    ++ " of " ++ show totalLines ++ " "
+                         botFill  = max 0 (innerW - displayWidth posLabel)
+                     in "\x2514" ++ replicate botFill '\x2500' ++ posLabel ++ "\x2518"
+                else "\x2514" ++ replicate innerW '\x2500' ++ "\x2518"
+        -- Content rows: indicator + text + scrollbar placeholder + right border
+        mkRow i l =
+            let indicator
+                    | i == 0 && canScrollUp              = "\x25b2"  -- ▲
+                    | i == contentH - 1 && canScrollDown = "\x25bc"  -- ▼
+                    | otherwise                          = " "
+                -- scrollbar column placeholder (overdrawn after the loop)
+                sbPlaceholder = if needsScrollbar then " " else ""
+            in "\x2502" ++ indicator ++ padR textW (trimToWidth textW l) ++ sbPlaceholder ++ "\x2502"
+        ovRows = zipWith mkRow [0 :: Int ..] visible
     forM_ (zip [0..] (top : ovRows ++ [bot])) $ \(i,line) ->
         goto (r0+i) c0 >> setFg 36 >> bold >> putStr line >> resetSGR
+    -- Overdraw the scrollbar column with distinct colours.
+    when needsScrollbar $
+        forM_ [0..contentH-1] $ \i -> do
+            goto (r0 + 1 + i) (c0 + w - 2)
+            if i >= thumbPos && i < thumbPos + thumbSz
+                then setFg 37 >> bold >> putStr "\x2588" >> resetSGR  -- bright white thumb █
+                else csi "2m" >> setFg 37 >> putStr "\x2502" >> resetSGR  -- dim track │
     hFlush stdout
 
 helpOverlayLines :: [String]
@@ -176,8 +246,8 @@ helpOverlayLines =
     , ""
     , "[ Close ]" ]
 
-renderHelpOverlay :: Layout -> IO ()
-renderHelpOverlay lay = showOverlay lay "Help" helpOverlayLines
+renderHelpOverlay :: Layout -> Int -> IO ()
+renderHelpOverlay lay scrollOff = showOverlayScrolled lay "Help" helpOverlayLines scrollOff
 
 aboutOverlayLines :: [String]
 aboutOverlayLines =
@@ -367,8 +437,8 @@ apacheLicenseLines =
     , "END OF TERMS AND CONDITIONS"
     ]
 
-renderAboutOverlay :: Layout -> IO ()
-renderAboutOverlay lay = showOverlay lay "About UmbraVOX" aboutOverlayLines
+renderAboutOverlay :: Layout -> Int -> IO ()
+renderAboutOverlay lay scrollOff = showOverlayScrolled lay "About UmbraVOX" aboutOverlayLines scrollOff
 
 newConnOverlayLines :: [String]
 newConnOverlayLines =
@@ -380,8 +450,8 @@ newConnOverlayLines =
     , ""
     , "[ Private ]  [ Single ]  [ Group ]  [ Cancel ]" ]
 
-renderNewConnOverlay :: Layout -> IO ()
-renderNewConnOverlay lay = showOverlay lay "New Conversation" newConnOverlayLines
+renderNewConnOverlay :: Layout -> Int -> IO ()
+renderNewConnOverlay lay scrollOff = showOverlayScrolled lay "New Conversation" newConnOverlayLines scrollOff
 
 verifyOverlayLines :: AppState -> IO [String]
 verifyOverlayLines st = do
@@ -415,11 +485,15 @@ verifyOverlayLines st = do
                             ["", "Compare via a separate channel.", "", "[ Close ]" ]
     else pure ["No contact selected", "", "[ Close ]" ]
 
-renderVerifyOverlay :: Layout -> AppState -> IO ()
-renderVerifyOverlay lay st = showOverlay lay "Verify Keys" =<< verifyOverlayLines st
+renderVerifyOverlay :: Layout -> AppState -> Int -> IO ()
+renderVerifyOverlay lay st scrollOff = do
+    lns <- verifyOverlayLines st
+    showOverlayScrolled lay "Verify Keys" lns scrollOff
 
-renderSettingsOverlay :: Layout -> AppState -> IO ()
-renderSettingsOverlay lay st = showOverlay lay "Preferences" =<< settingsOverlayLines st
+renderSettingsOverlay :: Layout -> AppState -> Int -> IO ()
+renderSettingsOverlay lay st scrollOff = do
+    lns <- settingsOverlayLines st
+    showOverlayScrolled lay "Preferences" lns scrollOff
 
 settingsOverlayLines :: AppState -> IO [String]
 settingsOverlayLines st = do
@@ -505,7 +579,6 @@ settingsChastityTab ctx tabIx =
             [ " Simple"
             , "   1. Listen port:    " ++ show (sctxPort ctx)
             , "   2. Display name:   " ++ sctxName ctx
-            , "   0. View/regenerate keys"
             , ""
             , " Discovery, storage, export/import, and logs"
             , " are compile-time disabled in this build."
@@ -539,7 +612,6 @@ settingsFullTab ctx tabIx =
                 , "   2. Display name:   " ++ sctxName ctx
                 , "   3. mDNS (LAN):    [" ++ tf (sctxMdns ctx) ++ "]"
                 , "   c. Connection mode: [" ++ sctxModeLabel ctx ++ "]"
-                , "   0. View/regenerate keys"
                 ]
         1 ->
             pure
@@ -655,8 +727,10 @@ chunkItems _ [] = []
 chunkItems n xs =
     take n xs : chunkItems n (drop n xs)
 
-renderKeysOverlay :: Layout -> AppState -> IO ()
-renderKeysOverlay lay st = showOverlay lay "Identity & Keys" =<< keysOverlayLines st
+renderKeysOverlay :: Layout -> AppState -> Int -> IO ()
+renderKeysOverlay lay st scrollOff = do
+    lns <- keysOverlayLines st
+    showOverlayScrolled lay "Identity & Keys" lns scrollOff
 
 keysOverlayLines :: AppState -> IO [String]
 keysOverlayLines st = do
@@ -716,8 +790,10 @@ browseOverlayLines st = do
         , "[ Prev ]  [ Next ]  [ Search ]  [ Clear ]  [ Close ]"
         ]
 
-renderBrowseOverlay :: Layout -> AppState -> IO ()
-renderBrowseOverlay lay st = showOverlay lay "Browse Peers" =<< browseOverlayLines st
+renderBrowseOverlay :: Layout -> AppState -> Int -> IO ()
+renderBrowseOverlay lay st scrollOff = do
+    lns <- browseOverlayLines st
+    showOverlayScrolled lay "Browse Peers" lns scrollOff
 
 browseMatches :: String -> MDNSPeer -> Bool
 browseMatches raw peer =
@@ -760,8 +836,9 @@ promptOverlayLines :: String -> String -> [String]
 promptOverlayLines _ buf =
     ["Enter value:", "\x25B8 " ++ buf ++ "\x2588", "", "[ OK ]  [ Cancel ]"]
 
-renderPromptOverlay :: Layout -> String -> String -> IO ()
-renderPromptOverlay lay title buf = showOverlay lay title (promptOverlayLines title buf)
+renderPromptOverlay :: Layout -> String -> String -> Int -> IO ()
+renderPromptOverlay lay title buf scrollOff =
+    showOverlayScrolled lay title (promptOverlayLines title buf) scrollOff
 
 -- | Lines for the key-regeneration confirmation dialog.
 -- The checkbox state is shown inline; the "Yes" button is only labelled
@@ -784,11 +861,11 @@ regenKeyOverlayLines checked =
         | checked   = "[ Yes, Regenerate ]  [ Cancel ]"
         | otherwise = "  (check the box to enable)   [ Cancel ]"
 
-renderRegenKeyOverlay :: Layout -> AppState -> IO ()
-renderRegenKeyOverlay lay st = do
+renderRegenKeyOverlay :: Layout -> AppState -> Int -> IO ()
+renderRegenKeyOverlay lay st scrollOff = do
     checked <- readIORef (asRegenCheckbox st)
     lns <- regenKeyOverlayLines checked
-    showOverlay lay "Regenerate Identity Key" lns
+    showOverlayScrolled lay "Regenerate Identity Key" lns scrollOff
 
 -- | Render a dropdown menu below its tab position
 renderDropdown :: Layout -> MenuTab -> Int -> IO ()

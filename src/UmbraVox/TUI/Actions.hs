@@ -73,6 +73,7 @@ regenIdentityKey st = do
     -- Clear all existing sessions since the old identity is gone
     writeIORef (cfgSessions (asConfig st)) mempty
     writeIORef (asDialogMode st) Nothing
+    writeIORef (asDialogScroll st) 0
     writeIORef (asRegenCheckbox st) False
     setStatus st "Identity regenerated. All sessions cleared."
 
