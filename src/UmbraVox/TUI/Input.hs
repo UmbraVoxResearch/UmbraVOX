@@ -4,6 +4,7 @@ module UmbraVox.TUI.Input
     , eventLoop
     , handleNormal, handleContact, handleChat, handleDialog
     , handleSettingsDlg, handleNewConnDlg
+    , closeDialog, scrollDialog
     , strip'
     ) where
 
@@ -24,7 +25,8 @@ import UmbraVox.TUI.Menu (toggleMenu, handleMenu, openMenu, closeMenu, executeMe
 import UmbraVox.TUI.RuntimeCommand (runRuntimeCommand, RuntimeCommand(..))
 import UmbraVox.TUI.PaginatedList (pageItemBySlot, pageMaxIndex, slicePage, psItems, psPage)
 import UmbraVox.TUI.Dialog
-    ( browseOverlayLines, overlayBounds, overlayButtonAtLine, overlayCloseBounds, settingsOverlayLines
+    ( browseOverlayLines, overlayBounds, overlayButtonAtLine, overlayCloseBounds
+    , overlayScrollbarBounds, settingsOverlayLines
     , helpOverlayLines, aboutOverlayLines, newConnOverlayLines
     , verifyOverlayLines, keysOverlayLines, promptOverlayLines, settingsTabLabels
     , regenKeyOverlayLines
@@ -123,7 +125,13 @@ parseMouseCSI raw =
                             let button = b .&. 3
                                 isWheel = (b .&. 64) /= 0
                                 isMotion = (b .&. 32) /= 0
-                            in if term == 'M' && button == 0 && not isWheel && not isMotion
+                                wheelUp = isWheel && button == 0
+                                wheelDown = isWheel && button == 1
+                            in if isWheel && term == 'M' && wheelUp
+                                then KeyMouseScrollUp y x
+                            else if isWheel && term == 'M' && wheelDown
+                                then KeyMouseScrollDown y x
+                            else if term == 'M' && button == 0 && not isWheel && not isMotion
                                 then KeyMouseLeft y x
                                 else KeyIgnored
                         _ -> KeyUnknown
@@ -144,6 +152,16 @@ eventLoop st = do
                 case key of
                     KeyIgnored -> pure ()
                     KeyMouseLeft row col -> handleMouseClick st row col
+                    KeyMouseScrollUp _ _ -> do
+                        dlg <- readIORef (asDialogMode st)
+                        case dlg of
+                            Just _ -> scrollDialog st (-3)
+                            Nothing -> pure ()
+                    KeyMouseScrollDown _ _ -> do
+                        dlg <- readIORef (asDialogMode st)
+                        case dlg of
+                            Just _ -> scrollDialog st 3
+                            Nothing -> pure ()
                     _ -> do
                         dlg <- readIORef (asDialogMode st)
                         case dlg of
@@ -178,7 +196,7 @@ handleNormal st key = do
         KeyEscape -> do
             dlg <- readIORef (asDialogMode st)
             case dlg of
-                Just _  -> writeIORef (asDialogMode st) Nothing
+                Just _  -> closeDialog st
                 Nothing -> pure ()
         _ -> case focus of
             ContactPane  -> handleContact st key
@@ -208,20 +226,33 @@ handleDialogMouseClick :: AppState -> Layout -> DialogMode -> Int -> Int -> IO (
 handleDialogMouseClick st lay dlg row col = do
     lineCount <- dialogLineCount st dlg
     closedByX <- handleOverlayTopClose st lay lineCount row col
-    unless closedByX $
-        case dlg of
-            DlgBrowse        -> handleDlgBrowseClick st lay lineCount row col
-            DlgSettings      -> handleDlgSettingsClick st lay lineCount row col
-            DlgNewConn       -> handleDlgNewConnClick st lay lineCount row col
-            DlgPrompt title cb -> handleDlgPromptClick st lay lineCount row col title cb
-            DlgRegenKey      -> handleDlgRegenKeyClick st lay lineCount row col
-            _                -> handleDlgCloseOnly st lay dlg lineCount row col
+    unless closedByX $ do
+        -- Check for a click on the scrollbar track and jump offset if so.
+        scrollOff <- readIORef (asDialogScroll st)
+        let mSb = overlayScrollbarBounds lay lineCount scrollOff
+        sbHandled <- case mSb of
+            Just (sbCol, trackTop, trackBot) | col == sbCol && row >= trackTop && row <= trackBot -> do
+                let trackH  = trackBot - trackTop + 1
+                    maxOff  = max 0 (lineCount - trackH)
+                    -- Map click row to a scroll offset proportionally
+                    newOff  = (row - trackTop) * maxOff `div` max 1 (trackH - 1)
+                writeIORef (asDialogScroll st) (max 0 (min maxOff newOff))
+                pure True
+            _ -> pure False
+        unless sbHandled $
+            case dlg of
+                DlgBrowse        -> handleDlgBrowseClick st lay lineCount row col
+                DlgSettings      -> handleDlgSettingsClick st lay lineCount row col
+                DlgNewConn       -> handleDlgNewConnClick st lay lineCount row col
+                DlgPrompt title cb -> handleDlgPromptClick st lay lineCount row col title cb
+                DlgRegenKey      -> handleDlgRegenKeyClick st lay lineCount row col
+                _                -> handleDlgCloseOnly st lay dlg lineCount row col
 
 handleDlgCloseOnly :: AppState -> Layout -> DialogMode -> Int -> Int -> Int -> IO ()
 handleDlgCloseOnly st lay dlg lineCount row col = do
     lines' <- closeOnlyLines st dlg
     when (overlayButtonHit lay lineCount row col (length lines' - 1) lines' "close") $
-        writeIORef (asDialogMode st) Nothing
+        closeDialog st
 
 closeOnlyLines :: AppState -> DialogMode -> IO [String]
 closeOnlyLines _  DlgHelp    = pure helpOverlayLines
@@ -242,7 +273,7 @@ handleDlgBrowseClick st lay lineCount row col = do
                      , (btn "next",   stepBrowsePage st 1)
                      , (btn "search", openBrowseSearchPrompt st)
                      , (btn "clear",  clearBrowseSearch st)
-                     , (btn "close",  writeIORef (asDialogMode st) Nothing)
+                     , (btn "close",  closeDialog st)
                      ] of
         Just action -> action
         Nothing -> case overlayContentLine lay lineCount row col of
@@ -271,7 +302,7 @@ handleSettingsBodyClick :: AppState -> Layout -> Int -> [String] -> Int -> Int -
 handleSettingsBodyClick st lay lineCount lines' row col =
     let footerIx = length lines' - 1
     in if overlayButtonHit lay lineCount row col footerIx lines' "close"
-        then writeIORef (asDialogMode st) Nothing
+        then closeDialog st
         else case overlayContentLine lay lineCount row col of
             Just lineIx ->
                 case lineOptionKey (lines' !! lineIx) of
@@ -287,7 +318,7 @@ handleDlgNewConnClick st lay lineCount row col = do
     case lookup True [ (btn "private", handleNewConnDlg st (KeyChar '1'))
                      , (btn "single",  handleNewConnDlg st (KeyChar '2'))
                      , (btn "group",   handleNewConnDlg st (KeyChar '3'))
-                     , (btn "cancel",  writeIORef (asDialogMode st) Nothing)
+                     , (btn "cancel",  closeDialog st)
                      ] of
         Just action -> action
         Nothing -> case overlayContentLine lay lineCount row col of
@@ -306,7 +337,7 @@ handleDlgPromptClick st lay lineCount row col title cb = do
     else if overlayButtonHit lay lineCount row col footerIx lines' "cancel"
         then do
             writeIORef (asDialogBuf st) ""
-            writeIORef (asDialogMode st) Nothing
+            closeDialog st
     else pure ()
 
 handleDlgRegenKeyClick :: AppState -> Layout -> Int -> Int -> Int -> IO ()
@@ -322,7 +353,7 @@ handleDlgRegenKeyClick st lay lineCount row col = do
         _ -> pure ()
     -- Buttons
     case lookup True [ (btn "yes, regenerate", regenIdentityKey st)
-                     , (btn "cancel",          writeIORef (asDialogMode st) Nothing)
+                     , (btn "cancel",          closeDialog st)
                      ] of
         Just action -> action
         Nothing     -> pure ()
@@ -346,7 +377,7 @@ handleOverlayTopClose :: AppState -> Layout -> Int -> Int -> Int -> IO Bool
 handleOverlayTopClose st lay lineCount row col = do
     let (closeRow, closeStart, closeEnd) = overlayCloseBounds lay lineCount
         hit = row == closeRow && col >= closeStart && col <= closeEnd
-    when hit (writeIORef (asDialogMode st) Nothing)
+    when hit (closeDialog st)
     pure hit
 
 overlayButtonHit :: Layout -> Int -> Int -> Int -> Int -> [String] -> String -> Bool
@@ -360,7 +391,7 @@ submitPrompt st cb = do
     b <- readIORef (asDialogBuf st)
     cb b
     writeIORef (asDialogBuf st) ""
-    writeIORef (asDialogMode st) Nothing
+    closeDialog st
 
 overlayContentLine :: Layout -> Int -> Int -> Int -> Maybe Int
 overlayContentLine lay lineCount row col =
@@ -493,26 +524,81 @@ handleChat st key = do
         _            -> pure ()
 
 -- Dialogs -----------------------------------------------------------------
+
+-- | Close the current dialog and reset the dialog scroll position.
+closeDialog :: AppState -> IO ()
+closeDialog st = do
+    writeIORef (asDialogMode st) Nothing
+    writeIORef (asDialogScroll st) 0
+
+-- | Scroll the current dialog overlay by a given delta (positive = down).
+-- Reads the current dialog's total line count to enforce the upper bound.
+scrollDialog :: AppState -> Int -> IO ()
+scrollDialog st delta = do
+    dlg <- readIORef (asDialogMode st)
+    case dlg of
+        Nothing -> pure ()
+        Just mode -> do
+            lay <- readIORef (asLayout st)
+            totalLines <- dialogLineCount st mode
+            let (_, _, _, h) = overlayBounds lay totalLines
+                contentH = h - 2
+                maxOff   = max 0 (totalLines - contentH)
+            modifyIORef' (asDialogScroll st) (\off -> max 0 (min maxOff (off + delta)))
+
 handleDialog :: AppState -> InputEvent -> IO ()
-handleDialog st KeyEscape = writeIORef (asDialogMode st) Nothing
+handleDialog st KeyEscape = closeDialog st
 handleDialog st key = do
     dlg <- readIORef (asDialogMode st)
     case dlg of
-        Just DlgHelp    -> writeIORef (asDialogMode st) Nothing
-        Just DlgAbout   -> writeIORef (asDialogMode st) Nothing
-        Just DlgKeys    -> writeIORef (asDialogMode st) Nothing
-        Just DlgVerify  -> writeIORef (asDialogMode st) Nothing
-        Just DlgBrowse  -> handleBrowseDlg st key
-        Just DlgSettings -> handleSettingsDlg st key
-        Just DlgNewConn  -> handleNewConnDlg st key
-        Just DlgRegenKey -> handleRegenKeyDlg st key
-        Just (DlgPrompt _ cb) -> case key of
-            KeyEnter -> submitPrompt st cb
-            KeyChar c -> modifyIORef' (asDialogBuf st) (\s ->
-                if length s >= maxDialogBufLen then s else s ++ [c])
-            KeyBackspace -> modifyIORef' (asDialogBuf st) (\s -> if null s then s else init s)
-            _ -> pure ()
-        _ -> writeIORef (asDialogMode st) Nothing
+        -- Read-only dialogs: arrow/page keys scroll; any other key closes.
+        Just DlgHelp   -> handleScrollableReadOnly st key DlgHelp
+        Just DlgAbout  -> handleScrollableReadOnly st key DlgAbout
+        Just DlgKeys   -> handleScrollableReadOnly st key DlgKeys
+        Just DlgVerify -> handleScrollableReadOnly st key DlgVerify
+        -- Interactive dialogs: scroll keys are intercepted for Up/Down only;
+        -- PageUp/PageDown are passed through to dialog-specific handlers.
+        Just DlgBrowse   -> handleScrollableInteractive st key (handleBrowseDlg st key)
+        Just DlgSettings -> handleScrollableInteractive st key (handleSettingsDlg st key)
+        Just DlgNewConn  -> handleScrollableInteractive st key (handleNewConnDlg st key)
+        Just DlgRegenKey -> handleScrollableInteractive st key (handleRegenKeyDlg st key)
+        Just (DlgPrompt _ cb) ->
+            handleScrollableInteractive st key $ case key of
+                KeyEnter     -> submitPrompt st cb
+                KeyChar c    -> modifyIORef' (asDialogBuf st) (\s ->
+                    if length s >= maxDialogBufLen then s else s ++ [c])
+                KeyBackspace -> modifyIORef' (asDialogBuf st) (\s -> if null s then s else init s)
+                _            -> pure ()
+        _ -> closeDialog st
+
+-- | Handle key input for a read-only scrollable dialog.
+-- Scroll keys (Up/Down/PageUp/PageDown) scroll the overlay;
+-- any other key closes the dialog.
+handleScrollableReadOnly :: AppState -> InputEvent -> DialogMode -> IO ()
+handleScrollableReadOnly st key mode = case key of
+    KeyUp       -> scrollDialog st (-1)
+    KeyDown     -> scrollDialog st 1
+    KeyPageUp   -> scrollDialogPage st mode True
+    KeyPageDown -> scrollDialogPage st mode False
+    _           -> closeDialog st
+
+-- | Handle key input for an interactive dialog.
+-- Up/Down scroll the overlay; all other keys are passed to the given action.
+handleScrollableInteractive :: AppState -> InputEvent -> IO () -> IO ()
+handleScrollableInteractive st key action = case key of
+    KeyUp   -> scrollDialog st (-1)
+    KeyDown -> scrollDialog st 1
+    _       -> action
+
+-- | Scroll an overlay up or down by one full content-height page.
+scrollDialogPage :: AppState -> DialogMode -> Bool -> IO ()
+scrollDialogPage st mode upward = do
+    lay <- readIORef (asLayout st)
+    totalLines <- dialogLineCount st mode
+    let (_, _, _, h) = overlayBounds lay totalLines
+        contentH = h - 2
+        delta = if upward then negate contentH else contentH
+    scrollDialog st delta
 
 handleRegenKeyDlg :: AppState -> InputEvent -> IO ()
 handleRegenKeyDlg st (KeyChar ' ') =
@@ -598,7 +684,7 @@ shiftSettingsTab st delta = do
 
 handleBrowseDlg :: AppState -> InputEvent -> IO ()
 handleBrowseDlg st key = case key of
-    KeyEscape -> writeIORef (asDialogMode st) Nothing
+    KeyEscape -> closeDialog st
     KeyLeft -> stepBrowsePage st (-1)
     KeyRight -> stepBrowsePage st 1
     KeyPageUp -> stepBrowsePage st (-1)
@@ -616,7 +702,7 @@ handleBrowseDlg st key = case key of
 handleNewConnDlg :: AppState -> InputEvent -> IO ()
 -- 1 = Private (secure notes, local only)
 handleNewConnDlg st (KeyChar '1') = do
-    writeIORef (asDialogMode st) Nothing
+    closeDialog st
     addSecureNotes st
 -- 2 = Single (connect to one peer via host:port or listen)
 handleNewConnDlg st (KeyChar '2') = do
@@ -679,7 +765,7 @@ selectBrowsePeerByDigit st c = do
     case pageItemBySlot browsePageSize page idx peers of
         Just peer -> do
             runRuntimeCommand st (CmdConnectPeer (mdnsIP peer) (Just (mdnsPort peer)))
-            writeIORef (asDialogMode st) Nothing
+            closeDialog st
         Nothing ->
             setStatus st ("No peer on slot " ++ [c] ++ " for the current page")
 

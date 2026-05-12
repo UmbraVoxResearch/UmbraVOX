@@ -22,8 +22,9 @@ applyRuntimeEvent st evt =
     case evt of
         EventSetStatus msg ->
             writeIORef (asStatusMsg st) msg
-        EventSetDialog mode ->
+        EventSetDialog mode -> do
             writeIORef (asDialogMode st) mode
+            writeIORef (asDialogScroll st) 0
         EventSetInput buf ->
             writeIORef (asInputBuf st) buf
         EventSetDialogTab tabIx ->

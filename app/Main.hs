@@ -176,6 +176,7 @@ runUi flags = do
                              <*> newIORef 0        -- asDialogTab
                              <*> newIORef Nothing  -- asLastRenderToken
                              <*> newIORef False    -- asRegenCheckbox
+                             <*> newIORef 0        -- asDialogScroll
     -- identity already initialized by initCoreRuntime above
     when debugLogging $ logEvent cfg "app.start" []
     activeListenPort <- readIORef (cfgListenPort cfg)

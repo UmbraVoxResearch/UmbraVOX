@@ -294,12 +294,12 @@ testMouseClickSettingsOption :: IO Bool
 testMouseClickSettingsOption = do
     st <- mkTestState
     lines' <- settingsOverlayLines st
-    let keyLine = findLineIndex "   0. View/regenerate keys" lines'
+    let portLine = findLineIndex "   1. Listen port:    1111" lines'
         (r0, c0, _, _) = overlayBounds calcTestLayout (length lines')
     writeIORef (asDialogMode st) (Just DlgSettings)
-    handleNormal st (KeyMouseLeft (r0 + keyLine + 1) (c0 + 6))
+    handleNormal st (KeyMouseLeft (r0 + portLine + 1) (c0 + 6))
     dlg <- readIORef (asDialogMode st)
-    assertEq "mouse click settings option opens keys" True (isDlgKeys dlg)
+    assertEq "mouse click settings option opens port prompt" True (isDlgPrompt dlg)
 
 prefixOf :: String -> String -> Bool
 prefixOf [] _ = True

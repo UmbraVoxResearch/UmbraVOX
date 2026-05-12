@@ -88,6 +88,9 @@ data AppState = AppState
       --   to avoid IORef space leak.
     , asRegenCheckbox :: IORef Bool
       -- ^ Checkbox state for the key-regeneration confirmation dialog.
+    , asDialogScroll :: !(IORef Int)
+      -- ^ Scroll offset (in lines) within the currently open dialog overlay.
+      --   Reset to 0 whenever a dialog is opened or closed.
     }
 
 -- | Accessor: domain configuration, delegating to 'asCoreState'.
@@ -139,7 +142,9 @@ data InputEvent = KeyChar Char | KeyEnter | KeyTab | KeyBackspace | KeyEscape
     | KeyUp | KeyDown | KeyLeft | KeyRight
     | KeyPageUp | KeyPageDown
     | KeyCtrlN | KeyCtrlG | KeyCtrlQ | KeyCtrlD
-    | KeyMouseLeft Int Int  -- row, col (1-based terminal coordinates)
+    | KeyMouseLeft Int Int        -- row, col (1-based terminal coordinates)
+    | KeyMouseScrollUp Int Int    -- row, col (wheel scroll up)
+    | KeyMouseScrollDown Int Int  -- row, col (wheel scroll down)
     | KeyIgnored
     | KeyF1 | KeyF2 | KeyF3 | KeyF4 | KeyF5
     | KeyUnknown

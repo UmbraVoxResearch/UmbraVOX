@@ -22,7 +22,7 @@ import UmbraVox.TUI.Dialog (showOverlay, renderHelpOverlay, renderAboutOverlay, 
     helpOverlayLines, aboutOverlayLines, newConnOverlayLines, keysOverlayLines,
     verifyOverlayLines, promptOverlayLines, settingsOverlayLines, browseOverlayLines,
     regenKeyOverlayLines)
-import UmbraVox.Protocol.QRCode (generateSafetyNumber, renderFingerprint, generateQRCode, renderQRCode)
+import UmbraVox.Protocol.QRCode (generateSafetyNumber, renderSafetyNumber, renderFingerprint, generateQRCode, renderQRCode)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 import UmbraVox.Version (versionFull)
 
@@ -96,34 +96,62 @@ renderContactCell lay entries sel focus cScroll row = do
 
 -- | Build the lines for the inline identity panel given an optional IdentityKey.
 -- Returns exactly 'identityH - 1' content lines (the separator row is drawn separately).
+-- When innerW >= 60 the two key columns are shown side by side; otherwise they
+-- are stacked vertically.
 identityPanelLines :: Layout -> Maybe IdentityKey -> Pane -> [String]
-identityPanelLines lay mIk focus =
+identityPanelLines lay mIk _focus =
     let innerW = lLeftW lay - 2
         btnText = "[ Regenerate (F5) ]"
-        btnPad = padR innerW btnText
         noIdLines = padR innerW "No identity yet." : replicate (lIdentityH lay - 2) (replicate innerW ' ')
+        available = lIdentityH lay - 1
+        finalize ls =
+            let trimmed = take available ls
+                padded  = trimmed ++ replicate (available - length trimmed) (replicate innerW ' ')
+            in padded
     in case mIk of
         Nothing -> noIdLines
         Just ik ->
-            let x25519Lns = renderFingerprint (ikX25519Public ik)
+            let x25519Lns  = renderFingerprint (ikX25519Public ik)
                 ed25519Lns = renderFingerprint (ikEd25519Public ik)
-                safetyNum = generateSafetyNumber (ikX25519Public ik) (ikX25519Public ik)
-                qrLns = renderQRCode (generateQRCode safetyNum)
-                labelStyle lbl = padR innerW lbl
-                keyLines =
-                    [ labelStyle "X25519:" ]
-                    ++ map (padR innerW) x25519Lns
-                    ++ [ labelStyle "Ed25519:" ]
-                    ++ map (padR innerW) ed25519Lns
-                    ++ [ replicate innerW ' ' ]
-                    ++ map (padR innerW) qrLns
-                    ++ [ replicate innerW ' ' ]
-                    ++ [ (if focus == IdentityPane then btnPad else padR innerW btnText) ]
-                -- pad or trim to fit available height
-                available = lIdentityH lay - 1
-                trimmed = take available keyLines
-                padded = trimmed ++ replicate (available - length trimmed) (replicate innerW ' ')
-            in padded
+                safetyNum  = generateSafetyNumber (ikX25519Public ik) (ikX25519Public ik)
+                qrLns      = renderQRCode (generateQRCode safetyNum)
+                safetyLns  = renderSafetyNumber safetyNum
+                btnLine    = padR innerW btnText
+            in if innerW >= 60
+                then finalize (twoColLines innerW x25519Lns ed25519Lns qrLns safetyLns btnLine)
+                else finalize (oneColLines innerW x25519Lns ed25519Lns qrLns safetyLns btnLine)
+
+-- | Render identity panel content in a single vertical column.
+oneColLines :: Int -> [String] -> [String] -> [String] -> [String] -> String -> [String]
+oneColLines innerW x25519Lns ed25519Lns qrLns safetyLns btnLine =
+    [ padR innerW "X25519:" ]
+    ++ map (padR innerW) x25519Lns
+    ++ [ padR innerW "Ed25519:" ]
+    ++ map (padR innerW) ed25519Lns
+    ++ [ replicate innerW ' ' ]
+    ++ map (padR innerW) qrLns
+    ++ map (padR innerW) safetyLns
+    ++ [ replicate innerW ' ' ]
+    ++ [ btnLine ]
+
+-- | Render identity panel content in two side-by-side columns.
+-- Left column: X25519 fingerprint + QR + safety number ASCII
+-- Right column: Ed25519 fingerprint + QR + safety number ASCII
+twoColLines :: Int -> [String] -> [String] -> [String] -> [String] -> String -> [String]
+twoColLines innerW x25519Lns ed25519Lns qrLns safetyLns btnLine =
+    let colW  = (innerW - 1) `div` 2   -- width of each column
+        sep   = " "                     -- single-space column separator
+        pad c s = padR c s
+        zipCols leftCol rightCol =
+            let maxLen = max (length leftCol) (length rightCol)
+                blank  = replicate colW ' '
+                padCol col = col ++ replicate (maxLen - length col) blank
+            in zipWith (\l r -> pad colW l ++ sep ++ pad colW r)
+                       (padCol leftCol) (padCol rightCol)
+        leftSection  = [ "X25519:" ] ++ x25519Lns ++ [""] ++ qrLns ++ safetyLns
+        rightSection = [ "Ed25519:" ] ++ ed25519Lns ++ [""] ++ qrLns ++ safetyLns
+        combined = zipCols leftSection rightSection
+    in combined ++ [ replicate innerW ' ', btnLine ]
 
 -- | Render one content row: left contact + divider + right chat
 renderPaneRow :: Layout -> [(SessionId, SessionInfo)] -> Maybe SessionInfo
@@ -271,6 +299,7 @@ render st = do
         browseFilter <- readIORef (asBrowseFilter st)
         mIk <- readIORef (cfgIdentity (asConfig st))
         regenCb <- readIORef (asRegenCheckbox st)
+        dlgScroll <- readIORef (asDialogScroll st)
         dialogToken <- case dlg of
             Just DlgHelp -> pure helpOverlayLines
             Just DlgAbout -> pure aboutOverlayLines
@@ -295,7 +324,7 @@ render st = do
                 ++ show mOpen ++ "|" ++ show menuIdx ++ "|" ++ show dlg ++ "|"
                 ++ show browsePage ++ "|" ++ browseFilter ++ "|" ++ buf ++ "|" ++ dlgBuf ++ "|"
                 ++ status ++ "|" ++ show dialogToken ++ "|" ++ show sessionTokens ++ "|"
-                ++ identityToken ++ "|" ++ show regenCb
+                ++ identityToken ++ "|" ++ show regenCb ++ "|" ++ show dlgScroll
         when (lastToken /= Just token) $ do
             writeIORef (asLastRenderToken st) (Just token)
             goto 1 1
@@ -321,16 +350,16 @@ render st = do
                 Nothing  -> pure ()
             -- Overlays
             case dlg of
-                Just DlgHelp     -> renderHelpOverlay lay
-                Just DlgAbout    -> renderAboutOverlay lay
-                Just DlgKeys     -> renderKeysOverlay lay st
-                Just DlgSettings -> renderSettingsOverlay lay st
-                Just DlgNewConn  -> renderNewConnOverlay lay
-                Just DlgVerify   -> renderVerifyOverlay lay st
-                Just DlgBrowse   -> renderBrowseOverlay lay st
-                Just DlgRegenKey -> renderRegenKeyOverlay lay st
+                Just DlgHelp     -> renderHelpOverlay lay dlgScroll
+                Just DlgAbout    -> renderAboutOverlay lay dlgScroll
+                Just DlgKeys     -> renderKeysOverlay lay st dlgScroll
+                Just DlgSettings -> renderSettingsOverlay lay st dlgScroll
+                Just DlgNewConn  -> renderNewConnOverlay lay dlgScroll
+                Just DlgVerify   -> renderVerifyOverlay lay st dlgScroll
+                Just DlgBrowse   -> renderBrowseOverlay lay st dlgScroll
+                Just DlgRegenKey -> renderRegenKeyOverlay lay st dlgScroll
                 Just (DlgPrompt title _) ->
-                    renderPromptOverlay lay title dlgBuf
+                    renderPromptOverlay lay title dlgBuf dlgScroll
                 Nothing -> pure ()
             hFlush stdout
 
