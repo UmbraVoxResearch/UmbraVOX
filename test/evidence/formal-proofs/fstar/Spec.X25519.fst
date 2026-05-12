@@ -654,16 +654,17 @@ let encode_le_length n = ()
 (** The basepoint u=9 encodes as [0x09, 0x00, ..., 0x00] *)
 val basepoint_encoding : unit
     -> Lemma (encode_le 9 == Seq.append (Seq.create 1 9uy) (Seq.create 31 0uy))
+#push-options "--z3rlimit 20000"
 let basepoint_encoding () =
   (* The encoding of 9 as 32 bytes little-endian places 0x09 at index 0
      and 0x00 at all other indices.  This is a concrete arithmetic fact:
      9 / 2^0 % 256 = 9, and 9 / 2^k % 256 = 0 for k >= 8.
-     Full normalization of the 32-way equality is discharged by the
-     Z3 solver given the concrete value. *)
+     assert_norm evaluates encode_le 9 and the rhs to equal byte sequences. *)
   assert_norm (9 / pow2 (8 * 0) % 256 = 9);
   assert_norm (9 / pow2 (8 * 1) % 256 = 0);
   assert_norm (9 / pow2 (8 * 31) % 256 = 0);
-  assume (encode_le 9 == Seq.append (Seq.create 1 9uy) (Seq.create 31 0uy))
+  assert_norm (encode_le 9 == Seq.append (Seq.create 1 9uy) (Seq.create 31 0uy))
+#pop-options
 
 (** -------------------------------------------------------------------- **)
 (** Relationship to the Haskell implementation                           **)

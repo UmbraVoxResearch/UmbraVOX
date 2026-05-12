@@ -66,7 +66,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak verify verify-haskell complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity vm-smoke vm-image-build vm-image-clean image-clean firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics clean cleandb cleanall help
+.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak verify verify-haskell complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source sanity vm-smoke vm-image-build vm-image-clean image-clean firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -218,6 +218,11 @@ help:
 	@echo "    make vm-integration-test Run multi-VM integration test (INTEGRATION_AGENTS=3)"
 	@echo "    make vm-integration-test-dual-lan Run dual-LAN integration test (6 agents)"
 	@echo "    make vm-forensics   Run VM forensics verification (pcap, disk, log)"
+	@echo "    make vm-smoke-freebsd Run FreeBSD 14.x QEMU VM smoke (M14.2.1 / M14.5.6)"
+	@echo "    make vm-smoke-illumos Run OmniOS/illumos QEMU VM smoke (M14.2.5 / M14.5.8)"
+	@echo "    make vm-smoke-openbsd Run OpenBSD 7.x QEMU VM smoke (M14.2.2)"
+	@echo "    make vm-smoke-netbsd Run NetBSD 10.x QEMU VM smoke (M14.2.3)"
+	@echo "    make vm-smoke-dragonfly Run DragonFlyBSD 6.x QEMU VM smoke (M14.2.4, INFO if GHC unavailable)"
 	@echo ""
 	@echo "  Maintenance:"
 	@echo "    make clean       Remove build artifacts + build/ + dist-newstyle"
@@ -823,6 +828,36 @@ vm-integration-test-dual-lan:
 vm-forensics:
 	@echo -e "$(BLUE)[FORENSICS]$(NC) Running VM forensics verification..."
 	@cabal run umbravox -- vm-forensics
+
+# --------------------------------------------------------------------------
+# FreeBSD / illumos VM Smoke Testing (M14.5.6, M14.5.8)
+# --------------------------------------------------------------------------
+
+vm-smoke-freebsd:
+	@echo -e "$(BLUE)[VM-FREEBSD]$(NC) Running FreeBSD QEMU VM smoke (M14.2.1)..."
+	@chmod +x ./scripts/vm-freebsd-setup.sh
+	@./scripts/vm-freebsd-setup.sh
+
+vm-smoke-illumos:
+	@echo -e "$(BLUE)[VM-ILLUMOS]$(NC) Running OmniOS/illumos QEMU VM smoke (M14.2.5)..."
+	@chmod +x ./scripts/vm-illumos-setup.sh
+	@./scripts/vm-illumos-setup.sh
+
+vm-smoke-openbsd:
+	@echo -e "$(BLUE)[VM-OPENBSD]$(NC) Running OpenBSD QEMU VM smoke (M14.2.2)..."
+	@chmod +x ./scripts/vm-openbsd-setup.sh
+	@nix-shell nix/vm-openbsd.nix --run ./scripts/vm-openbsd-setup.sh
+
+vm-smoke-netbsd:
+	@echo -e "$(BLUE)[VM-NETBSD]$(NC) Running NetBSD QEMU VM smoke (M14.2.3)..."
+	@chmod +x ./scripts/vm-netbsd-setup.sh
+	@nix-shell nix/vm-netbsd.nix --run ./scripts/vm-netbsd-setup.sh
+
+vm-smoke-dragonfly:
+	@echo -e "$(BLUE)[VM-DRAGONFLY]$(NC) Running DragonFlyBSD QEMU VM smoke (M14.2.4)..."
+	@echo -e "$(YELLOW)[VM-DRAGONFLY]$(NC) INFO: exits 0 with a notice if GHC binary package is unavailable."
+	@chmod +x ./scripts/vm-dragonfly-setup.sh
+	@nix-shell nix/vm-dragonfly.nix --run ./scripts/vm-dragonfly-setup.sh
 
 # --------------------------------------------------------------------------
 # Clean

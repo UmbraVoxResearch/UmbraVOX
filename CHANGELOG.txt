@@ -4,6 +4,25 @@ All notable changes to UmbraVOX are documented in this file.
 
 The format is based on Keep a Changelog 1.1.0 and this project aims to follow Semantic Versioning.
 
+## [Unreleased]
+
+### Added
+- M14.2.2: nix/vm-openbsd.nix — Nix shell environment providing host-side QEMU + SSH tooling for the OpenBSD smoke lane.
+- M14.2.3: nix/vm-netbsd.nix — Nix shell environment providing host-side QEMU + SSH tooling for the NetBSD smoke lane.
+- M14.2.4: nix/vm-dragonfly.nix — Nix shell environment providing host-side QEMU + SSH tooling for the DragonFlyBSD smoke lane (exits 0 with INFO if GHC binary package unavailable).
+- M14.2.2: scripts/vm-openbsd-setup.sh — downloads OpenBSD 7.x amd64 cloud image (or uses cache in build/vm/), boots QEMU, installs GHC + cabal-install via pkg_add, copies source via tar-over-SSH, runs cabal build + test.
+- M14.2.3: scripts/vm-netbsd-setup.sh — downloads NetBSD 10.x amd64 cloud image (or uses cache), boots QEMU, installs GHC via pkgin, runs cabal build + test.
+- M14.2.4: scripts/vm-dragonfly-setup.sh — downloads DragonFlyBSD 6.x ISO (or uses cache), boots QEMU, attempts pkg install ghc (INFO skip if unavailable), runs cabal build + test if GHC present.
+- M14.2.2: make vm-smoke-openbsd — Makefile target invoking vm-openbsd-setup.sh inside nix-shell nix/vm-openbsd.nix.
+- M14.2.3: make vm-smoke-netbsd — Makefile target invoking vm-netbsd-setup.sh inside nix-shell nix/vm-netbsd.nix.
+- M14.2.4: make vm-smoke-dragonfly — Makefile target invoking vm-dragonfly-setup.sh inside nix-shell nix/vm-dragonfly.nix.
+- M14.2.1: nix/vm-freebsd.nix — Nix expression that fetches FreeBSD 14.2-RELEASE amd64 VM qcow2 from the FreeBSD CDN and exposes it as a Nix store path.
+- M14.2.5: nix/vm-omnios.nix — Nix expression that fetches OmniOS CE r151052 cloud VMDK and converts it to qcow2 via a Nix derivation.
+- M14.5.6: scripts/vm-freebsd-setup.sh — downloads FreeBSD image (or uses cache), builds init ISO with in-guest smoke script, boots QEMU VM, installs GHC + cabal via pkg, runs cabal build + test.
+- M14.5.8: scripts/vm-illumos-setup.sh — downloads OmniOS image (or uses cache), converts VMDK, boots QEMU VM, installs GHC via ooce publisher, runs cabal build + test.
+- M14.5.6: make vm-smoke-freebsd — Makefile target calling vm-freebsd-setup.sh.
+- M14.5.8: make vm-smoke-illumos — Makefile target calling vm-illumos-setup.sh.
+
 ## [0.0.8] — 2026-05-10
 
 ### Testing
