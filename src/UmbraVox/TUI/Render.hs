@@ -9,6 +9,7 @@ module UmbraVox.TUI.Render
 
 import Control.Monad (forM_, when)
 import Data.IORef (readIORef, writeIORef)
+import Data.List (stripPrefix)
 import qualified Data.Map.Strict as Map
 import System.IO (hFlush, stdout)
 import UmbraVox.TUI.Types
@@ -26,6 +27,9 @@ import UmbraVox.TUI.Dialog (showOverlay, renderHelpOverlay, renderAboutOverlay, 
 import UmbraVox.Protocol.QRCode (generateSafetyNumber, renderSafetyNumber, renderFingerprint, generateQRCode, renderQRCode)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 import UmbraVox.Version (versionFull)
+
+clampInt :: Int -> Int -> Int -> Int
+clampInt lo hi x = max lo (min hi x)
 
 data RenderGrid = RenderGrid
     { gContentTop :: Int
@@ -232,6 +236,11 @@ fpTwoColLines innerW x25519Lns ed25519Lns =
 renderPaneRow :: Layout -> RenderGrid -> [(SessionId, SessionInfo)] -> Maybe SessionInfo
               -> Int -> Pane -> Int -> Int -> Int -> IO ()
 renderPaneRow lay grid entries selSi sel focus scroll' cScroll row = do
+    renderPaneRowLeft lay grid entries sel focus cScroll row
+    renderPaneRowRight lay grid selSi scroll' row
+
+renderPaneRowLeft :: Layout -> RenderGrid -> [(SessionId, SessionInfo)] -> Int -> Pane -> Int -> Int -> IO ()
+renderPaneRowLeft lay grid entries sel focus cScroll row = do
     let rw = lRightW lay
         contentRow = gContentTop grid + row
         chatH' = lChatH lay
@@ -245,6 +254,13 @@ renderPaneRow lay grid entries selSi sel focus scroll' cScroll row = do
         else putStr (replicate (lLeftW lay - 2) ' ')
     -- Divider
     setFg 36; putStr "\x2502"; resetSGR
+
+renderPaneRowRight :: Layout -> RenderGrid -> Maybe SessionInfo -> Int -> Int -> IO ()
+renderPaneRowRight lay grid selSi scroll' row = do
+    let rw = lRightW lay
+        contentRow = gContentTop grid + row
+        chatH' = lChatH lay
+    goto contentRow (lLeftW lay + 1)
     -- Chat message
     msg <- case selSi of
         Nothing -> pure ""
@@ -404,37 +420,70 @@ render st = do
             Nothing -> pure []
         let entries = Map.toList sessions
             chatH' = lChatH lay
-            selSi = if sel >= 0 && sel < length entries
-                    then Map.lookup (fst (entries !! sel)) sessions else Nothing
+            contactsH = max 1 (chatH' - lIdentityH lay)
             nSessions = length entries
+            selMax = max 0 (nSessions - 1)
+            sel' = clampInt 0 selMax sel
+            contactMaxOff = max 0 (nSessions - contactsH)
+            cScroll' = clampInt 0 contactMaxOff cScroll
+            selSi = if sel' >= 0 && sel' < nSessions
+                    then Map.lookup (fst (entries !! sel')) sessions else Nothing
             identityToken = maybe "nokey" (\ik -> show (ikX25519Public ik)) mIk
+        chatTotal <- case selSi of
+            Just si -> length <$> readIORef (siHistory si)
+            Nothing -> pure 0
+        let chatMaxScroll = max 0 (chatTotal - chatH')
+            scroll' = clampInt 0 chatMaxScroll scroll
+        when (sel' /= sel) $
+            writeIORef (asSelected st) sel'
+        when (cScroll' /= cScroll) $
+            writeIORef (asContactScroll st) cScroll'
+        when (scroll' /= scroll) $
+            writeIORef (asChatScroll st) scroll'
         sessionTokens <- mapM sessionRenderToken entries
-        let token =
-                "ok|" ++ show rows ++ "|" ++ show cols ++ "|" ++ show focus ++ "|"
-                ++ show sel ++ "|" ++ show scroll ++ "|" ++ show cScroll ++ "|"
-                ++ show mOpen ++ "|" ++ show menuIdx ++ "|" ++ show dlg ++ "|"
-                ++ show browsePage ++ "|" ++ browseFilter ++ "|" ++ buf ++ "|" ++ dlgBuf ++ "|"
-                ++ status ++ "|" ++ show dialogToken ++ "|" ++ show sessionTokens ++ "|"
-                ++ identityToken ++ "|" ++ show regenCb ++ "|" ++ show dlgScroll
+        selectedToken <- case selSi of
+            Nothing -> pure "none"
+            Just si -> selectedSessionRenderToken si
+        let leftToken =
+                show (rows, cols, focus, sel', cScroll', mIk /= Nothing, regenCb, entries, sessionTokens)
+            rightToken =
+                show (rows, cols, sel', scroll', focus, buf, selectedToken)
+            chromeToken =
+                show (rows, cols, mOpen, menuIdx, dlg, browsePage, browseFilter, dlgBuf, status, dialogToken, dlgScroll)
+            token =
+                "ok|L:" ++ show (quickHash leftToken) ++ "|R:" ++ show (quickHash rightToken)
+                ++ "|C:" ++ show (quickHash chromeToken) ++ "|I:" ++ show (quickHash identityToken)
         when (lastToken /= Just token) $ do
             writeIORef (asLastRenderToken st) (Just token)
-            goto 1 1
-            -- Row 1: tabbed menu bar
-            renderMenuBar lay mOpen
-            -- Rows 2..chatH'+1: content rows (contacts + chat)
-            forM_ [0..chatH'-1] $ \row ->
-                renderPaneRow lay grid entries selSi sel focus scroll cScroll row
-            -- Identity panel (left side of the bottom lIdentityH rows)
-            when (lIdentityH lay > 0) $
-                renderIdentityPanel lay grid st mIk
-            -- Separator
-            renderMidBorder lay grid
-            -- Input row
-            renderInputRow lay grid focus buf
-            -- Bottom border
-            renderBottomBorder lay grid
-            -- Status bar at absolute last row
-            renderStatusBar lay st status nSessions
+            let (oldL, oldR, oldC, oldI) = parseRenderToken lastToken
+                newL = quickHash leftToken
+                newR = quickHash rightToken
+                newC = quickHash chromeToken
+                newI = quickHash identityToken
+                leftChanged = oldL /= Just newL || oldI /= Just newI
+                rightChanged = oldR /= Just newR
+                chromeChanged = oldC /= Just newC
+            if chromeChanged then do
+                goto 1 1
+                renderMenuBar lay mOpen
+                forM_ [0..chatH'-1] $ \row ->
+                    renderPaneRow lay grid entries selSi sel' focus scroll' cScroll' row
+                when (lIdentityH lay > 0) $
+                    renderIdentityPanel lay grid st mIk
+                renderMidBorder lay grid
+                renderInputRow lay grid focus buf
+                renderBottomBorder lay grid
+                renderStatusBar lay st status nSessions
+            else do
+                when leftChanged $ do
+                    forM_ [0..chatH'-1] $ \row ->
+                        renderPaneRowLeft lay grid entries sel' focus cScroll' row
+                    when (lIdentityH lay > 0) $
+                        renderIdentityPanel lay grid st mIk
+                when rightChanged $ do
+                    forM_ [0..chatH'-1] $ \row ->
+                        renderPaneRowRight lay grid selSi scroll' row
+                    renderInputRow lay grid focus buf
             -- Dropdown menu (rendered on top of content)
             case mOpen of
                 Just tab -> renderDropdown lay tab menuIdx
@@ -462,4 +511,41 @@ sessionRenderToken :: (SessionId, SessionInfo) -> IO String
 sessionRenderToken (sid, si) = do
     tag <- statusTag <$> readIORef (siStatus si)
     hist <- readIORef (siHistory si)
-    pure (show sid ++ "|" ++ siPeerName si ++ "|" ++ tag ++ "|" ++ show hist)
+    let msgCount = length hist
+        newest = if null hist then "" else head hist
+    pure (show sid ++ "|" ++ siPeerName si ++ "|" ++ tag ++ "|" ++ show msgCount ++ "|" ++ newest)
+
+selectedSessionRenderToken :: SessionInfo -> IO String
+selectedSessionRenderToken si = do
+    hist <- readIORef (siHistory si)
+    let msgCount = length hist
+        newest = if null hist then "" else head hist
+    pure (show msgCount ++ "|" ++ newest)
+
+quickHash :: String -> Int
+quickHash = foldl (\acc ch -> (acc * 33 + fromEnum ch) `mod` 2147483647) 5381
+
+parseRenderToken :: Maybe String -> (Maybe Int, Maybe Int, Maybe Int, Maybe Int)
+parseRenderToken Nothing = (Nothing, Nothing, Nothing, Nothing)
+parseRenderToken (Just tok) =
+    let parts = splitBy '|' tok
+    in (findPref "L:" parts, findPref "R:" parts, findPref "C:" parts, findPref "I:" parts)
+
+findPref :: String -> [String] -> Maybe Int
+findPref _ [] = Nothing
+findPref pfx (x:xs) = case stripPrefix pfx x of
+    Just v -> readMaybeInt v
+    Nothing -> findPref pfx xs
+
+readMaybeInt :: String -> Maybe Int
+readMaybeInt s = case reads s of
+    [(x, "")] -> Just x
+    _ -> Nothing
+
+splitBy :: Char -> String -> [String]
+splitBy _ [] = [""]
+splitBy delim xs =
+    let (a, b) = break (== delim) xs
+    in case b of
+        [] -> [a]
+        (_:rest) -> a : splitBy delim rest

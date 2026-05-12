@@ -266,17 +266,12 @@ gridRegionsFor lay mOverlay =
         , (RegionChat, chatRect)
         ]
   where
-    chatTop = 2
-    chatBottom = chatTop + lChatH lay - 1
-    contactsBottom = chatTop + (lChatH lay - lIdentityH lay) - 1
-    leftInnerStart = 2
-    leftInnerEnd = lLeftW lay - 1
-    rightInnerStart = lLeftW lay + 2
-    contactsRect = Rect chatTop contactsBottom leftInnerStart leftInnerEnd
-    actionsTop = lChatH lay + 3
-    actionsBottom = actionsTop + Layout.inputAreaRows - 1
-    actionsRect = Rect actionsTop actionsBottom leftInnerStart leftInnerEnd
-    chatRect = Rect chatTop actionsBottom rightInnerStart (lCols lay)
+    (contactsRow0, contactsCol0, contactsW, contactsH) = Layout.contactsPaneBounds lay
+    (actionsRow0, actionsCol0, actionsW, actionsH) = Layout.actionsPaneBounds lay
+    (chatRow0, chatCol0, chatW, chatH) = Layout.chatPaneBounds lay
+    contactsRect = Rect contactsRow0 (contactsRow0 + contactsH - 1) contactsCol0 (contactsCol0 + contactsW - 1)
+    actionsRect = Rect actionsRow0 (actionsRow0 + actionsH - 1) actionsCol0 (actionsCol0 + actionsW - 1)
+    chatRect = Rect chatRow0 (chatRow0 + chatH - 1) chatCol0 (chatCol0 + chatW - 1)
 
 gridRegionAt :: Layout -> Maybe Rect -> Int -> Int -> Maybe GridRegion
 gridRegionAt lay mOverlay row col = go (gridRegionsFor lay mOverlay)
@@ -296,6 +291,25 @@ dropdownRect lay tab =
     itemStartRow = 3
     itemEndRow = itemStartRow + length items - 1
 
+dropdownRendered :: Layout -> MenuTab -> Bool
+dropdownRendered lay tab =
+    let items = menuTabItems tab
+        boxW = max minDropdownW (maximum (map length items) + 4)
+        col = dropdownCol (lCols lay) tab
+        startRow = 2
+    in startRow + length items + 1 < lRows lay && col + boxW <= lCols lay
+
+dropdownItemIndexAt :: Layout -> MenuTab -> Int -> Int -> Maybe Int
+dropdownItemIndexAt lay tab row col =
+    let Rect r0 r1 c0 c1 = dropdownRect lay tab
+        idx = row - r0
+        maxIdx = length (menuTabItems tab) - 1
+    in if dropdownRendered lay tab
+        && row >= r0 && row <= r1
+        && col >= c0 && col <= c1
+        then Just (max 0 (min maxIdx idx))
+        else Nothing
+
 handleMouseClick :: AppState -> Int -> Int -> IO ()
 handleMouseClick st row col = do
     lay <- readIORef (asLayout st)
@@ -312,7 +326,8 @@ handleMouseClick st row col = do
                     mOpen <- readIORef (asMenuOpen st)
                     case mOpen of
                         Just tab -> do
-                            let region = gridRegionAt lay (Just (dropdownRect lay tab)) row col
+                            let mDrop = if dropdownRendered lay tab then Just (dropdownRect lay tab) else Nothing
+                                region = gridRegionAt lay mDrop row col
                             case region of
                                 Just RegionOverlay -> do
                                     handled <- handleDropdownClick st lay tab row col
@@ -574,27 +589,20 @@ handleMenuBarClick st lay col = do
 
 handleDropdownClick :: AppState -> Layout -> MenuTab -> Int -> Int -> IO Bool
 handleDropdownClick st lay tab row col = do
-    let items = menuTabItems tab
-        boxW = max minDropdownW (maximum (map length items) + 4)
-        dropCol = dropdownCol (lCols lay) tab
-        itemStartRow = 3
-        itemEndRow = itemStartRow + length items - 1
-        insideCols = col >= dropCol && col < dropCol + boxW
-        insideRows = row >= itemStartRow && row <= itemEndRow
-    if insideCols && insideRows
-        then do
-            let idx = row - itemStartRow
+    case dropdownItemIndexAt lay tab row col of
+        Just idx -> do
             closeMenu st
             executeMenuItem st tab idx
             pure True
-        else pure False
+        Nothing ->
+            pure False
 
 handlePaneClick :: AppState -> Layout -> Int -> Int -> IO ()
 handlePaneClick st lay row col = do
-    let chatTop = 2
-        contactsBottom = chatTop + (lChatH lay - lIdentityH lay) - 1
+    let (contactsRow0, _, _, contactsH) = Layout.contactsPaneBounds lay
+        (inputTop, _, _, _) = Layout.actionsPaneBounds lay
+        contactsBottom = contactsRow0 + contactsH - 1
         identSepRow = contactsBottom + 1
-        inputTop = lChatH lay + 3
         row1Text :: String
         row1Text = "[ Regenerate (F5) ]  [ Export Keys ]"
         row1W = length row1Text
@@ -615,7 +623,7 @@ handlePaneClick st lay row col = do
     case gridRegionAt lay Nothing row col of
         Just RegionContacts ->
             if row <= contactsBottom
-                then selectContactByRow st (row - chatTop)
+                then selectContactByRow st (row - contactsRow0)
                 else if row > identSepRow
                     then writeIORef (asFocus st) IdentityPane
                     else pure ()
