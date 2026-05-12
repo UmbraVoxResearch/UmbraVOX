@@ -33,7 +33,7 @@ import UmbraVox.App.Config
 import UmbraVox.App.State
     ( CoreState(..) )
 
-data Pane = ContactPane | ChatPane deriving stock (Eq, Show, Enum, Bounded)
+data Pane = ContactPane | ChatPane | IdentityPane deriving stock (Eq, Show, Enum, Bounded)
 
 data MenuTab = MenuHelp | MenuContacts | MenuChat | MenuPrefs | MenuQuit
     deriving stock (Eq, Show, Enum, Bounded)
@@ -86,6 +86,8 @@ data AppState = AppState
       -- ^ Strict: writers must evaluate the token with a bang pattern
       --   before storing (e.g. @let !tok = …; writeIORef ref (Just tok)@)
       --   to avoid IORef space leak.
+    , asRegenCheckbox :: IORef Bool
+      -- ^ Checkbox state for the key-regeneration confirmation dialog.
     }
 
 -- | Accessor: domain configuration, delegating to 'asCoreState'.
@@ -99,7 +101,7 @@ asRunning :: AppState -> IORef Bool
 asRunning = csRunning . asCoreState
 
 data DialogMode = DlgHelp | DlgAbout | DlgSettings | DlgVerify | DlgNewConn
-    | DlgKeys | DlgBrowse | DlgPrompt String (String -> IO ())
+    | DlgKeys | DlgBrowse | DlgRegenKey | DlgPrompt String (String -> IO ())
 
 instance Eq DialogMode where
     DlgHelp       == DlgHelp       = True
@@ -109,6 +111,7 @@ instance Eq DialogMode where
     DlgNewConn    == DlgNewConn    = True
     DlgKeys       == DlgKeys       = True
     DlgBrowse     == DlgBrowse     = True
+    DlgRegenKey   == DlgRegenKey   = True
     DlgPrompt a _ == DlgPrompt b _ = a == b
     _             == _             = False
 
@@ -120,14 +123,16 @@ instance Show DialogMode where
     show DlgNewConn      = "DlgNewConn"
     show DlgKeys         = "DlgKeys"
     show DlgBrowse       = "DlgBrowse"
+    show DlgRegenKey     = "DlgRegenKey"
     show (DlgPrompt s _) = "DlgPrompt " ++ show s ++ " <callback>"
 
 data Layout = Layout
-    { lCols :: Int     -- ^ total terminal columns
-    , lRows :: Int     -- ^ total terminal rows
-    , lLeftW :: Int    -- ^ contacts pane width (including border)
-    , lRightW :: Int   -- ^ chat pane width (including border)
-    , lChatH :: Int    -- ^ number of content rows (between header and input)
+    { lCols :: Int        -- ^ total terminal columns
+    , lRows :: Int        -- ^ total terminal rows
+    , lLeftW :: Int       -- ^ contacts pane width (including border)
+    , lRightW :: Int      -- ^ chat pane width (including border)
+    , lChatH :: Int       -- ^ number of content rows (between header and input)
+    , lIdentityH :: Int   -- ^ height of the inline identity panel (rows, including separator)
     } deriving stock (Eq)
 
 data InputEvent = KeyChar Char | KeyEnter | KeyTab | KeyBackspace | KeyEscape

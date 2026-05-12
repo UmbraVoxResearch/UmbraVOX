@@ -21,4 +21,4 @@ minLeftPaneW, leftPaneRatio :: Int
 minLeftPaneW = 20; leftPaneRatio = 4
 
 maxOverlayW, overlayMinMargin, minDropdownW :: Int
-maxOverlayW = 60; overlayMinMargin = 4; minDropdownW = 16
+maxOverlayW = 80; overlayMinMargin = 4; minDropdownW = 16

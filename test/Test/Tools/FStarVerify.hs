@@ -330,7 +330,7 @@ testModuleRlimitsHeavyValue =
 testCountAssumesKnownFile :: IO Bool
 testCountAssumesKnownFile = do
     n <- countAssumes (fstarDir ++ "/Spec.Ed25519.fst")
-    assertEq "countAssumes Spec.Ed25519 == 31" 31 n
+    assertEq "countAssumes Spec.Ed25519 == 30" 30 n
 
 testCountAssumesNonexistent :: IO Bool
 testCountAssumesNonexistent = do

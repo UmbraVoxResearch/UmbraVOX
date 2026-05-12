@@ -54,6 +54,7 @@ mkTestState = do
         <*> newIORef 0           -- asMenuIndex
         <*> newIORef 0           -- asDialogTab
         <*> newIORef Nothing     -- asLastRenderToken
+        <*> newIORef False       -- asRegenCheckbox
 
 calcTestLayout :: Layout
 calcTestLayout = calcLayout 40 120
