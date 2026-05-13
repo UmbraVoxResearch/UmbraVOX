@@ -43,6 +43,7 @@ mkTestState = do
         <*> newIORef ""          -- asInputBuf
         <*> newIORef ""          -- asDialogBuf
         <*> newIORef 0           -- asChatScroll
+        <*> newIORef 0           -- asInputScroll
         <*> newIORef ""          -- asStatusMsg
         <*> newIORef Nothing     -- asDialogMode
         <*> newIORef 0           -- asBrowsePage

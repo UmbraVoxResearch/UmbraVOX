@@ -243,6 +243,7 @@ testRestoredOfflineSessionsFailClosedOnSend = withDB "umbravox-startup-restored-
     inputRef <- newIORef "after-restart"
     dialogBufRef <- newIORef ""
     chatScrollRef <- newIORef 0
+    inputScrollRef <- newIORef 0
     statusRef <- newIORef ""
     dialogModeRef <- newIORef Nothing
     browsePageRef <- newIORef 0
@@ -257,6 +258,7 @@ testRestoredOfflineSessionsFailClosedOnSend = withDB "umbravox-startup-restored-
     regenCheckboxRef <- newIORef False
     dialogScrollRef <- newIORef 0
     let st = AppState cs selectedRef focusRef inputRef dialogBufRef chatScrollRef
+            inputScrollRef
             statusRef dialogModeRef browsePageRef browseFilterRef
             layoutRef contactScrollRef termSizeRef menuOpenRef menuIndexRef
             dialogTabRef renderTokenRef regenCheckboxRef dialogScrollRef
