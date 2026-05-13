@@ -39,7 +39,7 @@ calcLayout rows cols = Layout
     , lLeftW     = leftW
     , lRightW    = rightW
     , lChatH     = chatH
-    , lIdentityH = identityPanelH (rows - 4)
+    , lIdentityH = identityPanelH chatH
     }
   where
     rowTracks =
@@ -50,10 +50,10 @@ calcLayout rows cols = Layout
         , Fixed 1
         ]
     [_, _, chatH, _, _] = resolveTrackSizes rows rowTracks
-    -- Keep widths deterministic: left pane follows a target ratio, while
-    -- preserving a usable minimum width for the chat pane.
-    targetLeft = max minLeftPaneW (cols `div` leftPaneRatio)
-    minRightW = 32
+    -- Keep widths deterministic while preserving historical proportions
+    -- (left pane around 40-45% in normal terminals) and a usable chat pane.
+    targetLeft = max minLeftPaneW ((cols * 42) `div` 100)
+    minRightW = 40
     leftW = max minLeftPaneW (min targetLeft (cols - minRightW))
     rightW = max minRightW (cols - leftW)
 

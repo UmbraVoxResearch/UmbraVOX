@@ -205,7 +205,7 @@ handleNormal st key = do
         KeyF2    -> toggleMenu st MenuContacts
         KeyF3    -> toggleMenu st MenuChat
         KeyF4    -> toggleMenu st MenuPrefs
-        KeyF5    -> writeIORef (asDialogMode st) (Just DlgKeys)
+        KeyF5    -> openRegenKeyDialog st
         KeyEscape -> do
             dlg <- readIORef (asDialogMode st)
             case dlg of
@@ -413,7 +413,7 @@ closeOnlyLines _  _          = pure []
 handleDlgBrowseClick :: AppState -> Layout -> Int -> [String] -> [String] -> Int -> Int -> IO ()
 handleDlgBrowseClick st lay lineCount rows rawLines row col = do
     let footerIx = lineCount - 1
-        btn = overlayButtonHit lay lineCount row col footerIx rawLines
+        btn = overlayButtonHit lay lineCount row col footerIx rows
     case lookup True [ (btn "prev",   stepBrowsePage st (-1))
                      , (btn "next",   stepBrowsePage st 1)
                      , (btn "search", openBrowseSearchPrompt st)
@@ -459,7 +459,7 @@ handleSettingsBodyClick st lay lineCount lines' row col =
 handleDlgNewConnClick :: AppState -> Layout -> Int -> [String] -> [String] -> Int -> Int -> IO ()
 handleDlgNewConnClick st lay lineCount rows rawLines row col = do
     let footerIx = lineCount - 1
-        btn = overlayButtonHit lay lineCount row col footerIx rawLines
+        btn = overlayButtonHit lay lineCount row col footerIx rows
     case lookup True [ (btn "private", handleNewConnDlg st (KeyChar '1'))
                      , (btn "single",  handleNewConnDlg st (KeyChar '2'))
                      , (btn "group",   handleNewConnDlg st (KeyChar '3'))
@@ -478,7 +478,7 @@ handleDlgNewConnClick st lay lineCount rows rawLines row col = do
 handleDlgKeysClick :: AppState -> Layout -> Int -> [String] -> [String] -> Int -> Int -> IO ()
 handleDlgKeysClick st lay lineCount _rows rawLines row col = do
     let footerIx = lineCount - 1
-        btn = overlayButtonHit lay lineCount row col footerIx rawLines
+        btn = overlayButtonHit lay lineCount row col footerIx _rows
     case lookup True
             [ (btn "regenerate (f5)", openRegenKeyDialog st)
             , (btn "export keys", writeIORef (asRegenCheckbox st) False >> writeIORef (asDialogMode st) (Just DlgExportWarn))
@@ -825,6 +825,8 @@ handleKeysDlg st (KeyChar 'r') = openRegenKeyDialog st
 handleKeysDlg st (KeyChar 'R') = openRegenKeyDialog st
 handleKeysDlg st (KeyChar 'e') = writeIORef (asRegenCheckbox st) False >> writeIORef (asDialogMode st) (Just DlgExportWarn)
 handleKeysDlg st (KeyChar 'E') = handleKeysDlg st (KeyChar 'e')
+handleKeysDlg st (KeyChar 'x') = closeDialog st
+handleKeysDlg st (KeyChar 'X') = closeDialog st
 handleKeysDlg st (KeyChar 'i') = do
     writeIORef (asDialogBuf st) ""
     writeIORef (asDialogMode st) (Just (DlgPrompt "Import Identity Key (hex payload)" $ \val ->

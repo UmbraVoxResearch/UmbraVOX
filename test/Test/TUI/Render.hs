@@ -44,6 +44,7 @@ runTests = do
         , testCalcLayoutLeftMinimum
         , testCalcLayoutEdgeToEdge
         , testCalcLayoutResponsiveGridBias
+        , testCalcLayoutHistoricalPaneProportion
         , testStatusBarConnTagNormal
         , testStatusBarConnTagChastity
         , testStatusBarConnTagExplicitEphemeral
@@ -181,6 +182,14 @@ testCalcLayoutResponsiveGridBias = do
         wide = calcLayout 24 240
     a <- assertEq "responsive grid keeps left pane floor" True (lLeftW compact >= 20 && lLeftW wide >= 20)
     b <- assertEq "responsive grid allocates added width to chat pane" True (lRightW wide > lRightW compact)
+    pure (a && b)
+
+testCalcLayoutHistoricalPaneProportion :: IO Bool
+testCalcLayoutHistoricalPaneProportion = do
+    let lay = calcLayout 24 120
+        pct = (lLeftW lay * 100) `div` max 1 (lCols lay)
+    a <- assertEq "historical pane split keeps left pane substantial" True (pct >= 35)
+    b <- assertEq "historical pane split keeps chat pane dominant" True (pct <= 50)
     pure (a && b)
 
 testStatusBarConnTagNormal :: IO Bool

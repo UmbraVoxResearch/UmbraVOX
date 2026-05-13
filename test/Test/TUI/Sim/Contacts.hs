@@ -87,33 +87,40 @@ testContactPageDownUsesResponsiveVisibleRows :: IO Bool
 testContactPageDownUsesResponsiveVisibleRows = do
     st <- mkTestState
     mapM_ (\i -> addTestSession (asConfig st) ("peer-" ++ show i)) [1 .. 20 :: Int]
-    writeIORef (asLayout st) (calcLayout 24 80)
+    let lay = calcLayout 24 80
+        visRows = max 1 (lChatH lay - lIdentityH lay)
+    writeIORef (asLayout st) lay
     writeIORef (asSelected st) 0
     handleContact st KeyPageDown
     sel <- readIORef (asSelected st)
-    -- At 24x80: visRows = lChatH - lIdentityH = 13
-    assertEq "contact page down moves by responsive page height" 13 sel
+    assertEq "contact page down moves by responsive page height" visRows sel
 
 testContactPageUpUsesResponsiveVisibleRows :: IO Bool
 testContactPageUpUsesResponsiveVisibleRows = do
     st <- mkTestState
     mapM_ (\i -> addTestSession (asConfig st) ("peer-" ++ show i)) [1 .. 20 :: Int]
-    writeIORef (asLayout st) (calcLayout 24 80)
+    let lay = calcLayout 24 80
+        visRows = max 1 (lChatH lay - lIdentityH lay)
+    writeIORef (asLayout st) lay
     writeIORef (asSelected st) 15
     handleContact st KeyPageUp
     sel <- readIORef (asSelected st)
-    assertEq "contact page up moves by responsive page height" 2 sel
+    assertEq "contact page up moves by responsive page height" (max 0 (15 - visRows)) sel
 
 testContactPageDownAdjustsContactScroll :: IO Bool
 testContactPageDownAdjustsContactScroll = do
     st <- mkTestState
     mapM_ (\i -> addTestSession (asConfig st) ("peer-" ++ show i)) [1 .. 60 :: Int]
-    writeIORef (asLayout st) (calcLayout 24 80)
+    let lay = calcLayout 24 80
+        visRows = max 1 (lChatH lay - lIdentityH lay)
+        expectedSel = visRows
+        expectedOff = max 0 (expectedSel - visRows + 1)
+    writeIORef (asLayout st) lay
     writeIORef (asSelected st) 0
     writeIORef (asContactScroll st) 0
     handleContact st KeyPageDown
     sel <- readIORef (asSelected st)
     off <- readIORef (asContactScroll st)
-    ok1 <- assertEq "contact page down updates selection" 13 sel
-    ok2 <- assertEq "contact page down keeps selection visible via scroll" 1 off
+    ok1 <- assertEq "contact page down updates selection" expectedSel sel
+    ok2 <- assertEq "contact page down keeps selection visible via scroll" expectedOff off
     pure (ok1 && ok2)
