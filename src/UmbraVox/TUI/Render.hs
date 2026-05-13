@@ -9,7 +9,7 @@ module UmbraVox.TUI.Render
 
 import Control.Monad (forM_, when)
 import Data.IORef (readIORef, writeIORef)
-import Data.List (stripPrefix)
+import Data.List (intercalate, stripPrefix)
 import qualified Data.Map.Strict as Map
 import System.IO (hFlush, stdout)
 import UmbraVox.TUI.Types
@@ -17,14 +17,14 @@ import UmbraVox.TUI.Terminal (csi, goto, clearScreen, hideCursor, showCursor,
     setFg, resetSGR, bold, padR, getTermSize, withRawMode)
 import UmbraVox.TUI.Layout (clampSize, sizeValid, calcLayout)
 import qualified UmbraVox.TUI.Layout as Layout
-import UmbraVox.TUI.Text (displayWidth, trimToWidth)
+import UmbraVox.TUI.Text (displayWidth, trimToWidth, splitAtWidth)
 import UmbraVox.TUI.Dialog (showOverlay, renderHelpOverlay, renderAboutOverlay, renderKeysOverlay,
     renderSettingsOverlay, renderNewConnOverlay, renderVerifyOverlay,
     renderBrowseOverlay, renderPromptOverlay, renderRegenKeyOverlay, renderDropdown,
     helpOverlayLines, aboutOverlayLines, newConnOverlayLines, keysOverlayLines,
     verifyOverlayLines, promptOverlayLines, settingsOverlayLines, browseOverlayLines,
     regenKeyOverlayLines, exportWarnOverlayLines, exportKeysOverlayLines)
-import UmbraVox.Protocol.QRCode (generateSafetyNumber, renderSafetyNumber, renderFingerprint, generateQRCode, renderQRCode)
+import UmbraVox.Protocol.QRCode (generateSafetyNumber, renderFingerprint, generateQRCode, renderQRCode)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 import UmbraVox.Version (versionFull)
 
@@ -148,11 +148,10 @@ renderContactCell lay entries sel focus cScroll row = do
 -- Layout (top to bottom):
 --   1. One QR code centered (derived from combined X25519+Ed25519 safety number)
 --   2. Standard header centered under QR
---   3. Safety number rows (4x3 groups)
+--   3. Safety number rows (up to 5 groups per row, auto-fitted to pane width)
 --   4. Blank line
 --   5. Two-column fingerprints: " X25519:" | " Ed25519:", then rows side by side
 --   6. One spacer line
---   7. (reserved spacer; key action row is rendered in the lower-left box)
 identityPanelLines :: Layout -> Maybe IdentityKey -> Pane -> [String]
 identityPanelLines lay mIk _focus =
     let innerW   = lLeftW lay - 2
@@ -160,13 +159,10 @@ identityPanelLines lay mIk _focus =
         available = lIdentityH lay - 1
         noIdLines = padR innerW "No identity yet."
                   : replicate (available - 1) (replicate innerW ' ')
-        -- Pin the button to the very last slot; body fills or is trimmed.
         finalize body =
-            let bodySlots = available - 1
-                fitted = if length body <= bodySlots
-                    then body ++ replicate (bodySlots - length body) (replicate innerW ' ')
-                    else take bodySlots body
-            in fitted ++ [replicate innerW ' ']
+            if length body <= available
+                then body ++ replicate (available - length body) (replicate innerW ' ')
+                else take available body
     in case mIk of
         Nothing -> noIdLines
         Just ik ->
@@ -175,23 +171,30 @@ identityPanelLines lay mIk _focus =
                 -- One combined safety number from both keys
                 safetyNum  = generateSafetyNumber (ikX25519Public ik) (ikEd25519Public ik)
                 qrLns      = renderQRCode (generateQRCode safetyNum)
-                safetyLns  = renderSafetyNumber safetyNum
-                body       = identityBody innerW x25519Lns ed25519Lns qrLns qrStdText safetyLns
+                body       = identityBody innerW x25519Lns ed25519Lns qrLns qrStdText safetyNum
             in finalize body
 
 -- | Content body for the identity panel (Regenerate button not included).
 -- Layout: centered QR code, standard label, safety-number rows, blank,
 -- then two-column fingerprint block (X25519 left | Ed25519 right).
-identityBody :: Int -> [String] -> [String] -> [String] -> String -> [String] -> [String]
-identityBody innerW x25519Lns ed25519Lns qrLns qrStdText safetyLns =
+identityBody :: Int -> [String] -> [String] -> [String] -> String -> String -> [String]
+identityBody innerW x25519Lns ed25519Lns qrLns qrStdText safetyNum =
     map centerLine qrLns
     ++ [centerUnderQr innerW qrLns qrStdText]
-    ++ map (padR innerW) safetyLns
+    ++ map (centerText innerW) (formatSafetyNumberForWidth innerW safetyNum)
     ++ [replicate innerW ' ']
     ++ fpTwoColLines innerW x25519Lns ed25519Lns
   where
     centerLine s =
         centerText innerW s
+
+formatSafetyNumberForWidth :: Int -> String -> [String]
+formatSafetyNumberForWidth innerW safetyNum =
+    map (intercalate " ") (groupN perRow groups5)
+  where
+    groups5 = groupN 5 safetyNum
+    -- width of k groups is 6k-1 (5 digits + 1 space separators)
+    perRow = max 1 (min 5 ((innerW + 1) `div` 6))
 
 centerUnderQr :: Int -> [String] -> String -> String
 centerUnderQr innerW qrLns label =
@@ -213,6 +216,33 @@ centerTextOffset innerW offset s =
             pad = max 0 (min room (basePad + offset))
         in padR innerW (replicate pad ' ' ++ s)
 
+groupN :: Int -> [a] -> [[a]]
+groupN _ [] = []
+groupN n xs
+    | n <= 0 = [xs]
+    | otherwise =
+        let (a, b) = splitAt n xs
+        in a : groupN n b
+
+wrapInputLines :: Int -> String -> [String]
+wrapInputLines width txt
+    | width <= 0 = [""]
+    | null chunks = [""]
+    | otherwise = concatMap wrapChunk chunks
+  where
+    chunks = splitByNewline txt
+    wrapChunk "" = [""]
+    wrapChunk s =
+        let (a, b) = splitAtWidth width s
+        in if null b then [a] else a : wrapChunk b
+
+splitByNewline :: String -> [String]
+splitByNewline [] = [""]
+splitByNewline s =
+    case break (== '\n') s of
+        (a, []) -> [a]
+        (a, _:rest) -> a : splitByNewline rest
+
 -- | Two-column fingerprint block: header row then rows zipped from each fingerprint.
 fpTwoColLines :: Int -> [String] -> [String] -> [String]
 fpTwoColLines innerW x25519Lns ed25519Lns =
@@ -232,41 +262,60 @@ renderPaneRow :: Layout -> RenderGrid -> [(SessionId, SessionInfo)] -> Maybe Ses
               -> Int -> Pane -> Int -> Int -> Int -> IO ()
 renderPaneRow lay grid entries selSi sel focus scroll' cScroll row = do
     renderPaneRowLeft lay grid entries sel focus cScroll row
-    renderPaneRowRight lay grid selSi scroll' row
+    renderPaneRowRight lay grid selSi focus scroll' row
 
 renderPaneRowLeft :: Layout -> RenderGrid -> [(SessionId, SessionInfo)] -> Int -> Pane -> Int -> Int -> IO ()
 renderPaneRowLeft lay grid entries sel focus cScroll row = do
     let contentRow = gContentTop grid + row
         chatH' = lChatH lay
+        contactsH = chatH' - lIdentityH lay
     goto contentRow 1
     -- Left border
-    setFg 36; putStr "\x2502"; resetSGR
+    if focus == ContactPane && row < contactsH
+        then bold >> setFg 32 >> putStr "\x2502" >> resetSGR
+        else setFg 36 >> putStr "\x2502" >> resetSGR
     -- Contact cell (only in the contacts area — rows above the identity panel)
-    let contactsH = chatH' - lIdentityH lay
     if row < contactsH
         then renderContactCell lay entries sel focus cScroll row
         else putStr (replicate (lLeftW lay - 2) ' ')
     -- Divider
-    setFg 36; putStr "\x2502"; resetSGR
+    if focus == ContactPane && row < contactsH
+        then bold >> setFg 32 >> putStr "\x2502" >> resetSGR
+        else setFg 36 >> putStr "\x2502" >> resetSGR
 
-renderPaneRowRight :: Layout -> RenderGrid -> Maybe SessionInfo -> Int -> Int -> IO ()
-renderPaneRowRight lay grid selSi scroll' row = do
+renderPaneRowRight :: Layout -> RenderGrid -> Maybe SessionInfo -> Pane -> Int -> Int -> IO ()
+renderPaneRowRight lay grid selSi focus scroll' row = do
     let rw = lRightW lay
         contentRow = gContentTop grid + row
         chatH' = lChatH lay
     goto contentRow (lLeftW lay + 1)
     -- Chat message
-    msg <- case selSi of
-        Nothing -> pure ""
+    (msg, total) <- case selSi of
+        Nothing -> pure ("", 0)
         Just si -> do
             hist <- readIORef (siHistory si)
-            let msgs = reverse hist; total = length msgs
-                start = max 0 (min (total - 1) (total - chatH' - scroll'))
+            let msgs = reverse hist
+                totalMsgs = length msgs
+                start = max 0 (min (totalMsgs - 1) (totalMsgs - chatH' - scroll'))
                 idx = start + row
-            pure $ if idx >= 0 && idx < total then msgs !! idx else ""
-    putStr (padR (rw - 1) msg)
+                line = if idx >= 0 && idx < totalMsgs then msgs !! idx else ""
+            pure (line, totalMsgs)
+    let showScrollbar = total > chatH'
+        sbW = if showScrollbar then 1 else 0
+        msgW = max 0 (rw - 1 - sbW)
+        scrollbarChar =
+            let trackH = max 1 chatH'
+                thumbSz = max 1 (trackH * chatH' `div` max 1 total)
+                maxOff = max 0 (total - chatH')
+                offFromTop = max 0 (maxOff - scroll')
+                thumbPos = if maxOff == 0 then 0 else offFromTop * (trackH - thumbSz) `div` max 1 maxOff
+            in if row >= thumbPos && row < thumbPos + thumbSz then '\x2588' else '\x2502'
+    putStr (padR msgW msg)
+    when showScrollbar $ csi "2m" >> setFg 37 >> putChar scrollbarChar >> resetSGR
     -- Right border
-    setFg 36; putStr "\x2502"; resetSGR
+    if focus == ChatPane
+        then bold >> setFg 32 >> putStr "\x2502" >> resetSGR
+        else setFg 36 >> putStr "\x2502" >> resetSGR
 
 -- | Render the identity panel separator and content rows, left side only.
 -- Called after renderPaneRow has already drawn all content rows (the right
@@ -280,17 +329,25 @@ renderIdentityPanel lay grid st mIk = do
         sepRow = gContentTop grid + contactsH
         innerW = lw - 2
         panelLines = identityPanelLines lay mIk focus
+        active = focus == IdentityPane
+        withPanelFrame action =
+            if active
+                then bold >> setFg 32 >> action >> resetSGR
+                else setFg 36 >> action >> resetSGR
     -- Separator between contacts and identity panel (left side only)
-    goto sepRow 1; setFg 36
-    putStr $ "\x251C" ++ replicate innerW '\x2500' ++ "\x2524"
-    resetSGR
+    goto sepRow 1
+    withPanelFrame $
+        putStr $ "\x251C" ++ replicate innerW '\x2500' ++ "\x2524"
     -- Identity panel content rows (left side only)
     forM_ (zip [0..] panelLines) $ \(i, line) -> do
         let panelRow = sepRow + 1 + i
         goto panelRow 1
-        setFg 36; putStr "\x2502"; resetSGR
-        putStr line; resetSGR
-        goto panelRow (lw); setFg 36; putStr "\x2502"; resetSGR
+        withPanelFrame (putStr "\x2502")
+        when active (bold >> setFg 32)
+        putStr line
+        resetSGR
+        goto panelRow lw
+        withPanelFrame (putStr "\x2502")
 
 -- | Mid-border separator between content and input row
 renderMidBorder :: Layout -> RenderGrid -> IO ()
@@ -298,46 +355,104 @@ renderMidBorder lay grid = do
     let lw = lLeftW lay; rw = lRightW lay
         borderRow = gSepRow grid
     goto borderRow 1; setFg 36
-    putStr $ "\x251C" ++ replicate (lw - 2) '\x2500' ++ "\x253C"
+    putStr $ "\x2502" ++ replicate (lw - 2) ' ' ++ "\x2502"
           ++ replicate (rw - 1) '\x2500' ++ "\x2524"
     resetSGR
 
 -- | Input row: blank left pane, input field on right
-renderInputRow :: Layout -> RenderGrid -> Pane -> String -> IO ()
-renderInputRow lay grid focus buf = do
+renderInputRow :: Layout -> RenderGrid -> Pane -> String -> Int -> IO ()
+renderInputRow lay grid focus buf inputScroll = do
     let lw = lLeftW lay; rw = lRightW lay
         inputTop = gInputTop grid
         inputRows = Layout.inputAreaRows
-        leftBoxRows = 3
+        leftBoxRows = 4
+        leftBoxStart = max 0 (inputRows - leftBoxRows)
+        leftBoxContentRows = 3
+        leftBoxCloseRow = leftBoxStart + leftBoxContentRows
         prefix = " \x25B8 "
+        rightEntryRows = max 1 (inputRows - 1)
+        bodyW = max 0 (rw - 1)
+        baseTextW = max 1 (bodyW - displayWidth prefix)
+        wrappedBase = wrapInputLines baseTextW buf
+        prefixedBase =
+            case wrappedBase of
+                [] -> [prefix]
+                (x:xs) ->
+                    (prefix ++ x) : map (\ln -> replicate (displayWidth prefix) ' ' ++ ln) xs
+        showScrollbar = length prefixedBase > rightEntryRows
+        sbW = if showScrollbar then 1 else 0
+        textW = max 1 (bodyW - displayWidth prefix - sbW)
+        wrappedInput = wrapInputLines textW buf
+        prefixedLines =
+            case wrappedInput of
+                [] -> [prefix]
+                (x:xs) ->
+                    (prefix ++ x) : map (\ln -> replicate (displayWidth prefix) ' ' ++ ln) xs
+        totalLines = length prefixedLines
+        maxInputOff = max 0 (totalLines - rightEntryRows)
+        inputOff = clampInt 0 maxInputOff inputScroll
+        start = max 0 (totalLines - rightEntryRows - inputOff)
+        visibleInput = take rightEntryRows (drop start prefixedLines)
+        contentW = bodyW - sbW
+        inputScrollbarChar lineIx =
+            let trackH = max 1 rightEntryRows
+                thumbSz = max 1 (trackH * rightEntryRows `div` max 1 totalLines)
+                offFromTop = max 0 (maxInputOff - inputOff)
+                thumbPos = if maxInputOff == 0 then 0 else offFromTop * (trackH - thumbSz) `div` max 1 maxInputOff
+            in if lineIx >= thumbPos && lineIx < thumbPos + thumbSz then '\x2588' else '\x2502'
+        renderLine line =
+            if focus == ChatPane
+                then padR contentW (trimToWidth (max 0 (contentW - 1)) line ++ "\x2588")
+                else padR contentW line
     forM_ [0..inputRows-1] $ \i -> do
         let inputRow = inputTop + i
         goto inputRow 1
-        if i < leftBoxRows
+        if i >= leftBoxStart && i < leftBoxCloseRow
             then do
                 setFg 36; putStr "\x2502"; resetSGR
-                if i == 0
+                if i == leftBoxStart
                     then do
                         let actionsText = "[ Regenerate (F5) ]  [ Export Keys ]"
                         putStr (centerText (lw - 2) actionsText)
-                    else if i == 1
+                    else if i == leftBoxStart + 1
                         then do
                             let importText = "[ Import Keys ]"
                             putStr (centerText (lw - 2) importText)
                     else putStr (replicate (lw - 2) ' ')
                 setFg 36; putStr "\x2502"; resetSGR
-            else putStr (replicate lw ' ')
-        if i == 0
-            then if focus == ChatPane then do
-                    bold; setFg 32
-                    let bodyW = max 0 (rw - 1 - displayWidth prefix - 1)
-                    putStr (padR (rw - 1) (prefix ++ trimToWidth bodyW buf ++ "\x2588"))
+            else if i == leftBoxCloseRow
+                then do
+                    setFg 36
+                    putStr $ "\x2570" ++ replicate (lw - 2) '\x2500' ++ "\x256F"
                     resetSGR
-                 else do
-                    let bodyW = max 0 (rw - 1 - displayWidth prefix)
-                    putStr (padR (rw - 1) (prefix ++ trimToWidth bodyW buf))
-            else putStr (replicate (rw - 1) ' ')
-        setFg 36; putStr "\x2502"; resetSGR
+            else if i < leftBoxStart
+                then do
+                    setFg 36; putStr "\x2502"; resetSGR
+                    putStr (replicate (lw - 2) ' ')
+                    setFg 36; putStr "\x2502"; resetSGR
+                else putStr (replicate lw ' ')
+        if i < rightEntryRows
+            then if focus == ChatPane
+                then do
+                    bold; setFg 32
+                    let line = if i < length visibleInput then visibleInput !! i else ""
+                    putStr (renderLine line)
+                    resetSGR
+                    when showScrollbar $ csi "2m" >> setFg 37 >> putChar (inputScrollbarChar i) >> resetSGR
+                else do
+                    let line = if i < length visibleInput then visibleInput !! i else ""
+                    putStr (padR contentW line)
+                    when showScrollbar $ csi "2m" >> setFg 37 >> putChar (inputScrollbarChar i) >> resetSGR
+            else if i == rightEntryRows
+                then do
+                    setFg 36
+                    if rw >= 2
+                        then putStr $ "\x2570" ++ replicate (rw - 2) '\x2500' ++ "\x256F"
+                        else putStr (replicate rw '\x2500')
+                    resetSGR
+            else putStr (replicate bodyW ' ')
+        when (i /= rightEntryRows) $
+            setFg 36 >> putStr "\x2502" >> resetSGR
 
 -- | Bottom border, edge-to-edge
 renderBottomBorder :: Layout -> RenderGrid -> IO ()
@@ -391,6 +506,7 @@ render st = do
         focus <- readIORef (asFocus st); sel <- readIORef (asSelected st)
         sessions <- readIORef (cfgSessions (asConfig st))
         buf <- readIORef (asInputBuf st); scroll <- readIORef (asChatScroll st)
+        inputScroll <- readIORef (asInputScroll st)
         status <- readIORef (asStatusMsg st)
         cScroll <- readIORef (asContactScroll st)
         mOpen <- readIORef (asMenuOpen st)
@@ -444,7 +560,7 @@ render st = do
         let leftToken =
                 show (rows, cols, focus, sel', cScroll', maybe False (const True) mIk, regenCb, sessionTokens)
             rightToken =
-                show (rows, cols, sel', scroll', focus, buf, selectedToken)
+                show (rows, cols, sel', scroll', inputScroll, focus, buf, selectedToken)
             chromeToken =
                 show (rows, cols, mOpen, menuIdx, dlg, browsePage, browseFilter, dlgBuf, status, dialogToken, dlgScroll)
             token =
@@ -468,7 +584,7 @@ render st = do
                 when (lIdentityH lay > 0) $
                     renderIdentityPanel lay grid st mIk
                 renderMidBorder lay grid
-                renderInputRow lay grid focus buf
+                renderInputRow lay grid focus buf inputScroll
                 renderBottomBorder lay grid
                 renderStatusBar lay st status nSessions
             else do
@@ -479,8 +595,8 @@ render st = do
                         renderIdentityPanel lay grid st mIk
                 when rightChanged $ do
                     forM_ [0..chatH'-1] $ \row ->
-                        renderPaneRowRight lay grid selSi scroll' row
-                    renderInputRow lay grid focus buf
+                        renderPaneRowRight lay grid selSi focus scroll' row
+                    renderInputRow lay grid focus buf inputScroll
             -- Dropdown menu (rendered on top of content)
             case mOpen of
                 Just tab -> renderDropdown lay tab menuIdx

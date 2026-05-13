@@ -41,7 +41,7 @@ import UmbraVox.Network.ProviderRuntime (activeRuntimeProvider)
 import qualified UmbraVox.Version
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Terminal (goto, setFg, resetSGR, bold, padR, csi)
-import UmbraVox.TUI.Layout (dropdownCol, chatPaneBounds)
+import UmbraVox.TUI.Layout (dropdownCol)
 import UmbraVox.TUI.Constants (maxOverlayW, minDropdownW)
 import UmbraVox.TUI.PaginatedList (slicePage, psItems, psPage, psTotalPages)
 import UmbraVox.TUI.Text (displayWidth, trimToWidth, splitAtWidth)
@@ -58,11 +58,14 @@ import qualified Data.ByteString.Char8 as C8
 -- Overlays ----------------------------------------------------------------
 overlayBounds :: Layout -> Int -> (Int, Int, Int, Int)
 overlayBounds lay lineCount =
-    let (chatR0, chatC0, chatW, chatH) = chatPaneBounds lay
-        w = max 1 (min (chatW - 2) maxOverlayW)
-        h = max 1 (min (chatH - 2) (lineCount + 4))
-        r0 = chatR0 + max 0 ((chatH - h) `div` 2)
-        c0 = chatC0 + max 0 ((chatW - w) `div` 2)
+    let pageR0 = 2                 -- below menu bar
+        pageH = max 1 (lRows lay - 2)  -- above status bar
+        pageC0 = 1
+        pageW = max 1 (lCols lay)
+        w = max 1 (min (pageW - 2) maxOverlayW)
+        h = max 1 (min (pageH - 2) (lineCount + 4))
+        r0 = pageR0 + max 0 ((pageH - h) `div` 2)
+        c0 = pageC0 + max 0 ((pageW - w) `div` 2)
     in (r0, c0, w, h)
 
 overlayCloseBounds :: Layout -> Int -> (Int, Int, Int)

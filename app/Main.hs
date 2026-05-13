@@ -164,7 +164,7 @@ runUi flags = do
     coreState <- newCoreState cfg
     st <- AppState coreState <$> newIORef 0 <*> newIORef ContactPane
                              <*> newIORef "" <*> newIORef ""
-                             <*> newIORef 0 <*> newIORef ""
+                             <*> newIORef 0 <*> newIORef 0 <*> newIORef ""
                              <*> newIORef Nothing  -- asDialogMode
                              <*> newIORef 0
                              <*> newIORef ""

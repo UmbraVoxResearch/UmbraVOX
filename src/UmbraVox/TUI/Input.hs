@@ -37,10 +37,10 @@ import UmbraVox.TUI.Actions (addSecureNotes, sendCurrentMessage,
     setStatus, adjustContactScroll, openRegenKeyDialog, regenIdentityKey)
 import UmbraVox.TUI.Layout (dropdownCol)
 import qualified UmbraVox.TUI.Layout as Layout
+import UmbraVox.TUI.Text (splitAtWidth, displayWidth)
 import UmbraVox.Network.MDNS (MDNSPeer(..))
 import UmbraVox.Protocol.Encoding (splitOn, parseHostPort)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
-import qualified Data.ByteString as BS
 
 data GridRegion = RegionContacts | RegionActions | RegionChat | RegionOverlay
     deriving stock (Eq, Show)
@@ -267,8 +267,11 @@ gridRegionsFor lay mOverlay =
         ]
   where
     (contactsRow0, contactsCol0, contactsW, contactsH) = Layout.contactsPaneBounds lay
-    (actionsRow0, actionsCol0, actionsW, actionsH) = Layout.actionsPaneBounds lay
+    (actionsRow0, actionsCol0, actionsW, _) = Layout.actionsPaneBounds lay
     (chatRow0, chatCol0, chatW, chatH) = Layout.chatPaneBounds lay
+    -- Keep input hit-testing aligned with rendered compact lower-left box:
+    -- 3 content rows + 1 closing border row.
+    actionsH = 4
     contactsRect = Rect contactsRow0 (contactsRow0 + contactsH - 1) contactsCol0 (contactsCol0 + contactsW - 1)
     actionsRect = Rect actionsRow0 (actionsRow0 + actionsH - 1) actionsCol0 (actionsCol0 + actionsW - 1)
     chatRect = Rect chatRow0 (chatRow0 + chatH - 1) chatCol0 (chatCol0 + chatW - 1)
@@ -346,7 +349,7 @@ handleMouseDrag st row col = do
             rawLines <- dialogLines st mode
             let rows = dialogRenderedLines lay rawLines
             handleDialogDrag st lay rows row col
-        Nothing -> pure ()
+        Nothing -> handlePaneDrag st lay row col
 
 handleDialogDrag :: AppState -> Layout -> [String] -> Int -> Int -> IO ()
 handleDialogDrag st lay rows row col = do
@@ -599,10 +602,12 @@ handleDropdownClick st lay tab row col = do
 
 handlePaneClick :: AppState -> Layout -> Int -> Int -> IO ()
 handlePaneClick st lay row col = do
-    let (contactsRow0, _, _, contactsH) = Layout.contactsPaneBounds lay
+    let (contactsRow0, contactsCol0, contactsW, contactsH) = Layout.contactsPaneBounds lay
         (inputTop, _, _, _) = Layout.actionsPaneBounds lay
         contactsBottom = contactsRow0 + contactsH - 1
         identSepRow = contactsBottom + 1
+        contentBottom = contactsRow0 + lChatH lay - 1
+        leftContentEnd = contactsCol0 + contactsW - 1
         row1Text :: String
         row1Text = "[ Regenerate (F5) ]  [ Export Keys ]"
         row1W = length row1Text
@@ -622,9 +627,9 @@ handlePaneClick st lay row col = do
         importEnd = importStart + length importText - 1
     case gridRegionAt lay Nothing row col of
         Just RegionContacts ->
-            if row <= contactsBottom
+            if col <= leftContentEnd && row <= contactsBottom
                 then selectContactByRow st (row - contactsRow0)
-                else if row > identSepRow
+                else if col <= leftContentEnd && row > identSepRow && row <= contentBottom
                     then writeIORef (asFocus st) IdentityPane
                     else pure ()
         Just RegionActions ->
@@ -695,6 +700,11 @@ handlePaneMouseWheel st row col delta = do
     lay <- readIORef (asLayout st)
     sessions <- readIORef (cfgSessions (asConfig st))
     let contactsH = lChatH lay - lIdentityH lay
+        inRect (Rect r0 r1 c0 c1) = row >= r0 && row <= r1 && col >= c0 && col <= c1
+        (chatRow0, chatCol0, chatW, chatH) = Layout.chatPaneBounds lay
+        chatRect = Rect chatRow0 (chatRow0 + chatH - 1) chatCol0 (chatCol0 + chatW - 1)
+        (inputRow0, inputCol0, inputW, inputH) = Layout.inputEntryBounds lay
+        inputRect = Rect inputRow0 (inputRow0 + inputH - 1) inputCol0 (inputCol0 + inputW - 1)
     if gridRegionAt lay Nothing row col == Just RegionContacts
         then do
             let total = Map.size sessions
@@ -707,7 +717,67 @@ handlePaneMouseWheel st row col delta = do
                 visBot = off + max 0 (contactsH - 1)
             when (sel < visTop || sel > visBot) $
                 writeIORef (asSelected st) (max 0 (min (max 0 (total - 1)) visTop))
-        else pure ()
+        else if inRect chatRect
+            then do
+                sel <- readIORef (asSelected st)
+                let entries = Map.toList sessions
+                    mSi = if sel >= 0 && sel < length entries then Just (snd (entries !! sel)) else Nothing
+                total <- maybe (pure 0) (fmap length . readIORef . siHistory) mSi
+                let maxOff = max 0 (total - lChatH lay)
+                modifyIORef' (asChatScroll st) (\off -> max 0 (min maxOff (off + delta)))
+            else if inRect inputRect
+                then do
+                    buf <- readIORef (asInputBuf st)
+                    let bodyW = max 0 (lRightW lay - 1)
+                        prefix = " \x25B8 "
+                        maxOff = inputMaxScrollLocal bodyW prefix buf
+                    modifyIORef' (asInputScroll st) (\off -> max 0 (min maxOff (off + delta)))
+                else pure ()
+
+handlePaneDrag :: AppState -> Layout -> Int -> Int -> IO ()
+handlePaneDrag st lay row col = do
+    sessions <- readIORef (cfgSessions (asConfig st))
+    let totalContacts = Map.size sessions
+        contactsH = max 1 (lChatH lay - lIdentityH lay)
+        contactsMaxOff = max 0 (totalContacts - contactsH)
+        contactsShowSb = totalContacts > contactsH
+        (contactsRow0, _, _, _) = Layout.contactsPaneBounds lay
+        contactsSbCol = lLeftW lay - 1
+        chatH = max 1 (lChatH lay)
+        chatRow0 = 2
+        rightSbCol = lCols lay - 1
+
+    when (contactsShowSb && col == contactsSbCol && row >= contactsRow0 && row <= contactsRow0 + contactsH - 1) $ do
+        let trackH = contactsH
+            rowOff = row - contactsRow0
+            newOff = rowOff * contactsMaxOff `div` max 1 (trackH - 1)
+        writeIORef (asContactScroll st) (max 0 (min contactsMaxOff newOff))
+
+    sel <- readIORef (asSelected st)
+    let entries = Map.toList sessions
+        mSi = if sel >= 0 && sel < length entries then Just (snd (entries !! sel)) else Nothing
+    totalChat <- maybe (pure 0) (fmap length . readIORef . siHistory) mSi
+    let chatMaxOff = max 0 (totalChat - chatH)
+        chatShowSb = totalChat > chatH
+    when (chatShowSb && col == rightSbCol && row >= chatRow0 && row <= chatRow0 + chatH - 1) $ do
+        let trackH = chatH
+            rowOff = row - chatRow0
+            offFromTop = rowOff * chatMaxOff `div` max 1 (trackH - 1)
+            newOff = chatMaxOff - offFromTop
+        writeIORef (asChatScroll st) (max 0 (min chatMaxOff newOff))
+
+    let (inputRow0, _, _, inputH) = Layout.inputEntryBounds lay
+    buf <- readIORef (asInputBuf st)
+    let bodyW = max 0 (lRightW lay - 1)
+        prefix = " \x25B8 "
+        inputMaxOff = inputMaxScrollLocal bodyW prefix buf
+        inputShowSb = inputMaxOff > 0
+    when (inputShowSb && col == rightSbCol && row >= inputRow0 && row <= inputRow0 + inputH - 1) $ do
+        let trackH = max 1 inputH
+            rowOff = row - inputRow0
+            offFromTop = rowOff * inputMaxOff `div` max 1 (trackH - 1)
+            newOff = inputMaxOff - offFromTop
+        writeIORef (asInputScroll st) (max 0 (min inputMaxOff newOff))
 
 handleIdentity :: AppState -> InputEvent -> IO ()
 handleIdentity st key = case key of
@@ -718,16 +788,66 @@ handleChat :: AppState -> InputEvent -> IO ()
 handleChat st key = do
     lay <- readIORef (asLayout st)
     let ch = lChatH lay
+        bodyW = max 0 (lRightW lay - 1)
+        prefix = " \x25B8 "
     case key of
         KeyChar c    -> modifyIORef' (asInputBuf st) (\s ->
-            if length s >= maxInputLen then s else s ++ [c])
+            if length s >= maxInputLen then s else s ++ [c]) >> writeIORef (asInputScroll st) 0
         KeyBackspace -> modifyIORef' (asInputBuf st) (\s -> if null s then s else init s)
-        KeyEnter     -> sendCurrentMessage st
+                         >> writeIORef (asInputScroll st) 0
+        KeyEnter     -> sendCurrentMessage st >> writeIORef (asInputScroll st) 0
         KeyUp        -> modifyIORef' (asChatScroll st) (+1)
         KeyDown      -> modifyIORef' (asChatScroll st) (\s -> max 0 (s-1))
         KeyPageUp    -> modifyIORef' (asChatScroll st) (+ch)
         KeyPageDown  -> modifyIORef' (asChatScroll st) (\s -> max 0 (s-ch))
+        KeyLeft      -> do
+            buf <- readIORef (asInputBuf st)
+            let maxOff = inputMaxScrollLocal bodyW prefix buf
+            modifyIORef' (asInputScroll st) (\off -> max 0 (min maxOff (off + 1)))
+        KeyRight     -> modifyIORef' (asInputScroll st) (\off -> max 0 (off - 1))
         _            -> pure ()
+
+wrapLinesLocal :: Int -> String -> [String]
+wrapLinesLocal width txt
+    | width <= 0 = [""]
+    | null chunks = [""]
+    | otherwise = concatMap wrapChunk chunks
+  where
+    chunks = splitByNewlineLocal txt
+    wrapChunk "" = [""]
+    wrapChunk s =
+        let (a, b) = splitAtWidth width s
+        in if null b then [a] else a : wrapChunk b
+
+splitByNewlineLocal :: String -> [String]
+splitByNewlineLocal [] = [""]
+splitByNewlineLocal s =
+    case break (== '\n') s of
+        (a, []) -> [a]
+        (a, _:rest) -> a : splitByNewlineLocal rest
+
+inputMaxScrollLocal :: Int -> String -> String -> Int
+inputMaxScrollLocal bodyW prefix buf =
+    let baseTextW = max 1 (bodyW - displayWidth prefix)
+        wrappedBase = wrapLinesLocal baseTextW buf
+        prefixedBase =
+            case wrappedBase of
+                [] -> [prefix]
+                (x:xs) ->
+                    (prefix ++ x) : map (\ln -> replicate (displayWidth prefix) ' ' ++ ln) xs
+        showScrollbar = length prefixedBase > rightEntryRows
+        sbW = if showScrollbar then 1 else 0
+        textW = max 1 (bodyW - displayWidth prefix - sbW)
+        wrappedInput = wrapLinesLocal textW buf
+        prefixedLines =
+            case wrappedInput of
+                [] -> [prefix]
+                (x:xs) ->
+                    (prefix ++ x) : map (\ln -> replicate (displayWidth prefix) ' ' ++ ln) xs
+        totalLines = length prefixedLines
+    in max 0 (totalLines - rightEntryRows)
+  where
+    rightEntryRows = max 1 (Layout.inputAreaRows - 1)
 
 -- Dialogs -----------------------------------------------------------------
 

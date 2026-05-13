@@ -1,7 +1,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 module UmbraVox.TUI.Layout
     ( clampSize, sizeValid, calcLayout, dropdownCol, inputAreaRows
-    , chatPaneBounds, contactsPaneBounds, actionsPaneBounds
+    , chatPaneBounds, contactsPaneBounds, actionsPaneBounds, inputEntryBounds
     ) where
 
 import UmbraVox.TUI.Constants
@@ -9,7 +9,7 @@ import UmbraVox.TUI.LayoutGrid (Bounds(..), TrackSpec(..), resolveTrackSizes)
 import UmbraVox.TUI.Types (Layout(..), MenuTab(..), menuTabLabel)
 
 inputAreaRows :: Int
-inputAreaRows = 11
+inputAreaRows = 6
 
 -- | Clamp terminal dimensions to supported bounds.
 clampSize :: Int -> Int -> (Int, Int)
@@ -28,7 +28,10 @@ sizeValid rows cols = rows >= minTermRows && rows <= maxTermRows
 --   separator(1) + QR(14) + standard+safety+fp(6) + compact action strip(2)
 -- ~= 23 rows max in normal terminals.
 identityPanelH :: Int -> Int
-identityPanelH chatH = min 23 (max 0 (chatH - 10))
+identityPanelH chatH = min 23 (max 0 (chatH - minContactsRows))
+  where
+    -- Keep contacts as the primary list surface on typical terminals.
+    minContactsRows = 14
 
 -- | Compute the layout geometry from terminal dimensions.
 -- Row budget: 1 menu + 1 separator + (chatH rows of content) + inputAreaRows + 1 status
@@ -50,10 +53,10 @@ calcLayout rows cols = Layout
         , Fixed 1
         ]
     [_, _, chatH, _, _] = resolveTrackSizes rows rowTracks
-    -- Keep widths deterministic while preserving historical proportions
-    -- (left pane around 40-45% in normal terminals) and a usable chat pane.
-    targetLeft = max minLeftPaneW ((cols * 42) `div` 100)
-    minRightW = 40
+    -- Rebalance toward chat/input while retaining a usable left pane:
+    -- left pane around one-third width on typical terminals.
+    targetLeft = max minLeftPaneW ((cols * 34) `div` 100)
+    minRightW = 48
     leftW = max minLeftPaneW (min targetLeft (cols - minRightW))
     rightW = max minRightW (cols - leftW)
 
@@ -92,8 +95,20 @@ contactsPaneBounds lay =
 -- Returns (row0, col0, width, height).
 actionsPaneBounds :: Layout -> (Int, Int, Int, Int)
 actionsPaneBounds lay =
-    let r0 = lChatH lay + 3
+    let inputTop = lChatH lay + 3
+        actionRows = 4
+        r0 = inputTop + max 0 (inputAreaRows - actionRows)
         c0 = 2
         w  = max 1 (lLeftW lay - 2)
-        h  = inputAreaRows
+        h  = actionRows
     in (r0, c0, w, h)
+
+-- | Interior bounds of the right-side input text-entry box, excluding borders.
+-- Returns (row0, col0, width, height).
+inputEntryBounds :: Layout -> (Int, Int, Int, Int)
+inputEntryBounds lay =
+    let inputTop = lChatH lay + 3
+        c0 = lLeftW lay + 1
+        w = max 1 (lRightW lay - 1)
+        h = max 1 (inputAreaRows - 1)
+    in (inputTop, c0, w, h)

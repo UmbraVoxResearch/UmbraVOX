@@ -25,7 +25,14 @@ Active TUI regression recovery (historical parity with QR/button exceptions)
   [x] R1.2 Show contacts scrollbar only when overflow exists.
   [x] R1.3 Remove empty-pane hint text (keep clean blank panes when empty).
   [x] R1.4 Compact bottom-left action panel so it does not match full chat input height.
-  [ ] R1.5 Re-validate safety-number section alignment/spacing in current compact left panel.
+  [~] R1.4.a Pane scrolling UX parity (mouse + keyboard across active panes).
+  [x] R1.4.a.1 Contacts: mouse wheel + keyboard scroll + conditional scrollbar.
+  [x] R1.4.a.2 Chat history: mouse wheel + keyboard scroll + conditional scrollbar.
+  [x] R1.4.a.3 Input area: mouse wheel + drag scrollbar + keyboard scroll + conditional scrollbar.
+  [ ] R1.4.a.4 Runtime screenshot validation pass for scrollbar drag + focus visuals.
+  [~] R1.5 Re-validate safety-number section alignment/spacing in current compact left panel.
+  [x] R1.5.a Make safety-number rows width-adaptive to prevent clipping at narrow pane widths.
+  [ ] R1.5.b Screenshot/runtime verify spacing parity after adaptive safety formatting.
   [ ] R1.6 Verify full-screen parity against latest screenshot pass and close remaining geometry defects.
 
 ================================================================================

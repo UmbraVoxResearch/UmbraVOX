@@ -73,6 +73,7 @@ data AppState = AppState
     , asSelected :: IORef Int, asFocus :: IORef Pane
     , asInputBuf :: IORef String, asDialogBuf :: IORef String
     , asChatScroll :: IORef Int
+    , asInputScroll :: IORef Int
     , asStatusMsg :: IORef String
     , asDialogMode :: IORef (Maybe DialogMode)
     , asBrowsePage :: IORef Int
