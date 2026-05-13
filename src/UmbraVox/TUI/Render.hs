@@ -445,7 +445,7 @@ render st = do
             Nothing -> pure "none"
             Just si -> selectedSessionRenderToken si
         let leftToken =
-                show (rows, cols, focus, sel', cScroll', mIk /= Nothing, regenCb, entries, sessionTokens)
+                show (rows, cols, focus, sel', cScroll', maybe False (const True) mIk, regenCb, sessionTokens)
             rightToken =
                 show (rows, cols, sel', scroll', focus, buf, selectedToken)
             chromeToken =
