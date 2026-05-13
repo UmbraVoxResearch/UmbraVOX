@@ -7,6 +7,7 @@ import Test.Util (assertEq)
 import Test.TUI.Sim.Util
 import UmbraVox.TUI.Actions (startBrowse)
 import UmbraVox.TUI.Dialog (browseOverlayLines, overlayBounds, settingsOverlayLines, wrapOverlayLines)
+import UmbraVox.TUI.Layout (actionsPaneBounds)
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Menu (handleMenu, toggleMenu, openMenu, executeMenuItem)
 import UmbraVox.TUI.Input (handleNormal)
@@ -266,15 +267,14 @@ testMenuMouseClickIdentityRegenButton :: IO Bool
 testMenuMouseClickIdentityRegenButton = do
     st <- mkTestState
     let lay = calcTestLayout
-        chatTop = 2
-        identBottom = chatTop + lChatH lay - 1
+        (inputTop, _, _, _) = actionsPaneBounds lay
         btnText :: String
         btnText = "[ Regenerate (F5) ]"
         btnW = length btnText
         leftInnerStart = 2
         btnStart = leftInnerStart + max 0 ((lLeftW lay - 2 - btnW) `div` 2)
         btnCol = btnStart + (btnW `div` 2)
-    handleNormal st (KeyMouseLeft identBottom btnCol)
+    handleNormal st (KeyMouseLeft inputTop btnCol)
     dlg <- readIORef (asDialogMode st)
     assertEq "mouse click identity regen button opens dialog" True (dlg == Just DlgRegenKey)
 
