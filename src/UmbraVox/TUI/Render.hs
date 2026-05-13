@@ -282,7 +282,7 @@ renderIdentityPanel lay grid st mIk = do
         panelLines = identityPanelLines lay mIk focus
     -- Separator between contacts and identity panel (left side only)
     goto sepRow 1; setFg 36
-    putStr $ "\x251C" ++ replicate innerW '\x2500' ++ "\x253C"
+    putStr $ "\x251C" ++ replicate innerW '\x2500' ++ "\x2524"
     resetSGR
     -- Identity panel content rows (left side only)
     forM_ (zip [0..] panelLines) $ \(i, line) -> do
