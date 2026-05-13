@@ -168,6 +168,10 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - Tightened the microVM scaffold so pinned QEMU/Firecracker runs require an explicit in-guest verification command template before they proceed.
 
 ### Changed
+- TUI: fixed pane width split regression to keep left/right box proportions stable across terminal sizes.
+- TUI: contact scrollbar now renders only when contact list overflows visible rows.
+- TUI: removed empty-state hint text from contacts/chat panes to preserve clean blank-pane behavior.
+- TUI: compacted bottom-left action panel height so it no longer matches the full chat input area.
 - Updated assurance matrix to reflect real C codegen implementations (no longer link probes) and differential testing framework.
 - All 10 generated C files now contain real algorithmic code from .spec files with NIST constants, round functions, and helper macros.
 - Restructured TODO.txt with Known Issues (B1), Blocked (X1-X3), and priority tracking sections.

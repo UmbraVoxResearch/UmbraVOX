@@ -3,7 +3,7 @@ UmbraVOX Active TODO
 Purpose: active work only. Completed and historical items are tracked in CHANGELOG.txt.
 
 Status: [ ] pending, [~] in progress, [!] blocked
-Last updated: 2026-05-12
+Last updated: 2026-05-13
 
 Rules
 -----
@@ -17,6 +17,16 @@ Active documentation alignment (architecture/UI/runtime)
 - [x] Document responsive TUI grid architecture in README and doc/ARCHITECTURE.
 - [x] Document explicit TUI/headless runtime separation boundary in README and doc/ARCHITECTURE.
 - [x] Keep documentation updates non-cryptographic and non-spec touching.
+
+Active TUI regression recovery (historical parity with QR/button exceptions)
+----------------------------------------------------------------------------
+- [~] R1 Restore historical visual parity (except intentional QR/button area adjustments).
+  [x] R1.1 Fix pane split width drift/regression causing disproportionate boxes.
+  [x] R1.2 Show contacts scrollbar only when overflow exists.
+  [x] R1.3 Remove empty-pane hint text (keep clean blank panes when empty).
+  [x] R1.4 Compact bottom-left action panel so it does not match full chat input height.
+  [ ] R1.5 Re-validate safety-number section alignment/spacing in current compact left panel.
+  [ ] R1.6 Verify full-screen parity against latest screenshot pass and close remaining geometry defects.
 
 ================================================================================
 MILESTONE M1: MVP ASSURANCE CLOSEOUT (BLOCKS PUBLICATION)
