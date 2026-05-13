@@ -309,7 +309,6 @@ renderInputRow lay grid focus buf = do
         inputTop = gInputTop grid
         inputRows = Layout.inputAreaRows
         leftBoxRows = 3
-        leftBoxCloseRow = leftBoxRows
         prefix = " \x25B8 "
     forM_ [0..inputRows-1] $ \i -> do
         let inputRow = inputTop + i
@@ -327,12 +326,7 @@ renderInputRow lay grid focus buf = do
                             putStr (centerText (lw - 2) importText)
                     else putStr (replicate (lw - 2) ' ')
                 setFg 36; putStr "\x2502"; resetSGR
-            else if i == leftBoxCloseRow
-                then do
-                    setFg 36
-                    putStr $ "\x2570" ++ replicate (max 0 (lw - 2)) '\x2500' ++ "\x256F"
-                    resetSGR
-                else putStr (replicate lw ' ')
+            else putStr (replicate lw ' ')
         if i == 0
             then if focus == ChatPane then do
                     bold; setFg 32
