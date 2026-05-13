@@ -244,9 +244,7 @@ renderPaneRowLeft lay grid entries sel focus cScroll row = do
     -- Contact cell (only in the contacts area — rows above the identity panel)
     let contactsH = chatH' - lIdentityH lay
     if row < contactsH
-        then if null entries && row == 0
-            then putStr (padR (lLeftW lay - 2) " No contacts yet. Press F2 to browse peers.")
-            else renderContactCell lay entries sel focus cScroll row
+        then renderContactCell lay entries sel focus cScroll row
         else putStr (replicate (lLeftW lay - 2) ' ')
     -- Divider
     setFg 36; putStr "\x2502"; resetSGR
@@ -259,7 +257,7 @@ renderPaneRowRight lay grid selSi scroll' row = do
     goto contentRow (lLeftW lay + 1)
     -- Chat message
     msg <- case selSi of
-        Nothing -> pure $ if row == 0 then " No active chat. Press F2 to browse peers or F3 for new chat." else ""
+        Nothing -> pure ""
         Just si -> do
             hist <- readIORef (siHistory si)
             let msgs = reverse hist; total = length msgs
