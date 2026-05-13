@@ -120,33 +120,28 @@ renderContactCell lay entries sel focus cScroll row = do
         contactsH = chatH' - lIdentityH lay
         total = length entries
         idx = row + cScroll
+    let showScrollbar = total > contactsH
+        scrollbarChar =
+            let trackH = max 1 contactsH
+                thumbSz = max 1 (trackH * contactsH `div` max 1 total)
+                maxOff = max 0 (total - contactsH)
+                thumbPos = if maxOff == 0 then 0 else cScroll * (trackH - thumbSz) `div` max 1 maxOff
+            in if row >= thumbPos && row < thumbPos + thumbSz then '\x2588' else '\x2502'
     if idx >= 0 && idx < length entries then do
         let (_, si) = entries !! idx
         tag <- statusTag <$> readIORef (siStatus si)
         let mk = if idx == sel then " \x25B8 " else "   "
-            sbW = 1
+            sbW = if showScrollbar then 1 else 0
             nameW = max 0 (lw - 2 - displayWidth mk - displayWidth tag - sbW)
             cell = mk ++ padR nameW (siPeerName si) ++ tag
-            scrollbarChar =
-                let trackH = max 1 contactsH
-                    thumbSz = if total <= contactsH then 1 else max 1 (trackH * contactsH `div` max 1 total)
-                    maxOff = max 0 (total - contactsH)
-                    thumbPos = if maxOff == 0 then 0 else cScroll * (trackH - thumbSz) `div` max 1 maxOff
-                in if row >= thumbPos && row < thumbPos + thumbSz then '\x2588' else '\x2502'
         when (idx == sel) $ if focus == ContactPane then bold >> setFg 32 else bold
         putStr cell
         resetSGR
-        csi "2m"; setFg 37; putChar scrollbarChar; resetSGR
+        when showScrollbar $ csi "2m" >> setFg 37 >> putChar scrollbarChar >> resetSGR
     else do
-        let fillW = lw - 3
-            scrollbarChar =
-                let trackH = max 1 contactsH
-                    thumbSz = if total <= contactsH then 1 else max 1 (trackH * contactsH `div` max 1 total)
-                    maxOff = max 0 (total - contactsH)
-                    thumbPos = if maxOff == 0 then 0 else cScroll * (trackH - thumbSz) `div` max 1 maxOff
-                in if row >= thumbPos && row < thumbPos + thumbSz then '\x2588' else '\x2502'
+        let fillW = lw - (if showScrollbar then 3 else 2)
         putStr (replicate fillW ' ')
-        csi "2m"; setFg 37; putChar scrollbarChar; resetSGR
+        when showScrollbar $ csi "2m" >> setFg 37 >> putChar scrollbarChar >> resetSGR
 
 -- | Build the lines for the inline identity panel given an optional IdentityKey.
 -- Returns exactly 'identityH - 1' content lines (the separator row is drawn separately).
