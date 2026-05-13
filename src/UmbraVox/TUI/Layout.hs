@@ -49,12 +49,13 @@ calcLayout rows cols = Layout
         , Fixed inputAreaRows
         , Fixed 1
         ]
-    colTracks =
-        [ Flexible Bounds { bMin = max minLeftPaneW (cols `div` leftPaneRatio), bMax = max 0 cols }
-        , Flexible Bounds { bMin = 0, bMax = max 0 cols }
-        ]
     [_, _, chatH, _, _] = resolveTrackSizes rows rowTracks
-    [leftW, rightW] = resolveTrackSizes cols colTracks
+    -- Keep widths deterministic: left pane follows a target ratio, while
+    -- preserving a usable minimum width for the chat pane.
+    targetLeft = max minLeftPaneW (cols `div` leftPaneRatio)
+    minRightW = 32
+    leftW = max minLeftPaneW (min targetLeft (cols - minRightW))
+    rightW = max minRightW (cols - leftW)
 
 -- | Compute the column position for a dropdown menu under the given tab.
 -- Tabs are right-justified in the header, so include left-side fill padding.
