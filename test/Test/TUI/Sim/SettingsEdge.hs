@@ -145,6 +145,8 @@ testDBToggleThreeTimes = do
         prefRef = cfgPersistencePreference (asConfig st)
     v0 <- readIORef ref
     p0 <- readIORef prefRef
+    -- Switch to Storage tab (index 2) where item 5 = Persistent DB
+    writeIORef (asDialogTab st) 2
     writeIORef (asDialogMode st) (Just DlgSettings)
     handleSettingsDlg st (KeyChar '5')
     v1 <- readIORef ref
@@ -172,6 +174,8 @@ testDBToggleThreeTimes = do
 testDBToggleSetsRestartStatus :: IO Bool
 testDBToggleSetsRestartStatus = do
     st <- mkTestState
+    -- Switch to Storage tab (index 2) where item 5 = Persistent DB
+    writeIORef (asDialogTab st) 2
     writeIORef (asDialogMode st) (Just DlgSettings)
     handleSettingsDlg st (KeyChar '5')
     status <- readIORef (asStatusMsg st)
