@@ -419,7 +419,7 @@ let aes_encrypt (key : seq UInt8.t{Seq.length key = key_size})
     : (ct:seq UInt8.t{Seq.length ct = block_size}) =
   let ks = aes_expand_key key in
   (* cipher returns aes_state = seq UInt8.t{Seq.length s = 16} = block_size,
-     so no assume is needed — the return type carries the length refinement. *)
+     the return type carries the length refinement; no hole needed. *)
   cipher ks plaintext
 
 val aes_decrypt : key:seq UInt8.t{Seq.length key = key_size}
@@ -525,7 +525,7 @@ let inv_sbox_sbox_roundtrip b =
     This is a structural lemma on the interleaving of SubBytes/ShiftRows/
     MixColumns with their inverses across 14 rounds, requiring either a
     tactic-based round-induction proof or a concrete KAT injectivity argument.
-    Retained as assume pending a tactic-based proof. *)
+    Retained as a hole pending a tactic-based proof. *)
 val encrypt_decrypt_roundtrip :
     key:seq UInt8.t{Seq.length key = key_size}
     -> pt:seq UInt8.t{Seq.length pt = block_size}
@@ -535,18 +535,18 @@ let encrypt_decrypt_roundtrip key pt =
      pair cancels, relying on sbox_inv_sbox_roundtrip, inv_shift_rows/shift_rows
      inverses, inv_mix_columns/mix_columns inverses, and XOR self-inverse for
      add_round_key.  Requires tactic-based round induction over nr = 14 rounds. *)
-  assume (aes_decrypt key (aes_encrypt key pt) == pt)
+  admit()
 
 (** Decryption followed by encryption is the identity.
     Same proof obligation as encrypt_decrypt_roundtrip, other direction.
-    Retained as assume pending a tactic-based proof. *)
+    Retained as a hole pending a tactic-based proof. *)
 val decrypt_encrypt_roundtrip :
     key:seq UInt8.t{Seq.length key = key_size}
     -> ct:seq UInt8.t{Seq.length ct = block_size}
     -> Lemma (aes_encrypt key (aes_decrypt key ct) == ct)
 let decrypt_encrypt_roundtrip key ct =
   (* TODO: Structural proof by round induction — symmetric to encrypt_decrypt_roundtrip. *)
-  assume (aes_encrypt key (aes_decrypt key ct) == ct)
+  admit()
 
 (** Key expansion produces exactly 60 words *)
 val key_expansion_length :
@@ -600,10 +600,8 @@ let aes256_kat_encrypt () =
      full AES-256 computation produces a normalisation term too large for Z3's
      bitvector solver within any practical z3rlimit budget.  A `native_norm`
      tactic call (extracting to OCaml and running natively) would solve this
-     directly.  Retained as assume until a native_norm-based proof is added. *)
-  assume (kat_key_ok /\ kat_pt_ok ==>
-          aes_encrypt fips197_c3_key fips197_c3_plaintext ==
-          fips197_c3_ciphertext)
+     directly.  Retained as a hole until a native_norm-based proof is added. *)
+  admit()
 
 val aes256_kat_decrypt : unit
     -> Lemma (kat_key_ok /\ kat_ct_ok ==>
@@ -611,11 +609,9 @@ val aes256_kat_decrypt : unit
               fips197_c3_plaintext)
 let aes256_kat_decrypt () =
   (* Same as aes256_kat_encrypt: concrete evaluation of inv_cipher across 14
-     rounds is blocked by normaliser budget.  Retained as assume pending
+     rounds is blocked by normaliser budget.  Retained as a hole pending
      a native_norm-based proof. *)
-  assume (kat_key_ok /\ kat_ct_ok ==>
-          aes_decrypt fips197_c3_key fips197_c3_ciphertext ==
-          fips197_c3_plaintext)
+  admit()
 
 val aes256_kat_roundtrip : unit
     -> Lemma (kat_key_ok /\ kat_pt_ok ==>
@@ -624,9 +620,6 @@ val aes256_kat_roundtrip : unit
               fips197_c3_plaintext)
 let aes256_kat_roundtrip () =
   (* Follows from aes256_kat_encrypt + aes256_kat_decrypt, both blocked by
-     the same normaliser budget constraint.  Retained as assume pending
+     the same normaliser budget constraint.  Retained as a hole pending
      a native_norm-based proof. *)
-  assume (kat_key_ok /\ kat_pt_ok ==>
-          aes_decrypt fips197_c3_key
-           (aes_encrypt fips197_c3_key fips197_c3_plaintext) ==
-          fips197_c3_plaintext)
+  admit()

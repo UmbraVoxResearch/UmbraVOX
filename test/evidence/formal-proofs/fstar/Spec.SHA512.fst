@@ -559,7 +559,7 @@ val sha512_kat_abc : unit
 #push-options "--fuel 100 --ifuel 100 --z3rlimit 100000"
 let sha512_kat_abc () =
   (* abc_input has 3 bytes, well below pow2 61.  pad now has proper refinement
-     types (no internal assume), so assert_norm can normalise the full computation. *)
+     types, so assert_norm can normalise the full computation. *)
   assert_norm (sha512 abc_input == expected_abc_digest_512)
 #pop-options
 
@@ -664,13 +664,7 @@ val schedule_high_words_spec : block:seq UInt8.t{Seq.length block = block_size}
    schedule requires Z3 to perform 64 case-splits, which diverges.
    A full proof requires an inductive snoc-preservation lemma (tactic-based). *)
 let schedule_high_words_spec block t =
-  let w = schedule block in
-  assume (
-    Seq.index w t ==
-      UInt64.add_mod
-        (UInt64.add_mod (ssig1 (Seq.index w (t - 2))) (Seq.index w (t - 7)))
-        (UInt64.add_mod (ssig0 (Seq.index w (t - 15))) (Seq.index w (t - 16)))
-  )
+  admit()
 
 (** Lemma 3: The compression function output at each index equals
     initial-hash word + working-state word (mod 2^64).

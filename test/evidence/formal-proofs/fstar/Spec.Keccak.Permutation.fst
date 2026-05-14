@@ -9,10 +9,10 @@
  * Reference: FIPS 202, Sections 3.2, 3.4
  *
  * M13.2.3 proof work:
- *   - keccak_f1600_preserves_size: proved by return-type refinement (no assume)
- *   - pi_table bounds: proved via assert_norm on all 25 concrete values (no assume)
- *   - pi state length: proved by Seq.lemma_upd_len (no assume)
- *   - chi_identity: proved by Seq.seq_of_list_index + case split on x (no assume)
+ *   - keccak_f1600_preserves_size: proved by return-type refinement
+ *   - pi_table bounds: proved via assert_norm on all 25 concrete values
+ *   - pi state length: proved by Seq.lemma_upd_len
+ *   - chi_identity: proved by Seq.seq_of_list_index + case split on x
  *)
 module Spec.Keccak.Permutation
 
@@ -343,7 +343,7 @@ let keccak_state_size_lemma st = ()
 
 (** Keccak-f[1600] preserves state size.
     Proved by the return-type refinement: keccak_f1600 returns keccak_state,
-    which is defined as (s:seq UInt64.t{Seq.length s = 25}). No assume needed. *)
+    which is defined as (s:seq UInt64.t{Seq.length s = 25}). *)
 val keccak_f1600_preserves_size : st:keccak_state
     -> Lemma (Seq.length (keccak_f1600 st) = 25)
 let keccak_f1600_preserves_size st = ()

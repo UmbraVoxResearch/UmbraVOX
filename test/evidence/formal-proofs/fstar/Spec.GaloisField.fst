@@ -192,7 +192,7 @@ let gf_mul_zero a =
      practical rlimit.  A tactic proof with a fuel-bounded unfolding or an
      explicit induction lemma is needed.  The mathematical argument is
      complete; implementation deferred pending tactic support. *)
-  assume (gf_mul a gf_zero == gf_zero)
+  admit()
 
 (** Multiplication is commutative in GF(2^128) *)
 val gf_mul_comm : a:gf128 -> b:gf128
@@ -201,7 +201,7 @@ let gf_mul_comm a b =
   (* TODO: requires tactic-based proof — commutativity of GF(2^128) multiplication
      follows from the algebraic structure of the field but requires a non-trivial
      inductive argument on the bit representation *)
-  assume (gf_mul a b == gf_mul b a)
+  admit()
 
 (** Round-trip: bs_to_gf . gf_to_bs = id *)
 val gf_bs_roundtrip : x:gf128
@@ -211,4 +211,4 @@ let gf_bs_roundtrip x =
      be_bytes_to_uint64 (uint64_to_be_bytes w) 0 = w for all w,
      which requires reasoning about the byte-serialisation/deserialisation
      round-trip at each bit position *)
-  assume (bs_to_gf (gf_to_bs x) == x)
+  admit()

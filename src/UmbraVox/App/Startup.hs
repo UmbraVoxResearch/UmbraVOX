@@ -54,6 +54,7 @@ import UmbraVox.Storage.Encryption
 import UmbraVox.Storage.InMemory (newInMemoryStorage)
 import UmbraVox.App.Config
     ( AppConfig(..), ConnectionMode(..) )
+import UmbraVox.Plugin.Registry (defaultPersistencePlugins)
 import UmbraVox.App.Types
     ( SessionInfo(..), ContactStatus(..) )
 import UmbraVox.Protocol.Handshake (genIdentity)
@@ -115,6 +116,7 @@ newDefaultAppConfig = do
         <*> newIORef Set.empty
         <*> newIORef False  -- cfgEphemeral: off by default
         <*> newIORef initialStorage  -- cfgStorage: starts as in-memory; upgraded to Anthony on DB open
+        <*> newIORef defaultPersistencePlugins  -- cfgPluginRegistry: all persistence plugins disabled
 
 initializeLocalIdentity :: AppConfig -> IO IdentityKey
 initializeLocalIdentity cfg = do

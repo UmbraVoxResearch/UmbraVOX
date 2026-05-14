@@ -169,3 +169,10 @@ Identity secret + per-install salt
   2^64 messages per session key the nonce space is exhausted.  Sessions must
   be renegotiated before this limit.  In practice UmbraVox performs session
   rotation long before this bound.
+
+- **Ephemeral mode and peer logging**: Ephemeral mode eliminates YOUR forensic
+  trail but does NOT prevent the peer from logging messages.  Running in
+  ephemeral mode removes local persistence of identity keys, message history,
+  and peer records, but has no effect on what the remote peer stores.  Users
+  should not treat ephemeral mode as a guarantee of end-to-end deniability
+  unless the peer is also verified to be running without persistent storage.

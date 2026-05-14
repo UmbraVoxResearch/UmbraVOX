@@ -14,8 +14,12 @@ import UmbraVox.TUI.Actions
     ( startExport, startImport, renameContact
     , sendCurrentMessage, quitApp, setStatus
     )
-import Data.IORef (readIORef, writeIORef)
+import Data.IORef (readIORef, writeIORef, modifyIORef')
+import Data.List (nub)
 import UmbraVox.TUI.Handshake (genIdentity)
+import UmbraVox.Plugin.Registry
+    ( resolveEnable, enablePlugin, disablePlugin )
+import qualified UmbraVox.Plugin.Registry as Registry
 import UmbraVox.TUI.RuntimeEvent
     ( RuntimeEvent(..), applyRuntimeEvents )
 import UmbraVox.TUI.RuntimeSettings
@@ -64,6 +68,7 @@ data RuntimeCommand
     | CmdToggleAutoSave
     | CmdToggleDebugLogging
     | CmdCycleConnectionMode
+    | CmdTogglePlugin String
     | CmdExportChat
     | CmdImportChat
     | CmdQuit
@@ -216,6 +221,25 @@ runRuntimeCommand st cmd =
                     "Runtime debug logging disabled"
         CmdCycleConnectionMode ->
             cycleConnectionMode st
+        CmdTogglePlugin pid    -> do
+            reg <- readIORef (cfgPluginRegistry (asConfig st))
+            if Registry.pluginEnabled pid reg
+                then do
+                    modifyIORef' (cfgPluginRegistry (asConfig st)) (disablePlugin pid)
+                    applyRuntimeEvents st [EventSetStatus ("Plugin disabled: " ++ pid)]
+                else
+                    case resolveEnable pid reg of
+                        Left err ->
+                            applyRuntimeEvents st [EventSetStatus ("Plugin error: " ++ err)]
+                        Right toEnable -> do
+                            let newIds = filter (\p -> not (Registry.pluginEnabled p reg)) (nub toEnable)
+                            modifyIORef' (cfgPluginRegistry (asConfig st))
+                                (\r -> foldr enablePlugin r toEnable)
+                            let msg = if null newIds || newIds == [pid]
+                                    then "Plugin enabled: " ++ pid
+                                    else "Plugin enabled: " ++ pid ++ " (+ " ++
+                                         show (length newIds - 1) ++ " deps)"
+                            applyRuntimeEvents st [EventSetStatus msg]
         CmdExportChat
             | pluginEnabled PluginChatTransfer -> startExport st
             | otherwise -> applyRuntimeEvents st [EventSetStatus (pluginUnavailableStatus PluginChatTransfer)]

@@ -110,6 +110,8 @@ import qualified Test.Protocol.SafetyNumber as SafetyNumber
 import qualified Test.Protocol.WireFormat as WireFormat
 import qualified Test.Security as Security
 import qualified Test.App.RuntimeLog as AppRuntimeLog
+import qualified Test.Plugin.Registry as PluginRegistry
+import qualified Test.Plugin.EphemeralIntegration as EphemeralIntegration
 import qualified Test.Storage.Anthony as Anthony
 import qualified Test.Storage.Encryption as StorageEncryption
 import qualified Test.Storage.ChainDB as ChainDB
@@ -443,6 +445,8 @@ recoverySuites =
     , Suite "keystore" KeyStore.runTests
     , Suite "anthony" Anthony.runTests
     , Suite "storage-encryption" StorageEncryption.runTests
+    , Suite "plugin-registry" PluginRegistry.runTests
+    , Suite "ephemeral-integration" EphemeralIntegration.runTests
     , Suite "hardening-recovery" HardeningRecovery.runTests
     ]
 

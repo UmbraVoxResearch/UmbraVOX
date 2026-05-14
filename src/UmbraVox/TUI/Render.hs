@@ -38,6 +38,7 @@ import UmbraVox.TUI.Dialog (showOverlay, renderHelpOverlay, renderAboutOverlay, 
 import UmbraVox.Protocol.QRCode (generateSafetyNumber, renderFingerprint, generateQRCode, renderQRCode)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 import UmbraVox.Version (versionFull)
+import qualified UmbraVox.Plugin.Types
 
 clampInt :: Int -> Int -> Int -> Int
 clampInt lo hi x = max lo (min hi x)
@@ -163,17 +164,25 @@ renderContactCell lay entries sel focus cScroll row = do
 --   4. Blank line
 --   5. Two-column fingerprints: " X25519:" | " Ed25519:", then rows side by side
 --   6. One spacer line
-identityPanelLines :: Layout -> Maybe IdentityKey -> Pane -> [String]
-identityPanelLines lay mIk _focus =
+--   7. In ephemeral mode: warning "⚠ Ephemeral — verify fingerprint out-of-band"
+identityPanelLines :: Layout -> Maybe IdentityKey -> Pane -> Bool -> [String]
+identityPanelLines lay mIk _focus isEphemeral =
     let innerW   = lLeftW lay - 2
         qrStdText = "Standard: X3DH safety number"
         available = lIdentityH lay - 1
+        ephemeralWarn = padR innerW "\x26A0 Ephemeral \x2014 verify fingerprint out-of-band"
         noIdLines = padR innerW "No identity yet."
-                  : replicate (available - 1) (replicate innerW ' ')
+                  : (if isEphemeral
+                        then [ephemeralWarn] ++ replicate (max 0 (available - 2)) (replicate innerW ' ')
+                        else replicate (available - 1) (replicate innerW ' '))
         finalize body =
-            if length body <= available
-                then body ++ replicate (available - length body) (replicate innerW ' ')
-                else take available body
+            let bodyWithWarn =
+                    if isEphemeral
+                        then body ++ [ephemeralWarn]
+                        else body
+            in if length bodyWithWarn <= available
+                then bodyWithWarn ++ replicate (available - length bodyWithWarn) (replicate innerW ' ')
+                else take available bodyWithWarn
     in case mIk of
         Nothing -> noIdLines
         Just ik ->
@@ -317,12 +326,13 @@ renderPaneRowRight lay grid selSi richEnabled focus scroll' row = do
 renderIdentityPanel :: Layout -> RenderGrid -> AppState -> Maybe IdentityKey -> IO ()
 renderIdentityPanel lay grid st mIk = do
     focus <- readIORef (asFocus st)
+    isEphemeral <- readIORef (cfgEphemeral (asConfig st))
     let lw = lLeftW lay
         chatH' = lChatH lay
         contactsH = chatH' - lIdentityH lay
         sepRow = gContentTop grid + contactsH
         innerW = lw - 2
-        panelLines = identityPanelLines lay mIk focus
+        panelLines = identityPanelLines lay mIk focus isEphemeral
         active = focus == IdentityPane
         withPanelFrame action =
             if active
@@ -548,16 +558,16 @@ renderBottomBorder lay grid = do
           ++ replicate (rw - 1) '\x2500' ++ "\x256F"
     resetSGR
 
-statusBarConnTag :: ConnectionMode -> Maybe Bool -> Int -> String
-statusBarConnTag connMode persistencePref nSessions =
+statusBarConnTag :: ConnectionMode -> Bool -> Bool -> Int -> String
+statusBarConnTag connMode isEphemeral anyPersistPlugin nSessions =
     sessionCount ++ modeTag ++ " \x25C6 " ++ versionFull
   where
     sessionCount
         | nSessions > 0 = show nSessions ++ " session" ++ (if nSessions > 1 then "s" else "")
         | otherwise = "No sessions"
     modeTag
-        | connMode == Chastity || persistencePref == Just False = " \x25C6 EPHEMERAL"
-        | otherwise = ""
+        | connMode == Chastity || isEphemeral || not anyPersistPlugin = " \x25C6 EPHEMERAL"
+        | otherwise = " \x25C6 PERSISTENT"
 
 -- | Status bar: absolute last row, full width, inverted colors.
 renderStatusBar :: Layout -> AppState -> String -> Int -> IO ()
@@ -566,12 +576,19 @@ renderStatusBar lay st status nSessions = do
         grid = mkRenderGrid lay
     goto (gStatusRow grid) 1; setFg 30; csi "47m"
     connMode <- readIORef (cfgConnectionMode (asConfig st))
-    persistencePref <- readIORef (cfgPersistencePreference (asConfig st))
-    let connTag = statusBarConnTag connMode persistencePref nSessions
+    isEphemeral <- readIORef (cfgEphemeral (asConfig st))
+    pluginReg <- readIORef (cfgPluginRegistry (asConfig st))
+    let anyPersistPlugin = any (\pid -> pluginEnabledReg pid pluginReg)
+            ["key-persistence", "message-storage", "ratchet-persistence", "runtime-logging", "full-persistence"]
+        connTag = statusBarConnTag connMode isEphemeral anyPersistPlugin nSessions
         leftInfo = if null status then " Ready" else " " ++ status
         gap = max 1 (totalW - displayWidth leftInfo - displayWidth connTag - 1)
     putStr (padR totalW (leftInfo ++ replicate gap ' ' ++ connTag ++ " "))
     resetSGR
+
+pluginEnabledReg :: String -> UmbraVox.Plugin.Types.PluginRegistry -> Bool
+pluginEnabledReg pid reg =
+    maybe False UmbraVox.Plugin.Types.pdEnabled (Map.lookup pid reg)
 
 render :: AppState -> IO ()
 render st = do

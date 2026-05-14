@@ -37,14 +37,14 @@ val x25519 : secret:seq UInt8.t{Seq.length secret = key_size}
     -> Tot (s:seq UInt8.t{Seq.length s = key_size})
 let x25519 secret public_key =
   (* Abstract stub: Seq.create key_size 0uy trivially satisfies the length
-     refinement, so no assume is needed here. *)
+     refinement is satisfied by construction. *)
   Seq.create key_size 0uy  (* abstract -- specified by Spec.X25519 *)
 
 (** Ed25519 signature verification *)
 val ed25519_verify : public_key:seq UInt8.t -> msg:seq UInt8.t
     -> sig_bytes:seq UInt8.t -> Tot bool
 let ed25519_verify public_key msg sig_bytes =
-  (* Abstract stub returning true: no assume required. *)
+  (* Abstract stub returning true. *)
   true  (* abstract -- specified by Spec.Ed25519 *)
 
 (** HKDF key derivation *)

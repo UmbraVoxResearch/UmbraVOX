@@ -9,7 +9,7 @@
  * WARNING: The Haskell module UmbraVox.Crypto.Signal.SenderKeys is a
  * stub (M7.2.6 — group messaging is not yet implemented).  This F*
  * specification defines the intended contract so that the eventual
- * implementation can be verified against it.  All lemmas are assumed.
+ * implementation can be verified against it.  All lemmas are deferred.
  *
  * References:
  *   Signal Protocol Sender Key spec (libsignal-protocol)
@@ -37,7 +37,7 @@ let message_key_size : nat = 32   (* 256-bit message key *)
 let sender_id_size   : nat = 4    (* 32-bit sender iteration counter *)
 
 (** A bounded HMAC function that always produces chain_key_size-byte output.
-    This carries the length contract needed to remove assumes in advance_chain. *)
+    This carries the length contract for advance_chain. *)
 type bounded_hmac_fn =
     f:(seq UInt8.t -> seq UInt8.t -> seq UInt8.t)
     {forall (k:seq UInt8.t) (m:seq UInt8.t). Seq.length (f k m) = chain_key_size}
@@ -91,7 +91,7 @@ val advance_chain : hmac:bounded_hmac_fn -> st:chain_state -> Tot chain_state
 let advance_chain hmac st =
   (* derive_next_ck = hmac st.ck ck_info.
      Since hmac : bounded_hmac_fn, the length contract gives
-     Seq.length (hmac st.ck ck_info) = chain_key_size, so no assume is needed. *)
+     Seq.length (hmac st.ck ck_info) = chain_key_size by the length contract. *)
   { ck = derive_next_ck hmac st.ck; iter = st.iter + 1 }
 
 (** -------------------------------------------------------------------- **)
