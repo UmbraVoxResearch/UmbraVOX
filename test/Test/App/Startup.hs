@@ -261,6 +261,7 @@ testRestoredOfflineSessionsFailClosedOnSend = withDB "umbravox-startup-restored-
     regenCheckboxRef <- newIORef False
     dialogScrollRef <- newIORef 0
     selectionStartRef <- newIORef Nothing
+    showIdentityRef <- newIORef True
     linkTextRef <- newIORef ""
     linkUrlRef <- newIORef ""
     linkFocusRef <- newIORef 0
@@ -273,6 +274,7 @@ testRestoredOfflineSessionsFailClosedOnSend = withDB "umbravox-startup-restored-
             statusRef dialogModeRef browsePageRef browseFilterRef
             layoutRef contactScrollRef termSizeRef menuOpenRef menuIndexRef
             dialogTabRef renderTokenRef regenCheckboxRef dialogScrollRef selectionStartRef
+            showIdentityRef
             linkTextRef linkUrlRef linkFocusRef emojiPageRef emojiSearchRef emojiCategoryRef
     sendCurrentMessage st
     sessions <- readIORef (cfgSessions cfg)

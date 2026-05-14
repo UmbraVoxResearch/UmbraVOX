@@ -40,7 +40,7 @@ import UmbraVox.Network.ProviderRuntime
     ( ProviderListener, activeRuntimeProvider, acceptWithProvider
     , bindListenerWithProvider, closeProviderListener
     )
-import UmbraVox.Network.TransportClass (AnyTransport, anyClose)
+import UmbraVox.Network.TransportClass (AnyTransport, anyClose, anyInfo)
 import UmbraVox.Protocol.Handshake (fingerprint, handshakeResponder)
 import UmbraVox.TUI.Actions.Session (addSession)
 
@@ -161,7 +161,9 @@ acceptLoopCore cs cbs ik port connCount listener = do
                 [("port", show port), ("provider", runtimeProviderLabel)]
             void $ forkIO $ flip finally (atomically (modifyTVar' connCount (subtract 1))) $ do
                 session <- handshakeResponder at ik trustCheck
-                sid <- addSession cfg at session ("peer:" ++ show port)
+                let info = anyInfo at
+                    peerLabel = if null info then "peer:" ++ show port else info
+                sid <- addSession cfg at session peerLabel
                 tryPEXExchange cfg at
                 lcOnNewSession cbs
                 lcOnStatus cbs ("Session #" ++ show sid)

@@ -65,7 +65,7 @@ menuTabItems MenuChat     =
 menuTabItems MenuPrefs
     = ["Settings"]
     ++ if pluginEnabled PluginChatTransfer then ["Export Chat", "Import Chat"] else []
-menuTabItems MenuIdentity = ["Regenerate Key", "Export Keys", "Import Keys"]
+menuTabItems MenuIdentity = ["Regenerate Key", "Export Keys", "Import Keys", "Toggle Key Info"]
 menuTabItems MenuQuit     = ["Quit"]
 
 -- | Full application state: domain state wrapped in 'CoreState' plus
@@ -104,6 +104,9 @@ data AppState = AppState
       -- ^ Scroll offset (in lines) within the currently open dialog overlay.
       --   Reset to 0 whenever a dialog is opened or closed.
     , asSelectionStart :: !(IORef (Maybe Int))
+    , asShowIdentity :: !(IORef Bool)
+      -- ^ Whether the identity panel (QR + fingerprints) is visible.
+      --   Toggled via F5 Identity → "Toggle Key Info".
       -- ^ Raw buffer index where the current text selection began.
       --   Nothing means no active selection.
     , asLinkText :: !(IORef String)

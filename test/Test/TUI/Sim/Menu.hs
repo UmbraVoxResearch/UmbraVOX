@@ -70,7 +70,7 @@ testMenuDownClamps = do
     handleMenu st KeyDown >> handleMenu st KeyDown >> handleMenu st KeyDown
     handleMenu st KeyDown >> handleMenu st KeyDown >> handleMenu st KeyDown
     idx <- readIORef (asMenuIndex st)
-    assertEq "menu down clamps at 2" 2 idx
+    assertEq "menu down clamps at 3" 3 idx
 
 testMenuUpClamps :: IO Bool
 testMenuUpClamps = do
