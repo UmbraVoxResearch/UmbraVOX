@@ -390,18 +390,15 @@ soak: build
 # See doc/DO-178C-COVERAGE.md for the gap analysis and plan.
 #
 # Build workaround: --enable-coverage triggers a full library rebuild.
-# A plain `cabal build all` must run first so the autogen/ headers exist
-# before the C FFI sources are compiled under --enable-coverage.  The
-# configure step pre-creates the autogen directory; -j1 avoids the race
-# condition where a parallel build removes the .tmp object before the
-# rename completes.
+# The configure step pre-creates the autogen/ directory so that parallel
+# builds find cabal_macros.h before compiling C FFI sources.  No -j1 needed.
 
 mcdc-report:
 	@echo -e "$(BLUE)[COVERAGE]$(NC) Building with HPC coverage (configure + build + test)..."
 	@cabal configure --enable-coverage
-	@cabal build all -j1 --enable-coverage 2>&1 | tail -5
+	@cabal build all --enable-coverage 2>&1 | tail -5
 	@echo -e "$(BLUE)[COVERAGE]$(NC) Running required test suite with HPC instrumentation..."
-	@cabal test umbravox-test --enable-coverage --test-options='required' -j1 2>&1 | tail -10
+	@cabal test umbravox-test --enable-coverage --test-options='required' 2>&1 | tail -10
 	@echo -e "$(BLUE)[COVERAGE]$(NC) Generating per-module expression coverage report..."
 	@tix=$$(find dist-newstyle -name '*.tix' -path '*/umbravox-test*' | head -1); \
 	mix_lib=$$(find dist-newstyle -path '*/extra-compilation-artifacts/hpc/vanilla/mix' -not -path '*/umbravox-test*' | head -1); \
