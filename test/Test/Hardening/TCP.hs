@@ -12,6 +12,7 @@ import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.List (isInfixOf)
 import Data.Maybe (isJust)
 import qualified Data.Map.Strict as Map
+import qualified Network.Socket as NS
 import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile)
 import System.Posix.Files
     ( fileMode
@@ -235,48 +236,59 @@ testTUIRuntimeLoggingFallbackProgress = do
     createDirectoryIfMissing True "build"
     exists <- doesFileExist logPath
     whenExists exists (removeFile logPath)
-    alice <- mkTestState
-    bob <- mkTestState
-    -- Disable ephemeral mode so runtime logging can write to disk
-    writeIORef (cfgEphemeral (asConfig alice)) False
-    writeIORef (cfgEphemeral (asConfig bob)) False
-    writeIORef (cfgDebugLogging (asConfig alice)) True
-    writeIORef (cfgDebugLogging (asConfig bob)) True
-    writeIORef (cfgDebugLogPath (asConfig alice)) logPath
-    writeIORef (cfgDebugLogPath (asConfig bob)) logPath
-    aliceIk <- genIdentity
-    bobIk <- genIdentity
-    writeIORef (cfgIdentity (asConfig alice)) (Just aliceIk)
-    writeIORef (cfgIdentity (asConfig bob)) (Just bobIk)
-    writeIORef (cfgListenPort (asConfig alice)) 7854
-    listenerTid <- forkIO (acceptLoopTUI alice aliceIk 7854)
-    let cleanup = do
-            cleanupSessions alice
-            cleanupSessions bob
-            killThread listenerTid `catch` ignoreError
-            threadDelay 50000
-    (`finally` cleanup) $ do
-        threadDelay 50000
-        writeIORef (asDialogMode bob) (Just DlgNewConn)
-        handleNewConnDlg bob (KeyChar '2')
-        feedPrompt bob "127.0.0.1"
-        connectedAlice <- waitForSessionCount alice 1 5000
-        connectedBob <- waitForSessionCount bob 1 5000
-        finalStatus <- waitForStatusLine bob "Connected #" 5000
-        logReady <- waitForLogEvents logPath
-            [ "transport.connect.attempt_defaults"
-            , "transport.connect.try_port"
-            , "session.established.remote"
-            ]
-            5000
-        redactionOk <- runtimeLogRedactionOk logPath
-        okConnectedAlice <- assertEq "tui runtime fallback alice connected" True connectedAlice
-        okConnectedBob <- assertEq "tui runtime fallback bob connected" True connectedBob
-        okFinalStatus <- assertEq "tui runtime fallback final status shows resolved endpoint" True
-            ("127.0.0.1:7854" `isInfixOf` finalStatus)
-        okLogReady <- assertEq "tui runtime fallback log events" True logReady
-        okRedaction <- assertEq "tui runtime fallback metadata redacted" True redactionOk
-        pure (okConnectedAlice && okConnectedBob && okFinalStatus && okLogReady && okRedaction)
+    -- Find a suitable port for alice: the first bindable port in the default
+    -- fallback list, plus acquire blocker sockets on all preceding default
+    -- ports so the fallback scan reaches alice's port.
+    mPortSetup <- acquireFallbackPortSetup defaultFallbackPorts
+    case mPortSetup of
+        Nothing -> do
+            putStrLn "[Hardening/TCP] tui runtime fallback: no free port window, skipping."
+            pure True
+        Just (blockers, alicePort) -> do
+            alice <- mkTestState
+            bob <- mkTestState
+            -- Disable ephemeral mode so runtime logging can write to disk
+            writeIORef (cfgEphemeral (asConfig alice)) False
+            writeIORef (cfgEphemeral (asConfig bob)) False
+            writeIORef (cfgDebugLogging (asConfig alice)) True
+            writeIORef (cfgDebugLogging (asConfig bob)) True
+            writeIORef (cfgDebugLogPath (asConfig alice)) logPath
+            writeIORef (cfgDebugLogPath (asConfig bob)) logPath
+            aliceIk <- genIdentity
+            bobIk <- genIdentity
+            writeIORef (cfgIdentity (asConfig alice)) (Just aliceIk)
+            writeIORef (cfgIdentity (asConfig bob)) (Just bobIk)
+            writeIORef (cfgListenPort (asConfig alice)) alicePort
+            listenerTid <- forkIO (acceptLoopTUI alice aliceIk alicePort)
+            let cleanup = do
+                    cleanupSessions alice
+                    cleanupSessions bob
+                    killThread listenerTid `catch` ignoreError
+                    mapM_ (\s -> NS.close s `catch` ignoreError) blockers
+                    threadDelay 50000
+            (`finally` cleanup) $ do
+                threadDelay 50000
+                writeIORef (asDialogMode bob) (Just DlgNewConn)
+                handleNewConnDlg bob (KeyChar '2')
+                feedPrompt bob "127.0.0.1"
+                connectedAlice <- waitForSessionCount alice 1 5000
+                connectedBob <- waitForSessionCount bob 1 5000
+                finalStatus <- waitForStatusLine bob "Connected #" 5000
+                logReady <- waitForLogEvents logPath
+                    [ "transport.connect.attempt_defaults"
+                    , "transport.connect.try_port"
+                    , "session.established.remote"
+                    ]
+                    5000
+                redactionOk <- runtimeLogRedactionOk logPath
+                let expectedEndpoint = "127.0.0.1:" ++ show alicePort
+                okConnectedAlice <- assertEq "tui runtime fallback alice connected" True connectedAlice
+                okConnectedBob <- assertEq "tui runtime fallback bob connected" True connectedBob
+                okFinalStatus <- assertEq "tui runtime fallback final status shows resolved endpoint" True
+                    (expectedEndpoint `isInfixOf` finalStatus)
+                okLogReady <- assertEq "tui runtime fallback log events" True logReady
+                okRedaction <- assertEq "tui runtime fallback metadata redacted" True redactionOk
+                pure (okConnectedAlice && okConnectedBob && okFinalStatus && okLogReady && okRedaction)
 
 testTUIListenerSingleOwner :: IO Bool
 testTUIListenerSingleOwner = do
@@ -548,3 +560,90 @@ checkLogFile path needles = do
         else do
             contents <- readFile path
             pure (all (`isInfixOf` contents) needles)
+
+-- | Default ports used by the UmbraVOX port-fallback scan.
+-- Must match Protocol.Encoding.defaultPorts.
+defaultFallbackPorts :: [Int]
+defaultFallbackPorts = [7853, 7854, 7855, 9999, 7856, 7857, 7858, 7859, 7860]
+
+-- | Try to acquire a set of TCP listener sockets to block the ports preceding
+-- alice's chosen port in 'defaultFallbackPorts', and find the first port that
+-- alice can bind.
+--
+-- Strategy:
+--   * Walk 'defaultFallbackPorts' from the front.
+--   * For each port, attempt to bind a TCP listener.
+--   * If we can bind: keep it as a non-handshaking blocker (the UmbraVOX
+--     fallback scan will fail the handshake and advance to the next port).
+--     This is alice's candidate port — close the blocker and let alice bind it.
+--   * If we CANNOT bind (externally occupied): check whether the external
+--     service will accept a TCP connection.  If it does, the fallback scan
+--     would establish a real session there and never reach alice — skip the
+--     test by returning Nothing.  If TCP refuses, that's safe (scan will
+--     advance naturally).
+--
+-- Returns Nothing if no suitable window is found; otherwise (blockers, alicePort).
+acquireFallbackPortSetup :: [Int] -> IO (Maybe ([NS.Socket], Int))
+acquireFallbackPortSetup ports = go [] ports
+  where
+    go _blockers [] = pure Nothing
+    go blockers (p:ps) = do
+        mSock <- tryBindPort p
+        case mSock of
+            Just sock -> do
+                -- We can bind this port.  Close our probe socket and hand the
+                -- port to alice (alice's acceptLoopTUI will bind it).
+                NS.close sock `catch` ignoreError
+                pure (Just (blockers, p))
+            Nothing -> do
+                -- Port externally occupied.  Check if TCP connects there.
+                tcpAccepts <- portAcceptsTCP p
+                if tcpAccepts
+                    then do
+                        -- External service accepts connections: the fallback
+                        -- scan would succeed here before reaching alice's port.
+                        -- Release all blockers we've accumulated and skip.
+                        mapM_ (\s -> NS.close s `catch` ignoreError) blockers
+                        pure Nothing
+                    else
+                        -- Port refuses TCP (closed/filtered): the fallback scan
+                        -- will skip it.  Continue looking for alice's port.
+                        go blockers ps
+
+    tryBindPort port = do
+        let hints = NS.defaultHints
+                { NS.addrSocketType = NS.Stream
+                , NS.addrFlags = [NS.AI_PASSIVE]
+                }
+        addrs <- NS.getAddrInfo (Just hints) (Just "127.0.0.1") (Just (show port))
+                    `catch` \(_ :: SomeException) -> pure []
+        case addrs of
+            [] -> pure Nothing
+            (addr:_) -> do
+                sock <- NS.openSocket addr
+                let acquire = do
+                        NS.setSocketOption sock NS.ReuseAddr 1
+                        NS.bind sock (NS.addrAddress addr)
+                        NS.listen sock 1
+                        pure (Just sock)
+                    onErr (_ :: SomeException) = do
+                        NS.close sock `catch` \(_ :: SomeException) -> pure ()
+                        pure Nothing
+                acquire `catch` onErr
+
+    portAcceptsTCP port = do
+        let hints = NS.defaultHints { NS.addrSocketType = NS.Stream }
+        addrs <- NS.getAddrInfo (Just hints) (Just "127.0.0.1") (Just (show port))
+                    `catch` \(_ :: SomeException) -> pure []
+        case addrs of
+            [] -> pure False
+            (addr:_) -> do
+                sock <- NS.openSocket addr
+                let connect = do
+                        NS.connect sock (NS.addrAddress addr)
+                        NS.close sock `catch` \(_ :: SomeException) -> pure ()
+                        pure True
+                    onErr (_ :: SomeException) = do
+                        NS.close sock `catch` \(_ :: SomeException) -> pure ()
+                        pure False
+                connect `catch` onErr
