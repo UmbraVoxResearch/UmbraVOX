@@ -1,12 +1,13 @@
 {-# LANGUAGE CPP #-}
 module Main (main) where
 
+import Control.Exception (finally)
 import Control.Monad (when)
 import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.List (intercalate, isPrefixOf)
 import System.Environment (getArgs)
 import System.Exit (ExitCode(..), exitWith)
-import System.IO (hSetBuffering, hSetEncoding, hFlush, stdout, stdin, utf8, BufferMode(..))
+import System.IO (hSetBuffering, hSetEncoding, hFlush, hSetEcho, stdout, stdin, utf8, BufferMode(..))
 import System.Posix.Signals (installHandler, Handler(Catch))
 import Foreign.C.Types (CInt(..))
 import UmbraVox.App.RuntimeLog (logEvent, runtimeLoggingEnabled)
@@ -270,4 +271,12 @@ runUi flags = do
                 _          -> pure ()
         Nothing -> pure ()
     _ <- installHandler sigWINCH (Catch $ getTermSize >>= writeIORef (asTermSize st)) Nothing
-    withRawMode $ clearScreen >> render st >> eventLoop st
+    let restoreTerminal = do
+            hSetEcho stdin True
+            hSetBuffering stdin LineBuffering
+            -- Show cursor
+            putStr "\ESC[?25h"
+            -- Disable SGR mouse reporting (both normal and extended)
+            putStr "\ESC[?1000l\ESC[?1006l"
+            hFlush stdout
+    withRawMode (clearScreen >> render st >> eventLoop st) `finally` restoreTerminal

@@ -63,10 +63,8 @@ data GridRegion = RegionContacts | RegionActions | RegionChat | RegionOverlay
     deriving stock (Eq, Show)
 
 toolbarButtonSpecs :: Bool -> [(String, RuntimeCommand)]
-toolbarButtonSpecs richEnabled =
-    [ (if richEnabled then "[ Rich* ]" else "[ Rich ]", CmdToggleRichText)
-    , (if richEnabled then "[ Plain ]" else "[ Plain* ]", CmdToggleRichText)
-    , ("[ Bold ]", CmdInsertBold)
+toolbarButtonSpecs _richEnabled =
+    [ ("[ Bold ]", CmdInsertBold)
     , ("[ Italic ]", CmdInsertItalic)
     , ("[ Color ]", CmdInsertColor)
     , ("[ Link ]", CmdInsertLink)
@@ -259,7 +257,7 @@ handleNormal st key = do
         KeyF2    -> toggleMenu st MenuContacts
         KeyF3    -> toggleMenu st MenuChat
         KeyF4    -> toggleMenu st MenuPrefs
-        KeyF5    -> openRegenKeyDialog st
+        KeyF5    -> toggleMenu st MenuIdentity
         KeyEscape -> do
             dlg <- readIORef (asDialogMode st)
             case dlg of
@@ -707,29 +705,11 @@ handlePaneClick :: AppState -> Layout -> Int -> Int -> IO ()
 handlePaneClick st lay row col = do
     richEnabled <- readIORef (asRichText st)
     let (contactsRow0, contactsCol0, contactsW, contactsH) = Layout.contactsPaneBounds lay
-        (inputTop, _, _, _) = Layout.actionsPaneBounds lay
         (toolbarRow0, _, _, _) = Layout.inputToolbarBounds lay
         contactsBottom = contactsRow0 + contactsH - 1
         identSepRow = contactsBottom + 1
         contentBottom = contactsRow0 + lChatH lay - 1
         leftContentEnd = contactsCol0 + contactsW - 1
-        row1Text :: String
-        row1Text = "[ Regenerate (F5) ]  [ Export Keys ]"
-        row1W = length row1Text
-        row1Start = 2 + max 0 ((lLeftW lay - 2 - row1W) `div` 2)
-        regenText :: String
-        regenText = "[ Regenerate (F5) ]"
-        exportText :: String
-        exportText = "[ Export Keys ]"
-        importText :: String
-        importText = "[ Import Keys ]"
-        regenStart = row1Start
-        regenEnd = regenStart + length regenText - 1
-        exportStart = regenEnd + 3
-        exportEnd = exportStart + length exportText - 1
-        importW = length importText
-        importStart = 2 + max 0 ((lLeftW lay - 2 - importW) `div` 2)
-        importEnd = importStart + length importText - 1
     case gridRegionAt lay Nothing row col of
         Just RegionContacts ->
             if col <= leftContentEnd && row <= contactsBottom
@@ -737,18 +717,7 @@ handlePaneClick st lay row col = do
                 else if col <= leftContentEnd && row > identSepRow && row <= contentBottom
                     then writeIORef (asFocus st) IdentityPane
                     else pure ()
-        Just RegionActions ->
-            if row == inputTop
-                then if col >= regenStart && col <= regenEnd
-                    then openRegenKeyDialog st
-                    else if col >= exportStart && col <= exportEnd
-                        then writeIORef (asRegenCheckbox st) False >> writeIORef (asDialogMode st) (Just DlgExportWarn)
-                        else pure ()
-                else if row == inputTop + 1
-                    then if col >= importStart && col <= importEnd
-                        then handleKeysDlg st (KeyChar 'i')
-                        else pure ()
-                else pure ()
+        Just RegionActions -> pure ()
         Just RegionChat -> do
             writeIORef (asFocus st) ChatPane
             if row == toolbarRow0
@@ -758,32 +727,30 @@ handlePaneClick st lay row col = do
 
 handleToolbarClick :: AppState -> Layout -> Bool -> Int -> IO ()
 handleToolbarClick st lay richEnabled col =
-    case toolbarButtonAtColumn richEnabled (col - toolbarCol0) of
-        Just CmdToggleRichText
-            | activeButton (0 :: Int) && richEnabled -> pure ()
-            | activeButton (1 :: Int) && not richEnabled -> pure ()
-            | otherwise -> runRuntimeCommand st CmdToggleRichText
+    case toolbarButtonAtColumn richEnabled bodyW (col - toolbarCol0) of
         Just cmd -> runRuntimeCommand st cmd
         Nothing -> pure ()
   where
-    (_, toolbarCol0, _, _) = Layout.inputToolbarBounds lay
-    activeButton idx = case buttonSpan idx of
-        Just (startCol, endCol) -> col - toolbarCol0 >= startCol && col - toolbarCol0 <= endCol
-        Nothing -> False
-    buttonSpan target = go 0 0 (toolbarButtonSpecs richEnabled)
-      where
-        go _ _ [] = Nothing
-        go ix start ((label, _):rest)
-            | ix == target = Just (start, start + length label - 1)
-            | otherwise = go (ix + 1) (start + length label + 1) rest
+    (_, toolbarCol0, bodyW, _) = Layout.inputToolbarBounds lay
 
-toolbarButtonAtColumn :: Bool -> Int -> Maybe RuntimeCommand
-toolbarButtonAtColumn richEnabled relCol = go 0 (toolbarButtonSpecs richEnabled)
+-- | Compute the centering offset for toolbar buttons within bodyW.
+toolbarCenterOffset :: Int -> Int
+toolbarCenterOffset bodyW =
+    let specs = toolbarButtonSpecs False
+        toolbar = unwords (map fst specs)
+        toolbarW = length toolbar
+    in max 0 ((bodyW - toolbarW) `div` 2)
+
+toolbarButtonAtColumn :: Bool -> Int -> Int -> Maybe RuntimeCommand
+toolbarButtonAtColumn richEnabled bodyW relCol =
+    let offset = toolbarCenterOffset bodyW
+        adjustedCol = relCol - offset
+    in go adjustedCol (toolbarButtonSpecs richEnabled)
   where
     go _ [] = Nothing
-    go start ((label, cmd):rest)
-        | relCol >= start && relCol <= start + length label - 1 = Just cmd
-        | otherwise = go (start + length label + 1) rest
+    go relC ((label, cmd):rest)
+        | relC >= 0 && relC <= length label - 1 = Just cmd
+        | otherwise = go (relC - length label - 1) rest
 
 placeInputCursorIfNeeded :: AppState -> Layout -> Int -> Int -> IO ()
 placeInputCursorIfNeeded st lay row col = do

@@ -37,7 +37,7 @@ import UmbraVox.App.State
 
 data Pane = ContactPane | ChatPane | IdentityPane deriving stock (Eq, Show, Enum, Bounded)
 
-data MenuTab = MenuHelp | MenuContacts | MenuChat | MenuPrefs | MenuQuit
+data MenuTab = MenuHelp | MenuContacts | MenuChat | MenuPrefs | MenuIdentity | MenuQuit
     deriving stock (Eq, Show, Enum, Bounded)
 
 menuTabLabel :: MenuTab -> String
@@ -45,6 +45,7 @@ menuTabLabel MenuHelp     = " F1 Help "
 menuTabLabel MenuContacts = " F2 Contacts "
 menuTabLabel MenuChat     = " F3 Chat "
 menuTabLabel MenuPrefs    = " F4 Prefs "
+menuTabLabel MenuIdentity = " F5 Identity "
 menuTabLabel MenuQuit     = " Q Quit "
 
 menuTabUnderlineIndex :: MenuTab -> Maybe Int
@@ -58,17 +59,13 @@ menuTabItems MenuChat     =
     [ "New"
     , "Rename"
     , "Toggle Rich Text"
-    , "Bold"
-    , "Italic"
-    , "Color"
-    , "Link"
-    , "Emoji"
     , "Send"
     , "Clear Input"
     ]
 menuTabItems MenuPrefs
     = ["Settings"]
     ++ if pluginEnabled PluginChatTransfer then ["Export Chat", "Import Chat"] else []
+menuTabItems MenuIdentity = ["Regenerate Key", "Export Keys", "Import Keys"]
 menuTabItems MenuQuit     = ["Quit"]
 
 -- | Full application state: domain state wrapped in 'CoreState' plus

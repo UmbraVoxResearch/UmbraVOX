@@ -7,7 +7,6 @@ import Test.Util (assertEq)
 import Test.TUI.Sim.Util
 import UmbraVox.TUI.Actions (startBrowse)
 import UmbraVox.TUI.Dialog (browseOverlayLines, overlayBounds, settingsOverlayLines, wrapOverlayLines)
-import UmbraVox.TUI.Layout (actionsPaneBounds)
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Menu (handleMenu, toggleMenu, openMenu, executeMenuItem)
 import UmbraVox.TUI.Input (handleNormal)
@@ -67,7 +66,7 @@ testMenuRightWraps = do
 
 testMenuDownClamps :: IO Bool
 testMenuDownClamps = do
-    st <- mkTestState; openMenu st MenuPrefs
+    st <- mkTestState; openMenu st MenuIdentity
     handleMenu st KeyDown >> handleMenu st KeyDown >> handleMenu st KeyDown
     handleMenu st KeyDown >> handleMenu st KeyDown >> handleMenu st KeyDown
     idx <- readIORef (asMenuIndex st)
@@ -210,7 +209,7 @@ testMenuHelpAbout = do
 testMenuChatClearInput :: IO Bool
 testMenuChatClearInput = do
     st <- mkTestState; writeIORef (asInputBuf st) "hello"
-    executeMenuItem st MenuChat 9   -- index 9 = CmdClearInput
+    executeMenuItem st MenuChat 4   -- index 4 = CmdClearInput
     buf <- readIORef (asInputBuf st)
     assertEq "chat clear input" "" buf
 
@@ -224,8 +223,8 @@ testMenuQuit = do
 testMenuMouseClickTab :: IO Bool
 testMenuMouseClickTab = do
     st <- mkTestState
-    -- 40x120 test layout: Help tab label starts at col 66 in row 1.
-    handleNormal st (KeyMouseLeft 1 67)
+    -- 40x120 test layout with 6 tabs: Help tab starts at col 52 in row 1.
+    handleNormal st (KeyMouseLeft 1 55)
     m <- readIORef (asMenuOpen st)
     assertEq "mouse click tab opens menu" (Just MenuHelp) m
 
@@ -256,7 +255,8 @@ testMenuMouseClickOutsideDropdownClosesWithoutAction :: IO Bool
 testMenuMouseClickOutsideDropdownClosesWithoutAction = do
     st <- mkTestState
     openMenu st MenuPrefs
-    handleNormal st (KeyMouseLeft 3 99)
+    -- Click col 84 which is just left of the Prefs dropdown (starts at col 86).
+    handleNormal st (KeyMouseLeft 3 84)
     dlg <- readIORef (asDialogMode st)
     m <- readIORef (asMenuOpen st)
     ok1 <- assertEq "mouse click outside dropdown closes menu" Nothing m
@@ -266,17 +266,14 @@ testMenuMouseClickOutsideDropdownClosesWithoutAction = do
 testMenuMouseClickIdentityRegenButton :: IO Bool
 testMenuMouseClickIdentityRegenButton = do
     st <- mkTestState
-    let lay = calcTestLayout
-        (inputTop, _, _, _) = actionsPaneBounds lay
-        btnText :: String
-        btnText = "[ Regenerate (F5) ]"
-        btnW = length btnText
-        leftInnerStart = 2
-        btnStart = leftInnerStart + max 0 ((lLeftW lay - 2 - btnW) `div` 2)
-        btnCol = btnStart + (btnW `div` 2)
-    handleNormal st (KeyMouseLeft inputTop btnCol)
+    -- F5 now opens the Identity menu; Execute item 0 (Regenerate Key) opens DlgRegenKey.
+    handleNormal st KeyF5
+    m <- readIORef (asMenuOpen st)
+    ok1 <- assertEq "F5 opens Identity menu" (Just MenuIdentity) m
+    executeMenuItem st MenuIdentity 0
     dlg <- readIORef (asDialogMode st)
-    assertEq "mouse click identity regen button opens dialog" True (dlg == Just DlgRegenKey)
+    ok2 <- assertEq "identity menu regen item opens dialog" True (dlg == Just DlgRegenKey)
+    pure (ok1 && ok2)
 
 testMouseClickPaneFocusAndSelection :: IO Bool
 testMouseClickPaneFocusAndSelection = do

@@ -195,10 +195,10 @@ testCalcLayoutHistoricalPaneProportion = do
 
 testCalcLayoutKeepsSafetyRowsVisible :: IO Bool
 testCalcLayoutKeepsSafetyRowsVisible = do
-    -- Uses 41 rows to ensure chatH is large enough for a full identity panel
-    -- (inputAreaRows = 7, so chatH = 41 - 11 = 30... use 42 for chatH = 31)
+    -- Uses 42 rows so chatH = 32 (inputAreaRows=7, fixed overhead=10).
+    -- With maxIdentityRows=20, separator(1)+QR(14)+header(1)+safety(3)+fp(1) = 20 rows.
     let lay = calcLayout 42 120
-    assertEq "identity panel keeps QR, safety rows, and fingerprints visible" True (lIdentityH lay >= 23)
+    assertEq "identity panel keeps QR, safety rows, and fingerprints visible" True (lIdentityH lay >= 20)
 
 testStatusBarConnTagNormal :: IO Bool
 testStatusBarConnTagNormal = do

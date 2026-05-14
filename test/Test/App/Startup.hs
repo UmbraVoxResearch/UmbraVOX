@@ -202,6 +202,7 @@ testApplyPersistenceAnswerNoPersistsWithoutDB =
     withDB "umbravox-startup-pref-no.db" $ \dbPath -> do
         cfg <- mkTestConfig
         writeIORef (cfgDBPath cfg) dbPath
+        writeIORef (cfgEphemeral cfg) False
         writeFile dbPath "not-a-sqlite-db\n"
         restored <- applyPersistenceAnswer cfg "no"
         dbEnabled <- readIORef (cfgDBEnabled cfg)
@@ -220,6 +221,7 @@ testApplyPersistenceAnswerYesPersistsIntentWithoutHealthyDB =
     withDB "umbravox-startup-pref-yes.db" $ \dbPath -> do
         cfg <- mkTestConfig
         writeIORef (cfgDBPath cfg) dbPath
+        writeIORef (cfgEphemeral cfg) False
         writeFile dbPath "not-a-sqlite-db\n"
         restored <- applyPersistenceAnswer cfg "yes"
         dbEnabled <- readIORef (cfgDBEnabled cfg)

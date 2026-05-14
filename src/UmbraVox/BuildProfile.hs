@@ -194,12 +194,12 @@ pluginDescriptor pid =
             plugin pid Nothing "Identity Persistence"
                 "Persist the local long-term identity across restarts."
                 "Disabled: ephemeral mode"
-                PluginSecurity PluginCore PluginSourceBuiltIn Nothing False
+                PluginSecurity PluginCore PluginSourceBuiltIn Nothing (not buildChastityOnly)
         PluginPersistentStorage ->
             plugin pid Nothing "Persistent Storage"
                 "Store message history and related local state on disk."
                 "Disabled: ephemeral mode"
-                PluginStorage PluginOptional PluginSourceBuiltIn Nothing False
+                PluginStorage PluginOptional PluginSourceBuiltIn Nothing (not buildChastityOnly)
         PluginDiscovery ->
             plugin pid Nothing "Discovery"
                 "Enable mDNS/LAN discovery and related browse UI."
@@ -214,7 +214,7 @@ pluginDescriptor pid =
             plugin pid Nothing "Runtime Logging"
                 "Write troubleshooting and operational metadata to local log files."
                 "Disabled: ephemeral mode"
-                PluginDiagnostics PluginOptional PluginSourceBuiltIn Nothing False
+                PluginDiagnostics PluginOptional PluginSourceBuiltIn Nothing (not buildChastityOnly)
         PluginChatTransfer ->
             plugin pid Nothing "Chat Export/Import"
                 "Encrypt chat histories for import and export via local files."

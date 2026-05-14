@@ -374,10 +374,6 @@ renderInputRow lay grid focus richEnabled buf inputCursor inputScroll mSelStart 
     let lw = lLeftW lay; rw = lRightW lay
         inputTop = gInputTop grid
         inputRows = Layout.inputAreaRows
-        leftBoxRows = 4
-        leftBoxStart = max 0 (inputRows - leftBoxRows)
-        leftBoxContentRows = 3
-        leftBoxCloseRow = leftBoxStart + leftBoxContentRows
         toolbarRow = 0
         boxTopRow = 1
         rightEntryStart = 2
@@ -423,31 +419,10 @@ renderInputRow lay grid focus richEnabled buf inputCursor inputScroll mSelStart 
     forM_ [0..inputRows-1] $ \i -> do
         let inputRow = inputTop + i
         goto inputRow 1
-        -- Left pane
-        if i >= leftBoxStart && i < leftBoxCloseRow
-            then do
-                setFg 36; putStr "\x2502"; resetSGR
-                if i == leftBoxStart
-                    then do
-                        let actionsText = "[ Regenerate (F5) ]  [ Export Keys ]"
-                        putStr (centerText (lw - 2) actionsText)
-                    else if i == leftBoxStart + 1
-                        then do
-                            let importText = "[ Import Keys ]"
-                            putStr (centerText (lw - 2) importText)
-                    else putStr (replicate (lw - 2) ' ')
-                setFg 36; putStr "\x2502"; resetSGR
-            else if i == leftBoxCloseRow
-                then do
-                    setFg 36
-                    putStr $ "\x2570" ++ replicate (lw - 2) '\x2500' ++ "\x256F"
-                    resetSGR
-            else if i < leftBoxStart
-                then do
-                    setFg 36; putStr "\x2502"; resetSGR
-                    putStr (replicate (lw - 2) ' ')
-                    setFg 36; putStr "\x2502"; resetSGR
-                else putStr (replicate lw ' ')
+        -- Left pane (no action buttons; just blank rows)
+        setFg 36; putStr "\x2502"; resetSGR
+        putStr (replicate (lw - 2) ' ')
+        setFg 36; putStr "\x2502"; resetSGR
         -- Right pane
         if i == toolbarRow
             then do
@@ -502,20 +477,16 @@ renderInputRow lay grid focus richEnabled buf inputCursor inputScroll mSelStart 
 
 -- | Render the editor toolbar content (without the trailing border character).
 -- 'bodyW' is the available width for toolbar text, excluding the right border.
+-- Rich/Plain toggles are in Prefs; only formatting buttons are shown here, centered.
 renderEditorToolbar :: Int -> Bool -> IO ()
-renderEditorToolbar bodyW richEnabled = do
-    let buttons =
-            [ if richEnabled then "[ Rich* ]" else "[ Rich ]"
-            , if richEnabled then "[ Plain ]" else "[ Plain* ]"
-            , "[ Bold ]"
-            , "[ Italic ]"
-            , "[ Color ]"
-            , "[ Link ]"
-            , "[ Emoji ]"
-            ]
+renderEditorToolbar bodyW _richEnabled = do
+    let buttons = ["[ Bold ]", "[ Italic ]", "[ Color ]", "[ Link ]", "[ Emoji ]"]
         toolbar = unwords buttons
+        toolbarW = length toolbar
+        padLeft = max 0 ((bodyW - toolbarW) `div` 2)
+        centered = replicate padLeft ' ' ++ toolbar
     setFg 36
-    putStr (padR bodyW toolbar)
+    putStr (padR bodyW centered)
     resetSGR
 
 -- | Render a plain-text input line with optional cursor block and optional

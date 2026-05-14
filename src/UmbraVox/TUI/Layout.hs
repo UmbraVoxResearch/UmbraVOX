@@ -23,20 +23,20 @@ sizeValid rows cols = rows >= minTermRows && rows <= maxTermRows
                    && cols >= minTermCols && cols <= maxTermCols
 
 -- | Height of the identity panel (including the leading separator row).
--- Keep contacts dominant when possible, but reserve enough room on common
--- terminal sizes to show the full inline QR header plus all safety-number
--- rows without clipping.
+-- Buttons removed (now in F5 Identity menu); panel shows QR, safety number,
+-- and fingerprints only.  Give the freed space back to the contacts list.
 identityPanelH :: Int -> Int -> Int
 identityPanelH chatH leftW = max 0 (min (chatH - 1) targetRows)
   where
     minContactsRows = 8
-    maxIdentityRows = 23
+    maxIdentityRows = 20
     qrRows = 14
     headerRows = 1
     fingerprintRows = 4
     innerW = max 1 (leftW - 2)
     groupsPerRow = max 1 (min 5 ((innerW + 1) `div` 6))
     safetyRows = (12 + groupsPerRow - 1) `div` groupsPerRow
+    -- No button rows any more
     mandatoryRows = 1 + qrRows + headerRows + safetyRows
     optionalRows = min fingerprintRows
         (max 0 ((chatH - minContactsRows) - mandatoryRows))
