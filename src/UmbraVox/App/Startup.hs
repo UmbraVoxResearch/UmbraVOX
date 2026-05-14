@@ -127,22 +127,25 @@ initializeLocalIdentity cfg = do
     pure identity
 
 applyPersistenceAnswer :: AppConfig -> String -> IO Int
-applyPersistenceAnswer cfg answer
-    | not (pluginEnabled PluginPersistentStorage) = do
-        writeIORef (cfgPersistencePreference cfg) (Just False)
-        writeIORef (cfgDBEnabled cfg) False
-        pure 0
-    | persistenceAnswerEnables answer = do
-        setPersistencePreference cfg True
-        restorePersistentState cfg `catch` \(_ :: SomeException) -> do
-            logEvent cfg "persistence.restore.failed" []
+applyPersistenceAnswer cfg answer = do
+    ephemeral <- readIORef (cfgEphemeral cfg)
+    if not (pluginEnabled PluginPersistentStorage) && ephemeral
+        then do
+            writeIORef (cfgPersistencePreference cfg) (Just False)
             writeIORef (cfgDBEnabled cfg) False
             pure 0
-    | otherwise = do
-        setPersistencePreference cfg False
-        logEvent cfg "persistence.mode" [("enabled", "false")]
-        writeIORef (cfgDBEnabled cfg) False
-        pure 0
+        else if persistenceAnswerEnables answer
+            then do
+                setPersistencePreference cfg True
+                restorePersistentState cfg `catch` \(_ :: SomeException) -> do
+                    logEvent cfg "persistence.restore.failed" []
+                    writeIORef (cfgDBEnabled cfg) False
+                    pure 0
+            else do
+                setPersistencePreference cfg False
+                logEvent cfg "persistence.mode" [("enabled", "false")]
+                writeIORef (cfgDBEnabled cfg) False
+                pure 0
 
 persistenceAnswerEnables :: String -> Bool
 persistenceAnswerEnables raw =
