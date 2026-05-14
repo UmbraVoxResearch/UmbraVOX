@@ -1026,6 +1026,58 @@ MILESTONE M14: PLATFORM EXPANSION — VM RUNNERS + ILLUMOS + BSDs
   [ ] M14.8.7 Test terminal handling differences (terminfo/termcap on BSD/illumos).
 
 ================================================================================
+MILESTONE M17: EPHEMERAL-BY-DEFAULT + PLUGIN ARCHITECTURE
+================================================================================
+Note: All persistence disabled by default. Zero disk footprint. Plugins enable storage.
+
+[ ] M17.1 Plugin framework extension
+  [ ] M17.1.1 Add bpMessage field to BuildPlugin (reason for enable/disable state).
+  [ ] M17.1.2 Create Plugin.Types (PluginDef, PluginType: Function/Transaction/Meta).
+  [ ] M17.1.3 Create Plugin.Registry (dependency resolution, enable/disable API).
+  [ ] M17.1.4 Enforce dependency: key-persistence requires ratchet-persistence (C-1).
+  [ ] M17.1.5 Default all persistence plugins to disabled in BuildProfile.
+  [ ] M17.1.6 Core function trust anchor (compiled-in, not plugin-resolvable).
+
+[ ] M17.2 In-memory storage backend
+  [ ] M17.2.1 Create Storage.Class (abstract StorageBackend interface).
+  [ ] M17.2.2 Create Storage.InMemory (IORef-based maps, all data lost on exit).
+  [ ] M17.2.3 Adapt Anthony.hs to implement StorageBackend (plugin-gated).
+  [ ] M17.2.4 Startup uses InMemoryDB when sqlite-storage plugin disabled.
+
+[ ] M17.3 Guard all disk writes behind plugins
+  [ ] M17.3.1 KeyStore.hs: guard save/load with key-persistence plugin check.
+  [ ] M17.3.2 Anthony.hs: guard all SQL operations with sqlite-storage plugin.
+  [ ] M17.3.3 RatchetPersist.hs: guard with ratchet-persistence plugin.
+  [ ] M17.3.4 RuntimeLog.hs: guard with runtime-logging plugin (partially done).
+  [ ] M17.3.5 Encryption.hs: guard salt file with sqlite-storage plugin.
+  [ ] M17.3.6 Startup.hs: guard .pref file with message-storage plugin.
+  [ ] M17.3.7 Remove createDirectoryIfMissing from core startup path.
+
+[ ] M17.4 CLI flags
+  [ ] M17.4.1 --ephemeral flag (disable all persistence, override config).
+  [ ] M17.4.2 --no-config flag (ignore config file, hardcoded safe defaults).
+  [ ] M17.4.3 --enable-plugin <name> flag (enable specific plugin from CLI).
+
+[ ] M17.5 TUI integration
+  [ ] M17.5.1 Plugins tab in F4 Prefs (toggle with number keys, deps auto-resolved).
+  [ ] M17.5.2 EPHEMERAL/PERSISTENT indicator in status bar.
+  [ ] M17.5.3 Display active plugins in startup banner.
+  [ ] M17.5.4 Swap encryption warning on Linux (check /proc/swaps).
+
+[ ] M17.6 Test migration
+  [ ] M17.6.1 Storage tests enable sqlite-storage plugin in setup.
+  [ ] M17.6.2 Crypto/protocol tests run plugin-independent (InMemoryDB).
+  [ ] M17.6.3 Plugin dependency resolution tests.
+  [ ] M17.6.4 Ephemeral mode integration test (verify zero disk writes).
+  [ ] M17.6.5 Plugin enable/disable round-trip tests.
+
+[ ] M17.7 Security hardening
+  [ ] M17.7.1 Session fingerprint displayed prominently in ephemeral mode (H-1).
+  [ ] M17.7.2 CSPRNG salt: XOR with PID + timestamp (M-2).
+  [ ] M17.7.3 Document: ephemeral ≠ deniability (peer may log).
+  [ ] M17.7.4 Config file hash pinning (optional paranoid mode).
+
+================================================================================
 OUTSIDE MVP (DEFERRED)
 ================================================================================
 

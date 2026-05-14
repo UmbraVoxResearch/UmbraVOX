@@ -187,6 +187,9 @@ library
       UmbraVox.App.RuntimeLog
       UmbraVox.App.Startup
       UmbraVox.BuildProfile
+      -- Plugin framework
+      UmbraVox.Plugin.Types
+      UmbraVox.Plugin.Registry
       UmbraVox.Chat.Wire
       UmbraVox.Chat.Session
       UmbraVox.Chat.Message
@@ -194,6 +197,9 @@ library
       UmbraVox.Chat.Contacts
       UmbraVox.Chat.API
       -- Storage
+      UmbraVox.Storage.Class
+      UmbraVox.Storage.InMemory
+      UmbraVox.Storage.AnthonyAdapter
       UmbraVox.Storage.ChainDB
       UmbraVox.Storage.StateDB
       UmbraVox.Storage.Index

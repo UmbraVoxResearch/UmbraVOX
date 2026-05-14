@@ -117,7 +117,7 @@ testWithPersistentEncryptRoundTrip =
             Just alice -> do
                 let bob = ratchetInitBob sharedSecret bobSPKSecret
                     msg = strToBS "Hello persistent world"
-                encResult <- withPersistentEncrypt path alice msg
+                encResult <- withPersistentEncrypt False path alice msg
                 case encResult of
                     Left err ->
                         putStrLn ("  FAIL: withPersistentEncrypt: " ++ show err) >> pure False
@@ -148,7 +148,7 @@ testSimulatedCrash =
             Just alice -> do
                 let msg        = strToBS "message before crash"
                     beforeSend = rsSendN alice   -- 0 for a fresh state
-                encResult <- withPersistentEncrypt path alice msg
+                encResult <- withPersistentEncrypt False path alice msg
                 case encResult of
                     Left err ->
                         putStrLn ("  FAIL: withPersistentEncrypt: " ++ show err) >> pure False

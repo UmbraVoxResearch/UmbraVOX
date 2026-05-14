@@ -115,20 +115,26 @@ loadRatchetCounter path = do
 -- On success the caller receives the updated 'RatchetState' together
 -- with the header, ciphertext, and GCM tag, identical to calling
 -- 'ratchetEncrypt' directly.
+--
+-- When @ephemeral@ is 'True' the counter write is skipped and
+-- 'ratchetEncrypt' is called directly (no disk I/O).
 withPersistentEncrypt
-    :: FilePath
+    :: Bool       -- ^ ephemeral: skip persistence when True
+    -> FilePath
     -> RatchetState
     -> ByteString
     -> IO (Either RatchetError (RatchetState, RatchetHeader, ByteString, ByteString))
-withPersistentEncrypt path st plaintext = do
-    -- Persist the counter that will be used AFTER this encryption.
-    -- rsSendN st is the counter for the CURRENT message; ratchetEncrypt
-    -- increments it to (rsSendN st + 1) in the returned state.
-    -- We persist (rsSendN st + 1) so that on crash the receiver knows
-    -- the next safe minimum counter.
-    let nextCounter = rsSendN st + 1
-    persistResult <- try (persistRatchetCounter path nextCounter)
-                    :: IO (Either IOException ())
-    case persistResult of
-        Left ioErr -> pure (Left (PersistenceError (show ioErr)))
-        Right ()   -> ratchetEncrypt st plaintext
+withPersistentEncrypt ephemeral path st plaintext
+    | ephemeral = ratchetEncrypt st plaintext
+    | otherwise = do
+        -- Persist the counter that will be used AFTER this encryption.
+        -- rsSendN st is the counter for the CURRENT message; ratchetEncrypt
+        -- increments it to (rsSendN st + 1) in the returned state.
+        -- We persist (rsSendN st + 1) so that on crash the receiver knows
+        -- the next safe minimum counter.
+        let nextCounter = rsSendN st + 1
+        persistResult <- try (persistRatchetCounter path nextCounter)
+                        :: IO (Either IOException ())
+        case persistResult of
+            Left ioErr -> pure (Left (PersistenceError (show ioErr)))
+            Right ()   -> ratchetEncrypt st plaintext

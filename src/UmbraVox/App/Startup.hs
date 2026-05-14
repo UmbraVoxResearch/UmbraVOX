@@ -48,8 +48,10 @@ import UmbraVox.Storage.Anthony
     ( AnthonyDB, loadConversations, loadMessages
     , loadTrustedKeys, openDB, openDBWithKey, saveSetting
     )
+import UmbraVox.Storage.AnthonyAdapter (anthonyStorageHandle)
 import UmbraVox.Storage.Encryption
     ( getOrCreateSalt, deriveStorageKey )
+import UmbraVox.Storage.InMemory (newInMemoryStorage)
 import UmbraVox.App.Config
     ( AppConfig(..), ConnectionMode(..) )
 import UmbraVox.App.Types
@@ -84,6 +86,7 @@ newDefaultAppConfig = do
         initialPersistencePref = if pluginEnabled PluginPersistentStorage then Nothing else Just False
         initialAutoSave = pluginEnabled PluginPersistentStorage
         initialMode = if pluginEnabled PluginConnectionModeSelection then Selective else Chastity
+    initialStorage <- newInMemoryStorage
     AppConfig
         <$> newIORef listenPort
         <*> newIORef randomName
@@ -110,10 +113,13 @@ newDefaultAppConfig = do
         <*> newIORef initialMode
         <*> newIORef []
         <*> newIORef Set.empty
+        <*> newIORef False  -- cfgEphemeral: off by default
+        <*> newIORef initialStorage  -- cfgStorage: starts as in-memory; upgraded to Anthony on DB open
 
 initializeLocalIdentity :: AppConfig -> IO IdentityKey
 initializeLocalIdentity cfg = do
-    identity <- resolveIdentity
+    ephemeral <- readIORef (cfgEphemeral cfg)
+    identity <- resolveIdentityEphemeral ephemeral
     writeIORef (cfgIdentity cfg) (Just identity)
     logEvent cfg "identity.ready" []
     pure identity
@@ -203,6 +209,20 @@ resolveIdentity = do
                     saveIdentityKey ik
                     pure ik
 
+-- | Like 'resolveIdentity' but skips the disk write when ephemeral is set.
+resolveIdentityEphemeral :: Bool -> IO IdentityKey
+resolveIdentityEphemeral ephemeral = do
+    if not (pluginEnabled PluginIdentityPersistence) || ephemeral
+        then genIdentity
+        else do
+            mIdentity <- loadIdentityKey
+            case mIdentity of
+                Just ik -> pure ik
+                Nothing -> do
+                    ik <- genIdentity
+                    saveIdentityKey ik
+                    pure ik
+
 resolveIdentityAt :: FilePath -> IO IdentityKey
 resolveIdentityAt path = do
     mIdentity <- loadIdentityKeyAt path
@@ -259,18 +279,24 @@ restorePersistentStateAtUnsafe :: AppConfig -> FilePath -> IO Int
 restorePersistentStateAtUnsafe cfg path = do
     createDirectoryIfMissing True (takeDirectory path)
     mIdentity <- readIORef (cfgIdentity cfg)
+    ephemeral <- readIORef (cfgEphemeral cfg)
     db <- case mIdentity of
         Just ik -> do
-            let saltPath = path ++ ".salt"
-            salt <- getOrCreateSalt saltPath
+            salt <- if ephemeral
+                then randomBytes 32  -- in-memory salt, never written to disk
+                else do
+                    let saltPath = path ++ ".salt"
+                    getOrCreateSalt saltPath
             let storageKey = deriveStorageKey salt (ikEd25519Secret ik)
             openDBWithKey path storageKey
         Nothing ->
             openDB path
     writeIORef (cfgAnthonyDB cfg) (Just db)
+    writeIORef (cfgStorage cfg) (anthonyStorageHandle db)
     writeIORef (cfgDBEnabled cfg) True
     writeIORef (cfgPersistencePreference cfg) (Just True)
-    rememberPersistencePreferenceAt path True
+    when (not ephemeral) $
+        rememberPersistencePreferenceAt path True
     saveSetting db persistenceSettingKey "1"
     logEvent cfg "persistence.mode" [("enabled", "true"), ("path", path)]
     trustedPairs <- loadTrustedKeys db
@@ -286,7 +312,8 @@ restorePersistentStateAtUnsafe cfg path = do
 setPersistencePreference :: AppConfig -> Bool -> IO ()
 setPersistencePreference cfg enabled = do
     writeIORef (cfgPersistencePreference cfg) (Just enabled)
-    when (pluginEnabled PluginPersistentStorage) $ do
+    ephemeral <- readIORef (cfgEphemeral cfg)
+    when (pluginEnabled PluginPersistentStorage && not ephemeral) $ do
         dbPath <- readIORef (cfgDBPath cfg)
         home <- getHomeDirectory
         rememberPersistencePreferenceAt (expandHome home dbPath) enabled

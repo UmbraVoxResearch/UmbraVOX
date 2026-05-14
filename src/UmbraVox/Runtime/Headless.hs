@@ -9,6 +9,7 @@ module UmbraVox.Runtime.Headless
     , runHeadlessNode
     , createHeadlessState
     , initCoreRuntime
+    , initCoreRuntimeNoConfig
     ) where
 
 import Control.Concurrent (threadDelay)
@@ -45,6 +46,18 @@ initCoreRuntime mPort = do
     fileCfg <- loadConfigFile
     applyConfigFile fileCfg appCfg
     -- Layer 2: apply explicit port override from caller (CLI flags etc.)
+    case mPort of
+        Just p  -> writeIORef (cfgListenPort appCfg) p
+        Nothing -> pure ()
+    identity <- initializeLocalIdentity appCfg
+    pure (appCfg, identity)
+
+-- | Like 'initCoreRuntime' but skips reading the config file.
+-- Used when --no-config is passed on the CLI.
+initCoreRuntimeNoConfig :: Maybe Int -> IO (AppConfig, IdentityKey)
+initCoreRuntimeNoConfig mPort = do
+    appCfg <- newDefaultAppConfig
+    -- Skip config file; hardcoded defaults from newDefaultAppConfig apply.
     case mPort of
         Just p  -> writeIORef (cfgListenPort appCfg) p
         Nothing -> pure ()
