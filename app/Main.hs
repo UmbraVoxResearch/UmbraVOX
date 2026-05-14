@@ -20,7 +20,7 @@ import UmbraVox.TUI.RuntimeNetwork (startListenerIfNeeded)
 import UmbraVox.TUI.RuntimeSettings (restartMDNS)
 import UmbraVox.Tools.ReleaseBridge (runBridgeCommand)
 import UmbraVox.App.State (newCoreState)
-import UmbraVox.Runtime.Headless (initCoreRuntime)
+import UmbraVox.Runtime.Headless (initCoreRuntime, initCoreRuntimeNoConfig)
 import UmbraVox.App.Startup
     ( applyPersistenceAnswer
     , resolvePersistencePreference, persistenceAnswerEnables
@@ -35,10 +35,13 @@ import UmbraVox.Storage.Anthony (loadSetting)
 data UiFlags = UiFlags
     { uiPort           :: Maybe Int
     , uiMaxConnections :: Maybe Int
+    , uiEphemeral      :: Bool        -- ^ --ephemeral: skip all disk writes
+    , uiNoConfig       :: Bool        -- ^ --no-config: ignore config file
+    , uiEnablePlugins  :: [String]    -- ^ --enable-plugin <name>: enable named plugins
     }
 
 defaultUiFlags :: UiFlags
-defaultUiFlags = UiFlags Nothing Nothing
+defaultUiFlags = UiFlags Nothing Nothing False False []
 
 -- | Consume recognised flags from the front of the args list.
 -- Stops as soon as it encounters an unrecognised token.
@@ -49,6 +52,12 @@ parseUiFlags = go defaultUiFlags
         | Just n <- readMaybe v = go flags{ uiPort = Just n } rest
     go flags ("--max-connections" : v : rest)
         | Just n <- readMaybe v = go flags{ uiMaxConnections = Just n } rest
+    go flags ("--ephemeral" : rest) =
+        go flags{ uiEphemeral = True } rest
+    go flags ("--no-config" : rest) =
+        go flags{ uiNoConfig = True } rest
+    go flags ("--enable-plugin" : name : rest) =
+        go flags{ uiEnablePlugins = uiEnablePlugins flags ++ [name] } rest
     go flags _ = flags
 
 readMaybe :: String -> Maybe Int
@@ -62,8 +71,12 @@ applyUiFlags flags appCfg = do
     case uiPort flags of
         Just p -> writeIORef (cfgListenPort appCfg) p
         Nothing -> pure ()
+    when (uiEphemeral flags) $
+        writeIORef (cfgEphemeral appCfg) True
     -- max_connections has no IORef in AppConfig yet; flag is accepted but
     -- has no runtime effect until cfgMaxConnections is added to AppConfig.
+    -- uiEnablePlugins: plugin enabling at runtime is compile-time gated;
+    -- accepted here for forward compatibility.
     pure ()
 
 -- Finding: sigWINCH was hardcoded to 28, which is correct for Linux and macOS
@@ -153,10 +166,13 @@ runUi flags = do
     hSetEncoding stdin utf8
     hSetEncoding stdout utf8
     hSetBuffering stdout (BlockBuffering (Just 8192))
-    -- Shared core init (config + identity) via headless runtime
-    -- initCoreRuntime already applies: defaults → config file
-    (cfg, identity) <- initCoreRuntime Nothing
-    -- Layer 3: CLI flags override config file values
+    -- Shared core init (config + identity) via headless runtime.
+    -- Layer 1+2: defaults → config file (skipped when --no-config).
+    -- Layer 3: CLI flags override config file values.
+    (cfg, identity) <-
+        if uiNoConfig flags
+            then initCoreRuntimeNoConfig Nothing
+            else initCoreRuntime Nothing
     applyUiFlags flags cfg
     debugLogging <- runtimeLoggingEnabled cfg
     (initRows, initCols) <- getTermSize

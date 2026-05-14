@@ -120,6 +120,7 @@ data BuildPlugin = BuildPlugin
     , bpStableId :: String
     , bpName :: String
     , bpDescription :: String
+    , bpMessage :: !String
     , bpCategory :: BuildPluginCategory
     , bpTier :: BuildPluginTier
     , bpSource :: BuildPluginSource
@@ -192,58 +193,70 @@ pluginDescriptor pid =
         PluginIdentityPersistence ->
             plugin pid Nothing "Identity Persistence"
                 "Persist the local long-term identity across restarts."
-                PluginSecurity PluginCore PluginSourceBuiltIn Nothing (not buildChastityOnly)
+                "Disabled: ephemeral mode"
+                PluginSecurity PluginCore PluginSourceBuiltIn Nothing False
         PluginPersistentStorage ->
             plugin pid Nothing "Persistent Storage"
                 "Store message history and related local state on disk."
-                PluginStorage PluginOptional PluginSourceBuiltIn Nothing (not buildChastityOnly)
+                "Disabled: ephemeral mode"
+                PluginStorage PluginOptional PluginSourceBuiltIn Nothing False
         PluginDiscovery ->
             plugin pid Nothing "Discovery"
                 "Enable mDNS/LAN discovery and related browse UI."
+                ""
                 PluginNetworking PluginOptional PluginSourceBuiltIn Nothing (not buildChastityOnly)
         PluginPeerExchange ->
             plugin pid Nothing "Peer Exchange"
                 "Advertise and consume peer referrals from connected peers."
+                ""
                 PluginNetworking PluginOptional PluginSourceBuiltIn Nothing (not buildChastityOnly)
         PluginRuntimeLogging ->
             plugin pid Nothing "Runtime Logging"
                 "Write troubleshooting and operational metadata to local log files."
-                PluginDiagnostics PluginOptional PluginSourceBuiltIn Nothing (not buildChastityOnly)
+                "Disabled: ephemeral mode"
+                PluginDiagnostics PluginOptional PluginSourceBuiltIn Nothing False
         PluginChatTransfer ->
             plugin pid Nothing "Chat Export/Import"
                 "Encrypt chat histories for import and export via local files."
+                ""
                 PluginUX PluginPremiumReady PluginSourceBuiltIn Nothing (not buildChastityOnly)
         PluginConnectionModeSelection ->
             plugin pid Nothing "Connection Mode Selection"
                 "Allow switching between Swing/Promiscuous/Selective/Chaste/Chastity at runtime."
+                ""
                 PluginSecurity PluginOptional PluginSourceBuiltIn Nothing (not buildChastityOnly)
         PluginGroupChat ->
             plugin pid (Just "group-chat") "Group Chat"
                 "Future packaged module for sealed-sender group messaging."
+                ""
                 PluginUX PluginPremiumReady PluginSourcePackaged
                 (Just "plugins/group-chat/manifest.uvx") False
         PluginLocationSharing ->
             plugin pid (Just "location-sharing") "Location Sharing"
                 "Future packaged module for end-to-end encrypted live and pinned location exchange."
+                ""
                 PluginNetworking PluginPremiumReady PluginSourcePremiumPackaged
                 (Just "plugins/location-sharing/manifest.uvx") False
         PluginImageSharing ->
             plugin pid (Just "image-sharing") "Image Sharing"
                 "Future packaged module for end-to-end encrypted image transfer."
+                ""
                 PluginUX PluginPremiumReady PluginSourcePremiumPackaged
                 (Just "plugins/image-sharing/manifest.uvx") False
         PluginFileSharing ->
             plugin pid (Just "file-sharing") "File Sharing"
                 "Future packaged module for end-to-end encrypted file transfer."
+                ""
                 PluginUX PluginPremiumReady PluginSourcePremiumPackaged
                 (Just "plugins/file-sharing/manifest.uvx") False
   where
-    plugin pluginId stableId name desc category tier source manifestPath enabled =
+    plugin pluginId stableId name desc msg category tier source manifestPath enabled =
         BuildPlugin
             { bpId = pluginId
             , bpStableId = normalizeTag (maybe (show pluginId) id stableId)
             , bpName = name
             , bpDescription = desc
+            , bpMessage = msg
             , bpCategory = category
             , bpTier = tier
             , bpSource = source
@@ -341,6 +354,7 @@ buildCatalogEntry path manifest = do
             , bpStableId = normalizeTag (pmStableId manifest)
             , bpName = pmDisplayName manifest
             , bpDescription = pmNotes manifest
+            , bpMessage = ""
             , bpCategory = parseCategoryTag (pmCategoryTag manifest)
             , bpTier = parseTierTag (pmTierTag manifest)
             , bpSource = parseSourceTag (pmSourceTag manifest)

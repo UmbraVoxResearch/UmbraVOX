@@ -19,6 +19,7 @@ import UmbraVox.Network.ProviderCatalog
     ( CachedTransportProvider, ProviderManifest, TransportProvider )
 import UmbraVox.Network.MDNS (MDNSPeer)
 import UmbraVox.Storage.Anthony (AnthonyDB)
+import UmbraVox.Storage.Class (StorageHandle)
 
 type SessionId = Int
 
@@ -79,4 +80,8 @@ data AppConfig = AppConfig
     -- check in 'acceptLoopBoundTUI' inserts on first encounter and rejects
     -- conflicting keys on subsequent encounters.
     , cfgTofoKeys         :: IORef (Set.Set ByteString)
+    -- M17.3: ephemeral override — when True all disk writes are skipped
+    , cfgEphemeral        :: IORef Bool
+    -- M17.2: abstract storage backend (in-memory or Anthony-backed)
+    , cfgStorage          :: IORef StorageHandle
     }

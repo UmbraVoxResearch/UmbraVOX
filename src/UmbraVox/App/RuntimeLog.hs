@@ -49,11 +49,15 @@ runtimeLoggingEnabled cfg = do
     if not (pluginEnabled PluginRuntimeLogging)
         then pure False
         else do
-            env <- lookupEnv "UMBRAVOX_DEBUG_LOG"
-            case env of
-                Just raw | raw `elem` ["1", "true", "TRUE", "yes", "YES", "on", "ON"] -> pure True
-                Just raw | raw `elem` ["0", "false", "FALSE", "no", "NO", "off", "OFF"] -> pure False
-                _ -> readIORef (cfgDebugLogging cfg)
+            ephemeral <- readIORef (cfgEphemeral cfg)
+            if ephemeral
+                then pure False
+                else do
+                    env <- lookupEnv "UMBRAVOX_DEBUG_LOG"
+                    case env of
+                        Just raw | raw `elem` ["1", "true", "TRUE", "yes", "YES", "on", "ON"] -> pure True
+                        Just raw | raw `elem` ["0", "false", "FALSE", "no", "NO", "off", "OFF"] -> pure False
+                        _ -> readIORef (cfgDebugLogging cfg)
 
 logEvent :: AppConfig -> String -> [(String, String)] -> IO ()
 logEvent cfg name fields = do
