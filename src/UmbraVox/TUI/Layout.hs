@@ -28,19 +28,17 @@ sizeValid rows cols = rows >= minTermRows && rows <= maxTermRows
 -- Content: 14 QR + 1 safety label + safetyRows + 1 fp header + 2 fp rows
 -- plus 1 separator = total identityPanelH.
 identityPanelH :: Int -> Int -> Int
-identityPanelH chatH leftW = max 0 (min (chatH - 1) targetRows)
+identityPanelH chatH leftW = max 0 (min (chatH - 3) exactRows)
   where
-    minContactsRows = 8
     qrRows = 14
-    headerRows = 1
-    fpHeaderRows = 1
-    fpDataRows = 2
+    headerRows = 1       -- "Standard: X3DH safety number"
+    fpHeaderRows = 1     -- "X25519:          Ed25519:"
+    fpDataRows = 2       -- two rows of hex fingerprints
     innerW = max 1 (leftW - 2)
     groupsPerRow = max 1 (min 5 ((innerW + 1) `div` 6))
     safetyRows = (12 + groupsPerRow - 1) `div` groupsPerRow
-    -- 1 separator + content rows (no wasted blank lines)
-    contentRows = qrRows + headerRows + safetyRows + fpHeaderRows + fpDataRows
-    targetRows = min (chatH - minContactsRows) (1 + contentRows)
+    -- 1 separator + exact content rows — zero padding
+    exactRows = 1 + qrRows + headerRows + safetyRows + fpHeaderRows + fpDataRows
 
 -- | Compute the layout geometry from terminal dimensions.
 -- Row budget: 1 menu + 1 separator + (chatH rows of content) + inputAreaRows + 1 status
