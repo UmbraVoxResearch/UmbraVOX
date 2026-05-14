@@ -3,7 +3,7 @@ module Main (main) where
 
 import Control.Monad (when)
 import Data.IORef (newIORef, readIORef, writeIORef)
-import Data.List (isPrefixOf)
+import Data.List (intercalate, isPrefixOf)
 import System.Environment (getArgs)
 import System.Exit (ExitCode(..), exitWith)
 import System.IO (hSetBuffering, hSetEncoding, hFlush, stdout, stdin, utf8, BufferMode(..))
@@ -25,6 +25,7 @@ import UmbraVox.App.Startup
     ( applyPersistenceAnswer
     , resolvePersistencePreference, persistenceAnswerEnables
     )
+import UmbraVox.Plugin.Registry (pluginEnabled)
 import UmbraVox.Storage.Anthony (loadSetting)
 
 ------------------------------------------------------------------------
@@ -249,6 +250,16 @@ runUi flags = do
                         else do
                             _ <- applyPersistenceAnswer cfg answer
                             putStrLn "  Storage: ephemeral mode"
+    -- Print active plugins from the runtime plugin registry
+    pluginReg <- readIORef (cfgPluginRegistry cfg)
+    let activePluginIds =
+            [ "key-persistence", "message-storage", "ratchet-persistence"
+            , "runtime-logging", "full-persistence"
+            ]
+        activePlugins = filter (`pluginEnabled` pluginReg) activePluginIds
+    if null activePlugins
+        then putStrLn "  Plugins: none active (ephemeral mode)"
+        else putStrLn $ "  Plugins: " ++ intercalate ", " activePlugins
     -- Load persisted UI settings if DB is available
     mDb <- readIORef (cfgAnthonyDB cfg)
     case mDb of

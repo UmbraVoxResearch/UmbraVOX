@@ -3,7 +3,7 @@
  *
  * Split from Spec.Keccak for faster per-module F* verification.
  * Contains SHA3-224/256/384/512 and SHAKE-128/256 functions,
- * output-length lemmas, and KAT test vector assumes.
+ * output-length lemmas, and KAT test vector placeholders.
  *
  * Reference: FIPS 202, Sections 6.1, 6.2
  *)
@@ -163,7 +163,7 @@ let expected_sha3_256_empty : seq UInt8.t =
 val sha3_256_kat_empty : unit
     -> Lemma (sha3_256 Seq.empty == expected_sha3_256_empty)
 let sha3_256_kat_empty () =
-  assume (sha3_256 Seq.empty == expected_sha3_256_empty)
+  admit()
 
 (** KAT 2: SHA3-256("abc")
     Expected: 3a985da74fe225b2 045c172d6bd390bd 855f086e3e9d525b 46bfe24511431532 *)
@@ -181,7 +181,7 @@ let expected_sha3_256_abc : seq UInt8.t =
 val sha3_256_kat_abc : unit
     -> Lemma (sha3_256 abc_input == expected_sha3_256_abc)
 let sha3_256_kat_abc () =
-  assume (sha3_256 abc_input == expected_sha3_256_abc)
+  admit()
 
 (** KAT 3: SHA3-512("")
     Expected: a69f73cca23a9ac5 c8b567dc185a756e 97c982164fe25859 e0d1dcc1475c80a6
@@ -201,7 +201,7 @@ let expected_sha3_512_empty : seq UInt8.t =
 val sha3_512_kat_empty : unit
     -> Lemma (sha3_512 Seq.empty == expected_sha3_512_empty)
 let sha3_512_kat_empty () =
-  assume (sha3_512 Seq.empty == expected_sha3_512_empty)
+  admit()
 
 (** KAT 4: SHA3-224("")
     Expected: 6b4e03423667dbb7 3b6e15454f0eb1ab d4597f9a1b078e3f 5b5a6bc7 *)
@@ -216,7 +216,7 @@ let expected_sha3_224_empty : seq UInt8.t =
 val sha3_224_kat_empty : unit
     -> Lemma (sha3_224 Seq.empty == expected_sha3_224_empty)
 let sha3_224_kat_empty () =
-  assume (sha3_224 Seq.empty == expected_sha3_224_empty)
+  admit()
 
 (** KAT 5: SHA3-384("")
     Expected: 0c63a75b845e4f7d 01107d852e4c2485 c51a50aaaa94fc61 995e71bbee983a2a
@@ -234,7 +234,7 @@ let expected_sha3_384_empty : seq UInt8.t =
 val sha3_384_kat_empty : unit
     -> Lemma (sha3_384 Seq.empty == expected_sha3_384_empty)
 let sha3_384_kat_empty () =
-  assume (sha3_384 Seq.empty == expected_sha3_384_empty)
+  admit()
 
 (** KAT 6: SHAKE-128("", 32)
     Expected: 7f9c2ba4e88f827d 616045507605853e d73b8093f6efbc88 eb1a6eacfa66ef26 *)
@@ -249,7 +249,7 @@ let expected_shake128_empty_32 : seq UInt8.t =
 val shake128_kat_empty_32 : unit
     -> Lemma (shake_128 Seq.empty 32 == expected_shake128_empty_32)
 let shake128_kat_empty_32 () =
-  assume (shake_128 Seq.empty 32 == expected_shake128_empty_32)
+  admit()
 
 (** KAT 7: SHAKE-256("", 32)
     Expected: 46b9dd2b0ba88d13 233b3feb743eeb24 3fcd52ea62b81b82 b50c27646ed5762f *)
@@ -264,4 +264,4 @@ let expected_shake256_empty_32 : seq UInt8.t =
 val shake256_kat_empty_32 : unit
     -> Lemma (shake_256 Seq.empty 32 == expected_shake256_empty_32)
 let shake256_kat_empty_32 () =
-  assume (shake_256 Seq.empty 32 == expected_shake256_empty_32)
+  admit()

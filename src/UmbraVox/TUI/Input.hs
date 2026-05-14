@@ -1437,26 +1437,41 @@ handleSettingsDlg :: AppState -> InputEvent -> IO ()
 handleSettingsDlg st KeyLeft = shiftSettingsTab st (-1)
 handleSettingsDlg st KeyRight = shiftSettingsTab st 1
 handleSettingsDlg st (KeyChar '1') = do
-    writeIORef (asDialogBuf st) ""
-    writeIORef (asDialogMode st) (Just (DlgPrompt "Set Port" $ \val ->
-        case reads val of
-            [(p,_)] ->
-                runRuntimeCommand st (CmdSetListenPort (p :: Int))
-            _ -> pure ()))
+    tabIx <- readIORef (asDialogTab st)
+    if tabIx == 5
+        then runRuntimeCommand st (CmdTogglePlugin "key-persistence")
+        else do
+            writeIORef (asDialogBuf st) ""
+            writeIORef (asDialogMode st) (Just (DlgPrompt "Set Port" $ \val ->
+                case reads val of
+                    [(p,_)] ->
+                        runRuntimeCommand st (CmdSetListenPort (p :: Int))
+                    _ -> pure ()))
 handleSettingsDlg st (KeyChar '2') = do
-    writeIORef (asDialogBuf st) ""
-    writeIORef (asDialogMode st) (Just (DlgPrompt "Set Display Name" $ \val ->
-        unless (null val) $
-            runRuntimeCommand st (CmdSetDisplayName val)))
-handleSettingsDlg st (KeyChar '3') =
-    runRuntimeCommand st CmdToggleMDNS
-handleSettingsDlg st (KeyChar '4') =
-    runRuntimeCommand st CmdTogglePEX
+    tabIx <- readIORef (asDialogTab st)
+    if tabIx == 5
+        then runRuntimeCommand st (CmdTogglePlugin "message-storage")
+        else do
+            writeIORef (asDialogBuf st) ""
+            writeIORef (asDialogMode st) (Just (DlgPrompt "Set Display Name" $ \val ->
+                unless (null val) $
+                    runRuntimeCommand st (CmdSetDisplayName val)))
+handleSettingsDlg st (KeyChar '3') = do
+    tabIx <- readIORef (asDialogTab st)
+    if tabIx == 5
+        then runRuntimeCommand st (CmdTogglePlugin "ratchet-persistence")
+        else runRuntimeCommand st CmdToggleMDNS
+handleSettingsDlg st (KeyChar '4') = do
+    tabIx <- readIORef (asDialogTab st)
+    if tabIx == 5
+        then runRuntimeCommand st (CmdTogglePlugin "runtime-logging")
+        else runRuntimeCommand st CmdTogglePEX
 handleSettingsDlg st (KeyChar '5') = do
     tabIx <- readIORef (asDialogTab st)
-    if tabIx == 0
-        then runRuntimeCommand st CmdToggleRichText
-        else runRuntimeCommand st CmdTogglePersistentStorage
+    case tabIx of
+        0 -> runRuntimeCommand st CmdToggleRichText
+        5 -> runRuntimeCommand st (CmdTogglePlugin "full-persistence")
+        _ -> runRuntimeCommand st CmdTogglePersistentStorage
 handleSettingsDlg st (KeyChar '6') = do
     if not (pluginEnabled PluginPersistentStorage)
         then setStatus st (pluginUnavailableStatus PluginPersistentStorage)

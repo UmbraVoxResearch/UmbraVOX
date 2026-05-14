@@ -22,6 +22,7 @@ module UmbraVox.TUI.Dialog
     , renderInsertLinkOverlay
     , emojiPickerOverlayLines
     , renderEmojiPickerOverlay
+    , pluginsTabLines
     ) where
 
 import Control.Monad (forM_, when)
@@ -35,6 +36,8 @@ import UmbraVox.BuildProfile
     , enabledPlugins, pluginLoadStatusLabel
     , pluginName, pmStatusTag, pprLoadStatus, pprManifest, pprPlugin
     )
+import UmbraVox.Plugin.Registry (pluginEnabled, resolveEnable)
+import UmbraVox.Plugin.Types (PluginRegistry)
 import UmbraVox.Network.ProviderCatalog
     ( CachedTransportProvider, ProviderClass(..), ctpInherits, ctpLoadStatus
     , ctpManifest, ctpProvider, pmfEndpointTag, pmfStatusTag
@@ -170,7 +173,7 @@ tabRowLine labels activeIx =
 settingsTabLabels :: [String]
 settingsTabLabels
     | buildChastityOnly = ["Simple", "Security", "Advanced"]
-    | otherwise = ["Simple", "Discovery", "Storage", "Security", "Advanced"]
+    | otherwise = ["Simple", "Discovery", "Storage", "Security", "Advanced", "Plugins"]
 
 showOverlay :: Layout -> String -> [String] -> IO ()
 showOverlay lay title lns = showOverlayScrolled lay title lns 0
@@ -583,6 +586,7 @@ settingsOverlayLines st = do
     dbEnabled <- readIORef (cfgDBEnabled (asConfig st))
     mDb       <- readIORef (cfgAnthonyDB (asConfig st))
     richText  <- readIORef (asRichText st)
+    pluginReg <- readIORef (cfgPluginRegistry (asConfig st))
     let tf True = "ON"; tf False = "OFF"
         ephemeral = case mDb of { Nothing -> True; Just _ -> False }
     storageLines <- settingsStorageLines st tf dbEnabled ephemeral
@@ -593,6 +597,7 @@ settingsOverlayLines st = do
         tabLine = tabRowLine settingsTabLabels tabIx
         ctx = SettingsCtx port name mdns pex debugLog debugPath modeLabel storageLines
                 packagedPluginRuntimeCatalog transportProviderRuntimeCatalog richText
+                pluginReg
     tabBody <-
         if buildChastityOnly
             then pure (settingsChastityTab ctx tabIx)
@@ -618,6 +623,7 @@ data SettingsCtx = SettingsCtx
     , sctxPackagedPlugins :: [PackagedPluginRuntime]
     , sctxTransportProviders :: [CachedTransportProvider]
     , sctxRichText :: Bool
+    , sctxPluginRegistry :: PluginRegistry
     }
 
 settingsConnModeLabel :: ConnectionMode -> String
@@ -711,6 +717,7 @@ settingsFullTab ctx tabIx =
                 , ""
                 , " Switching mode renegotiates remote sessions."
                 ]
+        5 -> pure (pluginsTabLines (sctxPluginRegistry ctx))
         _ -> do
             let packagedPluginLines = summarizePackagedPlugins (sctxPackagedPlugins ctx)
                 providerLines = summarizeTransportProviders (sctxTransportProviders ctx)
@@ -806,6 +813,30 @@ chunkItems :: Int -> [a] -> [[a]]
 chunkItems _ [] = []
 chunkItems n xs =
     take n xs : chunkItems n (drop n xs)
+
+-- | Render the Plugins tab lines for the preferences dialog.
+-- Shows the five user-facing persistence plugins with their ON/OFF state.
+-- Press 1-5 to toggle; Full Persistence (5) auto-enables all above.
+pluginsTabLines :: PluginRegistry -> [String]
+pluginsTabLines reg =
+    let tf b = if b then "ON" else "OFF"
+        st pid = tf (pluginEnabled pid reg)
+        hasDeps pid =
+            case resolveEnable pid reg of
+                Right ds -> length ds > 1
+                Left _   -> False
+        depNote pid
+            | hasDeps pid = " (+ deps)"
+            | otherwise   = ""
+    in [ " Plugins"
+       , "   1. Key Persistence    [" ++ st "key-persistence"     ++ "]" ++ depNote "key-persistence"     ++ " \x2014 Ephemeral mode"
+       , "   2. Message Storage    [" ++ st "message-storage"     ++ "]" ++ depNote "message-storage"     ++ " \x2014 Ephemeral mode"
+       , "   3. Ratchet Safety     [" ++ st "ratchet-persistence" ++ "]" ++ depNote "ratchet-persistence" ++ " \x2014 Ephemeral mode"
+       , "   4. Runtime Logging    [" ++ st "runtime-logging"     ++ "]" ++ depNote "runtime-logging"     ++ " \x2014 Ephemeral mode"
+       , "   5. Full Persistence   [" ++ st "full-persistence"    ++ "]" ++ " \x2014 Enable all above"
+       , ""
+       , " Press 1-5 to toggle. Enabling auto-resolves dependencies."
+       ]
 
 renderKeysOverlay :: Layout -> AppState -> Int -> IO ()
 renderKeysOverlay lay st scrollOff = do

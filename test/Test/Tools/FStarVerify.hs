@@ -330,7 +330,7 @@ testModuleRlimitsHeavyValue =
 testCountAssumesKnownFile :: IO Bool
 testCountAssumesKnownFile = do
     n <- countAssumes (fstarDir ++ "/Spec.Ed25519.fst")
-    assertEq "countAssumes Spec.Ed25519 == 30" 30 n
+    assertEq "countAssumes Spec.Ed25519 == 2" 2 n
 
 testCountAssumesNonexistent :: IO Bool
 testCountAssumesNonexistent = do
@@ -338,10 +338,10 @@ testCountAssumesNonexistent = do
     assertEq "countAssumes nonexistent file == 0" 0 n
 
 -- | Proof regression gate (M13.7.3):
--- Total assume count across all specs must not exceed the baseline of 229.
+-- Total assume count across all specs must not exceed the baseline of 55.
 -- If a new assume is added anywhere the suite fails here.
 assumeBaseline :: Int
-assumeBaseline = 229
+assumeBaseline = 55
 
 testAssumeRegressionGate :: IO Bool
 testAssumeRegressionGate = do

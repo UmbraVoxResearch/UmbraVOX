@@ -25,6 +25,8 @@ import UmbraVox.Network.ProviderCatalog
     ( loadTransportProviderCatalog
     , loadTransportProviderRuntimeCatalog
     )
+import UmbraVox.Plugin.Registry (defaultPersistencePlugins)
+import UmbraVox.Storage.InMemory (newInMemoryStorage)
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Layout (calcLayout)
 import UmbraVox.Chat.Session (initChatSession)
@@ -76,6 +78,7 @@ mkTestConfig = do
     packagedPluginRuntimeCatalog <- loadPackagedPluginRuntimeCatalog
     transportProviderCatalog <- loadTransportProviderCatalog
     transportProviderRuntimeCatalog <- loadTransportProviderRuntimeCatalog
+    initialStorage <- newInMemoryStorage
     AppConfig
         <$> newIORef 1111        -- cfgListenPort
         <*> newIORef "testuser"  -- cfgDisplayName
@@ -102,6 +105,9 @@ mkTestConfig = do
         <*> newIORef Promiscuous -- cfgConnectionMode
         <*> newIORef []          -- cfgTrustedKeys
         <*> newIORef Set.empty   -- cfgTofoKeys
+        <*> newIORef True        -- cfgEphemeral: tests use ephemeral mode by default
+        <*> newIORef initialStorage  -- cfgStorage: in-memory backend
+        <*> newIORef defaultPersistencePlugins  -- cfgPluginRegistry
 
 -- | Add a loopback session with empty history.
 addTestSession :: AppConfig -> String -> IO SessionId

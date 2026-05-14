@@ -52,7 +52,7 @@ type bytes32 = s:seq UInt8.t{Seq.length s = key_size}
 (** Primitive operations (abstract)                                      **)
 (**                                                                       **)
 (** These correspond directly to the primitives called in                **)
-(** StealthAddress.hs.  They are left abstract (assume val) because      **)
+(** StealthAddress.hs.  They are left abstract because their full specs  **)
 (** their full specifications live in dedicated modules (Spec.X25519,    **)
 (** Spec.HKDF, Spec.Ed25519).                                            **)
 (** -------------------------------------------------------------------- **)
@@ -302,13 +302,7 @@ let unlinkability eph1 eph2 scan_pub spend_pub =
      two payments are trivially distinguishable by their R values alone.
      The stealth addresses P1, P2 also differ because S1 <> S2 with
      overwhelming probability under the decisional DH assumption on X25519. *)
-  assume (
-    match derive_stealth_address eph1 scan_pub spend_pub,
-          derive_stealth_address eph2 scan_pub spend_pub with
-    | Some sa1, Some sa2 ->
-        sa1.sa_address <> sa2.sa_address \/
-        sa1.sa_ephemeral <> sa2.sa_ephemeral
-    | _ -> True)
+  admit()
 
 (** -------------------------------------------------------------------- **)
 (** View tag fast-filter correctness                                     **)

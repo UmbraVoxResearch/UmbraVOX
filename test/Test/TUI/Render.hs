@@ -201,23 +201,27 @@ testCalcLayoutKeepsSafetyRowsVisible = do
     assertEq "identity panel keeps QR, safety rows, and fingerprints visible" True (lIdentityH lay >= 23)
 
 testStatusBarConnTagNormal :: IO Bool
-testStatusBarConnTagNormal =
-    assertEq "status bar normal mode omits ephemeral"
-        False
-        ("EPHEMERAL" `contains` statusBarConnTag Promiscuous Nothing 0)
+testStatusBarConnTagNormal = do
+    -- With persistence plugins enabled, non-Chastity non-ephemeral shows PERSISTENT
+    let tag = statusBarConnTag Promiscuous False True 0
+    a <- assertEq "status bar normal mode with plugins shows PERSISTENT"
+            True ("PERSISTENT" `contains` tag)
+    b <- assertEq "status bar normal mode with plugins omits EPHEMERAL"
+            False ("EPHEMERAL" `contains` tag)
+    pure (a && b)
 
 testStatusBarConnTagChastity :: IO Bool
 testStatusBarConnTagChastity = do
-    let tag = statusBarConnTag Chastity Nothing 2
+    let tag = statusBarConnTag Chastity False True 2
     a <- assertEq "status bar chastity shows ephemeral" True ("EPHEMERAL" `contains` tag)
     b <- assertEq "status bar chastity separates version with diamond" True ("\x25C6 UmbraVOX" `contains` tag)
     pure (a && b)
 
 testStatusBarConnTagExplicitEphemeral :: IO Bool
 testStatusBarConnTagExplicitEphemeral =
-    assertEq "status bar explicit ephemeral preference shows tag"
+    assertEq "status bar explicit ephemeral flag shows tag"
         True
-        ("EPHEMERAL" `contains` statusBarConnTag Promiscuous (Just False) 0)
+        ("EPHEMERAL" `contains` statusBarConnTag Promiscuous True True 0)
 
 testPaginatedSliceClampsPage :: IO Bool
 testPaginatedSliceClampsPage = do

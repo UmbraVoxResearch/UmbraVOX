@@ -18,6 +18,7 @@ import UmbraVox.Crypto.Signal.X3DH (IdentityKey)
 import UmbraVox.Network.ProviderCatalog
     ( CachedTransportProvider, ProviderManifest, TransportProvider )
 import UmbraVox.Network.MDNS (MDNSPeer)
+import UmbraVox.Plugin.Types (PluginRegistry)
 import UmbraVox.Storage.Anthony (AnthonyDB)
 import UmbraVox.Storage.Class (StorageHandle)
 
@@ -84,4 +85,6 @@ data AppConfig = AppConfig
     , cfgEphemeral        :: IORef Bool
     -- M17.2: abstract storage backend (in-memory or Anthony-backed)
     , cfgStorage          :: IORef StorageHandle
+    -- M17.5: runtime plugin registry (persistence plugins, all disabled by default)
+    , cfgPluginRegistry   :: IORef PluginRegistry
     }

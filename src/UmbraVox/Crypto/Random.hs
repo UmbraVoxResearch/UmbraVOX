@@ -14,10 +14,12 @@ import Data.Bits ((.&.), (.|.), rotateL, shiftL, shiftR, xor)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Control.Concurrent.MVar (MVar, newMVar, modifyMVar)
-import Data.Word (Word8, Word32)
+import Data.Time.Clock.POSIX (getPOSIXTime)
+import Data.Word (Word8, Word32, Word64)
 import System.IO (withBinaryFile, IOMode(..))
 import System.IO.Unsafe (unsafePerformIO)
 import System.Posix.Process (getProcessID)
+import System.Posix.Types (CPid(..))
 
 import UmbraVox.Crypto.HKDF (hkdfExtract)
 
@@ -212,22 +214,59 @@ readEntropy n = do
                 then return acc  -- EOF, should not happen for /dev/urandom
                 else readLoop h (remaining - BS.length chunk) (acc <> chunk)
 
+-- | Encode PID and POSIX time into a 32-byte salt for HKDF-Extract.
+-- This makes the salt unique per process and per seeding event,
+-- preventing salt reuse across restarts and fork boundaries.
+encodePidTime :: CPid -> Double -> ByteString
+encodePidTime (CPid pidRaw) timeRaw =
+    let !pidW  = fromIntegral pidRaw :: Word64
+        !timeW = round (timeRaw * 1e6) :: Word64  -- microseconds
+        w64ToBytes :: Word64 -> [Word8]
+        w64ToBytes w =
+            [ fromIntegral (w .&. 0xff)
+            , fromIntegral ((w `shiftR`  8) .&. 0xff)
+            , fromIntegral ((w `shiftR` 16) .&. 0xff)
+            , fromIntegral ((w `shiftR` 24) .&. 0xff)
+            , fromIntegral ((w `shiftR` 32) .&. 0xff)
+            , fromIntegral ((w `shiftR` 40) .&. 0xff)
+            , fromIntegral ((w `shiftR` 48) .&. 0xff)
+            , fromIntegral ((w `shiftR` 56) .&. 0xff)
+            ]
+        !pidBytes  = w64ToBytes pidW
+        !timeBytes = w64ToBytes timeW
+        -- 16 bytes of pid+time data, zero-padded to 32 bytes
+        !combined  = pidBytes ++ timeBytes ++ replicate 16 0
+    in BS.pack combined
+
+-- | XOR two equal-length ByteStrings byte-by-byte.
+xorBS :: ByteString -> ByteString -> ByteString
+xorBS a b = BS.pack (zipWith xor (BS.unpack a) (BS.unpack b))
+
 -- | Seed (or reseed) the CSPRNG from fresh OS entropy.
 --
 -- Applies HKDF-Extract to concentrate entropy from /dev/urandom into
 -- a uniformly distributed key, guarding against potential bias in the
 -- raw entropy source.  PID is captured here for fork detection.
+--
+-- M17.7.2: The HKDF salt is XORed with PID + current POSIX time to
+-- ensure the salt is unique per process and per seeding event.  This
+-- prevents accidental salt reuse across fork()ed children or rapid
+-- process restarts that land on the same PID.
 seedCSPRNG :: IO CSPRNGState
 seedCSPRNG = do
     entropy <- readEntropy 44  -- 32 key + 12 nonce
-    pid <- fromIntegral <$> getProcessID
-    let !rawKey = BS.take 32 entropy
-        !nonce  = BS.drop 32 entropy
-        -- HKDF-Extract: concentrate entropy with a fixed salt
-        !key    = BS.take 32 (hkdfExtract (BS.pack [0..31]) rawKey)
+    pid <- getProcessID
+    time <- realToFrac <$> getPOSIXTime
+    let !rawKey  = BS.take 32 entropy
+        !nonce   = BS.drop 32 entropy
+        !baseSalt = BS.pack [0..31]
+        !salt    = baseSalt `xorBS` encodePidTime pid time
+        -- HKDF-Extract: concentrate entropy with the process-unique salt
+        !key     = BS.take 32 (hkdfExtract salt rawKey)
+        !pidInt  = fromIntegral pid :: Int
     return CSPRNGState
         { csKey = key, csCounter = 0, csNonce = nonce
-        , csBuffer = BS.empty, csOutputs = 0, csPID = pid }
+        , csBuffer = BS.empty, csOutputs = 0, csPID = pidInt }
 
 -- | Reseed using HKDF-Extract(old_key, fresh_entropy) for backtracking
 -- resistance, then draw a fresh nonce.
