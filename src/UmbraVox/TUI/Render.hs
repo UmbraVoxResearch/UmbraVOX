@@ -161,10 +161,9 @@ renderContactCell lay entries sel focus cScroll row = do
 --   1. One QR code centered (derived from combined X25519+Ed25519 safety number)
 --   2. Standard header centered under QR
 --   3. Safety number rows (up to 5 groups per row, auto-fitted to pane width)
---   4. Blank line
---   5. Two-column fingerprints: " X25519:" | " Ed25519:", then rows side by side
---   6. One spacer line
---   7. In ephemeral mode: warning "⚠ Ephemeral — verify fingerprint out-of-band"
+--   4. Two-column fingerprints: " X25519:" | " Ed25519:", then rows side by side
+--   5. In ephemeral mode: warning "⚠ Ephemeral — verify fingerprint out-of-band"
+--   No blank lines between sections.
 identityPanelLines :: Layout -> Maybe IdentityKey -> Pane -> Bool -> [String]
 identityPanelLines lay mIk _focus isEphemeral =
     let innerW   = lLeftW lay - 2
@@ -195,14 +194,13 @@ identityPanelLines lay mIk _focus isEphemeral =
             in finalize body
 
 -- | Content body for the identity panel (Regenerate button not included).
--- Layout: centered QR code, standard label, safety-number rows, blank,
--- then two-column fingerprint block (X25519 left | Ed25519 right).
+-- Layout: centered QR code, standard label, safety-number rows,
+-- then two-column fingerprint block (X25519 left | Ed25519 right). No blank lines.
 identityBody :: Int -> [String] -> [String] -> [String] -> String -> String -> [String]
 identityBody innerW x25519Lns ed25519Lns qrLns qrStdText safetyNum =
     map centerLine qrLns
     ++ [centerUnderQr innerW qrLns qrStdText]
     ++ map (centerText innerW) (formatSafetyNumberForWidth innerW safetyNum)
-    ++ [replicate innerW ' ']
     ++ fpTwoColLines innerW x25519Lns ed25519Lns
   where
     centerLine s =
@@ -426,7 +424,9 @@ renderInputRow lay grid focus richEnabled buf inputCursor inputScroll mSelStart 
         -- Right pane
         if i == toolbarRow
             then do
-                renderEditorToolbar bodyW richEnabled
+                if richEnabled
+                    then renderEditorToolbar bodyW richEnabled
+                    else putStr (replicate bodyW ' ')
                 setFg 36 >> putStr "\x2502" >> resetSGR
         else if i == boxTopRow
             then do
@@ -529,9 +529,9 @@ renderBottomBorder lay grid = do
           ++ replicate (rw - 1) '\x2500' ++ "\x256F"
     resetSGR
 
-statusBarConnTag :: ConnectionMode -> Bool -> Bool -> Int -> String
-statusBarConnTag connMode isEphemeral anyPersistPlugin nSessions =
-    sessionCount ++ modeTag ++ " \x25C6 " ++ versionFull
+statusBarConnTag :: ConnectionMode -> Bool -> Bool -> Bool -> Int -> String
+statusBarConnTag connMode isEphemeral anyPersistPlugin richEnabled nSessions =
+    sessionCount ++ modeTag ++ richTag ++ " \x25C6 " ++ versionFull
   where
     sessionCount
         | nSessions > 0 = show nSessions ++ " session" ++ (if nSessions > 1 then "s" else "")
@@ -539,10 +539,13 @@ statusBarConnTag connMode isEphemeral anyPersistPlugin nSessions =
     modeTag
         | connMode == Chastity || isEphemeral || not anyPersistPlugin = " \x25C6 EPHEMERAL"
         | otherwise = " \x25C6 PERSISTENT"
+    richTag
+        | richEnabled = " \x25C6 RICH"
+        | otherwise   = " \x25C6 PLAIN"
 
 -- | Status bar: absolute last row, full width, inverted colors.
-renderStatusBar :: Layout -> AppState -> String -> Int -> IO ()
-renderStatusBar lay st status nSessions = do
+renderStatusBar :: Layout -> AppState -> String -> Bool -> Int -> IO ()
+renderStatusBar lay st status richEnabled nSessions = do
     let totalW = lCols lay
         grid = mkRenderGrid lay
     goto (gStatusRow grid) 1; setFg 30; csi "47m"
@@ -551,7 +554,7 @@ renderStatusBar lay st status nSessions = do
     pluginReg <- readIORef (cfgPluginRegistry (asConfig st))
     let anyPersistPlugin = any (\pid -> pluginEnabledReg pid pluginReg)
             ["key-persistence", "message-storage", "ratchet-persistence", "runtime-logging", "full-persistence"]
-        connTag = statusBarConnTag connMode isEphemeral anyPersistPlugin nSessions
+        connTag = statusBarConnTag connMode isEphemeral anyPersistPlugin richEnabled nSessions
         leftInfo = if null status then " Ready" else " " ++ status
         gap = max 1 (totalW - displayWidth leftInfo - displayWidth connTag - 1)
     putStr (padR totalW (leftInfo ++ replicate gap ' ' ++ connTag ++ " "))
@@ -670,7 +673,7 @@ render st = do
                 renderMidBorder lay grid
                 renderInputRow lay grid focus richEnabled buf inputCursor inputScroll mSelStart
                 renderBottomBorder lay grid
-                renderStatusBar lay st status nSessions
+                renderStatusBar lay st status richEnabled nSessions
             else do
                 when leftChanged $ do
                     forM_ [0..chatH'-1] $ \row ->
