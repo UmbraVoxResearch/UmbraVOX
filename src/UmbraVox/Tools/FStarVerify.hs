@@ -198,6 +198,9 @@ runVerification cfg explicitModules = do
 -- This is a simple text scan; it counts any line that contains the
 -- substring \"assume\", which matches both @assume@ declarations and
 -- @assume_val@ annotations.
+-- | Count proof holes in an F* spec file.
+-- Counts lines containing "assume" OR "admit" — both are unproved obligations.
+-- This gives the honest proof debt, not just the assume-flavored subset.
 countAssumes :: FilePath -> IO Int
 countAssumes path = do
     exists <- doesFileExist path
@@ -206,7 +209,8 @@ countAssumes path = do
         else do
             contents <- readFile path
             -- Force full evaluation before returning (avoid lazy I/O leaks)
-            let n = length (filter (containsWord "assume") (lines contents))
+            let ls = lines contents
+                n = length (filter (\l -> containsWord "assume" l || containsWord "admit" l) ls)
             n `seq` pure n
 
 -- | Generate a coverage summary table for all .fst files in a directory.

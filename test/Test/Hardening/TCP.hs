@@ -178,6 +178,9 @@ testTUIRuntimeLogging = do
     whenExists exists (removeFile logPath)
     alice <- mkTestState
     bob <- mkTestState
+    -- Disable ephemeral mode so runtime logging can write to disk
+    writeIORef (cfgEphemeral (asConfig alice)) False
+    writeIORef (cfgEphemeral (asConfig bob)) False
     writeIORef (cfgDebugLogging (asConfig alice)) True
     writeIORef (cfgDebugLogging (asConfig bob)) True
     writeIORef (cfgDebugLogPath (asConfig alice)) logPath
@@ -234,6 +237,9 @@ testTUIRuntimeLoggingFallbackProgress = do
     whenExists exists (removeFile logPath)
     alice <- mkTestState
     bob <- mkTestState
+    -- Disable ephemeral mode so runtime logging can write to disk
+    writeIORef (cfgEphemeral (asConfig alice)) False
+    writeIORef (cfgEphemeral (asConfig bob)) False
     writeIORef (cfgDebugLogging (asConfig alice)) True
     writeIORef (cfgDebugLogging (asConfig bob)) True
     writeIORef (cfgDebugLogPath (asConfig alice)) logPath
