@@ -12,7 +12,7 @@ import UmbraVox.BuildProfile
     )
 import UmbraVox.TUI.Actions
     ( startExport, startImport, renameContact
-    , sendCurrentMessage, quitApp, setStatus
+    , sendCurrentMessage, quitApp, setStatus, openRegenKeyDialog
     )
 import Data.IORef (readIORef, writeIORef, modifyIORef')
 import Data.List (nub)
@@ -71,6 +71,9 @@ data RuntimeCommand
     | CmdTogglePlugin String
     | CmdExportChat
     | CmdImportChat
+    | CmdOpenRegenKey
+    | CmdOpenExportWarn
+    | CmdOpenImportKey
     | CmdQuit
     deriving stock (Eq, Show)
 
@@ -82,13 +85,11 @@ commandForMenuItem MenuContacts 1 = Just CmdOpenVerify
 commandForMenuItem MenuChat 0     = Just CmdOpenNewConversation
 commandForMenuItem MenuChat 1     = Just CmdRenameContact
 commandForMenuItem MenuChat 2     = Just CmdToggleRichText
-commandForMenuItem MenuChat 3     = Just CmdInsertBold
-commandForMenuItem MenuChat 4     = Just CmdInsertItalic
-commandForMenuItem MenuChat 5     = Just CmdInsertColor
-commandForMenuItem MenuChat 6     = Just CmdInsertLink
-commandForMenuItem MenuChat 7     = Just CmdInsertEmoji
-commandForMenuItem MenuChat 8     = Just CmdSendCurrentMessage
-commandForMenuItem MenuChat 9     = Just CmdClearInput
+commandForMenuItem MenuChat 3     = Just CmdSendCurrentMessage
+commandForMenuItem MenuChat 4     = Just CmdClearInput
+commandForMenuItem MenuIdentity 0 = Just CmdOpenRegenKey
+commandForMenuItem MenuIdentity 1 = Just CmdOpenExportWarn
+commandForMenuItem MenuIdentity 2 = Just CmdOpenImportKey
 commandForMenuItem MenuPrefs idx  = case menuPrefsCommands !!? idx of
     Just cmd -> Just cmd
     Nothing -> Nothing
@@ -246,6 +247,15 @@ runRuntimeCommand st cmd =
         CmdImportChat
             | pluginEnabled PluginChatTransfer -> startImport st
             | otherwise -> applyRuntimeEvents st [EventSetStatus (pluginUnavailableStatus PluginChatTransfer)]
+        CmdOpenRegenKey        -> openRegenKeyDialog st
+        CmdOpenExportWarn      ->
+            writeIORef (asRegenCheckbox st) False >>
+            writeIORef (asDialogMode st) (Just DlgExportWarn) >>
+            writeIORef (asDialogScroll st) 0
+        CmdOpenImportKey       -> do
+            writeIORef (asDialogBuf st) ""
+            writeIORef (asDialogMode st) (Just DlgKeys)
+            writeIORef (asDialogScroll st) 0
         CmdQuit                -> quitApp st
 
 openFormatPrompt :: AppState -> String -> (String -> IO ()) -> IO ()

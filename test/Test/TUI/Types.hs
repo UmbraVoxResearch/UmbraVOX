@@ -108,30 +108,31 @@ testCalcLayoutIdentityPanelResponsive = do
                        && lRightW lay > 0) layouts
     assertEq "identity panel stays within chat bounds across sizes" True ok
 
--- | MenuTab enum covers all 5 tabs.
+-- | MenuTab enum covers all 6 tabs.
 testMenuTabEnum :: IO Bool
 testMenuTabEnum = do
     let tabs = [minBound .. maxBound] :: [MenuTab]
-    assertEq "MenuTab has 5 variants" 5 (length tabs)
+    assertEq "MenuTab has 6 variants" 6 (length tabs)
 
 -- | Each MenuTab has at least one item.
 testMenuTabItems :: IO Bool
 testMenuTabItems = do
-    let tabs = [MenuHelp, MenuContacts, MenuChat, MenuPrefs, MenuQuit]
+    let tabs = [MenuHelp, MenuContacts, MenuChat, MenuPrefs, MenuIdentity, MenuQuit]
         allNonEmpty = all (\t -> not (null (menuTabItems t))) tabs
     assertEq "all MenuTab items non-empty" True allNonEmpty
 
 -- | Each MenuTab has a non-empty label.
 testMenuTabLabel :: IO Bool
 testMenuTabLabel = do
-    let tabs = [MenuHelp, MenuContacts, MenuChat, MenuPrefs, MenuQuit]
+    let tabs = [MenuHelp, MenuContacts, MenuChat, MenuPrefs, MenuIdentity, MenuQuit]
         allNonEmpty = all (\t -> not (null (menuTabLabel t))) tabs
     a <- assertEq "all MenuTab labels non-empty" True allNonEmpty
     -- Verify specific labels contain expected F-key references
     b <- assertEq "MenuHelp label contains F1" True ("F1" `isIn` menuTabLabel MenuHelp)
     c <- assertEq "MenuPrefs label contains F4" True ("F4" `isIn` menuTabLabel MenuPrefs)
-    d <- assertEq "MenuQuit label contains Q" True ("Q" `isIn` menuTabLabel MenuQuit)
-    pure (a && b && c && d)
+    d <- assertEq "MenuIdentity label contains F5" True ("F5" `isIn` menuTabLabel MenuIdentity)
+    e <- assertEq "MenuQuit label contains Q" True ("Q" `isIn` menuTabLabel MenuQuit)
+    pure (a && b && c && d && e)
   where
     isIn needle haystack = any (\i -> take (length needle) (drop i haystack) == needle)
                                [0..length haystack - length needle]
@@ -147,10 +148,12 @@ testDropdownAnchorTracksRightJustifiedTabs = do
         contacts120 = dropdownCol 120 MenuContacts
         chat120 = dropdownCol 120 MenuChat
         prefs120 = dropdownCol 120 MenuPrefs
+        identity120 = dropdownCol 120 MenuIdentity
         quit120 = dropdownCol 120 MenuQuit
     a <- assertEq "dropdown anchor shifts right on wider terminals" True (help120 > help80)
     b <- assertEq "dropdown anchors remain ordered by tab" True
-        (help120 < contacts120 && contacts120 < chat120 && chat120 < prefs120 && prefs120 < quit120)
+        (help120 < contacts120 && contacts120 < chat120 && chat120 < prefs120
+            && prefs120 < identity120 && identity120 < quit120)
     pure (a && b)
 
 testBuildPluginRegistry :: IO Bool

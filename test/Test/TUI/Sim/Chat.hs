@@ -152,21 +152,29 @@ testChatEndMovesCursorToEnd = do
 
 testRichToolbarToggle :: IO Bool
 testRichToolbarToggle = do
+    -- Rich/Plain toggle buttons are now in Prefs (F4 menu), not on the toolbar.
+    -- Verify that clicking the toolbar area does NOT toggle rich text (no Rich/Plain buttons).
     st <- mkTestState
     let lay = calcTestLayout
-        (toolbarRow0, toolbarCol0, _, _) = Layout.inputToolbarBounds lay
+        (toolbarRow0, toolbarCol0, _bodyW, _) = Layout.inputToolbarBounds lay
     writeIORef (asRichText st) True
-    handleNormal st (KeyMouseLeft toolbarRow0 (toolbarCol0 + 11))
+    -- Click at column 0 relative to toolbar (before any centered button)
+    handleNormal st (KeyMouseLeft toolbarRow0 (toolbarCol0 + 0))
     richEnabled <- readIORef (asRichText st)
-    assertEq "plain toolbar button disables rich text" False richEnabled
+    assertEq "toolbar click outside buttons does not toggle rich text" True richEnabled
 
 testRichToolbarBoldPrompt :: IO Bool
 testRichToolbarBoldPrompt = do
     st <- mkTestState
     let lay = calcTestLayout
-        (toolbarRow0, toolbarCol0, _, _) = Layout.inputToolbarBounds lay
-    -- Bold button is "[ Bold ]" at relative offset 20-27 (after "[ Rich* ] [ Plain ] ")
-    handleNormal st (KeyMouseLeft toolbarRow0 (toolbarCol0 + 23))
+        (toolbarRow0, toolbarCol0, bodyW, _) = Layout.inputToolbarBounds lay
+        -- Toolbar: "[ Bold ] [ Italic ] [ Color ] [ Link ] [ Emoji ]" (48 chars)
+        -- Centered within bodyW: padLeft = (bodyW - 48) / 2
+        toolbar :: String
+        toolbar = "[ Bold ] [ Italic ] [ Color ] [ Link ] [ Emoji ]"
+        padLeft = max 0 ((bodyW - length toolbar) `div` 2)
+        boldCol = padLeft + 4  -- middle of "[ Bold ]"
+    handleNormal st (KeyMouseLeft toolbarRow0 (toolbarCol0 + boldCol))
     dlg <- readIORef (asDialogMode st)
     assertEq "bold toolbar button opens prompt" True (isDlgPromptWithSubstring "Bold text" dlg)
 
