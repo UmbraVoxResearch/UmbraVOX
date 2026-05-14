@@ -104,10 +104,10 @@ testChatMouseClickMovesCursorOnWrappedLine = do
     let lay = calcTestLayout
         bodyW = max 0 (lRightW lay - 1)
         (_, _, _, entryRows) = Layout.inputEntryBounds lay
-        buf = replicate 90 'x'
+        buf = replicate 200 'x'
         layout = computeInputBufferLayout bodyW entryRows buf
         (inputRow0, inputCol0, _, _) = Layout.inputEntryBounds lay
-        targetCursor = 80
+        targetCursor = 100
     writeIORef (asInputBuf st) buf
     case cursorScreenOffset layout 0 targetCursor of
         Nothing -> assertEq "wrapped click has visible cursor position" True False
@@ -121,15 +121,15 @@ testChatMouseClickMovesCursorOnWrappedLine = do
 testChatVerticalCursorMovementAcrossWrappedLines :: IO Bool
 testChatVerticalCursorMovementAcrossWrappedLines = do
     st <- mkTestState; writeIORef (asFocus st) ChatPane
-    let buf = replicate 90 'x'
+    let buf = replicate 200 'x'
     writeIORef (asInputBuf st) buf
-    writeIORef (asInputCursor st) 80
+    writeIORef (asInputCursor st) 100
     handleChat st KeyUp
     cursorUp <- readIORef (asInputCursor st)
     handleChat st KeyDown
     cursorDown <- readIORef (asInputCursor st)
-    a <- assertEq "chat KeyUp moves cursor to previous wrapped line" True (cursorUp < 80)
-    b <- assertEq "chat KeyDown restores cursor to wrapped continuation line" 80 cursorDown
+    a <- assertEq "chat KeyUp moves cursor to previous wrapped line" True (cursorUp < 100)
+    b <- assertEq "chat KeyDown restores cursor to wrapped continuation line" 100 cursorDown
     pure (a && b)
 
 testChatHomeMovesCursorToStart :: IO Bool

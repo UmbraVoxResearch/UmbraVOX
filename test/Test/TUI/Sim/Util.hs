@@ -62,6 +62,7 @@ mkTestState = do
         <*> newIORef False       -- asRegenCheckbox
         <*> newIORef 0           -- asDialogScroll
         <*> newIORef Nothing     -- asSelectionStart
+        <*> newIORef True        -- asShowIdentity
         <*> newIORef ""          -- asLinkText
         <*> newIORef ""          -- asLinkUrl
         <*> newIORef 0           -- asLinkFocus

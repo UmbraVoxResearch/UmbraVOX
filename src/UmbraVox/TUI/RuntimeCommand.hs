@@ -74,6 +74,7 @@ data RuntimeCommand
     | CmdOpenRegenKey
     | CmdOpenExportWarn
     | CmdOpenImportKey
+    | CmdToggleKeyInfo
     | CmdQuit
     deriving stock (Eq, Show)
 
@@ -90,6 +91,7 @@ commandForMenuItem MenuChat 4     = Just CmdClearInput
 commandForMenuItem MenuIdentity 0 = Just CmdOpenRegenKey
 commandForMenuItem MenuIdentity 1 = Just CmdOpenExportWarn
 commandForMenuItem MenuIdentity 2 = Just CmdOpenImportKey
+commandForMenuItem MenuIdentity 3 = Just CmdToggleKeyInfo
 commandForMenuItem MenuPrefs idx  = case menuPrefsCommands !!? idx of
     Just cmd -> Just cmd
     Nothing -> Nothing
@@ -256,6 +258,11 @@ runRuntimeCommand st cmd =
             writeIORef (asDialogBuf st) ""
             writeIORef (asDialogMode st) (Just DlgKeys)
             writeIORef (asDialogScroll st) 0
+        CmdToggleKeyInfo       -> do
+            shown <- readIORef (asShowIdentity st)
+            let newShown = not shown
+            writeIORef (asShowIdentity st) newShown
+            setStatus st (if newShown then "Key info shown" else "Key info hidden")
         CmdQuit                -> quitApp st
 
 openFormatPrompt :: AppState -> String -> (String -> IO ()) -> IO ()

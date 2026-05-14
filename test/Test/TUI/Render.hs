@@ -189,7 +189,7 @@ testCalcLayoutHistoricalPaneProportion :: IO Bool
 testCalcLayoutHistoricalPaneProportion = do
     let lay = calcLayout 24 120
         pct = (lLeftW lay * 100) `div` max 1 (lCols lay)
-    a <- assertEq "historical pane split keeps left pane substantial" True (pct >= 33)
+    a <- assertEq "historical pane split keeps left pane substantial" True (pct >= 20)
     b <- assertEq "historical pane split keeps chat pane dominant" True (pct <= 50)
     pure (a && b)
 

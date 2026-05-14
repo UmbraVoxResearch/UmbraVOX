@@ -574,7 +574,9 @@ render st = do
             renderSizeWarning rawRows rawCols
     else do
         let (rows, cols) = clampSize rawRows rawCols
-            lay = calcLayout rows cols
+        showIdentity <- readIORef (asShowIdentity st)
+        let lay0 = calcLayout rows cols
+            lay = if showIdentity then lay0 else lay0 { lIdentityH = 0 }
             grid = mkRenderGrid lay
         writeIORef (asLayout st) lay
         focus <- readIORef (asFocus st); sel <- readIORef (asSelected st)
@@ -644,7 +646,7 @@ render st = do
             Nothing -> pure "none"
             Just si -> selectedSessionRenderToken si
         let leftToken =
-                show (rows, cols, focus, sel', cScroll', maybe False (const True) mIk, regenCb, sessionTokens)
+                show (rows, cols, focus, sel', cScroll', maybe False (const True) mIk, regenCb, sessionTokens, showIdentity)
             rightToken =
                 show (rows, cols, sel', scroll', inputScroll, inputCursor, focus, richEnabled, buf, selectedToken, mSelStart)
             chromeToken =
