@@ -28,7 +28,7 @@ sizeValid rows cols = rows >= minTermRows && rows <= maxTermRows
 -- Content: 14 QR + 1 safety label + safetyRows + 1 fp header + 2 fp rows
 -- plus 1 separator = total identityPanelH.
 identityPanelH :: Int -> Int -> Int
-identityPanelH chatH leftW = max 0 (min (chatH - 3) exactRows)
+identityPanelH chatH leftW = max 0 (min maxAllowed exactRows)
   where
     qrRows = 14
     headerRows = 1       -- "Standard: X3DH safety number"
@@ -39,6 +39,8 @@ identityPanelH chatH leftW = max 0 (min (chatH - 3) exactRows)
     safetyRows = (12 + groupsPerRow - 1) `div` groupsPerRow
     -- 1 separator + exact content rows — zero padding
     exactRows = 1 + qrRows + headerRows + safetyRows + fpHeaderRows + fpDataRows
+    -- Cap at 55% of chat area — contacts always get at least 45%
+    maxAllowed = (chatH * 55) `div` 100
 
 -- | Compute the layout geometry from terminal dimensions.
 -- Row budget: 1 menu + 1 separator + (chatH rows of content) + inputAreaRows + 1 status
