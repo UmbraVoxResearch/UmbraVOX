@@ -17,13 +17,24 @@ import UmbraVox.TUI.Terminal (csi, goto, clearScreen, hideCursor, showCursor,
     setFg, resetSGR, bold, padR, getTermSize, withRawMode)
 import UmbraVox.TUI.Layout (clampSize, sizeValid, calcLayout)
 import qualified UmbraVox.TUI.Layout as Layout
-import UmbraVox.TUI.Text (displayWidth, trimToWidth, splitAtWidth)
+import UmbraVox.TUI.Text (displayWidth)
+import UmbraVox.TUI.InputBuffer
+    ( WrappedInputLine(..)
+    , computeInputBufferLayout, visibleInputLines, visibleInputStart, cursorScreenOffset
+    , clampInputScroll, iblShowScrollbar, iblContentW, iblMaxScroll, iblWrapped )
+import UmbraVox.TUI.RichText
+    ( computeRichInputLayout, richVisibleLines, richCursorScreenOffset
+    , richShowScrollbar, richContentW, richMaxScroll
+    , renderRichCharsPaddedSel, renderMarkdownLinePadded
+    )
 import UmbraVox.TUI.Dialog (showOverlay, renderHelpOverlay, renderAboutOverlay, renderKeysOverlay,
     renderSettingsOverlay, renderNewConnOverlay, renderVerifyOverlay,
     renderBrowseOverlay, renderPromptOverlay, renderRegenKeyOverlay, renderDropdown,
     helpOverlayLines, aboutOverlayLines, newConnOverlayLines, keysOverlayLines,
     verifyOverlayLines, promptOverlayLines, settingsOverlayLines, browseOverlayLines,
-    regenKeyOverlayLines, exportWarnOverlayLines, exportKeysOverlayLines)
+    regenKeyOverlayLines, exportWarnOverlayLines, exportKeysOverlayLines,
+    insertLinkOverlayLines, renderInsertLinkOverlay,
+    emojiPickerOverlayLines, renderEmojiPickerOverlay)
 import UmbraVox.Protocol.QRCode (generateSafetyNumber, renderFingerprint, generateQRCode, renderQRCode)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 import UmbraVox.Version (versionFull)
@@ -224,25 +235,6 @@ groupN n xs
         let (a, b) = splitAt n xs
         in a : groupN n b
 
-wrapInputLines :: Int -> String -> [String]
-wrapInputLines width txt
-    | width <= 0 = [""]
-    | null chunks = [""]
-    | otherwise = concatMap wrapChunk chunks
-  where
-    chunks = splitByNewline txt
-    wrapChunk "" = [""]
-    wrapChunk s =
-        let (a, b) = splitAtWidth width s
-        in if null b then [a] else a : wrapChunk b
-
-splitByNewline :: String -> [String]
-splitByNewline [] = [""]
-splitByNewline s =
-    case break (== '\n') s of
-        (a, []) -> [a]
-        (a, _:rest) -> a : splitByNewline rest
-
 -- | Two-column fingerprint block: header row then rows zipped from each fingerprint.
 fpTwoColLines :: Int -> [String] -> [String] -> [String]
 fpTwoColLines innerW x25519Lns ed25519Lns =
@@ -259,10 +251,10 @@ fpTwoColLines innerW x25519Lns ed25519Lns =
 
 -- | Render one content row: left contact + divider + right chat
 renderPaneRow :: Layout -> RenderGrid -> [(SessionId, SessionInfo)] -> Maybe SessionInfo
-              -> Int -> Pane -> Int -> Int -> Int -> IO ()
-renderPaneRow lay grid entries selSi sel focus scroll' cScroll row = do
+              -> Int -> Bool -> Pane -> Int -> Int -> Int -> IO ()
+renderPaneRow lay grid entries selSi sel richEnabled focus scroll' cScroll row = do
     renderPaneRowLeft lay grid entries sel focus cScroll row
-    renderPaneRowRight lay grid selSi focus scroll' row
+    renderPaneRowRight lay grid selSi richEnabled focus scroll' row
 
 renderPaneRowLeft :: Layout -> RenderGrid -> [(SessionId, SessionInfo)] -> Int -> Pane -> Int -> Int -> IO ()
 renderPaneRowLeft lay grid entries sel focus cScroll row = do
@@ -283,8 +275,8 @@ renderPaneRowLeft lay grid entries sel focus cScroll row = do
         then bold >> setFg 32 >> putStr "\x2502" >> resetSGR
         else setFg 36 >> putStr "\x2502" >> resetSGR
 
-renderPaneRowRight :: Layout -> RenderGrid -> Maybe SessionInfo -> Pane -> Int -> Int -> IO ()
-renderPaneRowRight lay grid selSi focus scroll' row = do
+renderPaneRowRight :: Layout -> RenderGrid -> Maybe SessionInfo -> Bool -> Pane -> Int -> Int -> IO ()
+renderPaneRowRight lay grid selSi richEnabled focus scroll' row = do
     let rw = lRightW lay
         contentRow = gContentTop grid + row
         chatH' = lChatH lay
@@ -310,7 +302,9 @@ renderPaneRowRight lay grid selSi focus scroll' row = do
                 offFromTop = max 0 (maxOff - scroll')
                 thumbPos = if maxOff == 0 then 0 else offFromTop * (trackH - thumbSz) `div` max 1 maxOff
             in if row >= thumbPos && row < thumbPos + thumbSz then '\x2588' else '\x2502'
-    putStr (padR msgW msg)
+    if richEnabled
+        then renderMarkdownLinePadded msgW True msg
+        else putStr (padR msgW msg)
     when showScrollbar $ csi "2m" >> setFg 37 >> putChar scrollbarChar >> resetSGR
     -- Right border
     if focus == ChatPane
@@ -359,9 +353,14 @@ renderMidBorder lay grid = do
           ++ replicate (rw - 1) '\x2500' ++ "\x2524"
     resetSGR
 
--- | Input row: blank left pane, input field on right
-renderInputRow :: Layout -> RenderGrid -> Pane -> String -> Int -> IO ()
-renderInputRow lay grid focus buf inputScroll = do
+-- | Input row: blank left pane, input field on right.
+-- Row layout within inputAreaRows (0-based):
+--   0            : toolbar row  │ [ Rich* ] [ Plain ] ... │
+--   1            : text-entry box top border  ╭─...─╮
+--   2..(rows-2)  : text content rows
+--   rows-1       : text-entry box bottom border  ╰─...─╯
+renderInputRow :: Layout -> RenderGrid -> Pane -> Bool -> String -> Int -> Int -> Maybe Int -> IO ()
+renderInputRow lay grid focus richEnabled buf inputCursor inputScroll mSelStart = do
     let lw = lLeftW lay; rw = lRightW lay
         inputTop = gInputTop grid
         inputRows = Layout.inputAreaRows
@@ -369,44 +368,52 @@ renderInputRow lay grid focus buf inputScroll = do
         leftBoxStart = max 0 (inputRows - leftBoxRows)
         leftBoxContentRows = 3
         leftBoxCloseRow = leftBoxStart + leftBoxContentRows
-        prefix = " \x25B8 "
-        rightEntryRows = max 1 (inputRows - 1)
+        toolbarRow = 0
+        boxTopRow = 1
+        rightEntryStart = 2
+        rightEntryRows = max 1 (inputRows - 3)
         bodyW = max 0 (rw - 1)
-        baseTextW = max 1 (bodyW - displayWidth prefix)
-        wrappedBase = wrapInputLines baseTextW buf
-        prefixedBase =
-            case wrappedBase of
-                [] -> [prefix]
-                (x:xs) ->
-                    (prefix ++ x) : map (\ln -> replicate (displayWidth prefix) ' ' ++ ln) xs
-        showScrollbar = length prefixedBase > rightEntryRows
-        sbW = if showScrollbar then 1 else 0
-        textW = max 1 (bodyW - displayWidth prefix - sbW)
-        wrappedInput = wrapInputLines textW buf
-        prefixedLines =
-            case wrappedInput of
-                [] -> [prefix]
-                (x:xs) ->
-                    (prefix ++ x) : map (\ln -> replicate (displayWidth prefix) ' ' ++ ln) xs
-        totalLines = length prefixedLines
-        maxInputOff = max 0 (totalLines - rightEntryRows)
-        inputOff = clampInt 0 maxInputOff inputScroll
-        start = max 0 (totalLines - rightEntryRows - inputOff)
-        visibleInput = take rightEntryRows (drop start prefixedLines)
-        contentW = bodyW - sbW
+        inputLayout = computeInputBufferLayout bodyW rightEntryRows buf
+        richLayout = computeRichInputLayout bodyW rightEntryRows buf
+        inputOff = clampInputScroll inputLayout inputScroll
+        richOff = min (richMaxScroll richLayout) (max 0 inputScroll)
+        visibleInput = visibleInputLines inputLayout inputOff
+        visibleRich = richVisibleLines richLayout richOff
+        showScrollbar = iblShowScrollbar inputLayout
+        showRichScrollbar = richShowScrollbar richLayout
+        contentW = iblContentW inputLayout
+        richW = richContentW richLayout
+        totalLines = rightEntryRows + iblMaxScroll inputLayout
+        richTotalLines = rightEntryRows + richMaxScroll richLayout
+        mCursor = cursorScreenOffset inputLayout inputOff inputCursor
+        richCursor = richCursorScreenOffset richLayout richOff inputCursor
         inputScrollbarChar lineIx =
             let trackH = max 1 rightEntryRows
                 thumbSz = max 1 (trackH * rightEntryRows `div` max 1 totalLines)
-                offFromTop = max 0 (maxInputOff - inputOff)
-                thumbPos = if maxInputOff == 0 then 0 else offFromTop * (trackH - thumbSz) `div` max 1 maxInputOff
+                offFromTop = max 0 (iblMaxScroll inputLayout - inputOff)
+                thumbPos = if iblMaxScroll inputLayout == 0 then 0 else offFromTop * (trackH - thumbSz) `div` max 1 (iblMaxScroll inputLayout)
             in if lineIx >= thumbPos && lineIx < thumbPos + thumbSz then '\x2588' else '\x2502'
-        renderLine line =
-            if focus == ChatPane
-                then padR contentW (trimToWidth (max 0 (contentW - 1)) line ++ "\x2588")
-                else padR contentW line
+        richScrollbarChar lineIx =
+            let trackH = max 1 rightEntryRows
+                thumbSz = max 1 (trackH * rightEntryRows `div` max 1 richTotalLines)
+                offFromTop = max 0 (richMaxScroll richLayout - richOff)
+                thumbPos = if richMaxScroll richLayout == 0 then 0 else offFromTop * (trackH - thumbSz) `div` max 1 (richMaxScroll richLayout)
+            in if lineIx >= thumbPos && lineIx < thumbPos + thumbSz then '\x2588' else '\x2502'
+        -- Selection range in raw buffer indices [selLo, selHi)
+        (mSelLo, mSelHi) = case mSelStart of
+            Nothing -> (Nothing, Nothing)
+            Just selStart ->
+                let lo = min selStart inputCursor
+                    hi = max selStart inputCursor
+                in if lo == hi then (Nothing, Nothing) else (Just lo, Just hi)
+        -- Visible wrapped lines for plain-text selection highlighting
+        visibleWrappedLines =
+            let start = visibleInputStart inputLayout inputOff
+            in take rightEntryRows (drop start (iblWrapped inputLayout))
     forM_ [0..inputRows-1] $ \i -> do
         let inputRow = inputTop + i
         goto inputRow 1
+        -- Left pane
         if i >= leftBoxStart && i < leftBoxCloseRow
             then do
                 setFg 36; putStr "\x2502"; resetSGR
@@ -431,19 +438,50 @@ renderInputRow lay grid focus buf inputScroll = do
                     putStr (replicate (lw - 2) ' ')
                     setFg 36; putStr "\x2502"; resetSGR
                 else putStr (replicate lw ' ')
-        if i < rightEntryRows
-            then if focus == ChatPane
-                then do
-                    bold; setFg 32
-                    let line = if i < length visibleInput then visibleInput !! i else ""
-                    putStr (renderLine line)
-                    resetSGR
-                    when showScrollbar $ csi "2m" >> setFg 37 >> putChar (inputScrollbarChar i) >> resetSGR
-                else do
-                    let line = if i < length visibleInput then visibleInput !! i else ""
-                    putStr (padR contentW line)
-                    when showScrollbar $ csi "2m" >> setFg 37 >> putChar (inputScrollbarChar i) >> resetSGR
-            else if i == rightEntryRows
+        -- Right pane
+        if i == toolbarRow
+            then do
+                renderEditorToolbar bodyW richEnabled
+                setFg 36 >> putStr "\x2502" >> resetSGR
+        else if i == boxTopRow
+            then do
+                setFg 36
+                if rw >= 2
+                    then putStr $ "\x256D" ++ replicate (rw - 2) '\x2500' ++ "\x256E"
+                    else putStr (replicate rw '\x2500')
+                resetSGR
+        else if i >= rightEntryStart && i < rightEntryStart + rightEntryRows
+            then do
+                let lineIx = i - rightEntryStart
+                if richEnabled
+                    then do
+                        let chars = if lineIx < length visibleRich then visibleRich !! lineIx else []
+                            cursorCol = case richCursor of
+                                Just (cursorRow, cursorCol') | focus == ChatPane && cursorRow == lineIx -> Just cursorCol'
+                                _ -> Nothing
+                        when (focus == ChatPane) (bold >> setFg 32)
+                        renderRichCharsPaddedSel richW cursorCol mSelLo mSelHi chars
+                        resetSGR
+                        when showRichScrollbar $ csi "2m" >> setFg 37 >> putChar (richScrollbarChar lineIx) >> resetSGR
+                    else if focus == ChatPane
+                        then do
+                            bold; setFg 32
+                            let line = if lineIx < length visibleInput then visibleInput !! lineIx else ""
+                                wline = if lineIx < length visibleWrappedLines then Just (visibleWrappedLines !! lineIx) else Nothing
+                                lineStart = maybe 0 wilStart wline
+                            case mCursor of
+                                Just (cursorRow, cursorCol)
+                                    | cursorRow == lineIx ->
+                                        renderPlainLineSel contentW line cursorCol lineStart mSelLo mSelHi
+                                _ -> renderPlainLineSel contentW line (-1) lineStart mSelLo mSelHi
+                            resetSGR
+                            when showScrollbar $ csi "2m" >> setFg 37 >> putChar (inputScrollbarChar lineIx) >> resetSGR
+                        else do
+                            let line = if lineIx < length visibleInput then visibleInput !! lineIx else ""
+                            putStr (padR contentW line)
+                            when showScrollbar $ csi "2m" >> setFg 37 >> putChar (inputScrollbarChar lineIx) >> resetSGR
+                setFg 36 >> putStr "\x2502" >> resetSGR
+            else if i == rightEntryStart + rightEntryRows
                 then do
                     setFg 36
                     if rw >= 2
@@ -451,8 +489,54 @@ renderInputRow lay grid focus buf inputScroll = do
                         else putStr (replicate rw '\x2500')
                     resetSGR
             else putStr (replicate bodyW ' ')
-        when (i /= rightEntryRows) $
-            setFg 36 >> putStr "\x2502" >> resetSGR
+
+-- | Render the editor toolbar content (without the trailing border character).
+-- 'bodyW' is the available width for toolbar text, excluding the right border.
+renderEditorToolbar :: Int -> Bool -> IO ()
+renderEditorToolbar bodyW richEnabled = do
+    let buttons =
+            [ if richEnabled then "[ Rich* ]" else "[ Rich ]"
+            , if richEnabled then "[ Plain ]" else "[ Plain* ]"
+            , "[ Bold ]"
+            , "[ Italic ]"
+            , "[ Color ]"
+            , "[ Link ]"
+            , "[ Emoji ]"
+            ]
+        toolbar = unwords buttons
+    setFg 36
+    putStr (padR bodyW toolbar)
+    resetSGR
+
+-- | Render a plain-text input line with optional cursor block and optional
+-- selection highlight.  cursorCol < 0 means no cursor.  lineStart is the
+-- buffer offset of the first character in this visible line.  mSelLo/mSelHi
+-- are raw buffer indices [lo, hi).
+renderPlainLineSel :: Int -> String -> Int -> Int -> Maybe Int -> Maybe Int -> IO ()
+renderPlainLineSel width line cursorCol lineStart mSelLo mSelHi = do
+    finalCol <- go 0 0 line
+    -- Draw cursor at end-of-text if cursor is there
+    let endCol = finalCol
+    when (cursorCol >= 0 && cursorCol == endCol && endCol < width) $ do
+        csi "7m"; putChar '\x2588'; resetSGR; bold; setFg 32
+    let padStart = endCol + (if cursorCol >= 0 && cursorCol == endCol && endCol < width then 1 else 0)
+    putStr (replicate (max 0 (width - padStart)) ' ')
+  where
+    inSel bufIdx = case (mSelLo, mSelHi) of
+        (Just lo, Just hi) -> bufIdx >= lo && bufIdx < hi
+        _ -> False
+    go col _ [] = pure col
+    go col bufOff (ch:rest)
+        | col >= width = pure col
+        | otherwise = do
+            let charW = displayWidth [ch]
+                bufIdx = lineStart + bufOff
+                isCursor = cursorCol >= 0 && col == cursorCol
+                isSel = inSel bufIdx
+            if isCursor || isSel
+                then do csi "7m"; putChar ch; resetSGR; bold; setFg 32
+                else putChar ch
+            go (col + charW) (bufOff + 1) rest
 
 -- | Bottom border, edge-to-edge
 renderBottomBorder :: Layout -> RenderGrid -> IO ()
@@ -505,8 +589,10 @@ render st = do
         writeIORef (asLayout st) lay
         focus <- readIORef (asFocus st); sel <- readIORef (asSelected st)
         sessions <- readIORef (cfgSessions (asConfig st))
-        buf <- readIORef (asInputBuf st); scroll <- readIORef (asChatScroll st)
+        buf <- readIORef (asInputBuf st); inputCursor <- readIORef (asInputCursor st); scroll <- readIORef (asChatScroll st)
+        richEnabled <- readIORef (asRichText st)
         inputScroll <- readIORef (asInputScroll st)
+        mSelStart <- readIORef (asSelectionStart st)
         status <- readIORef (asStatusMsg st)
         cScroll <- readIORef (asContactScroll st)
         mOpen <- readIORef (asMenuOpen st)
@@ -529,6 +615,16 @@ render st = do
             Just DlgRegenKey -> regenKeyOverlayLines regenCb
             Just DlgExportWarn -> pure (exportWarnOverlayLines regenCb)
             Just DlgExportKeys -> exportKeysOverlayLines st
+            Just DlgInsertLink -> do
+                txt   <- readIORef (asLinkText st)
+                url   <- readIORef (asLinkUrl st)
+                focus <- readIORef (asLinkFocus st)
+                pure (insertLinkOverlayLines txt url focus)
+            Just DlgEmojiPicker -> do
+                q    <- readIORef (asEmojiSearch st)
+                cat  <- readIORef (asEmojiCategory st)
+                page <- readIORef (asEmojiPage st)
+                pure (emojiPickerOverlayLines q cat page)
             Just (DlgPrompt title _) -> pure (promptOverlayLines title dlgBuf)
             Nothing -> pure []
         let entries = Map.toList sessions
@@ -560,7 +656,7 @@ render st = do
         let leftToken =
                 show (rows, cols, focus, sel', cScroll', maybe False (const True) mIk, regenCb, sessionTokens)
             rightToken =
-                show (rows, cols, sel', scroll', inputScroll, focus, buf, selectedToken)
+                show (rows, cols, sel', scroll', inputScroll, inputCursor, focus, richEnabled, buf, selectedToken, mSelStart)
             chromeToken =
                 show (rows, cols, mOpen, menuIdx, dlg, browsePage, browseFilter, dlgBuf, status, dialogToken, dlgScroll)
             token =
@@ -580,11 +676,11 @@ render st = do
                 goto 1 1
                 renderMenuBar lay mOpen
                 forM_ [0..chatH'-1] $ \row ->
-                    renderPaneRow lay grid entries selSi sel' focus scroll' cScroll' row
+                    renderPaneRow lay grid entries selSi sel' richEnabled focus scroll' cScroll' row
                 when (lIdentityH lay > 0) $
                     renderIdentityPanel lay grid st mIk
                 renderMidBorder lay grid
-                renderInputRow lay grid focus buf inputScroll
+                renderInputRow lay grid focus richEnabled buf inputCursor inputScroll mSelStart
                 renderBottomBorder lay grid
                 renderStatusBar lay st status nSessions
             else do
@@ -595,8 +691,8 @@ render st = do
                         renderIdentityPanel lay grid st mIk
                 when rightChanged $ do
                     forM_ [0..chatH'-1] $ \row ->
-                        renderPaneRowRight lay grid selSi focus scroll' row
-                    renderInputRow lay grid focus buf inputScroll
+                        renderPaneRowRight lay grid selSi richEnabled focus scroll' row
+                    renderInputRow lay grid focus richEnabled buf inputCursor inputScroll mSelStart
             -- Dropdown menu (rendered on top of content)
             case mOpen of
                 Just tab -> renderDropdown lay tab menuIdx
@@ -615,6 +711,8 @@ render st = do
                 Just DlgExportKeys -> do
                     lns <- exportKeysOverlayLines st
                     showOverlay lay "Export Identity Keys" lns
+                Just DlgInsertLink   -> renderInsertLinkOverlay lay st dlgScroll
+                Just DlgEmojiPicker  -> renderEmojiPickerOverlay lay st dlgScroll
                 Just (DlgPrompt title _) ->
                     renderPromptOverlay lay title dlgBuf dlgScroll
                 Nothing -> pure ()

@@ -25,6 +25,7 @@ import UmbraVox.App.Startup
     ( applyPersistenceAnswer
     , resolvePersistencePreference, persistenceAnswerEnables
     )
+import UmbraVox.Storage.Anthony (loadSetting)
 
 ------------------------------------------------------------------------
 -- CLI flag parsing
@@ -164,6 +165,8 @@ runUi flags = do
     coreState <- newCoreState cfg
     st <- AppState coreState <$> newIORef 0 <*> newIORef ContactPane
                              <*> newIORef "" <*> newIORef ""
+                             <*> newIORef True
+                             <*> newIORef 0
                              <*> newIORef 0 <*> newIORef 0 <*> newIORef ""
                              <*> newIORef Nothing  -- asDialogMode
                              <*> newIORef 0
@@ -177,6 +180,13 @@ runUi flags = do
                              <*> newIORef Nothing  -- asLastRenderToken
                              <*> newIORef False    -- asRegenCheckbox
                              <*> newIORef 0        -- asDialogScroll
+                             <*> newIORef Nothing  -- asSelectionStart
+                             <*> newIORef ""       -- asLinkText
+                             <*> newIORef ""       -- asLinkUrl
+                             <*> newIORef 0        -- asLinkFocus
+                             <*> newIORef 0        -- asEmojiPage
+                             <*> newIORef ""       -- asEmojiSearch
+                             <*> newIORef 0        -- asEmojiCategory
     -- identity already initialized by initCoreRuntime above
     when debugLogging $ logEvent cfg "app.start" []
     activeListenPort <- readIORef (cfgListenPort cfg)
@@ -223,5 +233,14 @@ runUi flags = do
                         else do
                             _ <- applyPersistenceAnswer cfg answer
                             putStrLn "  Storage: ephemeral mode"
+    -- Load persisted UI settings if DB is available
+    mDb <- readIORef (cfgAnthonyDB cfg)
+    case mDb of
+        Just db -> do
+            mRichText <- loadSetting db "rich_text"
+            case mRichText of
+                Just "off" -> writeIORef (asRichText st) False
+                _          -> pure ()
+        Nothing -> pure ()
     _ <- installHandler sigWINCH (Catch $ getTermSize >>= writeIORef (asTermSize st)) Nothing
     withRawMode $ clearScreen >> render st >> eventLoop st

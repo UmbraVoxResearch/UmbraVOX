@@ -1,7 +1,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 module UmbraVox.TUI.Layout
     ( clampSize, sizeValid, calcLayout, dropdownCol, inputAreaRows
-    , chatPaneBounds, contactsPaneBounds, actionsPaneBounds, inputEntryBounds
+    , chatPaneBounds, contactsPaneBounds, actionsPaneBounds, inputToolbarBounds, inputEntryBounds
     ) where
 
 import UmbraVox.TUI.Constants
@@ -9,7 +9,7 @@ import UmbraVox.TUI.LayoutGrid (Bounds(..), TrackSpec(..), resolveTrackSizes)
 import UmbraVox.TUI.Types (Layout(..), MenuTab(..), menuTabLabel)
 
 inputAreaRows :: Int
-inputAreaRows = 6
+inputAreaRows = 7
 
 -- | Clamp terminal dimensions to supported bounds.
 clampSize :: Int -> Int -> (Int, Int)
@@ -23,26 +23,37 @@ sizeValid rows cols = rows >= minTermRows && rows <= maxTermRows
                    && cols >= minTermCols && cols <= maxTermCols
 
 -- | Height of the identity panel (including the leading separator row).
--- Keep this compact so the contacts list remains the primary left-pane surface.
--- Layout target:
---   separator(1) + QR(14) + standard+safety+fp(6) + compact action strip(2)
--- ~= 23 rows max in normal terminals.
-identityPanelH :: Int -> Int
-identityPanelH chatH = min 23 (max 0 (chatH - minContactsRows))
+-- Keep contacts dominant when possible, but reserve enough room on common
+-- terminal sizes to show the full inline QR header plus all safety-number
+-- rows without clipping.
+identityPanelH :: Int -> Int -> Int
+identityPanelH chatH leftW = max 0 (min (chatH - 1) targetRows)
   where
-    -- Keep contacts as the primary list surface on typical terminals.
-    minContactsRows = 14
+    minContactsRows = 8
+    maxIdentityRows = 23
+    qrRows = 14
+    headerRows = 1
+    fingerprintRows = 4
+    innerW = max 1 (leftW - 2)
+    groupsPerRow = max 1 (min 5 ((innerW + 1) `div` 6))
+    safetyRows = (12 + groupsPerRow - 1) `div` groupsPerRow
+    mandatoryRows = 1 + qrRows + headerRows + safetyRows
+    optionalRows = min fingerprintRows
+        (max 0 ((chatH - minContactsRows) - mandatoryRows))
+    targetRows = min maxIdentityRows (mandatoryRows + optionalRows)
 
 -- | Compute the layout geometry from terminal dimensions.
 -- Row budget: 1 menu + 1 separator + (chatH rows of content) + inputAreaRows + 1 status
+-- inputAreaRows includes: 1 toolbar row + 1 box-top + entryRows content + 1 box-bottom
 calcLayout :: Int -> Int -> Layout
 calcLayout rows cols = Layout
-    { lCols      = cols
-    , lRows      = rows
-    , lLeftW     = leftW
-    , lRightW    = rightW
-    , lChatH     = chatH
-    , lIdentityH = identityPanelH chatH
+    { lCols        = cols
+    , lRows        = rows
+    , lLeftW       = leftW
+    , lRightW      = rightW
+    , lChatH       = chatH
+    , lIdentityH   = identityPanelH chatH leftW
+    , lToolbarRow  = 2 + chatH + 1  -- contentTop(2) + chatH rows + mid-border(1) = chatH+3
     }
   where
     rowTracks =
@@ -104,11 +115,22 @@ actionsPaneBounds lay =
     in (r0, c0, w, h)
 
 -- | Interior bounds of the right-side input text-entry box, excluding borders.
+-- Row 0 of inputAreaRows is the toolbar; row 1 is the box top border;
+-- content starts at row 2.  Height = inputAreaRows - 3 (toolbar + top + bottom).
 -- Returns (row0, col0, width, height).
 inputEntryBounds :: Layout -> (Int, Int, Int, Int)
 inputEntryBounds lay =
     let inputTop = lChatH lay + 3
         c0 = lLeftW lay + 1
         w = max 1 (lRightW lay - 1)
-        h = max 1 (inputAreaRows - 1)
-    in (inputTop, c0, w, h)
+        h = max 1 (inputAreaRows - 3)
+    in (inputTop + 2, c0, w, h)
+
+-- | Interior bounds of the right-side input toolbar row, excluding borders.
+-- Returns (row0, col0, width, height).
+inputToolbarBounds :: Layout -> (Int, Int, Int, Int)
+inputToolbarBounds lay =
+    let inputTop = lChatH lay + 3
+        c0 = lLeftW lay + 1
+        w = max 1 (lRightW lay - 1)
+    in (inputTop, c0, w, 1)

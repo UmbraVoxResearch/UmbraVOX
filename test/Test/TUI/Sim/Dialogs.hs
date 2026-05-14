@@ -270,11 +270,13 @@ testBrowseMouseFooterClose = do
 testBrowseScrollbarDrag :: IO Bool
 testBrowseScrollbarDrag = do
     st <- mkTestState
+    let smallLay = calcLayout 16 80
+    writeIORef (asLayout st) smallLay
     seedBrowsePeers st 24
     startBrowse st
     lines' <- browseOverlayLines st
-    let totalLines = length (wrapOverlayLines (overlayWrapWidthForTest calcTestLayout) lines')
-        Just (sbCol, _trackTop, trackBot) = overlayScrollbarBounds calcTestLayout totalLines 0
+    let totalLines = length (wrapOverlayLines (overlayWrapWidthForTest smallLay) lines')
+        Just (sbCol, _trackTop, trackBot) = overlayScrollbarBounds smallLay totalLines 0
     handleMouseDrag st trackBot sbCol
     scroll <- readIORef (asDialogScroll st)
     assertEq "DlgBrowse scrollbar drag updates scroll" True (scroll > 0)
@@ -788,7 +790,7 @@ testNewConnMouseOptionOpensPrompt :: IO Bool
 testNewConnMouseOptionOpensPrompt = do
     st <- mkTestState
     let lines' = wrapOverlayLines (overlayWrapWidthForTest calcTestLayout) newConnOverlayLines
-        lineIx = findLineIndex "   2. [ Single ]   Connect to one peer (host[:port])" lines'
+        lineIx = findLineContaining "2. Single" lines'
         (r0, c0, _, _) = overlayBounds calcTestLayout (length lines')
         row = r0 + 1 + lineIx
         col = c0 + 8

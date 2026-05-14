@@ -152,6 +152,7 @@ sendCurrentMessage st = do
                                         , ("bytes", show (BS.length contents))
                                         ]
                                     writeIORef (asInputBuf st) ""
+                                    writeIORef (asInputCursor st) 0
                                     writeIORef (asChatScroll st) 0
                                     persistMessageIfEnabled cfg sid "You" buf
                 else setStatusLocal st "File not found"
@@ -169,6 +170,7 @@ sendCurrentMessage st = do
                             , ("bytes", show (length buf))
                             ]
                         writeIORef (asInputBuf st) ""
+                        writeIORef (asInputCursor st) 0
                         writeIORef (asChatScroll st) 0
                         persistMessageIfEnabled cfg sid "You" buf
 

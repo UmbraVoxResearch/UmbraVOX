@@ -12,7 +12,7 @@ import Control.Concurrent (threadDelay)
 import Control.Monad (void, when, unless)
 import Data.Bits ((.&.))
 import qualified Data.ByteString as BS
-import Data.Char (isDigit, toLower)
+import Data.Char (isDigit, toLower, toUpper)
 import Data.List (isPrefixOf, isInfixOf)
 import Data.IORef (readIORef, writeIORef, modifyIORef')
 import qualified Data.Map.Strict as Map
@@ -30,20 +30,48 @@ import UmbraVox.TUI.Dialog
     , helpOverlayLines, aboutOverlayLines, newConnOverlayLines
     , verifyOverlayLines, keysOverlayLines, promptOverlayLines, settingsTabLabels
     , regenKeyOverlayLines, exportWarnOverlayLines, exportKeysOverlayLines
-    , wrapOverlayLines
+    , wrapOverlayLines, insertLinkOverlayLines, emojiPickerOverlayLines
+    )
+import UmbraVox.TUI.EmojiPicker
+    ( emojiCategories, emojiByCategory, searchEmoji
+    , emojiPage, emojiPageCount, selectorKeys
     )
 import UmbraVox.TUI.Constants (maxInputLen, maxDialogBufLen, minDropdownW)
 import UmbraVox.TUI.Actions (addSecureNotes, sendCurrentMessage,
     setStatus, adjustContactScroll, openRegenKeyDialog, regenIdentityKey)
 import UmbraVox.TUI.Layout (dropdownCol)
 import qualified UmbraVox.TUI.Layout as Layout
-import UmbraVox.TUI.Text (splitAtWidth, displayWidth)
+import UmbraVox.TUI.InputBuffer
+    ( computeInputBufferLayout, clampInputCursor, cursorIndexForScreenOffset
+    , cursorIndexForLineColumn, ensureCursorVisible, clampInputScroll, iblShowScrollbar, iblMaxScroll
+    , iblBodyW )
+import qualified UmbraVox.TUI.InputBuffer as InputBuffer
+import UmbraVox.TUI.RichText
+    ( computeRichInputLayout, richCursorIndexForLineColumn
+    , richCursorIndexForScreenOffset, richCursorScreenOffset
+    , richEnsureCursorVisible, richClampCursor
+    , richMoveCursorLeft, richMoveCursorRight
+    , richVisibleLines, richShowScrollbar, richMaxScroll, richContentW
+    , richCursorLineIndex, richCursorTextDisplayCol
+    )
+import qualified UmbraVox.TUI.RichText as RichText
 import UmbraVox.Network.MDNS (MDNSPeer(..))
 import UmbraVox.Protocol.Encoding (splitOn, parseHostPort)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 
 data GridRegion = RegionContacts | RegionActions | RegionChat | RegionOverlay
     deriving stock (Eq, Show)
+
+toolbarButtonSpecs :: Bool -> [(String, RuntimeCommand)]
+toolbarButtonSpecs richEnabled =
+    [ (if richEnabled then "[ Rich* ]" else "[ Rich ]", CmdToggleRichText)
+    , (if richEnabled then "[ Plain ]" else "[ Plain* ]", CmdToggleRichText)
+    , ("[ Bold ]", CmdInsertBold)
+    , ("[ Italic ]", CmdInsertItalic)
+    , ("[ Color ]", CmdInsertColor)
+    , ("[ Link ]", CmdInsertLink)
+    , ("[ Emoji ]", CmdInsertEmoji)
+    ]
 
 -- Input handling ----------------------------------------------------------
 readKey :: IO InputEvent
@@ -59,6 +87,9 @@ readKey = do
         '\x07' -> pure KeyCtrlG
         '\x11' -> pure KeyCtrlQ
         '\x04' -> pure KeyCtrlD
+        '\x02' -> pure KeyCtrlB
+        '\x0B' -> pure KeyCtrlK
+        '\x15' -> pure KeyCtrlU
         '\ESC' -> do
             ready <- hReady stdin
             if not ready then pure KeyEscape else do
@@ -73,6 +104,7 @@ readCSI = do
     case c of
         'A' -> pure KeyUp; 'B' -> pure KeyDown
         'C' -> pure KeyRight; 'D' -> pure KeyLeft
+        'H' -> pure KeyHome; 'F' -> pure KeyEnd
         '<' -> readMouseCSI
         '5' -> drainTilde >> pure KeyPageUp
         '6' -> drainTilde >> pure KeyPageDown
@@ -80,12 +112,34 @@ readCSI = do
         _ -> drainSeq >> pure KeyUnknown
   where drainTilde = hReady stdin >>= \r -> when r (void getChar)
 
--- | Handle extended CSI sequences like ESC[1x~ for F-keys
+-- | Read a CSI sequence after seeing '2' (shift modifier).
+-- ESC[1;2A=Shift+Up, B=Shift+Down, C=Shift+Right, D=Shift+Left,
+-- H=Shift+Home, F=Shift+End.  Others are drained.
+readCSIShift :: IO InputEvent
+readCSIShift = do
+    c <- getChar
+    case c of
+        'A' -> pure KeyUp
+        'B' -> pure KeyDown
+        'C' -> pure KeyShiftRight
+        'D' -> pure KeyShiftLeft
+        'H' -> pure KeyShiftHome
+        'F' -> pure KeyShiftEnd
+        _ -> drainSeq >> pure KeyUnknown
+
+-- | Handle extended CSI sequences like ESC[1x~ for F-keys and ESC[1;Nm for modifiers.
 -- F1=ESC[11~, F2=ESC[12~, F3=ESC[13~, F4=ESC[14~, F5=ESC[15~
+-- Shift+Arrow/Home/End = ESC[1;2x
 readCSIExtended :: IO InputEvent
 readCSIExtended = do
     c2 <- getChar
     case c2 of
+        ';' -> do
+            -- ESC[1;Nm — modifier sequence
+            modChar <- getChar
+            case modChar of
+                '2' -> readCSIShift  -- shift modifier
+                _   -> drainSeq >> pure KeyUnknown
         '1' -> drainTilde' >> pure KeyF1   -- ESC[11~
         '2' -> drainTilde' >> pure KeyF2   -- ESC[12~
         '3' -> drainTilde' >> pure KeyF3   -- ESC[13~
@@ -229,6 +283,16 @@ dialogLineCount st DlgRegenKey = do
     length <$> regenKeyOverlayLines checked
 dialogLineCount _ DlgExportWarn = pure (length (exportWarnOverlayLines False))
 dialogLineCount st DlgExportKeys = length <$> exportKeysOverlayLines st
+dialogLineCount st DlgInsertLink = do
+    txt   <- readIORef (asLinkText st)
+    url   <- readIORef (asLinkUrl st)
+    focus <- readIORef (asLinkFocus st)
+    pure (length (insertLinkOverlayLines txt url focus))
+dialogLineCount st DlgEmojiPicker = do
+    q    <- readIORef (asEmojiSearch st)
+    cat  <- readIORef (asEmojiCategory st)
+    page <- readIORef (asEmojiPage st)
+    pure (length (emojiPickerOverlayLines q cat page))
 dialogLineCount st (DlgPrompt title _) = do
     buf <- readIORef (asDialogBuf st)
     pure (length (promptOverlayLines title buf))
@@ -248,6 +312,16 @@ dialogLines st DlgExportWarn = do
     checked <- readIORef (asRegenCheckbox st)
     pure (exportWarnOverlayLines checked)
 dialogLines st DlgExportKeys = exportKeysOverlayLines st
+dialogLines st DlgInsertLink = do
+    txt   <- readIORef (asLinkText st)
+    url   <- readIORef (asLinkUrl st)
+    focus <- readIORef (asLinkFocus st)
+    pure (insertLinkOverlayLines txt url focus)
+dialogLines st DlgEmojiPicker = do
+    q    <- readIORef (asEmojiSearch st)
+    cat  <- readIORef (asEmojiCategory st)
+    page <- readIORef (asEmojiPage st)
+    pure (emojiPickerOverlayLines q cat page)
 dialogLines st (DlgPrompt title _) = do
     buf <- readIORef (asDialogBuf st)
     pure (promptOverlayLines title buf)
@@ -269,12 +343,14 @@ gridRegionsFor lay mOverlay =
     (contactsRow0, contactsCol0, contactsW, contactsH) = Layout.contactsPaneBounds lay
     (actionsRow0, actionsCol0, actionsW, _) = Layout.actionsPaneBounds lay
     (chatRow0, chatCol0, chatW, chatH) = Layout.chatPaneBounds lay
+    (inputRow0, _, _, inputH) = Layout.inputEntryBounds lay
     -- Keep input hit-testing aligned with rendered compact lower-left box:
     -- 3 content rows + 1 closing border row.
     actionsH = 4
     contactsRect = Rect contactsRow0 (contactsRow0 + contactsH - 1) contactsCol0 (contactsCol0 + contactsW - 1)
     actionsRect = Rect actionsRow0 (actionsRow0 + actionsH - 1) actionsCol0 (actionsCol0 + actionsW - 1)
-    chatRect = Rect chatRow0 (chatRow0 + chatH - 1) chatCol0 (chatCol0 + chatW - 1)
+    chatBottom = max (chatRow0 + chatH - 1) (inputRow0 + inputH - 1)
+    chatRect = Rect chatRow0 chatBottom chatCol0 (chatCol0 + chatW - 1)
 
 gridRegionAt :: Layout -> Maybe Rect -> Int -> Int -> Maybe GridRegion
 gridRegionAt lay mOverlay row col = go (gridRegionsFor lay mOverlay)
@@ -361,7 +437,10 @@ handleDialogDrag st lay rows row col = do
             | col == sbCol && row >= trackTop && row <= trackBot -> do
                 let trackH  = trackBot - trackTop + 1
                     maxOff  = max 0 (lineCount - trackH)
-                    newOff  = (row - trackTop) * maxOff `div` max 1 (trackH - 1)
+                    newOff
+                        | row <= trackTop = 0
+                        | row >= trackBot = maxOff
+                        | otherwise = (row - trackTop) * maxOff `div` max 1 (trackH - 1)
                 writeIORef (asDialogScroll st) (max 0 (min maxOff newOff))
             | otherwise -> pure ()
         Nothing -> pure ()
@@ -378,8 +457,10 @@ handleDialogMouseClick st lay dlg rows rawLines row col = do
             Just (sbCol, trackTop, trackBot) | col == sbCol && row >= trackTop && row <= trackBot -> do
                 let trackH  = trackBot - trackTop + 1
                     maxOff  = max 0 (lineCount - trackH)
-                    -- Map click row to a scroll offset proportionally
-                    newOff  = (row - trackTop) * maxOff `div` max 1 (trackH - 1)
+                    newOff
+                        | row <= trackTop = 0
+                        | row >= trackBot = maxOff
+                        | otherwise = (row - trackTop) * maxOff `div` max 1 (trackH - 1)
                 writeIORef (asDialogScroll st) (max 0 (min maxOff newOff))
                 pure True
             _ -> pure False
@@ -393,6 +474,8 @@ handleDialogMouseClick st lay dlg rows rawLines row col = do
                 DlgRegenKey      -> handleDlgRegenKeyClick st lay lineCount rows rawLines row col
                 DlgExportWarn    -> handleDlgExportWarnClick st lay lineCount rows row col
                 DlgExportKeys    -> handleDlgCloseOnly st lay DlgExportKeys lineCount rows rawLines row col
+                DlgInsertLink    -> handleDlgInsertLinkClick st lay lineCount rows row col
+                DlgEmojiPicker   -> handleDlgEmojiPickerClick st lay lineCount rows rawLines row col
                 _                -> handleDlgCloseOnly st lay dlg lineCount rows rawLines row col
 
 handleDlgCloseOnly :: AppState -> Layout -> DialogMode -> Int -> [String] -> [String] -> Int -> Int -> IO ()
@@ -544,6 +627,26 @@ handleDlgExportWarnClick st lay lineCount rows row col = do
         Just action -> action
         Nothing -> pure ()
 
+handleDlgInsertLinkClick :: AppState -> Layout -> Int -> [String] -> Int -> Int -> IO ()
+handleDlgInsertLinkClick st lay lineCount rows row col = do
+    txt   <- readIORef (asLinkText st)
+    url   <- readIORef (asLinkUrl st)
+    focus <- readIORef (asLinkFocus st)
+    let lns = insertLinkOverlayLines txt url focus
+        footerIx = lineCount - 1
+        btn = overlayButtonHit lay lineCount row col footerIx lns
+    case lookup True [ (btn "insert", submitInsertLink st)
+                     , (btn "cancel", closeDialog st)
+                     ] of
+        Just action -> action
+        Nothing -> case overlayContentLine lay lineCount row col of
+            Just lineIx ->
+                -- Line 1 => Text field (0-indexed), line 2 => URL field
+                if lineIx == 1 then writeIORef (asLinkFocus st) 0
+                else if lineIx == 2 then writeIORef (asLinkFocus st) 1
+                else pure ()
+            Nothing -> pure ()
+
 handleOverlayTopClose :: AppState -> Layout -> Int -> Int -> Int -> IO Bool
 handleOverlayTopClose st lay lineCount row col = do
     let (closeRow, closeStart, closeEnd) = overlayCloseBounds lay lineCount
@@ -602,8 +705,10 @@ handleDropdownClick st lay tab row col = do
 
 handlePaneClick :: AppState -> Layout -> Int -> Int -> IO ()
 handlePaneClick st lay row col = do
+    richEnabled <- readIORef (asRichText st)
     let (contactsRow0, contactsCol0, contactsW, contactsH) = Layout.contactsPaneBounds lay
         (inputTop, _, _, _) = Layout.actionsPaneBounds lay
+        (toolbarRow0, _, _, _) = Layout.inputToolbarBounds lay
         contactsBottom = contactsRow0 + contactsH - 1
         identSepRow = contactsBottom + 1
         contentBottom = contactsRow0 + lChatH lay - 1
@@ -644,8 +749,68 @@ handlePaneClick st lay row col = do
                         then handleKeysDlg st (KeyChar 'i')
                         else pure ()
                 else pure ()
-        Just RegionChat -> writeIORef (asFocus st) ChatPane
+        Just RegionChat -> do
+            writeIORef (asFocus st) ChatPane
+            if row == toolbarRow0
+                then handleToolbarClick st lay richEnabled col
+                else placeInputCursorIfNeeded st lay row col
         _ -> pure ()
+
+handleToolbarClick :: AppState -> Layout -> Bool -> Int -> IO ()
+handleToolbarClick st lay richEnabled col =
+    case toolbarButtonAtColumn richEnabled (col - toolbarCol0) of
+        Just CmdToggleRichText
+            | activeButton (0 :: Int) && richEnabled -> pure ()
+            | activeButton (1 :: Int) && not richEnabled -> pure ()
+            | otherwise -> runRuntimeCommand st CmdToggleRichText
+        Just cmd -> runRuntimeCommand st cmd
+        Nothing -> pure ()
+  where
+    (_, toolbarCol0, _, _) = Layout.inputToolbarBounds lay
+    activeButton idx = case buttonSpan idx of
+        Just (startCol, endCol) -> col - toolbarCol0 >= startCol && col - toolbarCol0 <= endCol
+        Nothing -> False
+    buttonSpan target = go 0 0 (toolbarButtonSpecs richEnabled)
+      where
+        go _ _ [] = Nothing
+        go ix start ((label, _):rest)
+            | ix == target = Just (start, start + length label - 1)
+            | otherwise = go (ix + 1) (start + length label + 1) rest
+
+toolbarButtonAtColumn :: Bool -> Int -> Maybe RuntimeCommand
+toolbarButtonAtColumn richEnabled relCol = go 0 (toolbarButtonSpecs richEnabled)
+  where
+    go _ [] = Nothing
+    go start ((label, cmd):rest)
+        | relCol >= start && relCol <= start + length label - 1 = Just cmd
+        | otherwise = go (start + length label + 1) rest
+
+placeInputCursorIfNeeded :: AppState -> Layout -> Int -> Int -> IO ()
+placeInputCursorIfNeeded st lay row col = do
+    let (inputRow0, inputCol0, _, inputH) = Layout.inputEntryBounds lay
+    buf <- readIORef (asInputBuf st)
+    richEnabled <- readIORef (asRichText st)
+    let inputLayout = currentInputLayout lay buf
+        richLayout = currentRichInputLayout lay buf
+        contentRight
+            | richEnabled = inputCol0 + richContentW' richLayout - 1
+            | otherwise = inputCol0 + iblBodyW inputLayout - (if iblShowScrollbar inputLayout then 1 else 0) - 1
+    when (row >= inputRow0 && row <= inputRow0 + inputH - 1 && col >= inputCol0 && col <= contentRight) $ do
+        scrollOff <- readIORef (asInputScroll st)
+        let rowOff = row - inputRow0
+            colOff = col - inputCol0
+            cursor
+                | richEnabled = richCursorIndexForScreenOffset richLayout scrollOff rowOff colOff
+                | otherwise = cursorIndexForScreenOffset inputLayout scrollOff rowOff colOff
+            clampedCursor
+                | richEnabled = richClampCursor richLayout cursor
+                | otherwise = clampInputCursor buf cursor
+            newScroll
+                | richEnabled = richEnsureCursorVisible richLayout scrollOff clampedCursor
+                | otherwise = ensureCursorVisible inputLayout scrollOff clampedCursor
+        writeIORef (asInputCursor st) clampedCursor
+        writeIORef (asInputScroll st) newScroll
+        writeIORef (asSelectionStart st) Nothing
 
 selectContactByRow :: AppState -> Int -> IO ()
 selectContactByRow st rowOffset = do
@@ -699,6 +864,7 @@ handlePaneMouseWheel :: AppState -> Int -> Int -> Int -> IO ()
 handlePaneMouseWheel st row col delta = do
     lay <- readIORef (asLayout st)
     sessions <- readIORef (cfgSessions (asConfig st))
+    richEnabled <- readIORef (asRichText st)
     let contactsH = lChatH lay - lIdentityH lay
         inRect (Rect r0 r1 c0 c1) = row >= r0 && row <= r1 && col >= c0 && col <= c1
         (chatRow0, chatCol0, chatW, chatH) = Layout.chatPaneBounds lay
@@ -728,15 +894,19 @@ handlePaneMouseWheel st row col delta = do
             else if inRect inputRect
                 then do
                     buf <- readIORef (asInputBuf st)
-                    let bodyW = max 0 (lRightW lay - 1)
-                        prefix = " \x25B8 "
-                        maxOff = inputMaxScrollLocal bodyW prefix buf
-                    modifyIORef' (asInputScroll st) (\off -> max 0 (min maxOff (off + delta)))
+                    if richEnabled
+                        then do
+                            let inputLayout = currentRichInputLayout lay buf
+                            modifyIORef' (asInputScroll st) (\off -> max 0 (min (richMaxScroll inputLayout) (off + delta)))
+                        else do
+                            let inputLayout = currentInputLayout lay buf
+                            modifyIORef' (asInputScroll st) (\off -> max 0 (min (iblMaxScroll inputLayout) (off + delta)))
                 else pure ()
 
 handlePaneDrag :: AppState -> Layout -> Int -> Int -> IO ()
 handlePaneDrag st lay row col = do
     sessions <- readIORef (cfgSessions (asConfig st))
+    richEnabled <- readIORef (asRichText st)
     let totalContacts = Map.size sessions
         contactsH = max 1 (lChatH lay - lIdentityH lay)
         contactsMaxOff = max 0 (totalContacts - contactsH)
@@ -768,86 +938,206 @@ handlePaneDrag st lay row col = do
 
     let (inputRow0, _, _, inputH) = Layout.inputEntryBounds lay
     buf <- readIORef (asInputBuf st)
-    let bodyW = max 0 (lRightW lay - 1)
-        prefix = " \x25B8 "
-        inputMaxOff = inputMaxScrollLocal bodyW prefix buf
-        inputShowSb = inputMaxOff > 0
-    when (inputShowSb && col == rightSbCol && row >= inputRow0 && row <= inputRow0 + inputH - 1) $ do
+    let inputLayout = currentInputLayout lay buf
+        richLayout = currentRichInputLayout lay buf
+        inputMaxOff = iblMaxScroll inputLayout
+        richInputMaxOff = richMaxScroll richLayout
+        inputShowSb = iblShowScrollbar inputLayout
+        richInputShowSb = richShowScrollbar richLayout
+    when (((not richEnabled && inputShowSb) || (richEnabled && richInputShowSb))
+        && col == rightSbCol && row >= inputRow0 && row <= inputRow0 + inputH - 1) $ do
         let trackH = max 1 inputH
             rowOff = row - inputRow0
-            offFromTop = rowOff * inputMaxOff `div` max 1 (trackH - 1)
-            newOff = inputMaxOff - offFromTop
-        writeIORef (asInputScroll st) (max 0 (min inputMaxOff newOff))
+            maxOff = if richEnabled then richInputMaxOff else inputMaxOff
+            offFromTop = rowOff * maxOff `div` max 1 (trackH - 1)
+            newOff = maxOff - offFromTop
+        writeIORef (asInputScroll st) (max 0 (min (if richEnabled then richInputMaxOff else inputMaxOff) newOff))
 
 handleIdentity :: AppState -> InputEvent -> IO ()
 handleIdentity st key = case key of
     KeyEnter -> openRegenKeyDialog st
     _        -> pure ()
 
+currentInputLayout :: Layout -> String -> InputBuffer.InputBufferLayout
+currentInputLayout lay buf =
+    let (_, _, bodyW, entryRows) = Layout.inputEntryBounds lay
+    in computeInputBufferLayout bodyW entryRows buf
+
+currentRichInputLayout :: Layout -> String -> RichTextLayout
+currentRichInputLayout lay buf =
+    let (_, _, bodyW, entryRows) = Layout.inputEntryBounds lay
+    in computeRichInputLayout bodyW entryRows buf
+
+type RichTextLayout = RichText.RichInputLayout
+
+richContentW' :: RichTextLayout -> Int
+richContentW' = richContentW
+
 handleChat :: AppState -> InputEvent -> IO ()
 handleChat st key = do
     lay <- readIORef (asLayout st)
     let ch = lChatH lay
-        bodyW = max 0 (lRightW lay - 1)
-        prefix = " \x25B8 "
+    buf <- readIORef (asInputBuf st)
+    richEnabled <- readIORef (asRichText st)
+    cursor0 <- readIORef (asInputCursor st)
+    scroll0 <- readIORef (asInputScroll st)
+    let inputLayout = currentInputLayout lay buf
+        richLayout = currentRichInputLayout lay buf
+        cursor = clampInputCursor buf cursor0
+        richCursor0 = richClampCursor richLayout cursor0
+        scrollOff = clampInputScroll inputLayout scroll0
+        richScrollOff = max 0 (min (richMaxScroll richLayout) scroll0)
+        activeCursor = if richEnabled then richCursor0 else cursor
+        syncScroll newCursor newScroll =
+            if richEnabled
+                then writeIORef (asInputCursor st) (richClampCursor richLayout newCursor)
+                    >> writeIORef (asInputScroll st) (richEnsureCursorVisible richLayout newScroll newCursor)
+                else writeIORef (asInputCursor st) newCursor
+                    >> writeIORef (asInputScroll st) (ensureCursorVisible inputLayout newScroll newCursor)
+        -- Clear selection and move cursor (non-shift movement)
+        clearSelAndSync newCursor newScroll = do
+            writeIORef (asSelectionStart st) Nothing
+            syncScroll newCursor newScroll
+        replaceBuffer newBuf newCursor = do
+            let clampedCursor = clampInputCursor newBuf newCursor
+                newLayout = currentInputLayout lay newBuf
+                newRichLayout = currentRichInputLayout lay newBuf
+            writeIORef (asInputBuf st) newBuf
+            writeIORef (asSelectionStart st) Nothing
+            if richEnabled
+                then do
+                    let richCursor' = richClampCursor newRichLayout clampedCursor
+                    writeIORef (asInputCursor st) richCursor'
+                    writeIORef (asInputScroll st) (richEnsureCursorVisible newRichLayout 0 richCursor')
+                else do
+                    writeIORef (asInputCursor st) clampedCursor
+                    writeIORef (asInputScroll st) (ensureCursorVisible newLayout 0 clampedCursor)
+        -- Extend selection: remember start if not set, then move cursor
+        extendSel newCursor newScroll = do
+            mSel <- readIORef (asSelectionStart st)
+            case mSel of
+                Nothing -> writeIORef (asSelectionStart st) (Just activeCursor)
+                Just _ -> pure ()
+            syncScroll newCursor newScroll
+        -- Wrap selected text or insert empty markers at cursor
+        insertFormatMarkers open close = do
+            mSel <- readIORef (asSelectionStart st)
+            case mSel of
+                Just selStart -> do
+                    let lo = min selStart activeCursor
+                        hi = max selStart activeCursor
+                        (pre, rest') = splitAt lo buf
+                        (mid, post) = splitAt (hi - lo) rest'
+                        newBuf = pre ++ open ++ mid ++ close ++ post
+                        newCursor = lo + length open + (hi - lo) + length close
+                    writeIORef (asRichText st) True
+                    replaceBuffer newBuf newCursor
+                Nothing -> do
+                    let (lhs, rhs) = splitAt activeCursor buf
+                        snippet = open ++ close
+                        newBuf = lhs ++ snippet ++ rhs
+                        newCursor = activeCursor + length open
+                    writeIORef (asRichText st) True
+                    replaceBuffer newBuf newCursor
     case key of
-        KeyChar c    -> modifyIORef' (asInputBuf st) (\s ->
-            if length s >= maxInputLen then s else s ++ [c]) >> writeIORef (asInputScroll st) 0
-        KeyBackspace -> modifyIORef' (asInputBuf st) (\s -> if null s then s else init s)
-                         >> writeIORef (asInputScroll st) 0
-        KeyEnter     -> sendCurrentMessage st >> writeIORef (asInputScroll st) 0
-        KeyUp        -> modifyIORef' (asChatScroll st) (+1)
-        KeyDown      -> modifyIORef' (asChatScroll st) (\s -> max 0 (s-1))
+        KeyChar c
+            | length buf >= maxInputLen -> pure ()
+            | otherwise -> do
+                let (lhs, rhs) = splitAt activeCursor buf
+                replaceBuffer (lhs ++ [c] ++ rhs) (activeCursor + 1)
+        KeyBackspace
+            | richEnabled && richCursor0 <= 0 -> pure ()
+            | not richEnabled && cursor <= 0 -> pure ()
+            | otherwise -> do
+                let (lhs, rhs) = splitAt activeCursor buf
+                replaceBuffer (init lhs ++ rhs) (activeCursor - 1)
+        KeyEnter     -> sendCurrentMessage st >> writeIORef (asInputScroll st) 0 >> writeIORef (asInputCursor st) 0
+                            >> writeIORef (asSelectionStart st) Nothing
+        KeyUp
+            | richEnabled && length (RichText.rilWrapped richLayout) > 1
+            -> writeIORef (asSelectionStart st) Nothing
+                >> moveRichInputCursorVertical st lay buf richCursor0 richScrollOff (-1)
+            | not richEnabled && length (InputBuffer.iblRendered inputLayout) > 1
+            -> writeIORef (asSelectionStart st) Nothing
+                >> moveInputCursorVertical st lay buf cursor scrollOff (-1)
+            | otherwise
+            -> writeIORef (asSelectionStart st) Nothing >> modifyIORef' (asChatScroll st) (+1)
+        KeyDown
+            | richEnabled && length (RichText.rilWrapped richLayout) > 1
+            -> writeIORef (asSelectionStart st) Nothing
+                >> moveRichInputCursorVertical st lay buf richCursor0 richScrollOff 1
+            | not richEnabled && length (InputBuffer.iblRendered inputLayout) > 1
+            -> writeIORef (asSelectionStart st) Nothing
+                >> moveInputCursorVertical st lay buf cursor scrollOff 1
+            | otherwise
+            -> writeIORef (asSelectionStart st) Nothing >> modifyIORef' (asChatScroll st) (\s -> max 0 (s-1))
         KeyPageUp    -> modifyIORef' (asChatScroll st) (+ch)
         KeyPageDown  -> modifyIORef' (asChatScroll st) (\s -> max 0 (s-ch))
-        KeyLeft      -> do
-            buf <- readIORef (asInputBuf st)
-            let maxOff = inputMaxScrollLocal bodyW prefix buf
-            modifyIORef' (asInputScroll st) (\off -> max 0 (min maxOff (off + 1)))
-        KeyRight     -> modifyIORef' (asInputScroll st) (\off -> max 0 (off - 1))
+        KeyLeft
+            | richEnabled && richCursor0 <= 0 -> writeIORef (asSelectionStart st) Nothing
+            | richEnabled -> clearSelAndSync (richMoveCursorLeft richLayout richCursor0) richScrollOff
+            | cursor <= 0 -> writeIORef (asSelectionStart st) Nothing
+            | otherwise -> clearSelAndSync (cursor - 1) scrollOff
+        KeyRight
+            | richEnabled && richCursor0 >= length buf -> writeIORef (asSelectionStart st) Nothing
+            | richEnabled -> clearSelAndSync (richMoveCursorRight richLayout richCursor0) richScrollOff
+            | cursor >= length buf -> writeIORef (asSelectionStart st) Nothing
+            | otherwise -> clearSelAndSync (cursor + 1) scrollOff
+        KeyHome
+            | richEnabled -> clearSelAndSync (richClampCursor richLayout 0) richScrollOff
+            | otherwise -> clearSelAndSync 0 scrollOff
+        KeyEnd
+            | richEnabled -> clearSelAndSync (richClampCursor richLayout (length buf)) richScrollOff
+            | otherwise -> clearSelAndSync (length buf) scrollOff
+        -- Shift+Left/Right extend selection
+        KeyShiftLeft
+            | richEnabled && richCursor0 <= 0 -> pure ()
+            | richEnabled -> extendSel (richMoveCursorLeft richLayout richCursor0) richScrollOff
+            | cursor <= 0 -> pure ()
+            | otherwise -> extendSel (cursor - 1) scrollOff
+        KeyShiftRight
+            | richEnabled && richCursor0 >= length buf -> pure ()
+            | richEnabled -> extendSel (richMoveCursorRight richLayout richCursor0) richScrollOff
+            | cursor >= length buf -> pure ()
+            | otherwise -> extendSel (cursor + 1) scrollOff
+        KeyShiftHome
+            | richEnabled -> extendSel (richClampCursor richLayout 0) richScrollOff
+            | otherwise -> extendSel 0 scrollOff
+        KeyShiftEnd
+            | richEnabled -> extendSel (richClampCursor richLayout (length buf)) richScrollOff
+            | otherwise -> extendSel (length buf) scrollOff
+        -- Formatting shortcuts
+        KeyCtrlB -> insertFormatMarkers "**" "**"
+        KeyCtrlI -> insertFormatMarkers "*" "*"
+        KeyCtrlU -> insertFormatMarkers "<u>" "</u>"
+        KeyCtrlK -> openInsertLinkDialog st buf activeCursor
         _            -> pure ()
 
-wrapLinesLocal :: Int -> String -> [String]
-wrapLinesLocal width txt
-    | width <= 0 = [""]
-    | null chunks = [""]
-    | otherwise = concatMap wrapChunk chunks
-  where
-    chunks = splitByNewlineLocal txt
-    wrapChunk "" = [""]
-    wrapChunk s =
-        let (a, b) = splitAtWidth width s
-        in if null b then [a] else a : wrapChunk b
+moveInputCursorVertical :: AppState -> Layout -> String -> Int -> Int -> Int -> IO ()
+moveInputCursorVertical st lay buf cursor scrollOff delta = do
+    let inputLayout = currentInputLayout lay buf
+        lineIx = InputBuffer.cursorLineIndex inputLayout cursor
+        targetLine = max 0 (min (max 0 (length (InputBuffer.iblWrapped inputLayout) - 1)) (lineIx + delta))
+        targetCursor = cursorForLineAndColumn inputLayout targetLine
+            (InputBuffer.cursorTextDisplayCol inputLayout cursor)
+        newScroll = ensureCursorVisible inputLayout scrollOff targetCursor
+    writeIORef (asInputCursor st) targetCursor
+    writeIORef (asInputScroll st) newScroll
 
-splitByNewlineLocal :: String -> [String]
-splitByNewlineLocal [] = [""]
-splitByNewlineLocal s =
-    case break (== '\n') s of
-        (a, []) -> [a]
-        (a, _:rest) -> a : splitByNewlineLocal rest
+moveRichInputCursorVertical :: AppState -> Layout -> String -> Int -> Int -> Int -> IO ()
+moveRichInputCursorVertical st lay buf cursor scrollOff delta = do
+    let inputLayout = currentRichInputLayout lay buf
+        lineIx = richCursorLineIndex inputLayout cursor
+        targetLine = max 0 (min (max 0 (length (RichText.rilWrapped inputLayout) - 1)) (lineIx + delta))
+        targetCursor = richCursorIndexForLineColumn inputLayout targetLine
+            (richCursorTextDisplayCol inputLayout cursor)
+        newScroll = richEnsureCursorVisible inputLayout scrollOff targetCursor
+    writeIORef (asInputCursor st) targetCursor
+    writeIORef (asInputScroll st) newScroll
 
-inputMaxScrollLocal :: Int -> String -> String -> Int
-inputMaxScrollLocal bodyW prefix buf =
-    let baseTextW = max 1 (bodyW - displayWidth prefix)
-        wrappedBase = wrapLinesLocal baseTextW buf
-        prefixedBase =
-            case wrappedBase of
-                [] -> [prefix]
-                (x:xs) ->
-                    (prefix ++ x) : map (\ln -> replicate (displayWidth prefix) ' ' ++ ln) xs
-        showScrollbar = length prefixedBase > rightEntryRows
-        sbW = if showScrollbar then 1 else 0
-        textW = max 1 (bodyW - displayWidth prefix - sbW)
-        wrappedInput = wrapLinesLocal textW buf
-        prefixedLines =
-            case wrappedInput of
-                [] -> [prefix]
-                (x:xs) ->
-                    (prefix ++ x) : map (\ln -> replicate (displayWidth prefix) ' ' ++ ln) xs
-        totalLines = length prefixedLines
-    in max 0 (totalLines - rightEntryRows)
-  where
-    rightEntryRows = max 1 (Layout.inputAreaRows - 1)
+cursorForLineAndColumn :: InputBuffer.InputBufferLayout -> Int -> Int -> Int
+cursorForLineAndColumn inputLayout lineIx textCol =
+    cursorIndexForLineColumn inputLayout lineIx textCol
 
 -- Dialogs -----------------------------------------------------------------
 
@@ -890,6 +1180,8 @@ handleDialog st key = do
         Just DlgRegenKey -> handleScrollableInteractive st key (handleRegenKeyDlg st key)
         Just DlgExportWarn -> handleScrollableInteractive st key (handleExportWarnDlg st key)
         Just DlgExportKeys -> handleScrollableReadOnly st key DlgExportKeys
+        Just DlgInsertLink   -> handleInsertLinkDlg st key
+        Just DlgEmojiPicker  -> handleEmojiPickerDlg st key
         Just (DlgPrompt _ cb) ->
             handleScrollableInteractive st key $ case key of
                 KeyEnter     -> submitPrompt st cb
@@ -965,6 +1257,144 @@ handleExportWarnDlg st KeyEnter = do
     when checked (writeIORef (asDialogMode st) (Just DlgExportKeys))
 handleExportWarnDlg _ _ = pure ()
 
+-- | Handle key input for the Insert Link modal dialog.
+handleInsertLinkDlg :: AppState -> InputEvent -> IO ()
+handleInsertLinkDlg st KeyEscape = closeDialog st
+handleInsertLinkDlg st KeyTab = do
+    modifyIORef' (asLinkFocus st) (\f -> (f + 1) `mod` 4)
+handleInsertLinkDlg st KeyEnter = do
+    focus <- readIORef (asLinkFocus st)
+    case focus of
+        2 -> submitInsertLink st
+        3 -> closeDialog st
+        _ -> modifyIORef' (asLinkFocus st) (\f -> (f + 1) `mod` 4)
+handleInsertLinkDlg st KeyBackspace = do
+    focus <- readIORef (asLinkFocus st)
+    case focus of
+        0 -> modifyIORef' (asLinkText st) (\s -> if null s then s else init s)
+        1 -> modifyIORef' (asLinkUrl st)  (\s -> if null s then s else init s)
+        _ -> pure ()
+handleInsertLinkDlg st (KeyChar c) = do
+    focus <- readIORef (asLinkFocus st)
+    case focus of
+        0 -> modifyIORef' (asLinkText st) (++ [c])
+        1 -> modifyIORef' (asLinkUrl st)  (++ [c])
+        _ -> pure ()
+handleInsertLinkDlg _ _ = pure ()
+
+-- | Open the Insert Link modal, pre-filling the Text field from any active selection.
+openInsertLinkDialog :: AppState -> String -> Int -> IO ()
+openInsertLinkDialog st buf activeCursor = do
+    mSel <- readIORef (asSelectionStart st)
+    let selText = case mSel of
+            Just selStart ->
+                let lo = min selStart activeCursor
+                    hi = max selStart activeCursor
+                in take (hi - lo) (drop lo buf)
+            Nothing -> ""
+    writeIORef (asLinkText st) selText
+    writeIORef (asLinkUrl st) ""
+    writeIORef (asLinkFocus st) (if null selText then 0 else 1)
+    writeIORef (asDialogMode st) (Just DlgInsertLink)
+    writeIORef (asDialogScroll st) 0
+
+submitInsertLink :: AppState -> IO ()
+submitInsertLink st = do
+    txt <- readIORef (asLinkText st)
+    url <- readIORef (asLinkUrl st)
+    unless (null url) $ do
+        buf    <- readIORef (asInputBuf st)
+        cursor <- readIORef (asInputCursor st)
+        let snippet = "[" ++ txt ++ "](" ++ url ++ ")"
+            (lhs, rhs) = splitAt cursor buf
+            newBuf = lhs ++ snippet ++ rhs
+            newCursor = cursor + length snippet
+        writeIORef (asRichText st) True
+        writeIORef (asInputBuf st) newBuf
+        writeIORef (asInputCursor st) newCursor
+        writeIORef (asSelectionStart st) Nothing
+        writeIORef (asInputScroll st) 0
+    closeDialog st
+
+-- Emoji picker dialog handling --------------------------------------------
+
+handleEmojiPickerDlg :: AppState -> InputEvent -> IO ()
+handleEmojiPickerDlg st KeyEscape = closeDialog st
+handleEmojiPickerDlg st KeyTab = do
+    -- Tab cycles through categories (wraps around)
+    let nCats = length emojiCategories
+    modifyIORef' (asEmojiCategory st) (\c -> (c + 1) `mod` nCats)
+    writeIORef (asEmojiPage st) 0
+handleEmojiPickerDlg st KeyLeft = stepEmojiPage st (-1)
+handleEmojiPickerDlg st KeyRight = stepEmojiPage st 1
+handleEmojiPickerDlg st KeyPageUp = stepEmojiPage st (-1)
+handleEmojiPickerDlg st KeyPageDown = stepEmojiPage st 1
+handleEmojiPickerDlg st KeyEnter = pure ()
+handleEmojiPickerDlg st KeyBackspace = do
+    modifyIORef' (asEmojiSearch st) (\s -> if null s then s else init s)
+    writeIORef (asEmojiPage st) 0
+handleEmojiPickerDlg st (KeyChar c)
+    | c `elem` selectorKeys || (c >= 'a' && c <= 'z') = do
+        -- A-Z or a-z: select emoji at that position
+        selectEmojiByKey st (toUpper c)
+    | otherwise = do
+        -- Any other printable char: append to search
+        modifyIORef' (asEmojiSearch st) (++ [c])
+        writeIORef (asEmojiPage st) 0
+handleEmojiPickerDlg _ _ = pure ()
+
+stepEmojiPage :: AppState -> Int -> IO ()
+stepEmojiPage st delta = do
+    q    <- readIORef (asEmojiSearch st)
+    cat  <- readIORef (asEmojiCategory st)
+    page <- readIORef (asEmojiPage st)
+    let entries = if null q then emojiByCategory cat else searchEmoji q
+        total = emojiPageCount entries
+    writeIORef (asEmojiPage st) (max 0 (min (total - 1) (page + delta)))
+
+selectEmojiByKey :: AppState -> Char -> IO ()
+selectEmojiByKey st key = do
+    q    <- readIORef (asEmojiSearch st)
+    cat  <- readIORef (asEmojiCategory st)
+    page <- readIORef (asEmojiPage st)
+    let entries = if null q then emojiByCategory cat else searchEmoji q
+        pageEntries = emojiPage page entries
+        mIdx = lookup key (zip selectorKeys [0 :: Int ..])
+    case mIdx of
+        Nothing -> pure ()
+        Just idx ->
+            if idx < length pageEntries
+                then do
+                    let (emoji, _) = pageEntries !! idx
+                    insertEmojiIntoInput st emoji
+                else pure ()
+
+insertEmojiIntoInput :: AppState -> String -> IO ()
+insertEmojiIntoInput st emoji = do
+    buf    <- readIORef (asInputBuf st)
+    cursor <- readIORef (asInputCursor st)
+    let (lhs, rhs) = splitAt cursor buf
+        newBuf = lhs ++ emoji ++ rhs
+        newCursor = cursor + length emoji
+    writeIORef (asInputBuf st) newBuf
+    writeIORef (asInputCursor st) newCursor
+    writeIORef (asSelectionStart st) Nothing
+    closeDialog st
+
+-- | Mouse click handler for the emoji picker overlay.
+handleDlgEmojiPickerClick :: AppState -> Layout -> Int -> [String] -> [String] -> Int -> Int -> IO ()
+handleDlgEmojiPickerClick st lay lineCount rows _rawLines row col = do
+    -- Check for Close button
+    let footerIx = lineCount - 1
+        btn = overlayButtonHit lay lineCount row col footerIx rows
+    if btn "close"
+        then closeDialog st
+        else do
+            -- Check for a click on a content line that contains an emoji cell
+            case overlayContentLine lay lineCount row col of
+                Just _lineIx -> pure ()  -- cell-level click not yet implemented
+                Nothing -> pure ()
+
 decodeIdentityHex :: String -> Maybe IdentityKey
 decodeIdentityHex input = do
     let compact = filter (/= ' ') input
@@ -1022,8 +1452,11 @@ handleSettingsDlg st (KeyChar '3') =
     runRuntimeCommand st CmdToggleMDNS
 handleSettingsDlg st (KeyChar '4') =
     runRuntimeCommand st CmdTogglePEX
-handleSettingsDlg st (KeyChar '5') =
-    runRuntimeCommand st CmdTogglePersistentStorage
+handleSettingsDlg st (KeyChar '5') = do
+    tabIx <- readIORef (asDialogTab st)
+    if tabIx == 0
+        then runRuntimeCommand st CmdToggleRichText
+        else runRuntimeCommand st CmdTogglePersistentStorage
 handleSettingsDlg st (KeyChar '6') = do
     if not (pluginEnabled PluginPersistentStorage)
         then setStatus st (pluginUnavailableStatus PluginPersistentStorage)

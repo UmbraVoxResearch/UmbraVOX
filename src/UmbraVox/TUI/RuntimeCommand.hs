@@ -12,7 +12,7 @@ import UmbraVox.BuildProfile
     )
 import UmbraVox.TUI.Actions
     ( startExport, startImport, renameContact
-    , sendCurrentMessage, quitApp
+    , sendCurrentMessage, quitApp, setStatus
     )
 import Data.IORef (readIORef, writeIORef)
 import UmbraVox.TUI.Handshake (genIdentity)
@@ -30,6 +30,7 @@ import UmbraVox.App.Startup
     ( refreshPackagedPluginCatalog
     , refreshTransportProviderCatalog
     )
+import UmbraVox.Storage.Anthony (saveSetting)
 
 data RuntimeCommand
     = CmdOpenNewConversation
@@ -40,6 +41,12 @@ data RuntimeCommand
     | CmdOpenSettings
     | CmdOpenKeys
     | CmdRenameContact
+    | CmdToggleRichText
+    | CmdInsertBold
+    | CmdInsertItalic
+    | CmdInsertColor
+    | CmdInsertLink
+    | CmdInsertEmoji
     | CmdSendCurrentMessage
     | CmdClearInput
     | CmdSetListenPort Int
@@ -69,8 +76,14 @@ commandForMenuItem MenuContacts 0 = Just CmdOpenBrowse
 commandForMenuItem MenuContacts 1 = Just CmdOpenVerify
 commandForMenuItem MenuChat 0     = Just CmdOpenNewConversation
 commandForMenuItem MenuChat 1     = Just CmdRenameContact
-commandForMenuItem MenuChat 2     = Just CmdSendCurrentMessage
-commandForMenuItem MenuChat 3     = Just CmdClearInput
+commandForMenuItem MenuChat 2     = Just CmdToggleRichText
+commandForMenuItem MenuChat 3     = Just CmdInsertBold
+commandForMenuItem MenuChat 4     = Just CmdInsertItalic
+commandForMenuItem MenuChat 5     = Just CmdInsertColor
+commandForMenuItem MenuChat 6     = Just CmdInsertLink
+commandForMenuItem MenuChat 7     = Just CmdInsertEmoji
+commandForMenuItem MenuChat 8     = Just CmdSendCurrentMessage
+commandForMenuItem MenuChat 9     = Just CmdClearInput
 commandForMenuItem MenuPrefs idx  = case menuPrefsCommands !!? idx of
     Just cmd -> Just cmd
     Nothing -> Nothing
@@ -113,6 +126,59 @@ runRuntimeCommand st cmd =
                 Just _  -> pure ()
             applyRuntimeEvents st [EventSetDialog (Just DlgKeys)]
         CmdRenameContact       -> renameContact st
+        CmdToggleRichText      -> do
+            enabled <- readIORef (asRichText st)
+            let newEnabled = not enabled
+            writeIORef (asRichText st) newEnabled
+            mDb <- readIORef (cfgAnthonyDB (asConfig st))
+            case mDb of
+                Just db -> saveSetting db "rich_text" (if newEnabled then "on" else "off")
+                Nothing -> pure ()
+            setStatus st (if newEnabled then "Rich text enabled" else "Rich text disabled")
+        CmdInsertBold          -> do
+            mSel <- readIORef (asSelectionStart st)
+            case mSel of
+                Just _ -> wrapSelectionMarkers st "**" "**"
+                Nothing -> openFormatPrompt st "Bold text" (\val -> wrapSnippet st ("**" ++ val ++ "**"))
+        CmdInsertItalic        -> do
+            mSel <- readIORef (asSelectionStart st)
+            case mSel of
+                Just _ -> wrapSelectionMarkers st "*" "*"
+                Nothing -> openFormatPrompt st "Italic text" (\val -> wrapSnippet st ("*" ++ val ++ "*"))
+        CmdInsertColor         -> do
+            mSel <- readIORef (asSelectionStart st)
+            case mSel of
+                Just _ -> openFormatPrompt st "Color for selection (example: red)" $
+                    \colorName ->
+                        if null colorName
+                            then setStatus st "Color insert requires a color name"
+                            else wrapSelectionMarkersColor st colorName
+                Nothing -> openFormatPrompt st "Color|text (example: red|warning)" $
+                    \val -> case break (== '|') val of
+                        ([], _) -> setStatus st "Color insert expects color|text"
+                        (_, []) -> setStatus st "Color insert expects color|text"
+                        (colorName, _:txt) ->
+                            wrapSnippet st ("<font color=\"" ++ colorName ++ "\">" ++ txt ++ "</font>")
+        CmdInsertLink          -> do
+            buf    <- readIORef (asInputBuf st)
+            cursor <- readIORef (asInputCursor st)
+            mSel   <- readIORef (asSelectionStart st)
+            let selText = case mSel of
+                    Just selStart ->
+                        let lo = min selStart cursor
+                            hi = max selStart cursor
+                        in take (hi - lo) (drop lo buf)
+                    Nothing -> ""
+            writeIORef (asLinkText st) selText
+            writeIORef (asLinkUrl st) ""
+            writeIORef (asLinkFocus st) (if null selText then 0 else 1)
+            writeIORef (asDialogMode st) (Just DlgInsertLink)
+            writeIORef (asDialogScroll st) 0
+        CmdInsertEmoji         -> do
+            writeIORef (asEmojiSearch st) ""
+            writeIORef (asEmojiCategory st) 0
+            writeIORef (asEmojiPage st) 0
+            applyRuntimeEvents st [EventSetDialog (Just DlgEmojiPicker)]
         CmdSendCurrentMessage  -> sendCurrentMessage st
         CmdClearInput          ->
             applyRuntimeEvents st [EventSetInput "", EventSetStatus "Input cleared"]
@@ -157,3 +223,72 @@ runRuntimeCommand st cmd =
             | pluginEnabled PluginChatTransfer -> startImport st
             | otherwise -> applyRuntimeEvents st [EventSetStatus (pluginUnavailableStatus PluginChatTransfer)]
         CmdQuit                -> quitApp st
+
+openFormatPrompt :: AppState -> String -> (String -> IO ()) -> IO ()
+openFormatPrompt st title cb = do
+    writeIORef (asDialogBuf st) ""
+    writeIORef (asDialogMode st) (Just (DlgPrompt title cb))
+
+-- | Wrap the currently selected text with open/close markdown markers.
+-- If no selection is active, insert empty markers at cursor.
+wrapSelectionMarkers :: AppState -> String -> String -> IO ()
+wrapSelectionMarkers st open close = do
+    buf <- readIORef (asInputBuf st)
+    cursor <- readIORef (asInputCursor st)
+    mSel <- readIORef (asSelectionStart st)
+    case mSel of
+        Just selStart -> do
+            let lo = min selStart cursor
+                hi = max selStart cursor
+                (pre, rest') = splitAt lo buf
+                (mid, post) = splitAt (hi - lo) rest'
+                newBuf = pre ++ open ++ mid ++ close ++ post
+                newCursor = lo + length open + (hi - lo) + length close
+            writeIORef (asRichText st) True
+            writeIORef (asInputBuf st) newBuf
+            writeIORef (asInputCursor st) newCursor
+            writeIORef (asSelectionStart st) Nothing
+            writeIORef (asInputScroll st) 0
+            applyRuntimeEvents st [EventSetStatus "Applied formatting"]
+        Nothing -> wrapSnippet st (open ++ close)
+
+-- | Wrap selection with color font tag.
+wrapSelectionMarkersColor :: AppState -> String -> IO ()
+wrapSelectionMarkersColor st colorName =
+    wrapSelectionMarkers st ("<font color=\"" ++ colorName ++ "\">") "</font>"
+
+-- | Wrap selection as a markdown link with given URL.
+wrapSelectionMarkersLink :: AppState -> String -> IO ()
+wrapSelectionMarkersLink st url = do
+    buf <- readIORef (asInputBuf st)
+    cursor <- readIORef (asInputCursor st)
+    mSel <- readIORef (asSelectionStart st)
+    case mSel of
+        Just selStart -> do
+            let lo = min selStart cursor
+                hi = max selStart cursor
+                (pre, rest') = splitAt lo buf
+                (mid, post) = splitAt (hi - lo) rest'
+                newBuf = pre ++ "[" ++ mid ++ "](" ++ url ++ ")" ++ post
+                newCursor = lo + 1 + (hi - lo) + 2 + length url + 1
+            writeIORef (asRichText st) True
+            writeIORef (asInputBuf st) newBuf
+            writeIORef (asInputCursor st) newCursor
+            writeIORef (asSelectionStart st) Nothing
+            writeIORef (asInputScroll st) 0
+            applyRuntimeEvents st [EventSetStatus "Applied link formatting"]
+        Nothing -> wrapSnippet st "[](url)"
+
+wrapSnippet :: AppState -> String -> IO ()
+wrapSnippet st snippet = do
+    buf <- readIORef (asInputBuf st)
+    cursor <- readIORef (asInputCursor st)
+    let (lhs, rhs) = splitAt cursor buf
+        newBuf = lhs ++ snippet ++ rhs
+        newCursor = length lhs + length snippet
+    writeIORef (asRichText st) True
+    writeIORef (asInputBuf st) newBuf
+    writeIORef (asInputCursor st) newCursor
+    writeIORef (asSelectionStart st) Nothing
+    writeIORef (asInputScroll st) 0
+    applyRuntimeEvents st [EventSetStatus "Inserted markdown snippet"]

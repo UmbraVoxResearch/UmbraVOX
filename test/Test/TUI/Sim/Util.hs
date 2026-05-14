@@ -42,6 +42,8 @@ mkTestState = do
         <*> newIORef ContactPane -- asFocus
         <*> newIORef ""          -- asInputBuf
         <*> newIORef ""          -- asDialogBuf
+        <*> newIORef True        -- asRichText
+        <*> newIORef 0           -- asInputCursor
         <*> newIORef 0           -- asChatScroll
         <*> newIORef 0           -- asInputScroll
         <*> newIORef ""          -- asStatusMsg
@@ -57,6 +59,13 @@ mkTestState = do
         <*> newIORef Nothing     -- asLastRenderToken
         <*> newIORef False       -- asRegenCheckbox
         <*> newIORef 0           -- asDialogScroll
+        <*> newIORef Nothing     -- asSelectionStart
+        <*> newIORef ""          -- asLinkText
+        <*> newIORef ""          -- asLinkUrl
+        <*> newIORef 0           -- asLinkFocus
+        <*> newIORef 0           -- asEmojiPage
+        <*> newIORef ""          -- asEmojiSearch
+        <*> newIORef 0           -- asEmojiCategory
 
 calcTestLayout :: Layout
 calcTestLayout = calcLayout 40 120

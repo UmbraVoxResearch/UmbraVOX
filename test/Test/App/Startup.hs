@@ -242,6 +242,7 @@ testRestoredOfflineSessionsFailClosedOnSend = withDB "umbravox-startup-restored-
     focusRef <- newIORef ChatPane
     inputRef <- newIORef "after-restart"
     dialogBufRef <- newIORef ""
+    inputCursorRef <- newIORef (length ("after-restart" :: String))
     chatScrollRef <- newIORef 0
     inputScrollRef <- newIORef 0
     statusRef <- newIORef ""
@@ -257,11 +258,20 @@ testRestoredOfflineSessionsFailClosedOnSend = withDB "umbravox-startup-restored-
     renderTokenRef <- newIORef Nothing
     regenCheckboxRef <- newIORef False
     dialogScrollRef <- newIORef 0
-    let st = AppState cs selectedRef focusRef inputRef dialogBufRef chatScrollRef
-            inputScrollRef
+    selectionStartRef <- newIORef Nothing
+    linkTextRef <- newIORef ""
+    linkUrlRef <- newIORef ""
+    linkFocusRef <- newIORef 0
+    emojiPageRef <- newIORef 0
+    emojiSearchRef <- newIORef ""
+    emojiCategoryRef <- newIORef 0
+    richTextRef <- newIORef True
+    let st = AppState cs selectedRef focusRef inputRef dialogBufRef richTextRef inputCursorRef
+            chatScrollRef inputScrollRef
             statusRef dialogModeRef browsePageRef browseFilterRef
             layoutRef contactScrollRef termSizeRef menuOpenRef menuIndexRef
-            dialogTabRef renderTokenRef regenCheckboxRef dialogScrollRef
+            dialogTabRef renderTokenRef regenCheckboxRef dialogScrollRef selectionStartRef
+            linkTextRef linkUrlRef linkFocusRef emojiPageRef emojiSearchRef emojiCategoryRef
     sendCurrentMessage st
     sessions <- readIORef (cfgSessions cfg)
     let (_, aliceSi) = head (Map.toAscList sessions)

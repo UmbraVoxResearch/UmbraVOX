@@ -210,7 +210,7 @@ testMenuHelpAbout = do
 testMenuChatClearInput :: IO Bool
 testMenuChatClearInput = do
     st <- mkTestState; writeIORef (asInputBuf st) "hello"
-    executeMenuItem st MenuChat 3
+    executeMenuItem st MenuChat 9   -- index 9 = CmdClearInput
     buf <- readIORef (asInputBuf st)
     assertEq "chat clear input" "" buf
 
@@ -339,8 +339,12 @@ findLineContaining needle = go 0
   where
     go _ [] = 0
     go n (line:rest)
-        | needle `prefixOf` line = n
+        | needle `isIn` line = n
         | otherwise = go (n + 1) rest
+
+isIn :: String -> String -> Bool
+isIn needle haystack = any (\i -> take (length needle) (drop i haystack) == needle)
+    [0 .. length haystack - length needle]
 
 overlayWrapWidthForTest :: Layout -> Int
 overlayWrapWidthForTest lay =

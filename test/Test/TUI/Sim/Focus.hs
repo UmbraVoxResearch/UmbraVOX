@@ -5,8 +5,9 @@ module Test.TUI.Sim.Focus (runTests) where
 import Data.IORef (readIORef, writeIORef)
 import Test.Util (assertEq)
 import Test.TUI.Sim.Util
+import qualified UmbraVox.TUI.Layout as Layout
 import UmbraVox.TUI.Types
-import UmbraVox.TUI.Input (handleNormal, handleContact, handleChat)
+import UmbraVox.TUI.Input (handleNormal, handleContact, handleChat, handleMouseDrag)
 
 runTests :: IO Bool
 runTests = do
@@ -20,6 +21,10 @@ runTests = do
         , testTabPreservesScroll
         , testFocusAffectsContactKeys
         , testFocusAffectsChatKeys
+        , testChatLeftScrollsInputOverflow
+        , testChatRightRestoresInputOverflowScroll
+        , testMouseDragScrollsChatHistory
+        , testMouseDragScrollsInputOverflow
         ]
     pure (and results)
 
@@ -75,3 +80,50 @@ testFocusAffectsChatKeys = do
     handleContact st (KeyChar 'a')  -- unknown key in contact pane
     buf <- readIORef (asInputBuf st)
     assertEq "contact KeyChar doesn't affect input" "" buf
+
+testChatLeftScrollsInputOverflow :: IO Bool
+testChatLeftScrollsInputOverflow = do
+    st <- mkTestState
+    writeIORef (asFocus st) ChatPane
+    writeIORef (asInputBuf st) (replicate 400 'x')
+    writeIORef (asInputCursor st) 400
+    writeIORef (asInputScroll st) 0
+    handleChat st KeyLeft
+    cursor <- readIORef (asInputCursor st)
+    assertEq "chat KeyLeft moves input cursor left" 399 cursor
+
+testChatRightRestoresInputOverflowScroll :: IO Bool
+testChatRightRestoresInputOverflowScroll = do
+    st <- mkTestState
+    writeIORef (asFocus st) ChatPane
+    writeIORef (asInputBuf st) (replicate 400 'x')
+    writeIORef (asInputCursor st) 398
+    writeIORef (asInputScroll st) 0
+    handleChat st KeyRight
+    cursor <- readIORef (asInputCursor st)
+    assertEq "chat KeyRight moves input cursor right" 399 cursor
+
+testMouseDragScrollsChatHistory :: IO Bool
+testMouseDragScrollsChatHistory = do
+    st <- mkTestState
+    _ <- addTestSessionWithHistory (asConfig st) "peer"
+        [ "msg-" ++ show n | n <- [1 .. 40 :: Int] ]
+    writeIORef (asFocus st) ChatPane
+    let lay = calcTestLayout
+        (chatRow0, _, _, _) = Layout.chatPaneBounds lay
+        sbCol = lCols lay - 1
+    handleMouseDrag st chatRow0 sbCol
+    off <- readIORef (asChatScroll st)
+    assertEq "mouse drag scrolls chat history" True (off > 0)
+
+testMouseDragScrollsInputOverflow :: IO Bool
+testMouseDragScrollsInputOverflow = do
+    st <- mkTestState
+    writeIORef (asFocus st) ChatPane
+    writeIORef (asInputBuf st) (replicate 400 'x')
+    let lay = calcTestLayout
+        (inputRow0, _, _, _) = Layout.inputEntryBounds lay
+        sbCol = lCols lay - 1
+    handleMouseDrag st inputRow0 sbCol
+    off <- readIORef (asInputScroll st)
+    assertEq "mouse drag scrolls input overflow" True (off > 0)
