@@ -18,11 +18,15 @@ module UmbraVox.TUI.Dialog
     , exportWarnOverlayLines, exportKeysOverlayLines
     , renderPromptOverlay
     , renderDropdown
+    , insertLinkOverlayLines
+    , renderInsertLinkOverlay
+    , emojiPickerOverlayLines
+    , renderEmojiPickerOverlay
     ) where
 
 import Control.Monad (forM_, when)
 import Data.IORef (readIORef)
-import Data.Char (toLower, isSpace)
+import Data.Char (toLower, toUpper, isSpace)
 import Data.List (dropWhileEnd, intercalate)
 import System.IO (hFlush, stdout)
 import UmbraVox.BuildProfile
@@ -50,10 +54,19 @@ import UmbraVox.Protocol.QRCode (generateSafetyNumber, renderSafetyNumber,
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 import UmbraVox.Chat.Session (ChatSession(..))
 import UmbraVox.Crypto.Signal.DoubleRatchet (RatchetState(..))
+import UmbraVox.TUI.EmojiPicker
+    ( emojiCategories, emojiByCategory, searchEmoji
+    , emojiPage, emojiPageCount, selectorKeys
+    )
 import UmbraVox.Network.MDNS (MDNSPeer(..))
 import qualified Data.Map.Strict as Map
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as C8
+import Data.Char (toUpper)
+import UmbraVox.TUI.EmojiPicker
+    ( emojiCategories, emojiByCategory, searchEmoji
+    , emojiPage, emojiPageCount, selectorKeys
+    )
 
 -- Overlays ----------------------------------------------------------------
 overlayBounds :: Layout -> Int -> (Int, Int, Int, Int)
@@ -83,7 +96,7 @@ overlayScrollbarBounds :: Layout -> Int -> Int -> Maybe (Int, Int, Int)
 overlayScrollbarBounds lay totalLines scrollOff =
     let (r0, c0, w, h) = overlayBounds lay totalLines
         contentH = h - 2
-        sbCol    = c0 + w - 1   -- right border column
+        sbCol    = c0 + w - 2   -- inside right content column
         trackTop = r0 + 1
         trackBot = r0 + h - 2
     in if totalLines <= contentH
@@ -569,6 +582,7 @@ settingsOverlayLines st = do
     debugPath <- readIORef (cfgDebugLogPath (asConfig st))
     dbEnabled <- readIORef (cfgDBEnabled (asConfig st))
     mDb       <- readIORef (cfgAnthonyDB (asConfig st))
+    richText  <- readIORef (asRichText st)
     let tf True = "ON"; tf False = "OFF"
         ephemeral = case mDb of { Nothing -> True; Just _ -> False }
     storageLines <- settingsStorageLines st tf dbEnabled ephemeral
@@ -578,7 +592,7 @@ settingsOverlayLines st = do
     let modeLabel = settingsConnModeLabel connMode
         tabLine = tabRowLine settingsTabLabels tabIx
         ctx = SettingsCtx port name mdns pex debugLog debugPath modeLabel storageLines
-                packagedPluginRuntimeCatalog transportProviderRuntimeCatalog
+                packagedPluginRuntimeCatalog transportProviderRuntimeCatalog richText
     tabBody <-
         if buildChastityOnly
             then pure (settingsChastityTab ctx tabIx)
@@ -603,6 +617,7 @@ data SettingsCtx = SettingsCtx
     , sctxStorageLines :: [String]
     , sctxPackagedPlugins :: [PackagedPluginRuntime]
     , sctxTransportProviders :: [CachedTransportProvider]
+    , sctxRichText :: Bool
     }
 
 settingsConnModeLabel :: ConnectionMode -> String
@@ -642,6 +657,7 @@ settingsChastityTab ctx tabIx =
             [ " Simple"
             , "   1. Listen port:    " ++ show (sctxPort ctx)
             , "   2. Display name:   " ++ sctxName ctx
+            , "   5. Rich text:     [" ++ tf (sctxRichText ctx) ++ "]"
             , ""
             , " Discovery, storage, export/import, and logs"
             , " are compile-time disabled in this build."
@@ -674,6 +690,7 @@ settingsFullTab ctx tabIx =
                 , "   1. Listen port:    " ++ show (sctxPort ctx)
                 , "   2. Display name:   " ++ sctxName ctx
                 , "   3. mDNS (LAN):    [" ++ tf (sctxMdns ctx) ++ "]"
+                , "   5. Rich text:     [" ++ tf (sctxRichText ctx) ++ "]"
                 , "   c. Connection mode: [" ++ sctxModeLabel ctx ++ "]"
                 ]
         1 ->
@@ -988,6 +1005,103 @@ renderRegenKeyOverlay lay st scrollOff = do
     checked <- readIORef (asRegenCheckbox st)
     lns <- regenKeyOverlayLines checked
     showOverlayScrolled lay "Regenerate Identity Key" lns scrollOff
+
+-- | Lines for the Insert Link modal.
+-- focusIx: 0=Text field, 1=URL field, 2=Insert btn, 3=Cancel btn.
+insertLinkOverlayLines :: String -> String -> Int -> [String]
+insertLinkOverlayLines linkText linkUrl focusIx =
+    [ ""
+    , "  Text: " ++ markField 0 linkText
+    , "  URL:  " ++ markField 1 linkUrl
+    , ""
+    , "  " ++ markBtn 2 "[ Insert ]" ++ "  " ++ markBtn 3 "[ Cancel ]"
+    , ""
+    ]
+  where
+    markField fi val
+        | fi == focusIx = "\x25B8 " ++ val ++ "\x2588"
+        | otherwise     = val ++ "_"
+    markBtn bi label
+        | bi == focusIx = "*" ++ label ++ "*"
+        | otherwise     = label
+
+renderInsertLinkOverlay :: Layout -> AppState -> Int -> IO ()
+renderInsertLinkOverlay lay st scrollOff = do
+    txt   <- readIORef (asLinkText st)
+    url   <- readIORef (asLinkUrl st)
+    focus <- readIORef (asLinkFocus st)
+    let lns = insertLinkOverlayLines txt url focus
+    showOverlayScrolled lay "Insert Link" lns scrollOff
+
+-- Emoji Picker ------------------------------------------------------------
+
+-- | Build the display lines for the emoji picker overlay.
+-- Layout:
+--   blank line
+--   Search: [query_____]
+--   category tabs
+--   blank line
+--   6 rows of 6 emoji cells: "  K <emoji> ..."
+--   blank line
+--   page indicator + navigation hint
+--   blank line
+--   [ Close ]
+emojiPickerOverlayLines :: String -> Int -> Int -> [String]
+emojiPickerOverlayLines searchQuery catIx pageIx =
+    let entries =
+            if null searchQuery
+                then emojiByCategory catIx
+                else searchEmoji searchQuery
+        totalPages = emojiPageCount entries
+        page = max 0 (min (totalPages - 1) pageIx)
+        pageEntries = emojiPage page entries
+        -- Search bar
+        searchLine = "  Search: [" ++ padRight 16 searchQuery ++ "]"
+        -- Category tabs (only shown when no search query active)
+        catLine = "  " ++ unwords (zipWith renderCatTab [0..] emojiCategories)
+        renderCatTab i name
+            | i == catIx && null searchQuery = "*[" ++ name ++ "]*"
+            | otherwise = "[" ++ name ++ "]"
+        -- Emoji grid: 6 rows × 6 cols = 36 cells
+        gridLines = buildGrid pageEntries
+        -- Page indicator
+        pageLabel = "  Page " ++ show (page + 1) ++ "/" ++ show totalPages
+                 ++ "  \x25C0 Left  Right \x25B6"
+    in [ ""
+       , searchLine
+       , catLine
+       , ""
+       ] ++ gridLines ++
+       [ ""
+       , pageLabel
+       , ""
+       , "[ Close ]"
+       ]
+  where
+    padRight n s =
+        let s' = take n s
+        in s' ++ replicate (n - length s') '_'
+
+    buildGrid entries =
+        let rows = chunkOf 6 (zip selectorKeys (entries ++ repeat ("", "")))
+        in map renderRow rows
+
+    chunkOf _ [] = []
+    chunkOf n xs = take n xs : chunkOf n (drop n xs)
+
+    renderRow cells =
+        concatMap renderCell cells
+
+    renderCell (key, (emoji, _)) =
+        "  " ++ [toUpper key] ++ " " ++ emoji
+
+renderEmojiPickerOverlay :: Layout -> AppState -> Int -> IO ()
+renderEmojiPickerOverlay lay st scrollOff = do
+    q    <- readIORef (asEmojiSearch st)
+    cat  <- readIORef (asEmojiCategory st)
+    page <- readIORef (asEmojiPage st)
+    let lns = emojiPickerOverlayLines q cat page
+    showOverlayScrolled lay "Emoji Picker" lns scrollOff
 
 -- | Render a dropdown menu below its tab position
 renderDropdown :: Layout -> MenuTab -> Int -> IO ()

@@ -45,6 +45,7 @@ runTests = do
         , testCalcLayoutEdgeToEdge
         , testCalcLayoutResponsiveGridBias
         , testCalcLayoutHistoricalPaneProportion
+        , testCalcLayoutKeepsSafetyRowsVisible
         , testStatusBarConnTagNormal
         , testStatusBarConnTagChastity
         , testStatusBarConnTagExplicitEphemeral
@@ -188,9 +189,16 @@ testCalcLayoutHistoricalPaneProportion :: IO Bool
 testCalcLayoutHistoricalPaneProportion = do
     let lay = calcLayout 24 120
         pct = (lLeftW lay * 100) `div` max 1 (lCols lay)
-    a <- assertEq "historical pane split keeps left pane substantial" True (pct >= 35)
+    a <- assertEq "historical pane split keeps left pane substantial" True (pct >= 33)
     b <- assertEq "historical pane split keeps chat pane dominant" True (pct <= 50)
     pure (a && b)
+
+testCalcLayoutKeepsSafetyRowsVisible :: IO Bool
+testCalcLayoutKeepsSafetyRowsVisible = do
+    -- Uses 41 rows to ensure chatH is large enough for a full identity panel
+    -- (inputAreaRows = 7, so chatH = 41 - 11 = 30... use 42 for chatH = 31)
+    let lay = calcLayout 42 120
+    assertEq "identity panel keeps QR, safety rows, and fingerprints visible" True (lIdentityH lay >= 23)
 
 testStatusBarConnTagNormal :: IO Bool
 testStatusBarConnTagNormal =

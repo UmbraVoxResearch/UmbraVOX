@@ -27,6 +27,8 @@ applyRuntimeEvent st evt =
             writeIORef (asDialogScroll st) 0
         EventSetInput buf ->
             writeIORef (asInputBuf st) buf
+            >> writeIORef (asInputCursor st) (length buf)
+            >> writeIORef (asInputScroll st) 0
         EventSetDialogTab tabIx ->
             writeIORef (asDialogTab st) tabIx
         EventResetBrowse -> do

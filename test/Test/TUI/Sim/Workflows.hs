@@ -46,9 +46,9 @@ testWorkflowTypeAndClear = do
     buf1 <- readIORef (asInputBuf st)
     ok1 <- assertEq "workflow: typed text" "hello world" buf1
     handleNormal st KeyF3          -- open Chat menu
-    handleMenu st KeyDown
-    handleMenu st KeyDown
-    handleMenu st KeyDown          -- move to "Clear Input" (index 3)
+    -- MenuChat now has: New(0), Rename(1), Toggle Rich Text(2),
+    -- Bold(3), Italic(4), Color(5), Link(6), Emoji(7), Send(8), Clear Input(9)
+    mapM_ (const (handleMenu st KeyDown)) [1..9 :: Int]
     handleMenu st KeyEnter         -- activate
     buf2 <- readIORef (asInputBuf st)
     ok2 <- assertEq "workflow: cleared" "" buf2

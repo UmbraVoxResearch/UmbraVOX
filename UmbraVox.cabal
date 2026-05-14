@@ -211,11 +211,14 @@ library
       UmbraVox.TUI.Types
       UmbraVox.TUI.Constants
       UmbraVox.TUI.Text
+      UmbraVox.TUI.InputBuffer
+      UmbraVox.TUI.RichText
       UmbraVox.TUI.PaginatedList
       UmbraVox.TUI.Terminal
       UmbraVox.TUI.Layout
       UmbraVox.TUI.LayoutGrid
       UmbraVox.TUI.Dialog
+      UmbraVox.TUI.EmojiPicker
       UmbraVox.TUI.Menu
       UmbraVox.TUI.RuntimeCommand
       UmbraVox.TUI.RuntimeEvent

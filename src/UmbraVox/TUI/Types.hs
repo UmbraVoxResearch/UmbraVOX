@@ -54,7 +54,18 @@ menuTabUnderlineIndex _        = Nothing
 menuTabItems :: MenuTab -> [String]
 menuTabItems MenuHelp     = ["Help", "About"]
 menuTabItems MenuContacts = ["Browse", "Verify"]
-menuTabItems MenuChat     = ["New", "Rename", "Send", "Clear Input"]
+menuTabItems MenuChat     =
+    [ "New"
+    , "Rename"
+    , "Toggle Rich Text"
+    , "Bold"
+    , "Italic"
+    , "Color"
+    , "Link"
+    , "Emoji"
+    , "Send"
+    , "Clear Input"
+    ]
 menuTabItems MenuPrefs
     = ["Settings"]
     ++ if pluginEnabled PluginChatTransfer then ["Export Chat", "Import Chat"] else []
@@ -72,6 +83,8 @@ data AppState = AppState
       --   Shared with the headless runtime via 'UmbraVox.App.State.CoreState'.
     , asSelected :: IORef Int, asFocus :: IORef Pane
     , asInputBuf :: IORef String, asDialogBuf :: IORef String
+    , asRichText :: IORef Bool
+    , asInputCursor :: IORef Int
     , asChatScroll :: IORef Int
     , asInputScroll :: IORef Int
     , asStatusMsg :: IORef String
@@ -93,6 +106,22 @@ data AppState = AppState
     , asDialogScroll :: !(IORef Int)
       -- ^ Scroll offset (in lines) within the currently open dialog overlay.
       --   Reset to 0 whenever a dialog is opened or closed.
+    , asSelectionStart :: !(IORef (Maybe Int))
+      -- ^ Raw buffer index where the current text selection began.
+      --   Nothing means no active selection.
+    , asLinkText :: !(IORef String)
+      -- ^ "Text" field contents for the Insert Link modal.
+    , asLinkUrl :: !(IORef String)
+      -- ^ "URL" field contents for the Insert Link modal.
+    , asLinkFocus :: !(IORef Int)
+      -- ^ Which field/button is focused in DlgInsertLink:
+      --   0 = Text, 1 = URL, 2 = Insert btn, 3 = Cancel btn.
+    , asEmojiPage :: !(IORef Int)
+      -- ^ Current page index in the emoji picker dialog (0-based).
+    , asEmojiSearch :: !(IORef String)
+      -- ^ Active search filter text in the emoji picker dialog.
+    , asEmojiCategory :: !(IORef Int)
+      -- ^ Current category index in the emoji picker dialog (0-based).
     }
 
 -- | Accessor: domain configuration, delegating to 'asCoreState'.
@@ -107,6 +136,7 @@ asRunning = csRunning . asCoreState
 
 data DialogMode = DlgHelp | DlgAbout | DlgSettings | DlgVerify | DlgNewConn
     | DlgKeys | DlgBrowse | DlgRegenKey | DlgExportWarn | DlgExportKeys
+    | DlgInsertLink | DlgEmojiPicker
     | DlgPrompt String (String -> IO ())
 
 instance Eq DialogMode where
@@ -120,6 +150,8 @@ instance Eq DialogMode where
     DlgRegenKey   == DlgRegenKey   = True
     DlgExportWarn == DlgExportWarn = True
     DlgExportKeys == DlgExportKeys = True
+    DlgInsertLink  == DlgInsertLink  = True
+    DlgEmojiPicker == DlgEmojiPicker = True
     DlgPrompt a _ == DlgPrompt b _ = a == b
     _             == _             = False
 
@@ -134,6 +166,8 @@ instance Show DialogMode where
     show DlgRegenKey     = "DlgRegenKey"
     show DlgExportWarn   = "DlgExportWarn"
     show DlgExportKeys   = "DlgExportKeys"
+    show DlgInsertLink   = "DlgInsertLink"
+    show DlgEmojiPicker  = "DlgEmojiPicker"
     show (DlgPrompt s _) = "DlgPrompt " ++ show s ++ " <callback>"
 
 data Layout = Layout
@@ -143,6 +177,7 @@ data Layout = Layout
     , lRightW :: Int      -- ^ chat pane width (including border)
     , lChatH :: Int       -- ^ number of content rows (between header and input)
     , lIdentityH :: Int   -- ^ height of the inline identity panel (rows, including separator)
+    , lToolbarRow :: Int  -- ^ absolute terminal row of the editor toolbar (1-based)
     } deriving stock (Eq)
 
 -- | Terminal-space rectangle used by input hit-testing and menu/dropdown geometry.
@@ -158,9 +193,11 @@ rectContains r row col =
     row >= rectTop r && row <= rectBottom r && col >= rectLeft r && col <= rectRight r
 
 data InputEvent = KeyChar Char | KeyEnter | KeyTab | KeyBackspace | KeyEscape
-    | KeyUp | KeyDown | KeyLeft | KeyRight
+    | KeyUp | KeyDown | KeyLeft | KeyRight | KeyHome | KeyEnd
     | KeyPageUp | KeyPageDown
+    | KeyShiftLeft | KeyShiftRight | KeyShiftHome | KeyShiftEnd
     | KeyCtrlN | KeyCtrlG | KeyCtrlQ | KeyCtrlD
+    | KeyCtrlB | KeyCtrlI | KeyCtrlU | KeyCtrlK
     | KeyMouseLeft Int Int        -- row, col (1-based terminal coordinates)
     | KeyMouseDrag Int Int        -- row, col (drag with button held)
     | KeyMouseRelease Int Int     -- row, col (mouse release)

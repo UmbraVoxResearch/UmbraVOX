@@ -29,11 +29,19 @@ Active TUI regression recovery (historical parity with QR/button exceptions)
   [x] R1.4.a.1 Contacts: mouse wheel + keyboard scroll + conditional scrollbar.
   [x] R1.4.a.2 Chat history: mouse wheel + keyboard scroll + conditional scrollbar.
   [x] R1.4.a.3 Input area: mouse wheel + drag scrollbar + keyboard scroll + conditional scrollbar.
+  [x] R1.4.a.3.c Input area: in-buffer cursor editing via keyboard arrows and mouse click placement.
+  [x] R1.4.a.3.b Keep focused/full `tui-sim` coverage green for pane focus, drag scrolling, browse selection, and small-layout browse scrollbar paths.
   [ ] R1.4.a.4 Runtime screenshot validation pass for scrollbar drag + focus visuals.
   [~] R1.5 Re-validate safety-number section alignment/spacing in current compact left panel.
   [x] R1.5.a Make safety-number rows width-adaptive to prevent clipping at narrow pane widths.
   [ ] R1.5.b Screenshot/runtime verify spacing parity after adaptive safety formatting.
   [ ] R1.6 Verify full-screen parity against latest screenshot pass and close remaining geometry defects.
+  [~] R1.7 Markdown-backed rich-text editor MVP.
+  [x] R1.7.a Keep raw markdown as the transmitted/stored source of truth.
+  [~] R1.7.b Add plain/rich toolbar toggle above the chat input area.
+  [~] R1.7.c Add rich cursor/click movement that skips hidden markdown markers.
+  [~] R1.7.d Add toolbar actions for bold, italic, color, link, and emoji insertion.
+  [ ] R1.7.e Validate focused `tui-sim-chat` coverage for toolbar toggles, prompts, and rich cursor behavior.
 
 ================================================================================
 MILESTONE M1: MVP ASSURANCE CLOSEOUT (BLOCKS PUBLICATION)
