@@ -24,23 +24,23 @@ sizeValid rows cols = rows >= minTermRows && rows <= maxTermRows
 
 -- | Height of the identity panel (including the leading separator row).
 -- Buttons removed (now in F5 Identity menu); panel shows QR, safety number,
--- and fingerprints only.  Give the freed space back to the contacts list.
+-- and fingerprints only.  Fixed at exact content height to waste no rows.
+-- Content: 14 QR + 1 safety label + safetyRows + 1 fp header + 2 fp rows
+-- plus 1 separator = total identityPanelH.
 identityPanelH :: Int -> Int -> Int
 identityPanelH chatH leftW = max 0 (min (chatH - 1) targetRows)
   where
     minContactsRows = 8
-    maxIdentityRows = 20
     qrRows = 14
     headerRows = 1
-    fingerprintRows = 4
+    fpHeaderRows = 1
+    fpDataRows = 2
     innerW = max 1 (leftW - 2)
     groupsPerRow = max 1 (min 5 ((innerW + 1) `div` 6))
     safetyRows = (12 + groupsPerRow - 1) `div` groupsPerRow
-    -- No button rows any more
-    mandatoryRows = 1 + qrRows + headerRows + safetyRows
-    optionalRows = min fingerprintRows
-        (max 0 ((chatH - minContactsRows) - mandatoryRows))
-    targetRows = min maxIdentityRows (mandatoryRows + optionalRows)
+    -- 1 separator + content rows (no wasted blank lines)
+    contentRows = qrRows + headerRows + safetyRows + fpHeaderRows + fpDataRows
+    targetRows = min (chatH - minContactsRows) (1 + contentRows)
 
 -- | Compute the layout geometry from terminal dimensions.
 -- Row budget: 1 menu + 1 separator + (chatH rows of content) + inputAreaRows + 1 status
@@ -64,11 +64,10 @@ calcLayout rows cols = Layout
         , Fixed 1
         ]
     [_, _, chatH, _, _] = resolveTrackSizes rows rowTracks
-    -- Rebalance toward chat/input while retaining a usable left pane:
-    -- left pane around one-third width on typical terminals.
-    targetLeft = max minLeftPaneW ((cols * 34) `div` 100)
+    -- Left pane: just wide enough for QR (~27 chars) and fingerprints (~40 chars).
+    -- Formula: max 20 (min 42 (cols/4)) — compact but usable.
     minRightW = 48
-    leftW = max minLeftPaneW (min targetLeft (cols - minRightW))
+    leftW = max minLeftPaneW (min 42 (min (cols `div` 4) (cols - minRightW)))
     rightW = max minRightW (cols - leftW)
 
 -- | Compute the column position for a dropdown menu under the given tab.

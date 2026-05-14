@@ -203,7 +203,7 @@ testCalcLayoutKeepsSafetyRowsVisible = do
 testStatusBarConnTagNormal :: IO Bool
 testStatusBarConnTagNormal = do
     -- With persistence plugins enabled, non-Chastity non-ephemeral shows PERSISTENT
-    let tag = statusBarConnTag Promiscuous False True 0
+    let tag = statusBarConnTag Promiscuous False True True 0
     a <- assertEq "status bar normal mode with plugins shows PERSISTENT"
             True ("PERSISTENT" `contains` tag)
     b <- assertEq "status bar normal mode with plugins omits EPHEMERAL"
@@ -212,7 +212,7 @@ testStatusBarConnTagNormal = do
 
 testStatusBarConnTagChastity :: IO Bool
 testStatusBarConnTagChastity = do
-    let tag = statusBarConnTag Chastity False True 2
+    let tag = statusBarConnTag Chastity False True True 2
     a <- assertEq "status bar chastity shows ephemeral" True ("EPHEMERAL" `contains` tag)
     b <- assertEq "status bar chastity separates version with diamond" True ("\x25C6 UmbraVOX" `contains` tag)
     pure (a && b)
@@ -221,7 +221,7 @@ testStatusBarConnTagExplicitEphemeral :: IO Bool
 testStatusBarConnTagExplicitEphemeral =
     assertEq "status bar explicit ephemeral flag shows tag"
         True
-        ("EPHEMERAL" `contains` statusBarConnTag Promiscuous True True 0)
+        ("EPHEMERAL" `contains` statusBarConnTag Promiscuous True True True 0)
 
 testPaginatedSliceClampsPage :: IO Bool
 testPaginatedSliceClampsPage = do
