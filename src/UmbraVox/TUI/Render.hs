@@ -179,9 +179,8 @@ identityPanelLines lay mIk _focus isEphemeral =
                     if isEphemeral
                         then body ++ [ephemeralWarn]
                         else body
-            in if length bodyWithWarn <= available
-                then bodyWithWarn ++ replicate (available - length bodyWithWarn) (replicate innerW ' ')
-                else take available bodyWithWarn
+            -- No padding — return exact content. Freed rows go to contacts.
+            in take available bodyWithWarn
     in case mIk of
         Nothing -> noIdLines
         Just ik ->
