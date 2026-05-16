@@ -72,7 +72,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 sanity vm-smoke vm-image-build vm-image-clean image-clean firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 clean cleandb cleanall help
+.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 sanity vm-smoke vm-image-build vm-image-clean image-clean firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot vm-record vm-visual-regression visual-reference-update clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -914,6 +914,26 @@ vm-image-clean:
 	@cabal run umbravox -- vm-image-clean
 
 image-clean: vm-image-clean
+
+vm-socks5-test:
+	@echo "Running SOCKS5 transport test in VM..."
+	@nix-shell --run "cabal run umbravox -- vm-socks5-test"
+
+vm-screenshot:
+	@echo "Capturing TUI screenshots in VM..."
+	@nix-shell --run "cabal run umbravox -- vm-screenshot"
+
+vm-record:
+	@echo "Recording TUI session in VM..."
+	@nix-shell --run "cabal run umbravox -- vm-record"
+
+vm-visual-regression:
+	@echo "Running visual regression check in VM..."
+	@nix-shell --run "cabal run umbravox -- vm-visual-regression"
+
+visual-reference-update:
+	@echo "Updating visual reference baselines..."
+	@cp -v build/evidence/screenshots/*.ansi test/evidence/visual-reference/ 2>/dev/null || echo "No screenshots to copy — run 'make vm-screenshot' first"
 
 # --------------------------------------------------------------------------
 # Firecracker Isolated Smoke Testing

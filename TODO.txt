@@ -275,11 +275,12 @@ outside the MVP and stays deferred until external dependencies are met.
     Note: Correspondence argument documented in doc/hacl-evaluation.md section 4. Chain: NIST/RFC -> .spec -> codegen C (tested against Haskell oracle); F* specs model same algorithms. Gap (no machine-checked .spec-to-F* link) documented with strengthening options.
   [x] M6.3.7 Update assurance matrix: Generated C now "Codegen from .spec" + differential testing documented.
 
-[~] M6.4 Transport plugin ecosystem (F4)
+[x] M6.4 Transport plugin ecosystem (F4)
   [x] F4.1 UDP transport with reliability layer (implemented, tested).
     Note: 4 loopback tests in Test.Network.UDP: round-trip, exact bytes, multi-message ordering, 1KB payload.
   [x] F4.2 Transport provider documentation.
-  [~] F4.3 SOCKS5 proxy transport (implemented, needs testing).
+  [x] F4.3 SOCKS5 proxy transport (implemented, tested).
+    Note: Host-side live test in Test.Network.Socks5Live (microsocks + echo server loopback). VM-side test via scripts/vm-socks5-test.sh. Skips gracefully when microsocks unavailable.
   [x] F4.4 WireGuard transport endpoint.
     Note: TCP over WireGuard interface — no special transport needed, just network configuration.
   [x] F4.5 Provider hot-reload and IPC hosting.
