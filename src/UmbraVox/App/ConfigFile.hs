@@ -11,16 +11,20 @@
 module UmbraVox.App.ConfigFile
     ( loadConfigFile
     , applyConfigFile
+    , verifyConfigHash
     ) where
 
 import Control.Exception (SomeException, catch)
 import Data.Char (isSpace, toLower)
 import Data.IORef (writeIORef)
 import Data.List (dropWhileEnd, isPrefixOf)
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as BS8
 import qualified Data.Map.Strict as Map
 import System.Directory (doesFileExist, getHomeDirectory)
 
 import UmbraVox.App.Config (AppConfig(..))
+import UmbraVox.Crypto.SHA256 (sha256)
 
 -- | Parse a single line into a @(key, value)@ pair.
 -- Returns 'Nothing' for blank lines, comment lines, and malformed lines.
@@ -88,3 +92,40 @@ applyConfigFile cfg appCfg = do
                 _       -> pure ()
 
     normalize = map toLower . dropWhileEnd isSpace . dropWhile isSpace
+
+-- | Verify config file integrity against a pinned SHA-256 hash (M17.7.4).
+--
+-- If the config file contains a @config_hash_pin = <hex>@ entry, the file's
+-- SHA-256 hash (computed over all lines excluding the pin line) is compared
+-- against the pinned value.  Returns:
+--
+-- * @Nothing@ — no pin present (verification skipped)
+-- * @Just True@ — pin present and hash matches
+-- * @Just False@ — pin present but hash does NOT match (tampered)
+verifyConfigHash :: IO (Maybe Bool)
+verifyConfigHash = do
+    home <- getHomeDirectory
+    let path = home ++ "/.umbravox/config"
+    exists <- doesFileExist path
+    if not exists
+        then pure Nothing
+        else (do
+            contents <- readFile path
+            length contents `seq` pure ()
+            let allLines = lines contents
+                cfg = Map.fromList [ p | Just p <- map parseLine allLines ]
+            case Map.lookup "config_hash_pin" cfg of
+                Nothing  -> pure Nothing
+                Just pin -> do
+                    -- Hash all lines except the pin line itself.
+                    -- Use exact key match via parseLine, not prefix match.
+                    let filtered = unlines [ l | l <- allLines
+                                           , maybe True ((/= "config_hash_pin") . fst) (parseLine l) ]
+                        hashBytes = sha256 (BS8.pack filtered)
+                        hashHex = concatMap byteToHex (BS.unpack hashBytes)
+                    pure (Just (map toLower pin == map toLower hashHex))
+            ) `catch` \(_ :: SomeException) -> pure Nothing
+  where
+    byteToHex w = [hexC (fromIntegral w `div` 16), hexC (fromIntegral w `mod` 16)]
+    hexC n | n < 10    = toEnum (fromEnum '0' + n)
+           | otherwise = toEnum (fromEnum 'a' + n - 10)

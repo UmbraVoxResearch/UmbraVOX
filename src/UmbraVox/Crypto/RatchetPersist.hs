@@ -127,14 +127,20 @@ withPersistentEncrypt
 withPersistentEncrypt ephemeral path st plaintext
     | ephemeral = ratchetEncrypt st plaintext
     | otherwise = do
-        -- Persist the counter that will be used AFTER this encryption.
-        -- rsSendN st is the counter for the CURRENT message; ratchetEncrypt
-        -- increments it to (rsSendN st + 1) in the returned state.
-        -- We persist (rsSendN st + 1) so that on crash the receiver knows
-        -- the next safe minimum counter.
-        let nextCounter = rsSendN st + 1
-        persistResult <- try (persistRatchetCounter path nextCounter)
-                        :: IO (Either IOException ())
-        case persistResult of
-            Left ioErr -> pure (Left (PersistenceError (show ioErr)))
-            Right ()   -> ratchetEncrypt st plaintext
+        -- Defense-in-depth: reject counter overflow before persisting.
+        -- DoubleRatchet.hs has its own check (M8.1.1), but we guard here too
+        -- to prevent nonce reuse if the caller bypasses DoubleRatchet's check.
+        if rsSendN st >= 0xFFFFFFFE
+            then pure (Left (PersistenceError "ratchet counter overflow (nonce exhaustion)"))
+            else do
+                -- Persist the counter that will be used AFTER this encryption.
+                -- rsSendN st is the counter for the CURRENT message; ratchetEncrypt
+                -- increments it to (rsSendN st + 1) in the returned state.
+                -- We persist (rsSendN st + 1) so that on crash the receiver knows
+                -- the next safe minimum counter.
+                let nextCounter = rsSendN st + 1
+                persistResult <- try (persistRatchetCounter path nextCounter)
+                                :: IO (Either IOException ())
+                case persistResult of
+                    Left ioErr -> pure (Left (PersistenceError (show ioErr)))
+                    Right ()   -> ratchetEncrypt st plaintext

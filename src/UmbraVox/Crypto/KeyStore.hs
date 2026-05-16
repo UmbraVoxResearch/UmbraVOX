@@ -31,10 +31,11 @@ import System.Directory (createDirectoryIfMissing, doesFileExist, getHomeDirecto
 import System.FilePath ((</>), takeDirectory)
 import System.Posix.Files (ownerReadMode, ownerWriteMode, setFileMode, unionFileModes)
 
+import UmbraVox.BuildProfile (BuildPluginId(..), pluginEnabled)
 import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
 import UmbraVox.Crypto.HKDF (hkdfSHA256Extract, hkdfSHA256Expand)
 import UmbraVox.Crypto.Random (randomBytes)
-import UmbraVox.Crypto.SecureBytes (fromByteString, withSecurePtr)
+import UmbraVox.Crypto.SecureBytes (fromByteString, withSecureKey)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 
 -- | Handle to an encrypted-at-rest key store.
@@ -86,10 +87,14 @@ openKeyStore path passphrase = do
     pure (KeyStore path passphrase)
 
 -- | Save the local identity key to the default application path.
+-- Guarded by the PluginIdentityPersistence build flag; returns ()
+-- silently when the plugin is disabled (ephemeral-by-default, M17.3.1).
 saveIdentityKey :: IdentityKey -> IO ()
-saveIdentityKey ik = do
-    path <- defaultIdentityPath
-    saveIdentityKeyAt path ik
+saveIdentityKey ik
+    | not (pluginEnabled PluginIdentityPersistence) = pure ()
+    | otherwise = do
+        path <- defaultIdentityPath
+        saveIdentityKeyAt path ik
 
 -- | Load the local identity key from the default application path.
 loadIdentityKey :: IO (Maybe IdentityKey)
@@ -99,9 +104,11 @@ loadIdentityKey = do
 
 -- | Save an identity key to a specific path, encrypted with the default
 -- (empty) passphrase derivation for test / passphrase-free use.
+-- Guarded by the PluginIdentityPersistence build flag (M17.3.1).
 saveIdentityKeyAt :: FilePath -> IdentityKey -> IO ()
-saveIdentityKeyAt path ik =
-    saveIdentityKeyWithPassphrase path BS.empty ik
+saveIdentityKeyAt path ik
+    | not (pluginEnabled PluginIdentityPersistence) = pure ()
+    | otherwise = saveIdentityKeyWithPassphrase path BS.empty ik
 
 -- | Load an identity key from a specific path, decrypting with the default
 -- (empty) passphrase derivation.
@@ -115,19 +122,21 @@ loadIdentityKeyAt path =
 
 -- | Write an identity key encrypted with the given passphrase.
 --
+-- Guarded by the PluginIdentityPersistence build flag; silently no-ops
+-- when the plugin is disabled (ephemeral-by-default, M17.3.1).
+--
 -- The derived wrapping key is held in a 'SecureBytes' buffer for the
 -- duration of the GCM operation and is zeroed on scope exit.
 saveIdentityKeyWithPassphrase :: FilePath -> ByteString -> IdentityKey -> IO ()
+saveIdentityKeyWithPassphrase _path _passphrase _ik
+    | not (pluginEnabled PluginIdentityPersistence) = pure ()
 saveIdentityKeyWithPassphrase path passphrase ik = do
     createDirectoryIfMissing True (takeDirectory path)
     nonce <- randomBytes nonceLen
-    let !rawKey    = deriveWrappingKey passphrase
-        !plaintext = encodeIdentityKey ik
-    sbKey <- fromByteString rawKey
-    blob <- withSecurePtr sbKey $ \_ -> do
-        -- Use the ByteString-level key for GCM (gcmEncrypt takes ByteString).
-        -- SecureBytes ensures rawKey memory is zeroed when sbKey is finalised.
-        let !(ct, tag) = gcmEncrypt rawKey nonce BS.empty plaintext
+    let !plaintext = encodeIdentityKey ik
+    sbKey <- fromByteString (deriveWrappingKey passphrase)
+    blob <- withSecureKey sbKey $ \key -> do
+        let !(ct, tag) = gcmEncrypt key nonce BS.empty plaintext
         pure (nonce <> ct <> tag)
     BS.writeFile path blob
     setFileMode path (ownerReadMode `unionFileModes` ownerWriteMode)
@@ -153,12 +162,9 @@ loadIdentityKeyWithPassphrase path passphrase = do
                         !rest    = BS.drop nonceLen blob
                         !ct      = BS.take plaintextLen rest
                         !tag     = BS.drop plaintextLen rest
-                        !rawKey  = deriveWrappingKey passphrase
-                    sbKey <- fromByteString rawKey
-                    mPlaintext <- withSecurePtr sbKey $ \_ ->
-                        -- Use the ByteString-level key for GCM (gcmDecrypt takes ByteString).
-                        -- SecureBytes ensures rawKey memory is zeroed when sbKey is finalised.
-                        pure (gcmDecrypt rawKey nonce BS.empty ct tag)
+                    sbKey <- fromByteString (deriveWrappingKey passphrase)
+                    mPlaintext <- withSecureKey sbKey $ \key ->
+                        pure (gcmDecrypt key nonce BS.empty ct tag)
                     case mPlaintext of
                         Nothing        -> pure Nothing
                         Just plaintext -> pure (decodeIdentityKey plaintext)

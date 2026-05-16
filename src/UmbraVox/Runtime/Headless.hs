@@ -17,9 +17,10 @@ import Control.Monad (forM_, when)
 import Data.IORef (readIORef, writeIORef)
 import qualified Data.Map.Strict as Map
 import System.Exit (ExitCode(..))
+import System.IO (hPutStrLn, stderr)
 
 import UmbraVox.App.Config (AppConfig(..))
-import UmbraVox.App.ConfigFile (loadConfigFile, applyConfigFile)
+import UmbraVox.App.ConfigFile (loadConfigFile, applyConfigFile, verifyConfigHash)
 import UmbraVox.App.Startup (newDefaultAppConfig, initializeLocalIdentity)
 import UmbraVox.App.State (CoreState(..), newCoreState)
 import UmbraVox.App.Types (SessionInfo(..))
@@ -45,6 +46,11 @@ initCoreRuntime mPort = do
     -- Layer 1: apply config file (overrides compile-time defaults)
     fileCfg <- loadConfigFile
     applyConfigFile fileCfg appCfg
+    -- M17.7.4: verify config file hash pin if present (paranoid mode)
+    hashResult <- verifyConfigHash
+    case hashResult of
+        Just False -> hPutStrLn stderr "WARNING: config file hash does not match pin (possible tampering)"
+        _          -> pure ()
     -- Layer 2: apply explicit port override from caller (CLI flags etc.)
     case mPort of
         Just p  -> writeIORef (cfgListenPort appCfg) p

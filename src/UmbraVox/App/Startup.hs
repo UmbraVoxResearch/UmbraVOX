@@ -19,7 +19,7 @@ module UmbraVox.App.Startup
 
 import Control.Exception (SomeException, catch)
 import Control.Concurrent.MVar (newMVar)
-import Control.Monad (when)
+import Control.Monad (unless, when)
 import Data.Char (isSpace, toLower)
 import Data.IORef (newIORef, readIORef, writeIORef, modifyIORef')
 import Data.List (dropWhileEnd, isInfixOf)
@@ -54,7 +54,8 @@ import UmbraVox.Storage.Encryption
 import UmbraVox.Storage.InMemory (newInMemoryStorage)
 import UmbraVox.App.Config
     ( AppConfig(..), ConnectionMode(..) )
-import UmbraVox.Plugin.Registry (defaultPersistencePlugins)
+import UmbraVox.Plugin.Registry (defaultPersistencePlugins, enablePlugin, resolveEnable)
+import qualified UmbraVox.Plugin.Registry as Registry
 import UmbraVox.App.Types
     ( SessionInfo(..), ContactStatus(..) )
 import UmbraVox.Protocol.Handshake (genIdentity)
@@ -282,9 +283,10 @@ restorePersistentStateAt cfg path =
 -- the encrypted path.
 restorePersistentStateAtUnsafe :: AppConfig -> FilePath -> IO Int
 restorePersistentStateAtUnsafe cfg path = do
-    createDirectoryIfMissing True (takeDirectory path)
     mIdentity <- readIORef (cfgIdentity cfg)
     ephemeral <- readIORef (cfgEphemeral cfg)
+    -- M17.3.7: only create DB directory when persistence is active (not ephemeral)
+    unless ephemeral $ createDirectoryIfMissing True (takeDirectory path)
     db <- case mIdentity of
         Just ik -> do
             salt <- if ephemeral
@@ -300,7 +302,13 @@ restorePersistentStateAtUnsafe cfg path = do
     writeIORef (cfgStorage cfg) (anthonyStorageHandle db)
     writeIORef (cfgDBEnabled cfg) True
     writeIORef (cfgPersistencePreference cfg) (Just True)
-    when (not ephemeral) $
+    -- M17.3.6: enable message-storage (and deps) in the runtime plugin
+    -- registry now that the DB is open, then guard the .pref sidecar write
+    -- behind the plugin check so no preference file touches disk when the
+    -- message-storage plugin is disabled.
+    enableMessageStoragePlugin cfg
+    pluginReg <- readIORef (cfgPluginRegistry cfg)
+    when (not ephemeral && Registry.pluginEnabled "message-storage" pluginReg) $
         rememberPersistencePreferenceAt path True
     saveSetting db persistenceSettingKey "1"
     logEvent cfg "persistence.mode" [("enabled", "true"), ("path", path)]
@@ -314,14 +322,31 @@ restorePersistentStateAtUnsafe cfg path = do
             [("conversations_failed", show failCount)]
     Map.size <$> readIORef (cfgSessions cfg)
 
+-- | Update the in-memory persistence preference and, when the
+-- message-storage runtime plugin is active, persist the choice to the
+-- .pref sidecar file (M17.3.6).
 setPersistencePreference :: AppConfig -> Bool -> IO ()
 setPersistencePreference cfg enabled = do
     writeIORef (cfgPersistencePreference cfg) (Just enabled)
     ephemeral <- readIORef (cfgEphemeral cfg)
-    when (pluginEnabled PluginPersistentStorage && not ephemeral) $ do
+    pluginReg <- readIORef (cfgPluginRegistry cfg)
+    when (pluginEnabled PluginPersistentStorage
+          && not ephemeral
+          && Registry.pluginEnabled "message-storage" pluginReg) $ do
         dbPath <- readIORef (cfgDBPath cfg)
         home <- getHomeDirectory
         rememberPersistencePreferenceAt (expandHome home dbPath) enabled
+
+-- | Enable the message-storage plugin (and its transitive dependencies)
+-- in the runtime plugin registry.  Called when the database is
+-- successfully opened so that subsequent .pref writes are allowed.
+enableMessageStoragePlugin :: AppConfig -> IO ()
+enableMessageStoragePlugin cfg = do
+    reg <- readIORef (cfgPluginRegistry cfg)
+    case resolveEnable "message-storage" reg of
+        Right toEnable ->
+            writeIORef (cfgPluginRegistry cfg) (foldr enablePlugin reg toEnable)
+        Left _ -> pure ()  -- unknown plugin; do nothing
 
 rememberPersistencePreferenceAt :: FilePath -> Bool -> IO ()
 rememberPersistencePreferenceAt "" _ = pure ()

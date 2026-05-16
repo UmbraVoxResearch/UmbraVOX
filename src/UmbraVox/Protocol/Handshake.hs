@@ -4,7 +4,7 @@ module UmbraVox.Protocol.Handshake
     , genIdentity, genSignedPreKey, genPQPreKey
     , serializeBundle, deserializeBundle
     , recvBundle, recvInitialMessage
-    , bsSlice, putW32BE, getW32BE, fingerprint, timestamp
+    , bsSlice, putW32BE, getW32BE, getW32BESafe, fingerprint, timestamp
     ) where
 
 import qualified Data.ByteString as BS
@@ -50,6 +50,11 @@ getW32BE bs = (fromIntegral (BS.index bs 0) `shiftL` 24)
     + (fromIntegral (BS.index bs 2) `shiftL` 8)
     + fromIntegral (BS.index bs 3)
 
+getW32BESafe :: BS.ByteString -> Maybe Word32
+getW32BESafe bs
+    | BS.length bs < 4 = Nothing
+    | otherwise = Just (getW32BE bs)
+
 -- PQXDH key generation ----------------------------------------------------
 genIdentity :: IO IdentityKey
 genIdentity = do
@@ -91,14 +96,18 @@ deserializeBundle bs
     | BS.length bs < 165 = Nothing
     | otherwise =
         let !pqLen    = fromIntegral (getW32BE (bsSlice 160 4 bs)) :: Int
-            !pqSigOff = 164 + pqLen
-            !opkOff   = pqSigOff + 64
-            !rest     = BS.drop opkOff bs
-            decOpk r | BS.null r         = Nothing
-                     | BS.index r 0 == 1 = Just (BS.take 32 (BS.drop 1 r))
-                     | otherwise         = Nothing
-        in if BS.length bs < opkOff + 1 then Nothing
-           else Just PQPreKeyBundle
+        -- Validate pqLen before any arithmetic to prevent integer overflow.
+        -- Required total: 164 (fixed header) + pqLen (PQ key) + 64 (PQ sig) + 1 (OPK flag)
+        in if pqLen < 0 || pqLen > BS.length bs - 164
+              || BS.length bs < 164 + pqLen + 64 + 1
+           then Nothing
+           else let !pqSigOff = 164 + pqLen
+                    !opkOff   = pqSigOff + 64
+                    !rest     = BS.drop opkOff bs
+                    decOpk r | BS.null r         = Nothing
+                             | BS.index r 0 == 1 = Just (BS.take 32 (BS.drop 1 r))
+                             | otherwise         = Nothing
+                in Just PQPreKeyBundle
                { pqpkbIdentityKey     = bsSlice 0   32 bs
                , pqpkbIdentityEd25519 = bsSlice 32  32 bs
                , pqpkbSignedPreKey    = bsSlice 64  32 bs
@@ -142,15 +151,24 @@ handshakeResponder t bobIK trustCheck = do
 recvBundle :: AnyTransport -> IO PQPreKeyBundle
 recvBundle t = do
     lenBs <- anyRecv t 4
-    payload <- anyRecv t (fromIntegral (getW32BE lenBs))
-    case deserializeBundle payload of
-        Nothing     -> fail "PQXDH: malformed prekey bundle"
-        Just bundle -> pure bundle
+    case getW32BESafe lenBs of
+        Nothing -> fail "PQXDH: incomplete length header (connection closed)"
+        Just len -> do
+            payload <- anyRecv t (fromIntegral len)
+            case deserializeBundle payload of
+                Nothing     -> fail "PQXDH: malformed prekey bundle"
+                Just bundle -> pure bundle
 
 recvInitialMessage :: AnyTransport -> IO (BS.ByteString, BS.ByteString, MLKEMCiphertext)
 recvInitialMessage t = do
     lenBs <- anyRecv t 4
-    payload <- anyRecv t (fromIntegral (getW32BE lenBs))
-    let !ctLen = fromIntegral (getW32BE (bsSlice 64 4 payload)) :: Int
-    pure (bsSlice 0 32 payload, bsSlice 32 32 payload,
-          MLKEMCiphertext (bsSlice 68 ctLen payload))
+    case getW32BESafe lenBs of
+        Nothing -> fail "PQXDH: incomplete length header (connection closed)"
+        Just len -> do
+            payload <- anyRecv t (fromIntegral len)
+            case getW32BESafe (bsSlice 64 4 payload) of
+                Nothing -> fail "PQXDH: incomplete initial message payload"
+                Just ctLen -> do
+                    let !ct = fromIntegral ctLen :: Int
+                    pure (bsSlice 0 32 payload, bsSlice 32 32 payload,
+                          MLKEMCiphertext (bsSlice 68 ct payload))

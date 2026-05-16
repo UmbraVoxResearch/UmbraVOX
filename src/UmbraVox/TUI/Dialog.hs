@@ -76,12 +76,13 @@ overlayBounds :: Layout -> Int -> (Int, Int, Int, Int)
 overlayBounds lay lineCount =
     let pageR0 = 2                 -- below menu bar
         pageH = max 1 (lRows lay - 2)  -- above status bar
-        pageC0 = 1
-        pageW = max 1 (lCols lay)
-        w = max 1 (min (pageW - 2) maxOverlayW)
+        -- Center modals on the right (chat) pane, not the full screen
+        rightC0 = lLeftW lay + 1   -- first column of right pane
+        rightW  = max 1 (lRightW lay)
+        w = max 1 (min (max 1 (rightW - 2)) maxOverlayW)
         h = max 1 (min (pageH - 2) (lineCount + 4))
         r0 = pageR0 + max 0 ((pageH - h) `div` 2)
-        c0 = pageC0 + max 0 ((pageW - w) `div` 2)
+        c0 = rightC0 + max 0 ((rightW - w) `div` 2)
     in (r0, c0, w, h)
 
 overlayCloseBounds :: Layout -> Int -> (Int, Int, Int)

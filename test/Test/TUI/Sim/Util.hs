@@ -11,6 +11,7 @@ module Test.TUI.Sim.Util
     , isDlgNewConn, isDlgSettings, isDlgHelp, isDlgAbout, isDlgKeys
     , isDlgVerify, isDlgBrowse, isDlgNothing
     , isDlgPrompt, isDlgPromptWithSubstring
+    , isDlgInsertLink, isDlgEmojiPicker
     ) where
 
 import Control.Concurrent.MVar (newMVar)
@@ -183,3 +184,9 @@ isDlgPrompt (Just (DlgPrompt _ _)) = True; isDlgPrompt _ = False
 isDlgPromptWithSubstring :: String -> Maybe DialogMode -> Bool
 isDlgPromptWithSubstring sub (Just (DlgPrompt title _)) = sub `isInfixOf` title
 isDlgPromptWithSubstring _ _ = False
+
+isDlgInsertLink :: Maybe DialogMode -> Bool
+isDlgInsertLink (Just DlgInsertLink) = True; isDlgInsertLink _ = False
+
+isDlgEmojiPicker :: Maybe DialogMode -> Bool
+isDlgEmojiPicker (Just DlgEmojiPicker) = True; isDlgEmojiPicker _ = False

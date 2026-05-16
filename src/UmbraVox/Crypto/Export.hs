@@ -13,6 +13,7 @@ import qualified Data.ByteString as BS
 import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
 import UmbraVox.Crypto.HKDF (hkdfSHA256Extract, hkdfSHA256Expand)
 import UmbraVox.Crypto.Random (randomBytes)
+import UmbraVox.Crypto.SecureBytes (fromByteString, withSecureKey)
 
 -- | Info string for domain separation.
 exportInfo :: ByteString
@@ -89,9 +90,10 @@ encryptExport :: ByteString -> ByteString -> IO ByteString
 encryptExport password plaintext = do
     salt  <- randomBytes 32
     nonce <- randomBytes 12
-    let !key        = deriveKey salt password
-        !(ct, tag)  = gcmEncrypt key nonce exportInfo plaintext
-    pure (salt <> nonce <> ct <> tag)
+    sbKey <- fromByteString (deriveKey salt password)
+    withSecureKey sbKey $ \key -> do
+        let !(ct, tag) = gcmEncrypt key nonce exportInfo plaintext
+        pure (salt <> nonce <> ct <> tag)
 
 -- | Decrypt an exported blob with a password.
 --
