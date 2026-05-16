@@ -117,6 +117,14 @@ table documenting:
 These tables live in `test/evidence/condition-tables/` and are referenced
 by the assurance matrix in `doc/assurance-matrix.md`.
 
+**Status (2026-05-16):** Phase 2 complete. Condition tables for all 5
+compound Boolean guards (10 atomic conditions) in crypto modules are
+documented in `test/evidence/condition-tables/crypto-compound-guards.md`.
+Guards 3-4 (ML-KEM rejection sampling) are covered by FIPS 203 KAT
+vectors. Guards 1, 2, 5 are defensive guards in private functions with
+structurally unreachable false-condition paths (documented as acceptable
+under DO-178C defense-in-depth).
+
 Priority: functions flagged by HPC as having "always True" or "always False"
 guards — these are dead-condition candidates requiring additional test cases.
 

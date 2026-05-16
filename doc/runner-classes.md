@@ -54,6 +54,22 @@ isolation strength:
 └─────────────────────────────────────────────────────────┘
 ```
 
+### VM Functional Test Runners
+
+In addition to release smoke testing, the VM infrastructure supports
+specialized functional tests:
+
+| Runner | Image | Purpose |
+|--------|-------|---------|
+| `vm-socks5-test` | vm-test-image | SOCKS5 proxy transport via microsocks |
+| `vm-screenshot` | vm-image | TUI frame capture via tmux capture-pane |
+| `vm-record` | vm-image | TUI session recording via asciinema |
+| `vm-visual-regression` | vm-image | Diff frames against reference captures |
+
+These runners use the same QEMU + virtio-disk + serial-console
+architecture as the smoke runner but execute specialized test scripts
+instead of the full build pipeline.
+
 ### TAP+Bridge Dual-LAN Setup (M5.3.3)
 
 For full L2 isolation testing with pcap capture, the dual-LAN mode
