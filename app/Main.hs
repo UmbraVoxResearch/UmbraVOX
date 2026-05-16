@@ -7,7 +7,7 @@ import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.List (intercalate, isPrefixOf)
 import System.Environment (getArgs)
 import System.Exit (ExitCode(..), exitWith)
-import System.IO (hSetBuffering, hSetEncoding, hFlush, hSetEcho, stdout, stdin, utf8, BufferMode(..))
+import System.IO (hSetBuffering, hSetEncoding, hFlush, hSetEcho, hPutStrLn, stdout, stdin, stderr, utf8, BufferMode(..))
 import System.Posix.Signals (installHandler, Handler(Catch))
 import Foreign.C.Types (CInt(..))
 import UmbraVox.App.RuntimeLog (logEvent, runtimeLoggingEnabled)
@@ -26,8 +26,9 @@ import UmbraVox.App.Startup
     ( applyPersistenceAnswer
     , resolvePersistencePreference, persistenceAnswerEnables
     )
-import UmbraVox.Plugin.Registry (pluginEnabled)
+import UmbraVox.Plugin.Registry (pluginEnabled, resolveEnable, enablePlugin)
 import UmbraVox.Storage.Anthony (loadSetting)
+import UmbraVox.App.SwapCheck (swapIsActive)
 
 ------------------------------------------------------------------------
 -- CLI flag parsing
@@ -75,11 +76,17 @@ applyUiFlags flags appCfg = do
         Nothing -> pure ()
     when (uiEphemeral flags) $
         writeIORef (cfgEphemeral appCfg) True
-    -- max_connections has no IORef in AppConfig yet; flag is accepted but
-    -- has no runtime effect until cfgMaxConnections is added to AppConfig.
-    -- uiEnablePlugins: plugin enabling at runtime is compile-time gated;
-    -- accepted here for forward compatibility.
-    pure ()
+    -- --enable-plugin: resolve dependencies and enable in runtime registry
+    mapM_ (applyEnablePlugin appCfg) (uiEnablePlugins flags)
+
+applyEnablePlugin :: AppConfig -> String -> IO ()
+applyEnablePlugin cfg name = do
+    reg <- readIORef (cfgPluginRegistry cfg)
+    case resolveEnable name reg of
+        Left err -> hPutStrLn stderr ("WARNING: --enable-plugin " ++ name ++ ": " ++ err)
+        Right deps -> do
+            let reg' = foldr enablePlugin reg deps
+            writeIORef (cfgPluginRegistry cfg) reg'
 
 -- Finding: sigWINCH was hardcoded to 28, which is correct for Linux and macOS
 --   but wrong for Solaris/illumos where SIGWINCH = 20.
@@ -271,6 +278,14 @@ runUi flags = do
                 Just "off" -> writeIORef (asRichText st) False
                 _          -> pure ()
         Nothing -> pure ()
+    -- M17.5.4: warn when ephemeral mode is active and swap is detected
+    isEphemeral <- readIORef (cfgEphemeral cfg)
+    when isEphemeral $ do
+        hasSwap <- swapIsActive
+        when hasSwap $ do
+            let warn = "WARNING: Swap is active \x2014 ephemeral keys may be written to disk"
+            writeIORef (asStatusMsg st) warn
+            putStrLn $ "  " ++ warn
     _ <- installHandler sigWINCH (Catch $ getTermSize >>= writeIORef (asTermSize st)) Nothing
     let restoreTerminal = do
             hSetEcho stdin True

@@ -8,6 +8,8 @@ module UmbraVox.TUI.Render
     ) where
 
 import Control.Monad (forM_, when)
+import Data.Bits (shiftR, (.&.))
+import qualified Data.ByteString as BS
 import Data.IORef (readIORef, writeIORef)
 import Data.List (intercalate, stripPrefix)
 import qualified Data.Map.Strict as Map
@@ -528,6 +530,15 @@ renderBottomBorder lay grid = do
           ++ replicate (rw - 1) '\x2500' ++ "\x256F"
     resetSGR
 
+-- | Short 4-byte hex fingerprint for ephemeral session identity display.
+shortFingerprint :: BS.ByteString -> String
+shortFingerprint bs = concatMap hex2 (BS.unpack (BS.take 4 padded))
+  where
+    padded = bs <> BS.replicate (max 0 (4 - BS.length bs)) 0
+    hex2 w = [hexC (w `shiftR` 4), hexC (w .&. 0x0f)]
+    hexC n | n < 10    = toEnum (fromEnum '0' + fromIntegral n)
+           | otherwise = toEnum (fromEnum 'a' + fromIntegral n - 10)
+
 statusBarConnTag :: ConnectionMode -> Bool -> Bool -> Bool -> Int -> String
 statusBarConnTag connMode isEphemeral anyPersistPlugin richEnabled nSessions =
     sessionCount ++ modeTag ++ richTag ++ " \x25C6 " ++ versionFull
@@ -550,11 +561,16 @@ renderStatusBar lay st status richEnabled nSessions = do
     goto (gStatusRow grid) 1; setFg 30; csi "47m"
     connMode <- readIORef (cfgConnectionMode (asConfig st))
     isEphemeral <- readIORef (cfgEphemeral (asConfig st))
+    mIdentity <- readIORef (cfgIdentity (asConfig st))
     pluginReg <- readIORef (cfgPluginRegistry (asConfig st))
     let anyPersistPlugin = any (\pid -> pluginEnabledReg pid pluginReg)
             ["key-persistence", "message-storage", "ratchet-persistence", "runtime-logging", "full-persistence"]
         connTag = statusBarConnTag connMode isEphemeral anyPersistPlugin richEnabled nSessions
-        leftInfo = if null status then " Ready" else " " ++ status
+        -- M17.7.1: show session fingerprint in ephemeral mode when idle
+        fpTag = case (isEphemeral, mIdentity) of
+            (True, Just ik) -> " [" ++ shortFingerprint (ikX25519Public ik) ++ "]"
+            _               -> ""
+        leftInfo = if null status then " Ready" ++ fpTag else " " ++ status
         gap = max 1 (totalW - displayWidth leftInfo - displayWidth connTag - 1)
     putStr (padR totalW (leftInfo ++ replicate gap ' ' ++ connTag ++ " "))
     resetSGR

@@ -35,6 +35,7 @@ import qualified Test.Crypto.HMAC as HMAC
 import qualified Test.Crypto.Keccak as Keccak
 import qualified Test.Crypto.KeyStore as KeyStore
 import qualified Test.Crypto.RatchetPersist as RatchetPersist
+import qualified Test.Crypto.SecureBytes as SecureBytes
 import qualified Test.Crypto.MLKEM as MLKEM
 import qualified Test.Crypto.PQWrapper as PQWrapper
 import qualified Test.Crypto.PQXDH as PQXDH
@@ -103,6 +104,7 @@ import qualified Test.Network.Transport as Transport
 import qualified Test.Network.Transport.Loopback as Loopback
 import qualified Test.Network.TransportClass as TransportClass
 import qualified Test.Network.TransportEdge as TransportEdge
+import qualified Test.Network.UDP as UDP
 import qualified Test.Protocol.CBOR as CBOR
 import qualified Test.Protocol.MessageFormat as MessageFormat
 import qualified Test.Protocol.QRCode as QRCode
@@ -273,6 +275,7 @@ coreSuites =
     , Suite "x3dh" X3DH.runTests
     , Suite "double-ratchet" DoubleRatchet.runTests
     , Suite "ratchet-persist" RatchetPersist.runTests
+    , Suite "secure-bytes" SecureBytes.runTests
     , Suite "mlkem" MLKEM.runTests
     , Suite "keccak" Keccak.runTests
     , Suite "poly1305" Poly1305.runTests
@@ -283,6 +286,7 @@ coreSuites =
     , Suite "equivalence" Equivalence.runTests
     , Suite "transport-class" TransportClass.runTests
     , Suite "loopback-transport" Loopback.runTests
+    , Suite "udp-transport" UDP.runTests
     , Suite "cbor" CBOR.runTests
     , Suite "bip39" BIP39.runTests
     , Suite "export" Export.runTests
@@ -362,6 +366,7 @@ coreCryptoSuites =
     , Suite "x3dh" X3DH.runTests
     , Suite "double-ratchet" DoubleRatchet.runTests
     , Suite "ratchet-persist" RatchetPersist.runTests
+    , Suite "secure-bytes" SecureBytes.runTests
     , Suite "mlkem" MLKEM.runTests
     , Suite "keccak" Keccak.runTests
     , Suite "poly1305" Poly1305.runTests

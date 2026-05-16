@@ -2,7 +2,10 @@
 -- | Tests for 'UmbraVox.Crypto.RatchetPersist' (M15.1).
 module Test.Crypto.RatchetPersist (runTests) where
 
+import Control.Concurrent (forkIO)
+import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Control.Exception (bracket, try, IOException)
+import Control.Monad (forM_, replicateM)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Word (Word32)
@@ -35,6 +38,7 @@ runTests = do
         , testLoadMissing
         , testWithPersistentEncryptRoundTrip
         , testSimulatedCrash
+        , testConcurrentPersistNoCorruption
         ]
     let passed = length (filter id results)
         total  = length results
@@ -159,3 +163,39 @@ testSimulatedCrash =
                         assertEq "simulated crash: persisted counter is N+1"
                                  (Just (beforeSend + 1))
                                  loaded
+
+------------------------------------------------------------------------
+-- Test 5: concurrent persist threads don't corrupt counter file
+--
+-- Scenario: N threads each persistRatchetCounter with a unique value.
+-- After all complete, the file must contain a valid 4-byte counter
+-- that equals one of the written values (no torn writes / corruption).
+------------------------------------------------------------------------
+
+testConcurrentPersistNoCorruption :: IO Bool
+testConcurrentPersistNoCorruption =
+    withTempDir $ \dir -> do
+        let path = dir </> "counter"
+            nThreads = 20 :: Int
+            counters = [1 .. fromIntegral nThreads] :: [Word32]
+        -- Seed the file so all threads race on the same path
+        persistRatchetCounter path 0
+        -- Fork N threads, each writing its own counter value
+        dones <- replicateM nThreads newEmptyMVar
+        forM_ (zip counters dones) $ \(c, done) ->
+            forkIO $ do
+                persistRatchetCounter path c
+                putMVar done ()
+        -- Wait for all threads to finish
+        mapM_ takeMVar dones
+        -- The file must be a valid 4-byte counter (no corruption)
+        loaded <- loadRatchetCounter path
+        case loaded of
+            Nothing ->
+                putStrLn "  FAIL: concurrent persist: corrupted counter file (not 4 bytes)" >> pure False
+            Just val ->
+                if val `elem` counters
+                    then assertEq "concurrent persist: final value is one of the written counters" True True
+                    else do
+                        putStrLn $ "  FAIL: concurrent persist: unexpected value " ++ show val
+                        pure False

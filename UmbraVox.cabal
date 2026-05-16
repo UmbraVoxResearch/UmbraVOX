@@ -186,6 +186,7 @@ library
       -- Chat
       UmbraVox.App.RuntimeLog
       UmbraVox.App.Startup
+      UmbraVox.App.SwapCheck
       UmbraVox.BuildProfile
       -- Plugin framework
       UmbraVox.Plugin.Types
@@ -264,6 +265,7 @@ library
       unix         >= 2.8   && < 2.9
     c-sources:
       csrc/secure_zero.c
+      csrc/secure_mlock.c
       csrc/generated/aes256.c
       csrc/generated/chacha20.c
       csrc/generated/hkdf.c
@@ -375,6 +377,7 @@ test-suite umbravox-test
     Test.Crypto.Signal.X3DH
     Test.Crypto.Signal.DoubleRatchet
     Test.Crypto.RatchetPersist
+    Test.Crypto.SecureBytes
     Test.Crypto.Keccak
     Test.Crypto.MLKEM
     Test.Crypto.Poly1305
@@ -392,6 +395,7 @@ test-suite umbravox-test
     Test.Network.TransportClass
     Test.Network.Transport.Loopback
     Test.Network.TransportEdge
+    Test.Network.UDP
     Test.Protocol.CBOR
     Test.Crypto.BIP39
     Test.Crypto.Export

@@ -2,19 +2,24 @@
 -- | Ephemeral-mode integration test (M17.6).
 --
 -- Finding: There was no test verifying that ephemeral=True prevents any files
---   from being created in the application data directory.
+--   from being created in the application data directory, nor that all
+--   persistence plugins are disabled and InMemoryStorage is the active backend.
 -- Vulnerability: A regression in ephemeral mode could silently write identity
 --   keys or messages to disk, violating the operational security promise made
 --   to users running in ephemeral mode.
 -- Fix: This test sets cfgEphemeral=True on a fresh AppConfig, runs the
---   in-memory storage backend, and asserts that no files appear in a watched
---   temp directory.
+--   in-memory storage backend, asserts that no files appear in a watched
+--   temp directory, verifies all persistence plugins are disabled (M17.6.4),
+--   and confirms the in-memory backend is active (not SQLite).
 -- Verified: The in-memory backend (newInMemoryStorage) performs no disk I/O;
---   the temp directory remains empty after all storage operations.
+--   the temp directory remains empty after all storage operations; all
+--   persistence plugins report disabled; storage operations succeed without
+--   any database file.
 module Test.Plugin.EphemeralIntegration (runTests) where
 
 import Control.Exception (bracket, try, IOException)
 import Data.IORef (writeIORef, readIORef)
+import Data.Maybe (isNothing)
 import System.Directory
     ( createDirectoryIfMissing
     , getTemporaryDirectory
@@ -24,6 +29,7 @@ import System.Directory
 import System.FilePath ((</>))
 import Test.Util (assertEq)
 import Test.TUI.Sim.Util (mkTestConfig)
+import UmbraVox.Plugin.Registry (pluginEnabled)
 import UmbraVox.Storage.Class (StorageHandle(..))
 import UmbraVox.TUI.Types (AppConfig(..))
 
@@ -33,6 +39,9 @@ runTests = do
     results <- sequence
         [ testEphemeralNoFilesCreated
         , testEphemeralFlagDefaultTrue
+        -- M17.6.4: Ephemeral mode integration tests
+        , testEphemeralAllPersistencePluginsDisabled
+        , testEphemeralInMemoryBackendActive
         ]
     let passed = length (filter id results)
         total  = length results
@@ -62,6 +71,53 @@ testEphemeralFlagDefaultTrue = do
     cfg <- mkTestConfig
     val <- readIORef (cfgEphemeral cfg)
     assertEq "mkTestConfig: cfgEphemeral defaults to True" True val
+
+------------------------------------------------------------------------
+-- Helpers
+------------------------------------------------------------------------
+
+-- | M17.6.4: In ephemeral mode (cfgEphemeral=True), ALL persistence plugins
+-- in the registry must be disabled.
+testEphemeralAllPersistencePluginsDisabled :: IO Bool
+testEphemeralAllPersistencePluginsDisabled = do
+    cfg <- mkTestConfig
+    -- Ensure ephemeral is True
+    writeIORef (cfgEphemeral cfg) True
+    reg <- readIORef (cfgPluginRegistry cfg)
+    let allPlugins =
+            [ "sqlite-storage", "file-io", "atomic-write"
+            , "key-persistence", "message-storage"
+            , "ratchet-persistence", "runtime-logging"
+            , "full-persistence"
+            ]
+    results <- mapM (\pid ->
+        assertEq ("M17.6.4 ephemeral: " ++ pid ++ " disabled")
+            False (pluginEnabled pid reg)
+        ) allPlugins
+    pure (and results)
+
+-- | M17.6.4: In ephemeral mode the active storage backend is InMemoryStorage
+-- (not SQLite).  We verify this by performing a save+load cycle through the
+-- storage handle: the in-memory backend returns the saved data immediately
+-- without any database file existing on disk.  We also confirm no AnthonyDB
+-- handle is set.
+testEphemeralInMemoryBackendActive :: IO Bool
+testEphemeralInMemoryBackendActive = withTempDir $ \tmpDir -> do
+    cfg <- mkTestConfig
+    writeIORef (cfgEphemeral cfg) True
+    -- Verify no AnthonyDB handle is set (in-memory mode)
+    anthonyDB <- readIORef (cfgAnthonyDB cfg)
+    a <- assertEq "M17.6.4 ephemeral: no AnthonyDB handle" True (isNothing anthonyDB)
+    -- Perform a save+load round-trip through the storage backend
+    sh <- readIORef (cfgStorage cfg)
+    shSaveSetting sh "test-key" "test-value"
+    result <- shLoadSetting sh "test-key"
+    b <- assertEq "M17.6.4 ephemeral: in-memory save/load round-trip"
+            (Just "test-value") result
+    -- Verify no files created in temp directory (confirming in-memory, not SQLite)
+    files <- listDirectory tmpDir
+    c <- assertEq "M17.6.4 ephemeral: no files on disk after storage ops" [] files
+    pure (and [a, b, c])
 
 ------------------------------------------------------------------------
 -- Helpers

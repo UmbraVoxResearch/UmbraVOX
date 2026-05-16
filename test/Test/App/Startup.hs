@@ -197,6 +197,9 @@ testResolvePersistencePreferenceTracksRuntimeConfig =
         ok2 <- assertEq "resolvePersistencePreference updates runtime preference" (Just False) runtimePref
         pure (ok1 && ok2)
 
+-- | M17.3.6: answering "no" still sets the in-memory preference but no
+-- longer writes the .pref sidecar because the message-storage plugin is
+-- not active (ephemeral-by-default).
 testApplyPersistenceAnswerNoPersistsWithoutDB :: IO Bool
 testApplyPersistenceAnswerNoPersistsWithoutDB =
     withDB "umbravox-startup-pref-no.db" $ \dbPath -> do
@@ -213,9 +216,14 @@ testApplyPersistenceAnswerNoPersistsWithoutDB =
         ok2 <- assertEq "applyPersistenceAnswer no keeps DB disabled" False dbEnabled
         ok3 <- assertEq "applyPersistenceAnswer no keeps DB handle empty" True (isNothing dbHandle)
         ok4 <- assertEq "applyPersistenceAnswer no persists runtime preference" (Just False) runtimePref
-        ok5 <- assertEq "applyPersistenceAnswer no persists sidecar preference" (Just False) pref
+        ok5 <- assertEq "applyPersistenceAnswer no skips sidecar without message-storage plugin" Nothing pref
         pure (and [ok1, ok2, ok3, ok4, ok5])
 
+-- | M17.3.6: answering "yes" with a malformed DB still sets the in-memory
+-- preference but the .pref sidecar is not written because
+-- restorePersistentState fails before message-storage is enabled in the
+-- runtime plugin registry, and setPersistencePreference (called first)
+-- checks the plugin gate.
 testApplyPersistenceAnswerYesPersistsIntentWithoutHealthyDB :: IO Bool
 testApplyPersistenceAnswerYesPersistsIntentWithoutHealthyDB =
     withDB "umbravox-startup-pref-yes.db" $ \dbPath -> do
@@ -230,7 +238,7 @@ testApplyPersistenceAnswerYesPersistsIntentWithoutHealthyDB =
         ok1 <- assertEq "applyPersistenceAnswer yes returns zero on malformed DB" 0 restored
         ok2 <- assertEq "applyPersistenceAnswer yes falls back to DB disabled" False dbEnabled
         ok3 <- assertEq "applyPersistenceAnswer yes persists runtime preference" (Just True) runtimePref
-        ok4 <- assertEq "applyPersistenceAnswer yes persists sidecar preference" (Just True) pref
+        ok4 <- assertEq "applyPersistenceAnswer yes skips sidecar without message-storage plugin" Nothing pref
         pure (and [ok1, ok2, ok3, ok4])
 
 testRestoredOfflineSessionsFailClosedOnSend :: IO Bool

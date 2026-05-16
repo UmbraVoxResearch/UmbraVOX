@@ -7,6 +7,41 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 ## [Unreleased]
 
 ### Added
+- R1.7.e: tui-sim-chat test coverage for all 5 toolbar buttons (bold, italic, color, link, emoji), insert link dialog (tab cycling, typing, submit, escape), emoji picker (category tab, page navigation, escape), format prompt submission (bold, italic), and rich cursor movement across bold, italic, and link markdown markers.
+- M15.1.5: concurrent encrypt thread race test — 20 threads persist unique counter values simultaneously; validates atomic write+fsync+rename prevents corruption.
+- M15.3.4-6: SecureBytes mlock/munlock/madvise integration — csrc/secure_mlock.c provides platform-portable memory locking (POSIX mlock, MADV_DONTDUMP/MADV_NOCORE, stubs for Windows/WASM). newSecureBytes now locks pages against swap-out and excludes from core dumps. 6 new tests in Test.Crypto.SecureBytes verify zeroing, round-trip, and mlock integration.
+- M15.3.3: IO-boundary key wrapping — KeyStore.hs and Export.hs wrap derived encryption keys in SecureBytes via withSecureKey. Pure crypto function signatures unchanged (GC-heap copy limitation documented).
+- M16.1.5: MC/DC condition tables for 5 compound Boolean guards (10 atomic conditions) across AES, Ed25519, ML-KEM, and Keccak modules. Tables in test/evidence/condition-tables/crypto-compound-guards.md.
+- M17.3.1: KeyStore disk write guards — saveIdentityKey/saveIdentityKeyAt/saveIdentityKeyWithPassphrase gated by PluginIdentityPersistence. Silent no-op when disabled (ephemeral-by-default).
+- M17.5.4: Swap encryption warning — UmbraVox.App.SwapCheck reads /proc/swaps on Linux; warns in status bar when ephemeral mode is active and swap is detected.
+- M17.3.6: Startup .pref file guard — persistence preference writes gated by message-storage plugin + ephemeral check.
+
+### Fixed
+- Handshake: integer overflow in deserializeBundle pqLen arithmetic — validate bounds before offset computation to prevent bypass on crafted packets (Handshake.hs:98).
+- RatchetPersist: counter overflow guard — reject rsSendN >= 0xFFFFFFFE before persisting to prevent GCM nonce reuse (RatchetPersist.hs:133). Defense-in-depth alongside DoubleRatchet's own check.
+- ConfigFile: verifyConfigHash used isPrefixOf for key filtering, matching unrelated keys like config_hash_pin_old. Now uses exact key match via parseLine (ConfigFile.hs:121).
+- Plugin/Registry: resolveEnable silently included phantom dependencies for unknown plugins. Now skips unknown deps instead of injecting them (Registry.hs:147).
+- TUI/Dialog: overlayBounds rightW-2 could go negative at small terminal sizes. Now clamped to min 1 (Dialog.hs:82).
+- TUI/Render: shortFingerprint on empty ByteString produced empty string. Now pads to 4 bytes (Render.hs:535).
+- UDP tests: replaced threadDelay-based synchronization with MVar ready signals to prevent race conditions (UDP.hs).
+- Main: --enable-plugin with unknown plugin name now warns to stderr instead of silently ignoring (Main.hs:86).
+
+### Added
+- F4.1: UDP transport loopback test suite — 4 tests (round-trip, exact bytes, multi-message ordering, 1KB payload) verifying the seq/ACK reliability layer over localhost.
+- M16.1.5: updated MC/DC condition tables with defensive guard analysis — Guards 1, 2, 5 documented as structurally unreachable false paths via private functions (acceptable under DO-178C when documented).
+- M17.4.3: --enable-plugin flag wired for runtime effect — resolves dependencies via resolveEnable and enables in runtime plugin registry.
+- M17.7.4: config file hash pinning (paranoid mode) — verifyConfigHash computes SHA-256 of config excluding the pin line; set config_hash_pin=<hex> to enable; warns on stderr if mismatch.
+
+### Changed
+- TUI: modals now center on the right (chat) pane instead of the full screen.
+- M17.7.1: ephemeral mode shows short session fingerprint [abcd1234] in status bar when idle.
+- M17.3.7: createDirectoryIfMissing in Startup.hs moved after ephemeral check — no directory creation in ephemeral mode.
+- M17.3.2: Anthony SQL operations confirmed guarded at architecture level (cfgAnthonyDB = Nothing in ephemeral mode).
+
+### Fixed
+- Handshake: fix crash on empty ByteString in getW32BE when peer disconnects during recv (Handshake.hs:48). Added getW32BESafe with length check; recvBundle and recvInitialMessage now fail cleanly instead of crashing on incomplete length headers.
+
+### Added
 - M14.2.2: nix/vm-openbsd.nix — Nix shell environment providing host-side QEMU + SSH tooling for the OpenBSD smoke lane.
 - M14.2.3: nix/vm-netbsd.nix — Nix shell environment providing host-side QEMU + SSH tooling for the NetBSD smoke lane.
 - M14.2.4: nix/vm-dragonfly.nix — Nix shell environment providing host-side QEMU + SSH tooling for the DragonFlyBSD smoke lane (exits 0 with INFO if GHC binary package unavailable).

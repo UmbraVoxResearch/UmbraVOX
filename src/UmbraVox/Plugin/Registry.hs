@@ -139,13 +139,17 @@ resolveEnable :: String -> PluginRegistry -> Either String [String]
 resolveEnable pid reg =
     case lookupPlugin pid reg of
         Nothing -> Left ("Unknown plugin: " ++ pid)
-        Just pd -> Right (pid : concatDeps (pdDependencies pd))
+        Just pd -> case concatDeps (pdDependencies pd) of
+            Left err -> Left err
+            Right ds -> Right (pid : ds)
   where
-    concatDeps [] = []
+    concatDeps [] = Right []
     concatDeps (dep:rest) =
         case resolveEnable dep reg of
-            Left _   -> dep : concatDeps rest
-            Right ds -> ds ++ concatDeps rest
+            Left err -> Left ("dependency " ++ dep ++ ": " ++ err)
+            Right ds -> case concatDeps rest of
+                Left err  -> Left err
+                Right ds' -> Right (ds ++ ds')
 
 -- | Resolve dependents for disabling a plugin.
 -- Returns Right [ids that depend on the target] or Left error message.

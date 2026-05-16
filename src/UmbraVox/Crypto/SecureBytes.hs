@@ -6,6 +6,13 @@
 -- This is a best-effort defence against key material persisting on the heap
 -- after a value is no longer referenced.
 --
+-- == Memory protection
+--
+-- Buffers are locked into physical RAM via @mlock(2)@ to prevent swap-out,
+-- and excluded from core dumps via @madvise(MADV_DONTDUMP)@ (Linux) or
+-- @MADV_NOCORE@ (BSD).  Both calls are best-effort: failure (e.g. from
+-- RLIMIT_MEMLOCK) is silently ignored.
+--
 -- == Secure zeroing via C FFI
 --
 -- The zeroing finalizer calls 'c_secure_zero', a C helper that writes zeros
@@ -14,12 +21,26 @@
 -- the call, so this provides the same dead-store-elimination resistance as
 -- @explicit_bzero(3)@ (Linux) or @SecureZeroMemory@ (Windows) on platforms
 -- that do not expose those extensions.  See @csrc/secure_zero.c@.
+--
+-- == Limitations
+--
+-- * 'toByteString' and 'withSecureKey' create a GC-heap copy that is NOT
+--   zeroed on collection.  GHC's copying GC may replicate it across
+--   generations.
+-- * Pure crypto functions ('gcmEncrypt', 'hmacSHA256', etc.) create
+--   intermediate 'ByteString' values on the GC heap.  These are not zeroed.
+-- * @mlock@ does not protect against hibernation (suspend-to-disk).
+--
+-- The accurate assurance claim is: long-lived key material at rest is stored
+-- in pinned, zeroed-on-free, mlock'd buffers.  Short-lived copies during
+-- crypto operations may persist on the GC heap until collection.
 module UmbraVox.Crypto.SecureBytes
     ( SecureBytes
     , newSecureBytes
     , fromByteString
     , toByteString
     , withSecurePtr
+    , withSecureKey
     , zeroAndFree
     , secureBytesLength
     ) where
@@ -28,7 +49,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Word (Word8)
 import qualified Foreign.Concurrent as FC
-import Foreign.C.Types (CSize(..))
+import Foreign.C.Types (CInt(..), CSize(..))
 import Foreign.ForeignPtr (ForeignPtr, withForeignPtr)
 import Foreign.Marshal.Alloc (free, mallocBytes)
 import Foreign.Marshal.Utils (copyBytes)
@@ -39,11 +60,26 @@ import Foreign.Ptr (Ptr, castPtr)
 ------------------------------------------------------------------------
 
 -- | C helper that zeros @len@ bytes at @ptr@ via a volatile write loop.
--- The volatile writes cannot be optimised away by the C compiler, giving
--- the same dead-store-elimination resistance as @explicit_bzero(3)@.
 -- Implemented in @csrc/secure_zero.c@.
 foreign import ccall "umbravox_secure_zero"
     c_secure_zero :: Ptr Word8 -> CSize -> IO ()
+
+-- | Lock memory pages against swap-out.  Best-effort; may fail with
+-- ENOMEM (RLIMIT_MEMLOCK) or EPERM on unprivileged processes.
+-- Implemented in @csrc/secure_mlock.c@.
+foreign import ccall "umbravox_mlock"
+    c_mlock :: Ptr Word8 -> CSize -> IO CInt
+
+-- | Unlock memory pages previously locked with 'c_mlock'.
+-- Implemented in @csrc/secure_mlock.c@.
+foreign import ccall "umbravox_munlock"
+    c_munlock :: Ptr Word8 -> CSize -> IO CInt
+
+-- | Exclude memory from core dumps (MADV_DONTDUMP on Linux,
+-- MADV_NOCORE on BSD, no-op elsewhere).
+-- Implemented in @csrc/secure_mlock.c@.
+foreign import ccall "umbravox_dontdump"
+    c_dontdump :: Ptr Word8 -> CSize -> IO CInt
 
 ------------------------------------------------------------------------
 -- Type
@@ -66,17 +102,21 @@ data SecureBytes = SecureBytes
 
 -- | Allocate a new 'SecureBytes' of @n@ bytes, all initialised to zero.
 --
--- Uses 'mallocBytes' for the allocation and 'Foreign.Concurrent.newForeignPtr'
--- to attach a zeroing finalizer.
+-- The buffer is mlock'd to prevent swap-out and excluded from core dumps.
+-- Both calls are best-effort; failure is silently ignored.
 newSecureBytes :: Int -> IO SecureBytes
 newSecureBytes n = do
     p  <- mallocBytes n :: IO (Ptr Word8)
     -- Zero the freshly-allocated buffer via the C volatile write loop.
     c_secure_zero p (fromIntegral n)
-    -- Attach a finalizer that zeros the buffer again and then frees it.
-    -- Foreign.Concurrent.newForeignPtr takes a plain IO () action, unlike the
-    -- Foreign.ForeignPtr variant which requires a C-level FunPtr.
-    fp <- FC.newForeignPtr p (c_secure_zero p (fromIntegral n) >> free p)
+    -- Lock the page into RAM and exclude from core dumps (best-effort).
+    _ <- c_mlock p (fromIntegral n)
+    _ <- c_dontdump p (fromIntegral n)
+    -- Attach a finalizer that zeros, unlocks, and frees the buffer.
+    fp <- FC.newForeignPtr p $ do
+        c_secure_zero p (fromIntegral n)
+        _ <- c_munlock p (fromIntegral n)
+        free p
     pure (SecureBytes fp n)
 
 -- | Wrap an existing 'ByteString' into a 'SecureBytes'.
@@ -120,7 +160,20 @@ zeroAndFree :: SecureBytes -> IO ()
 zeroAndFree (SecureBytes fp len) =
     withForeignPtr fp $ \p -> c_secure_zero p (fromIntegral len)
 
+-- | Temporarily extract the key as a 'ByteString' and run an action.
+--
+-- __Scoping only, not cryptographic erasure.__  The extracted 'ByteString'
+-- is a GC-heap copy that is NOT zeroed when the callback returns.  GHC's
+-- copying collector may replicate it across generations.  This pattern
+-- limits how long the reference lives, but does not guarantee erasure.
+--
+-- For zero-copy access, prefer 'withSecurePtr' with C FFI functions that
+-- accept a raw @Ptr Word8@.
+withSecureKey :: SecureBytes -> (ByteString -> IO a) -> IO a
+withSecureKey sb action = do
+    bs <- toByteString sb
+    action bs
+
 -- | Return the length of the buffer in bytes.
 secureBytesLength :: SecureBytes -> Int
 secureBytesLength = _sbLen
-
