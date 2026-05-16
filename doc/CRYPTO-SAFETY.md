@@ -152,18 +152,27 @@ Identity secret + per-install salt
 
 - **Key erasure in Haskell**: `ByteString` values are immutable and
   GC-managed; there is no guaranteed way to zero key material after use from
-  pure Haskell.  The `UmbraVox.Crypto.SecureBytes` module provides a
-  best-effort `ForeignPtr`-based container with a zeroing finalizer, but the
-  finalizer uses `pokeByteOff` which the compiler may elide.  Production-grade
-  erasure requires an FFI call to `explicit_bzero` (Linux) or `SecureZeroMemory`
-  (Windows).  This is tracked as a known limitation pending the FFI hardening
-  milestone.
+  pure Haskell.  The `UmbraVox.Crypto.SecureBytes` module provides:
+  - **Volatile zeroing** via C FFI (`csrc/secure_zero.c`) — writes through a
+    `volatile` pointer, resistant to dead-store elimination.
+  - **mlock(2)** — pages are locked into RAM to prevent swap-out
+    (`csrc/secure_mlock.c`, best-effort, POSIX/BSD/illumos; stubs for Win/WASM).
+  - **madvise(MADV_DONTDUMP/MADV_NOCORE)** — pages excluded from core dumps.
+  - **Zeroing finalizer** — `Foreign.Concurrent.newForeignPtr` zeros and
+    munlocks before freeing.
+  Known limitations: `toByteString`/`withSecureKey` create GC-heap copies
+  that are NOT zeroed on collection.  Pure crypto functions create intermediate
+  `ByteString` values on the GC heap that contain derived key material.
+  `mlock` does not protect against hibernation (suspend-to-disk).
+  The accurate claim is: long-lived key material at rest is stored in pinned,
+  zeroed-on-free, mlock'd buffers.  Short-lived copies during crypto operations
+  may persist on the GC heap until collection.
 
-- **Counter persistence**: The Double Ratchet counter is held in memory; a
-  process crash between persisting state and completing encryption can waste a
-  counter value (safe) but correct crash-recovery requires the
-  write-before-encrypt discipline described in
-  `attic/doc-legacy-2026-04-28/hardening/07-nonce-safety.md` §3.
+- **Counter persistence**: The Double Ratchet counter is persisted via
+  `RatchetPersist.persistRatchetCounter` using atomic write+fsync+rename.
+  The `withPersistentEncrypt` wrapper writes the counter before encryption
+  (write-ahead discipline).  Counter overflow at 0xFFFFFFFE is rejected
+  to prevent GCM nonce reuse.  See `UmbraVox.Crypto.RatchetPersist`.
 
 - **Noise counter exhaustion**: `nsSendN` and `nsRecvN` are `Word64`; at
   2^64 messages per session key the nonce space is exhausted.  Sessions must

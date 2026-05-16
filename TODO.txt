@@ -3,7 +3,7 @@ UmbraVOX Active TODO
 Purpose: active work only. Completed and historical items are tracked in CHANGELOG.txt.
 
 Status: [ ] pending, [~] in progress, [!] blocked
-Last updated: 2026-05-13
+Last updated: 2026-05-15
 
 Rules
 -----

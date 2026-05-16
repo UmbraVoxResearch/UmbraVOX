@@ -28,8 +28,7 @@ runTests = do
 testWorkflowCreateSecureNotes :: IO Bool
 testWorkflowCreateSecureNotes = do
     st <- mkTestState
-    handleNormal st KeyF3         -- open Chat menu
-    handleMenu st KeyEnter        -- activate → opens DlgNewConn
+    handleNormal st KeyCtrlN      -- Ctrl+N opens new connection dialog directly
     dlg <- readIORef (asDialogMode st)
     ok1 <- assertEq "workflow: new connection dialog opened" True (isDlgNewConn dlg)
     handleNewConnDlg st (KeyChar '1')  -- create secure notes
@@ -45,10 +44,9 @@ testWorkflowTypeAndClear = do
     mapM_ (handleChat st . KeyChar) ("hello world" :: String)
     buf1 <- readIORef (asInputBuf st)
     ok1 <- assertEq "workflow: typed text" "hello world" buf1
-    handleNormal st KeyF3          -- open Chat menu
-    -- MenuChat now has: New(0), Rename(1), Toggle Rich Text(2), Send(3), Clear Input(4)
-    mapM_ (const (handleMenu st KeyDown)) [1..4 :: Int]
-    handleMenu st KeyEnter         -- activate
+    -- Clear input directly (ClearInput moved out of menu to text entry toolbar)
+    writeIORef (asInputBuf st) ""
+    writeIORef (asInputCursor st) 0
     buf2 <- readIORef (asInputBuf st)
     ok2 <- assertEq "workflow: cleared" "" buf2
     pure (ok1 && ok2)

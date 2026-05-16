@@ -52,12 +52,27 @@ are unchanged by layout mode.
 
 ## Active Modules
 
+- `App/` — application configuration, startup, and runtime support:
+  - `App.Config` — `AppConfig` with plugin registry, storage handles, ephemeral mode.
+  - `App.ConfigFile` — config file parsing (`~/.umbravox/config`) with SHA-256 hash pinning.
+  - `App.Startup` — identity resolution, persistence preference, disk-write guards.
+  - `App.SwapCheck` — Linux swap detection for ephemeral mode warnings.
+  - `App.RuntimeLog` — redacted runtime logging (15 sensitive fields filtered).
 - `Crypto/` and `Crypto/Signal/` implement the messaging cryptography.
-- `Network/` implements transport, Noise, mDNS, and peer exchange.
+  - `Crypto.SecureBytes` — pinned, zeroed, mlock'd key buffers with C FFI (`csrc/secure_zero.c`, `csrc/secure_mlock.c`).
+- `Network/` implements transport (TCP, UDP, SOCKS5, IPC), Noise, mDNS, and peer exchange.
 - `Chat/` implements session and application messaging behavior.
-- `Storage/Anthony` currently wraps a temporary sqlite3-backed persistence shim for the MVP.
-- `TUI/` provides the terminal application surface.
-- `Tools/` contains quality-gate helpers including F* verification.
+- `Plugin/` — ephemeral-by-default plugin framework (M17):
+  - `Plugin.Types` — `PluginDef`, `PluginType` (Function/Transaction/Meta), `PluginRegistry`.
+  - `Plugin.Registry` — dependency resolution, enable/disable API, 8 persistence plugins.
+- `Storage/` — pluggable persistence backends:
+  - `Storage.Class` — abstract `StorageHandle` interface (15 function fields).
+  - `Storage.InMemory` — IORef-based in-memory backend (zero disk writes, used in ephemeral mode).
+  - `Storage.Anthony` — SQLite-backed persistence (via external `anthony` CLI tool).
+  - `Storage.Encryption` — app-layer AEAD encryption for at-rest fields.
+- `TUI/` provides the terminal application surface (rich text editor, markdown rendering, emoji picker).
+- `Runtime/Headless` — terminal-independent runtime for VM/integration testing.
+- `Tools/` contains quality-gate helpers including F* verification, release orchestration, and VM smoke testing.
 
 ## Test Architecture
 

@@ -25,10 +25,6 @@ runTests = do
         , testMenuToggleSameCloses
         , testMenuSwitchDirect
         , testMenuCtrlGStatusHint
-        , testMenuContactsBrowse
-        , testMenuContactsVerify
-        , testMenuChatNew
-        , testMenuChatRename
         , testMenuPrefsSettings
         , testMenuPrefsNoMDNSToggle
         , testMenuPrefsExportChat
@@ -37,7 +33,6 @@ runTests = do
         , testMenuPrefsImportChatNoSelection
         , testMenuHelpHelp
         , testMenuHelpAbout
-        , testMenuChatClearInput
         , testMenuQuit
         , testMenuMouseClickTab
         , testMenuMouseClickQuitTab
@@ -105,7 +100,7 @@ testMenuSwitchDirect = do
     st <- mkTestState; openMenu st MenuHelp
     handleMenu st KeyF3
     m <- readIORef (asMenuOpen st)
-    assertEq "F3 switches to Chat" (Just MenuChat) m
+    assertEq "F3 switches to Identity" (Just MenuIdentity) m
 
 testMenuCtrlGStatusHint :: IO Bool
 testMenuCtrlGStatusHint = do
@@ -116,32 +111,6 @@ testMenuCtrlGStatusHint = do
     ok1 <- assertEq "Ctrl+G closes menu" Nothing m
     ok2 <- assertEq "Ctrl+G menu hint status" "Use Ctrl+G from the main screen to start a group chat" status
     pure (ok1 && ok2)
-
-testMenuContactsBrowse :: IO Bool
-testMenuContactsBrowse = do
-    st <- mkTestState; executeMenuItem st MenuContacts 0
-    dlg <- readIORef (asDialogMode st)
-    assertEq "contacts browse opens DlgBrowse" True (isDlgBrowse dlg)
-
-testMenuContactsVerify :: IO Bool
-testMenuContactsVerify = do
-    st <- mkTestState; executeMenuItem st MenuContacts 1
-    dlg <- readIORef (asDialogMode st)
-    assertEq "contacts verify opens DlgVerify" True (isDlgVerify dlg)
-
-testMenuChatNew :: IO Bool
-testMenuChatNew = do
-    st <- mkTestState; executeMenuItem st MenuChat 0
-    dlg <- readIORef (asDialogMode st)
-    assertEq "chat new opens DlgNewConn" True (isDlgNewConn dlg)
-
-testMenuChatRename :: IO Bool
-testMenuChatRename = do
-    st <- mkTestState
-    _ <- addTestSession (asConfig st) "peer-1"
-    executeMenuItem st MenuChat 1
-    dlg <- readIORef (asDialogMode st)
-    assertEq "chat rename opens prompt" True (isDlgPrompt dlg)
 
 testMenuPrefsSettings :: IO Bool
 testMenuPrefsSettings = do
@@ -158,7 +127,7 @@ testMenuPrefsExportChat :: IO Bool
 testMenuPrefsExportChat = do
     st <- mkTestState
     _ <- addTestSession (asConfig st) "peer-1"
-    executeMenuItem st MenuPrefs 1
+    executeMenuItem st MenuPrefs 2  -- Settings(0), Toggle Rich Text(1), Export Chat(2)
     dlg <- readIORef (asDialogMode st)
     assertEq "prefs export chat opens prompt" True (isDlgPrompt dlg)
 
@@ -167,7 +136,7 @@ testMenuPrefsExportChatNoSelection = do
     st <- mkTestState
     _ <- addTestSession (asConfig st) "peer-1"
     writeIORef (asSelected st) (-1)
-    executeMenuItem st MenuPrefs 1
+    executeMenuItem st MenuPrefs 2  -- Export Chat at index 2
     dlg <- readIORef (asDialogMode st)
     status <- readIORef (asStatusMsg st)
     ok1 <- assertEq "prefs export chat no selection stays closed" True (isDlgNothing dlg)
@@ -178,7 +147,7 @@ testMenuPrefsImportChat :: IO Bool
 testMenuPrefsImportChat = do
     st <- mkTestState
     _ <- addTestSession (asConfig st) "peer-1"
-    executeMenuItem st MenuPrefs 2
+    executeMenuItem st MenuPrefs 3  -- Import Chat at index 3
     dlg <- readIORef (asDialogMode st)
     assertEq "prefs import chat opens prompt" True (isDlgPrompt dlg)
 
@@ -187,7 +156,7 @@ testMenuPrefsImportChatNoSelection = do
     st <- mkTestState
     _ <- addTestSession (asConfig st) "peer-1"
     writeIORef (asSelected st) (-1)
-    executeMenuItem st MenuPrefs 2
+    executeMenuItem st MenuPrefs 3  -- Import Chat at index 3
     dlg <- readIORef (asDialogMode st)
     status <- readIORef (asStatusMsg st)
     ok1 <- assertEq "prefs import chat no selection stays closed" True (isDlgNothing dlg)
@@ -206,13 +175,6 @@ testMenuHelpAbout = do
     dlg <- readIORef (asDialogMode st)
     assertEq "about opens DlgAbout" True (isDlgAbout dlg)
 
-testMenuChatClearInput :: IO Bool
-testMenuChatClearInput = do
-    st <- mkTestState; writeIORef (asInputBuf st) "hello"
-    executeMenuItem st MenuChat 4   -- index 4 = CmdClearInput
-    buf <- readIORef (asInputBuf st)
-    assertEq "chat clear input" "" buf
-
 testMenuQuit :: IO Bool
 testMenuQuit = do
     st <- mkTestState
@@ -223,8 +185,9 @@ testMenuQuit = do
 testMenuMouseClickTab :: IO Bool
 testMenuMouseClickTab = do
     st <- mkTestState
-    -- 40x120 test layout with 6 tabs: Help tab starts at col 52 in row 1.
-    handleNormal st (KeyMouseLeft 1 55)
+    -- 40x120 test layout with 4 tabs: Help tab starts further right.
+    -- Tabs: " F1 Help " " F2 Prefs " " F3 Identity " " Q Quit "
+    handleNormal st (KeyMouseLeft 1 82)
     m <- readIORef (asMenuOpen st)
     assertEq "mouse click tab opens menu" (Just MenuHelp) m
 
@@ -266,10 +229,10 @@ testMenuMouseClickOutsideDropdownClosesWithoutAction = do
 testMenuMouseClickIdentityRegenButton :: IO Bool
 testMenuMouseClickIdentityRegenButton = do
     st <- mkTestState
-    -- F5 now opens the Identity menu; Execute item 0 (Regenerate Key) opens DlgRegenKey.
-    handleNormal st KeyF5
+    -- F3 now opens the Identity menu; Execute item 0 (Regenerate Key) opens DlgRegenKey.
+    handleNormal st KeyF3
     m <- readIORef (asMenuOpen st)
-    ok1 <- assertEq "F5 opens Identity menu" (Just MenuIdentity) m
+    ok1 <- assertEq "F3 opens Identity menu" (Just MenuIdentity) m
     executeMenuItem st MenuIdentity 0
     dlg <- readIORef (asDialogMode st)
     ok2 <- assertEq "identity menu regen item opens dialog" True (dlg == Just DlgRegenKey)

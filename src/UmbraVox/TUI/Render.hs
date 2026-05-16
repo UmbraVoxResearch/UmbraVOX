@@ -29,7 +29,7 @@ import UmbraVox.TUI.RichText
     , richShowScrollbar, richContentW, richMaxScroll
     , renderRichCharsPaddedSel, renderMarkdownLinePadded
     )
-import UmbraVox.TUI.Dialog (showOverlay, renderHelpOverlay, renderAboutOverlay, renderKeysOverlay,
+import UmbraVox.TUI.Dialog (showOverlay, showWarningOverlay, renderHelpOverlay, renderAboutOverlay, renderKeysOverlay,
     renderSettingsOverlay, renderNewConnOverlay, renderVerifyOverlay,
     renderBrowseOverlay, renderPromptOverlay, renderRegenKeyOverlay, renderDropdown,
     helpOverlayLines, aboutOverlayLines, newConnOverlayLines, keysOverlayLines,
@@ -99,17 +99,17 @@ renderMenuBar lay mOpen = do
         tabLabels = map menuTabLabel tabs
         tabsContentW = 1 + sum (map (\l -> length l + 1) tabLabels)
         fillW = max 0 (totalW - tabsContentW - 2)
-    goto 1 1; setFg 36; putStr "\x256D"
-    resetSGR; setFg 36; putStr (replicate fillW '\x2500')
+    goto 1 1; setFg 35; putStr "\x256D"
+    resetSGR; setFg 35; putStr (replicate fillW '\x2500')
     putStr "\x2502"
     mapM_ (\tab -> do
         let label = menuTabLabel tab
         if mOpen == Just tab then do
-            resetSGR; bold; setFg 37; csi "46m"  -- white on cyan
+            resetSGR; bold; setFg 37; csi "45m"  -- white on cyan
             renderUnderlinedLabel label (menuTabUnderlineIndex tab)
-            resetSGR; setFg 36
+            resetSGR; setFg 35
         else do
-            resetSGR; setFg 36
+            resetSGR; setFg 35
             renderUnderlinedLabel label (menuTabUnderlineIndex tab)
         putStr "\x2502"
         ) tabs
@@ -148,7 +148,7 @@ renderContactCell lay entries sel focus cScroll row = do
             sbW = if showScrollbar then 1 else 0
             nameW = max 0 (lw - 2 - displayWidth mk - displayWidth tag - sbW)
             cell = mk ++ padR nameW (siPeerName si) ++ tag
-        when (idx == sel) $ if focus == ContactPane then bold >> setFg 32 else bold
+        when (idx == sel) $ if focus == ContactPane then bold >> setFg 34 else bold
         putStr cell
         resetSGR
         when showScrollbar $ csi "2m" >> setFg 37 >> putChar scrollbarChar >> resetSGR
@@ -269,19 +269,30 @@ renderPaneRowLeft lay grid entries sel focus cScroll row = do
     let contentRow = gContentTop grid + row
         chatH' = lChatH lay
         contactsH = chatH' - lIdentityH lay
+        innerW = lLeftW lay - 2
+        -- Contacts toolbar: separator line + 1-2 button rows
+        allFour :: String
+        allFour = "[ New ] [ Rename ] [ Browse ] [ Verify ]"
+        btnRows = if innerW >= length allFour then 1 else 2
+        toolbarRows = 1 + btnRows  -- 1 separator + button rows
+        toolbarStart = max 0 (contactsH - toolbarRows)
+        isContactRow = row < toolbarStart
+        isToolbarRow = row >= toolbarStart && row < contactsH
     goto contentRow 1
     -- Left border
-    if focus == ContactPane && row < contactsH
-        then bold >> setFg 32 >> putStr "\x2502" >> resetSGR
-        else setFg 36 >> putStr "\x2502" >> resetSGR
-    -- Contact cell (only in the contacts area — rows above the identity panel)
-    if row < contactsH
+    if (isContactRow || isToolbarRow) && focus == ContactPane
+        then bold >> setFg 34 >> putStr "\x2502" >> resetSGR
+        else setFg 35 >> putStr "\x2502" >> resetSGR
+    -- Content: contacts, then toolbar (with separator), then blank/identity rows
+    if isContactRow
         then renderContactCell lay entries sel focus cScroll row
-        else putStr (replicate (lLeftW lay - 2) ' ')
-    -- Divider
-    if focus == ContactPane && row < contactsH
-        then bold >> setFg 32 >> putStr "\x2502" >> resetSGR
-        else setFg 36 >> putStr "\x2502" >> resetSGR
+        else if isToolbarRow
+        then renderContactsToolbarRow innerW (row - toolbarStart)
+        else putStr (replicate innerW ' ')
+    -- Right border
+    if (isContactRow || isToolbarRow) && focus == ContactPane
+        then bold >> setFg 34 >> putStr "\x2502" >> resetSGR
+        else setFg 35 >> putStr "\x2502" >> resetSGR
 
 renderPaneRowRight :: Layout -> RenderGrid -> Maybe SessionInfo -> Bool -> Pane -> Int -> Int -> IO ()
 renderPaneRowRight lay grid selSi richEnabled focus scroll' row = do
@@ -316,8 +327,8 @@ renderPaneRowRight lay grid selSi richEnabled focus scroll' row = do
     when showScrollbar $ csi "2m" >> setFg 37 >> putChar scrollbarChar >> resetSGR
     -- Right border
     if focus == ChatPane
-        then bold >> setFg 32 >> putStr "\x2502" >> resetSGR
-        else setFg 36 >> putStr "\x2502" >> resetSGR
+        then bold >> setFg 34 >> putStr "\x2502" >> resetSGR
+        else setFg 35 >> putStr "\x2502" >> resetSGR
 
 -- | Render the identity panel separator and content rows, left side only.
 -- Called after renderPaneRow has already drawn all content rows (the right
@@ -335,8 +346,8 @@ renderIdentityPanel lay grid st mIk = do
         active = focus == IdentityPane
         withPanelFrame action =
             if active
-                then bold >> setFg 32 >> action >> resetSGR
-                else setFg 36 >> action >> resetSGR
+                then bold >> setFg 34 >> action >> resetSGR
+                else setFg 35 >> action >> resetSGR
     -- Separator between contacts and identity panel (left side only)
     goto sepRow 1
     withPanelFrame $
@@ -346,7 +357,7 @@ renderIdentityPanel lay grid st mIk = do
         let panelRow = sepRow + 1 + i
         goto panelRow 1
         withPanelFrame (putStr "\x2502")
-        when active (bold >> setFg 32)
+        when active (bold >> setFg 34)
         putStr line
         resetSGR
         goto panelRow lw
@@ -357,7 +368,7 @@ renderMidBorder :: Layout -> RenderGrid -> IO ()
 renderMidBorder lay grid = do
     let lw = lLeftW lay; rw = lRightW lay
         borderRow = gSepRow grid
-    goto borderRow 1; setFg 36
+    goto borderRow 1; setFg 35
     putStr $ "\x2502" ++ replicate (lw - 2) ' ' ++ "\x2502"
           ++ replicate (rw - 1) '\x2500' ++ "\x2524"
     resetSGR
@@ -418,20 +429,20 @@ renderInputRow lay grid focus richEnabled buf inputCursor inputScroll mSelStart 
     forM_ [0..inputRows-1] $ \i -> do
         let inputRow = inputTop + i
         goto inputRow 1
-        -- Left pane (no action buttons; just blank rows)
-        setFg 36; putStr "\x2502"; resetSGR
+        -- Left pane: blank rows (toolbar is now above the identity panel)
+        setFg 35; putStr "\x2502"; resetSGR
         putStr (replicate (lw - 2) ' ')
-        setFg 36; putStr "\x2502"; resetSGR
+        setFg 35; putStr "\x2502"; resetSGR
         -- Right pane
         if i == toolbarRow
             then do
                 if richEnabled
                     then renderEditorToolbar bodyW richEnabled
                     else putStr (replicate bodyW ' ')
-                setFg 36 >> putStr "\x2502" >> resetSGR
+                setFg 35 >> putStr "\x2502" >> resetSGR
         else if i == boxTopRow
             then do
-                setFg 36
+                setFg 35
                 if rw >= 2
                     then putStr $ "\x256D" ++ replicate (rw - 2) '\x2500' ++ "\x256E"
                     else putStr (replicate rw '\x2500')
@@ -445,13 +456,13 @@ renderInputRow lay grid focus richEnabled buf inputCursor inputScroll mSelStart 
                             cursorCol = case richCursor of
                                 Just (cursorRow, cursorCol') | focus == ChatPane && cursorRow == lineIx -> Just cursorCol'
                                 _ -> Nothing
-                        when (focus == ChatPane) (bold >> setFg 32)
+                        when (focus == ChatPane) (bold >> setFg 34)
                         renderRichCharsPaddedSel richW cursorCol mSelLo mSelHi chars
                         resetSGR
                         when showRichScrollbar $ csi "2m" >> setFg 37 >> putChar (richScrollbarChar lineIx) >> resetSGR
                     else if focus == ChatPane
                         then do
-                            bold; setFg 32
+                            bold; setFg 34
                             let line = if lineIx < length visibleInput then visibleInput !! lineIx else ""
                                 wline = if lineIx < length visibleWrappedLines then Just (visibleWrappedLines !! lineIx) else Nothing
                                 lineStart = maybe 0 wilStart wline
@@ -466,12 +477,16 @@ renderInputRow lay grid focus richEnabled buf inputCursor inputScroll mSelStart 
                             let line = if lineIx < length visibleInput then visibleInput !! lineIx else ""
                             putStr (padR contentW line)
                             when showScrollbar $ csi "2m" >> setFg 37 >> putChar (inputScrollbarChar lineIx) >> resetSGR
-                setFg 36 >> putStr "\x2502" >> resetSGR
+                setFg 35 >> putStr "\x2502" >> resetSGR
             else if i == rightEntryStart + rightEntryRows
                 then do
-                    setFg 36
+                    -- Bottom border with [Send] [Clear] buttons on the right
+                    setFg 35
+                    let btns = " [Send] [Clear] "
+                        btnsW = length btns
+                        dashW = max 0 (rw - 2 - btnsW)
                     if rw >= 2
-                        then putStr $ "\x2570" ++ replicate (rw - 2) '\x2500' ++ "\x256F"
+                        then putStr $ "\x2570" ++ replicate dashW '\x2500' ++ btns ++ "\x256F"
                         else putStr (replicate rw '\x2500')
                     resetSGR
             else putStr (replicate bodyW ' ')
@@ -479,6 +494,37 @@ renderInputRow lay grid focus richEnabled buf inputCursor inputScroll mSelStart 
 -- | Render the editor toolbar content (without the trailing border character).
 -- 'bodyW' is the available width for toolbar text, excluding the right border.
 -- Rich/Plain toggles are in Prefs; only formatting buttons are shown here, centered.
+-- | Render the contacts toolbar: [ New ] [ Rename ] [ Browse ] [ Verify ] centered in the given width.
+-- If width is too narrow, show abbreviated buttons.
+-- | Render one row of the contacts toolbar.  Row 0 is a thin separator line.
+-- Button rows follow: when wide, all four on row 1.  When narrow, stacked
+-- into rows 1 and 2.  Full button names are always preferred.
+renderContactsToolbarRow :: Int -> Int -> IO ()
+renderContactsToolbarRow w row
+    | row == 0 = do
+        -- Thin separator line (─ across the pane)
+        setFg 35; putStr (replicate w '\x2500'); resetSGR
+    | otherwise = do
+        let btnRow = row - 1  -- 0-based button row index
+            allFour = "[ New ] [ Rename ] [ Browse ] [ Verify ]"
+            topTwo  = "[ New ] [ Rename ]"
+            botTwo  = "[ Browse ] [ Verify ]"
+        setFg 35
+        if w >= length allFour
+            then if btnRow == 0
+                then putStr (padR w (center w allFour))
+                else putStr (replicate w ' ')
+            else if btnRow == 0
+                then putStr (padR w (center w topTwo))
+                else if btnRow == 1
+                then putStr (padR w (center w botTwo))
+                else putStr (replicate w ' ')
+        resetSGR
+  where
+    center totalW s =
+        let padLeft = max 0 ((totalW - length s) `div` 2)
+        in replicate padLeft ' ' ++ s
+
 renderEditorToolbar :: Int -> Bool -> IO ()
 renderEditorToolbar bodyW _richEnabled = do
     let buttons = ["[ Bold ]", "[ Italic ]", "[ Color ]", "[ Link ]", "[ Emoji ]"]
@@ -486,7 +532,7 @@ renderEditorToolbar bodyW _richEnabled = do
         toolbarW = length toolbar
         padLeft = max 0 ((bodyW - toolbarW) `div` 2)
         centered = replicate padLeft ' ' ++ toolbar
-    setFg 36
+    setFg 35
     putStr (padR bodyW centered)
     resetSGR
 
@@ -500,7 +546,7 @@ renderPlainLineSel width line cursorCol lineStart mSelLo mSelHi = do
     -- Draw cursor at end-of-text if cursor is there
     let endCol = finalCol
     when (cursorCol >= 0 && cursorCol == endCol && endCol < width) $ do
-        csi "7m"; putChar '\x2588'; resetSGR; bold; setFg 32
+        csi "7m"; putChar '\x2588'; resetSGR; bold; setFg 34
     let padStart = endCol + (if cursorCol >= 0 && cursorCol == endCol && endCol < width then 1 else 0)
     putStr (replicate (max 0 (width - padStart)) ' ')
   where
@@ -516,7 +562,7 @@ renderPlainLineSel width line cursorCol lineStart mSelLo mSelHi = do
                 isCursor = cursorCol >= 0 && col == cursorCol
                 isSel = inSel bufIdx
             if isCursor || isSel
-                then do csi "7m"; putChar ch; resetSGR; bold; setFg 32
+                then do csi "7m"; putChar ch; resetSGR; bold; setFg 34
                 else putChar ch
             go (col + charW) (bufOff + 1) rest
 
@@ -525,7 +571,7 @@ renderBottomBorder :: Layout -> RenderGrid -> IO ()
 renderBottomBorder lay grid = do
     let lw = lLeftW lay; rw = lRightW lay
         botRow = gBottomBorderRow grid
-    goto botRow 1; setFg 36
+    goto botRow 1; setFg 35
     putStr $ "\x2570" ++ replicate (lw - 2) '\x2500' ++ "\x2534"
           ++ replicate (rw - 1) '\x2500' ++ "\x256F"
     resetSGR
@@ -715,7 +761,7 @@ render st = do
                 Just DlgVerify   -> renderVerifyOverlay lay st dlgScroll
                 Just DlgBrowse   -> renderBrowseOverlay lay st dlgScroll
                 Just DlgRegenKey -> renderRegenKeyOverlay lay st dlgScroll
-                Just DlgExportWarn -> showOverlay lay "Export Warning" (exportWarnOverlayLines regenCb)
+                Just DlgExportWarn -> showWarningOverlay lay "Export Warning" (exportWarnOverlayLines regenCb)
                 Just DlgExportKeys -> do
                     lns <- exportKeysOverlayLines st
                     showOverlay lay "Export Identity Keys" lns

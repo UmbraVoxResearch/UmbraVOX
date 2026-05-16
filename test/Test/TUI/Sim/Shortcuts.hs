@@ -19,9 +19,8 @@ runTests = do
         , testEscapeClosesDialog
         , testEscapeNoOpWithoutDialog
         , testF1OpensHelp
-        , testF2OpensContacts
-        , testF3OpensChat
-        , testF4OpensPrefs
+        , testF2OpensPrefs
+        , testF3OpensIdentity
         , testF5NoOp
         , testUnknownKeyNoOp
         ]
@@ -69,29 +68,23 @@ testF1OpensHelp = do
     m <- readIORef (asMenuOpen st)
     assertEq "F1 opens Help" (Just MenuHelp) m
 
-testF2OpensContacts :: IO Bool
-testF2OpensContacts = do
+testF2OpensPrefs :: IO Bool
+testF2OpensPrefs = do
     st <- mkTestState; handleNormal st KeyF2
     m <- readIORef (asMenuOpen st)
-    assertEq "F2 opens Contacts" (Just MenuContacts) m
+    assertEq "F2 opens Prefs" (Just MenuPrefs) m
 
-testF3OpensChat :: IO Bool
-testF3OpensChat = do
+testF3OpensIdentity :: IO Bool
+testF3OpensIdentity = do
     st <- mkTestState; handleNormal st KeyF3
     m <- readIORef (asMenuOpen st)
-    assertEq "F3 opens Chat" (Just MenuChat) m
-
-testF4OpensPrefs :: IO Bool
-testF4OpensPrefs = do
-    st <- mkTestState; handleNormal st KeyF4
-    m <- readIORef (asMenuOpen st)
-    assertEq "F4 opens Prefs" (Just MenuPrefs) m
+    assertEq "F3 opens Identity" (Just MenuIdentity) m
 
 testF5NoOp :: IO Bool
 testF5NoOp = do
     st <- mkTestState; handleNormal st KeyF5
     m <- readIORef (asMenuOpen st)
-    assertEq "F5 opens Identity menu" (Just MenuIdentity) m
+    assertEq "F5 is no-op" Nothing m
 
 testUnknownKeyNoOp :: IO Bool
 testUnknownKeyNoOp = do

@@ -51,9 +51,9 @@ handleMenu st key = case key of
     KeyEnter   -> activateMenuItem st
     -- F-keys switch directly to that tab
     KeyF1      -> openMenu st MenuHelp
-    KeyF2      -> openMenu st MenuContacts
-    KeyF3      -> openMenu st MenuChat
-    KeyF4      -> openMenu st MenuPrefs
+    KeyF2      -> openMenu st MenuPrefs
+    KeyF3      -> openMenu st MenuIdentity
+    KeyF4      -> pure ()
     KeyF5      -> pure ()
     -- Ctrl shortcuts pass through
     KeyCtrlQ   -> closeMenu st >> runRuntimeCommand st CmdQuit

@@ -81,13 +81,6 @@ data RuntimeCommand
 commandForMenuItem :: MenuTab -> Int -> Maybe RuntimeCommand
 commandForMenuItem MenuHelp 0     = Just CmdShowHelp
 commandForMenuItem MenuHelp 1     = Just CmdShowAbout
-commandForMenuItem MenuContacts 0 = Just CmdOpenBrowse
-commandForMenuItem MenuContacts 1 = Just CmdOpenVerify
-commandForMenuItem MenuChat 0     = Just CmdOpenNewConversation
-commandForMenuItem MenuChat 1     = Just CmdRenameContact
-commandForMenuItem MenuChat 2     = Just CmdToggleRichText
-commandForMenuItem MenuChat 3     = Just CmdSendCurrentMessage
-commandForMenuItem MenuChat 4     = Just CmdClearInput
 commandForMenuItem MenuIdentity 0 = Just CmdOpenRegenKey
 commandForMenuItem MenuIdentity 1 = Just CmdOpenExportWarn
 commandForMenuItem MenuIdentity 2 = Just CmdOpenImportKey
@@ -100,7 +93,7 @@ commandForMenuItem _ _            = Nothing
 
 menuPrefsCommands :: [RuntimeCommand]
 menuPrefsCommands =
-    [CmdOpenSettings]
+    [CmdOpenSettings, CmdToggleRichText]
     ++ (if pluginEnabled PluginChatTransfer then [CmdExportChat, CmdImportChat] else [])
 
 (!!?) :: [a] -> Int -> Maybe a
