@@ -8,6 +8,7 @@ module UmbraVox.TUI.Dialog
     , wrapOverlayLines
     , settingsTabLabels
     , showOverlay
+    , showWarningOverlay
     , showOverlayScrolled
     , helpOverlayLines, aboutOverlayLines, newConnOverlayLines
     , renderHelpOverlay, renderAboutOverlay, renderNewConnOverlay, renderVerifyOverlay
@@ -179,6 +180,10 @@ settingsTabLabels
 showOverlay :: Layout -> String -> [String] -> IO ()
 showOverlay lay title lns = showOverlayScrolled lay title lns 0
 
+-- | Show a warning-styled overlay (red borders).
+showWarningOverlay :: Layout -> String -> [String] -> IO ()
+showWarningOverlay lay title lns = showOverlayColoredScrolled lay title lns 0 31
+
 -- | Render a modal overlay dialog box with optional vertical scrolling.
 -- 'scrollOff' is the number of content lines to skip from the top.
 -- Scroll indicators (\x25b2/\x25bc) appear in the left border margin when
@@ -188,7 +193,10 @@ showOverlay lay title lns = showOverlayScrolled lay title lns 0
 -- When content exceeds the visible area a scrollbar track (│) and thumb (█)
 -- are drawn on the rightmost content column inside the right border.
 showOverlayScrolled :: Layout -> String -> [String] -> Int -> IO ()
-showOverlayScrolled lay title lns scrollOff = do
+showOverlayScrolled lay title lns scrollOff = showOverlayColoredScrolled lay title lns scrollOff 35
+
+showOverlayColoredScrolled :: Layout -> String -> [String] -> Int -> Int -> IO ()
+showOverlayColoredScrolled lay title lns scrollOff color = do
     let rawLineCount = length lns
         (_, _, w0, _) = overlayBounds lay rawLineCount
         wrapWidth = max 1 (w0 - 3)
@@ -239,7 +247,7 @@ showOverlayScrolled lay title lns scrollOff = do
             in "\x2502" ++ indicator ++ padR textW (trimToWidth textW l) ++ sbPlaceholder ++ "\x2502"
         ovRows = zipWith mkRow [0 :: Int ..] visible
     forM_ (zip [0..] (top : ovRows ++ [bot])) $ \(i,line) ->
-        goto (r0+i) c0 >> setFg 36 >> bold >> putStr line >> resetSGR
+        goto (r0+i) c0 >> setFg color >> bold >> putStr line >> resetSGR
     -- Overdraw the scrollbar column with distinct colours.
     when needsScrollbar $
         forM_ [0..contentH-1] $ \i -> do
@@ -313,9 +321,8 @@ helpOverlayLines =
     , ""
     , " Menu bar  (F-keys or underlined letter)"
     , "   F1 / H           Help overlay (this screen)"
-    , "   F2 / C           Contacts menu  (new session, browse peers, verify)"
-    , "   F3 / T           Chat menu  (session info, export, clear)"
-    , "   F4 / P           Preferences / settings overlay"
+    , "   F2 / P           Preferences  (settings, toggle rich text)"
+    , "   F3 / I           Identity menu  (regen key, export, toggle info)"
     , "   Q                Quit UmbraVOX"
     , "   Left / Right     Navigate open menu items"
     , ""
@@ -1036,7 +1043,7 @@ renderRegenKeyOverlay :: Layout -> AppState -> Int -> IO ()
 renderRegenKeyOverlay lay st scrollOff = do
     checked <- readIORef (asRegenCheckbox st)
     lns <- regenKeyOverlayLines checked
-    showOverlayScrolled lay "Regenerate Identity Key" lns scrollOff
+    showOverlayColoredScrolled lay "Regenerate Identity Key" lns scrollOff 31  -- red warning
 
 -- | Lines for the Insert Link modal.
 -- focusIx: 0=Text field, 1=URL field, 2=Insert btn, 3=Cancel btn.
@@ -1145,16 +1152,16 @@ renderDropdown lay tab selIdx = do
         topLine = "\x2554" ++ replicate (boxW - 2) '\x2550' ++ "\x2557"
         botLine = "\x255A" ++ replicate (boxW - 2) '\x2550' ++ "\x255D"
     when (startRow + length items + 1 < lRows lay && col + boxW <= lCols lay) $ do
-        goto startRow col; setFg 36; bold; putStr topLine; resetSGR
+        goto startRow col; setFg 35; bold; putStr topLine; resetSGR
         forM_ (zip [0..] items) $ \(i, label) -> do
             goto (startRow + 1 + i) col
-            setFg 36; bold; putStr "\x2551"; resetSGR
+            setFg 35; bold; putStr "\x2551"; resetSGR
             if i == selIdx then do
                 csi "7m"  -- inverse video
                 putStr (padR (boxW - 2) (" " ++ label))
                 resetSGR
             else
                 putStr (padR (boxW - 2) (" " ++ label))
-            setFg 36; bold; putStr "\x2551"; resetSGR
+            setFg 35; bold; putStr "\x2551"; resetSGR
         goto (startRow + 1 + length items) col
-        setFg 36; bold; putStr botLine; resetSGR
+        setFg 35; bold; putStr botLine; resetSGR

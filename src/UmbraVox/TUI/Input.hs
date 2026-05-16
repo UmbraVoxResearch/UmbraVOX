@@ -254,10 +254,10 @@ handleNormal st key = do
         KeyCtrlQ -> runRuntimeCommand st CmdQuit
         KeyCtrlD -> runRuntimeCommand st CmdQuit
         KeyF1    -> toggleMenu st MenuHelp
-        KeyF2    -> toggleMenu st MenuContacts
-        KeyF3    -> toggleMenu st MenuChat
-        KeyF4    -> toggleMenu st MenuPrefs
-        KeyF5    -> toggleMenu st MenuIdentity
+        KeyF2    -> toggleMenu st MenuPrefs
+        KeyF3    -> toggleMenu st MenuIdentity
+        KeyF4    -> toggleMenu st MenuIdentity
+        KeyF5    -> pure ()
         KeyEscape -> do
             dlg <- readIORef (asDialogMode st)
             case dlg of
@@ -347,7 +347,8 @@ gridRegionsFor lay mOverlay =
     actionsH = 4
     contactsRect = Rect contactsRow0 (contactsRow0 + contactsH - 1) contactsCol0 (contactsCol0 + contactsW - 1)
     actionsRect = Rect actionsRow0 (actionsRow0 + actionsH - 1) actionsCol0 (actionsCol0 + actionsW - 1)
-    chatBottom = max (chatRow0 + chatH - 1) (inputRow0 + inputH - 1)
+    -- Include the input box bottom border row (where Send/Clear buttons live)
+    chatBottom = max (chatRow0 + chatH - 1) (inputRow0 + inputH)
     chatRect = Rect chatRow0 chatBottom chatCol0 (chatCol0 + chatW - 1)
 
 gridRegionAt :: Layout -> Maybe Rect -> Int -> Int -> Maybe GridRegion
@@ -711,19 +712,80 @@ handlePaneClick st lay row col = do
         contentBottom = contactsRow0 + lChatH lay - 1
         leftContentEnd = contactsCol0 + contactsW - 1
     case gridRegionAt lay Nothing row col of
-        Just RegionContacts ->
-            if col <= leftContentEnd && row <= contactsBottom
+        Just RegionContacts -> do
+            lay' <- readIORef (asLayout st)
+            let innerW = lLeftW lay' - 2
+                allFourW = length ("[ New ] [ Rename ] [ Browse ] [ Verify ]" :: String)
+                btnRows = if innerW >= allFourW then 1 else 2
+                tbRows = 1 + btnRows  -- 1 separator + button rows
+                tbStart = contactsRow0 + max 0 (contactsH - tbRows)
+            if col <= leftContentEnd && row >= tbStart && row < contactsRow0 + contactsH
+                then handleContactsToolbarClick st lay' row col
+                else if col <= leftContentEnd && row < tbStart
                 then selectContactByRow st (row - contactsRow0)
                 else if col <= leftContentEnd && row > identSepRow && row <= contentBottom
                     then writeIORef (asFocus st) IdentityPane
                     else pure ()
-        Just RegionActions -> pure ()
+        Just RegionActions -> pure ()  -- actions area is now blank
         Just RegionChat -> do
             writeIORef (asFocus st) ChatPane
             if row == toolbarRow0
                 then handleToolbarClick st lay richEnabled col
-                else placeInputCursorIfNeeded st lay row col
+                else do
+                    -- Check if click is on the bottom border Send/Clear buttons
+                    let (inputRow0, inputCol0, _, inputH) = Layout.inputEntryBounds lay
+                        rw = lRightW lay
+                        bottomRow = inputRow0 + inputH  -- the box bottom border row
+                        -- Buttons: " [Send] [Clear] " on the right side of bottom border
+                        btns :: String
+                        btns = " [Send] [Clear] "
+                        btnsStart = lLeftW lay + rw - length btns
+                    if row == bottomRow && col >= btnsStart && col < btnsStart + 7
+                        then runRuntimeCommand st CmdSendCurrentMessage
+                        else if row == bottomRow && col >= btnsStart + 8 && col < btnsStart + 15
+                        then runRuntimeCommand st CmdClearInput
+                        else placeInputCursorIfNeeded st lay row col
         _ -> pure ()
+
+-- | Handle clicks on the contacts toolbar ([ Browse ] [ Verify ]).
+-- The toolbar is in the left pane's first input-area row.
+handleContactsToolbarClick :: AppState -> Layout -> Int -> Int -> IO ()
+handleContactsToolbarClick st lay row col = do
+    let (contactsRow0, contactsCol0, contactsW, contactsH) = Layout.contactsPaneBounds lay
+        allFour :: String
+        allFour = "[ New ] [ Rename ] [ Browse ] [ Verify ]"
+        wide = contactsW >= length allFour
+        tbRows = if wide then 1 else 2
+        tbStart = contactsRow0 + max 0 (contactsH - tbRows)
+        relRow = row - tbStart - 1  -- skip the separator row (row 0 of toolbar)
+    if wide
+        -- Wide: all on row 0: "[ New ] [ Rename ] [ Browse ] [ Verify ]"
+        then when (relRow == 0) $ do
+            let padLeft = max 0 ((contactsW - length allFour) `div` 2)
+                relCol = col - contactsCol0 - padLeft
+            if relCol >= 0 && relCol < 7 then runRuntimeCommand st CmdOpenNewConversation
+                else if relCol >= 8 && relCol < 18 then runRuntimeCommand st CmdRenameContact
+                else if relCol >= 19 && relCol < 29 then runRuntimeCommand st CmdOpenBrowse
+                else if relCol >= 30 && relCol < 40 then runRuntimeCommand st CmdOpenVerify
+                else pure ()
+        -- Narrow: stacked — row 0: "[ New ] [ Rename ]", row 1: "[ Browse ] [ Verify ]"
+        else do
+            let topTwo :: String
+                topTwo = "[ New ] [ Rename ]"
+                botTwo :: String
+                botTwo = "[ Browse ] [ Verify ]"
+            if relRow == 0 then do
+                let padLeft = max 0 ((contactsW - length topTwo) `div` 2)
+                    relCol = col - contactsCol0 - padLeft
+                if relCol >= 0 && relCol < 7 then runRuntimeCommand st CmdOpenNewConversation
+                    else if relCol >= 8 && relCol < 18 then runRuntimeCommand st CmdRenameContact
+                    else pure ()
+            else when (relRow == 1) $ do
+                let padLeft = max 0 ((contactsW - length botTwo) `div` 2)
+                    relCol = col - contactsCol0 - padLeft
+                if relCol >= 0 && relCol < 10 then runRuntimeCommand st CmdOpenBrowse
+                    else if relCol >= 11 && relCol < 21 then runRuntimeCommand st CmdOpenVerify
+                    else pure ()
 
 handleToolbarClick :: AppState -> Layout -> Bool -> Int -> IO ()
 handleToolbarClick st lay richEnabled col =
