@@ -119,6 +119,26 @@ Firecracker instead of QEMU:
 
 The Firecracker image is cached at `build/vm/firecracker-image`.
 
+## VM Integration Testing
+
+In addition to release smoke testing, the VM infrastructure supports
+functional and visual testing:
+
+| Target | Description |
+|--------|-------------|
+| `make vm-socks5-test` | SOCKS5 proxy transport test via microsocks in VM |
+| `make vm-screenshot` | Capture TUI frames via tmux capture-pane in VM |
+| `make vm-record` | Record TUI session via asciinema in VM |
+| `make vm-visual-regression` | Diff captured frames against reference screenshots |
+| `make visual-reference-update` | Update reference baselines from latest captures |
+
+Screenshots are captured as ANSI text files (with escape codes) and
+optionally converted to HTML via `aha`. Reference captures live in
+`test/evidence/visual-reference/` and are committed to git.
+
+The SOCKS5 test also has a host-side variant in `Test.Network.Socks5Live`
+that spawns microsocks locally (skips gracefully when unavailable).
+
 ## Compliance Placeholder Gates
 
 The repository now provides real compliance tooling implemented in Haskell:
