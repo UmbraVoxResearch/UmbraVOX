@@ -45,6 +45,7 @@ let
       util-linux
       which
       tcpdump
+      microsocks
     ];
 
     # Workspace for bundle extraction

@@ -56,6 +56,9 @@ let
     which
     diffutils
     gnupatch
+    tmux
+    aha
+    asciinema
   ];
 
   nixosConfig = { config, lib, modulesPath, pkgs, ... }: {

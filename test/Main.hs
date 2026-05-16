@@ -105,6 +105,7 @@ import qualified Test.Network.Transport.Loopback as Loopback
 import qualified Test.Network.TransportClass as TransportClass
 import qualified Test.Network.TransportEdge as TransportEdge
 import qualified Test.Network.UDP as UDP
+import qualified Test.Network.Socks5Live as Socks5Live
 import qualified Test.Protocol.CBOR as CBOR
 import qualified Test.Protocol.MessageFormat as MessageFormat
 import qualified Test.Protocol.QRCode as QRCode
@@ -287,6 +288,7 @@ coreSuites =
     , Suite "transport-class" TransportClass.runTests
     , Suite "loopback-transport" Loopback.runTests
     , Suite "udp-transport" UDP.runTests
+    , Suite "socks5-live" Socks5Live.runTests
     , Suite "cbor" CBOR.runTests
     , Suite "bip39" BIP39.runTests
     , Suite "export" Export.runTests

@@ -107,6 +107,11 @@ in pkgs.mkShell {
     # VM smoke testing
     pkgs.qemu_kvm
     pkgs.firecracker
+
+    # VM integration testing (SOCKS5 proxy, screenshots, recording)
+    pkgs.microsocks
+    pkgs.tmux
+    pkgs.asciinema
   ];
 
   shellHook = ''

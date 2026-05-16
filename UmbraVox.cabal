@@ -396,6 +396,7 @@ test-suite umbravox-test
     Test.Network.Transport.Loopback
     Test.Network.TransportEdge
     Test.Network.UDP
+    Test.Network.Socks5Live
     Test.Protocol.CBOR
     Test.Crypto.BIP39
     Test.Crypto.Export

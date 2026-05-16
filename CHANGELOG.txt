@@ -16,6 +16,12 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - M17.5.4: Swap encryption warning — UmbraVox.App.SwapCheck reads /proc/swaps on Linux; warns in status bar when ephemeral mode is active and swap is detected.
 - M17.3.6: Startup .pref file guard — persistence preference writes gated by message-storage plugin + ephemeral check.
 
+### Added
+- F4.3: SOCKS5 live proxy test — Test.Network.Socks5Live spawns microsocks + echo server on loopback, verifies round-trip through SOCKS5 CONNECT. Closes M6.4 (transport plugin ecosystem).
+- VM testing infrastructure: 5 new scripts (vm-tui-scenario.sh, vm-screenshot-capture.sh, vm-record-session.sh, vm-visual-regression.sh, vm-socks5-test.sh) for screenshot capture, video recording, visual regression, and SOCKS5 integration testing inside NixOS VMs.
+- Nix: added tmux, aha, asciinema to vm-image.nix; microsocks to vm-test-image.nix and shell.nix.
+- Makefile: 5 new targets (vm-socks5-test, vm-screenshot, vm-record, vm-visual-regression, visual-reference-update).
+
 ### Fixed
 - Handshake: integer overflow in deserializeBundle pqLen arithmetic — validate bounds before offset computation to prevent bypass on crafted packets (Handshake.hs:98).
 - RatchetPersist: counter overflow guard — reject rsSendN >= 0xFFFFFFFE before persisting to prevent GCM nonce reuse (RatchetPersist.hs:133). Defense-in-depth alongside DoubleRatchet's own check.
