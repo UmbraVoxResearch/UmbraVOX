@@ -736,6 +736,125 @@ let fmul_inverse a =
 #pop-options
 
 (** -------------------------------------------------------------------- **)
+(** Additional field lemmas for group theory proofs                        **)
+(** -------------------------------------------------------------------- **)
+
+(** Zero annihilates: a * 0 = 0 *)
+val fmul_zero : a:felem -> Lemma (fmul a 0 == 0)
+let fmul_zero a =
+  assert (fmul a 0 == (a * 0) % prime);
+  assert (a * 0 == 0);
+  assert (0 % prime == 0)
+
+(** Zero annihilates (left): 0 * a = 0 *)
+val fmul_zero_left : a:felem -> Lemma (fmul 0 a == 0)
+let fmul_zero_left a =
+  assert (fmul 0 a == (0 * a) % prime);
+  assert (0 * a == 0);
+  assert (0 % prime == 0)
+
+(** fsub a 0 = a *)
+val fsub_zero : a:felem -> Lemma (fsub a 0 == a)
+let fsub_zero a =
+  assert (fsub a 0 == (a - 0 + prime) % prime);
+  assert (a - 0 + prime == a + prime);
+  FStar.Math.Lemmas.lemma_mod_plus a 1 prime
+
+(** fadd a 0 = a (alias of fadd_identity) *)
+val fadd_zero : a:felem -> Lemma (fadd a 0 == a)
+let fadd_zero a = fadd_identity a
+
+(** fmul a 1 = a (alias of fmul_identity) *)
+val fmul_one : a:felem -> Lemma (fmul a 1 == a)
+let fmul_one a = fmul_identity a
+
+(** fmul 1 a = a *)
+val fmul_one_left : a:felem -> Lemma (fmul 1 a == a)
+let fmul_one_left a =
+  fmul_comm 1 a;
+  fmul_identity a
+
+(** fmul 2 a = fadd a a *)
+val fmul_two : a:felem -> Lemma (fmul 2 a == fadd a a)
+let fmul_two a =
+  assert (fmul 2 a == (2 * a) % prime);
+  assert (fadd a a == (a + a) % prime);
+  assert (2 * a == a + a)
+
+(** Multiplicative inverse cancellation (from fmul_inverse, restated for convenience).
+    For z <> 0: fmul z (finv z) == 1 *)
+val finv_cancel : z:felem{z <> 0} -> Lemma (fmul z (finv z) == 1)
+let finv_cancel z = fmul_inverse z
+
+(** finv 1 == 1: inverse of 1 is 1 *)
+val finv_one : unit -> Lemma (finv 1 == 1)
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 50"
+let finv_one () =
+  (* finv 1 = pow_mod 1 (prime-2).  1^n = 1 for all n, so pow_mod 1 (prime-2) = 1. *)
+  pow_mod_equiv 1 (prime - 2);
+  (* pow_mod 1 (prime-2) == pow 1 (prime-2) % prime *)
+  FStar.Math.Fermat.pow_one (prime - 2);
+  (* pow 1 (prime-2) == 1 *)
+  assert (FStar.Math.Fermat.pow 1 (prime - 2) == 1);
+  assert (1 % prime == 1)
+#pop-options
+
+(** Key cancellation lemma: fmul (fmul a b) (finv b) == a, for b <> 0.
+    Proof: (a*b) * inv(b) = a * (b * inv(b)) = a * 1 = a *)
+val fmul_cancel_right : a:felem -> b:felem{b <> 0}
+  -> Lemma (fmul (fmul a b) (finv b) == a)
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 100"
+let fmul_cancel_right a b =
+  fmul_assoc a b (finv b);
+  (* fmul (fmul a b) (finv b) == fmul a (fmul b (finv b)) *)
+  fmul_inverse b;
+  (* fmul b (finv b) == 1 *)
+  fmul_identity a
+  (* fmul a 1 == a *)
+#pop-options
+
+(** Inverse distributes over multiplication: finv (a*b) == finv(a) * finv(b)
+    for a <> 0 and b <> 0.
+    This follows from uniqueness of inverses in GF(p):
+    (a*b) * (inv(a)*inv(b)) = a*inv(a) * b*inv(b) = 1*1 = 1 *)
+val finv_fmul : a:felem{a <> 0} -> b:felem{b <> 0}
+  -> Lemma (requires fmul a b <> 0)
+           (ensures finv (fmul a b) == fmul (finv a) (finv b))
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 200"
+let finv_fmul a b =
+  let ab = fmul a b in
+  let inv_ab = finv ab in
+  let inv_a_inv_b = fmul (finv a) (finv b) in
+  (* Show ab * inv_a_inv_b == 1 *)
+  fmul_assoc ab (finv a) (finv b);
+  (* fmul (fmul ab (finv a)) (finv b) ... but we need different grouping *)
+  (* (a*b) * (inv_a * inv_b) = ((a*b) * inv_a) * inv_b  [assoc]
+                              = (b * (a * inv_a)) * inv_b  [rearrange]
+                              ... actually let's use a different approach *)
+  (* Use: ab * inv_ab == 1 (by fmul_inverse ab)
+     and: ab * (inv_a * inv_b) == 1
+     Then by uniqueness: inv_ab == inv_a * inv_b *)
+  (* Show ab * (inv_a * inv_b) == 1 *)
+  fmul_comm a b;
+  fmul_assoc a b (fmul (finv a) (finv b));
+  (* fmul ab (fmul (finv a) (finv b)) == fmul a (fmul b (fmul (finv a) (finv b))) *)
+  fmul_assoc b (finv a) (finv b);
+  fmul_comm b (finv a);
+  fmul_assoc (finv a) b (finv b);
+  fmul_inverse b;
+  fmul_identity (finv a);
+  fmul_inverse a;
+  (* Now: ab * inv_a_inv_b == 1 *)
+  (* By uniqueness of inverse in GF(p): if x*y==1 and x*z==1 then y==z *)
+  fmul_inverse ab;
+  (* fmul ab inv_ab == 1, fmul ab inv_a_inv_b == 1 *)
+  (* Therefore: fmul ab inv_ab == fmul ab inv_a_inv_b *)
+  (* Cancel ab: inv_ab == inv_a_inv_b *)
+  fmul_cancel_right inv_ab ab;
+  fmul_cancel_right inv_a_inv_b ab
+#pop-options
+
+(** -------------------------------------------------------------------- **)
 (** Curve structural properties                                           **)
 (** -------------------------------------------------------------------- **)
 

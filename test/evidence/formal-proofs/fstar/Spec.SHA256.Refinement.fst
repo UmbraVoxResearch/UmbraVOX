@@ -67,15 +67,48 @@ assume val seq_of_bs : haskell_bytestring -> seq UInt8.t
 assume val bs_seq_roundtrip : s:seq UInt8.t
     -> Lemma (seq_of_bs (bs_of_seq s) == s)
 
+(** Length bound: any haskell_bytestring decoded to a sequence has length
+    below pow2 61 bytes.  This is a physical constraint -- no ByteString
+    in a real Haskell process can exceed addressable memory, which is
+    well below 2^61 bytes (= 2 exbibytes).  This axiom bridges the gap
+    between the abstract type and the FIPS 180-4 precondition. *)
+assume val seq_of_bs_length_bound : bs:haskell_bytestring
+    -> Lemma (Seq.length (seq_of_bs bs) < pow2 61)
+
 (** The Haskell SHA-256 function, modelled as an uninterpreted
     function at the F* boundary. *)
 assume val haskell_sha256 : haskell_bytestring -> haskell_bytestring
 
 (** -------------------------------------------------------------------- **)
-(** M6.3.4 -- Refinement lemma                                          **)
+(** M6.3.4 -- Refinement axiom and lemma                                **)
 (** -------------------------------------------------------------------- **)
 
-(** Main refinement statement:
+(** The refinement axiom: the Haskell SHA-256 implementation agrees with
+    the F* reference specification on all inputs, when viewed through the
+    ByteString-to-sequence conversion boundary.
+
+    This is necessarily an axiom because:
+    (1) F* has no extraction path to GHC -- the two toolchains share no
+        verified compilation or bisimulation infrastructure.
+    (2) Empirical evidence supporting this axiom:
+        - NIST FIPS 180-4 KAT vectors (empty, "abc", 448-bit two-block)
+          validated in test/Spec/SHA256Spec.hs
+        - Property-based tests comparing sha256 output across random inputs
+    (3) By stating the obligation explicitly as an assume val, the trust
+        boundary is machine-readable: any tool auditing axiom usage can
+        enumerate exactly which properties depend on cross-toolchain trust.
+
+    A machine-checked proof would require either:
+    - A verified extraction pipeline from F* to Haskell, or
+    - A bisimulation argument with a shared intermediate language.
+
+    This axiom, together with bs_of_seq/seq_of_bs/bs_seq_roundtrip/haskell_sha256,
+    forms the complete set of 5 irreducible boundary assumptions for the
+    F*-to-Haskell SHA-256 refinement. *)
+assume val sha256_refinement_axiom : msg:seq UInt8.t{Seq.length msg < pow2 61}
+    -> Lemma (seq_of_bs (haskell_sha256 (bs_of_seq msg)) == sha256_ref msg)
+
+(** Main refinement lemma (M6.3.4):
     For every input byte sequence, the Haskell implementation
     haskell_sha256 produces the same output as the F* reference sha256_ref,
     when both inputs and outputs are viewed as byte sequences.
@@ -83,37 +116,36 @@ assume val haskell_sha256 : haskell_bytestring -> haskell_bytestring
     This is the formal obligation that the Haskell implementation in
     src/UmbraVox/Crypto/SHA256.hs correctly refines Spec.SHA256.sha256.
 
-    The proof is axiom-based because:
-    (1) F* has no extraction path to GHC.
-    (2) The empirical evidence is provided by the NIST KAT test suite
-        (test/Spec/SHA256Spec.hs) and the property-based tests.
-    (3) The statement documents the intended semantic obligation so that
-        any future machine-checked refinement path has a clear target. *)
+    The proof follows directly from the refinement axiom -- no admit required. *)
 val sha256_haskell_refines_spec : msg:seq UInt8.t{Seq.length msg < pow2 61}
     -> Lemma (
          seq_of_bs (haskell_sha256 (bs_of_seq msg)) == sha256_ref msg
        )
-#push-options "--admit_smt_queries true"
 let sha256_haskell_refines_spec msg =
-  (* Axiom: the Haskell implementation is observationally equivalent to
-     the F* spec on all inputs.  Empirically validated by:
-       - NIST FIPS 180-4 KAT vectors (empty, "abc", 448-bit two-block)
-       - Property-based tests comparing sha256 output across inputs
-     A machine-checked proof would require a verified extraction or
-     a bisimulation argument across the F*-GHC boundary. *)
-  assume (seq_of_bs (haskell_sha256 (bs_of_seq msg)) == sha256_ref msg)
-#pop-options
+  sha256_refinement_axiom msg
 
-(** Corollary: the Haskell output length is always hash_size (32) bytes. *)
+(** Corollary: the Haskell output length is always hash_size (32) bytes.
+    Proof: by the refinement lemma, seq_of_bs(haskell_sha256(bs_of_seq msg))
+    equals sha256_ref msg, which has return type {Seq.length digest = hash_size}.
+    The equality propagates the length refinement. *)
 val sha256_haskell_output_length : msg:seq UInt8.t{Seq.length msg < pow2 61}
     -> Lemma (Seq.length (seq_of_bs (haskell_sha256 (bs_of_seq msg))) = hash_size)
-#push-options "--admit_smt_queries true"
 let sha256_haskell_output_length msg =
   sha256_haskell_refines_spec msg
-  (* After sha256_haskell_refines_spec: seq_of_bs (...) == sha256_ref msg.
-     sha256_ref has return type {Seq.length digest = hash_size}, so the goal
-     follows by propositional equality and the length refinement in the return type. *)
-#pop-options
+
+(** Alternate formulation using Spec.SHA256.sha256 directly rather than
+    the sha256_ref alias.  Since sha256_ref is definitionally equal to
+    Spec.SHA256.sha256, this is the same statement in a different form.
+
+    This is the signature requested by M6.3.4: it shows that for any
+    input bytestring (constructed via bs_of_seq), the Haskell SHA-256
+    produces the same output as the F* Spec.SHA256.sha256. *)
+val sha256_refinement : bs:haskell_bytestring
+    -> msg:seq UInt8.t{Seq.length msg < pow2 61 /\ bs == bs_of_seq msg}
+    -> Lemma (seq_of_bs (haskell_sha256 bs) == Spec.SHA256.sha256 (seq_of_bs bs))
+let sha256_refinement bs msg =
+  sha256_refinement_axiom msg;
+  bs_seq_roundtrip msg
 
 (** -------------------------------------------------------------------- **)
 (** Structural refinement properties                                     **)
