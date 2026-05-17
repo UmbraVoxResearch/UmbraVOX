@@ -810,8 +810,9 @@ let finv_one () =
 
 (** pow_mod 0 n == 0 for n > 0.  Induction on n via the halving recursion. *)
 val pow_mod_zero : n:pos -> Lemma (ensures pow_mod 0 n == 0) (decreases n)
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 50"
 let rec pow_mod_zero (n : pos) : Lemma (ensures pow_mod 0 n == 0) (decreases n) =
-  (* fsqr 0 = fmul 0 0 = 0 *)
+  (* fsqr 0 = fmul 0 0 = 0, so pow_mod recurses with base=0 throughout *)
   assert (fsqr 0 == 0);
   if n = 1 then begin
     (* pow_mod 0 1: exp=1, 1%2=1, so fmul 0 (pow_mod (fsqr 0) 0) = fmul 0 1 = 0 *)
@@ -827,6 +828,7 @@ let rec pow_mod_zero (n : pos) : Lemma (ensures pow_mod 0 n == 0) (decreases n) 
     assert (n/2 > 0);
     pow_mod_zero (n/2)
   end
+#pop-options
 
 (** finv 0 == 0: inverse of 0 is 0 (degenerate case). *)
 val finv_zero : unit -> Lemma (finv 0 == 0)
@@ -980,7 +982,9 @@ val encode_point_affine_eq :
   Lemma (requires fmul x1 (finv z1) == fmul x2 (finv z2) /\
                   fmul y1 (finv z1) == fmul y2 (finv z2))
         (ensures encode_point (x1,y1,z1,t1) == encode_point (x2,y2,z2,t2))
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 400"
 let encode_point_affine_eq x1 y1 z1 t1 x2 y2 z2 t2 = ()
+#pop-options
 
 (** Helper: projective scaling cancellation.  If s <> 0, then
     fmul (fmul s a) (finv (fmul s b)) == fmul a (finv b).
@@ -1301,26 +1305,135 @@ assume val point_add_assoc : p:ext_point -> q:ext_point -> r:ext_point
 
 (** Doubling is consistent with addition: 2P = P + P.
 
-    IRREDUCIBLE AXIOM — Requires curve equation, not just fmul_inverse.
+    PROVED -- Requires on_curve_ext p (projective curve equation + well-formedness).
 
-    The two formulas produce different projective representatives.  Showing
-    the affine coordinates match requires the identity Y^2 - X^2 = Z^2 + T^2*d,
-    which holds only for well-formed points on the curve (T*Z = X*Y and the
-    twisted Edwards equation -x^2 + y^2 = 1 + d*x^2*y^2).
-
-    Detailed analysis:
-      point_add(P,P): X3/Z3 = E_add/G_add = 4XY / (2Z^2 + 2T^2*d)
-      point_double(P): X3/Z3 = E_dbl/G_dbl = 2XY / (Y^2 - X^2)
-    These are equal iff Y^2 - X^2 = Z^2 + T^2*d, which is the projective
-    curve equation.  The lemma as stated (for all ext_point) would need
-    preconditions (well-formedness + on-curve) to be provable.
-
-    Since the statement lacks these preconditions and adding them would change
-    the API, this remains an axiom.  In practice, it is only applied to points
-    that are on the curve and well-formed. *)
-assume val point_double_is_add : p:ext_point
-    -> Lemma (encode_point (point_double p) ==
-              encode_point (point_add p p))
+    The two formulas produce different projective representatives of the same
+    affine point.  With the curve equation Y^2 - X^2 = Z^2 + d*T^2, the
+    intermediate values relate as: e_add = 2*e_dbl, g_add = 2*g_dbl,
+    h_add = -(2*h_dbl), f_add = -(2*f_dbl).  The X3/Z3 ratios match by
+    projective_cancel (factor of 2), and the Y3/Z3 ratios match by
+    neg_fmul_cancel (signs cancel) then projective_cancel (factor of 2). *)
+val point_double_is_add : p:ext_point
+    -> Lemma (requires on_curve_ext p)
+             (ensures encode_point (point_double p) ==
+                      encode_point (point_add p p))
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 800"
+let point_double_is_add p =
+  let (x, y, z, t) = p in
+  (* --- Compute doubling formula --- *)
+  let a_d  = fsqr x in
+  let b_d  = fsqr y in
+  let c_d  = fmul 2 (fsqr z) in
+  let e_d  = fsub (fsqr (fadd x y)) (fadd a_d b_d) in
+  let g_d  = fsub b_d a_d in
+  let f_d  = fsub g_d c_d in
+  let h_d  = fsub 0 (fadd a_d b_d) in
+  let x3_d = fmul e_d f_d in
+  let y3_d = fmul g_d h_d in
+  let t3_d = fmul e_d h_d in
+  let z3_d = fmul f_d g_d in
+  (* --- Compute addition formula (P + P) --- *)
+  let a_a  = fmul (fsub y x) (fsub y x) in
+  let b_a  = fmul (fadd y x) (fadd y x) in
+  let c_a  = fmul (fmul 2 (fmul t t)) curve_d in
+  let dd_a = fmul 2 (fmul z z) in
+  let e_a  = fsub b_a a_a in
+  let f_a  = fsub dd_a c_a in
+  let g_a  = fadd dd_a c_a in
+  let h_a  = fadd b_a a_a in
+  let x3_a = fmul e_a f_a in
+  let y3_a = fmul g_a h_a in
+  let t3_a = fmul e_a h_a in
+  let z3_a = fmul f_a g_a in
+  (* --- Preconditions from on_curve_ext --- *)
+  assert (z > 0);
+  assert (fmul t z == fmul x y);
+  assert (fsub (fsqr y) (fsqr x) == fadd (fsqr z) (fmul curve_d (fsqr t)));
+  assert (g_d == fadd (fsqr z) (fmul curve_d (fsqr t)));
+  (* Key relationships: e_a = fmul 2 e_d, g_a = fmul 2 g_d,
+     h_a = fsub 0 (fmul 2 h_d), f_a = fsub 0 (fmul 2 f_d) *)
+  fmul_two e_d;
+  fmul_two h_d;
+  fmul_two g_d;
+  fmul_two f_d;
+  assert (dd_a == c_d);
+  (* Help Z3 relate g_a to g_d and f_a to f_d via distributivity *)
+  fmul_distrib 2 (fsqr z) (fmul curve_d (fsqr t));
+  fmul_comm (fmul 2 (fsqr t)) curve_d;
+  fmul_assoc 2 (fsqr t) curve_d;
+  fmul_comm (fsqr t) curve_d;
+  fmul_assoc 2 curve_d (fsqr t);
+  if g_d = 0 then begin
+    (* Degenerate: g_d = 0 => g_a = 2*g_d = 0, both z3 = 0 *)
+    fmul_zero 2;  (* fmul 2 0 == 0, so fmul 2 g_d = 0 *)
+    assert (g_a == 0);
+    fmul_zero f_d;
+    assert (z3_d == 0);
+    fmul_zero f_a;
+    assert (z3_a == 0);
+    finv_zero ();
+    fmul_zero x3_d; fmul_zero y3_d; fmul_zero x3_a; fmul_zero y3_a;
+    encode_point_affine_eq x3_d y3_d z3_d t3_d x3_a y3_a z3_a t3_a
+  end else if f_d = 0 then begin
+    (* Degenerate: f_d = 0 => f_a = -(2*f_d) = 0, both z3 = 0 *)
+    assert (f_a == 0);
+    fmul_zero_left g_d;
+    assert (z3_d == 0);
+    fmul_zero_left g_a;
+    assert (z3_a == 0);
+    finv_zero ();
+    fmul_zero x3_d; fmul_zero y3_d; fmul_zero x3_a; fmul_zero y3_a;
+    encode_point_affine_eq x3_d y3_d z3_d t3_d x3_a y3_a z3_a t3_a
+  end else begin
+    (* Main case: f_d <> 0 and g_d <> 0 *)
+    fmul_nonzero f_d g_d;
+    assert (z3_d <> 0);
+    assert (2 < prime);
+    fmul_nonzero 2 f_d;
+    fmul_nonzero 2 g_d;
+    (* Establish key equalities: g_a = fmul 2 g_d, e_a = fmul 2 e_d *)
+    assert (g_a == fmul 2 g_d);
+    assert (e_a == fmul 2 e_d);
+    (* f_a = fsub 0 (fmul 2 f_d), h_a = fsub 0 (fmul 2 h_d) *)
+    assert (f_a == fsub 0 (fmul 2 f_d));
+    assert (h_a == fsub 0 (fmul 2 h_d));
+    assert (f_a <> 0);
+    assert (g_a <> 0);
+    fmul_nonzero f_a g_a;
+    assert (z3_a <> 0);
+    (* --- X coordinate: x3_d/z3_d == x3_a/z3_a --- *)
+    projective_cancel f_d e_d g_d;
+    assert (fmul x3_d (finv z3_d) == fmul e_d (finv g_d));
+    projective_cancel f_a e_a g_a;
+    assert (fmul x3_a (finv z3_a) == fmul e_a (finv g_a));
+    projective_cancel 2 e_d g_d;
+    assert (fmul e_a (finv g_a) == fmul e_d (finv g_d));
+    assert (fmul x3_a (finv z3_a) == fmul x3_d (finv z3_d));
+    (* --- Y coordinate: y3_d/z3_d == y3_a/z3_a --- *)
+    fmul_comm f_d g_d;
+    projective_cancel g_d h_d f_d;
+    fmul_comm f_d g_d;
+    assert (fmul y3_d (finv z3_d) == fmul h_d (finv f_d));
+    fmul_comm f_a g_a;
+    projective_cancel g_a h_a f_a;
+    fmul_comm f_a g_a;
+    assert (fmul y3_a (finv z3_a) == fmul h_a (finv f_a));
+    (* h_a/f_a = h_d/f_d via: finv(-(2*f_d)) = -(finv(2*f_d)),
+       then neg_fmul_cancel, then projective_cancel 2. *)
+    finv_cancel (fmul 2 f_d);
+    neg_fmul_cancel (fmul 2 f_d) (finv (fmul 2 f_d));
+    fmul_inverse f_a;
+    fmul_cancel_right (finv f_a) f_a;
+    fmul_cancel_right (fsub 0 (finv (fmul 2 f_d))) f_a;
+    assert (finv f_a == fsub 0 (finv (fmul 2 f_d)));
+    neg_fmul_cancel (fmul 2 h_d) (finv (fmul 2 f_d));
+    assert (fmul h_a (finv f_a) == fmul (fmul 2 h_d) (finv (fmul 2 f_d)));
+    projective_cancel 2 h_d f_d;
+    assert (fmul h_a (finv f_a) == fmul h_d (finv f_d));
+    assert (fmul y3_a (finv z3_a) == fmul y3_d (finv z3_d));
+    encode_point_affine_eq x3_d y3_d z3_d t3_d x3_a y3_a z3_a t3_a
+  end
+#pop-options
 
 (** -------------------------------------------------------------------- **)
 (** Scalar multiplication properties                                      **)
@@ -1340,20 +1453,16 @@ let scalar_mult_zero p =
     Proof: (-a)*(-b) = a*b in GF(p). *)
 val neg_fmul_cancel : a:felem -> b:felem
   -> Lemma (fmul (fsub 0 a) (fsub 0 b) == fmul a b)
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 100"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 200"
 let neg_fmul_cancel a b =
-  (* fsub 0 a = (0 - a + prime) % prime = (prime - a) % prime
-     fsub 0 b = (prime - b) % prime
-     fmul (fsub 0 a) (fsub 0 b) = ((prime-a)%p * (prime-b)%p) % p
-     = ((prime-a)*(prime-b)) % p  [by mod_mul_distr]
-     = (prime^2 - prime*a - prime*b + a*b) % p
-     = (a*b) % p  [since prime^2, prime*a, prime*b are all 0 mod p]
-     = fmul a b *)
+  (* fsub 0 x = (prime - x) % prime.
+     fmul (fsub 0 a) (fsub 0 b) = (((prime-a)%p) * ((prime-b)%p)) % p
+     By mod_mul_distr_l/r: == ((prime-a)*(prime-b)) % p
+     (prime-a)*(prime-b) = prime^2 - prime*b - prime*a + a*b = prime*(prime-a-b) + a*b
+     So mod p == (a*b) % p == fmul a b. *)
   FStar.Math.Lemmas.lemma_mod_mul_distr_l (prime - a) ((prime - b) % prime) prime;
-  FStar.Math.Lemmas.lemma_mod_mul_distr_r (prime - a) (prime - b) prime;
-  assert ((prime - a) * (prime - b) == prime * prime - prime * b - prime * a + a * b);
-  FStar.Math.Lemmas.lemma_mod_plus (a * b) (prime * prime - prime * b - prime * a) 1;
-  ()
+  FStar.Math.Lemmas.lemma_mod_mul_distr_r (prime - a) (prime - b) prime
+  (* Z3 can close: (prime-a)*(prime-b) % p = (a*b + prime*(prime-a-b)) % p = (a*b) % p *)
 #pop-options
 
 (** Helper: fmul (prime-1) a == fsub 0 a for any a : felem.
@@ -1362,7 +1471,15 @@ val fmul_neg_one : a:felem
   -> Lemma (fmul (prime - 1) a == fsub 0 a)
 #push-options "--fuel 0 --ifuel 0 --z3rlimit 100"
 let fmul_neg_one a =
-  FStar.Math.Lemmas.lemma_mod_mul_distr_l (prime - 1) a prime
+  (* fmul (prime-1) a = ((prime-1)*a) % prime
+     = (prime*a - a) % prime
+     fsub 0 a = (0 - a + prime) % prime = (prime - a) % prime
+     Need: (prime*a - a) % prime == (prime - a) % prime.
+     (prime*a - a) = prime*(a-1) + (prime - a).
+     lemma_mod_plus: (x + k*p) % p = x % p. *)
+  FStar.Math.Lemmas.lemma_mod_plus (prime - a) (a - 1) prime
+  (* (prime - a + (a-1)*prime) % prime = (prime - a) % prime
+     = (prime*a - a) % prime.  QED. *)
 #pop-options
 
 (** Helper: fsub distributes over negation: (-a) - (-b) = -(a - b).
@@ -1400,7 +1517,7 @@ let fmul_two_neg a =
 val point_add_noncanonical_identity : p:ext_point
   -> Lemma (point_add (0, prime - 1, prime - 1, 0) p ==
             point_add point_identity p)
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 600"
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 600"
 let point_add_noncanonical_identity p =
   let (x2, y2, z2, t2) = p in
   let pm1 : felem = prime - 1 in
@@ -1450,20 +1567,21 @@ let point_add_noncanonical_identity p =
 val scalar_mult_one : p:ext_point
     -> Lemma (encode_point (scalar_mult 1 p) ==
               encode_point p)
-#push-options "--fuel 2 --ifuel 0 --z3rlimit 400"
+#push-options "--fuel 4 --ifuel 0 --z3rlimit 400"
 let scalar_mult_one p =
-  (* Step 1: evaluate scalar_mult 1 p *)
+  (* Step 1: Evaluate scalar_mult 1 p.
+     int_bit_len 1 = 1, so bits = 1.
+     go 0 identity: get_bit 1 0 = 1, so result = go (-1) (point_add (point_double identity) p).
+     go (-1) acc = acc.
+     Therefore scalar_mult 1 p = point_add (point_double identity) p. *)
   assert_norm (int_bit_len 1 = 1);
   assert_norm (get_bit 1 0 = 1);
-  (* scalar_mult 1 p = go 0 point_identity
-     = point_add (point_double point_identity) p   [since get_bit 1 0 = 1]
-     We need F* to unfold scalar_mult and the inner go function *)
   assert (scalar_mult 1 p == point_add (point_double point_identity) p);
-  (* Step 2: evaluate point_double point_identity concretely *)
+  (* Step 2: Evaluate point_double point_identity concretely to (0, p-1, p-1, 0). *)
   assert_norm (point_double point_identity == (0, prime - 1, prime - 1, 0));
-  (* Step 3: point_add with non-canonical identity == point_add with canonical *)
+  (* Step 3: Show point_add (0,p-1,p-1,0) p == point_add (0,1,1,0) p as tuples. *)
   point_add_noncanonical_identity p;
-  (* Step 4: apply left identity *)
+  (* Step 4: By point_add_identity_left, encode_point (point_add identity p) == encode_point p. *)
   point_add_identity_left p
 #pop-options
 
