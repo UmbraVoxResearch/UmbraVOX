@@ -1011,20 +1011,24 @@ vm-extract:
 image-clean: vm-image-clean
 
 vm-socks5-test:
-	@echo "Running SOCKS5 transport test in VM..."
-	@nix-shell --run "cabal run umbravox -- vm-socks5-test"
+	@echo -e "$(BLUE)[VM-SOCKS5]$(NC) Running SOCKS5 transport test in VM..."
+	@chmod +x ./scripts/vm-dev-run.sh
+	@./scripts/vm-dev-run.sh exec "bash /work/umbravox/scripts/vm-socks5-test.sh"
 
 vm-screenshot:
-	@echo "Capturing TUI screenshots in VM..."
-	@nix-shell --run "cabal run umbravox -- vm-screenshot"
+	@echo -e "$(BLUE)[VM-SCREENSHOT]$(NC) Capturing TUI screenshots in VM..."
+	@chmod +x ./scripts/vm-dev-run.sh
+	@./scripts/vm-dev-run.sh exec "cabal build all --enable-tests 2>&1 && bash /work/umbravox/scripts/vm-screenshot-capture.sh"
 
 vm-record:
-	@echo "Recording TUI session in VM..."
-	@nix-shell --run "cabal run umbravox -- vm-record"
+	@echo -e "$(BLUE)[VM-RECORD]$(NC) Recording TUI session in VM..."
+	@chmod +x ./scripts/vm-dev-run.sh
+	@./scripts/vm-dev-run.sh exec "cabal build all --enable-tests 2>&1 && bash /work/umbravox/scripts/vm-record-session.sh"
 
 vm-visual-regression:
-	@echo "Running visual regression check in VM..."
-	@nix-shell --run "cabal run umbravox -- vm-visual-regression"
+	@echo -e "$(BLUE)[VM-VISUAL]$(NC) Running visual regression check in VM..."
+	@chmod +x ./scripts/vm-dev-run.sh
+	@./scripts/vm-dev-run.sh exec "cabal build all --enable-tests 2>&1 && bash /work/umbravox/scripts/vm-visual-regression.sh"
 
 visual-reference-update:
 	@echo "Updating visual reference baselines..."

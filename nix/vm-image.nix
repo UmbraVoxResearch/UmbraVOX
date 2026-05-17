@@ -24,6 +24,15 @@ let
 
   hp = pkgs.haskell.packages.ghc96;
 
+  # Rocq 9.1.1 separates the stdlib (ZArith, Arith, etc.) from the core.
+  # Conditionally include the stdlib package: try coqPackages.stdlib first
+  # (modern nixpkgs name), then coqPackages.coq-stdlib (legacy alias).
+  # This ensures Ed25519Constants.v can "Require Import ZArith." in-guest.
+  coqStdlib =
+    if builtins.hasAttr "stdlib" pkgs.coqPackages then [ pkgs.coqPackages.stdlib ]
+    else if builtins.hasAttr "coq-stdlib" pkgs.coqPackages then [ pkgs.coqPackages.coq-stdlib ]
+    else [];
+
   devToolsPkgs = with pkgs; [
     (hp.ghcWithPackages (p: [ p.network ]))
     cabal-install
@@ -31,10 +40,7 @@ let
     gdb
     valgrind
     coq
-    # Rocq 9.1.1 separates the stdlib (ZArith, Arith, etc.) from the core.
-    # Add coqPackages.coq-stdlib if available in pinned nixpkgs.
-    # Verify with: nix-shell --run "coqc -R . Test test.v" where test.v has "Require Import ZArith."
-    # If coq-stdlib is not available, use coqPackages_8_19.coq-stdlib or build from source.
+  ] ++ coqStdlib ++ (with pkgs; [
     tlaplus
     fstar
     z3
@@ -63,7 +69,7 @@ let
     tmux
     aha
     asciinema
-  ];
+  ]);
 
   nixosConfig = { config, lib, modulesPath, pkgs, ... }: {
     imports = [ (modulesPath + "/profiles/qemu-guest.nix") ];
