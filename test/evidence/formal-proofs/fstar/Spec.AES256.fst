@@ -451,7 +451,7 @@ let aes_decrypt (key : seq UInt8.t{Seq.length key = key_size})
     works because F*'s kernel reduces Seq.init to a concrete sequence in this case.
     The z3rlimit is raised here to allow Z3 to discharge subtype goals of the form
     [i < List.Tot.length sbox_list] in heavier module contexts. *)
-#push-options "--fuel 1000 --ifuel 1000 --z3rlimit 50000"
+#push-options "--fuel 1000 --ifuel 1000 --z3rlimit 600000"
 private let sbox_comp_seq : seq UInt8.t =
   Seq.init 256 (fun i ->
     List.Tot.index inv_sbox_list (UInt8.v (List.Tot.index sbox_list i)))

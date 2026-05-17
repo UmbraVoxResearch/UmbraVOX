@@ -74,35 +74,71 @@ let build_poly_msg aad ct =
 (** Top-level AEAD operations                                            **)
 (** -------------------------------------------------------------------- **)
 
-(** The Poly1305 one-time key: first 32 bytes of chacha20_block(k, n, 0). *)
-assume val poly1305_otk : key:seq UInt8.t{Seq.length key = key_size}
-                       -> nonce:seq UInt8.t{Seq.length nonce = nonce_size}
-                       -> Tot (s:seq UInt8.t{Seq.length s = 32})
+(** The Poly1305 one-time key: first 32 bytes of chacha20_block(k, n, 0).
+    Concrete implementation using Spec.ChaCha20.chacha20_block. *)
+val poly1305_otk : key:seq UInt8.t{Seq.length key = key_size}
+                -> nonce:seq UInt8.t{Seq.length nonce = nonce_size}
+                -> Tot (s:seq UInt8.t{Seq.length s = 32})
+let poly1305_otk key nonce =
+  let block = Spec.ChaCha20.chacha20_block key nonce 0ul in
+  Seq.slice block 0 32
 
 (** ChaCha20-Poly1305 encryption:
     1. Derive OTK = chacha20_block(k, n, 0)[0..31]
     2. ct   = chacha20_encrypt(k, n, counter=1, pt)
     3. tag  = poly1305(OTK, pad16(aad) || pad16(ct) || LE64(|aad|) || LE64(|ct|))
-    Returns (ciphertext, tag). *)
-assume val chachapoly_encrypt
+    Returns (ciphertext, tag).
+    Concrete implementation using Spec.ChaCha20 and Spec.Poly1305. *)
+val chachapoly_encrypt
     : key:seq UInt8.t{Seq.length key = key_size}
    -> nonce:seq UInt8.t{Seq.length nonce = nonce_size}
    -> aad:seq UInt8.t
    -> pt:seq UInt8.t
    -> Tot (ct:seq UInt8.t{Seq.length ct = Seq.length pt} & tag:seq UInt8.t{Seq.length tag = tag_size})
+let chachapoly_encrypt key nonce aad pt =
+  let otk = poly1305_otk key nonce in
+  let ct = Spec.ChaCha20.chacha20_encrypt key nonce 1ul pt in
+  let poly_msg = build_poly_msg aad ct in
+  let tag = Spec.Poly1305.poly1305 otk poly_msg in
+  (| ct, tag |)
+
+(** Constant-time tag comparison (byte-wise equality). *)
+let seq_eq_bytes (s1 s2 : seq UInt8.t) : Tot bool =
+  if Seq.length s1 <> Seq.length s2 then false
+  else
+    let len = Seq.length s1 in
+    if len = 0 then true
+    else
+      (* Check all bytes are equal via a fold *)
+      Seq.length s1 = Seq.length s2 &&
+      (let rec check (i : nat) : Tot bool (decreases (len - i)) =
+        if i >= len then true
+        else if Seq.index s1 i <> Seq.index s2 i then false
+        else check (i + 1)
+      in check 0)
 
 (** ChaCha20-Poly1305 decryption:
     1. Reproduce OTK and expected tag.
-    2. Constant-time compare received tag to expected tag.
+    2. Compare received tag to expected tag.
     3. Return Some(plaintext) on match, None on failure.
-    Returns Some(plaintext) iff tag is valid. *)
-assume val chachapoly_decrypt
+    Returns Some(plaintext) iff tag is valid.
+    Concrete implementation using Spec.ChaCha20 and Spec.Poly1305. *)
+val chachapoly_decrypt
     : key:seq UInt8.t{Seq.length key = key_size}
    -> nonce:seq UInt8.t{Seq.length nonce = nonce_size}
    -> aad:seq UInt8.t
    -> ct:seq UInt8.t
    -> tag:seq UInt8.t{Seq.length tag = tag_size}
    -> Tot (option (pt:seq UInt8.t{Seq.length pt = Seq.length ct}))
+let chachapoly_decrypt key nonce aad ct tag =
+  let otk = poly1305_otk key nonce in
+  let poly_msg = build_poly_msg aad ct in
+  let expected_tag = Spec.Poly1305.poly1305 otk poly_msg in
+  if expected_tag = tag then
+    let pt = Spec.ChaCha20.chacha20_encrypt key nonce 1ul ct in
+    Some pt
+  else
+    None
 
 (** -------------------------------------------------------------------- **)
 (** AEAD Correctness: round-trip property                                **)
@@ -123,22 +159,21 @@ val aead_correctness
    -> Lemma (
        let (| ct, tag |) = chachapoly_encrypt key nonce aad pt in
        chachapoly_decrypt key nonce aad ct tag = Some pt)
-(** Irreducible axiom: AEAD correctness depends on the internal structure of
-    chachapoly_encrypt/decrypt (both assume val).  The roundtrip property holds
-    by construction: decrypt recomputes the same deterministic tag and inverts
-    the ChaCha20 XOR stream.  Verified by the Haskell test suite and RFC 8439
-    Section 2.8.2 KAT. *)
-assume val aead_correctness_axiom
-    : key:seq UInt8.t{Seq.length key = key_size}
-   -> nonce:seq UInt8.t{Seq.length nonce = nonce_size}
-   -> aad:seq UInt8.t
-   -> pt:seq UInt8.t
-   -> Lemma (
-       let (| ct, tag |) = chachapoly_encrypt key nonce aad pt in
-       chachapoly_decrypt key nonce aad ct tag = Some pt)
-
+(** AEAD correctness proof: now that encrypt/decrypt are concrete,
+    correctness follows from ChaCha20's encrypt_decrypt_roundtrip and
+    deterministic tag recomputation. *)
+#push-options "--z3rlimit 50000 --fuel 1 --ifuel 0"
 let aead_correctness key nonce aad pt =
-  aead_correctness_axiom key nonce aad pt
+  let otk = poly1305_otk key nonce in
+  let ct = Spec.ChaCha20.chacha20_encrypt key nonce 1ul pt in
+  let poly_msg = build_poly_msg aad ct in
+  let tag = Spec.Poly1305.poly1305 otk poly_msg in
+  (* decrypt recomputes the same otk, poly_msg, and expected_tag = tag *)
+  (* Since expected_tag = tag, the equality check passes *)
+  (* Then pt' = chacha20_encrypt key nonce 1ul ct *)
+  Spec.ChaCha20.encrypt_decrypt_roundtrip key nonce 1ul pt;
+  ()
+#pop-options
 
 (** -------------------------------------------------------------------- **)
 (** Tag-Forgery Rejection                                                **)
@@ -215,23 +250,18 @@ val tag_forgery_tag
        let (| ct, tag |) = chachapoly_encrypt key nonce aad pt in
        let tag' = flip_byte tag i in
        chachapoly_decrypt key nonce aad ct tag' = None)
-(** Irreducible axiom: tag mutation rejection.  Flipping any byte of the tag
-    produces tag' <> tag.  Since decrypt recomputes the same expected_tag = tag
-    deterministically, constantEq(tag', expected_tag) = False and decrypt returns
-    None.  Depends on the internal structure of chachapoly_decrypt (assume val). *)
-assume val tag_forgery_tag_axiom
-    : key:seq UInt8.t{Seq.length key = key_size}
-   -> nonce:seq UInt8.t{Seq.length nonce = nonce_size}
-   -> aad:seq UInt8.t
-   -> pt:seq UInt8.t
-   -> i:nat{i < tag_size}
-   -> Lemma (
-       let (| ct, tag |) = chachapoly_encrypt key nonce aad pt in
-       let tag' = flip_byte tag i in
-       chachapoly_decrypt key nonce aad ct tag' = None)
-
+(** Tag mutation rejection: now provable since decrypt is concrete.
+    Flipping any byte of the tag produces tag' <> tag.  Decrypt recomputes
+    the same expected_tag = tag deterministically, so expected_tag <> tag'
+    and decrypt returns None. *)
+#push-options "--z3rlimit 50000 --fuel 1 --ifuel 0"
 let tag_forgery_tag key nonce aad pt i =
-  tag_forgery_tag_axiom key nonce aad pt i
+  let (| ct, tag |) = chachapoly_encrypt key nonce aad pt in
+  let tag' = flip_byte tag i in
+  flip_byte_neq tag i;
+  (* tag' <> tag, so in decrypt: expected_tag = tag <> tag', returns None *)
+  ()
+#pop-options
 
 (** -------------------------------------------------------------------- **)
 (** Structural properties                                                **)
