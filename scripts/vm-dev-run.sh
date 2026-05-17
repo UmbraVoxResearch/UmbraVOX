@@ -234,12 +234,25 @@ qemu-img create -f qcow2 -b "$DISK_IMG" -F raw "$OVERLAY" >/dev/null 2>&1
 OUTPUT_DIR="$REPO_ROOT/build/vm-output"
 mkdir -p "$OUTPUT_DIR"
 
-# Build QEMU args — 16GB RAM, 8 cores for faster builds
+# Auto-scale VM resources: 50% of host, minimum 25%
+HOST_CORES=$(nproc 2>/dev/null || echo 4)
+HOST_MEM_MB=$(awk '/MemTotal/{printf "%d", $2/1024}' /proc/meminfo 2>/dev/null || echo 8192)
+VM_CORES=$(( HOST_CORES / 2 ))
+VM_MEM_MB=$(( HOST_MEM_MB / 2 ))
+# Enforce minimums: 25% of host or absolute floor
+MIN_CORES=$(( HOST_CORES / 4 ))
+MIN_MEM_MB=$(( HOST_MEM_MB / 4 ))
+[ "$VM_CORES" -lt "$MIN_CORES" ] && VM_CORES=$MIN_CORES
+[ "$VM_MEM_MB" -lt "$MIN_MEM_MB" ] && VM_MEM_MB=$MIN_MEM_MB
+[ "$VM_CORES" -lt 2 ] && VM_CORES=2
+[ "$VM_MEM_MB" -lt 2048 ] && VM_MEM_MB=2048
+echo -e "${BLUE}[VM-DEV]${NC} VM resources: ${VM_CORES} cores, ${VM_MEM_MB}MB RAM (host: ${HOST_CORES} cores, ${HOST_MEM_MB}MB)" >&2
+
 QEMU_ARGS=(
     -machine "q35,accel=kvm"
     -cpu max
-    -m 16384
-    -smp 8
+    -m "$VM_MEM_MB"
+    -smp "$VM_CORES"
     -nographic
     -nodefaults
     -serial stdio
