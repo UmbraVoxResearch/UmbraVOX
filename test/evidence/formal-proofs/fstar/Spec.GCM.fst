@@ -415,6 +415,24 @@ let gctr_length encrypt icb plaintext =
   end
 #pop-options
 
+(** xor_bytes is involutive: xor_bytes (xor_bytes a b) b == a *)
+val xor_bytes_involutive :
+    a:seq UInt8.t -> b:seq UInt8.t{Seq.length b = Seq.length a}
+    -> Lemma (xor_bytes (xor_bytes a b) b == a)
+let xor_bytes_involutive a b =
+  let ab = xor_bytes a b in
+  let result = xor_bytes ab b in
+  let aux (i:nat{i < Seq.length a}) : Lemma (Seq.index result i == Seq.index a i) =
+    (* (a[i] XOR b[i]) XOR b[i] = a[i] by logxor associativity + self-inverse *)
+    UInt.logxor_associative #8 (UInt8.v (Seq.index a i))
+                               (UInt8.v (Seq.index b i))
+                               (UInt8.v (Seq.index b i));
+    UInt.logxor_self #8 (UInt8.v (Seq.index b i));
+    UInt.logxor_lemma_1 #8 (UInt8.v (Seq.index a i))
+  in
+  FStar.Classical.forall_intro aux;
+  Seq.lemma_eq_intro result a
+
 (** GCTR is its own inverse: applying GCTR twice with the same key-stream
     recovers the original input.  This holds because XOR is its own inverse:
     (p XOR ks) XOR ks = p.
@@ -422,13 +440,21 @@ let gctr_length encrypt icb plaintext =
     Proof obligation (structural):
       (1) The counter blocks produced by gctr_process are deterministic given
           (encrypt, ICB), so the same key-stream is generated in both calls.
-      (2) xor_bytes is involutive: xor_bytes (xor_bytes a b) b = a, which
-          follows from UInt8.logxor self-inverse (UInt.logxor_self).
+      (2) xor_bytes is involutive: xor_bytes (xor_bytes a b) b = a
+          (proved above via UInt.logxor_self).
       (3) split_blocks produces the same block structure on output of gctr
           because gctr preserves length (gctr_length).
-    The composition of (1)-(3) requires tactic-level unfolding of the gctr
-    recursive structure that exceeds Z3's practical capabilities.
-    Assumed as a verified structural property of XOR-based stream ciphers. *)
+
+    WHY THIS CANNOT BE FULLY PROVED WITH Z3:
+    The proof requires showing that split_blocks applied to the concatenated
+    output of gctr_process yields the SAME block boundaries as the input, so
+    that the second GCTR application XORs each block with the same keystream
+    slice.  This structural congruence (split_blocks (fold_left append [] xs)
+    yields blocks of the same lengths as xs) requires an auxiliary lemma about
+    fold_left/append/split_blocks interaction that is complex but not
+    fundamentally difficult — it exceeds Z3 rlimit due to the recursive
+    structure of split_blocks and fold_left.
+    Requires tactic proof (induction over block list with length invariant). *)
 assume val gctr_involutive : encrypt:aes_encrypt_fn_full
     -> icb:seq UInt8.t{Seq.length icb = 16}
     -> plaintext:seq UInt8.t
@@ -491,15 +517,17 @@ let gcm_encrypt (encrypt : aes_encrypt_fn_full)
 (** SP 800-38D Section 7.2 -- GCM-AD (Authenticated Decryption)         **)
 (** -------------------------------------------------------------------- **)
 
+(** Constant-time byte comparison accumulator loop (top-level for proof access) *)
+let rec constant_eq_go (a b : seq UInt8.t{Seq.length a = Seq.length b})
+    (i : nat) (acc : UInt8.t)
+    : Tot UInt8.t (decreases (Seq.length a - i)) =
+  if i >= Seq.length a then acc
+  else constant_eq_go a b (i + 1) (UInt8.logor acc
+                     (UInt8.logxor (Seq.index a i) (Seq.index b i)))
+
 (** Constant-time byte sequence equality *)
 let constant_eq (a b : seq UInt8.t{Seq.length a = Seq.length b}) : bool =
-  let rec go (i : nat) (acc : UInt8.t)
-      : Tot UInt8.t (decreases (Seq.length a - i)) =
-    if i >= Seq.length a then acc
-    else go (i + 1) (UInt8.logor acc
-                       (UInt8.logxor (Seq.index a i) (Seq.index b i)))
-  in
-  UInt8.v (go 0 0uy) = 0
+  UInt8.v (constant_eq_go a b 0 0uy) = 0
 
 val gcm_decrypt :
     encrypt:aes_encrypt_fn_full
@@ -592,21 +620,60 @@ let gcm_encrypt_tag_length encrypt key nonce aad pt =
   assert (Seq.length full_tag = 16);
   assert (Seq.length (Seq.slice full_tag 0 tag_size) = tag_size)
 
-(** Correctness of constant-time comparison.
-    Proof obligation:
-      (=>) constant_eq a b = true means the fold accumulator stayed 0,
-           meaning every a[i] XOR b[i] = 0, i.e. a[i] = b[i] for all i.
-           By Seq.eq_intro, a == b.
-      (<=) a == b means a[i] = b[i] for all i, so a[i] XOR b[i] = 0 for all i.
-           logor over all zeros = 0, so constant_eq returns true.
-    The proof requires induction over the locally-defined go function with
-    the loop invariant: UInt8.v (go i acc) = 0 <==> acc = 0 /\ a[0..i) == b[0..i).
-    Since go is defined locally within constant_eq, external induction lemmas
-    cannot reference it.  Assumed as a standard bit-vector equality property. *)
-assume val constant_eq_correct :
+(** Invariant: constant_eq_go a b i acc = 0 iff acc = 0 and a[i..] == b[i..] *)
+
+(** Helper: logor acc x = 0 iff acc = 0 and x = 0.
+    Z3's bitvector theory handles this directly: OR of two non-negative
+    integers is zero iff both are zero. *)
+private val logor_zero_iff : acc:UInt8.t -> x:UInt8.t
+    -> Lemma (UInt8.v (UInt8.logor acc x) = 0 <==> (UInt8.v acc = 0 /\ UInt8.v x = 0))
+let logor_zero_iff acc x =
+  (* Z3 bitvector decision procedure: logor a b = 0 <==> a = 0 /\ b = 0 *)
+  assert (UInt.logor #8 (UInt8.v acc) (UInt8.v x) = 0 <==>
+          (UInt8.v acc = 0 /\ UInt8.v x = 0))
+
+(** Helper: logxor a b = 0 iff a = b.
+    Z3 bitvector theory: XOR is zero exactly when operands are equal. *)
+private val logxor_zero_iff : a:UInt8.t -> b:UInt8.t
+    -> Lemma (UInt8.v (UInt8.logxor a b) = 0 <==> a == b)
+let logxor_zero_iff a b =
+  assert (UInt.logxor #8 (UInt8.v a) (UInt8.v b) = 0 <==> UInt8.v a = UInt8.v b)
+
+(** Main induction: constant_eq_go a b i acc = 0 <==> acc = 0 /\ Seq.equal (slice a i n) (slice b i n) *)
+#push-options "--z3rlimit 80 --fuel 1 --ifuel 0"
+private let rec constant_eq_go_spec
+    (a b : seq UInt8.t{Seq.length a = Seq.length b})
+    (i : nat{i <= Seq.length a})
+    (acc : UInt8.t)
+    : Lemma
+      (ensures (UInt8.v (constant_eq_go a b i acc) = 0 <==>
+                (UInt8.v acc = 0 /\
+                 (forall (j:nat{j >= i /\ j < Seq.length a}).
+                   Seq.index a j == Seq.index b j))))
+      (decreases (Seq.length a - i)) =
+  if i >= Seq.length a then ()
+  else begin
+    let x = UInt8.logxor (Seq.index a i) (Seq.index b i) in
+    let acc' = UInt8.logor acc x in
+    logor_zero_iff acc x;
+    logxor_zero_iff (Seq.index a i) (Seq.index b i);
+    constant_eq_go_spec a b (i + 1) acc'
+  end
+#pop-options
+
+val constant_eq_correct :
     a:seq UInt8.t
     -> b:seq UInt8.t{Seq.length b = Seq.length a}
     -> Lemma ((constant_eq a b = true) <==> (a == b))
+#push-options "--z3rlimit 40"
+let constant_eq_correct a b =
+  constant_eq_go_spec a b 0 0uy;
+  (* Now we have: constant_eq a b = true <==>
+     forall j in [0, len). index a j == index b j.
+     The latter is equivalent to Seq.equal a b, i.e. a == b. *)
+  assert ((forall (j:nat{j >= 0 /\ j < Seq.length a}). Seq.index a j == Seq.index b j)
+          <==> Seq.equal a b)
+#pop-options
 
 (** Sub-lemma: gcm_encrypt and gcm_decrypt compute the same GHASH tag.
     When encrypt/nonce/aad/ct are fixed, both functions compute
@@ -631,14 +698,20 @@ let gcm_encrypt_decrypt_same_tag encrypt nonce aad ct = ()
 
 (** Encryption followed by decryption recovers the plaintext.
     Proof depends on:
-      (1) gcm_encrypt_tag_length: tag has length tag_size.
-      (2) gcm_encrypt_decrypt_same_tag: decrypt recomputes the same GHASH tag.
-      (3) constant_eq_correct: constant_eq returns true on equal tags.
-      (4) gctr_involutive: gctr(encrypt, icb, gctr(encrypt, icb, pt)) = pt.
-    The composition of these sub-lemmas requires Z3 to unfold both
-    gcm_encrypt and gcm_decrypt fully and substitute ct = gctr(icb, pt)
-    into the decrypt computation, which exceeds practical z3rlimit.
-    Assumed as the fundamental GCM correctness property. *)
+      (1) gcm_encrypt_tag_length: tag has length tag_size (PROVED).
+      (2) gcm_encrypt_decrypt_same_tag: decrypt recomputes the same GHASH tag (PROVED).
+      (3) constant_eq_correct: constant_eq returns true on equal tags (PROVED).
+      (4) gctr_involutive: gctr(encrypt, icb, gctr(encrypt, icb, pt)) = pt (assume val).
+
+    WHY THIS CANNOT BE FULLY PROVED WITH Z3:
+    The proof requires Z3 to unfold both gcm_encrypt and gcm_decrypt,
+    recognize that ct = gctr(encrypt, incr32(j0), pt), substitute ct into
+    the decrypt tag computation (which produces the same GHASH because
+    the inputs are identical), verify constant_eq returns true (via
+    constant_eq_correct), and apply gctr_involutive.  Each step is proved
+    individually, but their composition requires Z3 to inline ~100 lines
+    of function definitions simultaneously, exceeding practical z3rlimit.
+    Additionally depends on gctr_involutive which itself requires tactic proof. *)
 assume val gcm_roundtrip :
     encrypt:aes_encrypt_fn_full
     -> key:seq UInt8.t{Seq.length key = key_size}
@@ -667,13 +740,21 @@ let constant_eq_neq a b =
 (** Tag tampering is detected: modifying any byte of the tag causes
     decryption to fail.
     Proof depends on:
-      (1) constant_eq_neq: if bad_tag =!= good_tag, constant_eq returns false.
+      (1) constant_eq_correct + contrapositive: if bad_tag =!= good_tag,
+          constant_eq returns false (PROVED as constant_eq_neq).
       (2) gcm_decrypt branches on constant_eq; false branch returns None.
     The second step requires Z3 to unfold gcm_decrypt far enough to expose
     the constant_eq call and identify that the recomputed tag equals good_tag
-    (same structural identity as in gcm_roundtrip).  This unfolding exceeds
-    practical z3rlimit.
-    Assumed as the GCM authentication integrity property. *)
+    (same structural identity as in gcm_roundtrip).
+
+    WHY THIS CANNOT BE FULLY PROVED WITH Z3:
+    Same structural issue as gcm_roundtrip: Z3 must simultaneously inline
+    gcm_encrypt (to extract ct and good_tag) and gcm_decrypt (to show the
+    recomputed tag matches good_tag).  The tag recomputation in decrypt uses
+    the same GHASH(pad(aad)||pad(ct)||len) XOR E_K(J0) formula, but Z3
+    cannot establish structural equality of the two tag expressions without
+    fully unfolding both ~50-line function bodies.  Each sub-lemma is proved
+    but composition exceeds z3rlimit. *)
 assume val gcm_tag_integrity :
     encrypt:aes_encrypt_fn_full
     -> key:seq UInt8.t{Seq.length key = key_size}
@@ -698,12 +779,21 @@ let ghash_universal_hash_property () = ()
 (** GHASH linearity: GHASH_H(X XOR Y) = GHASH_H(X) XOR GHASH_H(Y)
     when X and Y have the same length.
     This follows from GF(2^128) bilinearity: gf_xor distributes over gf_mul.
-    Proof requires:
+
+    WHY THIS CANNOT BE PROVED WITH Z3:
+    Proof requires two unproved prerequisites:
       (1) gf_mul_distributive: gf_mul (gf_xor a b) h == gf_xor (gf_mul a h) (gf_mul b h)
-          — not yet established in Spec.GaloisField.
-      (2) Induction over ghash blocks showing the linearity composes through
-          the iterative multiplication-accumulation structure.
-    Assumed as a standard algebraic property of GF(2^128) polynomial hashing. *)
+          This is left-distributivity of multiplication over XOR in GF(2^128).
+          It follows from the same polynomial algebra argument as gf_mul_comm:
+          the schoolbook algorithm computes a sum (XOR) of shifted copies of h
+          for each set bit in the first operand.  If the first operand is a XOR b,
+          its set bits are the symmetric difference of a's and b's bits, yielding
+          the XOR of the individual products.  Proving this on the bit-indexed
+          loop requires the same tactic/algebraic abstraction as gf_mul_comm.
+      (2) Induction over ghash blocks composing distributivity through the
+          iterative Y_i = (Y_{i-1} XOR X_i) * H structure — straightforward
+          given (1), but (1) is not available.
+    Requires tactic proof (algebraic distributivity of GF(2^128) multiplication). *)
 assume val ghash_linearity :
     h:Spec.GaloisField.gf128
     -> x:seq UInt8.t{Seq.length x % 16 = 0}
@@ -741,7 +831,14 @@ let kat_tc14_tag : seq UInt8.t =
     With an abstract aes_encrypt_fn_full, the tag computation cannot be
     reduced to a concrete value.  Once a verified AES-256 implementation is
     provided, this reduces to assert_norm on fully concrete evaluation.
-    Assumed pending concrete AES-256 binding. *)
+
+    WHY THIS CANNOT BE PROVED WITHOUT CONCRETE AES:
+    gcm_encrypt calls `encrypt` (the abstract AES block cipher) on specific
+    inputs (zero block for H, J0 for tag encryption).  Without knowing the
+    concrete output of encrypt on these inputs, Z3 cannot reduce the GHASH
+    and final XOR to compare against the expected tag bytes.
+    Requires concrete AES-256 binding (e.g., a proved AES spec with
+    assert_norm-reducible implementation). *)
 assume val gcm_kat_tc14 : encrypt:aes_encrypt_fn_full -> unit
     -> Lemma (
         let (ct, tag) = gcm_encrypt encrypt kat_tc14_key kat_tc14_nonce
@@ -807,7 +904,11 @@ let kat_tc16_tag : seq UInt8.t =
   ]
 
 (** KAT TC16 requires concrete AES-256 binding — same as TC14 above.
-    Assumed pending concrete AES-256 binding. *)
+    WHY THIS CANNOT BE PROVED WITHOUT CONCRETE AES:
+    Same reason as TC14: gcm_encrypt calls the abstract `encrypt` function
+    on derived counter blocks.  Without a concrete AES-256 implementation
+    that can be normalized, the ciphertext and tag cannot be computed.
+    Requires concrete AES-256 binding. *)
 assume val gcm_kat_tc16 : encrypt:aes_encrypt_fn_full -> unit
     -> Lemma (
         Seq.length kat_tc16_key = key_size /\
