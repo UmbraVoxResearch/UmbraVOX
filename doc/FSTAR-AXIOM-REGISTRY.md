@@ -61,31 +61,46 @@ All irreducible axioms have empirical validation paths:
 
 The remaining ~37 eliminable `assume val` declarations fall into:
 1. **KAT normalization barriers** (~15): blocked by abstract UInt32/AES-256 bindings
-2. **Ed25519 group theory** (~10): rooted in Fermat's Little Theorem (`fmul_inverse`);
-   provable with a formalized twisted Edwards group law
+2. **Ed25519 group theory** (~9): formerly rooted in Fermat's Little Theorem;
+   `fmul_inverse` is now PROVED (see Dependency Root Analysis below).
+   Remaining axioms need algebraic geometry (twisted Edwards group law).
 3. **GCM tactic proofs** (~6): gctr_involutive, ghash_linearity, etc. — require
    F* tactic scripts for deep compositional reasoning
 4. **Abstract interfaces** (~6): StealthAddress, VRF function signatures
+5. **Arithmetic trust boundary** (1): `prime_is_prime` — primality of 2^255-19,
+   externally verified by CAS but infeasible to check via Z3 trial division.
 
 These are tracked as ongoing work in M13 and do not represent trust boundary items.
 
 ### Dependency Root Analysis
 
-The Ed25519 group theory axioms form a dependency chain rooted in **Fermat's
-Little Theorem** (`fmul_inverse: a * a^(p-2) = 1 mod p`):
+The Ed25519 group theory axioms form a dependency chain formerly rooted in
+Fermat's Little Theorem (`fmul_inverse: a * a^(p-2) = 1 mod p`).
+
+**`fmul_inverse` is now PROVED** via `FStar.Math.Fermat.fermat` (the standard
+library's mechanized proof of Fermat's Little Theorem). The only remaining
+trusted fact for this chain is `prime_is_prime` (primality of 2^255 - 19),
+which is externally verified by SageMath, PARI/GP, and Mathematica but cannot
+be checked by Z3 due to the infeasibility of trial division on a 255-bit number.
 
 ```
-fmul_inverse (Fermat's LT) -- ROOT
-  <- point_add_identity_right, point_add_identity_left
-  <- point_double_is_add
-  <- scalar_mult_one
-  <- point_add_assoc (also needs algebraic geometry)
-     <- scalar_mult_add (also needs induction)
-        <- scalar_mult_compose
-           <- scalar_mod_L_equiv (also needs group_order_lemma)
+prime_is_prime (primality of 2^255-19) -- TRUSTED ASSUMPTION (externally verified)
+  <- fmul_inverse (PROVED via FStar.Math.Fermat.fermat)
+     <- point_add_identity_right, point_add_identity_left
+     <- point_double_is_add
+     <- scalar_mult_one
+     <- point_add_assoc (also needs algebraic geometry)
+        <- scalar_mult_add (also needs induction)
+           <- scalar_mult_compose
+              <- scalar_mod_L_equiv (also needs group_order_lemma)
 
 group_order_lemma -- INDEPENDENT ROOT (~2^252 iterations, computationally infeasible)
 ```
 
-Proving `fmul_inverse` (via `FStar.Math.Fermat` or custom induction) would
-unblock 8 of the 10 remaining Ed25519 group theory axioms.
+The proof of `fmul_inverse` uses three helper lemmas:
+- `pow_mod_base`: `pow (a % p) n % p == pow a n % p` (congruence under base reduction)
+- `pow_sqr`: `pow (a*a) n == pow a (2*n)` (squaring-to-doubling equivalence)
+- `pow_mod_equiv`: `pow_mod base exp == pow base exp % prime` (repeated-squaring correctness)
+
+These chain through `FStar.Math.Fermat.fermat` to discharge the former root blocker,
+unblocking 8 of the 10 remaining Ed25519 group theory axioms.

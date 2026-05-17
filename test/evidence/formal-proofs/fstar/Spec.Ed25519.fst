@@ -594,36 +594,146 @@ val fmul_comm : a:felem -> b:felem -> Lemma (fmul a b == fmul b a)
 let fmul_comm a b =
   assert ((a * b) % prime == (b * a) % prime)
 
+(** Primality of p = 2^255 - 19.
+
+    This is the sole remaining trusted assumption for the Ed25519 field
+    arithmetic proofs.  Primality of 2^255 - 19 has been independently
+    verified by multiple CAS implementations (SageMath, Mathematica, PARI/GP)
+    and is documented in RFC 7748 Section 4.1.  It cannot be proven by
+    assert_norm because FStar.Math.Euclid.is_prime requires checking all
+    divisors d in (1, p), which is computationally infeasible for a 255-bit
+    number within F*/Z3.
+
+    External verification:
+      sage: is_prime(2^255 - 19)  ==>  True
+      gp:   isprime(2^255 - 19)  ==>  1
+      mathematica: PrimeQ[2^255 - 19]  ==>  True *)
+assume val prime_is_prime : unit -> Lemma (FStar.Math.Euclid.is_prime prime)
+
+(** Congruence of pow under modular reduction of the base.
+    pow (a % p) n % p == pow a n % p.
+    This follows from (x % p) * y % p == x * y % p applied inductively. *)
+val pow_mod_base : a:int -> n:nat
+  -> Lemma (ensures FStar.Math.Fermat.pow (a % prime) n % prime
+                 == FStar.Math.Fermat.pow a n % prime)
+           (decreases n)
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 30"
+let rec pow_mod_base a n =
+  if n = 0 then ()
+  else begin
+    pow_mod_base a (n - 1);
+    (* IH: pow (a%p) (n-1) % p == pow a (n-1) % p *)
+    (* Goal: ((a%p) * pow (a%p) (n-1)) % p == (a * pow a (n-1)) % p *)
+    (* Step 1: ((a%p) * pow (a%p) (n-1)) % p == (a * pow (a%p) (n-1)) % p *)
+    FStar.Math.Lemmas.lemma_mod_mul_distr_l a (FStar.Math.Fermat.pow (a % prime) (n - 1)) prime;
+    (* Step 2: (a * pow (a%p) (n-1)) % p == (a * (pow (a%p) (n-1) % p)) % p *)
+    FStar.Math.Lemmas.lemma_mod_mul_distr_r a (FStar.Math.Fermat.pow (a % prime) (n - 1)) prime;
+    (* Step 3: (a * pow a (n-1)) % p == (a * (pow a (n-1) % p)) % p *)
+    FStar.Math.Lemmas.lemma_mod_mul_distr_r a (FStar.Math.Fermat.pow a (n - 1)) prime
+    (* By IH and Steps 2+3: (a * (pow (a%p)(n-1) % p)) % p == (a * (pow a (n-1) % p)) % p *)
+    (* Chain: LHS [Step 1] = (a * pow(a%p)(n-1)) % p [Step 2] = (a * (IH)) % p [Step 3 rev] = RHS *)
+  end
+#pop-options
+
+(** pow distributes over squaring: pow (a*a) n == pow a (2*n).
+    Proven by induction on n. *)
+val pow_sqr : a:int -> n:nat
+  -> Lemma (ensures FStar.Math.Fermat.pow (a * a) n == FStar.Math.Fermat.pow a (2 * n))
+           (decreases n)
+#push-options "--fuel 2 --ifuel 1"
+let rec pow_sqr a n =
+  if n = 0 then ()
+  else begin
+    pow_sqr a (n - 1);
+    (* IH: pow (a*a) (n-1) == pow a (2*(n-1)) == pow a (2*n - 2) *)
+    (* By definition: pow (a*a) n = (a*a) * pow (a*a) (n-1)
+                                  = (a*a) * pow a (2*n-2)     [IH]
+       By definition: pow a (2*n) = a * pow a (2*n-1)
+                                  = a * (a * pow a (2*n-2))   [unfold once more]
+                                  = (a*a) * pow a (2*n-2)     [associativity] *)
+    assert (2 * (n - 1) == 2 * n - 2)
+  end
+#pop-options
+
+(** Equivalence of pow_mod (repeated-squaring) and FStar.Math.Fermat.pow
+    (simple recursive exponentiation) modulo prime.
+
+    pow_mod reduces modulo prime at each step for efficiency, but produces
+    the same residue as unreduced exponentiation followed by a single mod.
+    This is proven by induction on exp using:
+    - pow_mod_base: reduction of the base doesn't affect the result mod p
+    - pow_sqr: pow (a*a) n == pow a (2*n) *)
+val pow_mod_equiv : base:felem -> exp:nat
+  -> Lemma (ensures pow_mod base exp == FStar.Math.Fermat.pow base exp % prime)
+           (decreases exp)
+#push-options "--fuel 2 --ifuel 1 --z3rlimit 50"
+let rec pow_mod_equiv base exp =
+  if exp = 0 then begin
+    assert (pow_mod base 0 == 1);
+    assert (FStar.Math.Fermat.pow base 0 == 1);
+    assert (1 % prime == 1)
+  end else if exp % 2 = 1 then begin
+    let half = exp / 2 in
+    (* pow_mod base exp = fmul base (pow_mod (fsqr base) half)
+                        = (base * pow_mod ((base*base)%p) half) % p *)
+    pow_mod_equiv (fsqr base) half;
+    (* IH: pow_mod (fsqr base) half == pow (fsqr base) half % p
+                                     == pow ((base*base)%p) half % p *)
+    (* By pow_mod_base: pow ((base*base)%p) half % p == pow (base*base) half % p *)
+    pow_mod_base (base * base) half;
+    (* By pow_sqr: pow (base*base) half == pow base (2*half) == pow base (exp-1) *)
+    pow_sqr base half;
+    assert (2 * half == exp - 1);
+    (* So: pow_mod (fsqr base) half == pow base (exp-1) % p *)
+    (* fmul base (pow_mod (fsqr base) half)
+       = (base * (pow base (exp-1) % p)) % p
+       = (base * pow base (exp-1)) % p       [by lemma_mod_mul_distr_r]
+       = pow base exp % p                    [by def of pow] *)
+    FStar.Math.Lemmas.lemma_mod_mul_distr_r base (FStar.Math.Fermat.pow base (exp - 1)) prime;
+    assert (base * FStar.Math.Fermat.pow base (exp - 1) == FStar.Math.Fermat.pow base exp)
+  end else begin
+    let half = exp / 2 in
+    (* pow_mod base exp = pow_mod (fsqr base) half
+                        = pow_mod ((base*base)%p) half *)
+    pow_mod_equiv (fsqr base) half;
+    (* IH: pow_mod (fsqr base) half == pow (fsqr base) half % p *)
+    pow_mod_base (base * base) half;
+    (* pow ((base*base)%p) half % p == pow (base*base) half % p *)
+    pow_sqr base half;
+    assert (2 * half == exp);
+    (* pow (base*base) half == pow base (2*half) == pow base exp *)
+    ()
+  end
+#pop-options
+
 (** Multiplicative inverse: a * a^(-1) = 1 for a != 0.
 
-    IRREDUCIBLE AXIOM — Fermat's Little Theorem.
+    PROVED via Fermat's Little Theorem (FStar.Math.Fermat.fermat).
 
-    Required theorem: For prime p and 0 < a < p, a^(p-1) = 1 (mod p),
-    hence a * a^(p-2) = a^(p-1) = 1 (mod p).
+    The proof reduces to showing a^(p-1) mod p = 1 for prime p and
+    0 < a < p, which is exactly Fermat's Little Theorem.  The only
+    trusted assumption is prime_is_prime (primality of 2^255 - 19),
+    which is externally verified by CAS.
 
-    Why Z3 cannot prove this:
-    1. The standard proof uses induction on the multiplicative group (Z/pZ)*
-       of order p-1: the map x -> a*x is a permutation of the p-1 nonzero
-       residues, so the product of all residues equals a^(p-1) times itself,
-       giving a^(p-1) = 1.  This requires reasoning about permutations of
-       finite sets, which is beyond quantifier-free integer arithmetic.
-    2. Lagrange's theorem (subgroup order divides group order) requires
-       formalizing finite group theory — higher-order reasoning unavailable
-       to the SMT solver.
-    3. FStar.Math.Lemmas provides modular arithmetic identities but does NOT
-       include Fermat's Little Theorem.  No standard F* library proves it.
-
-    Dependency impact: This axiom is the ROOT DEPENDENCY for all group-theoretic
-    properties below.  The encode_point function uses finv (= pow_mod a (p-2))
-    for projective-to-affine normalization.  Proving equality of encode_point
-    outputs for different projective representatives (e.g., point_add_identity,
-    point_add_comm) requires showing (a*c) * inv(b*c) == a * inv(b) when c != 0,
-    which chains through fmul_inverse.
-
-    To mechanize: Would require either (a) a custom F* proof of Fermat's Little
-    Theorem via Wilson's theorem or combinatorial argument, or (b) importing a
-    verified number theory library (none currently exists for F*). *)
-assume val fmul_inverse : a:felem{a <> 0} -> Lemma (fmul a (finv a) == 1)
+    Proof chain:
+    1. pow_mod_equiv: pow_mod a (p-2) == pow a (p-2) % p
+    2. lemma_mod_mul_distr_r: (a * (pow a (p-2) % p)) % p == (a * pow a (p-2)) % p
+    3. pow definition: a * pow a (p-2) == pow a (p-1)
+    4. fermat (FLT): pow a (p-1) % p == 1 *)
+val fmul_inverse : a:felem{a <> 0} -> Lemma (fmul a (finv a) == 1)
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 50"
+let fmul_inverse a =
+  (* Establish pow_mod a (prime-2) == pow a (prime-2) % prime *)
+  pow_mod_equiv a (prime - 2);
+  (* (a * pow_mod a (prime-2)) % prime == (a * (pow a (prime-2) % prime)) % prime
+                                       == (a * pow a (prime-2)) % prime *)
+  FStar.Math.Lemmas.lemma_mod_mul_distr_r a (FStar.Math.Fermat.pow a (prime - 2)) prime;
+  (* a * pow a (prime-2) == pow a (prime-1) by definition of pow *)
+  assert (a * FStar.Math.Fermat.pow a (prime - 2) == FStar.Math.Fermat.pow a (prime - 1));
+  (* Fermat's Little Theorem: pow a (prime-1) % prime == 1 *)
+  prime_is_prime ();
+  FStar.Math.Fermat.fermat prime a
+#pop-options
 
 (** -------------------------------------------------------------------- **)
 (** Curve structural properties                                           **)

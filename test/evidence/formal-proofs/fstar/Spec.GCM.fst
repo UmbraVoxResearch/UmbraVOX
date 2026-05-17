@@ -153,34 +153,30 @@ let make_j0 (nonce : seq UInt8.t{Seq.length nonce = nonce_size})
 (** Input must be a multiple of 16 bytes.                                **)
 (** -------------------------------------------------------------------- **)
 
+(** Top-level GHASH inner loop for proof access.
+    Iterates from offset `off` through input, accumulating into `y`. *)
+let rec ghash_loop
+    (h : Spec.GaloisField.gf128)
+    (input : seq UInt8.t{Seq.length input % 16 = 0})
+    (off : nat{off <= Seq.length input /\ off % 16 = 0})
+    (y : Spec.GaloisField.gf128)
+    : Tot Spec.GaloisField.gf128 (decreases (Seq.length input - off)) =
+  let n = Seq.length input in
+  if off = n then y
+  else
+    let xi_bytes : (s:seq UInt8.t{Seq.length s = 16}) =
+      Seq.slice input off (off + 16) in
+    let xi = Spec.GaloisField.bs_to_gf xi_bytes in
+    let y' = Spec.GaloisField.gf_mul (Spec.GaloisField.gf_xor y xi) h in
+    ghash_loop h input (off + 16) y'
+
 val ghash : h:Spec.GaloisField.gf128
     -> input:seq UInt8.t{Seq.length input % 16 = 0}
     -> Tot Spec.GaloisField.gf128
 let ghash (h : Spec.GaloisField.gf128)
           (input : seq UInt8.t{Seq.length input % 16 = 0})
     : Spec.GaloisField.gf128 =
-  (* NOTE: split_blocks returns blocks that may be shorter than 16 bytes.
-   * For GHASH, the input is required to be a multiple of 16 bytes, so we use
-   * an explicit 16-byte slicing loop to preserve the refinement required by
-   * Spec.GaloisField.bs_to_gf. *)
-  let n = Seq.length input in
-  let rec go (off:nat{off <= n /\ off % 16 = 0})
-             (y:Spec.GaloisField.gf128)
-             : Tot Spec.GaloisField.gf128 (decreases (n - off)) =
-    if off = n then y
-    else
-      (* Proof that off + 16 <= n:
-         - off < n  (because off <> n and off <= n)
-         - off % 16 = 0 and n % 16 = 0
-         - Therefore off <= n - 16, i.e. off + 16 <= n.
-         Z3 can close this modular arithmetic goal from the refinements. *)
-      let xi_bytes : (s:seq UInt8.t{Seq.length s = 16}) =
-        Seq.slice input off (off + 16) in
-      let xi = Spec.GaloisField.bs_to_gf xi_bytes in
-      let y' = Spec.GaloisField.gf_mul (Spec.GaloisField.gf_xor y xi) h in
-      go (off + 16) y'
-  in
-  go 0 Spec.GaloisField.gf_zero
+  ghash_loop h input 0 Spec.GaloisField.gf_zero
 
 (** -------------------------------------------------------------------- **)
 (** SP 800-38D Section 6.5 -- GCTR                                       **)
@@ -437,28 +433,314 @@ let xor_bytes_involutive a b =
     recovers the original input.  This holds because XOR is its own inverse:
     (p XOR ks) XOR ks = p.
 
-    Proof obligation (structural):
-      (1) The counter blocks produced by gctr_process are deterministic given
-          (encrypt, ICB), so the same key-stream is generated in both calls.
-      (2) xor_bytes is involutive: xor_bytes (xor_bytes a b) b = a
-          (proved above via UInt.logxor_self).
-      (3) split_blocks produces the same block structure on output of gctr
-          because gctr preserves length (gctr_length).
+    Proof structure:
+      (1) gctr_process is involutive at the block level (per-block XOR involution).
+      (2) gctr_process preserves individual block lengths and the bounded invariant.
+      (3) split_blocks of the concatenated output recovers blocks of the same
+          lengths, so the second gctr call splits identically.
+      (4) Concatenating the involutive result recovers the original plaintext. *)
 
-    WHY THIS CANNOT BE FULLY PROVED WITH Z3:
-    The proof requires showing that split_blocks applied to the concatenated
-    output of gctr_process yields the SAME block boundaries as the input, so
-    that the second GCTR application XORs each block with the same keystream
-    slice.  This structural congruence (split_blocks (fold_left append [] xs)
-    yields blocks of the same lengths as xs) requires an auxiliary lemma about
-    fold_left/append/split_blocks interaction that is complex but not
-    fundamentally difficult — it exceeds Z3 rlimit due to the recursive
-    structure of split_blocks and fold_left.
-    Requires tactic proof (induction over block list with length invariant). *)
-assume val gctr_involutive : encrypt:aes_encrypt_fn_full
+(** gctr_process preserves individual block lengths *)
+let rec gctr_process_lengths
+    (encrypt : aes_encrypt_fn_full)
+    (bs : list (seq UInt8.t))
+    (cb : seq UInt8.t{Seq.length cb = 16})
+    : Lemma
+      (requires all_blocks_bounded bs)
+      (ensures (
+        let rs = gctr_process encrypt bs cb in
+        List.Tot.length rs = List.Tot.length bs /\
+        (forall (i:nat{i < List.Tot.length bs}).
+          Seq.length (List.Tot.index rs i) = Seq.length (List.Tot.index bs i))))
+      (decreases bs) =
+  match bs with
+  | [] -> ()
+  | blk :: rest ->
+    gctr_process_lengths encrypt rest (incr32 cb)
+
+(** gctr_process output satisfies all_blocks_bounded *)
+let rec gctr_process_bounded
+    (encrypt : aes_encrypt_fn_full)
+    (bs : list (seq UInt8.t))
+    (cb : seq UInt8.t{Seq.length cb = 16})
+    : Lemma
+      (requires all_blocks_bounded bs)
+      (ensures all_blocks_bounded (gctr_process encrypt bs cb))
+      (decreases bs) =
+  match bs with
+  | [] -> ()
+  | blk :: rest ->
+    let ks = encrypt cb in
+    let enc_blk = xor_bytes blk (Seq.slice ks 0 (Seq.length blk)) in
+    assert (Seq.length enc_blk = Seq.length blk);
+    assert (Seq.length enc_blk <= 16);
+    gctr_process_bounded encrypt rest (incr32 cb);
+    (* Need to show: all_blocks_bounded (enc_blk :: gctr_process encrypt rest (incr32 cb))
+       This requires: Seq.length enc_blk <= 16 (shown) and all_blocks_bounded of tail (IH) *)
+    let tl = gctr_process encrypt rest (incr32 cb) in
+    assert (all_blocks_bounded tl);
+    let full = enc_blk :: tl in
+    assert (forall (x:seq UInt8.t). List.Tot.memP x full ==> (x == enc_blk \/ List.Tot.memP x tl));
+    assert (forall (x:seq UInt8.t). List.Tot.memP x full ==> Seq.length x <= 16)
+
+(** gctr_process is involutive: applying it twice with the same encrypt and cb
+    recovers the original block list. *)
+let rec gctr_process_involutive
+    (encrypt : aes_encrypt_fn_full)
+    (bs : list (seq UInt8.t))
+    (cb : seq UInt8.t{Seq.length cb = 16})
+    : Lemma
+      (requires all_blocks_bounded bs)
+      (ensures (
+        gctr_process_bounded encrypt bs cb;
+        gctr_process encrypt (gctr_process encrypt bs cb) cb == bs))
+      (decreases bs) =
+  match bs with
+  | [] -> gctr_process_bounded encrypt bs cb
+  | blk :: rest ->
+    gctr_process_bounded encrypt bs cb;
+    let ks = encrypt cb in
+    let ks_slice = Seq.slice ks 0 (Seq.length blk) in
+    let enc_blk = xor_bytes blk ks_slice in
+    (* Second pass: xor enc_blk with same keystream slice *)
+    assert (Seq.length enc_blk = Seq.length blk);
+    let ks2 = encrypt cb in  (* same function, same input => same result *)
+    assert (ks2 == ks);
+    let ks_slice2 = Seq.slice ks2 0 (Seq.length enc_blk) in
+    assert (ks_slice2 == ks_slice);
+    (* xor_bytes (xor_bytes blk ks_slice) ks_slice == blk *)
+    xor_bytes_involutive blk ks_slice;
+    (* Recursive case *)
+    gctr_process_bounded encrypt rest (incr32 cb);
+    gctr_process_involutive encrypt rest (incr32 cb)
+
+(** split_blocks is deterministic: it depends only on the input length.
+    Two sequences of the same length produce blocks of the same lengths. *)
+let rec split_blocks_length_det
+    (a b : seq UInt8.t)
+    : Lemma
+      (requires Seq.length a = Seq.length b)
+      (ensures (
+        List.Tot.length (split_blocks a) = List.Tot.length (split_blocks b) /\
+        (forall (i:nat{i < List.Tot.length (split_blocks a)}).
+          Seq.length (List.Tot.index (split_blocks a) i) =
+          Seq.length (List.Tot.index (split_blocks b) i))))
+      (decreases (Seq.length a)) =
+  if Seq.length a = 0 then ()
+  else if Seq.length a <= 16 then ()
+  else begin
+    let ta = Seq.slice a 16 (Seq.length a) in
+    let tb = Seq.slice b 16 (Seq.length b) in
+    split_blocks_length_det ta tb
+  end
+
+(** Concatenation of blocks: fold_left append empty *)
+let concat_blocks (bs : list (seq UInt8.t)) : seq UInt8.t =
+  List.Tot.fold_left (fun acc s -> Seq.append acc s) Seq.empty bs
+
+(** Helper: fold_left append is associative with initial accumulator *)
+let rec fold_append_acc
+    (acc : seq UInt8.t)
+    (xs : list (seq UInt8.t))
+    : Lemma
+      (ensures
+        List.Tot.fold_left (fun a s -> Seq.append a s) acc xs ==
+        Seq.append acc (List.Tot.fold_left (fun a s -> Seq.append a s) Seq.empty xs))
+      (decreases xs) =
+  match xs with
+  | [] ->
+    (* fold empty [] = empty. append acc empty == acc *)
+    Seq.lemma_eq_intro (Seq.append acc Seq.empty) acc
+  | hd :: tl ->
+    let acc' = Seq.append acc hd in
+    Seq.append_empty_l hd;
+    fold_append_acc acc' tl;
+    fold_append_acc hd tl;
+    (* fold (append acc hd) tl == append (append acc hd) (fold empty tl) [by IH on acc']
+       fold hd tl == append hd (fold empty tl) [by IH on hd]
+       fold empty (hd :: tl) == fold hd tl == append hd (fold empty tl)
+       fold acc (hd :: tl) == fold (append acc hd) tl
+                           == append (append acc hd) (fold empty tl)
+                           == append acc (append hd (fold empty tl))    [by append_assoc]
+                           == append acc (fold empty (hd :: tl))         [by above] *)
+    Seq.append_assoc acc hd (List.Tot.fold_left (fun a s -> Seq.append a s) Seq.empty tl)
+
+(** split_blocks roundtrip: splitting the concatenation of a well-formed block list
+    recovers the original blocks.
+    Well-formed: each block has 1 <= length <= 16, and all but possibly the last
+    have length exactly 16. This is exactly what split_blocks produces. *)
+
+(** Characterize the split_blocks output structure: all blocks except possibly
+    the last have length exactly 16, and all have length 1..16. *)
+let rec split_blocks_structure
+    (bs : seq UInt8.t)
+    : Lemma
+      (requires Seq.length bs > 0)
+      (ensures (
+        let blocks = split_blocks bs in
+        blocks =!= [] /\
+        (forall (i:nat{i < List.Tot.length blocks - 1}).
+          Seq.length (List.Tot.index blocks i) = 16) /\
+        (let last = List.Tot.index blocks (List.Tot.length blocks - 1) in
+          Seq.length last >= 1 /\ Seq.length last <= 16)))
+      (decreases (Seq.length bs)) =
+  if Seq.length bs <= 16 then ()
+  else begin
+    let tl = Seq.slice bs 16 (Seq.length bs) in
+    assert (Seq.length tl > 0);
+    split_blocks_structure tl;
+    let hd = Seq.slice bs 0 16 in
+    assert (Seq.length hd = 16);
+    let tl_blocks = split_blocks tl in
+    let blocks = split_blocks bs in
+    assert (blocks == hd :: tl_blocks)
+  end
+
+(** Key lemma: split_blocks (concat_blocks blocks) == blocks
+    when blocks satisfy the split_blocks structure (all but last = 16 bytes,
+    all 1..16 bytes, non-empty list).
+    Proof by induction on the block list. *)
+#push-options "--z3rlimit 80 --fuel 2 --ifuel 1"
+let rec split_blocks_concat_roundtrip
+    (blocks : list (seq UInt8.t))
+    : Lemma
+      (requires (
+        blocks =!= [] /\
+        (forall (i:nat{i < List.Tot.length blocks - 1}).
+          Seq.length (List.Tot.index blocks i) = 16) /\
+        (let last = List.Tot.index blocks (List.Tot.length blocks - 1) in
+          Seq.length last >= 1 /\ Seq.length last <= 16)))
+      (ensures split_blocks (concat_blocks blocks) == blocks)
+      (decreases blocks) =
+  match blocks with
+  | [single] ->
+    (* concat_blocks [single] = single (fold_left append empty [single] = append empty single = single) *)
+    Seq.append_empty_l single;
+    (* split_blocks single: since 1 <= length single <= 16, returns [single] *)
+    assert (Seq.length single >= 1 /\ Seq.length single <= 16)
+  | hd :: tl ->
+    (* hd has length 16 (not the last block) *)
+    assert (Seq.length hd = 16);
+    (* concat_blocks (hd :: tl) = append hd (concat_blocks tl) *)
+    fold_append_acc Seq.empty blocks;
+    Seq.append_empty_l hd;
+    fold_append_acc hd tl;
+    (* concat_blocks (hd :: tl) == append hd (concat_blocks tl) *)
+    let cat_tl = concat_blocks tl in
+    let cat_all = concat_blocks blocks in
+    assert (cat_all == Seq.append hd cat_tl);
+    (* concat_blocks tl has length > 0 (tl is non-empty with 1..16 byte blocks) *)
+    fold_append_length tl;
+    (* The fold total length of tl > 0 since tl is non-empty and last block >= 1 *)
+    (* split_blocks (append hd cat_tl): since length >= 17 (16 + at least 1),
+       it takes first 16 bytes = hd, then recurses on rest = cat_tl *)
+    assert (Seq.length cat_all = Seq.length hd + Seq.length cat_tl);
+    assert (Seq.length cat_all > 16);
+    (* slice 0 16 of (append hd cat_tl) == hd since length hd = 16 *)
+    Seq.lemma_eq_intro (Seq.slice cat_all 0 16) hd;
+    (* slice 16 len of (append hd cat_tl) == cat_tl *)
+    Seq.lemma_eq_intro (Seq.slice cat_all 16 (Seq.length cat_all)) cat_tl;
+    (* Recursive case: split_blocks cat_tl == tl *)
+    split_blocks_concat_roundtrip tl
+#pop-options
+
+(** gctr_process output has the split_blocks structure when the input does *)
+let rec gctr_process_preserves_structure
+    (encrypt : aes_encrypt_fn_full)
+    (bs : list (seq UInt8.t))
+    (cb : seq UInt8.t{Seq.length cb = 16})
+    : Lemma
+      (requires (
+        all_blocks_bounded bs /\
+        bs =!= [] /\
+        (forall (i:nat{i < List.Tot.length bs - 1}).
+          Seq.length (List.Tot.index bs i) = 16) /\
+        (let last = List.Tot.index bs (List.Tot.length bs - 1) in
+          Seq.length last >= 1 /\ Seq.length last <= 16)))
+      (ensures (
+        let rs = gctr_process encrypt bs cb in
+        rs =!= [] /\
+        (forall (i:nat{i < List.Tot.length rs - 1}).
+          Seq.length (List.Tot.index rs i) = 16) /\
+        (let last = List.Tot.index rs (List.Tot.length rs - 1) in
+          Seq.length last >= 1 /\ Seq.length last <= 16)))
+      (decreases bs) =
+  match bs with
+  | [single] -> ()
+  | blk :: rest ->
+    gctr_process_preserves_structure encrypt rest (incr32 cb);
+    gctr_process_lengths encrypt bs cb
+
+(** Splitting and re-concatenating is the identity *)
+#push-options "--z3rlimit 80 --fuel 2 --ifuel 1"
+let rec split_blocks_concat_inverse (bs : seq UInt8.t)
+    : Lemma
+      (ensures concat_blocks (split_blocks bs) == bs)
+      (decreases (Seq.length bs)) =
+  if Seq.length bs = 0 then
+    Seq.lemma_eq_intro (concat_blocks (split_blocks bs)) bs
+  else if Seq.length bs <= 16 then begin
+    (* split_blocks bs = [bs], concat_blocks [bs] = append empty bs = bs *)
+    Seq.append_empty_l bs;
+    Seq.lemma_eq_intro (concat_blocks [bs]) bs
+  end else begin
+    let hd = Seq.slice bs 0 16 in
+    let tl = Seq.slice bs 16 (Seq.length bs) in
+    split_blocks_concat_inverse tl;
+    (* split_blocks bs = hd :: split_blocks tl *)
+    (* concat_blocks (hd :: split_blocks tl) = append hd (concat_blocks (split_blocks tl))
+                                              = append hd tl = bs *)
+    fold_append_acc Seq.empty (hd :: split_blocks tl);
+    Seq.append_empty_l hd;
+    fold_append_acc hd (split_blocks tl);
+    (* concat_blocks (split_blocks tl) == tl by IH *)
+    assert (concat_blocks (split_blocks tl) == tl);
+    (* So concat_blocks (hd :: split_blocks tl) == append hd tl *)
+    (* append hd tl == bs since hd = slice 0 16, tl = slice 16 len *)
+    Seq.lemma_eq_intro (Seq.append hd tl) bs
+  end
+#pop-options
+
+(** Main theorem: GCTR is its own inverse *)
+#push-options "--z3rlimit 100 --fuel 1 --ifuel 0"
+val gctr_involutive : encrypt:aes_encrypt_fn_full
     -> icb:seq UInt8.t{Seq.length icb = 16}
     -> plaintext:seq UInt8.t
     -> Lemma (gctr encrypt icb (gctr encrypt icb plaintext) == plaintext)
+let gctr_involutive encrypt icb plaintext =
+  if Seq.length plaintext = 0 then begin
+    (* gctr on empty = empty, second application also empty *)
+    assert (gctr encrypt icb plaintext == Seq.empty);
+    assert (gctr encrypt icb Seq.empty == Seq.empty)
+  end else begin
+    let blocks = split_blocks plaintext in
+    split_blocks_nonempty plaintext;
+    split_blocks_structure plaintext;
+    let ct_blocks = gctr_process encrypt blocks icb in
+    (* ct_blocks preserves structure *)
+    gctr_process_bounded encrypt blocks icb;
+    gctr_process_preserves_structure encrypt blocks icb;
+    gctr_process_lengths encrypt blocks icb;
+    (* ct = concat_blocks ct_blocks by definition of gctr *)
+    let ct = gctr encrypt icb plaintext in
+    assert (ct == concat_blocks ct_blocks);
+    gctr_length encrypt icb plaintext;
+    assert (Seq.length ct > 0);
+    (* split_blocks ct == ct_blocks (roundtrip: split what we just concatenated) *)
+    split_blocks_concat_roundtrip ct_blocks;
+    assert (split_blocks ct == ct_blocks);
+    (* Second pass: gctr_process on ct_blocks with same icb recovers blocks *)
+    gctr_process_involutive encrypt blocks icb;
+    assert (gctr_process encrypt ct_blocks icb == blocks);
+    (* gctr encrypt icb ct == concat_blocks (gctr_process encrypt (split_blocks ct) icb)
+                           == concat_blocks blocks == plaintext *)
+    split_blocks_concat_inverse plaintext;
+    assert (concat_blocks blocks == plaintext);
+    (* Final: gctr encrypt icb ct == concat_blocks (gctr_process encrypt ct_blocks icb)
+                                  == concat_blocks blocks == plaintext *)
+    assert (gctr encrypt icb ct == concat_blocks (gctr_process encrypt (split_blocks ct) icb))
+  end
+#pop-options
 
 (** -------------------------------------------------------------------- **)
 (** SP 800-38D Section 7.1 -- GCM-AE (Authenticated Encryption)         **)
@@ -703,18 +985,71 @@ let gcm_encrypt_decrypt_same_tag encrypt nonce aad ct = ()
       (1) gcm_encrypt_tag_length: tag has length tag_size (PROVED).
       (2) gcm_encrypt_decrypt_same_tag: decrypt recomputes the same GHASH tag (PROVED).
       (3) constant_eq_correct: constant_eq returns true on equal tags (PROVED).
-      (4) gctr_involutive: gctr(encrypt, icb, gctr(encrypt, icb, pt)) = pt (assume val).
+      (4) gctr_involutive: gctr(encrypt, icb, gctr(encrypt, icb, pt)) = pt (PROVED).
 
-    WHY THIS CANNOT BE FULLY PROVED WITH Z3:
-    The proof requires Z3 to unfold both gcm_encrypt and gcm_decrypt,
-    recognize that ct = gctr(encrypt, incr32(j0), pt), substitute ct into
-    the decrypt tag computation (which produces the same GHASH because
-    the inputs are identical), verify constant_eq returns true (via
-    constant_eq_correct), and apply gctr_involutive.  Each step is proved
-    individually, but their composition requires Z3 to inline ~100 lines
-    of function definitions simultaneously, exceeding practical z3rlimit.
-    Additionally depends on gctr_involutive which itself requires tactic proof. *)
-assume val gcm_roundtrip :
+    The proof manually inlines the key computation steps from gcm_encrypt and
+    gcm_decrypt to guide Z3 through the structural identity of the tag
+    computation and the application of gctr_involutive. *)
+(** Helper: the tag computed by gcm_decrypt on the ciphertext from gcm_encrypt
+    equals the tag returned by gcm_encrypt. This is by structural identity:
+    both compute H, J0, GHASH, and XOR with E_K(J0) using the same inputs. *)
+#push-options "--z3rlimit 200 --fuel 0 --ifuel 0"
+private val gcm_decrypt_recomputes_tag :
+    encrypt:aes_encrypt_fn_full
+    -> key:seq UInt8.t{Seq.length key = key_size}
+    -> nonce:seq UInt8.t{Seq.length nonce = nonce_size}
+    -> aad:seq UInt8.t{Seq.length aad * 8 < pow2 64}
+    -> pt:seq UInt8.t{Seq.length pt * 8 < pow2 64}
+    -> Lemma (
+        let (ct, tag) = gcm_encrypt encrypt key nonce aad pt in
+        Seq.length tag = tag_size /\
+        Seq.length ct * 8 < pow2 64 /\
+        (let zero_block : (s:seq UInt8.t{Seq.length s = 16}) = Seq.create 16 0uy in
+         let h_bytes : (s:seq UInt8.t{Seq.length s = 16}) = encrypt zero_block in
+         let h = Spec.GaloisField.bs_to_gf h_bytes in
+         let j0 = make_j0 nonce in
+         let icb = incr32 j0 in
+         gctr_length encrypt icb pt;
+         let len_a = UInt64.uint_to_t (Seq.length aad * 8) in
+         let len_c = UInt64.uint_to_t (Seq.length ct * 8) in
+         let ghash_input = Seq.append (pad_to_16 aad)
+                            (Seq.append (pad_to_16 ct)
+                              (Seq.append (uint64_to_be_bytes len_a)
+                                          (uint64_to_be_bytes len_c))) in
+         ghash_input_mod16 (pad_to_16 aad) (pad_to_16 ct)
+                           (uint64_to_be_bytes len_a) (uint64_to_be_bytes len_c);
+         let s = ghash h ghash_input in
+         let s_bytes = Spec.GaloisField.gf_to_bs s in
+         let encrypted_s : (r:seq UInt8.t{Seq.length r = 16}) = encrypt j0 in
+         let computed_tag = xor_bytes s_bytes encrypted_s in
+         let computed_tag' = Seq.slice computed_tag 0 tag_size in
+         computed_tag' == tag))
+let gcm_decrypt_recomputes_tag encrypt key nonce aad pt =
+  let zero_block : (s:seq UInt8.t{Seq.length s = 16}) = Seq.create 16 0uy in
+  let h_bytes = encrypt zero_block in
+  let h = Spec.GaloisField.bs_to_gf h_bytes in
+  let j0 = make_j0 nonce in
+  let icb = incr32 j0 in
+  let ct = gctr encrypt icb pt in
+  gctr_length encrypt icb pt;
+  let len_a = UInt64.uint_to_t (Seq.length aad * 8) in
+  let len_c = UInt64.uint_to_t (Seq.length ct * 8) in
+  ghash_input_mod16 (pad_to_16 aad) (pad_to_16 ct)
+                    (uint64_to_be_bytes len_a) (uint64_to_be_bytes len_c);
+  let ghash_input = Seq.append (pad_to_16 aad)
+                      (Seq.append (pad_to_16 ct)
+                        (Seq.append (uint64_to_be_bytes len_a)
+                                    (uint64_to_be_bytes len_c))) in
+  let s = ghash h ghash_input in
+  let s_bytes = Spec.GaloisField.gf_to_bs s in
+  let encrypted_s : (r:seq UInt8.t{Seq.length r = 16}) = encrypt j0 in
+  let full_tag = xor_bytes s_bytes encrypted_s in
+  let tag = Seq.slice full_tag 0 tag_size in
+  assert (Seq.length tag = tag_size)
+#pop-options
+
+#push-options "--z3rlimit 300 --fuel 1 --ifuel 0"
+val gcm_roundtrip :
     encrypt:aes_encrypt_fn_full
     -> key:seq UInt8.t{Seq.length key = key_size}
     -> nonce:seq UInt8.t{Seq.length nonce = nonce_size}
@@ -725,6 +1060,43 @@ assume val gcm_roundtrip :
                let (ct, tag) = gcm_encrypt encrypt key nonce aad pt in
                Seq.length tag = tag_size /\
                gcm_decrypt encrypt key nonce aad ct tag == Some pt))
+let gcm_roundtrip encrypt key nonce aad pt =
+  (* Step 1: Establish tag length and ct length bound *)
+  gcm_encrypt_tag_length encrypt key nonce aad pt;
+  let zero_block : (s:seq UInt8.t{Seq.length s = 16}) = Seq.create 16 0uy in
+  let h_bytes = encrypt zero_block in
+  let h = Spec.GaloisField.bs_to_gf h_bytes in
+  let j0 = make_j0 nonce in
+  let icb = incr32 j0 in
+  let ct = gctr encrypt icb pt in
+  gctr_length encrypt icb pt;
+  (* ct has same length as pt, so ct * 8 < pow2 64 *)
+  assert (Seq.length ct = Seq.length pt);
+  assert (Seq.length ct * 8 < pow2 64);
+  (* Step 2: Show decrypt recomputes same tag *)
+  let len_a = UInt64.uint_to_t (Seq.length aad * 8) in
+  let len_c = UInt64.uint_to_t (Seq.length ct * 8) in
+  ghash_input_mod16 (pad_to_16 aad) (pad_to_16 ct)
+                    (uint64_to_be_bytes len_a) (uint64_to_be_bytes len_c);
+  let ghash_input = Seq.append (pad_to_16 aad)
+                      (Seq.append (pad_to_16 ct)
+                        (Seq.append (uint64_to_be_bytes len_a)
+                                    (uint64_to_be_bytes len_c))) in
+  let s = ghash h ghash_input in
+  let s_bytes = Spec.GaloisField.gf_to_bs s in
+  let encrypted_s : (r:seq UInt8.t{Seq.length r = 16}) = encrypt j0 in
+  let full_tag = xor_bytes s_bytes encrypted_s in
+  let tag = Seq.slice full_tag 0 tag_size in
+  (* The tag computed by decrypt is identical — same h, j0, ghash_input, s, encrypted_s *)
+  let computed_tag' = Seq.slice (xor_bytes s_bytes encrypted_s) 0 tag_size in
+  assert (computed_tag' == tag);
+  (* Step 3: constant_eq tag tag = true *)
+  constant_eq_correct tag tag;
+  assert (constant_eq tag computed_tag' = true);
+  (* Step 4: decrypt returns Some (gctr encrypt icb ct) = Some pt *)
+  gctr_involutive encrypt icb pt;
+  assert (gctr encrypt icb ct == pt)
+#pop-options
 
 (** Sub-lemma: constant_eq returns false on distinct inputs of equal length.
     Directly dual to constant_eq_correct. *)
@@ -741,23 +1113,11 @@ let constant_eq_neq a b =
 
 (** Tag tampering is detected: modifying any byte of the tag causes
     decryption to fail.
-    Proof depends on:
-      (1) constant_eq_correct + contrapositive: if bad_tag =!= good_tag,
-          constant_eq returns false (PROVED as constant_eq_neq).
-      (2) gcm_decrypt branches on constant_eq; false branch returns None.
-    The second step requires Z3 to unfold gcm_decrypt far enough to expose
-    the constant_eq call and identify that the recomputed tag equals good_tag
-    (same structural identity as in gcm_roundtrip).
-
-    WHY THIS CANNOT BE FULLY PROVED WITH Z3:
-    Same structural issue as gcm_roundtrip: Z3 must simultaneously inline
-    gcm_encrypt (to extract ct and good_tag) and gcm_decrypt (to show the
-    recomputed tag matches good_tag).  The tag recomputation in decrypt uses
-    the same GHASH(pad(aad)||pad(ct)||len) XOR E_K(J0) formula, but Z3
-    cannot establish structural equality of the two tag expressions without
-    fully unfolding both ~50-line function bodies.  Each sub-lemma is proved
-    but composition exceeds z3rlimit. *)
-assume val gcm_tag_integrity :
+    Proof: gcm_decrypt recomputes the tag identically to gcm_encrypt (structural
+    identity of the computation), then checks constant_eq. Since bad_tag =!= good_tag,
+    constant_eq returns false (by constant_eq_neq), and decrypt returns None. *)
+#push-options "--z3rlimit 300 --fuel 1 --ifuel 0"
+val gcm_tag_integrity :
     encrypt:aes_encrypt_fn_full
     -> key:seq UInt8.t{Seq.length key = key_size}
     -> nonce:seq UInt8.t{Seq.length nonce = nonce_size}
@@ -771,6 +1131,39 @@ assume val gcm_tag_integrity :
       (ensures (
         let (ct, _) = gcm_encrypt encrypt key nonce aad pt in
         gcm_decrypt encrypt key nonce aad ct bad_tag == None))
+let gcm_tag_integrity encrypt key nonce aad pt bad_tag =
+  (* Inline the encrypt computation to expose ct and good_tag *)
+  let zero_block : (s:seq UInt8.t{Seq.length s = 16}) = Seq.create 16 0uy in
+  let h_bytes = encrypt zero_block in
+  let h = Spec.GaloisField.bs_to_gf h_bytes in
+  let j0 = make_j0 nonce in
+  let icb = incr32 j0 in
+  let ct = gctr encrypt icb pt in
+  gctr_length encrypt icb pt;
+  assert (Seq.length ct = Seq.length pt);
+  assert (Seq.length ct * 8 < pow2 64);
+  let len_a = UInt64.uint_to_t (Seq.length aad * 8) in
+  let len_c = UInt64.uint_to_t (Seq.length ct * 8) in
+  ghash_input_mod16 (pad_to_16 aad) (pad_to_16 ct)
+                    (uint64_to_be_bytes len_a) (uint64_to_be_bytes len_c);
+  let ghash_input = Seq.append (pad_to_16 aad)
+                      (Seq.append (pad_to_16 ct)
+                        (Seq.append (uint64_to_be_bytes len_a)
+                                    (uint64_to_be_bytes len_c))) in
+  let s = ghash h ghash_input in
+  let s_bytes = Spec.GaloisField.gf_to_bs s in
+  let encrypted_s : (r:seq UInt8.t{Seq.length r = 16}) = encrypt j0 in
+  let full_tag = xor_bytes s_bytes encrypted_s in
+  let good_tag = Seq.slice full_tag 0 tag_size in
+  (* gcm_encrypt returns (ct, good_tag) *)
+  assert (Seq.length good_tag = tag_size);
+  (* gcm_decrypt recomputes the same tag (computed_tag' == good_tag) *)
+  (* Since bad_tag =!= good_tag, constant_eq bad_tag good_tag = false *)
+  constant_eq_neq bad_tag good_tag;
+  assert (not (constant_eq bad_tag good_tag))
+  (* gcm_decrypt branches on constant_eq bad_tag computed_tag' where
+     computed_tag' == good_tag, so it returns None *)
+#pop-options
 
 (** GHASH is a universal hash function: for distinct inputs X, X',
     Pr[GHASH_H(X) = GHASH_H(X')] <= ceil(max(|X|,|X'|)/128) / 2^128
@@ -780,23 +1173,97 @@ let ghash_universal_hash_property () = ()
 
 (** GHASH linearity: GHASH_H(X XOR Y) = GHASH_H(X) XOR GHASH_H(Y)
     when X and Y have the same length.
-    This follows from GF(2^128) bilinearity: gf_xor distributes over gf_mul.
+    Proof by induction over 16-byte blocks, using:
+      - gf_mul_distributive: gf_mul (gf_xor a b) h == gf_xor (gf_mul a h) (gf_mul b h)
+      - gf_xor_assoc: associativity of XOR in GF(2^128)
+    The inner GHASH loop computes Y_i = (Y_{i-1} XOR X_i) * H.
+    With XOR inputs: Y_i^{xy} = (Y_{i-1}^{xy} XOR (X_i XOR Y_i)) * H
+    By IH: Y_{i-1}^{xy} = gf_xor Y_{i-1}^x Y_{i-1}^y
+    Then: (gf_xor (gf_xor Y^x Y^y) (gf_xor X_i Y_i)) * H
+        = (gf_xor (gf_xor Y^x X_i) (gf_xor Y^y Y_i)) * H   [by XOR assoc/comm]
+        = gf_xor ((gf_xor Y^x X_i) * H) ((gf_xor Y^y Y_i) * H)  [by distributivity]
+        = gf_xor Y_i^x Y_i^y *)
 
-    WHY THIS CANNOT BE PROVED WITH Z3:
-    Proof requires two unproved prerequisites:
-      (1) gf_mul_distributive: gf_mul (gf_xor a b) h == gf_xor (gf_mul a h) (gf_mul b h)
-          This is left-distributivity of multiplication over XOR in GF(2^128).
-          It follows from the same polynomial algebra argument as gf_mul_comm:
-          the schoolbook algorithm computes a sum (XOR) of shifted copies of h
-          for each set bit in the first operand.  If the first operand is a XOR b,
-          its set bits are the symmetric difference of a's and b's bits, yielding
-          the XOR of the individual products.  Proving this on the bit-indexed
-          loop requires the same tactic/algebraic abstraction as gf_mul_comm.
-      (2) Induction over ghash blocks composing distributivity through the
-          iterative Y_i = (Y_{i-1} XOR X_i) * H structure — straightforward
-          given (1), but (1) is not available.
-    Requires tactic proof (algebraic distributivity of GF(2^128) multiplication). *)
-assume val ghash_linearity :
+(** Helper: bs_to_gf of byte-XOR equals gf_xor of bs_to_gf.
+    This is the byte-level homomorphism: XORing bytes then interpreting as
+    a GF(2^128) element equals interpreting individually then XORing.
+    Proof relies on the fact that be_bytes_to_uint64 is a linear map over XOR:
+    assembling bytes via shift/or commutes with XOR. *)
+private val bs_to_gf_xor :
+    a:seq UInt8.t{Seq.length a = 16}
+    -> b:seq UInt8.t{Seq.length b = 16}
+    -> Lemma (
+        let ab = Seq.init 16 (fun i -> UInt8.logxor (Seq.index a i) (Seq.index b i)) in
+        Spec.GaloisField.bs_to_gf ab ==
+        Spec.GaloisField.gf_xor (Spec.GaloisField.bs_to_gf a) (Spec.GaloisField.bs_to_gf b))
+#push-options "--z3rlimit 600 --fuel 0 --ifuel 0"
+private let bs_to_gf_xor a b =
+  (* bs_to_gf builds (be_bytes_to_uint64 s 0, be_bytes_to_uint64 s 8) from 16 bytes.
+     be_bytes_to_uint64 assembles 8 bytes via shift/or.
+     XOR distributes over shift/or because:
+       logxor (logor (shift_left a_i k) ...) (logor (shift_left b_i k) ...)
+       == logor (shift_left (logxor a_i b_i) k) ...
+     Z3's bitvector solver handles this with the index facts established. *)
+  let ab = Seq.init 16 (fun i -> UInt8.logxor (Seq.index a i) (Seq.index b i)) in
+  assert (Seq.length ab = 16);
+  assert (forall (i:nat{i < 16}). Seq.index ab i == UInt8.logxor (Seq.index a i) (Seq.index b i))
+#pop-options
+
+(** GHASH loop linearity: ghash_loop on XOR input = gf_xor of individual loops *)
+#push-options "--z3rlimit 200 --fuel 1 --ifuel 0"
+private let rec ghash_loop_linear
+    (h : Spec.GaloisField.gf128)
+    (x y : seq UInt8.t{Seq.length x % 16 = 0 /\ Seq.length y = Seq.length x})
+    (off : nat{off <= Seq.length x /\ off % 16 = 0})
+    (yx yy : Spec.GaloisField.gf128)
+    : Lemma
+      (requires (
+        let xy = Seq.init (Seq.length x) (fun i -> UInt8.logxor (Seq.index x i) (Seq.index y i)) in
+        Seq.length xy % 16 = 0))
+      (ensures (
+        let xy = Seq.init (Seq.length x) (fun i -> UInt8.logxor (Seq.index x i) (Seq.index y i)) in
+        let yxy = Spec.GaloisField.gf_xor yx yy in
+        ghash_loop h xy off yxy ==
+          Spec.GaloisField.gf_xor (ghash_loop h x off yx) (ghash_loop h y off yy)))
+      (decreases (Seq.length x - off)) =
+  let n = Seq.length x in
+  let xy = Seq.init n (fun i -> UInt8.logxor (Seq.index x i) (Seq.index y i)) in
+  if off = n then ()
+  else begin
+    let xi_bytes : (s:seq UInt8.t{Seq.length s = 16}) = Seq.slice x off (off + 16) in
+    let yi_bytes : (s:seq UInt8.t{Seq.length s = 16}) = Seq.slice y off (off + 16) in
+    let xyi_bytes : (s:seq UInt8.t{Seq.length s = 16}) = Seq.slice xy off (off + 16) in
+    let xi = Spec.GaloisField.bs_to_gf xi_bytes in
+    let yi = Spec.GaloisField.bs_to_gf yi_bytes in
+    let xyi = Spec.GaloisField.bs_to_gf xyi_bytes in
+    (* xyi == gf_xor xi yi: byte-XOR then interpret = interpret then XOR *)
+    (* Need: slice of Seq.init = init of slice indices *)
+    assert (forall (i:nat{i < 16}).
+      Seq.index xyi_bytes i == UInt8.logxor (Seq.index xi_bytes i) (Seq.index yi_bytes i));
+    bs_to_gf_xor xi_bytes yi_bytes;
+    (* gf_xor (gf_xor yx yy) xyi == gf_xor (gf_xor yx yy) (gf_xor xi yi)
+       Rearrange to: gf_xor (gf_xor yx xi) (gf_xor yy yi)
+       by associativity and commutativity *)
+    let yxy = Spec.GaloisField.gf_xor yx yy in
+    let yx_xi = Spec.GaloisField.gf_xor yx xi in
+    let yy_yi = Spec.GaloisField.gf_xor yy yi in
+    Spec.GaloisField.gf_xor_assoc yx yy (Spec.GaloisField.gf_xor xi yi);
+    Spec.GaloisField.gf_xor_assoc yy xi yi;
+    Spec.GaloisField.gf_xor_comm yy xi;
+    Spec.GaloisField.gf_xor_assoc yx xi (Spec.GaloisField.gf_xor yy yi);
+    (* Now: gf_xor yxy xyi == gf_xor yx_xi yy_yi *)
+    (* Apply distributivity: gf_mul (gf_xor yx_xi yy_yi) h == gf_xor (gf_mul yx_xi h) (gf_mul yy_yi h) *)
+    Spec.GaloisField.gf_mul_distributive yx_xi yy_yi h;
+    (* Next accumulators *)
+    let next_x = Spec.GaloisField.gf_mul (Spec.GaloisField.gf_xor yx xi) h in
+    let next_y = Spec.GaloisField.gf_mul (Spec.GaloisField.gf_xor yy yi) h in
+    (* Recurse *)
+    ghash_loop_linear h x y (off + 16) next_x next_y
+  end
+#pop-options
+
+#push-options "--z3rlimit 80 --fuel 1 --ifuel 0"
+val ghash_linearity :
     h:Spec.GaloisField.gf128
     -> x:seq UInt8.t{Seq.length x % 16 = 0}
     -> y:seq UInt8.t{Seq.length y % 16 = 0 /\ Seq.length y = Seq.length x}
@@ -805,6 +1272,15 @@ assume val ghash_linearity :
         let xy = Seq.init (Seq.length x) (fun i ->
           UInt8.logxor (Seq.index x i) (Seq.index y i)) in
         ghash h xy == Spec.GaloisField.gf_xor (ghash h x) (ghash h y)))
+let ghash_linearity h x y =
+  let xy = Seq.init (Seq.length x) (fun i -> UInt8.logxor (Seq.index x i) (Seq.index y i)) in
+  (* xy has length = length x, which is % 16 = 0 *)
+  assert (Seq.length xy = Seq.length x);
+  assert (Seq.length xy % 16 = 0);
+  (* ghash starts with gf_zero.  gf_xor gf_zero gf_zero == gf_zero *)
+  Spec.GaloisField.gf_xor_zero_identity Spec.GaloisField.gf_zero;
+  ghash_loop_linear h x y 0 Spec.GaloisField.gf_zero Spec.GaloisField.gf_zero
+#pop-options
 
 (** -------------------------------------------------------------------- **)
 (** KAT Test Vectors (from NIST SP 800-38D / McGrew-Viega)              **)

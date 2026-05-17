@@ -255,9 +255,20 @@ let scan_for_payment scan_secret spend_pub eph_r candidate_p =
 
 (** DH commutativity on X25519: x25519(a, x25519_base(b)) = x25519(b, x25519_base(a))
     This is the fundamental property underlying correctness.  It follows from
-    Spec.X25519.dh_commutativity_general applied to scan_pub = x25519_base(scan_sec). *)
-assume val x25519_dh_comm : a:bytes32 -> b:bytes32
+    Spec.X25519.dh_commutativity_general applied to the basepoint. *)
+val x25519_dh_comm : a:bytes32 -> b:bytes32
     -> Lemma (x25519 a (x25519_base b) = x25519 b (x25519_base a))
+let x25519_dh_comm a b =
+  (* x25519_base k = Spec.X25519.x25519 k bp where bp is the basepoint.
+     So x25519 a (x25519_base b) unfolds to:
+       let result = Spec.X25519.x25519 a (Spec.X25519.x25519 b bp) in ...
+     By dh_commutativity_general a b bp:
+       Spec.X25519.x25519 a (Spec.X25519.x25519 b bp)
+       == Spec.X25519.x25519 b (Spec.X25519.x25519 a bp)
+     The zero-check wrapper produces identical results on equal inputs. *)
+  let bp : Spec.X25519.coordinate =
+    Seq.append (Seq.create 1 9uy) (Seq.create 31 0uy) in
+  Spec.X25519.dh_commutativity_general a b bp
 
 val scan_correctness
     : eph_secret:bytes32

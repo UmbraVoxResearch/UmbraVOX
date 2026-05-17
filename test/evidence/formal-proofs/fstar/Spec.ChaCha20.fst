@@ -56,12 +56,16 @@ let quarter_round a0 b0 c0 d0 =
 (** Quarter round test vector (RFC 8439 Section 2.1.1):
     Input:  (0x11111111, 0x01020304, 0x9b8d6f43, 0x01234567)
     Output: (0xea2a92f4, 0xcb1cf8ce, 0x4581472e, 0x5881c4bb) *)
-(** Irreducible KAT: FStar.UInt32.t is abstract; add_mod, logxor, and
-    rotate_left cannot be reduced to concrete values by Z3 or assert_norm.
-    Verified by the Haskell test suite (Test.Crypto.ChaCha20). *)
-assume val qr_test : unit ->
+(** KAT: Quarter round test vector (RFC 8439 Section 2.1.1).
+    Normalization evaluates the 8 UInt32 operations in the quarter round. *)
+val qr_test : unit ->
   Lemma (quarter_round 0x11111111ul 0x01020304ul 0x9b8d6f43ul 0x01234567ul
          = (0xea2a92f4ul, 0xcb1cf8ceul, 0x4581472eul, 0x5881c4bbul))
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 100000"
+let qr_test () =
+  assert_norm (quarter_round 0x11111111ul 0x01020304ul 0x9b8d6f43ul 0x01234567ul
+               = (0xea2a92f4ul, 0xcb1cf8ceul, 0x4581472eul, 0x5881c4bbul))
+#pop-options
 
 (** -------------------------------------------------------------------- **)
 (** Double round: column round + diagonal round                           **)
@@ -442,15 +446,23 @@ let kat_block () =
 
 (** All-zero KAT: key=0^32, nonce=0^12, counter=0.
     First 4 bytes: 76 b8 e0 ad. *)
-(** Irreducible KAT: chacha20_block requires reducing 10 double-rounds (~320
-    abstract UInt32 operations).  The FStar.UInt32.t abstraction barrier prevents
-    normalization; verified by the Haskell test suite (Test.Crypto.ChaCha20). *)
-assume val kat_allzero : unit ->
+(** KAT: All-zero key/nonce/counter, first 4 bytes of output.
+    Normalization evaluates the full ChaCha20 block function (10 double-rounds
+    of UInt32 operations, state addition, and serialization). *)
+val kat_allzero : unit ->
   Lemma (let key = create 32 0uy in
          let nonce = create 12 0uy in
          let block = chacha20_block key nonce 0ul in
          index block 0 = 0x76uy /\ index block 1 = 0xb8uy /\
          index block 2 = 0xe0uy /\ index block 3 = 0xaduy)
+#push-options "--fuel 100 --ifuel 100 --z3rlimit 600000"
+let kat_allzero () =
+  assert_norm (let key = create 32 0uy in
+               let nonce = create 12 0uy in
+               let block = chacha20_block key nonce 0ul in
+               index block 0 = 0x76uy /\ index block 1 = 0xb8uy /\
+               index block 2 = 0xe0uy /\ index block 3 = 0xaduy)
+#pop-options
 
 (** -------------------------------------------------------------------- **)
 (** Correspondence to Haskell implementation                              **)

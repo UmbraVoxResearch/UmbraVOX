@@ -314,25 +314,34 @@ let rfc5869_tc1_okm : seq UInt8.t =
   ]
 
 (** KAT: RFC 5869 TC1 Extract.
-    Normalization blocked by upstream SHA-256 pad admits.
-    Verified by external test vectors (RFC 5869).
-    Stated as an axiom pending upstream SHA-256 spec completeness. *)
-assume val hkdf_sha256_kat_tc1_extract : unit
+    Normalization evaluates HMAC-SHA-256(salt, ikm) on the concrete inputs. *)
+val hkdf_sha256_kat_tc1_extract : unit
     -> Lemma (hkdf_sha256_extract rfc5869_tc1_salt rfc5869_tc1_ikm ==
               rfc5869_tc1_prk)
+#push-options "--fuel 100 --ifuel 100 --z3rlimit 600000"
+let hkdf_sha256_kat_tc1_extract () =
+  assert_norm (hkdf_sha256_extract rfc5869_tc1_salt rfc5869_tc1_ikm ==
+               rfc5869_tc1_prk)
+#pop-options
 
 (** KAT: RFC 5869 TC1 Expand.
-    Normalization blocked by upstream SHA-256 pad admits.
-    Verified by external test vectors (RFC 5869).
-    Stated as an axiom pending upstream SHA-256 spec completeness. *)
-assume val hkdf_sha256_kat_tc1_expand : unit
+    Normalization evaluates HKDF-Expand with 2 HMAC-SHA-256 iterations. *)
+val hkdf_sha256_kat_tc1_expand : unit
     -> Lemma (hkdf_sha256_expand rfc5869_tc1_prk rfc5869_tc1_info 42 ==
               rfc5869_tc1_okm)
+#push-options "--fuel 100 --ifuel 100 --z3rlimit 900000"
+let hkdf_sha256_kat_tc1_expand () =
+  assert_norm (hkdf_sha256_expand rfc5869_tc1_prk rfc5869_tc1_info 42 ==
+               rfc5869_tc1_okm)
+#pop-options
 
-(** KAT: RFC 5869 TC1 full HKDF.
-    Normalization blocked by upstream SHA-256 pad admits.
-    Verified by external test vectors (RFC 5869).
-    Stated as an axiom pending upstream SHA-256 spec completeness. *)
-assume val hkdf_sha256_kat_tc1_full : unit
+(** KAT: RFC 5869 TC1 full HKDF (extract + expand combined).
+    Normalization evaluates the full HKDF-SHA-256 pipeline. *)
+val hkdf_sha256_kat_tc1_full : unit
     -> Lemma (hkdf_sha256 rfc5869_tc1_salt rfc5869_tc1_ikm
                           rfc5869_tc1_info 42 == rfc5869_tc1_okm)
+#push-options "--fuel 100 --ifuel 100 --z3rlimit 900000"
+let hkdf_sha256_kat_tc1_full () =
+  assert_norm (hkdf_sha256 rfc5869_tc1_salt rfc5869_tc1_ikm
+                           rfc5869_tc1_info 42 == rfc5869_tc1_okm)
+#pop-options
