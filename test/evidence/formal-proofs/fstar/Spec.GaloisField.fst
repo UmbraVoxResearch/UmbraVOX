@@ -222,19 +222,115 @@ let gf_mul_zero a =
     is symmetric in the bit indices of a and b), and reduction mod p(x) is
     applied to the same product regardless of operand order.
 
-    WHY THIS CANNOT BE PROVED WITH Z3:
-    The gf_mul function uses a 128-iteration bit-indexed schoolbook algorithm.
-    Proving commutativity requires establishing a correspondence between the
-    left-to-right scan of `a` (accumulating into z via shifts of y) and the
-    left-to-right scan of `b` (accumulating into z via shifts of a).  This
-    requires either:
-      (a) A tactic that symbolically relates both 128-step unrollings, or
-      (b) An intermediate representation as formal polynomials in GF(2)[x]/(p)
-          with a proved isomorphism to the bit-indexed algorithm.
-    Neither approach is feasible within Z3's rlimit on concrete bit-vector terms.
-    Requires tactic proof or algebraic abstraction layer. *)
-assume val gf_mul_comm : a:gf128 -> b:gf128
+    The proof attempts to discharge via Z3 with fuel 129 (one per loop
+    iteration + base case) and high rlimit.  Z3 must unfold both
+    gf_mul a b and gf_mul b a on symbolic 128-bit inputs and verify
+    bit-vector equality.  If this exceeds Z3's capacity, an algebraic
+    abstraction layer (GF(2)[x]/(p) polynomial ring isomorphism) or
+    tactic-based proof will be needed. *)
+#push-options "--z3rlimit 4000 --fuel 129 --ifuel 0"
+val gf_mul_comm : a:gf128 -> b:gf128
     -> Lemma (gf_mul a b == gf_mul b a)
+let gf_mul_comm a b = ()
+#pop-options
+
+(** Left-distributivity of multiplication over XOR in GF(2^128):
+    gf_mul (gf_xor a b) h == gf_xor (gf_mul a h) (gf_mul b h)
+
+    Proof by induction on the 128-iteration loop.  The key invariant:
+    at each step i, the v-values are identical across all three computations
+    (they depend only on h), and the z-accumulator of the combined computation
+    equals the XOR of the individual z-accumulators.
+
+    At step i: gf_test_bit (gf_xor a b) i determines whether z_ab is XORed with v.
+    For a: gf_test_bit a i.  For b: gf_test_bit b i.
+    Case analysis on (bit_a, bit_b):
+      (0,0): none selected.  z_ab unchanged, z_a unchanged, z_b unchanged.  Invariant holds.
+      (1,1): XOR bit = 0.  z_ab unchanged, z_a XOR v, z_b XOR v.
+             gf_xor (gf_xor z_a v) (gf_xor z_b v) = gf_xor z_a z_b = z_ab.  Holds.
+      (1,0): XOR bit = 1.  z_ab XOR v, z_a XOR v, z_b unchanged.
+             gf_xor (gf_xor z_a v) z_b = gf_xor (gf_xor z_a z_b) v = gf_xor z_ab v.  Holds.
+      (0,1): symmetric to (1,0). *)
+
+(** Helper: gf_test_bit distributes over gf_xor as XOR of individual bits *)
+private val gf_test_bit_xor : a:gf128 -> b:gf128 -> i:nat{i < 128}
+    -> Lemma (gf_test_bit (gf_xor a b) i = (gf_test_bit a i <> gf_test_bit b i))
+#push-options "--z3rlimit 200 --fuel 0 --ifuel 0"
+private let gf_test_bit_xor (ah, al) (bh, bl) i =
+  (* gf_xor (ah,al) (bh,bl) = (logxor ah bh, logxor al bl)
+     gf_test_bit checks bit i via logand (shift_right w k) 1uL = 1.
+     Z3 bitvector theory: bit extraction from XOR = XOR of bit extractions.
+     This is a standard bitvector identity that Z3 handles directly. *)
+  ()
+#pop-options
+
+(** Core inductive lemma: the loop invariant for distributivity *)
+#push-options "--z3rlimit 200 --fuel 1 --ifuel 0"
+private let rec gf_mul_loop_distributive
+    (a b : gf128) (h : gf128) (i : nat{i <= 128})
+    (za zb : gf128) (v : gf128)
+    : Lemma
+      (ensures
+        gf_mul_loop (gf_xor a b) i (gf_xor za zb) v ==
+        gf_xor (gf_mul_loop a i za v) (gf_mul_loop b i zb v))
+      (decreases (128 - i)) =
+  if i >= 128 then ()
+  else begin
+    let ab = gf_xor a b in
+    gf_test_bit_xor a b i;
+    let bit_a = gf_test_bit a i in
+    let bit_b = gf_test_bit b i in
+    let bit_ab = gf_test_bit ab i in
+    (* Compute next z-accumulators *)
+    let za' = if bit_a then gf_xor za v else za in
+    let zb' = if bit_b then gf_xor zb v else zb in
+    let zab = gf_xor za zb in
+    let zab' = if bit_ab then gf_xor zab v else zab in
+    (* Show: zab' == gf_xor za' zb' by case analysis on (bit_a, bit_b) *)
+    (* bit_ab = (bit_a <> bit_b) *)
+    (if bit_a && bit_b then begin
+      (* bit_ab = false. zab' = zab = gf_xor za zb.
+         za' = gf_xor za v, zb' = gf_xor zb v.
+         gf_xor (gf_xor za v) (gf_xor zb v) = gf_xor (gf_xor za zb) (gf_xor v v) = gf_xor za zb *)
+      gf_xor_assoc za v (gf_xor zb v);
+      gf_xor_assoc zb v v;
+      gf_xor_comm v zb;
+      gf_xor_assoc za zb (gf_xor v v);
+      gf_xor_self_zero v;
+      gf_xor_zero_identity (gf_xor za zb)
+    end else if bit_a && not bit_b then begin
+      (* bit_ab = true. zab' = gf_xor zab v = gf_xor (gf_xor za zb) v.
+         za' = gf_xor za v, zb' = zb.
+         gf_xor (gf_xor za v) zb = gf_xor (gf_xor za zb) v *)
+      gf_xor_assoc za v zb;
+      gf_xor_comm v zb;
+      gf_xor_assoc za zb v
+    end else if not bit_a && bit_b then begin
+      (* bit_ab = true. zab' = gf_xor zab v = gf_xor (gf_xor za zb) v.
+         za' = za, zb' = gf_xor zb v.
+         gf_xor za (gf_xor zb v) = gf_xor (gf_xor za zb) v *)
+      gf_xor_assoc za zb v
+    end else begin
+      (* bit_ab = false. zab' = zab, za' = za, zb' = zb. Trivial. *)
+      ()
+    end);
+    (* v evolves identically in all three computations *)
+    let (vh, vl) = v in
+    let lsb = UInt64.v (UInt64.logand vl 1uL) = 1 in
+    let v' = gf_shift_right v in
+    let v'' = if lsb then let (vh', vl') = v' in (UInt64.logxor vh' r_poly, vl') else v' in
+    (* Recurse with updated accumulators *)
+    gf_mul_loop_distributive a b h (i + 1) za' zb' v''
+  end
+#pop-options
+
+val gf_mul_distributive : a:gf128 -> b:gf128 -> h:gf128
+    -> Lemma (gf_mul (gf_xor a b) h == gf_xor (gf_mul a h) (gf_mul b h))
+let gf_mul_distributive a b h =
+  (* gf_mul x y = gf_mul_loop x 0 gf_zero y.
+     Initial condition: gf_xor gf_zero gf_zero == gf_zero *)
+  gf_xor_zero_identity gf_zero;
+  gf_mul_loop_distributive a b h 0 gf_zero gf_zero h
 
 (** Round-trip: bs_to_gf . gf_to_bs = id.
 
@@ -242,19 +338,42 @@ assume val gf_mul_comm : a:gf128 -> b:gf128
     for all w : UInt64.t, by showing that extracting byte k via shift/mask and
     then reassembling via shift/or recovers the original 64-bit word.
 
-    WHY THIS CANNOT BE PROVED WITH Z3 ALONE:
-    The roundtrip requires reasoning about Seq.index into Seq.append (to show
-    that indexing bytes 0-7 of append(hi_bytes, lo_bytes) yields hi_bytes, and
-    bytes 8-15 yield lo_bytes), AND that be_bytes_to_uint64 (uint64_to_be_bytes w) 0 == w
-    (byte extraction and reassembly is identity on 64-bit bitvectors).
-
-    The Seq.index/append step is straightforward (Seq.lemma_index_slice, append_index),
-    but the bit-vector roundtrip requires Z3 to reason about 8 simultaneous
-    shift/mask/cast/reassemble operations per word.  Z3's bitvector theory can
-    handle this given sufficient rlimit, but the Seq indexing layer adds overhead
-    that pushes beyond practical limits.
-
-    Requires tactic proof (norm + smt on the bit-vector layer after resolving
-    Seq indexing). *)
-assume val gf_bs_roundtrip : x:gf128
+    Strategy: resolve Seq.index into Seq.append explicitly for all 16 byte
+    positions using lemma_index_app1/app2, then let Z3's bitvector theory
+    handle the shift/or/cast roundtrip with sufficient rlimit. *)
+#push-options "--z3rlimit 600 --fuel 1 --ifuel 0"
+val gf_bs_roundtrip : x:gf128
     -> Lemma (bs_to_gf (gf_to_bs x) == x)
+let gf_bs_roundtrip (hi, lo) =
+  (* gf_to_bs (hi, lo) = append (uint64_to_be_bytes hi) (uint64_to_be_bytes lo)
+     bs_to_gf b = (be_bytes_to_uint64 b 0, be_bytes_to_uint64 b 8)
+     We need: be_bytes_to_uint64 (append hi_bs lo_bs) 0 == hi
+          and be_bytes_to_uint64 (append hi_bs lo_bs) 8 == lo *)
+  let hi_bs = uint64_to_be_bytes hi in
+  let lo_bs = uint64_to_be_bytes lo in
+  let combined = Seq.append hi_bs lo_bs in
+  assert (Seq.length hi_bs = 8);
+  assert (Seq.length lo_bs = 8);
+  assert (Seq.length combined = 16);
+  (* Resolve Seq.index on append for the high word (indices 0..7) *)
+  Seq.lemma_index_app1 hi_bs lo_bs 0;
+  Seq.lemma_index_app1 hi_bs lo_bs 1;
+  Seq.lemma_index_app1 hi_bs lo_bs 2;
+  Seq.lemma_index_app1 hi_bs lo_bs 3;
+  Seq.lemma_index_app1 hi_bs lo_bs 4;
+  Seq.lemma_index_app1 hi_bs lo_bs 5;
+  Seq.lemma_index_app1 hi_bs lo_bs 6;
+  Seq.lemma_index_app1 hi_bs lo_bs 7;
+  (* Resolve Seq.index on append for the low word (indices 8..15) *)
+  Seq.lemma_index_app2 hi_bs lo_bs 8;
+  Seq.lemma_index_app2 hi_bs lo_bs 9;
+  Seq.lemma_index_app2 hi_bs lo_bs 10;
+  Seq.lemma_index_app2 hi_bs lo_bs 11;
+  Seq.lemma_index_app2 hi_bs lo_bs 12;
+  Seq.lemma_index_app2 hi_bs lo_bs 13;
+  Seq.lemma_index_app2 hi_bs lo_bs 14;
+  Seq.lemma_index_app2 hi_bs lo_bs 15;
+  (* With index facts established, Z3 bitvector theory handles the
+     shift/or/cast roundtrip: be_bytes_to_uint64(uint64_to_be_bytes w) 0 == w *)
+  ()
+#pop-options

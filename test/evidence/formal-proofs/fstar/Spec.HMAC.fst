@@ -244,12 +244,16 @@ let rfc4231_tc1_expected_256 : seq UInt8.t =
   ]
 
 (** KAT: RFC 4231 TC1, HMAC-SHA-256.
-    Normalization is blocked by admitted overflow checks in Spec.SHA256.pad.
-    The equality is verified by external test vectors (RFC 4231).
-    Stated as an axiom pending upstream SHA-256 spec completeness. *)
-assume val hmac_sha256_kat_tc1 : unit
+    Normalization evaluates the full HMAC-SHA-256 computation (two SHA-256 calls)
+    on the concrete test vector inputs. *)
+val hmac_sha256_kat_tc1 : unit
     -> Lemma (hmac_sha256 rfc4231_tc1_key rfc4231_tc1_data ==
               rfc4231_tc1_expected_256)
+#push-options "--fuel 100 --ifuel 100 --z3rlimit 600000"
+let hmac_sha256_kat_tc1 () =
+  assert_norm (hmac_sha256 rfc4231_tc1_key rfc4231_tc1_data ==
+               rfc4231_tc1_expected_256)
+#pop-options
 
 (** RFC 4231 Test Case 1 -- HMAC-SHA-512:
     HMAC-SHA-512 = 87aa7cdea5ef619d4ff0b4241a1d6cb0
@@ -269,12 +273,16 @@ let rfc4231_tc1_expected_512 : seq UInt8.t =
   ]
 
 (** KAT: RFC 4231 TC1, HMAC-SHA-512.
-    Normalization blocked by admitted overflow checks in Spec.SHA512.pad.
-    Verified by external test vectors (RFC 4231).
-    Stated as an axiom pending upstream SHA-512 spec completeness. *)
-assume val hmac_sha512_kat_tc1 : unit
+    Normalization evaluates the full HMAC-SHA-512 computation (two SHA-512 calls)
+    on the concrete test vector inputs. *)
+val hmac_sha512_kat_tc1 : unit
     -> Lemma (hmac_sha512 rfc4231_tc1_key rfc4231_tc1_data ==
               rfc4231_tc1_expected_512)
+#push-options "--fuel 100 --ifuel 100 --z3rlimit 600000"
+let hmac_sha512_kat_tc1 () =
+  assert_norm (hmac_sha512 rfc4231_tc1_key rfc4231_tc1_data ==
+               rfc4231_tc1_expected_512)
+#pop-options
 
 (** RFC 4231 Test Case 2:
     Key  = "Jefe" = 0x4a656665
@@ -299,9 +307,12 @@ let rfc4231_tc2_expected_256 : seq UInt8.t =
   ]
 
 (** KAT: RFC 4231 TC2, HMAC-SHA-256.
-    Normalization blocked by same upstream SHA-256 issues.
-    Verified by external test vectors (RFC 4231).
-    Stated as an axiom pending upstream SHA-256 spec completeness. *)
-assume val hmac_sha256_kat_tc2 : unit
+    Normalization evaluates the full HMAC-SHA-256 computation on TC2 inputs. *)
+val hmac_sha256_kat_tc2 : unit
     -> Lemma (hmac_sha256 rfc4231_tc2_key rfc4231_tc2_data ==
               rfc4231_tc2_expected_256)
+#push-options "--fuel 100 --ifuel 100 --z3rlimit 600000"
+let hmac_sha256_kat_tc2 () =
+  assert_norm (hmac_sha256 rfc4231_tc2_key rfc4231_tc2_data ==
+               rfc4231_tc2_expected_256)
+#pop-options
