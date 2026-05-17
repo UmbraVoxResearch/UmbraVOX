@@ -103,10 +103,32 @@ if ! mountpoint -q /mnt/src 2>/dev/null; then
     mount -o ro /dev/vdb /mnt/src 2>/dev/null || true
 fi
 
+# Mount persistent build cache (vdc)
+mkdir -p /cache
+if [ -b /dev/vdc ]; then
+    # Format on first use, then mount
+    if ! blkid /dev/vdc >/dev/null 2>&1; then
+        mkfs.ext4 -q /dev/vdc
+    fi
+    mount /dev/vdc /cache 2>/dev/null || true
+    mkdir -p /cache/dist-newstyle /cache/.cabal-store
+fi
+
 # Copy to writable workspace
 if [ ! -d /work/umbravox ]; then
     cp -a /mnt/src/. /work/umbravox/
 fi
+
+# Link build cache if available
+if [ -d /cache/dist-newstyle ]; then
+    rm -rf /work/umbravox/dist-newstyle
+    ln -s /cache/dist-newstyle /work/umbravox/dist-newstyle
+fi
+if [ -d /cache/.cabal-store ]; then
+    mkdir -p /root/.cabal
+    ln -sf /cache/.cabal-store /root/.cabal/store
+fi
+
 cd /work/umbravox
 export UMBRAVOX_ROOT=/work/umbravox
 export PATH="/work/umbravox/scripts:$PATH"
@@ -186,20 +208,28 @@ DISK_IMG="$VM_IMAGE_PATH/nixos.img"
 SRC_DISK="$(create_source_disk)"
 OVERLAY="$(mktemp /tmp/umbravox-vm-dev-overlay.XXXXXX.qcow2)"
 
-echo -e "${BLUE}[VM-DEV]${NC} Creating COW overlay..."
+# Persistent build cache disk (survives across VM sessions)
+CACHE_DISK="$VM_CACHE_DIR/build-cache.qcow2"
+if [ ! -f "$CACHE_DISK" ]; then
+    echo -e "${BLUE}[VM-DEV]${NC} Creating persistent build cache disk (4GB)..." >&2
+    qemu-img create -f qcow2 "$CACHE_DISK" 4G >/dev/null 2>&1
+fi
+
+echo -e "${BLUE}[VM-DEV]${NC} Creating COW overlay..." >&2
 qemu-img create -f qcow2 -b "$DISK_IMG" -F raw "$OVERLAY" >/dev/null 2>&1
 
-# Build QEMU args
+# Build QEMU args — 16GB RAM, 8 cores for faster builds
 QEMU_ARGS=(
     -machine "q35,accel=kvm"
     -cpu max
-    -m 8192
-    -smp 4
+    -m 16384
+    -smp 8
     -nographic
     -nodefaults
     -serial stdio
     -drive "if=virtio,format=qcow2,file=$OVERLAY"
     -drive "if=virtio,format=raw,file=$SRC_DISK,readonly=on"
+    -drive "if=virtio,format=qcow2,file=$CACHE_DISK"
 )
 
 # For non-interactive mode, add -no-reboot so VM exits after poweroff
