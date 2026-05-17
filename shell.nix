@@ -125,6 +125,8 @@ in pkgs.mkShell {
     echo -e "\033[36m  ╚═╝╩ ╩╚═╝╩╚═╩ ╩ ╚╝ ╚═╝╩ ╚═\033[0m"
     echo -e "\033[33m  Post-Quantum Encrypted Messaging\033[0m"
     echo ""
+    echo -e "  \033[1;36m[ FULL LOCAL SHELL ]\033[0m  \033[90m(shell.nix)\033[0m"
+    echo ""
     echo -e "  \033[32mToolchain:\033[0m"
     echo "    GHC $(ghc --numeric-version) | Cabal $(cabal --numeric-version)"
     echo "    F* $(fstar.exe --version 2>/dev/null | head -1 | sed 's/F\* //' || echo 'N/A')"
