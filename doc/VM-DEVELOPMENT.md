@@ -53,19 +53,36 @@ genext2fs, e2fsprogs               gcc, gdb, valgrind, AFL++
      |                                  |
      |  source tree (ext2 disk)         |
      +-- /dev/vdb (read-only) -------> /mnt/src
+     |                                  |
+     |  build cache (qcow2 disk)        |
+     +-- /dev/vdc (read-write) ------> /cache (dist-newstyle + cabal store)
                                         |
                                    cp -> /work/umbravox (tmpfs, writable)
+                                   ln -s /cache/dist-newstyle
                                         |
                                    cabal build / test / verify
 ```
 
 ### Disk Layout
 
-| Device     | Purpose                    | Format | Access    |
-|------------|----------------------------|--------|-----------|
-| `/dev/vda` | NixOS root (COW overlay)   | qcow2  | read-write|
-| `/dev/vdb` | Source tree                | ext2   | read-only |
-| `/dev/vdc` | F\* cache output (optional)| ext2   | read-write|
+| Device     | Purpose                        | Format | Access    | Persistent |
+|------------|--------------------------------|--------|-----------|------------|
+| `/dev/vda` | NixOS root (COW overlay)       | qcow2  | read-write| no (temp)  |
+| `/dev/vdb` | Source tree                    | ext2   | read-only | no (temp)  |
+| `/dev/vdc` | Build cache (dist-newstyle)    | qcow2  | read-write| **yes**    |
+
+The build cache disk (`build/vm/build-cache.qcow2`, 4GB) persists across VM
+sessions.  `dist-newstyle` and `.cabal/store` are symlinked to `/cache/` in
+the guest, so subsequent builds reuse compiled artifacts.
+
+### VM Resources
+
+| Resource | Value | Rationale |
+|----------|-------|-----------|
+| RAM | 16 GB | GHC parallel compilation benefits from large heap |
+| CPU cores | 8 | Parallel `cabal build -j` |
+| Root disk | COW overlay | Disposable per session |
+| Cache disk | 4 GB qcow2 | Persists build artifacts across sessions |
 
 ## Makefile Targets
 
@@ -92,6 +109,28 @@ Shut down with `poweroff` or Ctrl-A then X (QEMU monitor escape).
 Builds and caches the NixOS VM image using `nix build` directly.  Does not
 require cabal or any Haskell toolchain on the host.  Only needs QEMU, git,
 make, and nix (all provided by `shell-minimal.nix`).
+
+### `make vm-cache-clean`
+
+Removes the persistent build cache disk (`build/vm/build-cache.qcow2`).
+The next VM build will start from scratch.  Use when the cache becomes
+corrupted or you want a clean build.
+
+### Accessing Build Output from the Host
+
+Build artifacts (binaries, release bundles) live inside the VM's persistent
+cache disk.  To extract them after a VM session:
+
+```bash
+# Extract a specific file from the cache disk
+debugfs build/vm/build-cache.qcow2 -R "cat dist-newstyle/build/.../umbravox" > umbravox
+
+# Or use make vm-dev interactively and copy files to /cache/output/
+# The /cache/ directory persists across sessions.
+```
+
+For release builds, use `make release-linux` which runs inside the VM
+and writes the release bundle to the cache disk at `/cache/releases/`.
 
 ### Explicit `vm-*` Targets
 
