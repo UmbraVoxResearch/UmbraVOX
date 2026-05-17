@@ -102,9 +102,12 @@ assume val haskell_sha256 : haskell_bytestring -> haskell_bytestring
     - A verified extraction pipeline from F* to Haskell, or
     - A bisimulation argument with a shared intermediate language.
 
-    This axiom, together with bs_of_seq/seq_of_bs/bs_seq_roundtrip/haskell_sha256,
-    forms the complete set of 5 irreducible boundary assumptions for the
-    F*-to-Haskell SHA-256 refinement. *)
+    This axiom, together with the abstract type haskell_bytestring and the
+    boundary functions bs_of_seq/seq_of_bs, their roundtrip property
+    bs_seq_roundtrip, the length bound seq_of_bs_length_bound, and the
+    uninterpreted function haskell_sha256, forms the complete set of 7
+    irreducible boundary assumptions (1 assume type + 6 assume vals) for
+    the F*-to-Haskell SHA-256 refinement. *)
 assume val sha256_refinement_axiom : msg:seq UInt8.t{Seq.length msg < pow2 61}
     -> Lemma (seq_of_bs (haskell_sha256 (bs_of_seq msg)) == sha256_ref msg)
 
