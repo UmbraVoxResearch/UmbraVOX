@@ -2,10 +2,12 @@
 
 # F* Trust Boundary — Assumption Ledger
 
-**Date:** 2026-05-17
+**Date:** 2026-05-17 (updated 2026-05-17)
 **F* specs:** 17 total, 14 with 0 assume val
 **assume val count:** 23
 **admit() count:** 0
+**Status:** ALL PLANS COMPLETE — every assume val has a classification, documented
+justification, external evidence path, and discharge plan (or permanent status).
 
 ---
 

@@ -4,6 +4,25 @@ All notable changes to UmbraVOX are documented in this file.
 
 The format is based on Keep a Changelog 1.1.0 and this project aims to follow Semantic Versioning.
 
+## [0.1.0] — 2026-05-17
+
+### Formal Verification Milestone
+- 0 admit() calls across all 17 F* specs (221 original → 0)
+- 23 assume val with complete classification and discharge plans
+- 14 of 17 specs fully proved (0 assume val)
+- Assumption ledger: test/evidence/formal-proofs/ASSUMPTIONS.md
+- External evidence harness: check-external-evidence.sh
+- Primality certificate: scripts/primality-certificate.hs
+- Coq project skeleton: test/evidence/formal-proofs/coq/
+
+### VM-First Development
+- All make build/test/verify route through NixOS VM by default
+- VM auto-scales to 50% host CPU/RAM (min 25%, floor 2 cores/2GB)
+- Persistent build cache disk — first build ~91s, cached ~6s
+- virtio-9p shared output (guest /output/ → host build/vm-output/)
+- Infrastructure regression suite: 56 tests (make test-infra)
+- Shell identity banners for all 3 environments
+
 ## [Unreleased]
 
 ### Added
