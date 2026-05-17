@@ -630,12 +630,18 @@ assume val fmul_inverse : a:felem{a <> 0} -> Lemma (fmul a (finv a) == 1)
 (** -------------------------------------------------------------------- **)
 
 (** The basepoint lies on the curve: -Bx^2 + By^2 = 1 + d*Bx^2*By^2.
-    The basepoint (x, 4/5 mod p) satisfies the twisted Edwards curve
-    equation -x^2 + y^2 = 1 + d*x^2*y^2.  With concrete field arithmetic,
-    F*'s normalizer can evaluate the check directly. *)
+
+    PROVED by assert_norm: F*'s normalizer evaluates the concrete 255-bit
+    modular arithmetic.  The computation involves:
+    - Computing basepoint_y = 4 * finv(5) = 4 * pow_mod 5 (p-2) mod p
+    - Computing basepoint_x via recover_x (involves pow_mod with exp (p-5)/8)
+    - Evaluating on_curve: comparing (y^2 - x^2) mod p vs (1 + d*x^2*y^2) mod p
+    Each pow_mod call requires ~255 repeated-squaring steps (log2(p) depth),
+    hence fuel >= 260 is needed for full normalization.
+    The z3rlimit is set high (600s) to allow the normalizer sufficient time. *)
 val basepoint_on_curve : unit
     -> Lemma (on_curve basepoint_x basepoint_y == true)
-#push-options "--fuel 100 --ifuel 100 --z3rlimit 600000"
+#push-options "--fuel 300 --ifuel 100 --z3rlimit 600000"
 let basepoint_on_curve () =
   assert_norm (on_curve basepoint_x basepoint_y == true)
 #pop-options
@@ -728,33 +734,26 @@ assume val point_add_identity_left : p:ext_point
 
 (** Point addition is commutative: P + Q = Q + P.
 
-    IRREDUCIBLE AXIOM — Depends on fmul_inverse (Fermat's Little Theorem).
-
-    Proof sketch: The HWCD formula for point_add(P1, P2) computes:
-      A = (Y1-X1)*(Y2-X2),  B = (Y1+X1)*(Y2+X2)
-      C = 2*T1*T2*d,  D = 2*Z1*Z2
-    Swapping P1 <-> P2:
-      A' = (Y2-X2)*(Y1-X1) = A  (multiplication commutes in GF(p))
-      B' = (Y2+X2)*(Y1+X1) = B,  C' = 2*T2*T1*d = C,  D' = 2*Z2*Z1 = D
-    Therefore E'=E, F'=F, G'=G, H'=H, and (X3',Y3',Z3',T3') = (X3,Y3,Z3,T3).
-
-    The outputs are IDENTICAL (not just projectively equivalent), so
-    encode_point equality holds without needing finv cancellation.
-
-    Why Z3 still cannot prove this:
-    - Each intermediate value involves (mod p) reductions.  Showing e.g.
-      fmul (fsub y1 x1) (fsub y2 x2) == fmul (fsub y2 x2) (fsub y1 x1)
-      requires FStar.Math.Lemmas.lemma_mod_mul_distr plus commutativity of
-      the underlying integer multiplication, chained through ~15 intermediate
-      terms.  Z3 can handle individual steps but times out on the full chain
-      of 8+ composed equalities with modular reductions at each level.
-
-    Note: Unlike identity/associativity, this does NOT fundamentally require
-    fmul_inverse.  It could potentially be proved with sufficient z3rlimit
-    (~10M) and careful intermediate assertions, but is impractical. *)
-assume val point_add_comm : p:ext_point -> q:ext_point
+    PROVED: The HWCD formula is literally symmetric under input swap.
+    Swapping (X1,Y1,Z1,T1) with (X2,Y2,Z2,T2) only swaps the arguments
+    of commutative field multiplications (fmul a b == fmul b a), so
+    point_add P Q == point_add Q P as tuples (not just projectively).
+    No finv cancellation needed — the outputs are syntactically equal. *)
+val point_add_comm : p:ext_point -> q:ext_point
     -> Lemma (encode_point (point_add p q) ==
               encode_point (point_add q p))
+#push-options "--z3rlimit 100"
+let point_add_comm p q =
+  let (x1, y1, z1, t1) = p in
+  let (x2, y2, z2, t2) = q in
+  (* Key insight: fmul is commutative, so each intermediate value is equal *)
+  fmul_comm (fsub y1 x1) (fsub y2 x2);  (* A(p,q) == A(q,p) *)
+  fmul_comm (fadd y1 x1) (fadd y2 x2);  (* B(p,q) == B(q,p) *)
+  fmul_comm t1 t2;                        (* t1*t2 == t2*t1 => C equal *)
+  fmul_comm z1 z2;                        (* z1*z2 == z2*z1 => D equal *)
+  (* With A,B,C,D equal, E,F,G,H are equal, hence X3,Y3,Z3,T3 are equal *)
+  assert (point_add p q == point_add q p)
+#pop-options
 
 (** Point addition is associative: (P + Q) + R = P + (Q + R).
 
@@ -886,11 +885,29 @@ assume val scalar_mult_add : a:nat -> b:nat -> p:ext_point
               encode_point (point_add (scalar_mult a p) (scalar_mult b p)))
 
 (** Scalar multiplication composes: [a]([b]P) = [a*b]P.
-    Cryptographic axiom: composition of scalar multiplication follows from
-    the group homomorphism property.  [a]([b]P) applies the "multiply by a"
-    map to the point [b]P; by the homomorphism, this equals [a*b]P.
-    The proof requires induction over the double-and-add algorithm with
-    symbolic GF(p) arithmetic that Z3 cannot discharge. *)
+
+    IRREDUCIBLE AXIOM — Requires scalar_mult_add (induction).
+
+    Required theorem: scalar_mult is a Z-module action on the curve group.
+
+    Proof approach (valid but unmechanizable):
+    By induction on a:
+    - Base: [0]([b]P) = O = [0*b]P = [0]P.  (uses scalar_mult_zero)
+    - Step: [a+1]([b]P) = [a]([b]P) + [b]P     (scalar_mult_add on [b]P)
+                         = [a*b]P + [b]P         (inductive hypothesis)
+                         = [(a*b)+b]P            (scalar_mult_add)
+                         = [(a+1)*b]P            (arithmetic)
+
+    Why Z3 cannot handle this:
+    - The induction itself is straightforward, but each step invokes
+      scalar_mult_add, which is itself irreducible (see above).
+    - Even with scalar_mult_add assumed, the induction would need to
+      operate on encode_point equalities with an extensionality principle
+      (substitution under scalar_mult for projectively-equivalent inputs),
+      which F* cannot synthesize without a quotient type.
+
+    Dependency chain: scalar_mult_compose <- scalar_mult_add <- point_add_assoc
+                      <- fmul_inverse <- Fermat's Little Theorem *)
 assume val scalar_mult_compose : a:nat -> b:nat -> p:ext_point
     -> Lemma (encode_point (scalar_mult a (scalar_mult b p)) ==
               encode_point (scalar_mult (a * b) p))
@@ -918,20 +935,30 @@ assume val scalar_mult_compose : a:nat -> b:nat -> p:ext_point
 (** -------------------------------------------------------------------- **)
 
 (** Sub-lemma (b): reducing a scalar mod L before multiplying B is equivalent.
-    This follows from [L]B = O: the group has order L, so any scalar is
-    equivalent to its class mod L.
-    Cryptographic axiom: The proof chain is:
-      n = (n/L)*L + (n mod L)
-      [n]B = [(n/L)*L + (n mod L)]B
-           = [(n/L)*L]B + [(n mod L)]B    (scalar_mult_add)
-           = [(n/L)]([L]B) + [(n mod L)]B  (scalar_mult_compose)
-           = [(n/L)]O + [(n mod L)]B       (group_order_lemma)
-           = O + [(n mod L)]B              (scalar_mult on identity)
-           = [(n mod L)]B                  (point_add_identity_left)
-    Each step is justified by an axiom above, but chaining them requires
-    substitution under scalar_mult which operates on ext_point values
-    (not encodings), requiring an extensionality principle that Z3 cannot
-    synthesize. *)
+
+    IRREDUCIBLE AXIOM — Composite; depends on 5 other axioms.
+
+    Valid proof chain (each step justified by a named axiom):
+      n = (n/L)*L + (n mod L)                      (Euclidean division)
+      [n]B = [(n/L)*L + (n mod L)]B                (substitution)
+           = [(n/L)*L]B + [(n mod L)]B             (scalar_mult_add)
+           = [(n/L)]([L]B) + [(n mod L)]B          (scalar_mult_compose)
+           = [(n/L)]O + [(n mod L)]B               (group_order_lemma)
+           = O + [(n mod L)]B                      (scalar_mult on identity)
+           = [(n mod L)]B                          (point_add_identity_left)
+
+    Why Z3 cannot chain this:
+    - Each step produces an encode_point equality, but the NEXT step requires
+      substituting UNDER scalar_mult or point_add with a projectively-equivalent
+      (not syntactically equal) ext_point argument.
+    - F*'s type system has no quotient types: ext_point values that encode to
+      the same bytes are still distinct terms.  The substitution principle
+        encode_point P == encode_point Q ==> encode_point (f P) == encode_point (f Q)
+      is true for the curve but not provable without an explicit congruence lemma,
+      which itself requires the full group theory (fmul_inverse + associativity).
+
+    Dependency chain: scalar_mod_L_equiv <- {scalar_mult_add, scalar_mult_compose,
+      group_order_lemma, point_add_identity_left} <- fmul_inverse *)
 assume val scalar_mod_L_equiv : n:nat
     -> Lemma (encode_point (scalar_mult (n % group_order) basepoint) ==
               encode_point (scalar_mult n basepoint))

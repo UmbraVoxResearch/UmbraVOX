@@ -665,14 +665,16 @@ val constant_eq_correct :
     a:seq UInt8.t
     -> b:seq UInt8.t{Seq.length b = Seq.length a}
     -> Lemma ((constant_eq a b = true) <==> (a == b))
-#push-options "--z3rlimit 40"
+#push-options "--z3rlimit 60"
 let constant_eq_correct a b =
   constant_eq_go_spec a b 0 0uy;
-  (* Now we have: constant_eq a b = true <==>
-     forall j in [0, len). index a j == index b j.
-     The latter is equivalent to Seq.equal a b, i.e. a == b. *)
-  assert ((forall (j:nat{j >= 0 /\ j < Seq.length a}). Seq.index a j == Seq.index b j)
-          <==> Seq.equal a b)
+  (* constant_eq_go_spec gives:
+     constant_eq a b = true <==> forall j in [0,len). index a j == index b j
+     (==>) direction: pointwise equality + equal lengths => a == b
+           via Seq.lemma_eq_intro *)
+  FStar.Classical.move_requires (Seq.lemma_eq_intro a) b
+  (* (<==) direction: a == b => index a j == index b j for all j (Leibniz).
+     Z3 handles this trivially since == is reflexive under substitution. *)
 #pop-options
 
 (** Sub-lemma: gcm_encrypt and gcm_decrypt compute the same GHASH tag.
