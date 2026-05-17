@@ -294,12 +294,15 @@ testDiscoverModulesCount = do
 testModuleRlimitsKeys :: IO Bool
 testModuleRlimitsKeys =
     let expected = [ "Spec.AES256"
+                   , "Spec.ChaCha20"
                    , "Spec.Ed25519"
                    , "Spec.GCM"
                    , "Spec.Keccak.Permutation"
                    , "Spec.Keccak.SHA3"
                    , "Spec.Keccak.Sponge"
                    , "Spec.MLKEM768"
+                   , "Spec.SHA256"
+                   , "Spec.SHA512"
                    , "Spec.X25519"
                    ]
     in assertEq "moduleRlimits has correct key set"
@@ -330,7 +333,7 @@ testModuleRlimitsHeavyValue =
 testCountAssumesKnownFile :: IO Bool
 testCountAssumesKnownFile = do
     n <- countAssumes (fstarDir ++ "/Spec.Ed25519.fst")
-    assertEq "countAssumes Spec.Ed25519 == 27" 27 n
+    assertEq "countAssumes Spec.Ed25519 == 16" 16 n
 
 testCountAssumesNonexistent :: IO Bool
 testCountAssumesNonexistent = do
