@@ -44,9 +44,11 @@ Active TUI regression recovery (historical parity with QR/button exceptions)
     [x] R1.8.3 Verify scrollbar visibility at content boundary edge cases.
       Note: False positive — two-pass approach locks scrollbar decision from pass 1, no oscillation. Safety comment added.
     [ ] R1.8.4 Test wide character (CJK/emoji) wrapping at narrow widths.
-  [ ] R1.9 Identity panel scaling at small terminal sizes.
-    [ ] R1.9.1 Safety number verification rows should not clip at narrow widths.
-    [ ] R1.9.2 Key info panel should scale content to available height.
+  [~] R1.9 Identity panel scaling at small terminal sizes.
+    [x] R1.9.1 Safety number verification rows should not clip at narrow widths.
+      Note: minContacts reduced from 10 to 7, giving identity panel 3 more rows. Safety number rows already width-adaptive via groupsPerRow.
+    [x] R1.9.2 Key info panel should scale content to available height.
+      Note: identityPanelH uses min(maxAllowed, exactRows) — content truncates from bottom on short terminals. QR code and safety numbers display before fingerprints.
   [x] R1.7 Markdown-backed rich-text editor MVP.
   [x] R1.7.a Keep raw markdown as the transmitted/stored source of truth.
   [x] R1.7.b Add plain/rich toolbar toggle above the chat input area.
