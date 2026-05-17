@@ -146,6 +146,12 @@ in pkgs.mkShell {
     echo "    make quality   Run all quality gates"
     echo "    make codegen   Generate Haskell + C + FFI from .spec files"
     echo ""
+    echo -e "  \033[32mVM Development:\033[0m"
+    echo "    make vm-dev    Interactive dev shell in NixOS VM"
+    echo "    make vm-build  Build inside VM"
+    echo "    make vm-test   Run tests inside VM"
+    echo "    make vm-verify Run F* verification inside VM"
+    echo ""
   '';
 
   # Ensure GHC finds system libraries for FFI

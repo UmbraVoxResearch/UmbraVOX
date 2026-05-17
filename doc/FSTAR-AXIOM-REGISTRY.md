@@ -4,13 +4,13 @@
 
 ## Overview
 
-The UmbraVOX F* specifications contain **0 admit() calls** — every proof obligation
-is either Z3-discharged or declared as an explicit `assume val` with documentation.
+The UmbraVOX F* specifications contain **0 admit() calls** and **23 assume val
+declarations** across 17 specs (14 specs have 0 assume val).
 
-Most `assume val` declarations are **eliminable** (KAT normalization barriers, abstract
-function signatures) and are being progressively replaced with concrete implementations.
 This document registers only the **irreducible** axioms — cryptographic hardness
-assumptions and cross-toolchain boundaries that fundamentally cannot be proved in F*.
+assumptions, cross-toolchain boundaries, and algebraic facts requiring tools
+beyond Z3. For the complete inventory of all 23 assume vals with categories
+and dependency analysis, see `test/evidence/formal-proofs/ASSUMPTIONS.md`.
 
 These represent the permanent trust boundary of the formal verification.
 

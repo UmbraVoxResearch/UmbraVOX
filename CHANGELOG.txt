@@ -131,8 +131,6 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - DoubleRatchet skipped-key nonce mismatch (stored chain key alongside msg key).
 - FuzzConnection crash on skipMessageKeys with Nothing rsDHRecv.
 
-## [Unreleased]
-
 ### Formal Verification
 - M13.2.3 Keccak permutation: Spec.Keccak.Permutation.fst now has 0 assumes — pi bounds proved via assert_norm+case-split (pi_table_bounds_lemma), length invariant via Seq.lemma_len_upd, chi_identity via Seq.lemma_seq_of_list_index+case-split, keccak_f1600_preserves_size by type refinement (M13.2.3).
 - M13.2.3 Keccak sponge: Spec.Keccak.Sponge.fst now has 0 assumes — absorb_blocks length via arithmetic witnesses (off_q/len_q), state_to_bytes via typed-invariant serialize_state_tail, pad10star1 length via Z3 arithmetic on return type, squeeze_length_lemma proved recursively (M13.2.3).
