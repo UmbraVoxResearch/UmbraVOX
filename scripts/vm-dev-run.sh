@@ -243,7 +243,7 @@ QEMU_ARGS=(
     -nographic
     -nodefaults
     -serial stdio
-    -drive "if=virtio,format=qcow2,file=$OVERLAY"
+    -drive "if=virtio,format=raw,snapshot=on,file=$DISK_IMG"
     -drive "if=virtio,format=raw,file=$SRC_DISK,readonly=on"
     -drive "if=virtio,format=qcow2,file=$CACHE_DISK"
     -virtfs "local,path=$OUTPUT_DIR,mount_tag=output,security_model=mapped-xattr,id=output"
