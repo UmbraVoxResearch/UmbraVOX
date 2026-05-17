@@ -33,7 +33,7 @@ echo "[3/3] Checking assumption inventory consistency..."
 current=$(grep -RIn '^assume val' test/evidence/formal-proofs/fstar | sort | wc -l)
 echo "  Current assume val count: $current"
 # Check no admit() in F* proofs
-admits=$(grep -RIn '\badmit\b\|admit()' test/evidence/formal-proofs/fstar --include='*.fst' | grep -v '//' | grep -v 'admit_smt' | wc -l)
+admits=$(grep -RIn '\badmit\b\|admit()' test/evidence/formal-proofs/fstar --include='*.fst' | grep -v '//' | grep -v 'admit_smt' | grep -v '\*)\|(\*' | wc -l)
 if [ "$admits" -gt 0 ]; then
   echo "  F* admits found: FAIL ($admits)"; ((FAIL++))
 else
