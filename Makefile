@@ -954,17 +954,17 @@ vm-dev:
 vm-build:
 	@echo -e "$(BLUE)[VM-BUILD]$(NC) Building inside NixOS VM..."
 	@chmod +x ./scripts/vm-dev-run.sh
-	@./scripts/vm-dev-run.sh exec "cabal build all --enable-tests 2>&1; echo VM_DEV_RESULT=\$$?"
+	@./scripts/vm-dev-run.sh exec "cabal build all --enable-tests 2>&1"
 
 vm-test:
 	@echo -e "$(BLUE)[VM-TEST]$(NC) Testing inside NixOS VM..."
 	@chmod +x ./scripts/vm-dev-run.sh
-	@./scripts/vm-dev-run.sh exec "cabal build all --enable-tests 2>&1 && cabal test umbravox-test --test-options='required' 2>&1; echo VM_DEV_RESULT=\$$?"
+	@./scripts/vm-dev-run.sh exec "cabal build all --enable-tests 2>&1 && cabal test umbravox-test --test-options='required' 2>&1"
 
 vm-verify:
 	@echo -e "$(BLUE)[VM-VERIFY]$(NC) Running F* verification inside NixOS VM..."
 	@chmod +x ./scripts/vm-dev-run.sh
-	@./scripts/vm-dev-run.sh exec "cabal build all 2>&1 && cabal run fstar-verify 2>&1; echo VM_DEV_RESULT=\$$?"
+	@./scripts/vm-dev-run.sh exec "cabal build all 2>&1 && cabal run fstar-verify 2>&1"
 
 # --------------------------------------------------------------------------
 # VM Isolated Smoke Testing

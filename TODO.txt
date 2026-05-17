@@ -573,7 +573,8 @@ Note: 221 original assumes → 0 admit() + 23 assume val. 14/17 specs fully prov
   [ ] M13.13.4 Add coqPackages.stdlib to nix/vm-image.nix for Rocq 9.1.1 ZArith support
   [x] M13.13.5 Add make check-evidence target (runs check-external-evidence.sh)
     Note: Added to Makefile, wired into make quality.
-  [ ] M13.13.6 Verify all F* specs pass in VM (cabal run fstar-verify)
+  [~] M13.13.6 Verify all F* specs pass in VM (cabal run fstar-verify)
+    Note: fstar-verify runs in VM but exits 1 — some specs need higher z3rlimit or more time. Needs investigation.
   [ ] M13.13.7 Verify all Coq proofs build in VM (make -C coq)
   [x] M13.13.8 Verify Haskell test suite passes in VM (cabal run umbravox-test -- required)
     Note: VM build + test completes in ~32s with cache. EXIT=0 confirmed.
