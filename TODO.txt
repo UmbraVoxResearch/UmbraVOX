@@ -575,7 +575,8 @@ Note: 221 original assumes → 0 admit() + 23 assume val. 14/17 specs fully prov
     Note: Added to Makefile, wired into make quality.
   [ ] M13.13.6 Verify all F* specs pass in VM (cabal run fstar-verify)
   [ ] M13.13.7 Verify all Coq proofs build in VM (make -C coq)
-  [ ] M13.13.8 Verify Haskell test suite passes in VM (cabal run umbravox-test -- required)
+  [x] M13.13.8 Verify Haskell test suite passes in VM (cabal run umbravox-test -- required)
+    Note: VM build + test completes in ~32s with cache. EXIT=0 confirmed.
 
 [ ] M13.14 Assumption ledger maintenance
   [ ] M13.14.1 Update ASSUMPTIONS.md whenever assume val count changes
