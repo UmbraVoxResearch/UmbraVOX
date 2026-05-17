@@ -544,10 +544,17 @@ Note: 221 original assumes → 0 admit() + 23 assume val. 14/17 specs fully prov
 [x] M13.8 Zero admit() milestone — all 178 admits eliminated
 [x] M13.9 Assumption ledger — ASSUMPTIONS.md with full classification
 
-[ ] M13.10 External evidence harness
-  [ ] M13.10.1 Create check-external-evidence.sh (fail-closed)
-  [ ] M13.10.2 Integrate primality certificate checker
-  [ ] M13.10.3 Create Coq project skeleton (Ed25519Constants.v)
+[~] M13.10 External evidence harness
+  [x] M13.10.1 Create check-external-evidence.sh (fail-closed)
+  [x] M13.10.2 Integrate primality certificate checker
+  [~] M13.10.3 Create Coq project skeleton (Ed25519Constants.v)
+    Note: Files created but Coq build needs ZArith library path fix for Rocq 9.1.1 in nix-shell.
+
+[ ] M13.13 VM-based development migration
+  [ ] M13.13.1 Move all development (build/test/verify/Coq) into the NixOS VM
+  [ ] M13.13.2 Slim local shell.nix to only VM orchestration tools (QEMU, SSH, git)
+  [ ] M13.13.3 Update Makefile targets to route through VM execution
+  [ ] M13.13.4 Fix Coq ZArith library path in VM nix configuration
 
 [ ] M13.11 Coq external verification
   [ ] M13.11.1 Ed25519Prime.v — primality of 2^255-19 (Pocklington certificate)
