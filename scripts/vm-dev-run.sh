@@ -124,9 +124,12 @@ INITEOF
     if [ "$mode" = "interactive" ]; then
         cat >> "$script_path" << 'INTEREOF'
 echo ""
-echo "========================================"
-echo "  UmbraVOX Development VM"
-echo "========================================"
+echo -e "\033[35m  ╦ ╦╔╦╗╔╗ ╦═╗╔═╗╦  ╦╔═╗═╗ ╦\033[0m"
+echo -e "\033[35m  ║ ║║║║╠╩╗╠╦╝╠═╣╚╗╔╝║ ║╔╩╦╝\033[0m"
+echo -e "\033[35m  ╚═╝╩ ╩╚═╝╩╚═╩ ╩ ╚╝ ╚═╝╩ ╚═\033[0m"
+echo -e "\033[33m  Post-Quantum Encrypted Messaging\033[0m"
+echo ""
+echo -e "  \033[1;32m[ VM DEVELOPMENT SHELL ]\033[0m  \033[90m(NixOS QEMU Guest)\033[0m"
 echo ""
 echo "  Source: /work/umbravox"
 echo "  Kernel: $(uname -r)"
