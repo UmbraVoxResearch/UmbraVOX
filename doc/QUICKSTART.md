@@ -3,8 +3,12 @@
 ## Prerequisites
 
 - [Nix](https://nixos.org/download.html)
+- Linux host with KVM support (`/dev/kvm` must exist)
 
-All build and verification tooling is provided through `nix-shell`.
+All build, test, and verification commands route through an isolated NixOS VM
+by default.  The host only needs QEMU, git, and make (provided by nix-shell).
+No local GHC, cabal, or F* installation is required for standard operations.
+
 Flake commands are also supported through `scripts/nix-flake.sh`.
 
 The repository preserves 30 generated artifacts from 10 `.spec` files. In the
@@ -12,10 +16,15 @@ active build/test graph, generated coverage is currently limited to the parser
 path and generated SHA-256 parity; the remaining generated outputs are
 preserved artifacts pending broader wiring.
 
-## Common Commands
+## Common Commands (VM-First)
+
+All `make` targets below run inside the NixOS VM by default.  To run locally
+instead, prefix with `UMBRAVOX_LOCAL=1` (requires the full `nix-shell`
+toolchain).
 
 ```bash
 nix-shell
+make vm-image-build    # One-time: build and cache the NixOS VM image
 make build
 make build-haskell
 make run
@@ -188,25 +197,29 @@ scripts/nix-flake.sh flake show --no-write-lock-file
   `UMBRAVOX_ALLOW_UNTAGGED_RELEASE=1`.
 - `license` is blocking; `lint` and `format-check` are advisory/non-blocking in the current pipeline.
 
-## VM Development Environment
+## VM-First Development Model
 
-All development can run inside an isolated NixOS VM. The host only needs
-QEMU and git (provided by `shell-minimal.nix`).
+All standard `make` targets (`build`, `test`, `verify`, `quality`, etc.)
+route through an isolated NixOS VM by default.  The host only needs QEMU,
+git, and make.
 
 | Command | Description |
 |---------|-------------|
-| `nix-shell shell-minimal.nix` | Orchestration-only shell (QEMU, git, make) |
+| `nix-shell` | Development shell (commands route to VM automatically) |
+| `nix-shell shell-minimal.nix` | Orchestration-only shell (QEMU, git, make — no cabal/ghc) |
+| `make build` | Build library + executables (runs in VM) |
+| `make test` | Run `required` test suite (runs in VM) |
+| `make verify` | Run F* formal verification (runs in VM) |
 | `make vm-dev` | Interactive development shell inside the NixOS VM |
-| `make vm-build` | Build library + executables inside the VM |
-| `make vm-test` | Run `required` test suite inside the VM |
-| `make vm-verify` | Run F* formal verification inside the VM |
+| `make vm-image-build` | Build/cache the VM image (uses nix build, no cabal needed) |
 | `make check-evidence` | Run external evidence checks (Coq, primality, F* inventory) |
+| `UMBRAVOX_LOCAL=1 make build` | Bypass VM, build locally (requires full nix-shell) |
 
 Inside `make vm-dev`, you have the full toolchain (GHC 9.6, Cabal, F*, Z3,
 Coq, AFL++, valgrind) and can run any command interactively. The source is
 mounted read-only at `/mnt/src` and copied to `/work/umbravox` on boot.
 
-See `doc/VM-DEVELOPMENT.md` for the full migration guide and troubleshooting.
+See `doc/VM-DEVELOPMENT.md` for the full VM development guide and troubleshooting.
 
 ## Aggregate Readiness Check
 
@@ -243,10 +256,11 @@ See `doc/VM-DEVELOPMENT.md` for the full migration guide and troubleshooting.
 ## First Run
 
 1. Enter `nix-shell`.
-2. Run `make build`.
-3. Launch the app with `make run` or `cabal run umbravox`.
-4. Open **Contacts** with `F2` and create a new single-peer connection.
-5. Enter the remote `host:port` and let the Noise_IK handshake complete.
+2. Run `make vm-image-build` (first time only — builds and caches the NixOS VM image).
+3. Run `make build` (builds inside the VM by default).
+4. Launch the app with `make run` or `cabal run umbravox` (runs locally on the host).
+5. Open **Contacts** with `F2` and create a new single-peer connection.
+6. Enter the remote `host:port` and let the Noise_IK handshake complete.
 
 ## Scope Note
 
