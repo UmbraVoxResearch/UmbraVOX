@@ -71,6 +71,42 @@ toolbarButtonSpecs _richEnabled =
     , ("[ Emoji ]", CmdInsertEmoji)
     ]
 
+contactsToolbarWideSpecs :: [(String, RuntimeCommand)]
+contactsToolbarWideSpecs =
+    [ ("[ New ]", CmdOpenNewConversation)
+    , ("[ Rename ]", CmdRenameContact)
+    , ("[ Browse ]", CmdOpenBrowse)
+    , ("[ Verify ]", CmdOpenVerify)
+    ]
+
+contactsToolbarTopSpecs :: [(String, RuntimeCommand)]
+contactsToolbarTopSpecs = take 2 contactsToolbarWideSpecs
+
+contactsToolbarBottomSpecs :: [(String, RuntimeCommand)]
+contactsToolbarBottomSpecs = drop 2 contactsToolbarWideSpecs
+
+buttonRowText :: [(String, RuntimeCommand)] -> String
+buttonRowText = unwords . map fst
+
+buttonCenterOffset :: Int -> [(String, RuntimeCommand)] -> Int
+buttonCenterOffset width specs = max 0 ((width - length (buttonRowText specs)) `div` 2)
+
+buttonAtColumn :: [(String, RuntimeCommand)] -> Int -> Maybe RuntimeCommand
+buttonAtColumn specs relCol = go relCol specs
+  where
+    go _ [] = Nothing
+    go relCol ((label, cmd):rest)
+        | relCol >= 0 && relCol <= length label - 1 = Just cmd
+        | otherwise = go (relCol - length label - 1) rest
+
+contactsToolbarButtonRows :: Int -> [[(String, RuntimeCommand)]]
+contactsToolbarButtonRows width
+    | width >= length (buttonRowText contactsToolbarWideSpecs) = [contactsToolbarWideSpecs]
+    | otherwise = [contactsToolbarTopSpecs, contactsToolbarBottomSpecs]
+
+contactsToolbarTotalRows :: Int -> Int
+contactsToolbarTotalRows width = 1 + length (contactsToolbarButtonRows width)
+
 -- Input handling ----------------------------------------------------------
 readKey :: IO InputEvent
 readKey = do
@@ -715,9 +751,7 @@ handlePaneClick st lay row col = do
         Just RegionContacts -> do
             lay' <- readIORef (asLayout st)
             let innerW = lLeftW lay' - 2
-                allFourW = length ("[ New ] [ Rename ] [ Browse ] [ Verify ]" :: String)
-                btnRows = if innerW >= allFourW then 1 else 2
-                tbRows = 1 + btnRows  -- 1 separator + button rows
+                tbRows = contactsToolbarTotalRows innerW
                 tbStart = contactsRow0 + max 0 (contactsH - tbRows)
             if col <= leftContentEnd && row >= tbStart && row < contactsRow0 + contactsH
                 then handleContactsToolbarClick st lay' row col
@@ -752,40 +786,16 @@ handlePaneClick st lay row col = do
 handleContactsToolbarClick :: AppState -> Layout -> Int -> Int -> IO ()
 handleContactsToolbarClick st lay row col = do
     let (contactsRow0, contactsCol0, contactsW, contactsH) = Layout.contactsPaneBounds lay
-        allFour :: String
-        allFour = "[ New ] [ Rename ] [ Browse ] [ Verify ]"
-        wide = contactsW >= length allFour
-        tbRows = if wide then 1 else 2
-        tbStart = contactsRow0 + max 0 (contactsH - tbRows)
-        relRow = row - tbStart - 1  -- skip the separator row (row 0 of toolbar)
-    if wide
-        -- Wide: all on row 0: "[ New ] [ Rename ] [ Browse ] [ Verify ]"
-        then when (relRow == 0) $ do
-            let padLeft = max 0 ((contactsW - length allFour) `div` 2)
-                relCol = col - contactsCol0 - padLeft
-            if relCol >= 0 && relCol < 7 then runRuntimeCommand st CmdOpenNewConversation
-                else if relCol >= 8 && relCol < 18 then runRuntimeCommand st CmdRenameContact
-                else if relCol >= 19 && relCol < 29 then runRuntimeCommand st CmdOpenBrowse
-                else if relCol >= 30 && relCol < 40 then runRuntimeCommand st CmdOpenVerify
-                else pure ()
-        -- Narrow: stacked — row 0: "[ New ] [ Rename ]", row 1: "[ Browse ] [ Verify ]"
-        else do
-            let topTwo :: String
-                topTwo = "[ New ] [ Rename ]"
-                botTwo :: String
-                botTwo = "[ Browse ] [ Verify ]"
-            if relRow == 0 then do
-                let padLeft = max 0 ((contactsW - length topTwo) `div` 2)
-                    relCol = col - contactsCol0 - padLeft
-                if relCol >= 0 && relCol < 7 then runRuntimeCommand st CmdOpenNewConversation
-                    else if relCol >= 8 && relCol < 18 then runRuntimeCommand st CmdRenameContact
-                    else pure ()
-            else when (relRow == 1) $ do
-                let padLeft = max 0 ((contactsW - length botTwo) `div` 2)
-                    relCol = col - contactsCol0 - padLeft
-                if relCol >= 0 && relCol < 10 then runRuntimeCommand st CmdOpenBrowse
-                    else if relCol >= 11 && relCol < 21 then runRuntimeCommand st CmdOpenVerify
-                    else pure ()
+        tbStart = contactsRow0 + max 0 (contactsH - contactsToolbarTotalRows contactsW)
+        relRow = row - tbStart
+        buttonRows = contactsToolbarButtonRows contactsW
+    case drop (relRow - 1) buttonRows of
+        rowSpecs:_ | relRow > 0 -> do
+            let relCol = col - contactsCol0 - buttonCenterOffset contactsW rowSpecs
+            case buttonAtColumn rowSpecs relCol of
+                Just cmd -> runRuntimeCommand st cmd
+                Nothing -> pure ()
+        _ -> pure ()
 
 handleToolbarClick :: AppState -> Layout -> Bool -> Int -> IO ()
 handleToolbarClick st lay richEnabled col =
@@ -798,21 +808,12 @@ handleToolbarClick st lay richEnabled col =
 -- | Compute the centering offset for toolbar buttons within bodyW.
 toolbarCenterOffset :: Int -> Int
 toolbarCenterOffset bodyW =
-    let specs = toolbarButtonSpecs False
-        toolbar = unwords (map fst specs)
-        toolbarW = length toolbar
-    in max 0 ((bodyW - toolbarW) `div` 2)
+    buttonCenterOffset bodyW (toolbarButtonSpecs False)
 
 toolbarButtonAtColumn :: Bool -> Int -> Int -> Maybe RuntimeCommand
 toolbarButtonAtColumn richEnabled bodyW relCol =
     let offset = toolbarCenterOffset bodyW
-        adjustedCol = relCol - offset
-    in go adjustedCol (toolbarButtonSpecs richEnabled)
-  where
-    go _ [] = Nothing
-    go relC ((label, cmd):rest)
-        | relC >= 0 && relC <= length label - 1 = Just cmd
-        | otherwise = go (relC - length label - 1) rest
+    in buttonAtColumn (toolbarButtonSpecs richEnabled) (relCol - offset)
 
 placeInputCursorIfNeeded :: AppState -> Layout -> Int -> Int -> IO ()
 placeInputCursorIfNeeded st lay row col = do

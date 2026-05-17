@@ -6,8 +6,9 @@ import Data.IORef (readIORef, writeIORef)
 import Test.Util (assertEq)
 import Test.TUI.Sim.Util
 import UmbraVox.TUI.Types
-import UmbraVox.TUI.Input (handleContact)
+import UmbraVox.TUI.Input (handleContact, handleNormal)
 import UmbraVox.TUI.Layout (calcLayout)
+import qualified UmbraVox.TUI.Layout as Layout
 
 runTests :: IO Bool
 runTests = do
@@ -24,6 +25,9 @@ runTests = do
         , testContactPageDownUsesResponsiveVisibleRows
         , testContactPageUpUsesResponsiveVisibleRows
         , testContactPageDownAdjustsContactScroll
+        , testContactToolbarWideRenameClickOpensPrompt
+        , testContactToolbarNarrowBrowseClickOpensDialog
+        , testContactToolbarNarrowVerifyClickOpensDialog
         ]
     pure (and results)
 
@@ -124,3 +128,46 @@ testContactPageDownAdjustsContactScroll = do
     ok1 <- assertEq "contact page down updates selection" expectedSel sel
     ok2 <- assertEq "contact page down keeps selection visible via scroll" expectedOff off
     pure (ok1 && ok2)
+
+testContactToolbarWideRenameClickOpensPrompt :: IO Bool
+testContactToolbarWideRenameClickOpensPrompt = do
+    st <- mkTestState
+    _ <- addTestSession (asConfig st) "alice"
+    let lay = calcLayout 40 168
+        (row, col) = toolbarClickCoords lay "[ New ] [ Rename ] [ Browse ] [ Verify ]" 1 12
+    writeIORef (asLayout st) lay
+    handleNormal st (KeyMouseLeft row col)
+    dlg <- readIORef (asDialogMode st)
+    assertEq "contact toolbar wide rename click opens prompt" True
+        (isDlgPromptWithSubstring "Rename:" dlg)
+
+testContactToolbarNarrowBrowseClickOpensDialog :: IO Bool
+testContactToolbarNarrowBrowseClickOpensDialog = do
+    st <- mkTestState
+    let lay = calcLayout 40 120
+        (row, col) = toolbarClickCoords lay "[ Browse ] [ Verify ]" 2 4
+    writeIORef (asLayout st) lay
+    handleNormal st (KeyMouseLeft row col)
+    dlg <- readIORef (asDialogMode st)
+    assertEq "contact toolbar narrow browse click opens dialog" True
+        (isDlgBrowse dlg)
+
+testContactToolbarNarrowVerifyClickOpensDialog :: IO Bool
+testContactToolbarNarrowVerifyClickOpensDialog = do
+    st <- mkTestState
+    let lay = calcLayout 40 120
+        (row, col) = toolbarClickCoords lay "[ Browse ] [ Verify ]" 2 15
+    writeIORef (asLayout st) lay
+    handleNormal st (KeyMouseLeft row col)
+    dlg <- readIORef (asDialogMode st)
+    assertEq "contact toolbar narrow verify click opens dialog" True
+        (isDlgVerify dlg)
+
+toolbarClickCoords :: Layout -> String -> Int -> Int -> (Int, Int)
+toolbarClickCoords lay rowText rowOffset relCol =
+    let (contactsRow0, contactsCol0, contactsW, contactsH) = Layout.contactsPaneBounds lay
+        buttonRows = if contactsW >= length ("[ New ] [ Rename ] [ Browse ] [ Verify ]" :: String) then 1 else 2
+        toolbarRows = 1 + buttonRows
+        toolbarStart = contactsRow0 + max 0 (contactsH - toolbarRows)
+        padLeft = max 0 ((contactsW - length rowText) `div` 2)
+    in (toolbarStart + rowOffset, contactsCol0 + padLeft + relCol)
