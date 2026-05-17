@@ -23,22 +23,28 @@ of thought and expression in the digital age.
 
 ### Build & Run
 
+All `make` targets route through the NixOS VM by default. No local GHC or
+cabal is required for standard operations.
+
 ```sh
 nix-shell              # Enter development environment
-cabal build            # Build everything
-cabal run umbravox     # Launch the TUI
-make test              # Fast messaging-MVP hardening gate
-make test-core-network # Deterministic network/discovery suite
-make test-tui-sim      # TUI simulation suite
-make test-integrity    # Wire/integrity suite
-make test-mdns         # Exact mDNS/discovery suite
-make test-deferred     # Preserved deferred blockchain/economics suites
-make soak              # Longer soak/stress run with artifact report
-make release-linux     # Portable Linux x86_64 terminal bundle
-make release           # Build all defined release artifacts
+make vm-image-build    # First time: build and cache the NixOS VM image
+make build             # Build everything (in VM)
+make test              # Fast messaging-MVP hardening gate (in VM)
+make verify            # F* formal verification (in VM)
+make run               # Launch the TUI (locally)
+make vm-dev            # Interactive dev shell inside the VM
+make test-core-network # Deterministic network/discovery suite (in VM)
+make test-tui-sim      # TUI simulation suite (in VM)
+make test-integrity    # Wire/integrity suite (in VM)
+make test-mdns         # Exact mDNS/discovery suite (in VM)
+make test-deferred     # Preserved deferred blockchain/economics suites (in VM)
+make soak              # Longer soak/stress run with artifact report (in VM)
+make release-linux     # Portable Linux x86_64 terminal bundle (in VM)
+make release           # Build all defined release artifacts (in VM)
+make quality           # Full pipeline: build + test + verify + complexity + lint + license + format-check (in VM)
+UMBRAVOX_LOCAL=1 make build  # Bypass VM, build locally (requires full nix-shell)
 scripts/nix-flake.sh flake show --no-write-lock-file
-make                   # Full pipeline: build + test + verify + complexity + lint + license + format-check
-make quality           # Same full pipeline as make; lint/format-check are advisory, license is blocking
 ```
 
 ### VM-First Development

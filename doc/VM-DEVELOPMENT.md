@@ -1,12 +1,13 @@
-# VM-Based Development Migration (M13.13)
+# VM-First Development (M13.13)
 
 ## Overview
 
-UmbraVOX development is migrating from a local toolchain (via `shell.nix`)
-to a NixOS VM-based workflow.  The full development toolchain (GHC 9.6,
-Cabal, F\*, Z3, Coq, AFL++, valgrind, gcc, etc.) runs inside an isolated
-NixOS QEMU VM.  The host machine only needs orchestration tools: QEMU,
-git, make, and basic POSIX utilities.
+UmbraVOX uses a VM-first development model.  All `make build`, `make test`,
+`make verify`, and other standard Makefile targets route through an isolated
+NixOS QEMU VM by default.  The full development toolchain (GHC 9.6, Cabal,
+F\*, Z3, Coq, AFL++, valgrind, gcc, etc.) runs inside the VM.  The host
+machine only needs orchestration tools: QEMU, git, make, and basic POSIX
+utilities (provided by `shell-minimal.nix`).
 
 ## Motivation
 
@@ -22,19 +23,23 @@ git, make, and basic POSIX utilities.
 ## Quick Start
 
 ```bash
-# Enter the minimal orchestration shell
-nix-shell shell-minimal.nix
+# Enter the development shell (commands route to VM automatically)
+nix-shell
 
 # Build the VM image (first time only; cached afterwards)
 make vm-image-build
 
+# Standard commands — these all run inside the VM by default
+make build        # cabal build all (in VM)
+make test         # cabal test umbravox-test --test-options="required" (in VM)
+make verify       # F* formal verification (in VM)
+
 # Interactive development inside the VM
 make vm-dev
 
-# Or run specific tasks non-interactively
-make vm-build     # cabal build all
-make vm-test      # cabal test umbravox-test --test-options="required"
-make vm-verify    # F* formal verification
+# Bypass the VM for local execution (requires full nix-shell toolchain)
+UMBRAVOX_LOCAL=1 make build
+UMBRAVOX_LOCAL=1 make test
 ```
 
 ## Architecture
@@ -64,6 +69,16 @@ genext2fs, e2fsprogs               gcc, gdb, valgrind, AFL++
 
 ## Makefile Targets
 
+All standard `make` targets (`build`, `test`, `verify`, `quality`, etc.)
+now route through the VM by default.  Set `UMBRAVOX_LOCAL=1` to bypass the
+VM and run locally (requires the full `nix-shell` toolchain).
+
+### `make build` / `make test` / `make verify`
+
+These are the primary development commands.  By default they boot the VM,
+execute the corresponding operation, and power off.  Exit code reflects
+success/failure.
+
 ### `make vm-dev`
 
 Boots the VM with `-serial stdio` and auto-login.  You get a root shell
@@ -72,43 +87,42 @@ inside the NixOS VM with the full toolchain available.  Source is on
 
 Shut down with `poweroff` or Ctrl-A then X (QEMU monitor escape).
 
-### `make vm-build`
+### `make vm-image-build`
 
-Non-interactive.  Boots the VM, runs `cabal build all --enable-tests`,
-then powers off.  Exit code reflects build success/failure.
+Builds and caches the NixOS VM image using `nix build` directly.  Does not
+require cabal or any Haskell toolchain on the host.  Only needs QEMU, git,
+make, and nix (all provided by `shell-minimal.nix`).
 
-### `make vm-test`
+### Explicit `vm-*` Targets
 
-Non-interactive.  Boots the VM, builds, then runs the required test gate
-(`cabal test umbravox-test --test-options="required"`), then powers off.
-
-### `make vm-verify`
-
-Non-interactive.  Boots the VM, builds, then runs F\* formal verification
-(`cabal run fstar-verify`), then powers off.
+The `vm-build`, `vm-test`, and `vm-verify` targets still exist as explicit
+aliases but are now equivalent to the standard targets (which also route
+through the VM).
 
 ## Migration Plan
 
-### Phase 1: Parallel Operation (current)
+### Phase 1: Parallel Operation (completed)
 
-Both `shell.nix` (full local toolchain) and `shell-minimal.nix`
-(orchestration only) coexist.  Developers can use either workflow.
+Both `shell.nix` and `shell-minimal.nix` coexisted.  Developers could use
+either workflow.  Standard `make` targets used the local toolchain while
+`vm-*` targets used the VM.
 
-- `nix-shell` or `nix-shell shell.nix` gives the full local toolchain.
-- `nix-shell shell-minimal.nix` gives the VM orchestration shell.
-- All existing Makefile targets (`make build`, `make test`, etc.) continue
-  to work unchanged with the local toolchain.
-- New `vm-*` targets use the VM.
+### Phase 2: VM-Primary (current)
 
-### Phase 2: VM-Primary
+All standard Makefile targets (`make build`, `make test`, `make verify`,
+`make quality`, etc.) now route through the VM by default.
 
-Once the team validates the VM workflow:
+- `nix-shell` (i.e. `shell.nix`) provides the full local toolchain but
+  its banner documents that commands run in the VM by default.
+- `nix-shell shell-minimal.nix` provides an orchestration-only shell
+  (QEMU, git, make) for developers who do not need the full local
+  toolchain.
+- `UMBRAVOX_LOCAL=1` bypasses the VM and runs commands locally using the
+  host toolchain.  This requires the full `nix-shell` (not minimal).
+- `make vm-image-build` works without cabal — it uses `nix build` directly.
+- `make vm-dev` provides an interactive development shell inside the VM.
 
-1. Rename `shell.nix` to `shell-full.nix` (preserved for escape-hatch use).
-2. Rename `shell-minimal.nix` to `shell.nix` (becomes the default).
-3. Update CI to use the VM workflow.
-
-### Phase 3: VM-Only
+### Phase 3: VM-Only (future)
 
 Remove the full local shell entirely.  All development uses the VM.
 The host only has QEMU and git.

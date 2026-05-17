@@ -5,23 +5,29 @@
 UmbraVOX defines three classes of build/test runners, ordered by
 isolation strength:
 
-### Class 1: Host Runner (Current Default)
+### Class 1: Host Runner (Local Override)
 
-- **Environment**: Developer machine inside `nix-shell`
+- **Environment**: Developer machine inside `nix-shell` with `UMBRAVOX_LOCAL=1`
 - **Isolation**: Nix provides hermetic inputs; execution trusts the host
 - **Speed**: Fastest (no VM boot overhead)
-- **Use case**: Development iteration, local testing
-- **Command**: `make build && make test && make verify`
+- **Use case**: Quick local iteration when VM overhead is undesirable
+- **Command**: `UMBRAVOX_LOCAL=1 make build && UMBRAVOX_LOCAL=1 make test`
 - **Trust level**: Non-authoritative — results depend on host state
+- **Note**: No longer the default.  Standard `make` commands now route
+  through the VM (Class 2).  The host runner requires the full `nix-shell`
+  toolchain.
 
-### Class 2: VM Runner (Authoritative for Linux)
+### Class 2: VM Runner (Current Default)
 
 - **Environment**: NixOS QEMU guest with KVM acceleration
 - **Isolation**: Full kernel-level isolation; no shared host state
 - **Speed**: ~2-5 min overhead for VM boot + build
-- **Use case**: Release qualification, evidence bundles
-- **Command**: `make vm-smoke`
+- **Use case**: Default for all development (build, test, verify) and release qualification
+- **Command**: `make build`, `make test`, `make verify`, `make vm-smoke`
 - **Trust level**: Authoritative — clean environment, reproducible
+- **Note**: All standard `make` targets now route through the VM by default.
+  `make vm-smoke` runs the full release pipeline.  `make vm-dev` provides
+  an interactive shell inside the VM.
 
 ### Class 3: Container Runner (Artifact Smoke Only)
 
@@ -36,16 +42,20 @@ isolation strength:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  Host (nix-shell)                          Class 1     │
-│  ├── make build/test/verify                            │
-│  ├── make release-linux                                │
+│  Host (nix-shell)                                      │
 │  │                                                     │
-│  ├── make vm-smoke                         Class 2     │
+│  ├── make build/test/verify (default)      Class 2     │
 │  │   └── QEMU/KVM Guest (NixOS)                       │
 │  │       ├── Full toolchain pre-installed              │
 │  │       ├── Source mounted as ext2 disk               │
-│  │       ├── Build + test + verify + release           │
+│  │       ├── Build + test + verify                     │
 │  │       └── Exit code propagated to host              │
+│  │                                                     │
+│  ├── make vm-smoke                         Class 2     │
+│  │   └── Same VM, full release pipeline                │
+│  │                                                     │
+│  ├── UMBRAVOX_LOCAL=1 make build           Class 1     │
+│  │   └── Local execution (requires full toolchain)     │
 │  │                                                     │
 │  └── make release-smoke-linux              Class 3     │
 │      └── Container (Ubuntu 24.04)                      │
