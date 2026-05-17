@@ -39,9 +39,10 @@ identityPanelH chatH leftW = max 0 (min maxAllowed exactRows)
     safetyRows = (12 + groupsPerRow - 1) `div` groupsPerRow
     -- 1 separator + exact content rows — zero padding
     exactRows = 1 + qrRows + headerRows + safetyRows + fpHeaderRows + fpDataRows
-    -- Contacts get at least 10 rows; identity gets the rest (up to exactRows).
+    -- Contacts get at least 7 visible rows (+ 2-3 toolbar rows = 10 total).
+    -- Identity gets the rest (up to exactRows).
     -- On tall terminals everything fits; on short ones QR truncates from bottom.
-    minContacts = 10
+    minContacts = 7
     maxAllowed = max 0 (chatH - minContacts)
 
 -- | Compute the layout geometry from terminal dimensions.
