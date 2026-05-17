@@ -36,6 +36,14 @@ Active TUI regression recovery (historical parity with QR/button exceptions)
   [x] R1.5.a Make safety-number rows width-adaptive to prevent clipping at narrow pane widths.
   [ ] R1.5.b Screenshot/runtime verify spacing parity after adaptive safety formatting.
   [ ] R1.6 Verify full-screen parity against latest screenshot pass and close remaining geometry defects.
+  [ ] R1.8 TUI text entry formatting fixes (from expert review).
+    [ ] R1.8.1 Verify rich vs plain text layout width consistency.
+    [ ] R1.8.2 Fix zero-width character cursor positioning in input area.
+    [ ] R1.8.3 Verify scrollbar visibility at content boundary edge cases.
+    [ ] R1.8.4 Test wide character (CJK/emoji) wrapping at narrow widths.
+  [ ] R1.9 Identity panel scaling at small terminal sizes.
+    [ ] R1.9.1 Safety number verification rows should not clip at narrow widths.
+    [ ] R1.9.2 Key info panel should scale content to available height.
   [x] R1.7 Markdown-backed rich-text editor MVP.
   [x] R1.7.a Keep raw markdown as the transmitted/stored source of truth.
   [x] R1.7.b Add plain/rich toolbar toggle above the chat input area.
@@ -555,6 +563,15 @@ Note: 221 original assumes → 0 admit() + 23 assume val. 14/17 specs fully prov
   [ ] M13.13.2 Slim local shell.nix to only VM orchestration tools (QEMU, SSH, git)
   [ ] M13.13.3 Update Makefile targets to route through VM execution
   [ ] M13.13.4 Fix Coq ZArith library path in VM nix configuration
+  [ ] M13.13.5 Add make check-evidence target (runs check-external-evidence.sh)
+  [ ] M13.13.6 Verify all F* specs pass in VM (cabal run fstar-verify)
+  [ ] M13.13.7 Verify all Coq proofs build in VM (make -C coq)
+  [ ] M13.13.8 Verify Haskell test suite passes in VM (cabal run umbravox-test -- required)
+
+[ ] M13.14 Assumption ledger maintenance
+  [ ] M13.14.1 Update ASSUMPTIONS.md whenever assume val count changes
+  [ ] M13.14.2 Run check-external-evidence.sh before each release tag
+  [ ] M13.14.3 Regenerate inventory logs on each verification pass
 
 [ ] M13.11 Coq external verification
   [ ] M13.11.1 Ed25519Prime.v — primality of 2^255-19 (Pocklington certificate)
