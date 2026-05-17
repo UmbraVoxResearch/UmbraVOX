@@ -389,6 +389,11 @@ renderInputRow lay grid focus richEnabled buf inputCursor inputScroll mSelStart 
         rightEntryStart = 2
         rightEntryRows = max 1 (inputRows - 3)
         bodyW = max 0 (rw - 1)
+        -- R1.8.1 safety note: inputLayout and richLayout both receive the
+        -- same bodyW, but may compute different contentW values because
+        -- their scrollbar decisions are independent.  This is correct:
+        -- contentW is only used in the plain-text branch, richW only in
+        -- the rich-text branch — they are never mixed.
         inputLayout = computeInputBufferLayout bodyW rightEntryRows buf
         richLayout = computeRichInputLayout bodyW rightEntryRows buf
         inputOff = clampInputScroll inputLayout inputScroll
@@ -540,6 +545,12 @@ renderEditorToolbar bodyW _richEnabled = do
 -- selection highlight.  cursorCol < 0 means no cursor.  lineStart is the
 -- buffer offset of the first character in this visible line.  mSelLo/mSelHi
 -- are raw buffer indices [lo, hi).
+--
+-- R1.8.2 safety note: zero-width characters (combining marks, diacritics)
+-- produce charW == 0, so 'col' doesn't advance for them.  This is correct
+-- because cursorCol is computed by cursorTextDisplayCol (InputBuffer.hs)
+-- which also uses displayWidth and therefore also treats zero-width chars
+-- as width 0.  Both sides stay in sync.
 renderPlainLineSel :: Int -> String -> Int -> Int -> Maybe Int -> Maybe Int -> IO ()
 renderPlainLineSel width line cursorCol lineStart mSelLo mSelHi = do
     finalCol <- go 0 0 line

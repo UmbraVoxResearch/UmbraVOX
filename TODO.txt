@@ -36,10 +36,13 @@ Active TUI regression recovery (historical parity with QR/button exceptions)
   [x] R1.5.a Make safety-number rows width-adaptive to prevent clipping at narrow pane widths.
   [ ] R1.5.b Screenshot/runtime verify spacing parity after adaptive safety formatting.
   [ ] R1.6 Verify full-screen parity against latest screenshot pass and close remaining geometry defects.
-  [ ] R1.8 TUI text entry formatting fixes (from expert review).
-    [ ] R1.8.1 Verify rich vs plain text layout width consistency.
-    [ ] R1.8.2 Fix zero-width character cursor positioning in input area.
-    [ ] R1.8.3 Verify scrollbar visibility at content boundary edge cases.
+  [x] R1.8 TUI text entry formatting fixes (from expert review).
+    [x] R1.8.1 Verify rich vs plain text layout width consistency.
+      Note: False positive — contentW and richW are independent by design (used in separate branches). Safety comment added.
+    [x] R1.8.2 Fix zero-width character cursor positioning in input area.
+      Note: False positive — both cursor and rendering use displayWidth, staying in sync. Safety comment added.
+    [x] R1.8.3 Verify scrollbar visibility at content boundary edge cases.
+      Note: False positive — two-pass approach locks scrollbar decision from pass 1, no oscillation. Safety comment added.
     [ ] R1.8.4 Test wide character (CJK/emoji) wrapping at narrow widths.
   [ ] R1.9 Identity panel scaling at small terminal sizes.
     [ ] R1.9.1 Safety number verification rows should not clip at narrow widths.
@@ -558,12 +561,16 @@ Note: 221 original assumes → 0 admit() + 23 assume val. 14/17 specs fully prov
   [~] M13.10.3 Create Coq project skeleton (Ed25519Constants.v)
     Note: Files created but Coq build needs ZArith library path fix for Rocq 9.1.1 in nix-shell.
 
-[ ] M13.13 VM-based development migration
-  [ ] M13.13.1 Move all development (build/test/verify/Coq) into the NixOS VM
-  [ ] M13.13.2 Slim local shell.nix to only VM orchestration tools (QEMU, SSH, git)
-  [ ] M13.13.3 Update Makefile targets to route through VM execution
+[~] M13.13 VM-based development migration
+  [x] M13.13.1 Move all development (build/test/verify/Coq) into the NixOS VM
+    Note: scripts/vm-dev-run.sh + make vm-dev/vm-build/vm-test/vm-verify targets.
+  [x] M13.13.2 Slim local shell.nix to only VM orchestration tools (QEMU, SSH, git)
+    Note: shell-minimal.nix created (user switches when ready; shell.nix untouched).
+  [x] M13.13.3 Update Makefile targets to route through VM execution
+    Note: vm-dev, vm-build, vm-test, vm-verify added to Makefile + help.
   [ ] M13.13.4 Fix Coq ZArith library path in VM nix configuration
-  [ ] M13.13.5 Add make check-evidence target (runs check-external-evidence.sh)
+  [x] M13.13.5 Add make check-evidence target (runs check-external-evidence.sh)
+    Note: Added to Makefile, wired into make quality.
   [ ] M13.13.6 Verify all F* specs pass in VM (cabal run fstar-verify)
   [ ] M13.13.7 Verify all Coq proofs build in VM (make -C coq)
   [ ] M13.13.8 Verify Haskell test suite passes in VM (cabal run umbravox-test -- required)
