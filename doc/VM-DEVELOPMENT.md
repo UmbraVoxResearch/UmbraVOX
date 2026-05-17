@@ -118,19 +118,26 @@ corrupted or you want a clean build.
 
 ### Accessing Build Output from the Host
 
-Build artifacts (binaries, release bundles) live inside the VM's persistent
-cache disk.  To extract them after a VM session:
+The VM shares a directory with the host via virtio-9p:
+
+| Location | Description |
+|----------|-------------|
+| Guest: `/output/` | Shared output directory (writable) |
+| Host: `build/vm-output/` | Same directory, visible immediately |
+
+Inside `make vm-dev`, copy any files to `/output/` and they appear on the
+host at `build/vm-output/` in real time — no extraction step needed.
 
 ```bash
-# Extract a specific file from the cache disk
-debugfs build/vm/build-cache.qcow2 -R "cat dist-newstyle/build/.../umbravox" > umbravox
+# Inside the VM:
+cp /work/umbravox/dist-newstyle/build/.../umbravox /output/
+cp /work/umbravox/build/releases/*.tar.gz /output/
 
-# Or use make vm-dev interactively and copy files to /cache/output/
-# The /cache/ directory persists across sessions.
+# On the host (immediately available):
+ls build/vm-output/
 ```
 
-For release builds, use `make release-linux` which runs inside the VM
-and writes the release bundle to the cache disk at `/cache/releases/`.
+Use `make vm-extract` to check what's in the output directory.
 
 ### Explicit `vm-*` Targets
 

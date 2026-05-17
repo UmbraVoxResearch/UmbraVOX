@@ -103,6 +103,10 @@ if ! mountpoint -q /mnt/src 2>/dev/null; then
     mount -o ro /dev/vdb /mnt/src 2>/dev/null || true
 fi
 
+# Mount shared output directory (host ↔ guest via 9p)
+mkdir -p /output
+mount -t 9p -o trans=virtio,version=9p2000.L output /output 2>/dev/null || true
+
 # Mount persistent build cache (vdc)
 mkdir -p /cache
 if [ -b /dev/vdc ]; then
@@ -218,6 +222,10 @@ fi
 echo -e "${BLUE}[VM-DEV]${NC} Creating COW overlay..." >&2
 qemu-img create -f qcow2 -b "$DISK_IMG" -F raw "$OVERLAY" >/dev/null 2>&1
 
+# Shared output directory (host ↔ guest via virtio-9p)
+OUTPUT_DIR="$REPO_ROOT/build/vm-output"
+mkdir -p "$OUTPUT_DIR"
+
 # Build QEMU args — 16GB RAM, 8 cores for faster builds
 QEMU_ARGS=(
     -machine "q35,accel=kvm"
@@ -230,6 +238,7 @@ QEMU_ARGS=(
     -drive "if=virtio,format=qcow2,file=$OVERLAY"
     -drive "if=virtio,format=raw,file=$SRC_DISK,readonly=on"
     -drive "if=virtio,format=qcow2,file=$CACHE_DISK"
+    -virtfs "local,path=$OUTPUT_DIR,mount_tag=output,security_model=mapped-xattr,id=output"
 )
 
 # For non-interactive mode, add -no-reboot so VM exits after poweroff

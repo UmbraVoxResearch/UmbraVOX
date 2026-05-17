@@ -995,13 +995,13 @@ vm-cache-clean:
 	@echo -e "$(GREEN)[VM-CACHE]$(NC) Build cache cleared. Next VM build will start fresh."
 
 vm-extract:
-	@echo -e "$(BLUE)[VM-EXTRACT]$(NC) Listing files on build cache disk..."
-	@if [ -f build/vm/build-cache.qcow2 ]; then \
-		echo "Use debugfs to extract files:"; \
-		echo "  debugfs build/vm/build-cache.qcow2 -R 'ls dist-newstyle'"; \
-		echo "  debugfs build/vm/build-cache.qcow2 -R 'cat dist-newstyle/build/.../umbravox' > umbravox"; \
+	@echo -e "$(BLUE)[VM-EXTRACT]$(NC) VM build output is at build/vm-output/"
+	@if [ -d build/vm-output ] && [ "$$(ls -A build/vm-output 2>/dev/null)" ]; then \
+		echo "Files:"; \
+		ls -la build/vm-output/; \
 	else \
-		echo -e "$(RED)[VM-EXTRACT]$(NC) No build cache disk found. Run 'make build' first."; \
+		echo "No output files yet."; \
+		echo "Inside vm-dev, copy files to /output/ — they appear at build/vm-output/ on the host."; \
 	fi
 
 image-clean: vm-image-clean
