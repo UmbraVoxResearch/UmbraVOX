@@ -43,8 +43,9 @@ Active TUI regression recovery (historical parity with QR/button exceptions)
       Note: False positive — both cursor and rendering use displayWidth, staying in sync. Safety comment added.
     [x] R1.8.3 Verify scrollbar visibility at content boundary edge cases.
       Note: False positive — two-pass approach locks scrollbar decision from pass 1, no oscillation. Safety comment added.
-    [ ] R1.8.4 Test wide character (CJK/emoji) wrapping at narrow widths.
-  [~] R1.9 Identity panel scaling at small terminal sizes.
+    [x] R1.8.4 Test wide character (CJK/emoji) wrapping at narrow widths.
+      Note: 6 tests in Test.TUI.Render: splitAtWidth CJK, emoji, mixed, narrow + displayWidth CJK/emoji. All pass.
+  [x] R1.9 Identity panel scaling at small terminal sizes.
     [x] R1.9.1 Safety number verification rows should not clip at narrow widths.
       Note: minContacts reduced from 10 to 7, giving identity panel 3 more rows. Safety number rows already width-adaptive via groupsPerRow.
     [x] R1.9.2 Key info panel should scale content to available height.
@@ -557,7 +558,7 @@ Note: 221 original assumes → 0 admit() + 23 assume val. 14/17 specs fully prov
 [x] M13.8 Zero admit() milestone — all 178 admits eliminated
 [x] M13.9 Assumption ledger — ASSUMPTIONS.md with full classification
 
-[~] M13.10 External evidence harness
+[x] M13.10 External evidence harness
   [x] M13.10.1 Create check-external-evidence.sh (fail-closed)
   [x] M13.10.2 Integrate primality certificate checker
   [~] M13.10.3 Create Coq project skeleton (Ed25519Constants.v)
