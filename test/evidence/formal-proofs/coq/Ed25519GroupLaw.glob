@@ -1,0 +1,236 @@
+DIGEST 35feebca918949cb2a65caffa1aec3bf
+FEd25519GroupLaw
+ax 1895:1895 <> F
+ax 1915:1921 <> Feq_dec
+R1938:1938 Ed25519GroupLaw <> F defax
+binder 1932:1932 <> x:3
+binder 1934:1934 <> y:4
+R1941:1941 Corelib.Init.Specif <> ::type_scope:'{'_x_'}'_'+'_'{'_x_'}' not
+R1947:1951 Corelib.Init.Specif <> ::type_scope:'{'_x_'}'_'+'_'{'_x_'}' not
+R1958:1958 Corelib.Init.Specif <> ::type_scope:'{'_x_'}'_'+'_'{'_x_'}' not
+R1943:1945 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1942:1942 Ed25519GroupLaw <> x:3 var
+R1946:1946 Ed25519GroupLaw <> y:4 var
+R1953:1956 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R1952:1952 Ed25519GroupLaw <> x:3 var
+R1957:1957 Ed25519GroupLaw <> y:4 var
+ax 1972:1973 <> F0
+R1977:1977 Ed25519GroupLaw <> F defax
+ax 2025:2026 <> F1
+R2030:2030 Ed25519GroupLaw <> F defax
+ax 2084:2087 <> Fadd
+R2092:2095 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R2091:2091 Ed25519GroupLaw <> F defax
+R2097:2100 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R2096:2096 Ed25519GroupLaw <> F defax
+R2101:2101 Ed25519GroupLaw <> F defax
+ax 2114:2117 <> Fmul
+R2122:2125 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R2121:2121 Ed25519GroupLaw <> F defax
+R2127:2130 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R2126:2126 Ed25519GroupLaw <> F defax
+R2131:2131 Ed25519GroupLaw <> F defax
+ax 2144:2147 <> Fopp
+R2152:2155 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R2151:2151 Ed25519GroupLaw <> F defax
+R2156:2156 Ed25519GroupLaw <> F defax
+ax 2196:2199 <> Finv
+R2204:2207 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R2203:2203 Ed25519GroupLaw <> F defax
+R2208:2208 Ed25519GroupLaw <> F defax
+R2283:2286 Ed25519GroupLaw <> Fadd defax
+not 2271:2271 <> :::x_'+'_x
+R2315:2318 Ed25519GroupLaw <> Fmul defax
+not 2303:2303 <> :::x_'*'_x
+R2347:2350 Ed25519GroupLaw <> Fopp defax
+not 2335:2335 <> :::'-'_x
+def 2368:2371 <> Fsub
+R2380:2380 Ed25519GroupLaw <> F defax
+binder 2374:2374 <> x:19
+binder 2376:2376 <> y:20
+R2385:2385 Ed25519GroupLaw <> F defax
+R2391:2394 Ed25519GroupLaw <> :::x_'+'_x not
+R2398:2398 Ed25519GroupLaw <> :::x_'+'_x not
+R2390:2390 Ed25519GroupLaw <> x:19 var
+R2395:2396 Ed25519GroupLaw <> :::'-'_x not
+R2397:2397 Ed25519GroupLaw <> y:20 var
+R2422:2425 Ed25519GroupLaw <> Fsub def
+not 2410:2410 <> :::x_'-'_x
+ax 2460:2468 <> Fadd_comm
+binder 2480:2480 <> a:21
+binder 2482:2482 <> b:22
+R2490:2492 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2486:2488 Ed25519GroupLaw <> :::x_'+'_x not
+R2485:2485 Ed25519GroupLaw <> a:21 var
+R2489:2489 Ed25519GroupLaw <> b:22 var
+R2494:2496 Ed25519GroupLaw <> :::x_'+'_x not
+R2493:2493 Ed25519GroupLaw <> b:22 var
+R2497:2497 Ed25519GroupLaw <> a:21 var
+ax 2506:2515 <> Fadd_assoc
+binder 2526:2526 <> a:25
+binder 2528:2528 <> b:26
+binder 2530:2530 <> c:27
+R2544:2546 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2533:2533 Ed25519GroupLaw <> :::x_'+'_x not
+R2539:2542 Ed25519GroupLaw <> :::x_'+'_x not
+R2535:2537 Ed25519GroupLaw <> :::x_'+'_x not
+R2534:2534 Ed25519GroupLaw <> a:25 var
+R2538:2538 Ed25519GroupLaw <> b:26 var
+R2543:2543 Ed25519GroupLaw <> c:27 var
+R2548:2551 Ed25519GroupLaw <> :::x_'+'_x not
+R2557:2557 Ed25519GroupLaw <> :::x_'+'_x not
+R2547:2547 Ed25519GroupLaw <> a:25 var
+R2553:2555 Ed25519GroupLaw <> :::x_'+'_x not
+R2552:2552 Ed25519GroupLaw <> b:26 var
+R2556:2556 Ed25519GroupLaw <> c:27 var
+ax 2566:2573 <> Fadd_0_l
+binder 2586:2586 <> a:30
+R2595:2597 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2591:2593 Ed25519GroupLaw <> :::x_'+'_x not
+R2589:2590 Ed25519GroupLaw <> F0 defax
+R2594:2594 Ed25519GroupLaw <> a:30 var
+R2598:2598 Ed25519GroupLaw <> a:30 var
+ax 2607:2612 <> Fopp_l
+binder 2627:2627 <> a:33
+R2639:2641 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2630:2630 Ed25519GroupLaw <> :::x_'+'_x not
+R2634:2637 Ed25519GroupLaw <> :::x_'+'_x not
+R2631:2632 Ed25519GroupLaw <> :::'-'_x not
+R2633:2633 Ed25519GroupLaw <> a:33 var
+R2638:2638 Ed25519GroupLaw <> a:33 var
+R2642:2643 Ed25519GroupLaw <> F0 defax
+ax 2653:2661 <> Fmul_comm
+binder 2673:2673 <> a:36
+binder 2675:2675 <> b:37
+R2683:2685 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2679:2681 Ed25519GroupLaw <> :::x_'*'_x not
+R2678:2678 Ed25519GroupLaw <> a:36 var
+R2682:2682 Ed25519GroupLaw <> b:37 var
+R2687:2689 Ed25519GroupLaw <> :::x_'*'_x not
+R2686:2686 Ed25519GroupLaw <> b:37 var
+R2690:2690 Ed25519GroupLaw <> a:36 var
+ax 2699:2708 <> Fmul_assoc
+binder 2719:2719 <> a:40
+binder 2721:2721 <> b:41
+binder 2723:2723 <> c:42
+R2737:2739 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2726:2726 Ed25519GroupLaw <> :::x_'*'_x not
+R2732:2735 Ed25519GroupLaw <> :::x_'*'_x not
+R2728:2730 Ed25519GroupLaw <> :::x_'*'_x not
+R2727:2727 Ed25519GroupLaw <> a:40 var
+R2731:2731 Ed25519GroupLaw <> b:41 var
+R2736:2736 Ed25519GroupLaw <> c:42 var
+R2741:2744 Ed25519GroupLaw <> :::x_'*'_x not
+R2750:2750 Ed25519GroupLaw <> :::x_'*'_x not
+R2740:2740 Ed25519GroupLaw <> a:40 var
+R2746:2748 Ed25519GroupLaw <> :::x_'*'_x not
+R2745:2745 Ed25519GroupLaw <> b:41 var
+R2749:2749 Ed25519GroupLaw <> c:42 var
+ax 2759:2766 <> Fmul_1_l
+binder 2779:2779 <> a:45
+R2788:2790 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2784:2786 Ed25519GroupLaw <> :::x_'*'_x not
+R2782:2783 Ed25519GroupLaw <> F1 defax
+R2787:2787 Ed25519GroupLaw <> a:45 var
+R2791:2791 Ed25519GroupLaw <> a:45 var
+ax 2800:2805 <> Finv_l
+binder 2820:2820 <> a:48
+R2830:2833 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R2824:2827 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R2823:2823 Ed25519GroupLaw <> a:48 var
+R2828:2829 Ed25519GroupLaw <> F0 defax
+R2846:2848 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2834:2834 Ed25519GroupLaw <> :::x_'*'_x not
+R2841:2844 Ed25519GroupLaw <> :::x_'*'_x not
+R2835:2838 Ed25519GroupLaw <> Finv defax
+R2840:2840 Ed25519GroupLaw <> a:48 var
+R2845:2845 Ed25519GroupLaw <> a:48 var
+R2849:2850 Ed25519GroupLaw <> F1 defax
+ax 2860:2875 <> Fmul_add_distr_l
+binder 2886:2886 <> a:51
+binder 2888:2888 <> b:52
+binder 2890:2890 <> c:53
+R2904:2906 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2894:2897 Ed25519GroupLaw <> :::x_'*'_x not
+R2903:2903 Ed25519GroupLaw <> :::x_'*'_x not
+R2893:2893 Ed25519GroupLaw <> a:51 var
+R2899:2901 Ed25519GroupLaw <> :::x_'+'_x not
+R2898:2898 Ed25519GroupLaw <> b:52 var
+R2902:2902 Ed25519GroupLaw <> c:53 var
+R2912:2914 Ed25519GroupLaw <> :::x_'+'_x not
+R2908:2910 Ed25519GroupLaw <> :::x_'*'_x not
+R2907:2907 Ed25519GroupLaw <> a:51 var
+R2911:2911 Ed25519GroupLaw <> b:52 var
+R2916:2918 Ed25519GroupLaw <> :::x_'*'_x not
+R2915:2915 Ed25519GroupLaw <> a:51 var
+R2919:2919 Ed25519GroupLaw <> c:53 var
+ax 2929:2937 <> F1_neq_F0
+R2943:2946 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R2941:2942 Ed25519GroupLaw <> F1 defax
+R2947:2948 Ed25519GroupLaw <> F0 defax
+prf 3141:3148 <> Fadd_0_r
+binder 3159:3159 <> a:58
+R3168:3170 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R3163:3165 Ed25519GroupLaw <> :::x_'+'_x not
+R3162:3162 Ed25519GroupLaw <> a:58 var
+R3166:3167 Ed25519GroupLaw <> F0 defax
+R3171:3171 Ed25519GroupLaw <> a:58 var
+R3197:3205 Ed25519GroupLaw <> Fadd_comm prfax
+R3197:3205 Ed25519GroupLaw <> Fadd_comm prfax
+R3197:3205 Ed25519GroupLaw <> Fadd_comm prfax
+R3214:3221 Ed25519GroupLaw <> Fadd_0_l prfax
+R3214:3221 Ed25519GroupLaw <> Fadd_0_l prfax
+prf 3236:3241 <> Fopp_r
+binder 3252:3252 <> a:59
+R3264:3266 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R3256:3259 Ed25519GroupLaw <> :::x_'+'_x not
+R3263:3263 Ed25519GroupLaw <> :::x_'+'_x not
+R3255:3255 Ed25519GroupLaw <> a:59 var
+R3260:3261 Ed25519GroupLaw <> :::'-'_x not
+R3262:3262 Ed25519GroupLaw <> a:59 var
+R3267:3268 Ed25519GroupLaw <> F0 defax
+R3294:3302 Ed25519GroupLaw <> Fadd_comm prfax
+R3294:3302 Ed25519GroupLaw <> Fadd_comm prfax
+R3294:3302 Ed25519GroupLaw <> Fadd_comm prfax
+R3311:3316 Ed25519GroupLaw <> Fopp_l prfax
+R3311:3316 Ed25519GroupLaw <> Fopp_l prfax
+prf 3331:3338 <> Fmul_1_r
+binder 3349:3349 <> a:60
+R3358:3360 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R3353:3355 Ed25519GroupLaw <> :::x_'*'_x not
+R3352:3352 Ed25519GroupLaw <> a:60 var
+R3356:3357 Ed25519GroupLaw <> F1 defax
+R3361:3361 Ed25519GroupLaw <> a:60 var
+R3387:3395 Ed25519GroupLaw <> Fmul_comm prfax
+R3387:3395 Ed25519GroupLaw <> Fmul_comm prfax
+R3387:3395 Ed25519GroupLaw <> Fmul_comm prfax
+R3404:3411 Ed25519GroupLaw <> Fmul_1_l prfax
+R3404:3411 Ed25519GroupLaw <> Fmul_1_l prfax
+prf 3426:3433 <> Fmul_0_l
+binder 3444:3444 <> a:61
+R3453:3455 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R3449:3451 Ed25519GroupLaw <> :::x_'*'_x not
+R3447:3448 Ed25519GroupLaw <> F0 defax
+R3452:3452 Ed25519GroupLaw <> a:61 var
+R3456:3457 Ed25519GroupLaw <> F0 defax
+R3505:3507 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R3496:3498 Ed25519GroupLaw <> :::x_'+'_x not
+R3492:3494 Ed25519GroupLaw <> :::x_'*'_x not
+R3490:3491 Ed25519GroupLaw <> F0 defax
+R3501:3503 Ed25519GroupLaw <> :::x_'*'_x not
+R3499:3500 Ed25519GroupLaw <> F0 defax
+R3510:3512 Ed25519GroupLaw <> :::x_'*'_x not
+R3508:3509 Ed25519GroupLaw <> F0 defax
+R3505:3507 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R3496:3498 Ed25519GroupLaw <> :::x_'+'_x not
+R3492:3494 Ed25519GroupLaw <> :::x_'*'_x not
+R3490:3491 Ed25519GroupLaw <> F0 defax
+R3501:3503 Ed25519GroupLaw <> :::x_'*'_x not
+R3499:3500 Ed25519GroupLaw <> F0 defax
+R3510:3512 Ed25519GroupLaw <> :::x_'*'_x not
+R3508:3509 Ed25519GroupLaw <> F0 defax
+R3532:3547 Ed25519GroupLaw <> Fmul_add_distr_l prfax
+R3532:3547 Ed25519GroupLaw <> Fmul_add_distr_l prfax
+R3532:3547 Ed25519GroupLaw <> Fmul_add_distr_l prfax
+R3558:3565 Ed25519GroupLaw <> Fadd_0_l prfax
+R3558:3565 Ed25519GroupLaw <> Fadd_0_l prfax
