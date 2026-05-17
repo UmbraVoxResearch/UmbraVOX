@@ -41,18 +41,25 @@ make                   # Full pipeline: build + test + verify + complexity + lin
 make quality           # Same full pipeline as make; lint/format-check are advisory, license is blocking
 ```
 
-### VM Development (recommended)
+### VM-First Development
 
-All development can run inside an isolated NixOS VM with the full toolchain
-pre-installed. The host only needs QEMU and git.
+All `make` commands run inside an isolated NixOS VM by default. The host
+only needs QEMU and git. No local toolchain required.
 
 ```sh
-nix-shell shell-minimal.nix  # Orchestration-only shell (QEMU, git, make)
-make vm-dev                   # Interactive development shell inside the VM
-make vm-build                 # Build inside the VM
-make vm-test                  # Run test suite inside the VM
-make vm-verify                # Run F* formal verification inside the VM
-make check-evidence           # Run external evidence checks (Coq, primality, inventory)
+nix-shell              # Enter shell (commands route to VM automatically)
+make build             # Builds inside the VM
+make test              # Runs tests inside the VM
+make verify            # Runs F* verification inside the VM
+make vm-dev            # Interactive dev shell inside the VM
+make run               # Launch TUI locally (the one exception)
+```
+
+To run locally instead of in the VM (requires full toolchain):
+
+```sh
+UMBRAVOX_LOCAL=1 make build    # Build locally
+UMBRAVOX_LOCAL=1 make test     # Test locally
 ```
 
 See `doc/VM-DEVELOPMENT.md` for the full migration guide.
