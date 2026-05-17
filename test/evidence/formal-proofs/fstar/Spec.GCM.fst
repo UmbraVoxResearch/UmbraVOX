@@ -1306,23 +1306,31 @@ let kat_tc14_tag : seq UInt8.t =
     0xa9uy; 0x63uy; 0xb4uy; 0xf1uy; 0xc4uy; 0xcbuy; 0x73uy; 0x8buy
   ]
 
-(** KAT verification requires a concrete AES-256 encrypt function binding.
-    With an abstract aes_encrypt_fn_full, the tag computation cannot be
-    reduced to a concrete value.  Once a verified AES-256 implementation is
-    provided, this reduces to assert_norm on fully concrete evaluation.
+(** Concrete AES-256 encrypt function for KAT verification.
+    Spec.AES256.aes_encrypt is a fully proved, assert_norm-reducible
+    AES-256 implementation with zero admits.  Partial application with
+    a concrete key yields an aes_encrypt_fn_full suitable for GCM. *)
+let aes256_encrypt_tc14 : aes_encrypt_fn_full =
+  Spec.AES256.aes_encrypt kat_tc14_key
 
-    WHY THIS CANNOT BE PROVED WITHOUT CONCRETE AES:
-    gcm_encrypt calls `encrypt` (the abstract AES block cipher) on specific
-    inputs (zero block for H, J0 for tag encryption).  Without knowing the
-    concrete output of encrypt on these inputs, Z3 cannot reduce the GHASH
-    and final XOR to compare against the expected tag bytes.
-    Requires concrete AES-256 binding (e.g., a proved AES spec with
-    assert_norm-reducible implementation). *)
-assume val gcm_kat_tc14 : encrypt:aes_encrypt_fn_full -> unit
+(** KAT TC14: fully concrete evaluation via the F* normalizer.
+    The assert_norm forces the kernel to evaluate gcm_encrypt with the
+    concrete Spec.AES256.aes_encrypt on NIST SP 800-38D Test Case 14.
+    High fuel is needed to traverse the 256-element S-box lists during
+    each AES SubBytes application across all 14 rounds, and for the
+    GHASH Galois field arithmetic. *)
+#push-options "--fuel 2000 --ifuel 2000 --z3rlimit 600000"
+val gcm_kat_tc14 : unit
     -> Lemma (
-        let (ct, tag) = gcm_encrypt encrypt kat_tc14_key kat_tc14_nonce
-                                    Seq.empty Seq.empty in
+        let (ct, tag) = gcm_encrypt aes256_encrypt_tc14 kat_tc14_key
+                                    kat_tc14_nonce Seq.empty Seq.empty in
         tag == kat_tc14_tag)
+let gcm_kat_tc14 () =
+  assert_norm (
+    let (ct, tag) = gcm_encrypt aes256_encrypt_tc14 kat_tc14_key
+                                kat_tc14_nonce Seq.empty Seq.empty in
+    tag == kat_tc14_tag)
+#pop-options
 
 (** NIST GCM Test Case 16 (AES-256, 96-bit IV with data):
     Key:   feffe9928665731c6d6a8f9467308308
@@ -1382,16 +1390,24 @@ let kat_tc16_tag : seq UInt8.t =
     0xecuy; 0x1auy; 0x50uy; 0x22uy; 0x70uy; 0xe3uy; 0xccuy; 0x6cuy
   ]
 
-(** KAT TC16 requires concrete AES-256 binding — same as TC14 above.
-    WHY THIS CANNOT BE PROVED WITHOUT CONCRETE AES:
-    Same reason as TC14: gcm_encrypt calls the abstract `encrypt` function
-    on derived counter blocks.  Without a concrete AES-256 implementation
-    that can be normalized, the ciphertext and tag cannot be computed.
-    Requires concrete AES-256 binding. *)
-assume val gcm_kat_tc16 : encrypt:aes_encrypt_fn_full -> unit
+(** Concrete AES-256 encrypt function for TC16, partially applied with the
+    TC16 key. *)
+let aes256_encrypt_tc16 : aes_encrypt_fn_full =
+  Spec.AES256.aes_encrypt kat_tc16_key
+
+(** KAT TC16: fully concrete evaluation via the F* normalizer.
+    Same approach as TC14 but with 64 bytes of plaintext (4 AES-block GCTR)
+    and non-trivial ciphertext comparison.  Requires high fuel for the
+    multiple AES invocations and GHASH over the padded ciphertext. *)
+#push-options "--fuel 2000 --ifuel 2000 --z3rlimit 600000"
+val gcm_kat_tc16 : unit
     -> Lemma (
-        Seq.length kat_tc16_key = key_size /\
-        Seq.length kat_tc16_nonce = nonce_size ==>
-        (let (ct, tag) = gcm_encrypt encrypt kat_tc16_key kat_tc16_nonce
-                                    Seq.empty kat_tc16_plaintext in
-        ct == kat_tc16_ciphertext /\ tag == kat_tc16_tag))
+        let (ct, tag) = gcm_encrypt aes256_encrypt_tc16 kat_tc16_key
+                                    kat_tc16_nonce Seq.empty kat_tc16_plaintext in
+        ct == kat_tc16_ciphertext /\ tag == kat_tc16_tag)
+let gcm_kat_tc16 () =
+  assert_norm (
+    let (ct, tag) = gcm_encrypt aes256_encrypt_tc16 kat_tc16_key
+                                kat_tc16_nonce Seq.empty kat_tc16_plaintext in
+    ct == kat_tc16_ciphertext /\ tag == kat_tc16_tag)
+#pop-options
