@@ -41,14 +41,30 @@ make                   # Full pipeline: build + test + verify + complexity + lin
 make quality           # Same full pipeline as make; lint/format-check are advisory, license is blocking
 ```
 
+### VM Development (recommended)
+
+All development can run inside an isolated NixOS VM with the full toolchain
+pre-installed. The host only needs QEMU and git.
+
+```sh
+nix-shell shell-minimal.nix  # Orchestration-only shell (QEMU, git, make)
+make vm-dev                   # Interactive development shell inside the VM
+make vm-build                 # Build inside the VM
+make vm-test                  # Run test suite inside the VM
+make vm-verify                # Run F* formal verification inside the VM
+make check-evidence           # Run external evidence checks (Coq, primality, inventory)
+```
+
+See `doc/VM-DEVELOPMENT.md` for the full migration guide.
+
 ### First Launch
 
 1. UmbraVOX starts with a Welcome dialog. Press `Esc` to dismiss.
 2. The node auto-listens on port `7853`, or the next available port, at startup.
-3. Press `F2`, the Contacts menu, then select `New` to start a conversation.
+3. Click `[ New ]` in the contacts toolbar (below the contact list) to start a conversation.
 4. Choose `Private`, `Single`, or `Group`.
 5. To connect to a peer, type the other peer's `host:port` and press `Enter`.
-6. For runtime troubleshooting, enable debug logging in `F4 -> Settings -> a`
+6. For runtime troubleshooting, enable debug logging in `F2 Prefs -> Settings`
    or set `UMBRAVOX_DEBUG_LOG=1`. Logs write to the configured path without
    including plaintext payloads, but they still remain sensitive operational
    metadata and are not production-safe telemetry.
@@ -165,7 +181,7 @@ UmbraVOX does not currently claim to solve:
 Change mode in Preferences:
 
 ```text
-F4 -> Settings
+F2 Prefs -> Settings
 ```
 
 ## Features
@@ -175,7 +191,7 @@ F4 -> Settings
 * Noise_IK transport encryption with key separation
 * Post-quantum outer wrapping for message payloads
 * Five connection trust modes, from Swing to Chastity
-* TUI with F1-F4 dropdown menus plus a top-level Quit menu
+* TUI with F1-F3 dropdown menus (Help, Prefs, Identity) plus Q Quit
 * mDNS LAN peer discovery
 * Default port sequence beginning at 7853
 * Identity persistence across restart for the local node
@@ -187,7 +203,7 @@ F4 -> Settings
 
 | Key     | Action                                  |
 | ------- | --------------------------------------- |
-| F1-F4   | Open menus: Help, Contacts, Chat, Prefs |
+| F1-F3   | Open menus: Help, Prefs, Identity |
 | Tab     | Switch pane: Contacts or Chat           |
 | Ctrl+N  | Quick new connection                    |
 | Ctrl+Q  | Quit                                    |

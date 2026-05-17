@@ -188,6 +188,26 @@ scripts/nix-flake.sh flake show --no-write-lock-file
   `UMBRAVOX_ALLOW_UNTAGGED_RELEASE=1`.
 - `license` is blocking; `lint` and `format-check` are advisory/non-blocking in the current pipeline.
 
+## VM Development Environment
+
+All development can run inside an isolated NixOS VM. The host only needs
+QEMU and git (provided by `shell-minimal.nix`).
+
+| Command | Description |
+|---------|-------------|
+| `nix-shell shell-minimal.nix` | Orchestration-only shell (QEMU, git, make) |
+| `make vm-dev` | Interactive development shell inside the NixOS VM |
+| `make vm-build` | Build library + executables inside the VM |
+| `make vm-test` | Run `required` test suite inside the VM |
+| `make vm-verify` | Run F* formal verification inside the VM |
+| `make check-evidence` | Run external evidence checks (Coq, primality, F* inventory) |
+
+Inside `make vm-dev`, you have the full toolchain (GHC 9.6, Cabal, F*, Z3,
+Coq, AFL++, valgrind) and can run any command interactively. The source is
+mounted read-only at `/mnt/src` and copied to `/work/umbravox` on boot.
+
+See `doc/VM-DEVELOPMENT.md` for the full migration guide and troubleshooting.
+
 ## Aggregate Readiness Check
 
 - Use `make quality` as the current aggregate host-side readiness gate
