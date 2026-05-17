@@ -59,9 +59,33 @@ All irreducible axioms have empirical validation paths:
 
 ### Eliminable Axioms (not listed here)
 
-The remaining ~69 `assume val` declarations are eliminable by:
-1. Making abstract functions concrete (inline SHA-512, ChaCha20, AES-256 implementations)
-2. Increasing Z3 resource limits for deep normalization
-3. Formalizing Ed25519 group law in F* (following Bernstein-Birkner-Joye-Lange-Peters 2008)
+The remaining ~37 eliminable `assume val` declarations fall into:
+1. **KAT normalization barriers** (~15): blocked by abstract UInt32/AES-256 bindings
+2. **Ed25519 group theory** (~10): rooted in Fermat's Little Theorem (`fmul_inverse`);
+   provable with a formalized twisted Edwards group law
+3. **GCM tactic proofs** (~6): gctr_involutive, ghash_linearity, etc. — require
+   F* tactic scripts for deep compositional reasoning
+4. **Abstract interfaces** (~6): StealthAddress, VRF function signatures
 
 These are tracked as ongoing work in M13 and do not represent trust boundary items.
+
+### Dependency Root Analysis
+
+The Ed25519 group theory axioms form a dependency chain rooted in **Fermat's
+Little Theorem** (`fmul_inverse: a * a^(p-2) = 1 mod p`):
+
+```
+fmul_inverse (Fermat's LT) -- ROOT
+  <- point_add_identity_right, point_add_identity_left
+  <- point_double_is_add
+  <- scalar_mult_one
+  <- point_add_assoc (also needs algebraic geometry)
+     <- scalar_mult_add (also needs induction)
+        <- scalar_mult_compose
+           <- scalar_mod_L_equiv (also needs group_order_lemma)
+
+group_order_lemma -- INDEPENDENT ROOT (~2^252 iterations, computationally infeasible)
+```
+
+Proving `fmul_inverse` (via `FStar.Math.Fermat` or custom induction) would
+unblock 8 of the 10 remaining Ed25519 group theory axioms.
