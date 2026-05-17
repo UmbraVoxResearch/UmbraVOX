@@ -159,6 +159,54 @@ let x3dh_initiate ik_a_secret ek_a_secret ik_b_public spk_b_public
     Some (derive_secret dh1 dh2 dh3 dh4)
 
 (** -------------------------------------------------------------------- **)
+(** Cryptographic axiom: DH commutativity                                **)
+(**                                                                       **)
+(** X25519 scalar multiplication commutes over the base point:            **)
+(**   X25519(a, X25519(b, P)) = X25519(b, X25519(a, P))                 **)
+(**                                                                       **)
+(** This is a fundamental property of elliptic-curve Diffie-Hellman:      **)
+(** [a]([b]P) = [ab]P = [ba]P = [b]([a]P), which follows from            **)
+(** commutativity of scalar multiplication in the cyclic group on         **)
+(** Curve25519.  Z3 cannot discharge this from first principles because   **)
+(** it requires algebraic reasoning about the Montgomery curve group law. **)
+(** In this abstract model, x25519 is a constant function, so the axiom  **)
+(** is trivially witnessed by reflexivity.  When instantiated with a full **)
+(** Curve25519 implementation, the axiom is justified by                  **)
+(** Spec.X25519.dh_commutativity_general.                                **)
+(** -------------------------------------------------------------------- **)
+
+(** DH commutativity for DH1: X25519(ik_a, X25519(spk_b, G))
+    = X25519(spk_b, X25519(ik_a, G)).
+    In the abstract model this reduces to reflexivity of create key_size 0uy. *)
+val dh_comm_1 :
+    a:seq UInt8.t{Seq.length a = key_size}
+    -> b:seq UInt8.t{Seq.length b = key_size}
+    -> g:seq UInt8.t{Seq.length g = key_size}
+    -> Lemma (x25519 a (x25519 b g) == x25519 b (x25519 a g))
+let dh_comm_1 a b g =
+  (* In the abstract model, x25519 _ _ = create key_size 0uy for all inputs.
+     Both sides reduce to create key_size 0uy, so == holds by reflexivity.
+     When instantiated with real X25519, this follows from the commutativity
+     of scalar multiplication on Curve25519: [a]([b]G) = [ab]G = [ba]G = [b]([a]G). *)
+  assert (x25519 a (x25519 b g) == Seq.create key_size 0uy);
+  assert (x25519 b (x25519 a g) == Seq.create key_size 0uy)
+
+(** DH commutativity for optional DH4: when the one-time pre-key is present,
+    X25519(ek_a, X25519(opk_b, G)) = X25519(opk_b, X25519(ek_a, G)). *)
+val dh_comm_option :
+    a:seq UInt8.t{Seq.length a = key_size}
+    -> b_opt:option (s:seq UInt8.t{Seq.length s = key_size})
+    -> g:seq UInt8.t{Seq.length g = key_size}
+    -> Lemma (
+        (match b_opt with
+         | Some b -> Some (x25519 a (x25519 b g)) == Some (x25519 b (x25519 a g))
+         | None -> True))
+let dh_comm_option a b_opt g =
+  match b_opt with
+  | Some b -> dh_comm_1 a b g
+  | None -> ()
+
+(** -------------------------------------------------------------------- **)
 (** Correctness: Alice and Bob derive the same shared secret             **)
 (** -------------------------------------------------------------------- **)
 
@@ -173,7 +221,7 @@ let x3dh_initiate ik_a_secret ek_a_secret ik_b_public spk_b_public
       - spk_b_pub = X25519(spk_b_secret, G)
       - opk_b_pub = X25519(opk_b_secret, G)  [optional]
 
-    By X25519 DH commutativity:
+    By X25519 DH commutativity (dh_comm_1 / dh_comm_option above):
       X25519(ik_a_secret, spk_b_pub) = X25519(spk_b_secret, ik_a_pub)   [DH1]
       X25519(ek_a_secret, ik_b_pub)  = X25519(ik_b_secret,  ek_a_pub)   [DH2]
       X25519(ek_a_secret, spk_b_pub) = X25519(spk_b_secret, ek_a_pub)   [DH3]
@@ -206,12 +254,15 @@ val x3dh_agreement_lemma :
         (* Key agreement: DH commutativity makes all values equal *)
         a_dh1 == b_dh1 /\ a_dh2 == b_dh2 /\ a_dh3 == b_dh3 /\ a_dh4 == b_dh4)
 let x3dh_agreement_lemma ik_a_secret ek_a_secret ik_b_secret spk_b_secret opk_b_secret =
-  (* The DH outputs match by X25519 commutativity.  In this spec, x25519 is
-     modelled as an abstract function (all outputs are create key_size 0uy),
-     so commutativity holds trivially by reflexivity.  In a full proof
-     instantiated with Spec.X25519.x25519, commutativity follows from
-     dh_commutativity_general in Spec.X25519. *)
-  ()
+  let g = Seq.create key_size 0uy in
+  (* DH1: X25519(ik_a, spk_b_pub) = X25519(spk_b, ik_a_pub) *)
+  dh_comm_1 ik_a_secret spk_b_secret g;
+  (* DH2: X25519(ek_a, ik_b_pub) = X25519(ik_b, ek_a_pub) *)
+  dh_comm_1 ek_a_secret ik_b_secret g;
+  (* DH3: X25519(ek_a, spk_b_pub) = X25519(spk_b, ek_a_pub) *)
+  dh_comm_1 ek_a_secret spk_b_secret g;
+  (* DH4 (optional): X25519(ek_a, opk_b_pub) = X25519(opk_b, ek_a_pub) *)
+  dh_comm_option ek_a_secret opk_b_secret g
 
 (** SPK verification rejects forged signatures: if verify returns false,
     the caller correctly rejects the protocol initiation. *)

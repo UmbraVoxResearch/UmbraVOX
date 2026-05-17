@@ -690,13 +690,29 @@ val scalar_mult_zero : p:ext_point
     -> Lemma (encode_point (scalar_mult 0 p) ==
               encode_point point_identity)
 let scalar_mult_zero p =
-  admit()
+  (* int_bit_len 0 = 0, so bits = 0, go is called with i = -1,
+     returning point_identity immediately. *)
+  assert_norm (int_bit_len 0 = 0);
+  assert (scalar_mult 0 p == point_identity)
 
 (** [1]P = P *)
 val scalar_mult_one : p:ext_point
     -> Lemma (encode_point (scalar_mult 1 p) ==
               encode_point p)
 let scalar_mult_one p =
+  (* int_bit_len 1 = 1, bits = 1.  go(0, identity):
+     get_bit 1 0 = 1 => point_add (point_double identity) p.
+     point_double (0,1,1,0):
+       a=0, b=1, c=2, e=(1-0-1)%p=0, g=(1-0)%p=1, f=(1-2+p)%p=p-1, h=-(0+1)%p=p-1
+       => (0*(p-1), 1*(p-1), (p-1)*1, 0*(p-1)) = (0, p-1, p-1, 0)
+     point_add (0, p-1, p-1, 0) p:
+       The identity in projective form (0, p-1, p-1, 0) is equivalent to (0,1,1,0)
+       since Y/Z = (p-1)/(p-1) = 1.  After addition with p, result encodes same as p.
+     Requires group identity property - deferred. *)
+  assert_norm (int_bit_len 1 = 1);
+  assert_norm (get_bit 1 0 = 1);
+  (* The full proof requires point_add_identity_left which is a group axiom.
+     We establish the reduction and defer the final step. *)
   admit()
 
 (** Scalar multiplication distributes over addition:
@@ -864,11 +880,123 @@ val encode_decode_round_trip : pt:ext_point
 let encode_decode_round_trip pt =
   admit()
 
+(** Helper: decode_le of a byte sequence is bounded by 256^(length s). *)
+val decode_le_bound : s:seq UInt8.t
+    -> Lemma (ensures decode_le s < pow2 (8 * Seq.length s))
+             (decreases (Seq.length s))
+let rec decode_le_bound s =
+  if Seq.length s = 0 then begin
+    assert (decode_le s == 0);
+    assert_norm (pow2 0 = 1)
+  end else begin
+    let b0 = UInt8.v (Seq.index s 0) in
+    let tl = Seq.tail s in
+    decode_le_bound tl;
+    (* decode_le s = b0 + 256 * decode_le tl
+       b0 < 256, decode_le tl < pow2(8*(len-1))
+       so decode_le s < 256 + 256 * pow2(8*(len-1))
+                      = 256 * (1 + pow2(8*(len-1)))
+                      <= 256 * pow2(8*(len-1))  ... not quite
+       Actually: b0 <= 255, decode_le tl <= pow2(8*(len-1)) - 1
+       so decode_le s <= 255 + 256 * (pow2(8*(len-1)) - 1)
+                       = 255 + 256 * pow2(8*(len-1)) - 256
+                       = 256 * pow2(8*(len-1)) - 1
+                       = pow2(8 + 8*(len-1)) - 1
+                       = pow2(8*len) - 1
+                       < pow2(8*len) *)
+    assert (b0 < 256);
+    assert (decode_le tl < pow2 (8 * Seq.length tl));
+    assert (Seq.length tl = Seq.length s - 1);
+    FStar.Math.Lemmas.pow2_plus 8 (8 * (Seq.length s - 1));
+    assert_norm (8 * Seq.length s = 8 + 8 * (Seq.length s - 1))
+  end
+
+(** Helper: digit decomposition for mod.
+    v % (256 * m) = (v % 256) + 256 * ((v / 256) % m) for m > 0. *)
+val mod_digit_decomposition : v:nat -> m:pos
+    -> Lemma (v % (256 * m) = (v % 256) + 256 * ((v / 256) % m))
+#push-options "--z3rlimit 200"
+let mod_digit_decomposition v m =
+  FStar.Math.Lemmas.euclidean_division_definition v 256;
+  FStar.Math.Lemmas.euclidean_division_definition (v / 256) m;
+  let q = (v / 256) / m in
+  let r_low = v % 256 in
+  let r_mid = (v / 256) % m in
+  let r = 256 * r_mid + r_low in
+  assert (r_mid < m);
+  assert (r_low < 256);
+  assert (r < 256 * m);
+  assert (v == (256 * m) * q + r);
+  (* v / (256*m) = q and v % (256*m) = r by the division algorithm. *)
+  FStar.Math.Lemmas.lemma_div_mod v (256 * m);
+  (* lemma_div_mod: v = (256*m) * (v / (256*m)) + v % (256*m)
+     We also have: v = (256*m) * q + r with 0 <= r < 256*m.
+     Z3 can derive v % (256*m) = r from these two facts. *)
+  assert (v % (256 * m) < 256 * m);
+  assert ((256 * m) * (v / (256 * m)) + v % (256 * m) == (256 * m) * q + r)
+#pop-options
+
+(** decode_le(encode_le_n(k, v)) = v mod 2^(8*k) for any k, v. *)
+#push-options "--z3rlimit 100"
+val decode_encode_le_aux : k:nat -> v:nat
+    -> Lemma (ensures decode_le (encode_le_n k v) == v % pow2 (8 * k))
+             (decreases k)
+let rec decode_encode_le_aux k v =
+  if k = 0 then begin
+    assert (Seq.length (encode_le_n 0 v) = 0);
+    assert (decode_le (encode_le_n 0 v) == 0);
+    assert_norm (pow2 0 = 1);
+    assert (v % pow2 (8 * 0) == v % 1);
+    assert (v % 1 == 0)
+  end else begin
+    let s = encode_le_n k v in
+    assert (Seq.length s = k);
+    (* First byte: (v / pow2 (8*0)) % 256 = v % 256 since pow2 0 = 1 *)
+    assert_norm (pow2 (8 * 0) = 1);
+    assert_norm (pow2 8 = 256);
+    assert (Seq.index s 0 == FStar.UInt8.uint_to_t ((v / pow2 (8 * 0)) % 256));
+    assert (UInt8.v (Seq.index s 0) = v % 256);
+    (* Tail of s: each element tl[i] = s[i+1] = uint_to_t((v / pow2(8*(i+1))) % 256)
+       encode_le_n (k-1) (v/256): element i = uint_to_t(((v/256) / pow2(8*i)) % 256)
+       These match because v/256 / pow2(8*i) = v / (256 * pow2(8*i)) = v / pow2(8+8*i) = v / pow2(8*(i+1)). *)
+    let tl = Seq.tail s in
+    assert (Seq.length tl = k - 1);
+    let shifted = encode_le_n (k - 1) (v / 256) in
+    (* Show element-wise equality *)
+    let aux (i:nat{i < k - 1}) : Lemma (Seq.index tl i == Seq.index shifted i) =
+      assert (Seq.index tl i == Seq.index s (i + 1));
+      assert (Seq.index s (i + 1) == FStar.UInt8.uint_to_t ((v / pow2 (8 * (i + 1))) % 256));
+      assert (Seq.index shifted i == FStar.UInt8.uint_to_t (((v / 256) / pow2 (8 * i)) % 256));
+      FStar.Math.Lemmas.pow2_plus 8 (8 * i);
+      FStar.Math.Lemmas.division_multiplication_lemma v 256 (pow2 (8 * i));
+      assert_norm (8 * (i + 1) = 8 + 8 * i);
+      assert (pow2 (8 * (i + 1)) = 256 * pow2 (8 * i));
+      assert (v / pow2 (8 * (i + 1)) = v / (256 * pow2 (8 * i)));
+      FStar.Math.Lemmas.division_multiplication_lemma v 256 (pow2 (8 * i))
+    in
+    FStar.Classical.forall_intro aux;
+    assert (Seq.equal tl shifted);
+    (* Inductive hypothesis *)
+    decode_encode_le_aux (k - 1) (v / 256);
+    assert (decode_le shifted == (v / 256) % pow2 (8 * (k - 1)));
+    (* decode_le s = v%256 + 256 * ((v/256) % pow2(8*(k-1)))
+       We need: this equals v % pow2(8*k).
+       pow2(8*k) = 256 * pow2(8*(k-1)) by pow2_plus. *)
+    assert_norm (8 * k = 8 + 8 * (k - 1));
+    FStar.Math.Lemmas.pow2_plus 8 (8 * (k - 1));
+    assert (pow2 (8 * k) = 256 * pow2 (8 * (k - 1)));
+    mod_digit_decomposition v (pow2 (8 * (k - 1)))
+  end
+#pop-options
+
 (** decode_le(encode_le_32(n)) = n for n < 2^256 *)
 val decode_encode_le_round_trip : n:nat{n < pow2 256}
     -> Lemma (decode_le (encode_le_32 n) == n)
 let decode_encode_le_round_trip n =
-  admit()
+  decode_encode_le_aux 32 n;
+  assert (decode_le (encode_le_32 n) == n % pow2 (8 * 32));
+  assert_norm (8 * 32 = 256);
+  assert (n % pow2 256 == n)
 
 (** -------------------------------------------------------------------- **)
 (** Output length properties                                              **)
@@ -912,6 +1040,36 @@ let clamp_bit254_set s =
   let cs = clamp_scalar s in
   assert (Seq.index cs 31 == b31')
 
+(** The clamped scalar always has bit 255 clear (byte 31 < 128).
+    This ensures the scalar is < 2^255. *)
+val clamp_bit255_clear : s:seq UInt8.t{Seq.length s >= 32}
+    -> Lemma (let cs = clamp_scalar s in
+              UInt8.v (Seq.index cs 31) < 128)
+let clamp_bit255_clear s =
+  let first32 = Seq.slice s 0 32 in
+  let b31 = Seq.index first32 31 in
+  let x   = FStar.UInt8.logand b31 127uy in
+  (* logand with 127 = 0b01111111 clears bit 7, so x < 128. *)
+  assert (UInt8.v x = FStar.UInt.logand (UInt8.v b31) 127);
+  assert (UInt8.v x < 128);
+  let b31' = FStar.UInt8.logor x 64uy in
+  (* logor with 64 = 0b01000000 sets bit 6 but does not set bit 7.
+     Since x < 128, bit 7 of x is 0, and 64 has bit 7 = 0, so
+     the result has bit 7 = 0, meaning b31' < 128. *)
+  assert (UInt8.v b31' = FStar.UInt.logor (UInt8.v x) 64);
+  assert (UInt8.v b31' < 128);
+  let cs = clamp_scalar s in
+  assert (Seq.index cs 31 == b31')
+
+(** The clamped scalar byte 31 is between 64 and 127 inclusive.
+    Combines bit254_set and bit255_clear. *)
+val clamp_byte31_range : s:seq UInt8.t{Seq.length s >= 32}
+    -> Lemma (let cs = clamp_scalar s in
+              64 <= UInt8.v (Seq.index cs 31) /\ UInt8.v (Seq.index cs 31) < 128)
+let clamp_byte31_range s =
+  clamp_bit254_set s;
+  clamp_bit255_clear s
+
 (** The clamped scalar is always a multiple of 8 (lowest 3 bits cleared). *)
 val clamp_multiple_of_8 : s:seq UInt8.t{Seq.length s >= 32}
     -> Lemma (let cs = clamp_scalar s in
@@ -932,18 +1090,55 @@ let clamp_multiple_of_8 s =
 val clamp_idempotent : s:seq UInt8.t{Seq.length s >= 32}
     -> Lemma (let cs = clamp_scalar s in
               Seq.length cs = 32 /\ clamp_scalar cs == cs)
+#push-options "--z3rlimit 100"
 let clamp_idempotent s =
   let cs = clamp_scalar s in
-  (* clamp_scalar_length gives Seq.length cs = 32 *)
   assert (Seq.length cs = 32);
-  (* Idempotency: applying the same bit-mask operations again is a no-op.
-     byte 0: (x .& 248) .& 248 = x .& 248  (idempotent AND mask)
-     byte 31: ((x .& 127) .| 64) maps to same value: the bit pattern has
-       bit 6 set, bit 7 clear, so applying the mask again is unchanged.
-     Middle bytes: unchanged by clamp.
-     The full Seq.eq proof requires case analysis on all 32 bytes; we rely
-     on Z3 with sufficient rlimit. *)
-  admit()
+  (* Establish what cs looks like: cs = [b0'] ++ mid ++ [b31']
+     where b0' = logand (index (slice s 0 32) 0) 248uy
+     and   b31' = logor (logand (index (slice s 0 32) 31) 127uy) 64uy
+     and   mid = slice (slice s 0 32) 1 31. *)
+  let first32 = Seq.slice s 0 32 in
+  let b0  = Seq.index first32 0 in
+  let b31 = Seq.index first32 31 in
+  let b0' = FStar.UInt8.logand b0 248uy in
+  let x31 = FStar.UInt8.logand b31 127uy in
+  let b31' = FStar.UInt8.logor x31 64uy in
+  let mid = Seq.slice first32 1 31 in
+  (* cs = append [b0'] (append mid [b31']), length 32 *)
+  assert (cs == Seq.append (Seq.create 1 b0') (Seq.append mid (Seq.create 1 b31')));
+  (* Now apply clamp_scalar to cs.  It takes slice cs 0 32 = cs,
+     then index 0 = b0' and index 31 = b31'. *)
+  assert (Seq.slice cs 0 32 == cs);
+  assert (Seq.index cs 0 == b0');
+  assert (Seq.index cs 31 == b31');
+  (* Re-clamping byte 0: logand is idempotent for any mask m: (x & m) & m = x & m.
+     For 8-bit values, Z3's bitvector theory handles this. *)
+  assert (FStar.UInt8.logand b0' 248uy == b0');
+  (* Re-clamping byte 31: first logand b31' 127uy.
+     b31' = logor x31 64uy where x31 = logand b31 127uy, so x31 < 128.
+     logor x31 64uy sets bit 6; result has bit 7 = 0 (since x31 < 128 and 64 < 128).
+     logand (logor x31 64uy) 127uy = logor x31 64uy (bit 7 already clear).
+     Wait -- logand with 127 clears bit 7.  Since b31' has bit 7 = 0:
+     logand b31' 127uy = b31'.  But clamp takes logand _ 127uy to get x31',
+     then logor x31' 64uy.  So x31' = logand b31' 127uy.
+     Since b31' = logor x31 64uy and x31 < 128:
+       logand (logor x31 64uy) 127uy = logor x31 64uy when bit7=0
+       Hmm, not quite -- logand _ 127 clears bit 7, preserves bits 0-6.
+       logor x31 64uy has bits 0-6 from x31 OR'd with 64 (bit 6 set), bit 7 = 0.
+       So logand (logor x31 64uy) 127uy = logor x31 64uy = b31'.
+     Then logor b31' 64uy = b31' since bit 6 is already set. *)
+  let x31' = FStar.UInt8.logand b31' 127uy in
+  assert (x31' == b31');
+  let b31'' = FStar.UInt8.logor x31' 64uy in
+  assert (b31'' == b31');
+  (* Middle bytes: slice cs 1 31 = mid (same as original). *)
+  let mid' = Seq.slice cs 1 31 in
+  assert (Seq.equal mid' mid);
+  (* Therefore clamp_scalar cs = append [b0'] (append mid [b31']) = cs *)
+  let cs2 = clamp_scalar cs in
+  assert (Seq.equal cs2 cs)
+#pop-options
 
 (** -------------------------------------------------------------------- **)
 (** KAT Test Vectors (RFC 8032 Section 7.1)                               **)

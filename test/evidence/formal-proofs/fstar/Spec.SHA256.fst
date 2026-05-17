@@ -771,6 +771,168 @@ val maj_identity : x:UInt32.t -> y:UInt32.t -> z:UInt32.t
 let maj_identity x y z = ()
 
 (** -------------------------------------------------------------------- **)
+(** M13.1.1 -- Round constant verification                               **)
+(** -------------------------------------------------------------------- **)
+
+(** Verify that k_table has exactly 64 entries and each entry matches its
+    expected value from FIPS 180-4 Section 4.2.2. assert_norm forces the
+    F* normaliser to evaluate each comparison at extraction time, so Z3
+    witnesses every constant individually. *)
+val k_table_length : unit -> Lemma (Seq.length k_table = 64)
+let k_table_length () = ()
+
+(** Verify the first 16 round constants (cube roots of primes 2..53). *)
+let _ = assert_norm (Seq.index k_table 0  == 0x428a2f98ul)
+let _ = assert_norm (Seq.index k_table 1  == 0x71374491ul)
+let _ = assert_norm (Seq.index k_table 2  == 0xb5c0fbcful)
+let _ = assert_norm (Seq.index k_table 3  == 0xe9b5dba5ul)
+let _ = assert_norm (Seq.index k_table 4  == 0x3956c25bul)
+let _ = assert_norm (Seq.index k_table 5  == 0x59f111f1ul)
+let _ = assert_norm (Seq.index k_table 6  == 0x923f82a4ul)
+let _ = assert_norm (Seq.index k_table 7  == 0xab1c5ed5ul)
+let _ = assert_norm (Seq.index k_table 8  == 0xd807aa98ul)
+let _ = assert_norm (Seq.index k_table 9  == 0x12835b01ul)
+let _ = assert_norm (Seq.index k_table 10 == 0x243185beul)
+let _ = assert_norm (Seq.index k_table 11 == 0x550c7dc3ul)
+let _ = assert_norm (Seq.index k_table 12 == 0x72be5d74ul)
+let _ = assert_norm (Seq.index k_table 13 == 0x80deb1feul)
+let _ = assert_norm (Seq.index k_table 14 == 0x9bdc06a7ul)
+let _ = assert_norm (Seq.index k_table 15 == 0xc19bf174ul)
+
+(** Verify round constants 16..31 (cube roots of primes 59..127). *)
+let _ = assert_norm (Seq.index k_table 16 == 0xe49b69c1ul)
+let _ = assert_norm (Seq.index k_table 17 == 0xefbe4786ul)
+let _ = assert_norm (Seq.index k_table 18 == 0x0fc19dc6ul)
+let _ = assert_norm (Seq.index k_table 19 == 0x240ca1ccul)
+let _ = assert_norm (Seq.index k_table 20 == 0x2de92c6ful)
+let _ = assert_norm (Seq.index k_table 21 == 0x4a7484aaul)
+let _ = assert_norm (Seq.index k_table 22 == 0x5cb0a9dcul)
+let _ = assert_norm (Seq.index k_table 23 == 0x76f988daul)
+let _ = assert_norm (Seq.index k_table 24 == 0x983e5152ul)
+let _ = assert_norm (Seq.index k_table 25 == 0xa831c66dul)
+let _ = assert_norm (Seq.index k_table 26 == 0xb00327c8ul)
+let _ = assert_norm (Seq.index k_table 27 == 0xbf597fc7ul)
+let _ = assert_norm (Seq.index k_table 28 == 0xc6e00bf3ul)
+let _ = assert_norm (Seq.index k_table 29 == 0xd5a79147ul)
+let _ = assert_norm (Seq.index k_table 30 == 0x06ca6351ul)
+let _ = assert_norm (Seq.index k_table 31 == 0x14292967ul)
+
+(** Verify round constants 32..47 (cube roots of primes 131..211). *)
+let _ = assert_norm (Seq.index k_table 32 == 0x27b70a85ul)
+let _ = assert_norm (Seq.index k_table 33 == 0x2e1b2138ul)
+let _ = assert_norm (Seq.index k_table 34 == 0x4d2c6dfcul)
+let _ = assert_norm (Seq.index k_table 35 == 0x53380d13ul)
+let _ = assert_norm (Seq.index k_table 36 == 0x650a7354ul)
+let _ = assert_norm (Seq.index k_table 37 == 0x766a0abbul)
+let _ = assert_norm (Seq.index k_table 38 == 0x81c2c92eul)
+let _ = assert_norm (Seq.index k_table 39 == 0x92722c85ul)
+let _ = assert_norm (Seq.index k_table 40 == 0xa2bfe8a1ul)
+let _ = assert_norm (Seq.index k_table 41 == 0xa81a664bul)
+let _ = assert_norm (Seq.index k_table 42 == 0xc24b8b70ul)
+let _ = assert_norm (Seq.index k_table 43 == 0xc76c51a3ul)
+let _ = assert_norm (Seq.index k_table 44 == 0xd192e819ul)
+let _ = assert_norm (Seq.index k_table 45 == 0xd6990624ul)
+let _ = assert_norm (Seq.index k_table 46 == 0xf40e3585ul)
+let _ = assert_norm (Seq.index k_table 47 == 0x106aa070ul)
+
+(** Verify round constants 48..63 (cube roots of primes 223..311). *)
+let _ = assert_norm (Seq.index k_table 48 == 0x19a4c116ul)
+let _ = assert_norm (Seq.index k_table 49 == 0x1e376c08ul)
+let _ = assert_norm (Seq.index k_table 50 == 0x2748774cul)
+let _ = assert_norm (Seq.index k_table 51 == 0x34b0bcb5ul)
+let _ = assert_norm (Seq.index k_table 52 == 0x391c0cb3ul)
+let _ = assert_norm (Seq.index k_table 53 == 0x4ed8aa4aul)
+let _ = assert_norm (Seq.index k_table 54 == 0x5b9cca4ful)
+let _ = assert_norm (Seq.index k_table 55 == 0x682e6ff3ul)
+let _ = assert_norm (Seq.index k_table 56 == 0x748f82eeul)
+let _ = assert_norm (Seq.index k_table 57 == 0x78a5636ful)
+let _ = assert_norm (Seq.index k_table 58 == 0x84c87814ul)
+let _ = assert_norm (Seq.index k_table 59 == 0x8cc70208ul)
+let _ = assert_norm (Seq.index k_table 60 == 0x90befffaul)
+let _ = assert_norm (Seq.index k_table 61 == 0xa4506cebul)
+let _ = assert_norm (Seq.index k_table 62 == 0xbef9a3f7ul)
+let _ = assert_norm (Seq.index k_table 63 == 0xc67178f2ul)
+
+(** -------------------------------------------------------------------- **)
+(** M13.1.1 -- Bitwise properties of ch, maj, bsig, ssig                 **)
+(** -------------------------------------------------------------------- **)
+
+(** Ch is idempotent when x selects y: Ch(0xFFFFFFFF, y, z) = y.
+    Proved by Z3 via the UInt32 bitvector theory: logand(0xFFFFFFFF, y) = y,
+    lognot(0xFFFFFFFF) = 0, logand(0, z) = 0, y XOR 0 = y. *)
+val ch_all_ones : y:UInt32.t -> z:UInt32.t
+    -> Lemma (ch 0xFFFFFFFFul y z == y)
+let ch_all_ones y z = ()
+
+(** Ch selects z when x is zero: Ch(0x00000000, y, z) = z.
+    Proved by Z3: logand(0, y) = 0, lognot(0) = 0xFFFFFFFF,
+    logand(0xFFFFFFFF, z) = z, 0 XOR z = z. *)
+val ch_all_zeros : y:UInt32.t -> z:UInt32.t
+    -> Lemma (ch 0x00000000ul y z == z)
+let ch_all_zeros y z = ()
+
+(** Maj with all equal inputs returns the input: Maj(x, x, x) = x.
+    Proved by Z3: logand(x, x) = x, x XOR x = 0, x XOR 0 = x. *)
+val maj_equal_inputs : x:UInt32.t
+    -> Lemma (maj x x x == x)
+let maj_equal_inputs x = ()
+
+(** bsig0 structural identity: Big Sigma_0(x) = ROTR^2(x) XOR ROTR^13(x) XOR ROTR^22(x) *)
+val bsig0_identity : x:UInt32.t
+    -> Lemma (bsig0 x == UInt32.logxor (UInt32.rotate_right x 2ul)
+                (UInt32.logxor (UInt32.rotate_right x 13ul)
+                               (UInt32.rotate_right x 22ul)))
+let bsig0_identity x = ()
+
+(** bsig1 structural identity: Big Sigma_1(x) = ROTR^6(x) XOR ROTR^11(x) XOR ROTR^25(x) *)
+val bsig1_identity : x:UInt32.t
+    -> Lemma (bsig1 x == UInt32.logxor (UInt32.rotate_right x 6ul)
+                (UInt32.logxor (UInt32.rotate_right x 11ul)
+                               (UInt32.rotate_right x 25ul)))
+let bsig1_identity x = ()
+
+(** ssig0 structural identity: Small sigma_0(x) = ROTR^7(x) XOR ROTR^18(x) XOR SHR^3(x) *)
+val ssig0_identity : x:UInt32.t
+    -> Lemma (ssig0 x == UInt32.logxor (UInt32.rotate_right x 7ul)
+                (UInt32.logxor (UInt32.rotate_right x 18ul)
+                               (UInt32.shift_right x 3ul)))
+let ssig0_identity x = ()
+
+(** ssig1 structural identity: Small sigma_1(x) = ROTR^17(x) XOR ROTR^19(x) XOR SHR^10(x) *)
+val ssig1_identity : x:UInt32.t
+    -> Lemma (ssig1 x == UInt32.logxor (UInt32.rotate_right x 17ul)
+                (UInt32.logxor (UInt32.rotate_right x 19ul)
+                               (UInt32.shift_right x 10ul)))
+let ssig1_identity x = ()
+
+(** bsig0/bsig1 on zero: all rotations/xors of zero produce zero *)
+val bsig0_zero : unit -> Lemma (bsig0 0x00000000ul == 0x00000000ul)
+let bsig0_zero () = assert_norm (bsig0 0x00000000ul == 0x00000000ul)
+
+val bsig1_zero : unit -> Lemma (bsig1 0x00000000ul == 0x00000000ul)
+let bsig1_zero () = assert_norm (bsig1 0x00000000ul == 0x00000000ul)
+
+val ssig0_zero : unit -> Lemma (ssig0 0x00000000ul == 0x00000000ul)
+let ssig0_zero () = assert_norm (ssig0 0x00000000ul == 0x00000000ul)
+
+val ssig1_zero : unit -> Lemma (ssig1 0x00000000ul == 0x00000000ul)
+let ssig1_zero () = assert_norm (ssig1 0x00000000ul == 0x00000000ul)
+
+(** -------------------------------------------------------------------- **)
+(** M13.1.1 -- Initial hash value verification                           **)
+(** -------------------------------------------------------------------- **)
+
+(** Verify all 8 initial hash values (FIPS 180-4 Section 5.3.3). *)
+let _ = assert_norm (Seq.index init_hash 0 == 0x6a09e667ul)
+let _ = assert_norm (Seq.index init_hash 1 == 0xbb67ae85ul)
+let _ = assert_norm (Seq.index init_hash 2 == 0x3c6ef372ul)
+let _ = assert_norm (Seq.index init_hash 3 == 0xa54ff53aul)
+let _ = assert_norm (Seq.index init_hash 4 == 0x510e527ful)
+let _ = assert_norm (Seq.index init_hash 5 == 0x9b05688cul)
+let _ = assert_norm (Seq.index init_hash 6 == 0x1f83d9abul)
+let _ = assert_norm (Seq.index init_hash 7 == 0x5be0cd19ul)
+
+(** -------------------------------------------------------------------- **)
 (** M6.3.3 -- Equivalence lemmas for round-state transitions             **)
 (** -------------------------------------------------------------------- **)
 
@@ -829,10 +991,174 @@ let schedule_low_words_spec block t =
   assert (Seq.index (schedule block) t = Seq.index p16 t)
 #pop-options
 
+(** Build the schedule one word at a time, starting from a prefix of length n. *)
+let rec schedule_step (prefix : seq UInt32.t)
+                      (n : nat{16 <= n /\ n <= 64 /\ Seq.length prefix = n})
+    : Tot (s:seq UInt32.t{Seq.length s = 64}) (decreases (64 - n)) =
+  if n = 64 then prefix
+  else
+    let wt = next_schedule_word prefix n in
+    let prefix' = Seq.snoc prefix wt in
+    schedule_step prefix' (n + 1)
+
+(** Snoc preserves earlier indices. *)
+val snoc_index_lo : #a:Type -> s:seq a -> x:a -> i:nat{i < Seq.length s}
+    -> Lemma (Seq.index (Seq.snoc s x) i == Seq.index s i)
+let snoc_index_lo #a s x i =
+  Seq.lemma_index_app1 s (Seq.create 1 x) i
+
+(** Snoc gives x at the last position. *)
+val snoc_index_hi : #a:Type -> s:seq a -> x:a
+    -> Lemma (Seq.index (Seq.snoc s x) (Seq.length s) == x)
+let snoc_index_hi #a s x =
+  Seq.lemma_index_app2 s (Seq.create 1 x) (Seq.length s)
+
+(** schedule_step preserves earlier indices from the prefix. *)
+val schedule_step_preserves : prefix:seq UInt32.t
+    -> n:nat{16 <= n /\ n <= 64 /\ Seq.length prefix = n}
+    -> i:nat{i < n}
+    -> Lemma (ensures Seq.index (schedule_step prefix n) i == Seq.index prefix i)
+             (decreases (64 - n))
+let rec schedule_step_preserves prefix n i =
+  if n = 64 then ()
+  else begin
+    let wt = next_schedule_word prefix n in
+    let prefix' = Seq.snoc prefix wt in
+    snoc_index_lo prefix wt i;
+    schedule_step_preserves prefix' (n + 1) i
+  end
+
+(** The newly-appended word at position n satisfies the FIPS formula
+    relative to the final 64-word schedule produced by schedule_step. *)
+val schedule_step_new_word : prefix:seq UInt32.t
+    -> n:nat{16 <= n /\ n < 64 /\ Seq.length prefix = n}
+    -> Lemma (
+         let w = schedule_step prefix n in
+         Seq.index w n ==
+           UInt32.add_mod
+             (UInt32.add_mod (ssig1 (Seq.index w (n - 2))) (Seq.index w (n - 7)))
+             (UInt32.add_mod (ssig0 (Seq.index w (n - 15))) (Seq.index w (n - 16)))
+       )
+let schedule_step_new_word prefix n =
+  let wt = next_schedule_word prefix n in
+  let prefix' = Seq.snoc prefix wt in
+  (* schedule_step prefix n = schedule_step prefix' (n+1) by definition.
+     index n of the result = index n of prefix' by preservation. *)
+  schedule_step_preserves prefix' (n + 1) n;
+  snoc_index_hi prefix wt;
+  (* Seq.index prefix' n == wt == next_schedule_word prefix n
+     next_schedule_word uses indices (n-2), (n-7), (n-15), (n-16) from prefix.
+     Show those indices in the final schedule equal those in prefix. *)
+  schedule_step_preserves prefix' (n + 1) (n - 2);
+  schedule_step_preserves prefix' (n + 1) (n - 7);
+  schedule_step_preserves prefix' (n + 1) (n - 15);
+  schedule_step_preserves prefix' (n + 1) (n - 16);
+  snoc_index_lo prefix wt (n - 2);
+  snoc_index_lo prefix wt (n - 7);
+  snoc_index_lo prefix wt (n - 15);
+  snoc_index_lo prefix wt (n - 16)
+
+(** Build the prefix of the schedule up to length m, starting from prefix of length n.
+    Returns the prefix of length m such that schedule_step on it gives the same
+    final 64-word schedule. *)
+let rec schedule_prefix_upto (prefix : seq UInt32.t)
+                             (n : nat{16 <= n /\ n <= 64 /\ Seq.length prefix = n})
+                             (m : nat{n <= m /\ m <= 64})
+    : Tot (s:seq UInt32.t{Seq.length s = m}) (decreases (m - n)) =
+  if n = m then prefix
+  else
+    let wt = next_schedule_word prefix n in
+    let prefix' = Seq.snoc prefix wt in
+    schedule_prefix_upto prefix' (n + 1) m
+
+(** schedule_step from prefix n equals schedule_step from any extended prefix m. *)
+val schedule_step_from_prefix : prefix:seq UInt32.t
+    -> n:nat{16 <= n /\ n <= 64 /\ Seq.length prefix = n}
+    -> m:nat{n <= m /\ m <= 64}
+    -> Lemma (ensures schedule_step prefix n ==
+                     schedule_step (schedule_prefix_upto prefix n m) m)
+             (decreases (m - n))
+let rec schedule_step_from_prefix prefix n m =
+  if n = m then ()
+  else begin
+    let wt = next_schedule_word prefix n in
+    let prefix' = Seq.snoc prefix wt in
+    (* schedule_step prefix n = schedule_step prefix' (n+1) by definition *)
+    (* schedule_prefix_upto prefix n m = schedule_prefix_upto prefix' (n+1) m by definition *)
+    schedule_step_from_prefix prefix' (n + 1) m
+  end
+
+(** The chunk-based schedule_prefix32 equals schedule_step from 16 to 32. *)
+val schedule_prefix32_eq : prefix:seq UInt32.t{Seq.length prefix = 16}
+    -> Lemma (schedule_prefix32 prefix == schedule_prefix_upto prefix 16 32)
+#push-options "--z3rlimit 80000 --fuel 60 --ifuel 0"
+let schedule_prefix32_eq prefix = ()
+#pop-options
+
+(** The chunk-based schedule_prefix48 equals schedule_prefix_upto from 32 to 48. *)
+val schedule_prefix48_eq : prefix:seq UInt32.t{Seq.length prefix = 32}
+    -> Lemma (schedule_prefix48 prefix == schedule_prefix_upto prefix 32 48)
+#push-options "--z3rlimit 80000 --fuel 60 --ifuel 0"
+let schedule_prefix48_eq prefix = ()
+#pop-options
+
+(** The chunk-based schedule_prefix64 equals schedule_prefix_upto from 48 to 64. *)
+val schedule_prefix64_eq : prefix:seq UInt32.t{Seq.length prefix = 48}
+    -> Lemma (schedule_prefix64 prefix == schedule_prefix_upto prefix 48 64)
+#push-options "--z3rlimit 80000 --fuel 60 --ifuel 0"
+let schedule_prefix64_eq prefix = ()
+#pop-options
+
+(** schedule_prefix_upto composes: going from n to m, then m to k,
+    equals going directly from n to k. *)
+val schedule_prefix_upto_compose : prefix:seq UInt32.t
+    -> n:nat{16 <= n /\ n <= 64 /\ Seq.length prefix = n}
+    -> m:nat{n <= m /\ m <= 64}
+    -> k:nat{m <= k /\ k <= 64}
+    -> Lemma (ensures schedule_prefix_upto (schedule_prefix_upto prefix n m) m k ==
+                     schedule_prefix_upto prefix n k)
+             (decreases (m - n))
+let rec schedule_prefix_upto_compose prefix n m k =
+  if n = m then ()
+  else begin
+    let wt = next_schedule_word prefix n in
+    let prefix' = Seq.snoc prefix wt in
+    schedule_prefix_upto_compose prefix' (n + 1) m k
+  end
+
+(** The full schedule equals schedule_step starting from the initial 16 words.
+    Proof: decompose both sides through schedule_prefix_upto, which is the
+    step-by-step analogue of both schedule and schedule_step. *)
+val schedule_eq_step : block:seq UInt8.t{Seq.length block = block_size}
+    -> Lemma (schedule block == schedule_step (initial_schedule_prefix block) 16)
+#push-options "--z3rlimit 40000 --fuel 2 --ifuel 0"
+let schedule_eq_step block =
+  let p16 = initial_schedule_prefix block in
+  (* Show: schedule block == schedule_prefix_upto p16 16 64 *)
+  schedule_prefix32_eq p16;
+  let p32 = schedule_prefix32 p16 in
+  assert (p32 == schedule_prefix_upto p16 16 32);
+  schedule_prefix48_eq p32;
+  let p48 = schedule_prefix48 p32 in
+  (* p48 == schedule_prefix_upto p32 32 48 == schedule_prefix_upto (schedule_prefix_upto p16 16 32) 32 48 *)
+  schedule_prefix_upto_compose p16 16 32 48;
+  assert (p48 == schedule_prefix_upto p16 16 48);
+  schedule_prefix64_eq p48;
+  let p64 = schedule_prefix64 p48 in
+  schedule_prefix_upto_compose p16 16 48 64;
+  assert (p64 == schedule_prefix_upto p16 16 64);
+  assert (schedule block == p64);
+  (* Show: schedule_step p16 16 == schedule_prefix_upto p16 16 64 *)
+  schedule_step_from_prefix p16 16 64;
+  (* schedule_step p16 16 == schedule_step (schedule_prefix_upto p16 16 64) 64
+                           == schedule_prefix_upto p16 16 64  (since schedule_step _ 64 = id) *)
+  assert (schedule_step p16 16 == schedule_prefix_upto p16 16 64)
+#pop-options
+
 (** Lemma 2b: Schedule words for t = 16..63 satisfy the recursive expansion
     formula from FIPS 180-4 Section 6.2.2:
     W[t] = sigma1(W[t-2]) + W[t-7] + sigma0(W[t-15]) + W[t-16]    (mod 2^32)
-    This states the property formally; Z3 discharges it via admit. *)
+    Z3-discharged via inductive snoc-preservation over schedule_step. *)
 val schedule_high_words_spec : block:seq UInt8.t{Seq.length block = block_size}
     -> t:nat{16 <= t /\ t < 64}
     -> Lemma (
@@ -842,11 +1168,18 @@ val schedule_high_words_spec : block:seq UInt8.t{Seq.length block = block_size}
              (UInt32.add_mod (ssig1 (Seq.index w (t - 2))) (Seq.index w (t - 7)))
              (UInt32.add_mod (ssig0 (Seq.index w (t - 15))) (Seq.index w (t - 16)))
        )
-(* Z3 timeout at rlimit 80000 for abstract t: the snoc-chain unfolding of the
-   schedule requires Z3 to perform 48 case-splits, which diverges.
-   A full proof requires an inductive snoc-preservation lemma (tactic-based). *)
+#push-options "--z3rlimit 80000"
 let schedule_high_words_spec block t =
-  admit()
+  let p16 = initial_schedule_prefix block in
+  schedule_eq_step block;
+  (* schedule block == schedule_step p16 16 *)
+  (* Build the prefix of length t from schedule_step *)
+  let prefix_t = schedule_prefix_upto p16 16 t in
+  (* schedule_step p16 16 == schedule_step prefix_t t *)
+  schedule_step_from_prefix p16 16 t;
+  (* Now use schedule_step_new_word on prefix_t *)
+  schedule_step_new_word prefix_t t
+#pop-options
 
 (** Lemma 3: The compression function output at each index equals
     initial-hash word + working-state word (mod 2^32).

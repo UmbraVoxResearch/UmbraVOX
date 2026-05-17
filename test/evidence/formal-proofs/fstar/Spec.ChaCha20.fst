@@ -103,11 +103,38 @@ let double_round (s : state) : state =
   let s7 = state_qr s6  2  7  8 13 in
   state_qr s7 3  4  9 14
 
+(** Lemma: state_qr preserves state length (16 words).
+    Proof: upd preserves seq length; four upd calls on a length-16 seq
+    yield a length-16 seq.  Z3 discharges via the refinement on Seq.upd. *)
+val state_qr_preserves_length :
+  s:state ->
+  ai:nat{ai < 16} -> bi:nat{bi < 16} ->
+  ci:nat{ci < 16} -> di:nat{di < 16} ->
+  Lemma (length (state_qr s ai bi ci di) = 16)
+let state_qr_preserves_length s ai bi ci di = ()
+
+(** Lemma: double_round preserves state length.
+    Proof: 8 applications of state_qr, each preserving length = 16.
+    The type system already enforces state -> state, but this lemma
+    makes the property explicit for downstream proof consumers. *)
+val double_round_preserves_length :
+  s:state -> Lemma (length (double_round s) = 16)
+let double_round_preserves_length s = ()
+
 (** Apply n double-rounds. *)
 val n_double_rounds : n:nat -> state -> Tot state (decreases n)
 let rec n_double_rounds n s =
   if n = 0 then s
   else n_double_rounds (n - 1) (double_round s)
+
+(** Lemma: n_double_rounds preserves state length for any n.
+    Proof: by induction on n; double_round preserves length at each step. *)
+val n_double_rounds_preserves_length :
+  n:nat -> s:state -> Lemma (ensures (length (n_double_rounds n s) = 16))
+                            (decreases n)
+let rec n_double_rounds_preserves_length n s =
+  if n = 0 then ()
+  else n_double_rounds_preserves_length (n - 1) (double_round s)
 
 (** -------------------------------------------------------------------- **)
 (** Initial state construction                                            **)
@@ -213,6 +240,14 @@ let serialize_state (st : state) : (r:seq UInt8.t{length r = block_size}) =
   r
 #pop-options
 
+(** Lemma: serialize_state always produces exactly 64 bytes (= block_size).
+    Proof: discharged by the return-type refinement on serialize_state.
+    Each le_uint32_to_bytes produces 4 bytes; 16 words * 4 = 64.
+    Z3 resolves the append-chain lengths via SMTPat on Seq.length_append. *)
+val serialize_state_length :
+  st:state -> Lemma (length (serialize_state st) = block_size)
+let serialize_state_length st = ()
+
 (** Pointwise map2 over sequences of equal length.
     Defined concretely using Seq.init. *)
 val seq_map2 : (UInt32.t -> UInt32.t -> UInt32.t)
@@ -279,6 +314,18 @@ let rec chacha20_encrypt key nonce counter plaintext =
         (chacha20_encrypt key nonce (UInt32.add_mod counter 1ul) rest)
 #pop-options
 
+(** Lemma: chacha20_encrypt preserves plaintext length.
+    Proof: discharged by the return-type refinement (length ct = length plaintext).
+    Termination: structural recursion on (length plaintext), strictly decreasing
+    because slice drops block_size bytes each iteration (block_size = 64 > 0). *)
+val chacha20_encrypt_length :
+  key:seq UInt8.t{length key = key_size} ->
+  nonce:seq UInt8.t{length nonce = nonce_size} ->
+  counter:UInt32.t ->
+  plaintext:seq UInt8.t ->
+  Lemma (length (chacha20_encrypt key nonce counter plaintext) = length plaintext)
+let chacha20_encrypt_length key nonce counter plaintext = ()
+
 (** Helper: xor_with_keystream is involutory.
     xor_with_keystream (xor_with_keystream pt ks) ks = pt
     Proof: pointwise by FStar.UInt.logxor_inv (a = xor(xor(a,b),b)),
@@ -315,27 +362,75 @@ let xor_involutory pt ks =
     Proof by structural induction on length msg, mirroring the recursive
     structure of chacha20_encrypt, using:
       - xor_involutory for the single-block and partial-block cases
-      - FStar.Seq.Properties.append_slices to recover slices of the ciphertext
+      - slice/append lemmas to recover slices of the ciphertext
       - the induction hypothesis for the tail *)
 val encrypt_decrypt_roundtrip :
   key:seq UInt8.t{length key = key_size} ->
   nonce:seq UInt8.t{length nonce = nonce_size} ->
   counter:UInt32.t ->
   msg:seq UInt8.t ->
-  Lemma (chacha20_encrypt key nonce counter
-           (chacha20_encrypt key nonce counter msg) = msg)
-(* Z3 timeout at rlimit 50000: the roundtrip proof requires reasoning about
-   the composed function chacha20_encrypt counter (chacha20_encrypt counter msg).
-   The proof structure is correct:
-     - length = 0: both calls produce empty, trivially equal
-     - 0 < length <= block_size: single-block case reduces to xor_involutory
-     - length > block_size: inductive step via append_slices + IH + xor_involutory
-   However, Z3 cannot close the goal because unfolding chacha20_encrypt at two
-   nested call-sites (inner and outer application) at rlimit 50000 exceeds the
-   resource limit.  The proof is semantically complete; admit() retained. *)
-#push-options "--z3rlimit 50000"
-let encrypt_decrypt_roundtrip key nonce counter msg =
-  admit()
+  Lemma (ensures (chacha20_encrypt key nonce counter
+           (chacha20_encrypt key nonce counter msg) = msg))
+        (decreases (length msg))
+#push-options "--z3rlimit 100000 --fuel 2 --ifuel 1"
+let rec encrypt_decrypt_roundtrip key nonce counter msg =
+  if length msg = 0 then
+    (* Base case: both calls produce Seq.empty *)
+    Seq.lemma_eq_elim (chacha20_encrypt key nonce counter
+                         (chacha20_encrypt key nonce counter msg)) msg
+  else
+    let ks = chacha20_block key nonce counter in
+    if length msg <= block_size then begin
+      (* Single/partial-block case:
+         ct = xor_with_keystream msg ks
+         decrypt ct = xor_with_keystream ct ks = msg   by xor_involutory *)
+      let ct = chacha20_encrypt key nonce counter msg in
+      assert (ct == xor_with_keystream msg ks);
+      assert (length ct = length msg);
+      xor_involutory msg ks;
+      (* xor_with_keystream (xor_with_keystream msg ks) ks = msg *)
+      (* ct has length <= block_size, so the outer call uses the single-block path *)
+      let result = chacha20_encrypt key nonce counter ct in
+      assert (result == xor_with_keystream ct ks);
+      Seq.lemma_eq_elim result msg
+    end
+    else begin
+      (* Multi-block inductive case *)
+      let blk  = Seq.slice msg 0 block_size in
+      let rest = Seq.slice msg block_size (length msg) in
+      let enc_blk  = xor_with_keystream blk ks in
+      let enc_rest = chacha20_encrypt key nonce (UInt32.add_mod counter 1ul) rest in
+      let ct = chacha20_encrypt key nonce counter msg in
+      (* ct = append enc_blk enc_rest *)
+      assert (ct == Seq.append enc_blk enc_rest);
+      assert (length enc_blk = block_size);
+      assert (length ct = length msg);
+      (* When decrypting ct, since length ct > block_size, we split at block_size *)
+      let ct_blk  = Seq.slice ct 0 block_size in
+      let ct_rest = Seq.slice ct block_size (length ct) in
+      (* ct_blk = slice (append enc_blk enc_rest) 0 block_size = enc_blk *)
+      Seq.lemma_eq_elim ct_blk enc_blk;
+      (* ct_rest = slice (append enc_blk enc_rest) block_size ... = enc_rest *)
+      Seq.lemma_eq_elim ct_rest enc_rest;
+      (* Decrypt first block: xor_with_keystream enc_blk ks = blk *)
+      xor_involutory blk ks;
+      let dec_blk = xor_with_keystream ct_blk ks in
+      assert (dec_blk == xor_with_keystream enc_blk ks);
+      Seq.lemma_eq_elim dec_blk blk;
+      (* Induction hypothesis on the tail *)
+      encrypt_decrypt_roundtrip key nonce (UInt32.add_mod counter 1ul) rest;
+      let dec_rest = chacha20_encrypt key nonce (UInt32.add_mod counter 1ul) ct_rest in
+      assert (dec_rest == chacha20_encrypt key nonce (UInt32.add_mod counter 1ul) enc_rest);
+      (* IH gives: chacha20_encrypt ... (chacha20_encrypt ... rest) = rest *)
+      Seq.lemma_eq_elim dec_rest rest;
+      (* Reassemble: append dec_blk dec_rest = append blk rest = msg *)
+      let result = chacha20_encrypt key nonce counter ct in
+      assert (result == Seq.append dec_blk dec_rest);
+      Seq.lemma_eq_elim (Seq.append dec_blk dec_rest) (Seq.append blk rest);
+      (* append (slice msg 0 block_size) (slice msg block_size (length msg)) = msg *)
+      Seq.lemma_eq_elim (Seq.append blk rest) msg;
+      Seq.lemma_eq_elim result msg
+    end
 #pop-options
 
 (** -------------------------------------------------------------------- **)

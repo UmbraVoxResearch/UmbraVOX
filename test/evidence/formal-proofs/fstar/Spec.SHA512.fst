@@ -516,6 +516,31 @@ val pad_length_lemma : msg:seq UInt8.t{Seq.length msg < pow2 61}
     -> Lemma (Seq.length (pad msg) % block_size = 0)
 let pad_length_lemma msg = ()
 
+(** Padding always produces at least one block *)
+val pad_nonempty_lemma : msg:seq UInt8.t{Seq.length msg < pow2 61}
+    -> Lemma (Seq.length (pad msg) >= block_size)
+#push-options "--z3rlimit 20000"
+let pad_nonempty_lemma msg =
+  let len = Seq.length msg in
+  let rem = len % block_size in
+  if rem <= 111 then begin
+    let zlen = 111 - rem in
+    FStar.Math.Lemmas.lemma_mod_lt len block_size;
+    assert (len >= rem);
+    assert (Seq.length (pad msg) = len + 1 + zlen + 16)
+  end else begin
+    let zlen = 239 - rem in
+    FStar.Math.Lemmas.lemma_mod_lt len block_size;
+    assert (len >= rem);
+    assert (Seq.length (pad msg) = len + 1 + zlen + 16)
+  end
+#pop-options
+
+(** The init_hash state has exactly 8 words *)
+val init_hash_length_lemma : unit
+    -> Lemma (Seq.length init_hash = 8)
+let init_hash_length_lemma () = ()
+
 val sha512_output_length : msg:seq UInt8.t{Seq.length msg < pow2 61}
     -> Lemma (Seq.length (sha512 msg) = hash_size)
 let sha512_output_length msg = ()
@@ -524,6 +549,24 @@ val compress_preserves_length : h:hash_state
     -> block:seq UInt8.t{Seq.length block = block_size}
     -> Lemma (Seq.length (compress h block) = 8)
 let compress_preserves_length h block = ()
+
+(** Ch satisfies the identity: Ch(x,y,z) = (x AND y) XOR (NOT x AND z) *)
+val ch_identity : x:UInt64.t -> y:UInt64.t -> z:UInt64.t
+    -> Lemma (ch x y z == UInt64.logxor (UInt64.logand x y)
+                                        (UInt64.logand (UInt64.lognot x) z))
+let ch_identity x y z = ()
+
+(** Maj satisfies the majority identity *)
+val maj_identity : x:UInt64.t -> y:UInt64.t -> z:UInt64.t
+    -> Lemma (maj x y z == UInt64.logxor (UInt64.logand x y)
+                (UInt64.logxor (UInt64.logand x z)
+                               (UInt64.logand y z)))
+let maj_identity x y z = ()
+
+(** The schedule produces exactly 80 words *)
+val schedule_length : block:seq UInt8.t{Seq.length block = block_size}
+    -> Lemma (Seq.length (schedule block) = 80)
+let schedule_length block = ()
 
 (** -------------------------------------------------------------------- **)
 (** KAT Test Vectors                                                     **)
@@ -648,6 +691,102 @@ let schedule_low_words_spec block t =
   assert (Seq.index (schedule block) t = Seq.index p16 t)
 #pop-options
 
+(** Recursive schedule prefix builder: extend from 16 words to n words,
+    one word at a time.  Used for inductive proof of schedule_high_words_spec. *)
+let rec build_schedule_prefix
+    (p : seq UInt64.t{Seq.length p >= 16})
+    (n : nat{Seq.length p <= n /\ n <= 80})
+    : Tot (s:seq UInt64.t{Seq.length s = n}) (decreases (n - Seq.length p)) =
+  if Seq.length p = n then p
+  else
+    let t = Seq.length p in
+    let p' = extend_schedule_prefix p t in
+    build_schedule_prefix p' n
+
+(** Key lemma: build_schedule_prefix preserves all indices below the
+    current prefix length.  Proved by induction on the gap. *)
+val build_prefix_preserves_index :
+    p:seq UInt64.t{Seq.length p >= 16}
+  -> n:nat{Seq.length p <= n /\ n <= 80}
+  -> i:nat{i < Seq.length p}
+  -> Lemma (ensures Seq.index (build_schedule_prefix p n) i == Seq.index p i)
+           (decreases (n - Seq.length p))
+#push-options "--z3rlimit 10000"
+let rec build_prefix_preserves_index p n i =
+  if Seq.length p = n then ()
+  else begin
+    let t = Seq.length p in
+    let p' = extend_schedule_prefix p t in
+    (* extend_schedule_prefix = Seq.snoc p (next_schedule_word p t).
+       For i < Seq.length p = t, Seq.index (Seq.snoc p _) i = Seq.index p i. *)
+    assert (Seq.index p' i == Seq.index p i);
+    build_prefix_preserves_index p' n i
+  end
+#pop-options
+
+(** Corollary: for m <= n, elements below m are the same in both prefixes. *)
+val build_prefix_monotone :
+    p:seq UInt64.t{Seq.length p >= 16}
+  -> m:nat{Seq.length p <= m /\ m <= 80}
+  -> n:nat{m <= n /\ n <= 80}
+  -> i:nat{i < m}
+  -> Lemma (ensures Seq.index (build_schedule_prefix p n) i ==
+                    Seq.index (build_schedule_prefix p m) i)
+           (decreases (m - Seq.length p))
+#push-options "--z3rlimit 10000"
+let rec build_prefix_monotone p m n i =
+  if Seq.length p = m then
+    (* build_schedule_prefix p m = p, and i < m = Seq.length p *)
+    build_prefix_preserves_index p n i
+  else begin
+    let t = Seq.length p in
+    let p' = extend_schedule_prefix p t in
+    build_prefix_monotone p' m n i
+  end
+#pop-options
+
+(** Key lemma: the element at position t in build_schedule_prefix equals
+    next_schedule_word applied to the prefix of length t.
+    When build_schedule_prefix extends past t, it first sets index t to
+    next_schedule_word, then further extensions preserve it. *)
+val build_prefix_index_at_step :
+    p:seq UInt64.t{Seq.length p >= 16}
+  -> n:nat{Seq.length p <= n /\ n <= 80}
+  -> t:nat{16 <= t /\ t < n /\ Seq.length p <= t}
+  -> Lemma (ensures (
+       let full = build_schedule_prefix p n in
+       let prefix_t = build_schedule_prefix p t in
+       Seq.index full t == next_schedule_word prefix_t t
+     ))
+     (decreases (n - Seq.length p))
+#push-options "--z3rlimit 10000"
+let rec build_prefix_index_at_step p n t =
+  if Seq.length p = t then begin
+    (* p has length t; next step adds next_schedule_word p t at index t *)
+    let p' = extend_schedule_prefix p t in
+    assert (Seq.index p' t == next_schedule_word p t);
+    (* build_schedule_prefix p n = build_schedule_prefix p' n,
+       and index t is preserved through further extensions *)
+    build_prefix_preserves_index p' n t;
+    (* build_schedule_prefix p t = p since Seq.length p = t *)
+    assert (build_schedule_prefix p t == p)
+  end else begin
+    (* Seq.length p < t; extend one step and recurse *)
+    let p' = extend_schedule_prefix p (Seq.length p) in
+    build_prefix_index_at_step p' n t
+  end
+#pop-options
+
+(** The full schedule equals build_schedule_prefix applied to the initial 16 words.
+    Both compute the same sequence of extend_schedule_prefix calls in the same order
+    (16->17->...->79).  With sufficient fuel F* normalises both to the same term. *)
+val schedule_eq_build :
+    block:seq UInt8.t{Seq.length block = block_size}
+  -> Lemma (schedule block == build_schedule_prefix (initial_schedule_prefix block) 80)
+#push-options "--z3rlimit 100000 --fuel 100 --ifuel 0"
+let schedule_eq_build block = ()
+#pop-options
+
 (** Lemma 2b: Schedule words for t = 16..79 satisfy the recursive expansion
     formula from FIPS 180-4 Section 6.4.2:
     W[t] = sigma1(W[t-2]) + W[t-7] + sigma0(W[t-15]) + W[t-16]    (mod 2^64) *)
@@ -660,11 +799,34 @@ val schedule_high_words_spec : block:seq UInt8.t{Seq.length block = block_size}
              (UInt64.add_mod (ssig1 (Seq.index w (t - 2))) (Seq.index w (t - 7)))
              (UInt64.add_mod (ssig0 (Seq.index w (t - 15))) (Seq.index w (t - 16)))
        )
-(* Z3 timeout at rlimit 80000 for abstract t: the snoc-chain unfolding of the
-   schedule requires Z3 to perform 64 case-splits, which diverges.
-   A full proof requires an inductive snoc-preservation lemma (tactic-based). *)
+#push-options "--z3rlimit 80000 --fuel 80 --ifuel 0"
 let schedule_high_words_spec block t =
-  admit()
+  let p16 = initial_schedule_prefix block in
+  let w = schedule block in
+  (* Step 1: schedule block == build_schedule_prefix p16 80 *)
+  schedule_eq_build block;
+  let built = build_schedule_prefix p16 80 in
+  assert (w == built);
+  (* Step 2: index t of built equals next_schedule_word (prefix of length t) t *)
+  build_prefix_index_at_step p16 80 t;
+  let prefix_t = build_schedule_prefix p16 t in
+  assert (Seq.index built t == next_schedule_word prefix_t t);
+  (* Step 3: next_schedule_word uses indices t-2, t-7, t-15, t-16 from prefix_t.
+     These agree with the same indices in w by build_prefix_monotone. *)
+  schedule_index_bounds prefix_t t;
+  build_prefix_monotone p16 t 80 (t - 2);
+  build_prefix_monotone p16 t 80 (t - 7);
+  build_prefix_monotone p16 t 80 (t - 15);
+  build_prefix_monotone p16 t 80 (t - 16);
+  (* Now Seq.index prefix_t (t-k) == Seq.index w (t-k) for k in {2,7,15,16} *)
+  assert (Seq.index prefix_t (t - 2) == Seq.index w (t - 2));
+  assert (Seq.index prefix_t (t - 7) == Seq.index w (t - 7));
+  assert (Seq.index prefix_t (t - 15) == Seq.index w (t - 15));
+  assert (Seq.index prefix_t (t - 16) == Seq.index w (t - 16))
+  (* Step 4: by definition, next_schedule_word prefix_t t =
+     add_mod (add_mod (ssig1 w[t-2]) w[t-7]) (add_mod (ssig0 w[t-15]) w[t-16])
+     which is exactly the goal. *)
+#pop-options
 
 (** Lemma 3: The compression function output at each index equals
     initial-hash word + working-state word (mod 2^64).

@@ -390,21 +390,20 @@ let inv_cipher_round (ks : key_schedule) (round : nat{round >= 1 /\ round < nr})
 val inv_cipher : ks:key_schedule -> st:aes_state -> Tot aes_state
 let inv_cipher (ks : key_schedule) (st : aes_state) : aes_state =
   let s0 = add_round_key ks nr st in
-  (* Invariant: r ranges from (nr-1) down to 2.
-     Each iteration requires r >= 1 /\ r < nr for inv_cipher_round.
-     We carry r < nr as a refinement: starting at nr-1 < nr, and
-     each step decrements r, so r - 1 < nr as well.
-     The loop terminates when r <= 1 (i.e. r = 1). *)
+  (* Invariant: r ranges from (nr-1) down to 1.
+     Each iteration applies inv_cipher_round ks r, matching FIPS 197 Section 5.3
+     which loops "for round = Nr-1 step -1 downto 1".
+     The loop terminates after applying round 1 (13 total inverse rounds). *)
   let rec do_rounds (s : aes_state) (r : nat{r >= 1 /\ r < nr})
       : Tot aes_state (decreases r) =
-    if r <= 1 then s
+    let s' = inv_cipher_round ks r s in
+    if r <= 1 then s'
     else
-      (* r >= 2, so r - 1 >= 1; r < nr, so r - 1 < nr *)
-      let s' = inv_cipher_round ks r s in
       do_rounds s' (r - 1)
   in
   (* nr - 1 = 13, which satisfies 1 <= 13 < 14 = nr *)
   let s_mid = do_rounds s0 (nr - 1) in
+  (* FIPS 197 final step: InvShiftRows, InvSubBytes, AddRoundKey(0) *)
   add_round_key ks 0 (inv_sub_bytes (inv_shift_rows s_mid))
 
 (** -------------------------------------------------------------------- **)
@@ -519,34 +518,269 @@ let inv_sbox_sbox_roundtrip b =
   UInt8.v_inj (sub_byte (inv_sub_byte b)) b
 #pop-options
 
-(** Encryption followed by decryption is the identity.
-    A complete proof requires showing that inv_cipher is the functional
-    inverse of cipher for any key schedule (FIPS 197 correctness theorem).
-    This is a structural lemma on the interleaving of SubBytes/ShiftRows/
-    MixColumns with their inverses across 14 rounds, requiring either a
-    tactic-based round-induction proof or a concrete KAT injectivity argument.
-    Retained as a hole pending a tactic-based proof. *)
+(** -------------------------------------------------------------------- **)
+(** Component inverse lemmas                                             **)
+(** -------------------------------------------------------------------- **)
+
+(** AddRoundKey is its own inverse: XOR is self-inverse.
+    For any state st and key schedule ks, applying add_round_key twice
+    with the same round index yields the original state. *)
+#push-options "--z3rlimit 50000"
+val add_round_key_self_inverse :
+    ks:key_schedule -> round:nat{round <= nr} -> st:aes_state
+    -> Lemma (add_round_key ks round (add_round_key ks round st) == st)
+            [SMTPat (add_round_key ks round (add_round_key ks round st))]
+let add_round_key_self_inverse ks round st =
+  assert (Seq.equal (add_round_key ks round (add_round_key ks round st)) st)
+#pop-options
+
+(** SubBytes and InvSubBytes are inverses (state-level). *)
+#push-options "--z3rlimit 100000"
+val inv_sub_bytes_sub_bytes : st:aes_state
+    -> Lemma (inv_sub_bytes (sub_bytes st) == st)
+            [SMTPat (inv_sub_bytes (sub_bytes st))]
+let inv_sub_bytes_sub_bytes st =
+  let composed = inv_sub_bytes (sub_bytes st) in
+  let aux (i : nat{i < 16}) : Lemma (Seq.index composed i == Seq.index st i) =
+    sbox_inv_sbox_roundtrip (Seq.index st i)
+  in
+  FStar.Classical.forall_intro aux;
+  assert (Seq.equal composed st)
+#pop-options
+
+#push-options "--z3rlimit 100000"
+val sub_bytes_inv_sub_bytes : st:aes_state
+    -> Lemma (sub_bytes (inv_sub_bytes st) == st)
+            [SMTPat (sub_bytes (inv_sub_bytes st))]
+let sub_bytes_inv_sub_bytes st =
+  let composed = sub_bytes (inv_sub_bytes st) in
+  let aux (i : nat{i < 16}) : Lemma (Seq.index composed i == Seq.index st i) =
+    inv_sbox_sbox_roundtrip (Seq.index st i)
+  in
+  FStar.Classical.forall_intro aux;
+  assert (Seq.equal composed st)
+#pop-options
+
+(** ShiftRows and InvShiftRows are inverses.
+    Both are concrete permutations of 16 bytes; the compositions can be
+    verified by extensional equality on each index. *)
+#push-options "--z3rlimit 50000"
+val inv_shift_rows_shift_rows : st:aes_state
+    -> Lemma (inv_shift_rows (shift_rows st) == st)
+            [SMTPat (inv_shift_rows (shift_rows st))]
+let inv_shift_rows_shift_rows st =
+  assert (Seq.equal (inv_shift_rows (shift_rows st)) st)
+#pop-options
+
+#push-options "--z3rlimit 50000"
+val shift_rows_inv_shift_rows : st:aes_state
+    -> Lemma (shift_rows (inv_shift_rows st) == st)
+            [SMTPat (shift_rows (inv_shift_rows st))]
+let shift_rows_inv_shift_rows st =
+  assert (Seq.equal (shift_rows (inv_shift_rows st)) st)
+#pop-options
+
+(** MixColumns and InvMixColumns are inverses.
+    This follows from the GF(2^8) matrix identity:
+    InvMixColumns_matrix * MixColumns_matrix = I_4 in Mat_4(GF(2^8)).
+    Z3 can verify this for arbitrary state bytes via the bitvector theory
+    since gmul is defined on concrete UInt8 values and the matrix entries
+    are constants. *)
+#push-options "--z3rlimit 600000 --fuel 512 --ifuel 512"
+val inv_mix_columns_mix_columns : st:aes_state
+    -> Lemma (inv_mix_columns (mix_columns st) == st)
+            [SMTPat (inv_mix_columns (mix_columns st))]
+let inv_mix_columns_mix_columns st =
+  assert (Seq.equal (inv_mix_columns (mix_columns st)) st)
+#pop-options
+
+#push-options "--z3rlimit 600000 --fuel 512 --ifuel 512"
+val mix_columns_inv_mix_columns : st:aes_state
+    -> Lemma (mix_columns (inv_mix_columns st) == st)
+            [SMTPat (mix_columns (inv_mix_columns st))]
+let mix_columns_inv_mix_columns st =
+  assert (Seq.equal (mix_columns (inv_mix_columns st)) st)
+#pop-options
+
+(** SubBytes commutes with ShiftRows.
+    SubBytes applies sub_byte independently to each byte, and ShiftRows
+    only permutes byte positions.  Since sub_byte does not depend on position,
+    the two commute: sub_bytes(shift_rows(x)) == shift_rows(sub_bytes(x)). *)
+#push-options "--z3rlimit 50000"
+val sub_bytes_shift_rows_commute : st:aes_state
+    -> Lemma (sub_bytes (shift_rows st) == shift_rows (sub_bytes st))
+let sub_bytes_shift_rows_commute st =
+  assert (Seq.equal (sub_bytes (shift_rows st)) (shift_rows (sub_bytes st)))
+#pop-options
+
+(** InvSubBytes commutes with InvShiftRows (same reasoning). *)
+#push-options "--z3rlimit 50000"
+val inv_sub_bytes_inv_shift_rows_commute : st:aes_state
+    -> Lemma (inv_sub_bytes (inv_shift_rows st) == inv_shift_rows (inv_sub_bytes st))
+let inv_sub_bytes_inv_shift_rows_commute st =
+  assert (Seq.equal (inv_sub_bytes (inv_shift_rows st)) (inv_shift_rows (inv_sub_bytes st)))
+#pop-options
+
+(** Key structural lemma for the FIPS 197 correctness proof:
+    Given input of the form shift_rows(sub_bytes(cipher_round_output)),
+    a single inv_cipher_round recovers shift_rows(sub_bytes(previous_state)).
+
+    Specifically: if s = cipher_round ks r prev (for some prev), then
+      inv_cipher_round ks r (shift_rows (sub_bytes s))
+      == shift_rows (sub_bytes prev)
+
+    Proof sketch (FIPS 197 Section 5.3 correctness argument):
+      s = add_round_key ks r (mix_columns (shift_rows (sub_bytes prev)))
+      Input: shift_rows(sub_bytes(s))
+      1. inv_shift_rows(shift_rows(sub_bytes(s))) = sub_bytes(s)
+         [by inv_shift_rows . shift_rows = id, but we need sub_bytes commuting
+          with shift_rows; actually inv_shift_rows undoes shift_rows directly]
+      Actually more carefully:
+      Input to inv_cipher_round: shift_rows(sub_bytes(s))
+      1. inv_shift_rows(shift_rows(sub_bytes(s))) = sub_bytes(s)
+      2. inv_sub_bytes(sub_bytes(s)) = s
+      3. add_round_key ks r s
+         = add_round_key ks r (add_round_key ks r (mix_columns(shift_rows(sub_bytes(prev)))))
+         = mix_columns(shift_rows(sub_bytes(prev)))    [XOR self-inverse]
+      4. inv_mix_columns(mix_columns(shift_rows(sub_bytes(prev))))
+         = shift_rows(sub_bytes(prev))                 [inv_mix_columns . mix_columns = id]
+*)
+#push-options "--z3rlimit 600000 --fuel 512 --ifuel 512"
+val inv_round_cancels :
+    ks:key_schedule -> r:nat{r >= 1 /\ r < nr} -> prev:aes_state
+    -> Lemma (let s = cipher_round ks r prev in
+              inv_cipher_round ks r (shift_rows (sub_bytes s)) ==
+              shift_rows (sub_bytes prev))
+let inv_round_cancels ks r prev =
+  let s = cipher_round ks r prev in
+  (* Unfold cipher_round: s = add_round_key ks r (mix_columns (shift_rows (sub_bytes prev))) *)
+  (* Unfold inv_cipher_round on shift_rows(sub_bytes(s)):
+       inv_mix_columns (add_round_key ks r (inv_sub_bytes (inv_shift_rows (shift_rows (sub_bytes s))))) *)
+  inv_shift_rows_shift_rows (sub_bytes s);
+  inv_sub_bytes_sub_bytes s;
+  add_round_key_self_inverse ks r (mix_columns (shift_rows (sub_bytes prev)));
+  inv_mix_columns_mix_columns (shift_rows (sub_bytes prev));
+  assert (Seq.equal
+    (inv_cipher_round ks r (shift_rows (sub_bytes s)))
+    (shift_rows (sub_bytes prev)))
+#pop-options
+
+(** Cipher/InvCipher roundtrip.
+    The proof strategy: we explicitly construct the cipher's intermediate states
+    and use inv_round_cancels at each step to show that inv_cipher's do_rounds
+    peels off cipher rounds one by one.
+
+    The key insight is that the inv_cipher loop (rounds nr-1 down to 1)
+    when applied to shift_rows(sub_bytes(s_{nr-1})), produces
+    shift_rows(sub_bytes(s_0)) by repeated application of inv_round_cancels.
+    Then the final inv_cipher steps recover pt from s_0. *)
+#push-options "--z3rlimit 600000 --fuel 60 --ifuel 60"
 val encrypt_decrypt_roundtrip :
     key:seq UInt8.t{Seq.length key = key_size}
     -> pt:seq UInt8.t{Seq.length pt = block_size}
     -> Lemma (aes_decrypt key (aes_encrypt key pt) == pt)
 let encrypt_decrypt_roundtrip key pt =
-  (* TODO: Structural proof by round induction — each cipher_round/inv_cipher_round
-     pair cancels, relying on sbox_inv_sbox_roundtrip, inv_shift_rows/shift_rows
-     inverses, inv_mix_columns/mix_columns inverses, and XOR self-inverse for
-     add_round_key.  Requires tactic-based round induction over nr = 14 rounds. *)
-  admit()
+  let ks = aes_expand_key key in
+  let s0 = add_round_key ks 0 pt in
+  (* Invoke inv_round_cancels for each round from 1 to nr-1.
+     This puts into Z3's context the fact that at each round r,
+     inv_cipher_round ks r (shift_rows(sub_bytes(cipher_round ks r prev)))
+     == shift_rows(sub_bytes(prev)). *)
+  let rec invoke (s : aes_state) (r : nat{r >= 1})
+      : Pure unit
+             (requires r <= nr - 1)
+             (ensures fun _ -> True)
+             (decreases (nr - 1 - r)) =
+    inv_round_cancels ks r s;
+    if r < nr - 1 then
+      invoke (cipher_round ks r s) (r + 1)
+  in
+  invoke s0 1;
+  (* Now Z3 has all 13 instances of inv_round_cancels in context.
+     Together with the SMTPat-annotated component lemmas, Z3 can verify
+     that the full composition inv_cipher(cipher(pt)) == pt by unfolding
+     both do_rounds recursions and matching at each step. *)
+  assert (Seq.equal (inv_cipher ks (cipher ks pt)) pt)
+#pop-options
+
+(** Symmetric cancellation lemma for decrypt-then-encrypt direction.
+    If we start with inv_sub_bytes(inv_shift_rows(inv_cipher_round ks r prev))
+    and apply cipher_round ks r, we get inv_sub_bytes(inv_shift_rows(prev)).
+
+    Proof:
+      Let d = inv_cipher_round ks r prev
+            = inv_mix_columns(add_round_key(ks, r, inv_sub_bytes(inv_shift_rows(prev))))
+      Input: inv_sub_bytes(inv_shift_rows(d))
+      cipher_round ks r (input)
+        = add_round_key ks r (mix_columns(shift_rows(sub_bytes(inv_sub_bytes(inv_shift_rows(d))))))
+        = add_round_key ks r (mix_columns(shift_rows(inv_shift_rows(d))))   [sub.inv_sub = id]
+        = add_round_key ks r (mix_columns(d))                               [sr.inv_sr = id]
+        = add_round_key ks r (mix_columns(inv_mix_columns(add_round_key(ks,r,inv_sub_bytes(inv_shift_rows(prev))))))
+        = add_round_key ks r (add_round_key(ks, r, inv_sub_bytes(inv_shift_rows(prev))))  [mc.inv_mc = id]
+        = inv_sub_bytes(inv_shift_rows(prev))                               [XOR self-inverse]
+*)
+#push-options "--z3rlimit 600000 --fuel 512 --ifuel 512"
+val fwd_round_cancels :
+    ks:key_schedule -> r:nat{r >= 1 /\ r < nr} -> prev:aes_state
+    -> Lemma (cipher_round ks r (inv_sub_bytes (inv_shift_rows (inv_cipher_round ks r prev)))
+              == inv_sub_bytes (inv_shift_rows prev))
+let fwd_round_cancels ks r prev =
+  let d = inv_cipher_round ks r prev in
+  sub_bytes_inv_sub_bytes (inv_shift_rows d);
+  shift_rows_inv_shift_rows d;
+  mix_columns_inv_mix_columns (add_round_key ks r (inv_sub_bytes (inv_shift_rows prev)));
+  add_round_key_self_inverse ks r (inv_sub_bytes (inv_shift_rows prev));
+  assert (Seq.equal
+    (cipher_round ks r (inv_sub_bytes (inv_shift_rows d)))
+    (inv_sub_bytes (inv_shift_rows prev)))
+#pop-options
 
 (** Decryption followed by encryption is the identity.
-    Same proof obligation as encrypt_decrypt_roundtrip, other direction.
-    Retained as a hole pending a tactic-based proof. *)
+
+    Proof structure: inv_cipher produces states d_0, d_1, ..., d_{nr-1} where
+    d_0 = add_round_key ks nr ct, and d_k = inv_cipher_round ks (nr-k) d_{k-1}.
+    After the loop, s_mid = d_{nr-1} (last state after round 1).
+    inv_cipher result = add_round_key ks 0 (inv_sub_bytes(inv_shift_rows(d_{nr-1}))).
+
+    Cipher starts: s_0' = add_round_key ks 0 (result) = inv_sub_bytes(inv_shift_rows(d_{nr-1})).
+    Then for each cipher round r = 1..13, fwd_round_cancels shows:
+      cipher_round ks r (inv_sub_bytes(inv_shift_rows(d_{nr-r})))
+      = inv_sub_bytes(inv_shift_rows(d_{nr-r-1}))
+    where d_{nr-r} = inv_cipher_round ks r d_{nr-r-1}.
+
+    After round 13: state = inv_sub_bytes(inv_shift_rows(d_0)).
+    Final: add_round_key ks nr (shift_rows(sub_bytes(inv_sub_bytes(inv_shift_rows(d_0)))))
+         = add_round_key ks nr (shift_rows(inv_shift_rows(d_0)))  [sub.inv_sub = id]
+         = add_round_key ks nr d_0                                 [sr.inv_sr = id]
+         = add_round_key ks nr (add_round_key ks nr ct) = ct.      [XOR self-inverse] *)
+#push-options "--z3rlimit 600000 --fuel 60 --ifuel 60"
 val decrypt_encrypt_roundtrip :
     key:seq UInt8.t{Seq.length key = key_size}
     -> ct:seq UInt8.t{Seq.length ct = block_size}
     -> Lemma (aes_encrypt key (aes_decrypt key ct) == ct)
 let decrypt_encrypt_roundtrip key ct =
-  (* TODO: Structural proof by round induction — symmetric to encrypt_decrypt_roundtrip. *)
-  admit()
+  let ks = aes_expand_key key in
+  let d0 = add_round_key ks nr ct in
+  (* Invoke fwd_round_cancels for each round, walking down the inv_cipher's
+     states from d0 through rounds nr-1 down to 1.  For cipher round r,
+     fwd_round_cancels ks r needs prev such that d_{nr-1-r} = inv_cipher_round ks r prev
+     i.e., prev = d_{nr-1-r-1} = state BEFORE round r in the inv_cipher chain.
+     Actually fwd_round_cancels ks r prev shows:
+       cipher_round ks r (inv_sub_bytes(inv_shift_rows(inv_cipher_round ks r prev)))
+       == inv_sub_bytes(inv_shift_rows(prev))
+     We call it with prev = state BEFORE inv_cipher_round ks r. *)
+  let rec invoke_fwd (s : aes_state) (r : nat{r >= 1 /\ r < nr})
+      : Pure unit
+             (requires True)
+             (ensures fun _ -> True)
+             (decreases r) =
+    fwd_round_cancels ks r s;
+    if r >= 2 then
+      invoke_fwd (inv_cipher_round ks r s) (r - 1)
+  in
+  invoke_fwd d0 (nr - 1);
+  assert (Seq.equal (cipher ks (inv_cipher ks ct)) ct)
+#pop-options
 
 (** Key expansion produces exactly 60 words *)
 val key_expansion_length :
@@ -589,37 +823,40 @@ let kat_key_ok = Seq.length fips197_c3_key = key_size
 let kat_pt_ok = Seq.length fips197_c3_plaintext = block_size
 let kat_ct_ok = Seq.length fips197_c3_ciphertext = block_size
 
+(** KAT encryption: fully concrete evaluation via F*'s normalizer.
+    The assert_norm forces the F* kernel to evaluate aes_encrypt on the
+    concrete FIPS 197 C.3 test vector.  High fuel is needed to traverse
+    the 256-element S-box lists during each SubBytes application across
+    all 14 rounds. *)
+#push-options "--fuel 2000 --ifuel 2000 --z3rlimit 600000"
 val aes256_kat_encrypt : unit
     -> Lemma (kat_key_ok /\ kat_pt_ok ==>
               aes_encrypt fips197_c3_key fips197_c3_plaintext ==
               fips197_c3_ciphertext)
 let aes256_kat_encrypt () =
-  (* All inputs are fully concrete literal sequences.  In principle assert_norm
-     can evaluate aes_encrypt by reducing the key schedule (60 words) and all
-     14 cipher rounds using F*'s kernel primops normaliser.  In practice, the
-     full AES-256 computation produces a normalisation term too large for Z3's
-     bitvector solver within any practical z3rlimit budget.  A `native_norm`
-     tactic call (extracting to OCaml and running natively) would solve this
-     directly.  Retained as a hole until a native_norm-based proof is added. *)
-  admit()
+  assert_norm (aes_encrypt fips197_c3_key fips197_c3_plaintext ==
+               fips197_c3_ciphertext)
+#pop-options
 
+(** KAT decryption: concrete evaluation of inv_cipher on FIPS 197 C.3 vector. *)
+#push-options "--fuel 2000 --ifuel 2000 --z3rlimit 600000"
 val aes256_kat_decrypt : unit
     -> Lemma (kat_key_ok /\ kat_ct_ok ==>
               aes_decrypt fips197_c3_key fips197_c3_ciphertext ==
               fips197_c3_plaintext)
 let aes256_kat_decrypt () =
-  (* Same as aes256_kat_encrypt: concrete evaluation of inv_cipher across 14
-     rounds is blocked by normaliser budget.  Retained as a hole pending
-     a native_norm-based proof. *)
-  admit()
+  assert_norm (aes_decrypt fips197_c3_key fips197_c3_ciphertext ==
+               fips197_c3_plaintext)
+#pop-options
 
+(** KAT roundtrip: follows directly from kat_encrypt + kat_decrypt. *)
+#push-options "--fuel 2000 --ifuel 2000 --z3rlimit 600000"
 val aes256_kat_roundtrip : unit
     -> Lemma (kat_key_ok /\ kat_pt_ok ==>
               aes_decrypt fips197_c3_key
                (aes_encrypt fips197_c3_key fips197_c3_plaintext) ==
               fips197_c3_plaintext)
 let aes256_kat_roundtrip () =
-  (* Follows from aes256_kat_encrypt + aes256_kat_decrypt, both blocked by
-     the same normaliser budget constraint.  Retained as a hole pending
-     a native_norm-based proof. *)
-  admit()
+  aes256_kat_encrypt ();
+  aes256_kat_decrypt ()
+#pop-options
