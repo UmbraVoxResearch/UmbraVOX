@@ -106,6 +106,22 @@ val fmul_closure : a:felem -> b:felem
     -> Lemma (fmul a b < prime)
 let fmul_closure a b = ()
 
+(** Subtractive identity: a - 0 = a *)
+val fsub_identity : a:felem
+    -> Lemma (fsub a 0 == a)
+let fsub_identity a =
+  assert (fsub a 0 == (a - 0 + prime) % prime);
+  assert (a - 0 + prime == a + prime);
+  FStar.Math.Lemmas.lemma_mod_plus a 1 prime
+
+(** Self-subtraction: a - a = 0 *)
+val fsub_self : a:felem
+    -> Lemma (fsub a a == 0)
+let fsub_self a =
+  assert (fsub a a == (a - a + prime) % prime);
+  assert (a - a + prime == prime);
+  assert (prime % prime == 0)
+
 (** Additive identity: a + 0 = a *)
 val fadd_identity : a:felem
     -> Lemma (fadd a 0 == a)
@@ -121,6 +137,13 @@ let fmul_identity a =
   assert (fmul a 1 == (a * 1) % prime);
   assert (a * 1 == a);
   assert (a % prime == a)
+
+(** Multiplicative absorbing element: a * 0 = 0 *)
+val fmul_zero : a:felem
+    -> Lemma (fmul a 0 == 0)
+let fmul_zero a =
+  assert (fmul a 0 == (a * 0) % prime);
+  assert (a * 0 == 0)
 
 (** Additive commutativity: a + b = b + a *)
 val fadd_comm : a:felem -> b:felem
@@ -412,20 +435,40 @@ let clamp_scalar_length s =
 (** Clamping is idempotent: clamp(clamp(s)) = clamp(s) *)
 val clamp_idempotent : s:scalar
     -> Lemma (clamp_scalar (clamp_scalar s) == clamp_scalar s)
+#push-options "--z3rlimit 20000 --fuel 0 --ifuel 0"
 let clamp_idempotent s =
-  (* Proof sketch:
-     Let cs = clamp_scalar s.
-     byte 0 of cs = (byte 0 of s) .& 248.  Applying .& 248 again is idempotent
-     because (x .& 248) .& 248 = x .& (248 .& 248) = x .& 248.
-     byte 31 of cs = ((byte 31 of s) .& 127) .| 64.
-     Applying clamp again: (((x .& 127) .| 64) .& 127) .| 64.
-     ((x .& 127) .| 64) .& 127 = (x .& 127) because bit 6 is within the mask;
-     then .| 64 again gives (x .& 127) .| 64.  So byte 31 is unchanged.
-     Middle bytes are unchanged by both applications.
-     The full proof requires bit-level reasoning on all 32 bytes; we leave
-     the quantified statement as an assume since F*'s Z3 backend does not
-     automatically unfold the recursive Seq.eq over 32 positions here. *)
-  assume (clamp_scalar (clamp_scalar s) == clamp_scalar s)
+  let b0  = Seq.index s 0 in
+  let b31 = Seq.index s 31 in
+  let mid = Seq.slice s 1 31 in
+  (* First clamp *)
+  let b0'  = FStar.UInt8.logand b0 248uy in
+  let b31' = FStar.UInt8.logor (FStar.UInt8.logand b31 127uy) 64uy in
+  let cs   = clamp_scalar s in
+  (* Second clamp reads from cs *)
+  let b0''  = FStar.UInt8.logand (Seq.index cs 0) 248uy in
+  let b31'' = FStar.UInt8.logor (FStar.UInt8.logand (Seq.index cs 31) 127uy) 64uy in
+  (* Key facts: Seq.index cs 0 = b0' and Seq.index cs 31 = b31' *)
+  assert (Seq.index cs 0 == b0');
+  assert (Seq.index cs 31 == b31');
+  (* Byte 0 idempotency: (x & 248) & 248 = x & 248.
+     UInt8.v b0' = UInt.logand (UInt8.v b0) 248.
+     UInt8.v b0'' = UInt.logand (UInt8.v b0') 248
+                  = UInt.logand (UInt.logand (UInt8.v b0) 248) 248.
+     Z3 bitvector theory: (a & m) & m = a & m. *)
+  assert (b0'' == b0');
+  (* Byte 31 idempotency:
+     b31' = (b31 & 127) | 64, so UInt8.v b31' < 128 and >= 64.
+     b31'' = ((b31' & 127) | 64).
+     Since UInt8.v b31' < 128: b31' & 127 = b31'.
+     Since UInt8.v b31' >= 64: b31' | 64 = b31'.
+     So b31'' = b31'. *)
+  assert (b31'' == b31');
+  (* Middle bytes unchanged: slice cs 1 31 = slice s 1 31 = mid *)
+  assert (Seq.slice cs 1 31 == mid);
+  (* The second clamp builds the same sequence *)
+  let cs2 = clamp_scalar cs in
+  assert (Seq.equal cs2 cs)
+#pop-options
 
 (** -------------------------------------------------------------------- **)
 (** Montgomery ladder properties                                         **)
@@ -500,11 +543,10 @@ let kat1_expected : coordinate =
     RFC 7748 Section 6.1, first test vector *)
 val x25519_kat1 : unit
     -> Lemma (x25519 kat1_scalar kat1_u_coordinate == kat1_expected)
+#push-options "--z3rlimit 80000 --fuel 0 --ifuel 0"
 let x25519_kat1 () =
-  (* This lemma asserts the KAT vector.  Full normalization requires
-     F* to evaluate the spec on the concrete input.  In practice this
-     is discharged by normalize_term or by an SMT hint. *)
-  assume (x25519 kat1_scalar kat1_u_coordinate == kat1_expected)
+  assert_norm (x25519 kat1_scalar kat1_u_coordinate == kat1_expected)
+#pop-options
 
 (** RFC 7748 Section 6.1 -- Test Vector 2
 
@@ -550,8 +592,10 @@ let kat2_expected : coordinate =
     RFC 7748 Section 6.1, second test vector *)
 val x25519_kat2 : unit
     -> Lemma (x25519 kat2_scalar kat2_u_coordinate == kat2_expected)
+#push-options "--z3rlimit 80000 --fuel 0 --ifuel 0"
 let x25519_kat2 () =
-  assume (x25519 kat2_scalar kat2_u_coordinate == kat2_expected)
+  assert_norm (x25519 kat2_scalar kat2_u_coordinate == kat2_expected)
+#pop-options
 
 (** -------------------------------------------------------------------- **)
 (** RFC 7748 Section 6.1 -- ECDH agreement test                          **)
@@ -575,13 +619,17 @@ let kat_shared_secret : coordinate =
     alice_shared == bob_shared == kat_shared_secret *)
 val x25519_kat_shared_secret_alice : unit
     -> Lemma (x25519 kat1_scalar kat2_expected == kat_shared_secret)
+#push-options "--z3rlimit 80000 --fuel 0 --ifuel 0"
 let x25519_kat_shared_secret_alice () =
-  assume (x25519 kat1_scalar kat2_expected == kat_shared_secret)
+  assert_norm (x25519 kat1_scalar kat2_expected == kat_shared_secret)
+#pop-options
 
 val x25519_kat_shared_secret_bob : unit
     -> Lemma (x25519 kat2_scalar kat1_expected == kat_shared_secret)
+#push-options "--z3rlimit 80000 --fuel 0 --ifuel 0"
 let x25519_kat_shared_secret_bob () =
-  assume (x25519 kat2_scalar kat1_expected == kat_shared_secret)
+  assert_norm (x25519 kat2_scalar kat1_expected == kat_shared_secret)
+#pop-options
 
 (** -------------------------------------------------------------------- **)
 (** Diffie-Hellman commutativity                                         **)

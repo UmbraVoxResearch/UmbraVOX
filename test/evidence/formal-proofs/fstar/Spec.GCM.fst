@@ -211,16 +211,59 @@ val split_blocks_nonempty :
               (forall (blk : seq UInt8.t).
                 List.Tot.memP blk blocks ==>
                   Seq.length blk >= 1 /\ Seq.length blk <= 16))
+let rec split_blocks_nonempty_aux (bs : seq UInt8.t{Seq.length bs > 0})
+    (blk : seq UInt8.t)
+    : Lemma (requires List.Tot.memP blk (split_blocks bs))
+            (ensures  Seq.length blk >= 1 /\ Seq.length blk <= 16)
+            (decreases (Seq.length bs)) =
+  if Seq.length bs <= 16 then
+    (* split_blocks bs = [bs], so blk = bs via memP singleton, length is 1..16 *)
+    ()
+  else begin
+    (* split_blocks bs = (slice bs 0 16) :: split_blocks (slice bs 16 n) *)
+    let hd = Seq.slice bs 0 16 in
+    let tl_seq = Seq.slice bs 16 (Seq.length bs) in
+    (* memP blk (hd :: split_blocks tl_seq) means blk == hd \/ memP blk (split_blocks tl_seq).
+       If blk == hd, then Seq.length blk = 16, done.
+       If memP blk (split_blocks tl_seq), recurse (tl_seq has length > 0 since bs > 16). *)
+    if Seq.length tl_seq > 0 then
+      FStar.Classical.or_elim
+        #(blk == hd)
+        #(List.Tot.memP blk (split_blocks tl_seq))
+        #(fun _ -> Seq.length blk >= 1 /\ Seq.length blk <= 16)
+        (fun (_:squash (blk == hd)) -> ())
+        (fun (_:squash (List.Tot.memP blk (split_blocks tl_seq))) ->
+          split_blocks_nonempty_aux tl_seq blk)
+    else
+      (* tl_seq is empty, so split_blocks tl_seq = [], memP only via blk == hd *)
+      ()
+  end
+
 let split_blocks_nonempty bs =
-  (* The non-emptiness is immediate: Seq.length bs > 0 implies split_blocks
-     takes the non-empty branch and produces at least one block.
-     The size bounds: split_blocks slices at 16-byte boundaries.  Each
-     recursive call takes Seq.slice bs 0 16 (length exactly 16) or the
-     remaining tail bs (length 1..16 on the last block, 1..Seq.length bs
-     on the first).  A full inductive proof requires well-founded recursion
-     over Seq.length bs; Z3 cannot close the quantified memP goal without
-     a fuel-bounded tactic.  Stated as a hole with this decomposition. *)
-  admit()
+  let blocks = split_blocks bs in
+  (* Non-emptiness: bs has length > 0, so split_blocks takes a non-empty branch *)
+  assert (blocks =!= []);
+  (* Size bounds: by the auxiliary lemma *)
+  let aux (blk : seq UInt8.t) : Lemma (requires List.Tot.memP blk blocks)
+                                       (ensures  Seq.length blk >= 1 /\ Seq.length blk <= 16) =
+    split_blocks_nonempty_aux bs blk
+  in
+  FStar.Classical.forall_intro (FStar.Classical.move_requires aux)
+
+(** Helper: fold_left with additive accumulator shift.
+    fold_left (+len) base xs = base + fold_left (+len) 0 xs *)
+let rec fold_left_len_shift
+  (base : nat)
+  (xs : list (seq UInt8.t))
+  : Lemma
+    (ensures  List.Tot.fold_left (fun (acc:nat) (s:seq UInt8.t) -> acc + Seq.length s) base xs
+            = base + List.Tot.fold_left (fun (acc:nat) (s:seq UInt8.t) -> acc + Seq.length s) 0 xs)
+    (decreases xs) =
+  match xs with
+  | [] -> ()
+  | hd :: tl ->
+    fold_left_len_shift (base + Seq.length hd) tl;
+    fold_left_len_shift (Seq.length hd) tl
 
 (** Total length of all blocks in split_blocks equals original length.
     This is the key invariant needed for gctr_length. *)
@@ -232,20 +275,40 @@ val split_blocks_total_length :
           0
           (split_blocks bs)
         = Seq.length bs)
-let split_blocks_total_length bs =
-  (* Proof by induction on Seq.length bs:
-     Base case (length 0): split_blocks returns [], fold gives 0 = 0.
-     Base case (length 1..16): split_blocks returns [bs], fold gives length bs.
-     Inductive step (length > 16):
-       split_blocks bs = (Seq.slice bs 0 16) :: split_blocks (Seq.slice bs 16 n)
-       fold length = 16 + fold length (split_blocks (Seq.slice bs 16 n))
-                   = 16 + (n - 16)   (by induction hypothesis)
-                   = n.
-     The induction is over Seq.length bs which decreases by 16 each step.
-     Z3 cannot handle the recursive List.Tot.fold_left without unrolling;
-     this requires an inductive proof by structural recursion in F*.
-     Retained as a hole pending a tactic-based induction. *)
-  admit()
+let rec split_blocks_total_length bs =
+  let f = fun (acc:nat) (s:seq UInt8.t) -> acc + Seq.length s in
+  if Seq.length bs = 0 then ()
+  else if Seq.length bs <= 16 then
+    (* split_blocks bs = [bs], fold gives 0 + Seq.length bs = Seq.length bs *)
+    assert (List.Tot.fold_left f 0 [bs] = f 0 bs)
+  else begin
+    let tl = Seq.slice bs 16 (Seq.length bs) in
+    (* IH: fold over split_blocks tl = Seq.length tl *)
+    split_blocks_total_length tl;
+    (* fold_left f 0 (hd :: rest) = fold_left f (f 0 hd) rest = fold_left f 16 rest *)
+    (* We need: fold_left f 16 (split_blocks tl) = 16 + fold_left f 0 (split_blocks tl) *)
+    fold_left_len_shift 16 (split_blocks tl)
+  end
+
+(** Helper: all blocks in a list have length <= 16 *)
+let all_blocks_bounded (bs : list (seq UInt8.t)) : prop =
+  forall (blk : seq UInt8.t). List.Tot.memP blk bs ==> Seq.length blk <= 16
+
+(** Process blocks for GCTR — takes a list of blocks all bounded by 16 bytes *)
+let rec gctr_process (encrypt : aes_encrypt_fn_full)
+    (bs : list (seq UInt8.t))
+    (cb : seq UInt8.t{Seq.length cb = 16})
+    : Pure (list (seq UInt8.t))
+           (requires all_blocks_bounded bs)
+           (ensures fun _ -> True)
+           (decreases bs) =
+  match bs with
+  | [] -> []
+  | blk :: rest ->
+    let ks = encrypt cb in
+    (* encrypt returns 16 bytes, blk has length <= 16 by all_blocks_bounded *)
+    let enc_blk = xor_bytes blk (Seq.slice ks 0 (Seq.length blk)) in
+    enc_blk :: gctr_process encrypt rest (incr32 cb)
 
 val gctr : encrypt:aes_encrypt_fn_full
     -> icb:seq UInt8.t{Seq.length icb = 16}
@@ -258,39 +321,76 @@ let gctr (encrypt : aes_encrypt_fn_full)
   if Seq.length plaintext = 0 then Seq.empty
   else
     let blocks = split_blocks plaintext in
-    let rec process (bs : list (seq UInt8.t)) (cb : seq UInt8.t{Seq.length cb = 16})
-        : Tot (list (seq UInt8.t)) (decreases bs) =
-      match bs with
-      | [] -> []
-      | blk :: rest ->
-        (* encrypt returns exactly 16 bytes; each block in split_blocks
-           has length <= 16 (split_blocks slices at 16-byte boundaries).
-           The slice ks[0..length blk] is therefore in bounds.
-           The invariant Seq.length blk <= 16 is proved by split_blocks_nonempty
-           (quantified over memP) but the quantifier elimination for this
-           specific blk requires an explicit instantiation tactic.
-           We use admit() to bridge this gap; the underlying fact is established
-           by split_blocks_nonempty above. *)
-        let ks = encrypt cb in
-        assume (Seq.length blk <= Seq.length ks);
-        let enc_blk = xor_bytes blk (Seq.slice ks 0 (Seq.length blk)) in
-        enc_blk :: process rest (incr32 cb)
-    in
-    let result_blocks = process blocks icb in
+    (* Prove all blocks are bounded by 16 via split_blocks_nonempty *)
+    split_blocks_nonempty plaintext;
+    let result_blocks = gctr_process encrypt blocks icb in
     List.Tot.fold_left (fun acc s -> Seq.append acc s) Seq.empty result_blocks
 
 (** -------------------------------------------------------------------- **)
 (** GCTR correctness sub-lemmas                                           **)
 (** -------------------------------------------------------------------- **)
 
-(** GCTR on empty plaintext returns empty ciphertext.
-    Proof: gctr branches on Seq.length plaintext = 0 and immediately returns
-    Seq.empty.  Seq.length (Seq.empty) = 0 by definition, so the branch
-    is taken.  The body is trivially closed by F* after unfolding gctr. *)
+(** GCTR on empty plaintext returns empty ciphertext. *)
 val gctr_empty : encrypt:aes_encrypt_fn_full
     -> icb:seq UInt8.t{Seq.length icb = 16}
     -> Lemma (gctr encrypt icb (Seq.empty #UInt8.t) == Seq.empty #UInt8.t)
 let gctr_empty encrypt icb = ()
+
+(** gctr_process preserves the total length of the block list.
+    Each block blk is replaced by xor_bytes blk (slice ks 0 (len blk)),
+    which has exactly the same length as blk. *)
+let rec gctr_process_total_length
+    (encrypt : aes_encrypt_fn_full)
+    (bs : list (seq UInt8.t))
+    (cb : seq UInt8.t{Seq.length cb = 16})
+    : Lemma
+      (requires all_blocks_bounded bs)
+      (ensures
+        List.Tot.fold_left (fun (acc:nat) (s:seq UInt8.t) -> acc + Seq.length s) 0
+          (gctr_process encrypt bs cb)
+        = List.Tot.fold_left (fun (acc:nat) (s:seq UInt8.t) -> acc + Seq.length s) 0 bs)
+      (decreases bs) =
+  match bs with
+  | [] -> ()
+  | blk :: rest ->
+    let ks = encrypt cb in
+    let enc_blk = xor_bytes blk (Seq.slice ks 0 (Seq.length blk)) in
+    (* enc_blk has same length as blk *)
+    assert (Seq.length enc_blk = Seq.length blk);
+    gctr_process_total_length encrypt rest (incr32 cb);
+    (* Now: fold 0 (enc_blk :: process rest ...) = fold (len enc_blk) (process rest ...)
+             = len enc_blk + fold 0 (process rest ...)     [by shift lemma]
+             = len blk + fold 0 rest                        [by IH + enc_blk same length]
+             = fold (len blk) rest                          [by shift lemma]
+             = fold 0 (blk :: rest)                         *)
+    fold_left_len_shift (Seq.length enc_blk) (gctr_process encrypt rest (incr32 cb));
+    fold_left_len_shift (Seq.length blk) rest
+
+(** Generalized: fold_left append acc xs has length = len acc + sum_lengths xs *)
+let rec fold_append_length_gen
+    (acc : seq UInt8.t)
+    (xs : list (seq UInt8.t))
+    : Lemma
+      (ensures
+        Seq.length (List.Tot.fold_left (fun a s -> Seq.append a s) acc xs)
+        = Seq.length acc + List.Tot.fold_left (fun (a:nat) (s:seq UInt8.t) -> a + Seq.length s) 0 xs)
+      (decreases xs) =
+  match xs with
+  | [] -> ()
+  | hd :: tl ->
+    let acc' = Seq.append acc hd in
+    Seq.lemma_len_append acc hd;
+    fold_append_length_gen acc' tl;
+    fold_left_len_shift (Seq.length hd) tl
+
+(** fold_left Seq.append Seq.empty xs has length equal to the sum of lengths *)
+let fold_append_length
+    (xs : list (seq UInt8.t))
+    : Lemma
+      (ensures
+        Seq.length (List.Tot.fold_left (fun acc s -> Seq.append acc s) Seq.empty xs)
+        = List.Tot.fold_left (fun (acc:nat) (s:seq UInt8.t) -> acc + Seq.length s) 0 xs) =
+  fold_append_length_gen Seq.empty xs
 
 (** GCTR output has the same length as the input plaintext.
     This is a fundamental correctness property: GCTR is a length-preserving
@@ -301,30 +401,17 @@ val gctr_length : encrypt:aes_encrypt_fn_full
     -> plaintext:seq UInt8.t
     -> Lemma (Seq.length (gctr encrypt icb plaintext) = Seq.length plaintext)
 let gctr_length encrypt icb plaintext =
-  (* Case split: empty vs non-empty plaintext.
-     Empty case: gctr returns Seq.empty, length 0 = Seq.length Seq.empty = 0.
-     Non-empty case: gctr calls split_blocks, process, then fold_left Seq.append.
-       - xor_bytes blk ks_slice has length = Seq.length blk (by definition).
-       - Each processed block enc_blk therefore has the same length as blk.
-       - fold_left Seq.append sums the lengths: total = sum of block lengths.
-       - split_blocks_total_length gives sum of block lengths = Seq.length plaintext.
-     Z3 cannot close the non-empty case without unrolling the recursive fold_left
-     and process helpers.  The length equality requires tracking list-fold
-     invariants that Z3 does not maintain automatically.
-     Remaining obstacle: connecting the fold_left over append-lengths to
-     split_blocks_total_length via an intermediate blocks_lengths_preserved lemma.
-     Proof decomposition (stated here; individual pieces deferred below):
-       (1) process_length: each element of process bs cb has the same length as
-           the corresponding element of bs (from xor_bytes length preservation).
-       (2) fold_append_length: fold_left Seq.append empty xs has length equal
-           to the sum of lengths of xs (by induction on xs).
-       (3) combining (1) + (2) + split_blocks_total_length gives the result. *)
   if Seq.length plaintext = 0 then ()
   else begin
-    (* For non-empty plaintext, the length equality holds by the argument above.
-       The hole here represents the composition of the three sub-facts;
-       each has been separately justified in the comment. *)
-    admit()
+    let blocks = split_blocks plaintext in
+    split_blocks_nonempty plaintext;
+    let result_blocks = gctr_process encrypt blocks icb in
+    (* (1) fold_append gives: length of concatenated result = sum of result lengths *)
+    fold_append_length result_blocks;
+    (* (2) gctr_process preserves total length: sum of result lengths = sum of block lengths *)
+    gctr_process_total_length encrypt blocks icb;
+    (* (3) split_blocks_total_length: sum of block lengths = length plaintext *)
+    split_blocks_total_length plaintext
   end
 #pop-options
 
@@ -385,12 +472,9 @@ let gcm_encrypt (encrypt : aes_encrypt_fn_full)
   (* Step 3: C = GCTR_K(inc32(J0), P) *)
   let ct = gctr encrypt (incr32 j0) plaintext in
   (* Step 4: Compute GHASH input = pad(A) || pad(C) || len(A) || len(C) *)
-  (* The bounds Seq.length aad * 8 < pow2 64 and Seq.length plaintext * 8 < pow2 64
-     come from the function preconditions (SP 800-38D §5.2.1.1 limits).
-     For the ct bound: gctr is length-preserving so Seq.length ct = Seq.length plaintext;
-     the precondition on plaintext carries through.  Since gctr_length is currently
-     stated with a hole, we propagate the plaintext bound to ct via an inline hole. *)
-  assume (Seq.length ct * 8 < pow2 64);
+  (* gctr is length-preserving: Seq.length ct = Seq.length plaintext.
+     The precondition Seq.length plaintext * 8 < pow2 64 carries through. *)
+  gctr_length encrypt (incr32 j0) plaintext;
   let len_a = UInt64.uint_to_t (Seq.length aad * 8) in
   let len_c = UInt64.uint_to_t (Seq.length ct * 8) in
   let ghash_input = Seq.append (pad_to_16 aad)
@@ -431,14 +515,14 @@ val gcm_decrypt :
     -> key:seq UInt8.t{Seq.length key = key_size}
     -> nonce:seq UInt8.t{Seq.length nonce = nonce_size}
     -> aad:seq UInt8.t{Seq.length aad * 8 < pow2 64}
-    -> ct:seq UInt8.t
+    -> ct:seq UInt8.t{Seq.length ct * 8 < pow2 64}
     -> tag:seq UInt8.t{Seq.length tag = tag_size}
     -> Tot (option (seq UInt8.t))
 let gcm_decrypt (encrypt : aes_encrypt_fn_full)
                 (key : seq UInt8.t{Seq.length key = key_size})
                 (nonce : seq UInt8.t{Seq.length nonce = nonce_size})
                 (aad : seq UInt8.t{Seq.length aad * 8 < pow2 64})
-                (ct : seq UInt8.t)
+                (ct : seq UInt8.t{Seq.length ct * 8 < pow2 64})
                 (tag : seq UInt8.t{Seq.length tag = tag_size})
     : option (seq UInt8.t) =
   (* Recompute the tag using the same steps as gcm_encrypt *)
@@ -446,10 +530,7 @@ let gcm_decrypt (encrypt : aes_encrypt_fn_full)
   let h_bytes : (s:seq UInt8.t{Seq.length s = 16}) = encrypt zero_block in
   let h = Spec.GaloisField.bs_to_gf h_bytes in
   let j0 = make_j0 nonce in
-  (* aad bound comes from the precondition (SP 800-38D §5.2.1.1 limit).
-     ct bound: Seq.length ct = Seq.length plaintext by gctr_length (length-preserving),
-     which is currently a hole.  We carry the ct bound as a hole here. *)
-  assume (Seq.length ct * 8 < pow2 64);
+  (* aad bound from precondition; ct bound from refined input type (SP 800-38D §5.2.1.1). *)
   let len_a = UInt64.uint_to_t (Seq.length aad * 8) in
   let len_c = UInt64.uint_to_t (Seq.length ct * 8) in
   let ghash_input = Seq.append (pad_to_16 aad)
@@ -495,18 +576,30 @@ val gcm_encrypt_tag_length :
                let (_, tag) = gcm_encrypt encrypt key nonce aad pt in
                Seq.length tag = tag_size))
 let gcm_encrypt_tag_length encrypt key nonce aad pt =
-  (* The tag is computed as Seq.slice (xor_bytes s_bytes encrypted_s) 0 tag_size.
-     - xor_bytes s_bytes encrypted_s has length = Seq.length s_bytes = 16:
-         s_bytes = gf_to_bs s, return type guarantees Seq.length s_bytes = 16;
-         encrypted_s = encrypt j0, return type of aes_encrypt_fn_full gives
-         Seq.length encrypted_s = 16; xor_bytes requires equal lengths and
-         returns a sequence of that same length.
-     - Seq.slice tag 0 tag_size has length tag_size = 16 when tag_size <= 16.
-         tag_size = 16 (constant), Seq.length tag = 16 as shown above.
-     This chain of equalities is in principle Z3-decidable but requires
-     unfolding gcm_encrypt fully.  Retained as a hole: the argument is
-     complete and each step is type-driven. *)
-  admit()
+  (* Unfold gcm_encrypt enough for Z3 to see the tag construction.
+     tag' = Seq.slice (xor_bytes s_bytes encrypted_s) 0 tag_size
+     where s_bytes has length 16 (gf_to_bs), encrypted_s has length 16 (encrypt),
+     so xor_bytes returns length 16, and Seq.slice 0 16 of a 16-byte seq has length 16. *)
+  let zero_block : (s:seq UInt8.t{Seq.length s = 16}) = Seq.create 16 0uy in
+  let h_bytes = encrypt zero_block in
+  let h = Spec.GaloisField.bs_to_gf h_bytes in
+  let j0 = make_j0 nonce in
+  let ct = gctr encrypt (incr32 j0) pt in
+  gctr_length encrypt (incr32 j0) pt;
+  let len_a = UInt64.uint_to_t (Seq.length aad * 8) in
+  let len_c = UInt64.uint_to_t (Seq.length ct * 8) in
+  ghash_input_mod16 (pad_to_16 aad) (pad_to_16 ct)
+                    (uint64_to_be_bytes len_a) (uint64_to_be_bytes len_c);
+  let ghash_input = Seq.append (pad_to_16 aad)
+                      (Seq.append (pad_to_16 ct)
+                        (Seq.append (uint64_to_be_bytes len_a)
+                                    (uint64_to_be_bytes len_c))) in
+  let s = ghash h ghash_input in
+  let s_bytes = Spec.GaloisField.gf_to_bs s in
+  let encrypted_s : (r:seq UInt8.t{Seq.length r = 16}) = encrypt j0 in
+  let full_tag = xor_bytes s_bytes encrypted_s in
+  assert (Seq.length full_tag = 16);
+  assert (Seq.length (Seq.slice full_tag 0 tag_size) = tag_size)
 
 (** Sub-lemma: constant_eq returns true iff inputs are equal.
     This is the correctness property of the constant-time comparison. *)
