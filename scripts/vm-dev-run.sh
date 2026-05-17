@@ -55,20 +55,21 @@ preflight_check() {
 
 create_source_disk() {
     local disk_path
-    disk_path="$(mktemp /tmp/umbravox-vm-dev-source.XXXXXX.ext2)"
+    disk_path="/tmp/umbravox-vm-dev-source.$$.ext2"
+    rm -f "$disk_path"
     local src_dir
     src_dir="$(mktemp -d /tmp/umbravox-vm-dev-src.XXXXXX)"
 
-    echo -e "${BLUE}[VM-DEV]${NC} Exporting source tree..."
+    echo -e "${BLUE}[VM-DEV]${NC} Exporting source tree..." >&2
     (cd "$REPO_ROOT" && git archive HEAD | tar -x -C "$src_dir")
 
-    # Also copy dist-newstyle if it exists (preserves build cache)
-    if [ -d "$REPO_ROOT/dist-newstyle" ]; then
-        echo -e "${BLUE}[VM-DEV]${NC} Including dist-newstyle build cache..."
+    # Optionally copy dist-newstyle to preserve build cache (can be large)
+    if [ -d "$REPO_ROOT/dist-newstyle" ] && [ "${UMBRAVOX_VM_CACHE:-0}" = "1" ]; then
+        echo -e "${BLUE}[VM-DEV]${NC} Including dist-newstyle build cache..." >&2
         cp -a "$REPO_ROOT/dist-newstyle" "$src_dir/dist-newstyle"
     fi
 
-    echo -e "${BLUE}[VM-DEV]${NC} Creating source disk..."
+    echo -e "${BLUE}[VM-DEV]${NC} Creating source disk..." >&2
     genext2fs -b 1048576 -d "$src_dir" "$disk_path"
     rm -rf "$src_dir"
     echo "$disk_path"
