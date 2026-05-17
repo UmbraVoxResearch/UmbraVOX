@@ -246,7 +246,10 @@ MIN_MEM_MB=$(( HOST_MEM_MB / 4 ))
 [ "$VM_MEM_MB" -lt "$MIN_MEM_MB" ] && VM_MEM_MB=$MIN_MEM_MB
 [ "$VM_CORES" -lt 2 ] && VM_CORES=2
 [ "$VM_MEM_MB" -lt 2048 ] && VM_MEM_MB=2048
+# Apply network policy (default: no network)
+source "$REPO_ROOT/scripts/vm-network-policy.sh"
 echo -e "${BLUE}[VM-DEV]${NC} VM resources: ${VM_CORES} cores, ${VM_MEM_MB}MB RAM (host: ${HOST_CORES} cores, ${HOST_MEM_MB}MB)" >&2
+echo -e "${BLUE}[VM-DEV]${NC} Network: ${QEMU_NET_ARGS}" >&2
 
 QEMU_ARGS=(
     -machine "q35,accel=kvm"
@@ -260,6 +263,7 @@ QEMU_ARGS=(
     -drive "if=virtio,format=raw,file=$SRC_DISK,readonly=on"
     -drive "if=virtio,format=qcow2,file=$CACHE_DISK"
     -virtfs "local,path=$OUTPUT_DIR,mount_tag=output,security_model=mapped-xattr,id=output"
+    $QEMU_NET_ARGS
 )
 
 # For non-interactive mode, add -no-reboot so VM exits after poweroff
