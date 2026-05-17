@@ -131,6 +131,38 @@ CABALEOF
       };
     };
 
+    # Auto-run .vm-init.sh from source disk if present (vm-dev exec mode)
+    systemd.services.umbravox-dev-init = {
+      description = "UmbraVOX VM development init";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "local-fs.target" ];
+      path = devToolsPkgs ++ [ pkgs.mount pkgs.util-linux pkgs.e2fsprogs ];
+      environment = {
+        HOME = "/root";
+        CABAL_DIR = "/root/.cabal";
+        TERM = "xterm-256color";
+      };
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = pkgs.writeShellScript "umbravox-vm-dev-init" ''
+          set -euo pipefail
+          export PATH=/run/current-system/sw/bin:/run/current-system/sw/sbin:$PATH
+
+          # Mount source disk
+          mkdir -p /mnt/src
+          mount -o ro /dev/vdb /mnt/src 2>/dev/null || true
+
+          # Run .vm-init.sh if it exists on the source disk
+          if [ -f /mnt/src/.vm-init.sh ]; then
+            exec /run/current-system/sw/bin/bash /mnt/src/.vm-init.sh
+          fi
+        '';
+        StandardOutput = "journal+console";
+        StandardError = "journal+console";
+        TimeoutStartSec = "3600";
+      };
+    };
+
     # Shut down after smoke completes (success or failure)
     systemd.services.umbravox-shutdown = {
       description = "Shutdown after smoke";

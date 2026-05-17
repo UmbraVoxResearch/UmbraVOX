@@ -69,6 +69,14 @@ create_source_disk() {
         cp -a "$REPO_ROOT/dist-newstyle" "$src_dir/dist-newstyle"
     fi
 
+    # Embed init script on the source disk. The VM's umbravox-dev-init
+    # systemd service checks for .vm-init.sh and runs it on boot.
+    local init_script
+    init_script="$(generate_init_script "$MODE" "$VM_CMD")"
+    cp "$init_script" "$src_dir/.vm-init.sh"
+    chmod +x "$src_dir/.vm-init.sh"
+    rm -f "$init_script"
+
     echo -e "${BLUE}[VM-DEV]${NC} Creating source disk..." >&2
     genext2fs -b 1048576 -d "$src_dir" "$disk_path"
     rm -rf "$src_dir"
@@ -253,48 +261,14 @@ if [ -n "$VM_CMD" ]; then
 fi
 echo ""
 
-# Boot the VM
-# The VM image has auto-login on ttyS0 and the umbravox-smoke service.
-# For interactive use, the user gets the serial console directly.
-# For exec mode, the smoke service runs the pipeline and shuts down.
-#
-# We override the smoke service behavior by injecting our command via
-# kernel append. The VM image's init script checks for umbravox.cmd
-# on the kernel command line.
-#
-# However, since modifying the kernel cmdline requires image changes,
-# we instead rely on the existing auto-login + serial console for
-# interactive mode, and for exec mode we pipe commands through the
-# serial console.
+# Boot the VM.
+# The .vm-init.sh script is embedded on the source disk. The VM's
+# umbravox-dev-init systemd service reads and executes it on boot.
+# In interactive mode, the init script drops into a shell.
+# In exec mode, the init script runs the command and powers off.
 
-if [ "$MODE" = "interactive" ]; then
-    echo -e "${YELLOW}[VM-DEV]${NC} The VM will boot and auto-login as root."
-    echo -e "${YELLOW}[VM-DEV]${NC} Once at the shell, run:"
-    echo -e "${YELLOW}[VM-DEV]${NC}   mount -o ro /dev/vdb /mnt/src"
-    echo -e "${YELLOW}[VM-DEV]${NC}   cp -a /mnt/src/. /work/umbravox/"
-    echo -e "${YELLOW}[VM-DEV]${NC}   cd /work/umbravox"
-    echo -e "${YELLOW}[VM-DEV]${NC}   # then: cabal build all, make test, etc."
-    echo -e "${YELLOW}[VM-DEV]${NC} To shut down: poweroff"
-    echo ""
-    qemu-system-x86_64 "${QEMU_ARGS[@]}"
-else
-    # For exec mode: pipe the setup + command into the VM serial console.
-    # We wait for the login prompt, then send our commands.
-    # Use expect-like approach with a heredoc piped to QEMU stdin.
-    INIT_SCRIPT="$(generate_init_script exec "$VM_CMD")"
-
-    # Boot VM, wait for login, send commands via stdin
-    {
-        # Wait for the VM to boot and auto-login
-        sleep 15
-        # Send the init commands
-        cat "$INIT_SCRIPT"
-        echo ""
-    } | qemu-system-x86_64 "${QEMU_ARGS[@]}"
-    QEMU_EXIT=$?
-
-    rm -f "$INIT_SCRIPT"
-fi
+qemu-system-x86_64 "${QEMU_ARGS[@]}"
+QEMU_EXIT=$?
 
 # Cleanup
 rm -f "$OVERLAY" "$SRC_DISK" 2>/dev/null || true
