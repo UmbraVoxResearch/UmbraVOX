@@ -7,7 +7,7 @@ import Test.Util (assertEq, checkProperty, PRNG, nextWord32)
 import UmbraVox.TUI.Terminal (esc, padR, isPfx)
 import UmbraVox.TUI.Layout (clampSize, sizeValid, calcLayout)
 import UmbraVox.TUI.PaginatedList (pageItemBySlot, pageMaxIndex, slicePage, psItems, psPage, psTotalPages)
-import UmbraVox.TUI.Text (displayWidth, trimToWidth)
+import UmbraVox.TUI.Text (displayWidth, trimToWidth, splitAtWidth)
 import UmbraVox.TUI.Types (Layout(..), ConnectionMode(..))
 import UmbraVox.TUI.Render (statusBarConnTag)
 
@@ -24,6 +24,12 @@ runTests = do
         , testPadRZero
         , testPadRWideGlyph
         , testTrimToWidthCombining
+        , testSplitAtWidthCJK
+        , testSplitAtWidthEmoji
+        , testSplitAtWidthMixed
+        , testSplitAtWidthNarrow
+        , testDisplayWidthCJK
+        , testDisplayWidthEmoji
         , testIsPfxEmpty
         , testIsPfxMatch
         , testIsPfxMismatch
@@ -92,6 +98,49 @@ testTrimToWidthCombining =
     assertEq "trimToWidth keeps combining mark with base"
         "e\x0301"
         (trimToWidth 1 "e\x0301x")
+
+-- R1.8.4: Wide character (CJK/emoji) wrapping tests
+testSplitAtWidthCJK :: IO Bool
+testSplitAtWidthCJK = do
+    -- CJK chars are width 2. "你好世界" = 8 display columns.
+    -- splitAtWidth 5 should take "你好" (4 cols) and leave "世界"
+    -- because "你好世" would be 6 cols > 5.
+    let (a, b) = splitAtWidth 5 "\x4F60\x597D\x4E16\x754C"
+    x <- assertEq "splitAtWidth CJK first chunk" "\x4F60\x597D" a
+    y <- assertEq "splitAtWidth CJK remainder" "\x4E16\x754C" b
+    pure (x && y)
+
+testSplitAtWidthEmoji :: IO Bool
+testSplitAtWidthEmoji = do
+    -- Common emoji (😀 U+1F600) is width 2.
+    let (a, b) = splitAtWidth 3 "\x1F600\x1F601\x1F602"
+    x <- assertEq "splitAtWidth emoji first chunk" "\x1F600" a
+    y <- assertEq "splitAtWidth emoji remainder" "\x1F601\x1F602" b
+    pure (x && y)
+
+testSplitAtWidthMixed :: IO Bool
+testSplitAtWidthMixed = do
+    -- Mix of ASCII (width 1) and CJK (width 2): "hi你好" = 1+1+2+2 = 6 cols
+    let (a, b) = splitAtWidth 4 "hi\x4F60\x597D"
+    x <- assertEq "splitAtWidth mixed first chunk" "hi\x4F60" a
+    y <- assertEq "splitAtWidth mixed remainder" "\x597D" b
+    pure (x && y)
+
+testSplitAtWidthNarrow :: IO Bool
+testSplitAtWidthNarrow = do
+    -- Width 1 can't fit a CJK char (width 2). Should return empty first chunk.
+    let (a, b) = splitAtWidth 1 "\x4F60\x597D"
+    x <- assertEq "splitAtWidth narrow can't fit wide char" "" a
+    y <- assertEq "splitAtWidth narrow keeps all" "\x4F60\x597D" b
+    pure (x && y)
+
+testDisplayWidthCJK :: IO Bool
+testDisplayWidthCJK =
+    assertEq "displayWidth CJK 4 chars = 8 cols" 8 (displayWidth "\x4F60\x597D\x4E16\x754C")
+
+testDisplayWidthEmoji :: IO Bool
+testDisplayWidthEmoji =
+    assertEq "displayWidth 3 emoji = 6 cols" 6 (displayWidth "\x1F600\x1F601\x1F602")
 
 -- isPfx -----------------------------------------------------------------------
 
