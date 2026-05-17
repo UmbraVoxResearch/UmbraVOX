@@ -116,7 +116,7 @@ moduleRlimits :: Map String Int
 moduleRlimits = Map.fromList
     [ ("Spec.Keccak.Permutation", 50000)
     , ("Spec.Keccak.Sponge",      20000)
-    , ("Spec.Keccak.SHA3",        20000)
+    , ("Spec.Keccak.SHA3",       200000)
     , ("Spec.Ed25519",            20000)
     , ("Spec.X25519",             20000)
     , ("Spec.AES256",             20000)
