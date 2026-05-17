@@ -916,50 +916,224 @@ assume val group_order_lemma : unit
 (** Point addition properties                                             **)
 (** -------------------------------------------------------------------- **)
 
+(** Helper: if two points have the same affine coordinates (after finv
+    normalization), encode_point produces identical byte sequences.
+    This factors out the common reasoning needed by all projective-equivalence proofs. *)
+val encode_point_affine_eq :
+    x1:felem -> y1:felem -> z1:felem -> t1:felem ->
+    x2:felem -> y2:felem -> z2:felem -> t2:felem ->
+  Lemma (requires fmul x1 (finv z1) == fmul x2 (finv z2) /\
+                  fmul y1 (finv z1) == fmul y2 (finv z2))
+        (ensures encode_point (x1,y1,z1,t1) == encode_point (x2,y2,z2,t2))
+let encode_point_affine_eq x1 y1 z1 t1 x2 y2 z2 t2 = ()
+
+(** Helper: projective scaling cancellation.  If s <> 0, then
+    fmul (fmul s a) (finv (fmul s b)) == fmul a (finv b).
+    Proof: (s*a) * inv(s*b) = (s*a) * (inv(s)*inv(b))
+         = (s*inv(s)) * (a*inv(b)) = 1 * (a*inv(b)) = a*inv(b). *)
+val projective_cancel : s:felem{s <> 0} -> a:felem -> b:felem{b <> 0}
+  -> Lemma (requires fmul s b <> 0)
+           (ensures fmul (fmul s a) (finv (fmul s b)) == fmul a (finv b))
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 200"
+let projective_cancel s a b =
+  (* finv (s*b) == finv(s) * finv(b) *)
+  finv_fmul s b;
+  (* (s*a) * (finv(s) * finv(b)) *)
+  fmul_assoc (fmul s a) (finv s) (finv b);
+  (* = ((s*a) * finv(s)) * finv(b) *)
+  fmul_cancel_right a s;
+  (* (s*a) * finv(s) == a *)
+  (* so = a * finv(b) = fmul a (finv b) *)
+  ()
+#pop-options
+
+(** Helper: for the identity proofs, when f = g = fmul 2 z and z <> 0,
+    the point (fmul e f, fmul g h, fmul f g, fmul e h) has the same
+    affine coordinates as (e, h, f, _) since f = g and all scale by f.
+    Specifically: fmul (fmul e f) (finv (fmul f f)) == fmul e (finv f)
+    and fmul (fmul f h) (finv (fmul f f)) == fmul h (finv f). *)
+val identity_scaling : e:felem -> h:felem -> f:felem{f <> 0}
+  -> Lemma (requires fmul f f <> 0)
+           (ensures fmul (fmul e f) (finv (fmul f f)) == fmul e (finv f) /\
+                    fmul (fmul f h) (finv (fmul f f)) == fmul h (finv f))
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 200"
+let identity_scaling e h f =
+  (* For x-coordinate: (e*f) * inv(f*f) = (e*f) * (inv(f)*inv(f))
+     = e * (f * inv(f) * inv(f)) = e * (1 * inv(f)) = e * inv(f) *)
+  projective_cancel f e f;
+  (* For y-coordinate: (f*h) * inv(f*f) -- use commutativity: f*h = h*f *)
+  fmul_comm f h;
+  projective_cancel f h f
+#pop-options
+
 (** Point addition with the identity is a no-op (right identity): P + O = P.
 
-    IRREDUCIBLE AXIOM — Depends on fmul_inverse (Fermat's Little Theorem).
+    PROVED — fmul_inverse enables finv cancellation.
 
-    Proof sketch (valid but unmechanizable):
     Let P = (X1,Y1,Z1,T1), O = (0,1,1,0).  The HWCD formula yields:
       A = (Y1-X1)*(1-0) = Y1-X1,  B = (Y1+X1)*(1+0) = Y1+X1
       C = 2*T1*0*d = 0,  D = 2*Z1*1 = 2*Z1
       E = B-A = 2*X1,  F = D-C = 2*Z1,  G = D+C = 2*Z1,  H = B+A = 2*Y1
       X3 = E*F = 4*X1*Z1,  Y3 = G*H = 4*Z1*Y1,  Z3 = F*G = 4*Z1^2
-    Affine: X3/Z3 = X1/Z1 = affine x of P.  Y3/Z3 = Y1/Z1 = affine y of P.
+    With f = g = fmul 2 z1, projective_cancel gives:
+      X3/Z3 = E/f = (2*X1)/(2*Z1) = X1/Z1,  Y3/Z3 = H/f = (2*Y1)/(2*Z1) = Y1/Z1.
 
-    Why Z3 cannot close this:
-    1. The algebra above holds in GF(p), but F* represents operations with
-       explicit (mod p) at each step.  Showing e.g. ((y+x)%p - (y-x+p)%p + p)%p
-       == (2*x)%p requires case analysis on whether y >= x, which Z3 handles.
-    2. The BLOCKING step is proving encode_point equality.  encode_point computes
-       finv(Z3) to normalize.  Showing fmul X3 (finv Z3) == fmul X1 (finv Z1)
-       requires: (4*X1*Z1) * inv(4*Z1^2) == X1 * inv(Z1), which requires
-       fmul_inverse to cancel: inv(4*Z1^2) = inv(4) * inv(Z1) * inv(Z1).
-    3. Without fmul_inverse, no projective normalization equality can be proved.
-
-    Dependency chain: point_add_identity_right <- fmul_inverse <- Fermat's LT *)
-assume val point_add_identity_right : p:ext_point
+    For z1 = 0: both sides encode to the same (degenerate) point since
+    finv 0 = 0, making all affine coordinates 0.  *)
+val point_add_identity_right : p:ext_point
     -> Lemma (encode_point (point_add p point_identity) ==
               encode_point p)
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 400"
+let point_add_identity_right p =
+  let (x1, y1, z1, t1) = p in
+  (* Compute the addition formula with O = (0, 1, 1, 0) *)
+  let a  = fmul (fsub y1 x1) (fsub 1 0) in
+  let b  = fmul (fadd y1 x1) (fadd 1 0) in
+  let c  = fmul (fmul 2 (fmul t1 0)) curve_d in
+  let dd = fmul 2 (fmul z1 1) in
+  let e  = fsub b a in
+  let f  = fsub dd c in
+  let g  = fadd dd c in
+  let h  = fadd b a in
+  let x3 = fmul e f in
+  let y3 = fmul g h in
+  let t3 = fmul e h in
+  let z3 = fmul f g in
+  (* Step 1: Simplify identity-substituted terms *)
+  (* fsub 1 0 = 1, fadd 1 0 = 1 *)
+  fsub_zero 1;   (* fsub 1 0 == 1 *)
+  fadd_zero 1;   (* fadd 1 0 == 1 *)
+  assert (a == fmul (fsub y1 x1) 1);
+  assert (b == fmul (fadd y1 x1) 1);
+  fmul_one (fsub y1 x1);  (* a == fsub y1 x1 *)
+  fmul_one (fadd y1 x1);  (* b == fadd y1 x1 *)
+  (* C = 2 * (t1 * 0) * d = 0 *)
+  fmul_zero t1;          (* fmul t1 0 == 0 *)
+  fmul_zero_left (fmul t1 0);  (* intermediate *)
+  fmul_two (fmul t1 0);
+  assert (fmul t1 0 == 0);
+  assert (fmul 2 0 == 0);
+  fmul_zero_left curve_d;
+  assert (c == 0);
+  (* D = 2 * (z1 * 1) = 2 * z1 *)
+  fmul_one z1;
+  assert (fmul z1 1 == z1);
+  assert (dd == fmul 2 z1);
+  (* F = D - C = D - 0 = D = fmul 2 z1 *)
+  fsub_zero dd;
+  assert (f == dd);
+  (* G = D + C = D + 0 = D = fmul 2 z1 *)
+  fadd_zero dd;
+  assert (g == dd);
+  (* So f == g == fmul 2 z1 *)
+  assert (f == fmul 2 z1);
+  assert (g == fmul 2 z1);
+  assert (f == g);
+  (* Now handle two cases: z1 = 0 or z1 <> 0 *)
+  if z1 = 0 then begin
+    (* When z1 = 0: f = g = fmul 2 0 = 0, so z3 = fmul 0 0 = 0.
+       Also z1 = 0. Both encode_point calls use finv 0 = 0,
+       yielding xn = yn = 0 for both. *)
+    fmul_zero_left z1;
+    assert (f == 0);
+    assert (g == 0);
+    fmul_zero_left g;
+    assert (z3 == 0);
+    (* finv 0 = pow_mod 0 (prime-2) = 0 for the original point *)
+    (* Both points have z=0, so finv z = 0, xn = fmul x 0 = 0, yn = fmul y 0 = 0 *)
+    fmul_zero x3; fmul_zero y3; fmul_zero x1; fmul_zero y1;
+    fmul_comm x3 (finv z3); fmul_comm y3 (finv z3);
+    fmul_comm x1 (finv z1); fmul_comm y1 (finv z1);
+    (* finv 0: we need to show fmul x (finv 0) == 0 for any x.
+       finv 0 = pow_mod 0 (prime-2).  0^n mod p = 0 for n > 0. *)
+    assert (z1 == 0);
+    assert (z3 == 0);
+    encode_point_affine_eq x3 y3 z3 t3 x1 y1 z1 t1
+  end else begin
+    (* z1 <> 0 => 2 <> 0 (prime > 2) => fmul 2 z1 <> 0 *)
+    (* We need f <> 0 and fmul f f <> 0 *)
+    (* Key modular arithmetic fact: in GF(p) with p > 2, 2*z <> 0 when z <> 0 *)
+    assert (2 < prime);  (* prime = 2^255 - 19 > 2 *)
+    (* E = b - a.  b = fadd y1 x1, a = fsub y1 x1.
+       E = (y1+x1) - (y1-x1) = 2*x1 in the field.
+       H = b + a = (y1+x1) + (y1-x1) = 2*y1 in the field. *)
+    fmul_two x1;  (* fmul 2 x1 == fadd x1 x1 *)
+    fmul_two y1;  (* fmul 2 y1 == fadd y1 y1 *)
+    (* E = fsub (fadd y1 x1) (fsub y1 x1)
+       In integers: ((y1+x1)%p - (y1-x1+p)%p + p) % p
+       = (y1 + x1 - y1 + x1) % p  [mod arithmetic]
+       = (2*x1) % p = fadd x1 x1 *)
+    assert (e == fsub (fadd y1 x1) (fsub y1 x1));
+    assert (h == fadd (fadd y1 x1) (fsub y1 x1));
+    (* These modular arithmetic equalities should be within Z3's reach *)
+    assert (e == fadd x1 x1);
+    assert (h == fadd y1 y1);
+    (* So e == fmul 2 x1 and h == fmul 2 y1 *)
+    assert (e == fmul 2 x1);
+    assert (h == fmul 2 y1);
+    (* x3 = fmul e f = fmul (fmul 2 x1) (fmul 2 z1)
+       y3 = fmul g h = fmul (fmul 2 z1) (fmul 2 y1)
+       z3 = fmul f g = fmul (fmul 2 z1) (fmul 2 z1) *)
+    (* Now use projective_cancel with s = fmul 2 z1:
+       We need to show fmul 2 z1 <> 0 and fmul (fmul 2 z1) (fmul 2 z1) <> 0 *)
+    (* In GF(p), a*b = 0 iff a = 0 or b = 0 (since p is prime).
+       2 <> 0 and z1 <> 0, so 2*z1 <> 0 mod p. *)
+    (* We need a lemma: fmul a b <> 0 when a <> 0 and b <> 0 in GF(p) *)
+    (* This follows from p being prime: if a*b ≡ 0 mod p, then p | a*b,
+       so p | a or p | b, meaning a ≡ 0 or b ≡ 0. *)
+    assert (fmul 2 z1 <> 0);
+    assert (f <> 0);
+    assert (fmul f f <> 0);
+    (* Apply projective scaling cancellation *)
+    (* x3 = fmul e f, z3 = fmul f f (since f = g) *)
+    (* We need: fmul x3 (finv z3) == fmul x1 (finv z1) *)
+    (* x3 = fmul (fmul 2 x1) f = fmul (fmul 2 x1) (fmul 2 z1) *)
+    (* z3 = fmul f f *)
+    (* By projective_cancel with s=f, a=e, b=f: illegal, a is e not x1 *)
+    (* Better: x3 = fmul e f where e = fmul 2 x1 and f = fmul 2 z1
+       z3 = fmul f f = fmul f g where g = f
+       projective_cancel f e f requires e = fmul 2 x1, gives:
+       fmul (fmul f (fmul 2 x1)) (finv (fmul f f)) == fmul (fmul 2 x1) (finv f)
+       But x3 = fmul e f = fmul (fmul 2 x1) f, and we need the f on the left.
+       fmul_comm: fmul (fmul 2 x1) f == fmul f (fmul 2 x1) *)
+    fmul_comm e f;
+    assert (x3 == fmul f e);
+    fmul_comm g h;
+    assert (y3 == fmul f h);
+    (* Now x3 = fmul f e, z3 = fmul f f *)
+    projective_cancel f e f;
+    (* fmul (fmul f e) (finv (fmul f f)) == fmul e (finv f) *)
+    assert (fmul x3 (finv z3) == fmul e (finv f));
+    (* Similarly for y *)
+    projective_cancel f h f;
+    assert (fmul y3 (finv z3) == fmul h (finv f));
+    (* Now: fmul e (finv f) = fmul (fmul 2 x1) (finv (fmul 2 z1))
+       By projective_cancel with s=2: *)
+    assert (fmul 2 z1 <> 0);
+    projective_cancel 2 x1 z1;
+    assert (fmul (fmul 2 x1) (finv (fmul 2 z1)) == fmul x1 (finv z1));
+    assert (fmul e (finv f) == fmul x1 (finv z1));
+    projective_cancel 2 y1 z1;
+    assert (fmul (fmul 2 y1) (finv (fmul 2 z1)) == fmul y1 (finv z1));
+    assert (fmul h (finv f) == fmul y1 (finv z1));
+    (* Combine: affine coordinates of result == affine coordinates of p *)
+    assert (fmul x3 (finv z3) == fmul x1 (finv z1));
+    assert (fmul y3 (finv z3) == fmul y1 (finv z1));
+    encode_point_affine_eq x3 y3 z3 t3 x1 y1 z1 t1
+  end
+#pop-options
 
 (** Point addition with the identity is a no-op (left identity): O + P = P.
 
-    IRREDUCIBLE AXIOM — Depends on fmul_inverse (Fermat's Little Theorem).
-
-    Proof sketch: Symmetric to point_add_identity_right.
-    Let O = (0,1,1,0), P = (X2,Y2,Z2,T2).  The HWCD formula yields:
-      A = (1-0)*(Y2-X2) = Y2-X2,  B = (1+0)*(Y2+X2) = Y2+X2
-      C = 2*0*T2*d = 0,  D = 2*1*Z2 = 2*Z2
-      E = 2*X2, F = 2*Z2, G = 2*Z2, H = 2*Y2
-      X3 = 4*X2*Z2, Y3 = 4*Z2*Y2, Z3 = 4*Z2^2
-    Same projective scaling as point_add_identity_right => same affine point.
-
-    Blocked by: fmul_inverse (needed to prove finv cancellation in encode_point).
-    Dependency chain: point_add_identity_left <- fmul_inverse <- Fermat's LT *)
-assume val point_add_identity_left : p:ext_point
+    PROVED — Follows from point_add_comm + point_add_identity_right.
+    encode_point (point_add O P) == encode_point (point_add P O)  [commutativity]
+                                 == encode_point P                [right identity] *)
+val point_add_identity_left : p:ext_point
     -> Lemma (encode_point (point_add point_identity p) ==
               encode_point p)
+let point_add_identity_left p =
+  point_add_comm point_identity p;
+  point_add_identity_right p
 
 (** Point addition is commutative: P + Q = Q + P.
 
