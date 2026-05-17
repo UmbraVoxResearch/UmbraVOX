@@ -32,11 +32,12 @@ echo -e "${BLUE}=== UmbraVOX Infrastructure Regression Suite ===${NC}"
 echo ""
 
 # ── Section 1: Makefile structure ─────────────────────────────────────
-echo -e "${BLUE}[1/7] Makefile structure tests${NC}"
+echo -e "${BLUE}[1/8] Makefile structure tests${NC}"
 
 # Check critical targets exist
 for target in build test verify quality vm-dev vm-build vm-test vm-verify \
               vm-image-build vm-image-clean vm-cache-clean vm-extract \
+              vm-screenshot vm-record vm-visual-regression test-infra \
               check-evidence test-shells test-vm help clean; do
     if make -n "$target" >/dev/null 2>&1; then
         check "Makefile target '$target' exists" "PASS"
@@ -64,7 +65,7 @@ fi
 echo ""
 
 # ── Section 2: Shell environments ─────────────────────────────────────
-echo -e "${BLUE}[2/7] Shell environment tests${NC}"
+echo -e "${BLUE}[2/8] Shell environment tests${NC}"
 
 if command -v nix-shell >/dev/null 2>&1; then
     # shell.nix banner
@@ -101,7 +102,7 @@ fi
 echo ""
 
 # ── Section 3: VM image ───────────────────────────────────────────────
-echo -e "${BLUE}[3/7] VM image tests${NC}"
+echo -e "${BLUE}[3/8] VM image tests${NC}"
 
 if [ -L build/vm/image ] && [ -e build/vm/image ]; then
     check "VM image symlink exists" "PASS"
@@ -127,10 +128,62 @@ else
     check "KVM available" "FAIL"
 fi
 
+# vm-dev-run.sh sources the network policy script
+if grep -q 'source.*vm-network-policy\.sh' scripts/vm-dev-run.sh 2>/dev/null; then
+    check "vm-dev-run.sh sources vm-network-policy.sh" "PASS"
+else
+    check "vm-dev-run.sh sources vm-network-policy.sh" "FAIL"
+fi
+
 echo ""
 
-# ── Section 4: F* proof invariants ────────────────────────────────────
-echo -e "${BLUE}[4/7] F* proof invariants${NC}"
+# ── Section 4: Network policy ────────────────────────────────────────
+echo -e "${BLUE}[4/8] Network policy tests${NC}"
+
+if [ -f vm-network-policy.conf ]; then
+    check "vm-network-policy.conf exists" "PASS"
+else
+    check "vm-network-policy.conf exists" "FAIL"
+fi
+
+if [ -f scripts/vm-network-policy.sh ]; then
+    if [ -x scripts/vm-network-policy.sh ]; then
+        check "scripts/vm-network-policy.sh exists and is executable" "PASS"
+    else
+        check "scripts/vm-network-policy.sh exists but NOT executable" "FAIL"
+    fi
+else
+    check "scripts/vm-network-policy.sh exists" "FAIL"
+fi
+
+# Default policy must deny all — no uncommented ALLOW rules
+if [ -f vm-network-policy.conf ]; then
+    allow_count=$(grep -cE '^\s*ALLOW' vm-network-policy.conf 2>/dev/null || true)
+    if [ "${allow_count:-0}" -eq 0 ]; then
+        check "Default policy has no uncommented ALLOW rules (deny-all)" "PASS"
+    else
+        check "Default policy has no uncommented ALLOW rules (deny-all)" "FAIL ($allow_count ALLOW rules found)"
+    fi
+else
+    check "Default policy has no uncommented ALLOW rules" "SKIP"
+fi
+
+# Policy file must not be world-writable (host-only control)
+if [ -f vm-network-policy.conf ]; then
+    perms=$(stat -c '%a' vm-network-policy.conf 2>/dev/null || stat -f '%Lp' vm-network-policy.conf 2>/dev/null)
+    if echo "$perms" | grep -qE '[2367]$'; then
+        check "vm-network-policy.conf is not world-writable" "FAIL (perms: $perms)"
+    else
+        check "vm-network-policy.conf is not world-writable" "PASS"
+    fi
+else
+    check "vm-network-policy.conf is not world-writable" "SKIP"
+fi
+
+echo ""
+
+# ── Section 5: F* proof invariants ────────────────────────────────────
+echo -e "${BLUE}[5/8] F* proof invariants${NC}"
 
 admit_count=$(grep -RIn '\badmit\b\|admit()' test/evidence/formal-proofs/fstar --include='*.fst' | grep -v '\*)\|(\*\|//' | grep -v 'admit_smt' | wc -l)
 if [ "$admit_count" -eq 0 ]; then
@@ -150,8 +203,8 @@ fi
 
 echo ""
 
-# ── Section 5: Evidence harness ───────────────────────────────────────
-echo -e "${BLUE}[5/7] Evidence harness tests${NC}"
+# ── Section 6: Evidence harness ───────────────────────────────────────
+echo -e "${BLUE}[6/8] Evidence harness tests${NC}"
 
 if [ -x test/evidence/formal-proofs/check-external-evidence.sh ]; then
     check "check-external-evidence.sh is executable" "PASS"
@@ -179,8 +232,8 @@ fi
 
 echo ""
 
-# ── Section 6: Scripts ────────────────────────────────────────────────
-echo -e "${BLUE}[6/7] Script tests${NC}"
+# ── Section 7: Scripts ────────────────────────────────────────────────
+echo -e "${BLUE}[7/8] Script tests${NC}"
 
 for script in scripts/vm-dev-run.sh scripts/vm-smoke-run.sh \
               scripts/vm-tui-scenario.sh scripts/vm-screenshot-capture.sh \
@@ -201,8 +254,8 @@ done
 
 echo ""
 
-# ── Section 7: Documentation ──────────────────────────────────────────
-echo -e "${BLUE}[7/7] Documentation completeness${NC}"
+# ── Section 8: Documentation ──────────────────────────────────────────
+echo -e "${BLUE}[8/8] Documentation completeness${NC}"
 
 for doc in README.md doc/ARCHITECTURE.md doc/RELEASES.md doc/CRYPTO-SAFETY.md \
            doc/DO-178C-COVERAGE.md doc/VM-DEVELOPMENT.md doc/runner-classes.md \
