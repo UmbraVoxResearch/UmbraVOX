@@ -31,6 +31,10 @@ let
     gdb
     valgrind
     coq
+    # Rocq 9.1.1 separates the stdlib (ZArith, Arith, etc.) from the core.
+    # Add coqPackages.coq-stdlib if available in pinned nixpkgs.
+    # Verify with: nix-shell --run "coqc -R . Test test.v" where test.v has "Require Import ZArith."
+    # If coq-stdlib is not available, use coqPackages_8_19.coq-stdlib or build from source.
     tlaplus
     fstar
     z3
