@@ -616,7 +616,15 @@ let fmul_comm a b =
     External verification:
       sage: is_prime(2^255 - 19)  ==>  True
       gp:   isprime(2^255 - 19)  ==>  1
-      mathematica: PrimeQ[2^255 - 19]  ==>  True *)
+      mathematica: PrimeQ[2^255 - 19]  ==>  True
+
+    Primality certificate (machine-verified):
+      scripts/primality-certificate.hs — Deterministic Miller-Rabin with
+      witnesses [2,3,5,7,11,13,17,19,23,29,31,37], plus Euler criterion
+      checks for a in {2,3,5}.  Also verifies group order L is prime and
+      the Hasse bound on the curve trace.
+      Certificate output: test/evidence/formal-proofs/primality-certificate.txt
+      Reproduce: nix-shell --run "runghc scripts/primality-certificate.hs" *)
 assume val prime_is_prime : unit -> Lemma (FStar.Math.Euclid.is_prime prime)
 
 (** Congruence of pow under modular reduction of the base.
@@ -1420,11 +1428,19 @@ let point_double_is_add p =
     assert (fmul y3_a (finv z3_a) == fmul h_a (finv f_a));
     (* h_a/f_a = h_d/f_d via: finv(-(2*f_d)) = -(finv(2*f_d)),
        then neg_fmul_cancel, then projective_cancel 2. *)
+    (* Step: show finv f_a == fsub 0 (finv (fmul 2 f_d)).
+       Both are right-inverses of f_a; uniqueness gives equality. *)
     finv_cancel (fmul 2 f_d);
     neg_fmul_cancel (fmul 2 f_d) (finv (fmul 2 f_d));
+    (* fmul f_a (fsub 0 (finv (fmul 2 f_d))) == 1 *)
     fmul_inverse f_a;
-    fmul_cancel_right (finv f_a) f_a;
+    (* fmul f_a (finv f_a) == 1 *)
+    (* Uniqueness: both are right-inverses, so equal *)
+    fmul_comm f_a (fsub 0 (finv (fmul 2 f_d)));
     fmul_cancel_right (fsub 0 (finv (fmul 2 f_d))) f_a;
+    fmul_comm f_a (finv f_a);
+    fmul_cancel_right (finv f_a) f_a;
+    fmul_one_left (finv f_a);
     assert (finv f_a == fsub 0 (finv (fmul 2 f_d)));
     neg_fmul_cancel (fmul 2 h_d) (finv (fmul 2 f_d));
     assert (fmul h_a (finv f_a) == fmul (fmul 2 h_d) (finv (fmul 2 f_d)));

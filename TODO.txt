@@ -538,11 +538,28 @@ Note: Findings from attic/doc-legacy spec comparison (2026-05-11).
 ================================================================================
 MILESTONE M13: F* FORMAL VERIFICATION — 100% COVERAGE
 ================================================================================
-Note: Replace all 221 assumes with Z3-discharged proofs. Add 4 missing specs.
-      Progress: Major reduction in progress. SHA-256 schedule expansion fully proved.
-      GCM: 7 admits eliminated. X25519: 5 assumes eliminated. X3DH/PQXDH: agreement
-      lemmas strengthened. DoubleRatchet: structural proofs with explicit crypto axioms.
-      SHA-512/ChaCha20/AES-256/Ed25519: proofs in progress.
+Note: 221 original assumes → 0 admit() + 23 assume val. 14/17 specs fully proved.
+      Full ledger: test/evidence/formal-proofs/ASSUMPTIONS.md
+
+[x] M13.8 Zero admit() milestone — all 178 admits eliminated
+[x] M13.9 Assumption ledger — ASSUMPTIONS.md with full classification
+
+[ ] M13.10 External evidence harness
+  [ ] M13.10.1 Create check-external-evidence.sh (fail-closed)
+  [ ] M13.10.2 Integrate primality certificate checker
+  [ ] M13.10.3 Create Coq project skeleton (Ed25519Constants.v)
+
+[ ] M13.11 Coq external verification
+  [ ] M13.11.1 Ed25519Prime.v — primality of 2^255-19 (Pocklington certificate)
+  [ ] M13.11.2 Ed25519Field.v — field operations, basic properties
+  [ ] M13.11.3 Ed25519Curve.v — curve equation, point addition formula
+  [ ] M13.11.4 Ed25519GroupLaw.v — associativity via ring/field tactic (EXPERIMENTAL)
+  [ ] M13.11.5 Ed25519Scalar.v — scalar_mult_add, scalar_mult_compose
+  [ ] M13.11.6 VRFDLEQ.v — DLEQ correctness
+
+[ ] M13.12 F* native reductions (easy lemmas only)
+  [ ] M13.12.1 Attempt encode_decode_round_trip via structural argument
+  [ ] M13.12.2 Attempt sign_then_verify once dependencies proved
 
 ================================================================================
 MILESTONE M16: DO-178C DAL A TESTING — 100% MC/DC COVERAGE
