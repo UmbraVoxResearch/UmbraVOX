@@ -291,27 +291,37 @@ private let rec gf_mul_loop_distributive
     (if bit_a && bit_b then begin
       (* bit_ab = false. zab' = zab = gf_xor za zb.
          za' = gf_xor za v, zb' = gf_xor zb v.
-         gf_xor (gf_xor za v) (gf_xor zb v) = gf_xor (gf_xor za zb) (gf_xor v v) = gf_xor za zb *)
+         Need: gf_xor za zb == gf_xor (gf_xor za v) (gf_xor zb v)
+         Chain: RHS == gf_xor za (gf_xor v (gf_xor zb v))    [assoc]
+                     == gf_xor za (gf_xor (gf_xor v zb) v)    [assoc on inner]
+                     == gf_xor za (gf_xor (gf_xor zb v) v)    [comm v zb]
+                     == gf_xor za (gf_xor zb (gf_xor v v))    [assoc on inner]
+                     == gf_xor za (gf_xor zb gf_zero)          [self-zero]
+                     == gf_xor za zb                            [zero identity] *)
       gf_xor_assoc za v (gf_xor zb v);
-      gf_xor_assoc zb v v;
+      gf_xor_assoc v zb v;
       gf_xor_comm v zb;
-      gf_xor_assoc za zb (gf_xor v v);
+      gf_xor_assoc zb v v;
       gf_xor_self_zero v;
-      gf_xor_zero_identity (gf_xor za zb)
+      gf_xor_zero_identity zb
     end else if bit_a && not bit_b then begin
-      (* bit_ab = true. zab' = gf_xor zab v = gf_xor (gf_xor za zb) v.
+      (* bit_ab = true. zab' = gf_xor (gf_xor za zb) v.
          za' = gf_xor za v, zb' = zb.
-         gf_xor (gf_xor za v) zb = gf_xor (gf_xor za zb) v *)
+         Need: gf_xor (gf_xor za zb) v == gf_xor (gf_xor za v) zb
+         Chain: gf_xor (gf_xor za v) zb == gf_xor za (gf_xor v zb) [assoc]
+                                         == gf_xor za (gf_xor zb v) [comm v zb]
+                                         == gf_xor (gf_xor za zb) v [assoc] *)
       gf_xor_assoc za v zb;
       gf_xor_comm v zb;
       gf_xor_assoc za zb v
     end else if not bit_a && bit_b then begin
-      (* bit_ab = true. zab' = gf_xor zab v = gf_xor (gf_xor za zb) v.
+      (* bit_ab = true. zab' = gf_xor (gf_xor za zb) v.
          za' = za, zb' = gf_xor zb v.
-         gf_xor za (gf_xor zb v) = gf_xor (gf_xor za zb) v *)
+         Need: gf_xor (gf_xor za zb) v == gf_xor za (gf_xor zb v)
+         By assoc: gf_xor za (gf_xor zb v) == gf_xor (gf_xor za zb) v *)
       gf_xor_assoc za zb v
     end else begin
-      (* bit_ab = false. zab' = zab, za' = za, zb' = zb. Trivial. *)
+      (* bit_ab = false. zab' = zab = gf_xor za zb, za' = za, zb' = zb. Trivial. *)
       ()
     end);
     (* v evolves identically in all three computations *)

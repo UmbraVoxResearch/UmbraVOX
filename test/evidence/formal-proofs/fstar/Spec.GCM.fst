@@ -492,11 +492,11 @@ let rec gctr_process_involutive
     : Lemma
       (requires all_blocks_bounded bs)
       (ensures (
-        gctr_process_bounded encrypt bs cb;
+        all_blocks_bounded (gctr_process encrypt bs cb) /\
         gctr_process encrypt (gctr_process encrypt bs cb) cb == bs))
       (decreases bs) =
   match bs with
-  | [] -> gctr_process_bounded encrypt bs cb
+  | [] -> ()
   | blk :: rest ->
     gctr_process_bounded encrypt bs cb;
     let ks = encrypt cb in
@@ -504,10 +504,6 @@ let rec gctr_process_involutive
     let enc_blk = xor_bytes blk ks_slice in
     (* Second pass: xor enc_blk with same keystream slice *)
     assert (Seq.length enc_blk = Seq.length blk);
-    let ks2 = encrypt cb in  (* same function, same input => same result *)
-    assert (ks2 == ks);
-    let ks_slice2 = Seq.slice ks2 0 (Seq.length enc_blk) in
-    assert (ks_slice2 == ks_slice);
     (* xor_bytes (xor_bytes blk ks_slice) ks_slice == blk *)
     xor_bytes_involutive blk ks_slice;
     (* Recursive case *)
@@ -1240,6 +1236,10 @@ private let rec ghash_loop_linear
     (* Need: slice of Seq.init = init of slice indices *)
     assert (forall (i:nat{i < 16}).
       Seq.index xyi_bytes i == UInt8.logxor (Seq.index xi_bytes i) (Seq.index yi_bytes i));
+    (* Establish xyi_bytes == init 16 (fun i -> logxor (index xi_bytes i) (index yi_bytes i))
+       so bs_to_gf_xor can connect *)
+    let ab = Seq.init 16 (fun i -> UInt8.logxor (Seq.index xi_bytes i) (Seq.index yi_bytes i)) in
+    Seq.lemma_eq_intro xyi_bytes ab;
     bs_to_gf_xor xi_bytes yi_bytes;
     (* gf_xor (gf_xor yx yy) xyi == gf_xor (gf_xor yx yy) (gf_xor xi yi)
        Rearrange to: gf_xor (gf_xor yx xi) (gf_xor yy yi)
@@ -1250,6 +1250,7 @@ private let rec ghash_loop_linear
     Spec.GaloisField.gf_xor_assoc yx yy (Spec.GaloisField.gf_xor xi yi);
     Spec.GaloisField.gf_xor_assoc yy xi yi;
     Spec.GaloisField.gf_xor_comm yy xi;
+    Spec.GaloisField.gf_xor_assoc xi yy yi;
     Spec.GaloisField.gf_xor_assoc yx xi (Spec.GaloisField.gf_xor yy yi);
     (* Now: gf_xor yxy xyi == gf_xor yx_xi yy_yi *)
     (* Apply distributivity: gf_mul (gf_xor yx_xi yy_yi) h == gf_xor (gf_mul yx_xi h) (gf_mul yy_yi h) *)
