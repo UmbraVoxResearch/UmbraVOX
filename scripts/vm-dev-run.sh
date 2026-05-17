@@ -216,7 +216,7 @@ EXECEOF
 
 preflight_check
 
-DISK_IMG="$VM_IMAGE_PATH/nixos.img"
+DISK_IMG="$(readlink -f "$VM_IMAGE_PATH/nixos.img")"
 SRC_DISK="$(create_source_disk)"
 OVERLAY="$(mktemp /tmp/umbravox-vm-dev-overlay.XXXXXX.qcow2)"
 
@@ -243,7 +243,7 @@ QEMU_ARGS=(
     -nographic
     -nodefaults
     -serial stdio
-    -drive "if=virtio,format=raw,snapshot=on,file=$DISK_IMG"
+    -drive "if=virtio,format=qcow2,file=$OVERLAY"
     -drive "if=virtio,format=raw,file=$SRC_DISK,readonly=on"
     -drive "if=virtio,format=qcow2,file=$CACHE_DISK"
     -virtfs "local,path=$OUTPUT_DIR,mount_tag=output,security_model=mapped-xattr,id=output"
