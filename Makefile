@@ -36,7 +36,12 @@
 #   make release-license-bundle - Check license-bundle tooling presence for future artifact generation
 #   make format-check - Check for tabs and trailing whitespace
 #   make codegen      - Generate Haskell + C + FFI from .spec files
+#   make check-evidence - Run external evidence verification checks
 #   make quality      - Run the full pipeline (same as make)
+#   make vm-dev       - Interactive dev shell inside NixOS QEMU VM (M13.13)
+#   make vm-build     - Build inside NixOS VM (cabal build all)
+#   make vm-test      - Test inside NixOS VM (cabal test required)
+#   make vm-verify    - F* verification inside NixOS VM
 #   make release-linux - Build a portable Linux x86_64 terminal bundle
 #   make release-appimage - Build an experimental Linux AppImage scaffold
 #   make release-smoke-linux - Run isolated Linux bundle smoke check (podman/docker if available)
@@ -72,7 +77,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 sanity vm-smoke vm-image-build vm-image-clean image-clean firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot vm-record vm-visual-regression visual-reference-update clean cleandb cleanall help
+.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence check-evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 sanity vm-smoke vm-image-build vm-image-clean image-clean vm-dev vm-build vm-test vm-verify firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot vm-record vm-visual-regression visual-reference-update clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -216,9 +221,16 @@ help:
 	@echo "    make release-manifest Generate release provenance manifest"
 	@echo "    make release-checksums Emit SHA-256 checksums for release artifacts"
 	@echo "    make format-check Check for tabs and trailing whitespace"
+	@echo "    make check-evidence Run external evidence verification checks"
 	@echo "    make release-gate-assurance Run assurance matrix freshness gate"
 	@echo "    make verify-traffic Verify no plaintext in captured traffic"
 	@echo "    make quality     Same as make (lint/format-check are non-blocking)"
+	@echo ""
+	@echo "  VM Development (M13.13 — full toolchain inside VM):"
+	@echo "    make vm-dev         Interactive dev shell inside NixOS VM"
+	@echo "    make vm-build       Build inside VM (cabal build all)"
+	@echo "    make vm-test        Test inside VM (cabal test required)"
+	@echo "    make vm-verify      F* verification inside VM"
 	@echo ""
 	@echo "  VM Smoke (isolated build/test):"
 	@echo "    make vm-smoke       Run full pipeline inside isolated QEMU VM"
@@ -814,7 +826,11 @@ vm-smoke-arm64:
 # Quality Gate (all checks)
 # --------------------------------------------------------------------------
 
-quality: all
+quality: all check-evidence
+
+check-evidence:
+	@echo "Running external evidence checks..."
+	@bash test/evidence/formal-proofs/check-external-evidence.sh
 
 evidence:
 	@echo -e "$(BLUE)[EVIDENCE]$(NC) Building publication evidence bundle..."
@@ -896,6 +912,33 @@ sanity:
 	@echo "FIRECRACKER_SMOKE_ROOTFS=$(if $(strip $(FIRECRACKER_SMOKE_ROOTFS)),$(FIRECRACKER_SMOKE_ROOTFS),<unset>)"
 	@echo "FIRECRACKER_SMOKE_CONFIG=$(if $(strip $(FIRECRACKER_SMOKE_CONFIG)),$(FIRECRACKER_SMOKE_CONFIG),<unset>)"
 	@echo -e "$(GREEN)[SANITY]$(NC) Release smoke/microVM targets are wired."
+
+# --------------------------------------------------------------------------
+# VM-Based Development (M13.13)
+# --------------------------------------------------------------------------
+# These targets run the full dev toolchain inside the NixOS QEMU VM.
+# The host only needs QEMU, git, make, and genext2fs (from shell-minimal.nix).
+# See doc/VM-DEVELOPMENT.md for the migration plan.
+
+vm-dev:
+	@echo -e "$(BLUE)[VM-DEV]$(NC) Booting interactive NixOS development VM..."
+	@chmod +x ./scripts/vm-dev-run.sh
+	@./scripts/vm-dev-run.sh interactive
+
+vm-build:
+	@echo -e "$(BLUE)[VM-BUILD]$(NC) Building inside NixOS VM..."
+	@chmod +x ./scripts/vm-dev-run.sh
+	@./scripts/vm-dev-run.sh exec "cabal build all --enable-tests 2>&1; echo VM_DEV_RESULT=\$$?"
+
+vm-test:
+	@echo -e "$(BLUE)[VM-TEST]$(NC) Testing inside NixOS VM..."
+	@chmod +x ./scripts/vm-dev-run.sh
+	@./scripts/vm-dev-run.sh exec "cabal build all --enable-tests 2>&1 && cabal test umbravox-test --test-options='required' 2>&1; echo VM_DEV_RESULT=\$$?"
+
+vm-verify:
+	@echo -e "$(BLUE)[VM-VERIFY]$(NC) Running F* verification inside NixOS VM..."
+	@chmod +x ./scripts/vm-dev-run.sh
+	@./scripts/vm-dev-run.sh exec "cabal build all 2>&1 && cabal run fstar-verify 2>&1; echo VM_DEV_RESULT=\$$?"
 
 # --------------------------------------------------------------------------
 # VM Isolated Smoke Testing

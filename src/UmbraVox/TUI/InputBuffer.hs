@@ -42,6 +42,14 @@ inputPrefix = " \x25B8 "
 continuationPrefix :: String
 continuationPrefix = replicate (displayWidth inputPrefix) ' '
 
+-- | Two-pass layout: first wrap at full width to decide scrollbar visibility,
+-- then re-wrap at narrower width if a scrollbar is needed.
+--
+-- R1.8.3 safety note: the scrollbar decision is locked from pass 1 and never
+-- re-evaluated.  Pass 2 (narrower width) can only produce equal or more
+-- wrapped lines, so the decision "needs scrollbar" remains valid.  When
+-- pass 1 says "no scrollbar", no narrowing occurs (textW == baseTextW),
+-- so there is no oscillation.
 computeInputBufferLayout :: Int -> Int -> String -> InputBufferLayout
 computeInputBufferLayout bodyW entryRows buf =
     let prefixW = displayWidth inputPrefix
