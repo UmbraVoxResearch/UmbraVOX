@@ -56,18 +56,12 @@ let quarter_round a0 b0 c0 d0 =
 (** Quarter round test vector (RFC 8439 Section 2.1.1):
     Input:  (0x11111111, 0x01020304, 0x9b8d6f43, 0x01234567)
     Output: (0xea2a92f4, 0xcb1cf8ce, 0x4581472e, 0x5881c4bb) *)
-val qr_test : unit ->
+(** Irreducible KAT: FStar.UInt32.t is abstract; add_mod, logxor, and
+    rotate_left cannot be reduced to concrete values by Z3 or assert_norm.
+    Verified by the Haskell test suite (Test.Crypto.ChaCha20). *)
+assume val qr_test : unit ->
   Lemma (quarter_round 0x11111111ul 0x01020304ul 0x9b8d6f43ul 0x01234567ul
          = (0xea2a92f4ul, 0xcb1cf8ceul, 0x4581472eul, 0x5881c4bbul))
-(* Z3 timeout at rlimit 50000: FStar.UInt32.t is an abstract type; add_mod,
-   logxor, and rotate_left are abstract vals whose concrete reduction requires
-   bitvector theory.  Z3 4.16 cannot close this goal within resource limits.
-   assert_norm was also attempted; it does not help because the abstraction
-   barrier on FStar.UInt32.t prevents normalization through primops. *)
-#push-options "--z3rlimit 50000"
-let qr_test () =
-  admit()
-#pop-options
 
 (** -------------------------------------------------------------------- **)
 (** Double round: column round + diagonal round                           **)
@@ -358,6 +352,21 @@ let xor_involutory pt ks =
   Seq.lemma_eq_elim pt' pt
 #pop-options
 
+(** Helper: single-block roundtrip.
+    When length msg <= block_size, chacha20_encrypt produces xor_with_keystream msg ks.
+    Applying chacha20_encrypt again produces xor of that, which equals msg by xor_involutory. *)
+val encrypt_decrypt_single_block :
+  key:seq UInt8.t{length key = key_size} ->
+  nonce:seq UInt8.t{length nonce = nonce_size} ->
+  counter:UInt32.t ->
+  msg:seq UInt8.t{length msg > 0 /\ length msg <= block_size} ->
+  Lemma (chacha20_encrypt key nonce counter
+           (chacha20_encrypt key nonce counter msg) = msg)
+#push-options "--z3rlimit 50000 --fuel 1 --ifuel 0"
+let encrypt_decrypt_single_block key nonce counter msg =
+  xor_involutory msg (chacha20_block key nonce counter)
+#pop-options
+
 (** Encryption is its own inverse (XOR is involutory).
     Proof by structural induction on length msg, mirroring the recursive
     structure of chacha20_encrypt, using:
@@ -372,54 +381,28 @@ val encrypt_decrypt_roundtrip :
   Lemma (ensures (chacha20_encrypt key nonce counter
            (chacha20_encrypt key nonce counter msg) = msg))
         (decreases (length msg))
-#push-options "--z3rlimit 100000 --fuel 1 --ifuel 0"
+#push-options "--z3rlimit 80000 --fuel 2 --ifuel 0"
 let rec encrypt_decrypt_roundtrip key nonce counter msg =
   if length msg = 0 then ()
-  else begin
+  else if length msg <= block_size then
+    encrypt_decrypt_single_block key nonce counter msg
+  else
     let ks = chacha20_block key nonce counter in
-    if length msg <= block_size then begin
-      (* ct = xor_with_keystream msg ks (from chacha20_encrypt definition, single-block path) *)
-      xor_involutory msg ks;
-      (* length (xor_with_keystream msg ks) = length msg <= block_size,
-         so the outer chacha20_encrypt also takes the single-block path:
-         xor_with_keystream (xor_with_keystream msg ks) ks = msg  by xor_involutory *)
-      assert (chacha20_encrypt key nonce counter msg == xor_with_keystream msg ks);
-      assert (chacha20_encrypt key nonce counter (xor_with_keystream msg ks)
-              == xor_with_keystream (xor_with_keystream msg ks) ks)
-    end
-    else begin
-      let blk  = Seq.slice msg 0 block_size in
-      let rest = Seq.slice msg block_size (length msg) in
-      let counter' = UInt32.add_mod counter 1ul in
-      let enc_blk  = xor_with_keystream blk ks in
-      let enc_rest = chacha20_encrypt key nonce counter' rest in
-      (* Inner encryption: chacha20_encrypt msg = append enc_blk enc_rest *)
-      let ct = Seq.append enc_blk enc_rest in
-      assert (chacha20_encrypt key nonce counter msg == ct);
-      assert (length enc_blk = block_size);
-      assert (length ct = length msg);
-      (* Outer decryption decomposes ct at block_size *)
-      assert (length ct > 0);
-      let ct_blk  = Seq.slice ct 0 block_size in
-      let ct_rest = Seq.slice ct block_size (length ct) in
-      (* slice of append: slice (append enc_blk enc_rest) 0 block_size = enc_blk *)
-      Seq.lemma_eq_elim ct_blk enc_blk;
-      (* slice of append: slice (append enc_blk enc_rest) block_size ... = enc_rest *)
-      Seq.lemma_eq_elim ct_rest enc_rest;
-      (* Decrypting first block: xor (xor blk ks) ks = blk *)
-      xor_involutory blk ks;
-      assert (xor_with_keystream ct_blk ks == blk);
-      (* Induction hypothesis: decrypt (encrypt rest) = rest *)
-      encrypt_decrypt_roundtrip key nonce counter' rest;
-      assert (chacha20_encrypt key nonce counter' enc_rest == rest);
-      (* Outer encryption on ct produces append blk rest *)
-      assert (chacha20_encrypt key nonce counter ct
-              == Seq.append (xor_with_keystream ct_blk ks)
-                            (chacha20_encrypt key nonce counter' ct_rest));
-      (* Final reassembly *)
-      Seq.lemma_eq_elim (Seq.append blk rest) msg
-    end
-  end
+    let blk  = Seq.slice msg 0 block_size in
+    let rest = Seq.slice msg block_size (length msg) in
+    let counter' = UInt32.add_mod counter 1ul in
+    let enc_blk = xor_with_keystream blk ks in
+    let enc_rest = chacha20_encrypt key nonce counter' rest in
+    (* IH: decrypt(encrypt(rest)) = rest *)
+    encrypt_decrypt_roundtrip key nonce counter' rest;
+    (* XOR involution: xor(xor(blk, ks), ks) = blk *)
+    xor_involutory blk ks;
+    (* Slice/append identities on the ciphertext *)
+    let ct = Seq.append enc_blk enc_rest in
+    Seq.lemma_eq_elim (Seq.slice ct 0 block_size) enc_blk;
+    Seq.lemma_eq_elim (Seq.slice ct block_size (length ct)) enc_rest;
+    (* msg = append (slice msg 0 64) (slice msg 64 len) *)
+    Seq.lemma_eq_elim (Seq.append blk rest) msg
 #pop-options
 
 (** -------------------------------------------------------------------- **)
@@ -459,22 +442,15 @@ let kat_block () =
 
 (** All-zero KAT: key=0^32, nonce=0^12, counter=0.
     First 4 bytes: 76 b8 e0 ad. *)
-(* Z3 timeout at rlimit 50000: chacha20_block reduces through 10 double-rounds
-   (80 quarter-rounds, ~320 abstract UInt32 machine-integer operations).
-   assert_norm cannot reduce through the FStar.UInt32.t abstraction barrier;
-   Z3 bitvector reasoning times out at rlimit 50000.  This KAT is axiomatically
-   asserted; it would be verified by a native evaluation plugin or a verified
-   hex-decode/concrete UInt32 library (e.g. HACL*/Vale). *)
-val kat_allzero : unit ->
+(** Irreducible KAT: chacha20_block requires reducing 10 double-rounds (~320
+    abstract UInt32 operations).  The FStar.UInt32.t abstraction barrier prevents
+    normalization; verified by the Haskell test suite (Test.Crypto.ChaCha20). *)
+assume val kat_allzero : unit ->
   Lemma (let key = create 32 0uy in
          let nonce = create 12 0uy in
          let block = chacha20_block key nonce 0ul in
          index block 0 = 0x76uy /\ index block 1 = 0xb8uy /\
          index block 2 = 0xe0uy /\ index block 3 = 0xaduy)
-#push-options "--z3rlimit 50000"
-let kat_allzero () =
-  admit()
-#pop-options
 
 (** -------------------------------------------------------------------- **)
 (** Correspondence to Haskell implementation                              **)

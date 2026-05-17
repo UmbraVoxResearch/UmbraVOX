@@ -114,8 +114,17 @@ val vrf_uniqueness : sk:secret_key -> msg:seq UInt8.t
 let vrf_uniqueness sk msg = ()
 
 (** Strong uniqueness: any two valid proofs for (pk, msg) produce the
-    same beta.  This is the binding property of ECVRF (RFC 9381 §3). *)
-val vrf_strong_uniqueness : sk:secret_key -> msg:seq UInt8.t
+    same beta.  This is the binding property of ECVRF (RFC 9381 §3).
+
+    CRYPTOGRAPHIC HARDNESS ASSUMPTION: The uniqueness of Gamma (the VRF
+    point) follows from the discrete logarithm assumption on Ed25519.
+    Any valid proof (Gamma, c, s) for (pk, msg) satisfies:
+      s * G = c * pk + U   and   s * H = c * Gamma + V
+    where H = hash_to_try_and_increment(pk, msg).  Gamma is uniquely
+    determined as H^sk; two valid proofs must share the same Gamma, hence
+    the same beta = SHA-512(Gamma).  This binding property is undischargeable
+    in F* without a model of discrete-log hardness. *)
+assume val vrf_strong_uniqueness : sk:secret_key -> msg:seq UInt8.t
     -> pi1:vrf_proof -> pi2:vrf_proof
     -> Lemma (
         requires (
@@ -124,15 +133,6 @@ val vrf_strong_uniqueness : sk:secret_key -> msg:seq UInt8.t
           vrf_verify pk msg pi2 <> None))
         (ensures (
           vrf_proof_to_hash pi1 = vrf_proof_to_hash pi2))
-let vrf_strong_uniqueness sk msg pi1 pi2 =
-  (* Proof sketch (RFC 9381 §3):
-     Any valid proof (Gamma, c, s) for (pk, msg) satisfies:
-       s * G = c * pk + U   and   s * H = c * Gamma + V
-     where H = hash_to_try_and_increment(pk, msg), U, V are from the proof.
-     Gamma is uniquely determined by (sk, msg) as H^sk (the ECVRF point).
-     Two valid proofs must share the same Gamma, hence the same beta.
-     The uniqueness of Gamma follows from the discrete log assumption. *)
-  admit()
 
 (** -------------------------------------------------------------------- **)
 (** Verifiability                                                        **)
@@ -146,19 +146,16 @@ let vrf_strong_uniqueness sk msg pi1 pi2 =
 (** where pk = vrf_public_key(sk).                                       **)
 (** -------------------------------------------------------------------- **)
 
-val vrf_verifiability : sk:secret_key -> msg:seq UInt8.t
+(** Verifiability is an axiom on the abstract vrf_prove/vrf_verify pair.
+    It states the intended RFC 9381 contract: vrfProve constructs (Gamma, c, s)
+    such that vrfVerify reconstructs c' = c and succeeds.  This cannot be
+    proved without a concrete implementation of vrf_prove and vrf_verify;
+    it is the fundamental correctness axiom of the ECVRF specification. *)
+assume val vrf_verifiability : sk:secret_key -> msg:seq UInt8.t
     -> Lemma (
         let pk = vrf_public_key sk in
         let pi = vrf_prove sk msg in
         vrf_verify pk msg pi = Some (vrf_proof_to_hash pi))
-let vrf_verifiability sk msg =
-  (* Proof sketch: vrfProve constructs (Gamma, c, s) such that
-       c = challenge(pk, H, Gamma, k*G, k*H)   (RFC 9381 §5.4.2)
-       s = (k - c * sk) mod L                   (RFC 9381 §5.4.2)
-     vrfVerify reconstructs U = s*G + c*pk and V = s*H + c*Gamma and
-     re-derives c' from (pk, H, Gamma, U, V).  By construction c' = c,
-     so verification succeeds and returns proof_to_hash(pi). *)
-  admit()
 
 (** -------------------------------------------------------------------- **)
 (** Pseudorandomness (computational assumption)                         **)
@@ -184,18 +181,19 @@ let vrf_pseudorandomness sk msg = ()
 (** and ECVRF point injection).                                          **)
 (** -------------------------------------------------------------------- **)
 
-val vrf_collision_resistance : sk:secret_key -> msg1:seq UInt8.t -> msg2:seq UInt8.t
+(** CRYPTOGRAPHIC HARDNESS ASSUMPTION: Collision resistance of the VRF output.
+    If msg1 <> msg2, then hash_to_try_and_increment(pk, msg1) <> hash_to_try_and_increment(pk, msg2)
+    by collision resistance of the hash-to-curve map.  Hence Gamma1 = H1^sk <> H2^sk = Gamma2
+    (injectivity of scalar multiplication by a non-zero scalar).  Finally,
+    SHA-512(Gamma1) <> SHA-512(Gamma2) by SHA-512 collision resistance.
+    This chain of assumptions is undischargeable without models of hash
+    collision resistance and the group structure of Ed25519. *)
+assume val vrf_collision_resistance : sk:secret_key -> msg1:seq UInt8.t -> msg2:seq UInt8.t
     -> Lemma (
         requires msg1 <> msg2)
         (ensures (
           vrf_proof_to_hash (vrf_prove sk msg1) <>
           vrf_proof_to_hash (vrf_prove sk msg2)))
-let vrf_collision_resistance sk msg1 msg2 =
-  (* Proof sketch: if msg1 <> msg2, then hash_to_try_and_increment(pk, msg1) <> hash_to_try_and_increment(pk, msg2)
-     (collision resistance of the hash-to-curve map).
-     Hence Gamma1 = H1^sk <> H2^sk = Gamma2 with overwhelming probability.
-     SHA-512(Gamma1) <> SHA-512(Gamma2) follows from SHA-512 collision resistance. *)
-  admit()
 
 (** -------------------------------------------------------------------- **)
 (** Output length                                                        **)

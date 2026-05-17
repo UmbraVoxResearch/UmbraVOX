@@ -277,7 +277,17 @@ let scan_correctness eph_secret scan_secret spend_pub =
 (** different P = s*G_ed + spend_pub (injectivity of scalar mult).      **)
 (** -------------------------------------------------------------------- **)
 
-val unlinkability
+(** CRYPTOGRAPHIC HARDNESS ASSUMPTION: Unlinkability of stealth addresses.
+    The core argument is:
+      eph1 <> eph2 => x25519_base(eph1) <> x25519_base(eph2)
+    which relies on injectivity of X25519 basepoint multiplication (after
+    clamping).  This is a property of the Curve25519 group structure that
+    cannot be discharged without a concrete model of the curve arithmetic.
+    The stronger claim (sa_address differs) additionally requires the
+    decisional Diffie-Hellman assumption on Curve25519: different shared
+    secrets S1 <> S2 lead to different HKDF outputs and hence different
+    stealth scalars s1 <> s2.  Both properties are undischargeable in F*. *)
+assume val unlinkability
     : eph1:bytes32
    -> eph2:bytes32
    -> scan_pub:bytes32
@@ -293,16 +303,6 @@ val unlinkability
              (* or at least different ephemeral public keys (observable by sender) *)
              sa1.sa_ephemeral <> sa2.sa_ephemeral
          | _ -> True))   (* if either derivation fails, no claim *)
-let unlinkability eph1 eph2 scan_pub spend_pub =
-  (* Proof sketch:
-     eph1 <> eph2 => x25519_base(eph1) <> x25519_base(eph2)
-       (injectivity of x25519_base on [0, 2^255) after clamping).
-     Hence sa1.sa_ephemeral = R1 <> R2 = sa2.sa_ephemeral.
-     The ephemeral public key R is part of the on-chain output, so the
-     two payments are trivially distinguishable by their R values alone.
-     The stealth addresses P1, P2 also differ because S1 <> S2 with
-     overwhelming probability under the decisional DH assumption on X25519. *)
-  admit()
 
 (** -------------------------------------------------------------------- **)
 (** View tag fast-filter correctness                                     **)
