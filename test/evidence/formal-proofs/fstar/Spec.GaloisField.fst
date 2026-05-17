@@ -121,23 +121,24 @@ let gf_shift_right ((yh, yl) : gf128) : gf128 =
                else 0uL) in
   (nyh, nyl)
 
+(** Inner loop of GF(2^128) multiplication, defined at top level for proof access *)
+let rec gf_mul_loop (x : gf128) (i : nat) (z : gf128) (v : gf128)
+    : Tot gf128 (decreases (128 - i)) =
+  if i >= 128 then z
+  else
+    let z' = if gf_test_bit x i then gf_xor z v else z in
+    let (vh, vl) = v in
+    let lsb = UInt64.v (UInt64.logand vl 1uL) = 1 in
+    let v' = gf_shift_right v in
+    let v'' = if lsb then
+                let (vh', vl') = v' in
+                (UInt64.logxor vh' r_poly, vl')
+              else v' in
+    gf_mul_loop x (i + 1) z' v''
+
 val gf_mul : gf128 -> gf128 -> Tot gf128
 let gf_mul (x : gf128) (y : gf128) : gf128 =
-  let rec loop (i : nat) (z : gf128) (v : gf128)
-      : Tot gf128 (decreases (128 - i)) =
-    if i >= 128 then z
-    else
-      let z' = if gf_test_bit x i then gf_xor z v else z in
-      let (vh, vl) = v in
-      let lsb = UInt64.v (UInt64.logand vl 1uL) = 1 in
-      let v' = gf_shift_right v in
-      let v'' = if lsb then
-                  let (vh', vl') = v' in
-                  (UInt64.logxor vh' r_poly, vl')
-                else v' in
-      loop (i + 1) z' v''
-  in
-  loop 0 gf_zero y
+  gf_mul_loop x 0 gf_zero y
 
 (** -------------------------------------------------------------------- **)
 (** Properties of GF(2^128) operations                                   **)
@@ -173,30 +174,87 @@ let gf_xor_self_zero (ah, al) =
 
 (** Multiplication by zero yields zero.
 
-    The proof proceeds by induction: gf_mul a gf_zero = loop 0 gf_zero gf_zero.
-    At every iteration, gf_test_bit gf_zero i = false (both words are 0),
-    gf_shift_right gf_zero = gf_zero, and lsb of gf_zero is 0.
-    Therefore loop i gf_zero gf_zero = gf_zero for all i.
+    gf_mul a gf_zero = gf_mul_loop a 0 gf_zero gf_zero.
+    At every iteration: v = gf_zero stays zero (shift_right of zero is zero,
+    lsb is 0), and z XOR gf_zero = z, so z never changes from gf_zero. *)
 
-    Z3 cannot unroll 128 iterations within practical rlimit.  We state this
-    as an axiom; the mathematical argument above is complete. *)
-assume val gf_mul_zero : a:gf128
+(** Helper: gf_shift_right of zero is zero *)
+private let gf_shift_right_zero_lemma () : Lemma (gf_shift_right gf_zero == gf_zero) =
+  assert_norm (gf_shift_right gf_zero == gf_zero)
+
+(** Helper: lsb of gf_zero's low word is 0 *)
+private let gf_zero_lsb_lemma ()
+    : Lemma (UInt64.v (UInt64.logand (snd gf_zero) 1uL) = 0) =
+  assert_norm (UInt64.v (UInt64.logand 0uL 1uL) = 0)
+
+(** Helper: when v = gf_zero, gf_mul_loop returns z unchanged *)
+#push-options "--z3rlimit 40 --fuel 1 --ifuel 0"
+private let rec gf_mul_loop_zero_v (x:gf128) (i:nat{i <= 128}) (z:gf128)
+    : Lemma
+      (ensures gf_mul_loop x i z gf_zero == z)
+      (decreases (128 - i)) =
+  if i >= 128 then ()
+  else begin
+    (* v = gf_zero = (0uL, 0uL):
+       - z' = if gf_test_bit x i then gf_xor z gf_zero else z
+         In both cases z' == z (gf_xor_zero_identity)
+       - lsb = UInt64.v (logand 0uL 1uL) = 1, which is false
+       - v' = gf_shift_right gf_zero = gf_zero
+       - v'' = v' = gf_zero (since lsb is false)
+       So: gf_mul_loop x (i+1) z gf_zero == z by IH *)
+    gf_xor_zero_identity z;
+    gf_shift_right_zero_lemma ();
+    gf_zero_lsb_lemma ();
+    gf_mul_loop_zero_v x (i + 1) z
+  end
+#pop-options
+
+val gf_mul_zero : a:gf128
     -> Lemma (gf_mul a gf_zero == gf_zero)
+let gf_mul_zero a =
+  gf_mul_loop_zero_v a 0 gf_zero
 
 (** Multiplication is commutative in GF(2^128).
 
     Commutativity follows from the algebraic structure of GF(2^128):
-    polynomial multiplication over GF(2)[x] mod p(x) is commutative.
-    The proof requires a non-trivial inductive argument relating the
-    bit-indexed schoolbook algorithm to polynomial multiplication.
-    We state this as an axiom. *)
+    polynomial multiplication over GF(2)[x] mod p(x) is commutative because
+    polynomial multiplication in GF(2)[x] is commutative (sum of x^(i+j) terms
+    is symmetric in the bit indices of a and b), and reduction mod p(x) is
+    applied to the same product regardless of operand order.
+
+    WHY THIS CANNOT BE PROVED WITH Z3:
+    The gf_mul function uses a 128-iteration bit-indexed schoolbook algorithm.
+    Proving commutativity requires establishing a correspondence between the
+    left-to-right scan of `a` (accumulating into z via shifts of y) and the
+    left-to-right scan of `b` (accumulating into z via shifts of a).  This
+    requires either:
+      (a) A tactic that symbolically relates both 128-step unrollings, or
+      (b) An intermediate representation as formal polynomials in GF(2)[x]/(p)
+          with a proved isomorphism to the bit-indexed algorithm.
+    Neither approach is feasible within Z3's rlimit on concrete bit-vector terms.
+    Requires tactic proof or algebraic abstraction layer. *)
 assume val gf_mul_comm : a:gf128 -> b:gf128
     -> Lemma (gf_mul a b == gf_mul b a)
 
 (** Round-trip: bs_to_gf . gf_to_bs = id.
 
-    Requires proving be_bytes_to_uint64 (uint64_to_be_bytes w) 0 = w
-    for all w, which needs byte-level bit manipulation reasoning at
-    each of the 8 byte positions.  We state this as an axiom. *)
+    The proof establishes that be_bytes_to_uint64 (uint64_to_be_bytes w) 0 = w
+    for all w : UInt64.t, by showing that extracting byte k via shift/mask and
+    then reassembling via shift/or recovers the original 64-bit word.
+
+    WHY THIS CANNOT BE PROVED WITH Z3 ALONE:
+    The roundtrip requires reasoning about Seq.index into Seq.append (to show
+    that indexing bytes 0-7 of append(hi_bytes, lo_bytes) yields hi_bytes, and
+    bytes 8-15 yield lo_bytes), AND that be_bytes_to_uint64 (uint64_to_be_bytes w) 0 == w
+    (byte extraction and reassembly is identity on 64-bit bitvectors).
+
+    The Seq.index/append step is straightforward (Seq.lemma_index_slice, append_index),
+    but the bit-vector roundtrip requires Z3 to reason about 8 simultaneous
+    shift/mask/cast/reassemble operations per word.  Z3's bitvector theory can
+    handle this given sufficient rlimit, but the Seq indexing layer adds overhead
+    that pushes beyond practical limits.
+
+    Requires tactic proof (norm + smt on the bit-vector layer after resolving
+    Seq indexing). *)
 assume val gf_bs_roundtrip : x:gf128
     -> Lemma (bs_to_gf (gf_to_bs x) == x)
