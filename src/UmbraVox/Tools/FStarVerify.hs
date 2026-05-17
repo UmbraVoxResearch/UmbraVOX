@@ -123,6 +123,8 @@ moduleRlimits = Map.fromList
     , ("Spec.GCM",                20000)
     , ("Spec.MLKEM768",           50000)
     , ("Spec.SHA256",             80000)
+    , ("Spec.SHA512",            100000)
+    , ("Spec.ChaCha20",           50000)
     ]
 
 -- | Specs that require significantly more Z3 time.
