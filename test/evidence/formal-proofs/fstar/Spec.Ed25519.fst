@@ -1356,92 +1356,86 @@ let neg_fmul_cancel a b =
   ()
 #pop-options
 
+(** Helper: fmul (prime-1) a == fsub 0 a for any a : felem.
+    In GF(p), (p-1)*a = -a. *)
+val fmul_neg_one : a:felem
+  -> Lemma (fmul (prime - 1) a == fsub 0 a)
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 100"
+let fmul_neg_one a =
+  FStar.Math.Lemmas.lemma_mod_mul_distr_l (prime - 1) a prime
+#pop-options
+
+(** Helper: fsub distributes over negation: (-a) - (-b) = -(a - b).
+    fsub (fsub 0 a) (fsub 0 b) == fsub 0 (fsub a b) *)
+val fsub_neg_distribute : a:felem -> b:felem
+  -> Lemma (fsub (fsub 0 a) (fsub 0 b) == fsub 0 (fsub a b))
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 200"
+let fsub_neg_distribute a b = ()
+#pop-options
+
+(** Helper: fadd distributes over negation: (-a) + (-b) = -(a + b).
+    fadd (fsub 0 a) (fsub 0 b) == fsub 0 (fadd a b) *)
+val fadd_neg_distribute : a:felem -> b:felem
+  -> Lemma (fadd (fsub 0 a) (fsub 0 b) == fsub 0 (fadd a b))
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 200"
+let fadd_neg_distribute a b = ()
+#pop-options
+
+(** Helper: fmul 2 (fsub 0 a) == fsub 0 (fmul 2 a).
+    Doubling commutes with negation. *)
+val fmul_two_neg : a:felem
+  -> Lemma (fmul 2 (fsub 0 a) == fsub 0 (fmul 2 a))
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 200"
+let fmul_two_neg a =
+  fmul_two (fsub 0 a);
+  fmul_two a;
+  fadd_neg_distribute a a
+#pop-options
+
 (** Helper: point_add with the non-canonical identity (0,p-1,p-1,0) produces
     the same tuple as point_add with the canonical identity (0,1,1,0).
     The non-canonical identity arises from point_double(0,1,1,0).
-    Key insight: all intermediate values scale by (p-1), but products involve
-    two such factors, and (p-1)^2 = 1 in GF(p), so the products are unchanged. *)
+    Key insight: all intermediate values scale by -1, but products involve
+    two such factors, and (-1)^2 = 1 in GF(p), so the products are unchanged. *)
 val point_add_noncanonical_identity : p:ext_point
   -> Lemma (point_add (0, prime - 1, prime - 1, 0) p ==
             point_add point_identity p)
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 400"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 600"
 let point_add_noncanonical_identity p =
   let (x2, y2, z2, t2) = p in
-  (* For the canonical identity (0,1,1,0): *)
-  let a1  = fmul (fsub 1 0) (fsub y2 x2) in
-  let b1  = fmul (fadd 1 0) (fadd y2 x2) in
-  let c1  = fmul (fmul 2 (fmul 0 t2)) curve_d in
-  let dd1 = fmul 2 (fmul 1 z2) in
-  (* For the non-canonical identity (0,p-1,p-1,0): *)
   let pm1 : felem = prime - 1 in
-  let a2  = fmul (fsub pm1 0) (fsub y2 x2) in
-  let b2  = fmul (fadd pm1 0) (fadd y2 x2) in
-  let c2  = fmul (fmul 2 (fmul 0 t2)) curve_d in
-  let dd2 = fmul 2 (fmul pm1 z2) in
-  (* Key: fsub pm1 0 = pm1, fadd pm1 0 = pm1 *)
-  fsub_zero pm1;
-  fadd_zero pm1;
-  fsub_zero 1;
-  fadd_zero 1;
-  fmul_one (fsub y2 x2);
-  fmul_one (fadd y2 x2);
-  fmul_one z2;
-  (* So a1 = fsub y2 x2, b1 = fadd y2 x2, dd1 = fmul 2 z2 *)
-  (* a2 = fmul pm1 (fsub y2 x2), b2 = fmul pm1 (fadd y2 x2), dd2 = fmul 2 (fmul pm1 z2) *)
-  (* c1 = c2 = 0 *)
-  fmul_zero t2;
-  fmul_zero_left (fmul 0 t2);
-  fmul_zero_left curve_d;
-  assert (c1 == 0);
-  assert (c2 == 0);
-  (* Compute e, f, g, h for both *)
-  let e1 = fsub b1 a1 in let f1 = fsub dd1 c1 in let g1 = fadd dd1 c1 in let h1 = fadd b1 a1 in
-  let e2 = fsub b2 a2 in let f2 = fsub dd2 c2 in let g2 = fadd dd2 c2 in let h2 = fadd b2 a2 in
+  (* Simplify canonical identity (0,1,1,0) terms *)
+  fsub_zero 1; fadd_zero 1;
+  fmul_one (fsub y2 x2); fmul_one (fadd y2 x2); fmul_one z2;
+  (* Simplify non-canonical identity (0,pm1,pm1,0) terms *)
+  fsub_zero pm1; fadd_zero pm1;
+  (* C = 0 for both (t1 = 0) *)
+  fmul_zero t2; fmul_zero_left (fmul 0 t2); fmul_zero_left curve_d;
+  (* Canonical intermediates *)
+  let a1 = fsub y2 x2 in
+  let b1 = fadd y2 x2 in
+  let dd1 = fmul 2 z2 in
   fsub_zero dd1; fadd_zero dd1;
-  fsub_zero dd2; fadd_zero dd2;
-  assert (f1 == dd1); assert (g1 == dd1);
-  assert (f2 == dd2); assert (g2 == dd2);
-  (* e2 = fsub (fmul pm1 (fadd y2 x2)) (fmul pm1 (fsub y2 x2))
-       = fmul pm1 (fsub (fadd y2 x2) (fsub y2 x2))  ... not directly *)
-  (* Instead show the products are equal using neg_fmul_cancel *)
-  (* x3_i = fmul e_i f_i, y3_i = fmul g_i h_i, z3_i = fmul f_i g_i, t3_i = fmul e_i h_i *)
-  (* For the non-canonical: a2 = fmul pm1 a1_val, b2 = fmul pm1 b1_val where a1_val = fsub y2 x2, b1_val = fadd y2 x2 *)
-  (* e2 = fsub b2 a2 = fsub (fmul pm1 (fadd y2 x2)) (fmul pm1 (fsub y2 x2)) *)
-  (* This equals fmul pm1 (fsub (fadd y2 x2) (fsub y2 x2)) = fmul pm1 e1 in GF(p) *)
-  (* Similarly h2 = fmul pm1 h1, f2 = fmul pm1 f1, g2 = fmul pm1 g1 *)
-  (* So x3_2 = fmul (fmul pm1 e1) (fmul pm1 f1) = fmul e1 f1 = x3_1 by neg_fmul_cancel *)
-  (* We need a distribution lemma: fsub (fmul c a) (fmul c b) == fmul c (fsub a b) *)
-  (* and fadd (fmul c a) (fmul c b) == fmul c (fadd a b) *)
-  (* Actually, simpler: just show the PRODUCTS are equal *)
-  (* e2*f2 = (pm1*e1)*(pm1*f1) = e1*f1 since pm1^2 = 1 *)
-  (* But e2 = fsub (fmul pm1 (fadd y2 x2)) (fmul pm1 (fsub y2 x2))
-     which may not equal fmul pm1 e1 in Z3's view without distribution lemma *)
-  (* Let's use a different approach: show that dd2 = fsub 0 dd1,
-     and that the products still work out *)
-  (* fmul pm1 z2 = fsub 0 z2 in GF(p) *)
-  (* dd2 = fmul 2 (fmul pm1 z2) *)
-  (* In GF(p): pm1 * z2 = -z2, so dd2 = 2*(-z2) = -(2*z2) = fsub 0 dd1 *)
-  (* Now we need to show all four products x3, y3, z3, t3 are equal *)
-  (* Strategy: show e2 = fsub 0 e1, f2 = fsub 0 f1, g2 = fsub 0 g1, h2 = fsub 0 h1 *)
-  (* Then x3_2 = fmul (fsub 0 e1) (fsub 0 f1) = fmul e1 f1 = x3_1 by neg_fmul_cancel *)
-  (* To show e2 = fsub 0 e1: *)
-  (* b2 = fmul pm1 (fadd y2 x2), a2 = fmul pm1 (fsub y2 x2)
-     e2 = fsub b2 a2
-     We need: fsub (fmul pm1 X) (fmul pm1 Y) = fsub 0 (fsub X Y) for X,Y in GF(p)
-     i.e., (-X) - (-Y) = -(X - Y)?  NO: (-X) - (-Y) = -X + Y = -(X - Y). Yes!
-     fsub (fsub 0 X) (fsub 0 Y) = (-X - (-Y) + p) % p = (-X + Y + p) % p = fsub Y X
-     Hmm, that's fsub Y X = -(fsub X Y) = fsub 0 (fsub X Y).
-     So e2 = fsub b2 a2 = ... let me just let Z3 handle the modular arithmetic *)
-  neg_fmul_cancel e1 f1;
-  neg_fmul_cancel g1 h1;
-  neg_fmul_cancel f1 g1;
-  neg_fmul_cancel e1 h1;
-  (* We need Z3 to see that e2 = fsub 0 e1 etc., and then that the products match *)
-  (* This might need higher rlimit for Z3 to work through the modular case analysis *)
-  assert (fmul e2 f2 == fmul e1 f1);
-  assert (fmul g2 h2 == fmul g1 h1);
-  assert (fmul f2 g2 == fmul f1 g1);
-  assert (fmul e2 h2 == fmul e1 h1);
+  let e1 = fsub b1 a1 in
+  let h1 = fadd b1 a1 in
+  (* Non-canonical: fmul pm1 x = fsub 0 x *)
+  fmul_neg_one a1;  (* fmul pm1 a1 = fsub 0 a1 *)
+  fmul_neg_one b1;  (* fmul pm1 b1 = fsub 0 b1 *)
+  fmul_neg_one z2;  (* fmul pm1 z2 = fsub 0 z2 *)
+  (* dd2 = fmul 2 (fmul pm1 z2) = fmul 2 (fsub 0 z2) = fsub 0 (fmul 2 z2) = fsub 0 dd1 *)
+  fmul_two_neg z2;
+  fsub_zero (fsub 0 dd1); fadd_zero (fsub 0 dd1);
+  (* e2 = fsub (fmul pm1 b1) (fmul pm1 a1) = fsub (fsub 0 b1) (fsub 0 a1) = fsub 0 (fsub b1 a1) *)
+  fsub_neg_distribute b1 a1;
+  (* h2 = fadd (fmul pm1 b1) (fmul pm1 a1) = fadd (fsub 0 b1) (fsub 0 a1) = fsub 0 (fadd b1 a1) *)
+  fadd_neg_distribute b1 a1;
+  (* Now the four products of the non-canonical all use pairs of negated values.
+     By neg_fmul_cancel: fmul (fsub 0 x) (fsub 0 y) == fmul x y *)
+  neg_fmul_cancel e1 dd1;   (* x3: fmul (fsub 0 e1) (fsub 0 dd1) == fmul e1 dd1 *)
+  neg_fmul_cancel dd1 h1;   (* y3: fmul (fsub 0 dd1) (fsub 0 h1) == fmul dd1 h1 *)
+  neg_fmul_cancel dd1 dd1;  (* z3: fmul (fsub 0 dd1) (fsub 0 dd1) == fmul dd1 dd1 *)
+  neg_fmul_cancel e1 h1;    (* t3: fmul (fsub 0 e1) (fsub 0 h1) == fmul e1 h1 *)
+  (* All four components are equal, so the tuples are equal *)
   assert (point_add (0, prime - 1, prime - 1, 0) p ==
           point_add point_identity p)
 #pop-options
@@ -1705,14 +1699,18 @@ let verify_equation_lhs_rhs_agree s r_point pub_point k =
            = [r]B + [k]([a]B)       (scalar_mult_compose)
            = R + [k]A               QED.
 
-    Cryptographic axiom: The proof chain above is sound, but mechanizing it
-    requires a projective-equivalence congruence principle:
-      encode_point P == encode_point Q ==> encode_point (f P) == encode_point (f Q)
-    for f in {point_add, scalar_mult}.  This principle is true for the curve
-    (projectively equivalent points produce the same affine result under any
-    group operation) but cannot be stated in F*'s type system without an
-    explicit quotient type on ext_point.  The algebraic core is captured by
-    verify_equation; this axiom packages the remaining extensionality gap. *)
+    IRREDUCIBLE AXIOM -- Depends on encode_decode_round_trip + verify_equation.
+
+    The algebraic core (verify_equation) is now PROVED.  Two blockers remain:
+    1. encode_decode_round_trip: needed to show decode_point(encode_point(R))
+       and decode_point(encode_point(A)) succeed inside ed25519_verify.
+    2. Function unfolding: ed25519_sign and ed25519_verify are complex
+       compositions involving SHA-512.  Showing the hash inputs match
+       (R_bytes and pk_bytes are identical in sign and verify) requires
+       symbolic unfolding that exceeds Z3's capacity for non-trivial messages.
+
+    Dependency chain: sign_then_verify <- {verify_equation (PROVED),
+      encode_decode_round_trip (axiom)} *)
 assume val sign_then_verify : sk:secret_key -> msg:seq UInt8.t
     -> Lemma (ed25519_verify (ed25519_public_key sk) msg
                              (ed25519_sign sk msg) == true)
@@ -1723,13 +1721,34 @@ assume val sign_then_verify : sk:secret_key -> msg:seq UInt8.t
 
 (** Encoding then decoding a valid curve point recovers the original point
     (up to projective equivalence, compared via re-encoding).
-    Cryptographic axiom: The proof requires showing:
-    1. encode_point produces a valid 32-byte encoding with y < p
-    2. decode_point successfully recovers x from y via the curve equation
-    3. The sign bit is preserved through encode/decode
-    4. The recovered affine point re-encodes identically
-    Steps 1-3 involve 255-bit modular arithmetic (recover_x, sqrt_m1)
-    that Z3 cannot evaluate symbolically. *)
+
+    IRREDUCIBLE AXIOM -- Requires symbolic square root computation in GF(p).
+
+    The proof requires showing:
+    1. encode_point normalizes via finv (Z-division) to affine (xn, yn),
+       then serializes yn with xn's sign bit.  yn < prime < 2^255, so the
+       encoding is valid.  (This step uses fmul_inverse, which IS proved.)
+    2. decode_point deserializes to recover yn, then computes
+       x = recover_x(yn^2 - 1, d*yn^2 + 1).  recover_x uses the formula
+       x = (u*v^3) * (u*v^7)^((p-5)/8) mod p, which is a modular square
+       root via the Tonelli-Shanks special case for p = 5 mod 8.
+    3. The sign bit selects the correct square root (x vs p-x).
+    4. The recovered (x, yn, 1, x*yn) re-encodes identically to the input.
+
+    Why Z3 cannot prove this:
+    - Step 2 requires verifying that recover_x correctly computes square
+      roots in GF(p).  This involves showing (u*v^3 * (u*v^7)^((p-5)/8))^2
+      = u/v mod p, which is a polynomial identity of degree ~(p-5)/4 in
+      the base field.  The exponent (p-5)/8 ~ 2^252, making symbolic
+      evaluation infeasible.
+    - Even for specific affine points (Z=1 where finv is trivial), the
+      recover_x verification still requires the square root identity.
+    - The decode_le/encode_le round-trip (proved as decode_encode_le_round_trip)
+      handles the byte serialization; the blocker is purely the algebraic
+      square root recovery.
+
+    Dependency chain: encode_decode_round_trip <- {fmul_inverse (PROVED),
+      decode_encode_le_round_trip (PROVED), recover_x correctness (infeasible)} *)
 assume val encode_decode_round_trip : pt:ext_point
     -> Lemma (match decode_point (encode_point pt) with
               | None -> False
