@@ -45,7 +45,7 @@ let fmul (a b : felem) : felem =
 
 (** Decode a little-endian byte sequence to a natural number.
     Concrete recursive implementation: value = b[0] + 256 * le_to_nat(tail). *)
-val le_to_nat : seq UInt8.t -> Tot nat (decreases (Seq.length bs))
+val le_to_nat : bs:seq UInt8.t -> Tot nat (decreases (Seq.length bs))
 let rec le_to_nat (bs : seq UInt8.t) : Tot nat (decreases (Seq.length bs)) =
   if Seq.length bs = 0 then 0
   else UInt8.v (Seq.index bs 0) + 256 * le_to_nat (Seq.tail bs)
@@ -72,7 +72,7 @@ let clamp_mask : nat = 0x0ffffffc0ffffffc0ffffffc0fffffff
 
 (** Bitwise AND on natural numbers, defined recursively on bit positions.
     bitwise_and a b = sum over i of (bit_i(a) & bit_i(b)) * 2^i *)
-val bitwise_and : nat -> nat -> Tot nat (decreases a)
+val bitwise_and : a:nat -> b:nat -> Tot nat (decreases a)
 let rec bitwise_and (a b : nat) : Tot nat (decreases a) =
   if a = 0 then 0
   else
