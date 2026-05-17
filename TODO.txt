@@ -568,7 +568,7 @@ Note: 221 original assumes → 0 admit() + 23 assume val. 14/17 specs fully prov
     Note: shell-minimal.nix created (user switches when ready; shell.nix untouched).
   [x] M13.13.3 Update Makefile targets to route through VM execution
     Note: vm-dev, vm-build, vm-test, vm-verify added to Makefile + help.
-  [ ] M13.13.4 Fix Coq ZArith library path in VM nix configuration
+  [ ] M13.13.4 Add coqPackages.stdlib to nix/vm-image.nix for Rocq 9.1.1 ZArith support
   [x] M13.13.5 Add make check-evidence target (runs check-external-evidence.sh)
     Note: Added to Makefile, wired into make quality.
   [ ] M13.13.6 Verify all F* specs pass in VM (cabal run fstar-verify)
