@@ -88,6 +88,10 @@ SHELL := /bin/bash
 MAX_COMPLEXITY := 8
 FSTAR_DIR := test/evidence/formal-proofs/fstar
 
+# VM-first development: all commands run in VM by default.
+# Set UMBRAVOX_LOCAL=1 to run locally (requires full toolchain in nix-shell).
+UMBRAVOX_LOCAL ?= 0
+
 # Unset LD_LIBRARY_PATH to prevent curl segfaults in nix-shell
 # (nix glibc conflicts with system curl used by cabal)
 unexport LD_LIBRARY_PATH
@@ -282,6 +286,7 @@ run: build
 # --------------------------------------------------------------------------
 
 build:
+	@if [ "$(UMBRAVOX_LOCAL)" != "1" ]; then $(MAKE) vm-build; exit $$?; fi
 	@echo -e "$(BLUE)[BUILD]$(NC) Building UmbraVOX..."
 	@cabal build all 2>&1 | tail -5
 	@echo -e "$(GREEN)[BUILD]$(NC) Build complete."
@@ -298,7 +303,9 @@ build-haskell:
 # Test
 # --------------------------------------------------------------------------
 
-test: build
+test:
+	@if [ "$(UMBRAVOX_LOCAL)" != "1" ]; then $(MAKE) vm-test; exit $$?; fi
+	@$(MAKE) UMBRAVOX_LOCAL=1 build
 	@echo -e "$(BLUE)[TEST]$(NC) Running fast messaging-MVP hardening gate..."
 	@$(SUITE_LOCK) bash -c 'mkdir -p $(TEST_ARTIFACT_DIR); \
 	log_file=$$(mktemp "$(TEST_ARTIFACT_DIR)/test-required.XXXXXX.log"); \
@@ -430,6 +437,7 @@ mcdc-report:
 # --------------------------------------------------------------------------
 
 verify:
+	@if [ "$(UMBRAVOX_LOCAL)" != "1" ]; then $(MAKE) vm-verify; exit $$?; fi
 	@echo -e "$(BLUE)[VERIFY]$(NC) Running F* formal verification (all modules)..."
 	@$(SUITE_LOCK) bash -c 'mkdir -p $(TEST_ARTIFACT_DIR); \
 	log_file=$$(mktemp "$(TEST_ARTIFACT_DIR)/verify.XXXXXX.log"); \
