@@ -57,26 +57,48 @@ type bytes32 = s:seq UInt8.t{Seq.length s = key_size}
 (** Spec.HKDF, Spec.Ed25519).                                            **)
 (** -------------------------------------------------------------------- **)
 
-(** X25519 scalar multiplication.  Returns None on low-order input.
-    Corresponds to: UmbraVox.Crypto.Curve25519.x25519 *)
-assume val x25519 : bytes32 -> bytes32 -> Tot (option bytes32)
+(** X25519 scalar multiplication.  Returns None on low-order input (all-zero result).
+    Corresponds to: UmbraVox.Crypto.Curve25519.x25519.
+    Concrete implementation via Spec.X25519. *)
+val x25519 : bytes32 -> bytes32 -> Tot (option bytes32)
+let x25519 (sk : bytes32) (uc : bytes32) : option bytes32 =
+  let result = Spec.X25519.x25519 sk uc in
+  if result = Seq.create 32 0uy then None  (* reject low-order points *)
+  else Some result
 
 (** X25519 basepoint multiplication: R = r * G.
-    Corresponds to: x25519 r x25519Basepoint *)
-assume val x25519_base : bytes32 -> Tot bytes32
+    Corresponds to: x25519 r x25519Basepoint.
+    Concrete implementation via Spec.X25519.x25519_base. *)
+val x25519_base : bytes32 -> Tot bytes32
+let x25519_base (sk : bytes32) : bytes32 = Spec.X25519.x25519_base sk
 
 (** Ed25519 scalar * G + point.  Encodes result as 32 bytes.
     Corresponds to: encodePoint (pointAdd (scalarMul s basepoint) spendPoint)
-    Returns empty sequence if spendPub is not a valid Ed25519 point. *)
-assume val ed25519_derive_point : nat -> bytes32 -> Tot (seq UInt8.t)
+    Concrete implementation via Spec.Ed25519.
+    Decodes spend_pub to an Ed25519 point, computes s*G + spend_point,
+    and encodes the result. *)
+val ed25519_derive_point : nat -> bytes32 -> Tot (seq UInt8.t)
+let ed25519_derive_point (s : nat) (spend_pub : bytes32) : seq UInt8.t =
+  let s_point = Spec.Ed25519.scalar_mult s Spec.Ed25519.basepoint in
+  match Spec.Ed25519.decode_point spend_pub with
+  | None -> Seq.empty  (* invalid point: return empty *)
+  | Some spend_point ->
+    let result = Spec.Ed25519.point_add s_point spend_point in
+    Spec.Ed25519.encode_point result
 
 (** HKDF-SHA-512 with 32-byte zero salt, IKM=shared_secret, info, len=32.
-    Corresponds to: UmbraVox.Crypto.HKDF.hkdf (BS.replicate 32 0) ss info 32 *)
-assume val hkdf32 : ikm:bytes32 -> info:seq UInt8.t
+    Corresponds to: UmbraVox.Crypto.HKDF.hkdf (BS.replicate 32 0) ss info 32.
+    Concrete implementation via Spec.HKDF.hkdf_sha512. *)
+val hkdf32 : ikm:bytes32 -> info:seq UInt8.t
     -> Tot (s:seq UInt8.t{Seq.length s = key_size})
+let hkdf32 (ikm : bytes32) (info : seq UInt8.t) : (s:seq UInt8.t{Seq.length s = key_size}) =
+  let salt = Seq.create 32 0uy in
+  Spec.HKDF.hkdf_sha512 salt ikm info 32
 
-(** Decode a 32-byte little-endian sequence to a natural number. *)
-assume val decode_le : bytes32 -> Tot nat
+(** Decode a 32-byte little-endian sequence to a natural number.
+    Concrete implementation via Spec.Ed25519.decode_le. *)
+val decode_le : bytes32 -> Tot nat
+let decode_le (s : bytes32) : nat = Spec.Ed25519.decode_le s
 
 (** -------------------------------------------------------------------- **)
 (** HKDF domain separation info strings                                  **)
@@ -189,12 +211,14 @@ let derive_stealth_address eph_secret scan_pub spend_pub =
 (**   match iff P' = P                                                   **)
 (** -------------------------------------------------------------------- **)
 
-(** Byte-wise equality on sequences. *)
-assume val seq_eq : seq UInt8.t -> seq UInt8.t -> Tot bool
+(** Byte-wise equality on sequences.  Concrete decidable equality. *)
+val seq_eq : seq UInt8.t -> seq UInt8.t -> Tot bool
+let seq_eq (s1 s2 : seq UInt8.t) : bool = (s1 = s2)
 
 (** seq_eq is a correct equality test. *)
-assume val seq_eq_iff : s1:seq UInt8.t -> s2:seq UInt8.t
+val seq_eq_iff : s1:seq UInt8.t -> s2:seq UInt8.t
     -> Lemma (seq_eq s1 s2 <==> s1 == s2)
+let seq_eq_iff s1 s2 = ()
 
 (** Scan a transaction output: check if ephemeral R and candidate P
     belong to us.  Returns true iff P equals the recomputed stealth address. *)
@@ -352,15 +376,26 @@ let view_tag_match eph_secret scan_secret spend_pub =
 (** The corresponding public key equals sa.sa_address.                  **)
 (** -------------------------------------------------------------------- **)
 
-(** SHA-512 hash function. *)
-assume val sha512 : seq UInt8.t -> Tot (s:seq UInt8.t{Seq.length s = 64})
+(** SHA-512 hash function.  Concrete implementation via Spec.SHA512.
+    The input must be less than 2^61 bytes for SHA-512.
+    In practice, inputs here are always 32 bytes (secret keys). *)
+val sha512 : msg:seq UInt8.t{Seq.length msg < pow2 61}
+    -> Tot (s:seq UInt8.t{Seq.length s = 64})
+let sha512 (msg : seq UInt8.t{Seq.length msg < pow2 61})
+    : (s:seq UInt8.t{Seq.length s = 64}) =
+  Spec.SHA512.sha512 msg
 
-(** Ed25519 scalar clamping (per RFC 8032). *)
-assume val clamp_scalar : bytes32 -> Tot nat
+(** Ed25519 scalar clamping (per RFC 8032).
+    Concrete implementation via Spec.Ed25519.clamp_scalar + decode_le. *)
+val clamp_scalar : bytes32 -> Tot nat
+let clamp_scalar (s : bytes32) : nat =
+  let clamped = Spec.Ed25519.clamp_scalar s in
+  Spec.Ed25519.decode_le clamped
 
 (** Compute the spending secret for a matched stealth output. *)
 val compute_spending_secret : stealth_scalar:nat -> spend_secret:bytes32 -> Tot nat
 let compute_spending_secret s spend_secret =
+  assert_norm (pow2 61 > 32);
   let h = sha512 spend_secret in
   let a = clamp_scalar (Seq.slice h 0 32) in
   (s + a) % group_order_L

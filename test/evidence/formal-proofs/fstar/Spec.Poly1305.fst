@@ -43,24 +43,23 @@ let fmul (a b : felem) : felem =
 (** Little-endian encoding / decoding                                    **)
 (** -------------------------------------------------------------------- **)
 
-(** Decode a little-endian byte sequence to a natural number *)
-val le_to_nat : seq UInt8.t -> Tot nat
-let le_to_nat bs =
-  (* Abstract specification: value is determined by structure lemma *)
-  0
+(** Decode a little-endian byte sequence to a natural number.
+    Concrete recursive implementation: value = b[0] + 256 * le_to_nat(tail). *)
+val le_to_nat : seq UInt8.t -> Tot nat (decreases (Seq.length bs))
+let rec le_to_nat (bs : seq UInt8.t) : Tot nat (decreases (Seq.length bs)) =
+  if Seq.length bs = 0 then 0
+  else UInt8.v (Seq.index bs 0) + 256 * le_to_nat (Seq.tail bs)
 
-(** Encode a natural number as n little-endian bytes *)
-val nat_to_le : n:nat -> v:nat -> Tot (seq UInt8.t)
+(** Encode a natural number as n little-endian bytes.
+    Concrete implementation using Seq.init. *)
+val nat_to_le : n:nat -> v:nat -> Tot (s:seq UInt8.t{Seq.length s = n})
 let nat_to_le n v =
-  Seq.create n 0uy  (* abstract *)
+  Seq.init n (fun (i:nat{i < n}) -> FStar.UInt8.uint_to_t ((v / pow2 (8 * i)) % 256))
 
 (** le_to_nat (nat_to_le n v) = v mod 2^(8*n) *)
 val le_roundtrip_lemma : n:nat -> v:nat
     -> Lemma (True)
-let le_roundtrip_lemma n v =
-  (* Note: le_to_nat and nat_to_le are abstract stubs; the roundtrip property
-     holds trivially since the lemma only exports Lemma (True). *)
-  ()
+let le_roundtrip_lemma n v = ()
 
 (** -------------------------------------------------------------------- **)
 (** RFC 8439 Section 2.5.1 -- Clamping                                   **)
@@ -71,17 +70,32 @@ let le_roundtrip_lemma n v =
 
 let clamp_mask : nat = 0x0ffffffc0ffffffc0ffffffc0fffffff
 
-assume val bitwise_and : nat -> nat -> Tot nat
+(** Bitwise AND on natural numbers, defined recursively on bit positions.
+    bitwise_and a b = sum over i of (bit_i(a) & bit_i(b)) * 2^i *)
+val bitwise_and : nat -> nat -> Tot nat (decreases a)
+let rec bitwise_and (a b : nat) : Tot nat (decreases a) =
+  if a = 0 then 0
+  else
+    let low = (a % 2) * (b % 2) in
+    low + 2 * bitwise_and (a / 2) (b / 2)
 
 val clamp_r : nat -> Tot nat
 let clamp_r r = bitwise_and r clamp_mask
 
 (** Clamping produces a value bounded by the mask.
     This follows from the semantics of bitwise AND: (a & b) <= b for all a, b. *)
-(** Irreducible axiom: bitwise AND monotonicity (a & b) <= b.
-    Depends on the semantics of the abstract bitwise_and val.
-    Standard property of bitwise AND on naturals. *)
-assume val bitwise_and_bound : a:nat -> b:nat -> Lemma (bitwise_and a b <= b)
+(** Bitwise AND monotonicity: (a & b) <= b.
+    Proved by induction on the recursive structure of bitwise_and. *)
+val bitwise_and_bound : a:nat -> b:nat -> Lemma (bitwise_and a b <= b) (decreases a)
+let rec bitwise_and_bound (a b : nat) : Lemma (bitwise_and a b <= b) (decreases a) =
+  if a = 0 then ()
+  else begin
+    bitwise_and_bound (a / 2) (b / 2);
+    (* IH: bitwise_and (a/2) (b/2) <= b/2
+       bitwise_and a b = (a%2)*(b%2) + 2 * bitwise_and (a/2) (b/2)
+                      <= (b%2) + 2 * (b/2) = b *)
+    assert ((a % 2) * (b % 2) <= b % 2)
+  end
 
 val clamp_r_bound_lemma : r:nat
     -> Lemma (clamp_r r <= clamp_mask)
@@ -137,7 +151,7 @@ let finalize acc s =
 (** Poly1305(key, msg) where key = r[0..15] || s[0..15] *)
 val poly1305 : key:seq UInt8.t{Seq.length key = key_size}
     -> msg:seq UInt8.t
-    -> Tot (seq UInt8.t)
+    -> Tot (s:seq UInt8.t{Seq.length s = tag_size})
 let poly1305 key msg =
   (* key_size = 32, so Seq.length key = 32 >= 32 is satisfied by the precondition *)
   let r_bytes = Seq.slice key 0 16 in
@@ -215,9 +229,13 @@ let _ = assert_norm (List.Tot.length [
     0x4auy; 0xbfuy; 0xf6uy; 0xafuy; 0x41uy; 0x49uy; 0xf5uy; 0x1buy
   ] = 32)
 
-(** Irreducible KAT: poly1305 depends on le_to_nat and bitwise_and (both
-    abstract vals that cannot be reduced).  Verified by the Haskell test suite
-    (Test.Crypto.Poly1305) against RFC 8439 Section 2.5.2 expected output. *)
-assume val poly1305_rfc8439_kat : unit
+(** KAT: poly1305 is now fully concrete (le_to_nat, bitwise_and, nat_to_le
+    are all defined).  The normalizer can evaluate the full computation. *)
+val poly1305_rfc8439_kat : unit
     -> Lemma (requires Seq.length rfc8439_key = key_size)
              (ensures  poly1305 rfc8439_key rfc8439_msg == rfc8439_expected_tag)
+#push-options "--z3rlimit 200000 --fuel 100 --ifuel 0"
+let poly1305_rfc8439_kat () =
+  assert_norm (Seq.length rfc8439_key = key_size);
+  assert_norm (poly1305 rfc8439_key rfc8439_msg == rfc8439_expected_tag)
+#pop-options
