@@ -978,7 +978,7 @@ vm-image-build:
 	else \
 		echo -e "$(BLUE)[VM-IMAGE]$(NC) Building via nix (this may take several minutes)..."; \
 		nix build .#vm-image -o build/vm/image 2>/dev/null || \
-		nix-build nix/vm-image.nix -o build/vm/image 2>/dev/null || \
+		nix-build nix/vm-image.nix -A qemu -o build/vm/image 2>/dev/null || \
 		(echo -e "$(RED)[VM-IMAGE]$(NC) nix build failed — falling back to cabal bridge"; \
 		 cabal run umbravox -- vm-image-build); \
 		echo -e "$(GREEN)[VM-IMAGE]$(NC) Image cached at build/vm/image"; \
