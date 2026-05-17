@@ -68,6 +68,8 @@
 #   make release-lane-firecracker - Validate Firecracker release-lane host prerequisites
 #   make release-lane-readiness - Run aggregate native release-lane readiness checks
 #   make release-lane-readiness-haskell - Run the Haskell bridge for readiness checks
+#   make test-shells  - Test nix-shell environments (banner + tools)
+#   make test-vm      - Test NixOS development VM (boot + toolchain + source mount)
 #   make sanity       - Check Makefile wiring for release smoke/microVM helpers
 #   make evidence     - Run quality and write a publication evidence bundle
 #   make clean        - Remove build artifacts, build/, and dist-newstyle
@@ -77,7 +79,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence check-evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 sanity vm-smoke vm-image-build vm-image-clean image-clean vm-dev vm-build vm-test vm-verify firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot vm-record vm-visual-regression visual-reference-update clean cleandb cleanall help
+.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence check-evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-shells test-vm sanity vm-smoke vm-image-build vm-image-clean image-clean vm-dev vm-build vm-test vm-verify firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot vm-record vm-visual-regression visual-reference-update clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -829,6 +831,18 @@ vm-smoke-arm64:
 			echo '[VM-ARM64] arm64 smoke: FAIL'; \
 			exit 1; \
 		fi"
+
+# --------------------------------------------------------------------------
+# Environment Tests
+# --------------------------------------------------------------------------
+
+test-shells:
+	@echo -e "$(BLUE)[TEST-SHELLS]$(NC) Testing nix-shell environments..."
+	@bash scripts/test-shells.sh
+
+test-vm:
+	@echo -e "$(BLUE)[TEST-VM]$(NC) Testing NixOS development VM..."
+	@bash scripts/test-vm.sh
 
 # --------------------------------------------------------------------------
 # Quality Gate (all checks)
