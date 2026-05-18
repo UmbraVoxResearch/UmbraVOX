@@ -190,4 +190,14 @@ testAESGCMVectors = do
             putStrLn "  FAIL: tc16-decrypt (returned Nothing)"
             return False
         Just dec -> check "AES-GCM" "tc16-decrypt-roundtrip" pt16 dec
-    return (r1 && r2 && r3 && r4 && r5)
+    -- Negative: wrong tag must be rejected (fail-closed)
+    let wrong_tag = hexToBS "000000000000000000000000deadbeef"
+        rejected = GCM.gcmDecrypt key16 nonce16 BS.empty ct16 wrong_tag
+    r6 <- case rejected of
+        Nothing -> do
+            putStrLn "  PASS: tc16-wrong-tag-rejected (fail-closed)"
+            return True
+        Just _ -> do
+            putStrLn "  FAIL: tc16-wrong-tag-rejected (accepted wrong tag!)"
+            return False
+    return (r1 && r2 && r3 && r4 && r5 && r6)
