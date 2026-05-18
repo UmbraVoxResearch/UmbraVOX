@@ -165,7 +165,7 @@ help:
 	@echo "  Build & Run:"
 	@echo "    make             Build + run the full pipeline (build, test, verify, complexity, lint, license, format-check)"
 	@echo "    make build       Build library + executables only"
-	@echo "    make run         Run UmbraVOX TUI application"
+	@echo "    make run         Run UmbraVOX TUI application (always local)"
 	@echo "    make test        Run fast messaging-MVP hardening gate"
 	@echo "    make test-core   Run core deterministic messaging suite"
 	@echo "    make test-core-crypto Run deterministic crypto/unit coverage"
@@ -280,7 +280,9 @@ help:
 	@echo "    Ctrl+Q  Quit             ?       Help"
 	@echo ""
 
-run: build
+run:
+	@echo -e "$(BLUE)[RUN]$(NC) Building and launching UmbraVOX TUI (local)..."
+	@cabal build umbravox 2>&1 | tail -3
 	@cabal run umbravox; stty sane echo 2>/dev/null; true
 
 # --------------------------------------------------------------------------
