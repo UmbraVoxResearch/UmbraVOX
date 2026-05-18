@@ -14,3 +14,5 @@ test/evidence/formal-proofs/fstar/_output/
 nix/fstar-cache/
 *.checked
 *.tix
+.lia.cache
+.nia.cache
