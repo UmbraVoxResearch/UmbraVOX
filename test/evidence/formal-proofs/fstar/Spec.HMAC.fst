@@ -63,7 +63,11 @@ let prepare_key (h : hash_fn) (block_size : nat{block_size > 0})
     : Tot (s:seq UInt8.t{Seq.length s = block_size}) =
   if Seq.length key > block_size then
     let hashed = h key in
-    (* TODO: requires tactic-based proof — depends on a length contract for h *)
+    (* AUDIT NOTE: in-body assume — hash output length <= block_size.
+       This path is only used with abstract hash_fn; all concrete instances
+       (hmac_sha256_bounded, hmac_sha512_bounded) use prepare_key_bounded
+       which carries the length invariant via bounded_hash_fn type.
+       Requires h to have an output-length contract to discharge. *)
     assume (Seq.length hashed <= block_size);
     pad_right block_size hashed
   else (
