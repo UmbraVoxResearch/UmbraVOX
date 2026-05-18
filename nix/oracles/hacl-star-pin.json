@@ -1,0 +1,11 @@
+{
+  "name": "HACL*",
+  "owner": "hacl-star",
+  "repo": "hacl-star",
+  "rev": "main",
+  "use": "dist/ pre-extracted C (no F* toolchain needed at build time)",
+  "description": "Formally verified crypto (MSR). Primary independent oracle for SHA, HMAC, HKDF, X25519, Ed25519, AES-GCM, ChaCha20.",
+  "verification": "Formally verified in F* and extracted to C via KaRaMeL",
+  "license": "Apache-2.0",
+  "note": "Use hacl-star/dist/ directory which contains pre-extracted C code."
+}

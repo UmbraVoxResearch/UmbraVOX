@@ -1,0 +1,10 @@
+{
+  "name": "Monocypher",
+  "version": "4.0.2",
+  "owner": "LoupVaillant",
+  "repo": "Monocypher",
+  "description": "Independent oracle for X25519, Ed25519, ChaCha20-Poly1305. Designed for auditability.",
+  "audit": "Audited (compact codebase, ~2000 lines)",
+  "license": "BSD-2-Clause/CC0",
+  "note": "Truly independent implementation — no shared upstream with BoringSSL or libsodium."
+}

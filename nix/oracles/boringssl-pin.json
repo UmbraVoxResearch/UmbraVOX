@@ -1,0 +1,9 @@
+{
+  "name": "BoringSSL",
+  "owner": "google",
+  "repo": "boringssl",
+  "rev": "master",
+  "description": "Primary oracle for AES-GCM, SHA-256/512, HMAC. Google-maintained.",
+  "license": "ISC/OpenSSL",
+  "note": "Pin to specific commit. No stable releases. Produces libcrypto.a (static). Avoid claiming broad FIPS validation — record exact build configuration."
+}

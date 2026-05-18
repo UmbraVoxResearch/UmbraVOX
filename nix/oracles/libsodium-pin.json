@@ -1,0 +1,8 @@
+{
+  "name": "libsodium",
+  "version": "1.0.20",
+  "description": "Independent oracle for X25519, Ed25519, ChaCha20-Poly1305, Blake2b.",
+  "audit": "Multiple independent audits (Kudelski 2017, NCC Group 2019)",
+  "license": "ISC",
+  "note": "Uses its own implementations (ref10/donna), independent from BoringSSL."
+}

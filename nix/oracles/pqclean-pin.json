@@ -1,0 +1,9 @@
+{
+  "name": "PQClean",
+  "owner": "PQClean",
+  "repo": "PQClean",
+  "rev": "main",
+  "description": "Post-quantum oracle for ML-KEM-768. Clean-room implementations from NIST PQC project.",
+  "license": "Various (per algorithm, mostly public domain/CC0)",
+  "note": "Header-only/static. Used for ML-KEM KAT comparison."
+}

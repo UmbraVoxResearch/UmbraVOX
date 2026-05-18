@@ -1,0 +1,9 @@
+{
+  "name": "liboqs",
+  "owner": "open-quantum-safe",
+  "repo": "liboqs",
+  "rev": "main",
+  "description": "Post-quantum oracle for ML-KEM-768. OQS project.",
+  "license": "MIT",
+  "note": "Build with -DOQS_USE_OPENSSL=OFF to avoid pulling OpenSSL (second TLS stack)."
+}
