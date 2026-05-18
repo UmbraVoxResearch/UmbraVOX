@@ -619,7 +619,7 @@ Note: 221 original assumes → 0 admit() + 30 assume val. 17/24 specs fully prov
     Note: 94 Qed, 0 Admitted, 0 Axiom. Fermat witnesses, non-divisibility by primes to 97, Pocklington certificate conditions (factorization, gcd checks, size bounds), verified trial-division checker with soundness proof, 25 small primes proved. Builds clean with Rocq 9.1.1 + stdlib.
   [x] M13.11.2 Ed25519Field.v — field operations, basic properties
     Note: 54 Qed, 0 Admitted, 0 Axiom. Modular add/sub/mul/opp with commutativity, associativity, distributivity, identities, inverses. 6 Fermat witnesses via pow_mod. Reduction identities (2^255→19, 2^256→38). Builds clean.
-  [ ] M13.11.3 Ed25519Curve.v — curve equation, point addition formula
+  [x] M13.11.3 Ed25519Curve.v — curve equation, d non-square, basepoint on-curve
   [ ] M13.11.4 Ed25519GroupLaw.v — associativity via ring/field tactic (DRAFT, in coq/draft/)
   [ ] M13.11.5 Ed25519Scalar.v — scalar_mult_add, scalar_mult_compose
   [ ] M13.11.6 VRFDLEQ.v — DLEQ correctness
