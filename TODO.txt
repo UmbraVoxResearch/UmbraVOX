@@ -3,7 +3,7 @@ UmbraVOX Active TODO
 Purpose: active work only. Completed and historical items are tracked in CHANGELOG.txt.
 
 Status: [ ] pending, [~] in progress, [!] blocked
-Last updated: 2026-05-16
+Last updated: 2026-05-18
 
 Rules
 -----
@@ -11,6 +11,28 @@ Rules
 - Use `nix-shell` for build/test/release commands.
 - Keep codegen surfaces wired truthfully; do not overstate assurance claims.
 - When a task is complete, remove it from TODO and record the outcome under CHANGELOG.txt (`Unreleased`), then roll into a version section at tag time.
+
+================================================================================
+v0.1.3 ASSURANCE HARDENING (COMPLETE)
+================================================================================
+Note: Reviewer-grade evidence framework. Tagged v0.1.3 on 2026-05-18.
+
+[x] Phase 1: ASSURANCE-MATRIX.md — per-module risk table with evidence links
+[x] Phase 2: ASSUMPTION-GRAPH.md — dependency clusters, 15 independent roots
+[x] Phase 3: make assurance-fast (5 checks, seconds) + make assurance (full)
+[x] Phase 4: check-assumption-ledger.sh (6 consistency checks, fail-closed)
+             check-proof-hygiene.sh (4 audit checks, AUDIT NOTE: marker)
+[x] Phase 5: REVIEWER-GUIDE.md — tool requirements, claims NOT made
+[x] Phase 6: Coq headers hardened, Ed25519GroupLaw.v moved to coq/draft/
+
+Assurance maintenance (ongoing)
+-------------------------------
+[ ] Verify ASSURANCE-MATRIX.md freshness whenever crypto source changes
+[ ] Run check-assumption-ledger.sh before each release tag
+[ ] Run check-proof-hygiene.sh before each release tag
+[ ] Update ASSUMPTIONS.md whenever assume val count changes
+[ ] Regenerate assume-val inventory logs on each verification pass
+[ ] Run make assurance-fast as part of CI quality gate
 
 Active documentation alignment (architecture/UI/runtime)
 --------------------------------------------------------

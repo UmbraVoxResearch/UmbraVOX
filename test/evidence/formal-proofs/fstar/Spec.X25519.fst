@@ -189,13 +189,110 @@ let fadd_inverse a =
   assert (fadd a (fsub 0 a) == (a + (prime - a)) % prime);
   assert (a + (prime - a) == prime)
 
+(** -------------------------------------------------------------------- **)
+(** Primality assumption (same prime as Ed25519)                          **)
+(** -------------------------------------------------------------------- **)
+
+(** ASSUMED: 2^255 - 19 is prime.  Z3 cannot do trial division on a
+    255-bit number.  Externally verified by Miller-Rabin / CAS.
+    Same assumption as ED-001 in Spec.Ed25519. *)
+assume val prime_is_prime : unit -> Lemma (FStar.Math.Euclid.is_prime prime)
+
+(** -------------------------------------------------------------------- **)
+(** Helper lemmas for fmul_inverse proof                                  **)
+(** -------------------------------------------------------------------- **)
+
+(** Congruence of pow under modular reduction of the base.
+    pow (a % p) n % p == pow a n % p.
+    This follows from (x % p) * y % p == x * y % p applied inductively. *)
+val pow_mod_base : a:int -> n:nat
+  -> Lemma (ensures FStar.Math.Fermat.pow (a % prime) n % prime
+                 == FStar.Math.Fermat.pow a n % prime)
+           (decreases n)
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 30"
+let rec pow_mod_base a n =
+  if n = 0 then ()
+  else begin
+    pow_mod_base a (n - 1);
+    FStar.Math.Lemmas.lemma_mod_mul_distr_l a (FStar.Math.Fermat.pow (a % prime) (n - 1)) prime;
+    FStar.Math.Lemmas.lemma_mod_mul_distr_r a (FStar.Math.Fermat.pow (a % prime) (n - 1)) prime;
+    FStar.Math.Lemmas.lemma_mod_mul_distr_r a (FStar.Math.Fermat.pow a (n - 1)) prime
+  end
+#pop-options
+
+(** pow distributes over squaring: pow (a*a) n == pow a (2*n).
+    Proven by induction on n. *)
+val pow_sqr : a:int -> n:nat
+  -> Lemma (ensures FStar.Math.Fermat.pow (a * a) n == FStar.Math.Fermat.pow a (2 * n))
+           (decreases n)
+#push-options "--fuel 2 --ifuel 1"
+let rec pow_sqr a n =
+  if n = 0 then ()
+  else begin
+    pow_sqr a (n - 1);
+    assert (2 * (n - 1) == 2 * n - 2)
+  end
+#pop-options
+
+(** Equivalence of pow_mod (repeated-squaring) and FStar.Math.Fermat.pow
+    (simple recursive exponentiation) modulo prime.
+
+    pow_mod reduces modulo prime at each step for efficiency, but produces
+    the same residue as unreduced exponentiation followed by a single mod. *)
+val pow_mod_equiv : base:felem -> exp:nat
+  -> Lemma (ensures pow_mod base exp == FStar.Math.Fermat.pow base exp % prime)
+           (decreases exp)
+#push-options "--fuel 2 --ifuel 1 --z3rlimit 50"
+let rec pow_mod_equiv base exp =
+  if exp = 0 then begin
+    assert (pow_mod base 0 == 1);
+    assert (FStar.Math.Fermat.pow base 0 == 1);
+    assert (1 % prime == 1)
+  end else if exp % 2 = 1 then begin
+    let half = exp / 2 in
+    pow_mod_equiv (fsqr base) half;
+    pow_mod_base (base * base) half;
+    pow_sqr base half;
+    assert (2 * half == exp - 1);
+    FStar.Math.Lemmas.lemma_mod_mul_distr_r base (FStar.Math.Fermat.pow base (exp - 1)) prime;
+    assert (base * FStar.Math.Fermat.pow base (exp - 1) == FStar.Math.Fermat.pow base exp)
+  end else begin
+    let half = exp / 2 in
+    pow_mod_equiv (fsqr base) half;
+    pow_mod_base (base * base) half;
+    pow_sqr base half;
+    assert (2 * half == exp);
+    ()
+  end
+#pop-options
+
+(** -------------------------------------------------------------------- **)
+(** Multiplicative inverse (PROVED)                                       **)
+(** -------------------------------------------------------------------- **)
+
 (** Multiplicative inverse: a * a^(-1) = 1 for a != 0.
-    ASSUMED: Fermat's little theorem gives a^(p-1) = 1 mod p for a != 0,
-    so a * a^(p-2) = 1.  The Ed25519 spec (Spec.Ed25519) has this PROVED
-    via Fermat; the X25519 finv definition is identical but the proof is
-    not yet ported.  Visible to auditing as an assume val. *)
-assume val fmul_inverse : a:felem{a <> 0}
-    -> Lemma (fmul a (finv a) == 1)
+
+    PROVED via Fermat's Little Theorem (FStar.Math.Fermat.fermat).
+
+    The proof reduces to showing a^(p-1) mod p = 1 for prime p and
+    0 < a < p, which is exactly Fermat's Little Theorem.  The only
+    trusted assumption is prime_is_prime (primality of 2^255 - 19),
+    which is externally verified by CAS.
+
+    Proof chain:
+    1. pow_mod_equiv: pow_mod a (p-2) == pow a (p-2) % p
+    2. lemma_mod_mul_distr_r: (a * (pow a (p-2) % p)) % p == (a * pow a (p-2)) % p
+    3. pow definition: a * pow a (p-2) == pow a (p-1)
+    4. fermat (FLT): pow a (p-1) % p == 1 *)
+val fmul_inverse : a:felem{a <> 0} -> Lemma (fmul a (finv a) == 1)
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 50"
+let fmul_inverse a =
+  pow_mod_equiv a (prime - 2);
+  FStar.Math.Lemmas.lemma_mod_mul_distr_r a (FStar.Math.Fermat.pow a (prime - 2)) prime;
+  assert (a * FStar.Math.Fermat.pow a (prime - 2) == FStar.Math.Fermat.pow a (prime - 1));
+  prime_is_prime ();
+  FStar.Math.Fermat.fermat prime a
+#pop-options
 
 (** -------------------------------------------------------------------- **)
 (** Little-endian encoding / decoding                                     **)
