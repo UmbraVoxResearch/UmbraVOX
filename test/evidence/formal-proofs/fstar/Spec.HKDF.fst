@@ -141,8 +141,10 @@ let hkdf_expand (hmac : hmac_fn) (hash_len : nat{hash_len > 0})
   let n = ceil_div len hash_len in
   ceil_div_bounds_lemma len hash_len;
   let expanded = expand_loop hmac prk info Seq.empty 1 n in
-  (* TODO: requires tactic-based proof — length of expand_loop output depends
-     on the concrete output length of hmac, which is abstract here *)
+  (* AUDIT NOTE: in-body assume — expand_loop output length >= len.
+     This path is only used with abstract hmac_fn; all concrete instances
+     (hkdf_sha256, hkdf_sha512) use hkdf_expand_bounded which carries
+     the length invariant via bounded_hmac_fn type and expand_loop_bounded. *)
   assume (Seq.length expanded >= len);
   Seq.slice expanded 0 len
 
