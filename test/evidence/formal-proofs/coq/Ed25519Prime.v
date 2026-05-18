@@ -34,6 +34,10 @@
     ============================================================================ *)
 
 From Stdlib Require Import ZArith Znumtheory Lia.
+From Stdlib.micromega Require Import Lia.
+(** Rocq 9.1.1 stdlib 9.0.0: nia is defined in Lia.v but not auto-exported.
+    Re-export it here so the proofs can use nonlinear integer arithmetic. *)
+Ltac nia := Lia.nia.
 Open Scope Z_scope.
 
 (** ========================================================================
@@ -301,13 +305,17 @@ Proof.
           rewrite Hc_eq.
           destruct (Z.le_gt_cases c (Z.sqrt n)); [assumption |].
           exfalso.
-          assert (c >= Z.sqrt n + 1) by lia.
-          assert (Z.abs x >= Z.sqrt n + 1) by lia.
-          assert (n < (Z.sqrt n + 1) * (Z.sqrt n + 1)). {
-            apply Z.sqrt_lt_lin. lia.
+          assert (Hc_ge : Z.sqrt n + 1 <= c) by lia.
+          assert (Hx_ge : Z.sqrt n + 1 <= Z.abs x) by lia.
+          assert (Hn_lt : n < (Z.sqrt n + 1) * (Z.sqrt n + 1)). {
+            pose proof (Z.sqrt_spec n ltac:(lia)) as [_ Hu].
+            unfold Z.succ in Hu. lia.
           }
-          assert (c * Z.abs x >= (Z.sqrt n + 1) * (Z.sqrt n + 1)). {
-            apply Z.mul_le_mono_nonneg; lia.
+          assert (Hprod : (Z.sqrt n + 1) * (Z.sqrt n + 1) <= c * Z.abs x). {
+            assert (0 <= Z.sqrt n) by (apply Z.sqrt_nonneg).
+            transitivity ((Z.sqrt n + 1) * Z.abs x).
+            - apply Z.mul_le_mono_nonneg_l; lia.
+            - apply Z.mul_le_mono_nonneg_r; lia.
           }
           lia.
         }
@@ -325,10 +333,20 @@ Lemma check_no_factor_sound : forall fuel n d,
 Proof.
   induction fuel as [| fuel' IH]; intros n d Hn Hd Hcheck k Hk Hksq.
   - simpl in Hcheck.
-    apply Z.gtb_lt in Hcheck. lia.
+    apply Z.gtb_lt in Hcheck.
+    assert (k * k <= n) by assumption.
+    assert (d <= k) by assumption.
+    assert (d * d <= k * k). {
+      apply Z.mul_le_mono_nonneg; lia.
+    }
+    lia.
   - simpl in Hcheck.
     destruct (d * d >? n) eqn:Hgt.
-    + apply Z.gtb_lt in Hgt. lia.
+    + apply Z.gtb_lt in Hgt.
+      assert (d * d <= k * k). {
+        apply Z.mul_le_mono_nonneg; lia.
+      }
+      lia.
     + destruct (n mod d =? 0) eqn:Hmod.
       * discriminate.
       * apply Z.eqb_neq in Hmod.
@@ -346,19 +364,16 @@ Proof.
   apply Bool.andb_true_iff in H. destruct H as [Hlt Hfactors].
   apply Z.ltb_lt in Hlt.
   apply no_small_divisors_implies_prime; [exact Hlt |].
-  intros d Hd Hmod.
-  apply Z.mod_divide in Hmod; [| lia].
-  destruct Hmod as [c Hc].
-  assert (d * d <= n). {
-    assert (Hds : d <= Z.sqrt n) by lia.
-    assert (Hss : Z.sqrt n * Z.sqrt n <= n) by (apply Z.sqrt_spec; lia).
-    assert (0 <= d) by lia.
+  intros d Hd.
+  assert (Hdd : d * d <= n). {
+    assert (d <= Z.sqrt n) by lia.
+    assert (Z.sqrt n * Z.sqrt n <= n) by (apply Z.sqrt_spec; lia).
     assert (d * d <= Z.sqrt n * Z.sqrt n). {
       apply Z.mul_le_mono_nonneg; lia.
     }
     lia.
   }
-  eapply check_no_factor_sound; [exact Hlt | lia | exact Hfactors | lia | exact H].
+  exact (check_no_factor_sound _ n 2 Hlt ltac:(lia) Hfactors d ltac:(lia) Hdd).
 Qed.
 
 (** ========================================================================

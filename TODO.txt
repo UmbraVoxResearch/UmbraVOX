@@ -592,7 +592,8 @@ Note: 221 original assumes → 0 admit() + 23 assume val. 18/24 specs fully prov
     Note: Logs at test/evidence/formal-proofs/logs/ — assume-val-inventory.txt, admit-inventory.txt, verification-summary.txt.
 
 [ ] M13.11 Coq external verification
-  [ ] M13.11.1 Ed25519Prime.v — primality of 2^255-19 (Pocklington certificate)
+  [x] M13.11.1 Ed25519Prime.v — primality evidence (Pocklington conditions + verified checker)
+    Note: 94 Qed, 0 Admitted, 0 Axiom. Fermat witnesses, non-divisibility by primes to 97, Pocklington certificate conditions (factorization, gcd checks, size bounds), verified trial-division checker with soundness proof, 25 small primes proved. Builds clean with Rocq 9.1.1 + stdlib.
   [ ] M13.11.2 Ed25519Field.v — field operations, basic properties
   [ ] M13.11.3 Ed25519Curve.v — curve equation, point addition formula
   [ ] M13.11.4 Ed25519GroupLaw.v — associativity via ring/field tactic (EXPERIMENTAL)
