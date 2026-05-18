@@ -45,8 +45,8 @@ libsignal = protocol oracle only. Independent oracles for primitives.
   [ ] M18.1.2 nix/vm-libsignal-protocol-oracle.nix — Rust + pinned libsignal
   [ ] M18.1.3 nix/vm-primitive-oracle-suite.nix — HACL*, libsodium, RustCrypto, BoringSSL, Monocypher, PQClean, liboqs
   [ ] M18.1.4 nix/oracles/ pin files (libsignal, hacl-star, libsodium, rustcrypto, boringssl, monocypher, pqclean, liboqs)
-  [ ] M18.1.5 scripts/vm-differential-run.sh — orchestration (VM-A → VM-B → VM-C)
-  [ ] M18.1.6 Makefile targets (vm-*-oracle-build, differential-*, test-differential-*)
+  [x] M18.1.5 scripts/vm-differential-run.sh — orchestration (VM-A → VM-B → VM-C)
+  [x] M18.1.6 Makefile targets (vm-*-oracle-build, differential-*, test-differential-*)
 
 [ ] M18.2 Oracle CLI Binaries
   [ ] M18.2.1 Primitive oracle CLI (Rust, via buildRustPackage, subcommands per algorithm)
@@ -54,16 +54,16 @@ libsignal = protocol oracle only. Independent oracles for primitives.
   [ ] M18.2.3 F* executable spec evaluation harness (assert_norm-based vector generation)
 
 [ ] M18.3 Primitive Differential Testing
-  [ ] M18.3.1 SHA-256: NIST CAVP + HACL* + BoringSSL + RustCrypto + boundary vectors (55/56/64 bytes)
-  [ ] M18.3.2 SHA-512: NIST CAVP + HACL* + BoringSSL + RustCrypto
-  [ ] M18.3.3 HMAC: RFC 4231 all TCs (including TC4 key>block) + HACL* + BoringSSL
-  [ ] M18.3.4 HKDF: RFC 5869 all TCs + Wycheproof (~30 vectors) + max output length
-  [ ] M18.3.5 X25519: RFC 7748 + Wycheproof (~40) + HACL* + libsodium + Monocypher
-  [ ] M18.3.6 Ed25519: RFC 8032 + Wycheproof (~100) + HACL* + libsodium + Monocypher
-  [ ] M18.3.7 AES-256-GCM: NIST SP 800-38D + Wycheproof (~300) + HACL* + BoringSSL
+  [x] M18.3.1 SHA-256: NIST CAVP + HACL* + BoringSSL + RustCrypto + boundary vectors (55/56/64 bytes)
+  [x] M18.3.2 SHA-512: NIST CAVP + HACL* + BoringSSL + RustCrypto
+  [x] M18.3.3 HMAC: RFC 4231 all TCs (including TC4 key>block) + HACL* + BoringSSL
+  [x] M18.3.4 HKDF: RFC 5869 all TCs + Wycheproof (~30 vectors) + max output length
+  [x] M18.3.5 X25519: RFC 7748 + Wycheproof (~40) + HACL* + libsodium + Monocypher
+  [x] M18.3.6 Ed25519: RFC 8032 + Wycheproof (~100) + HACL* + libsodium + Monocypher
+  [x] M18.3.7 AES-256-GCM: NIST SP 800-38D + Wycheproof (~300) + HACL* + BoringSSL
   [ ] M18.3.8 ChaCha20-Poly1305: RFC 8439 + HACL* + libsodium + Monocypher
   [ ] M18.3.9 ML-KEM-768: FIPS 203 KAT + PQClean + liboqs
-  [ ] M18.3.10 SHA-3/SHAKE: NIST CAVP + HACL* + RustCrypto
+  [x] M18.3.10 SHA-3/SHAKE: NIST CAVP + HACL* + RustCrypto
 
 [ ] M18.4 Protocol Differential Testing (libsignal)
   [ ] M18.4.1 X3DH: session establishment, SPK validation, OPK consumption/replay
@@ -72,7 +72,7 @@ libsignal = protocol oracle only. Independent oracles for primitives.
   [ ] M18.4.4 Document known divergences (wire format, transcript labels, domain separation)
 
 [ ] M18.5 Negative / Fail-Closed Testing
-  [ ] M18.5.1 AEAD: wrong key/nonce/AAD, truncated ct/tag, bit-flip, nonce reuse, tag truncation
+  [~] M18.5.1 AEAD: wrong key/nonce/AAD, truncated ct/tag, bit-flip, nonce reuse, tag truncation
   [ ] M18.5.2 Ed25519: malleability (S vs L-S), non-canonical, small-order, wrong message
   [ ] M18.5.3 X25519: all-zero, low-order, non-canonical encodings
   [ ] M18.5.4 ML-KEM: malformed ek/dk, coefficients >= q, truncated
@@ -86,7 +86,7 @@ libsignal = protocol oracle only. Independent oracles for primitives.
   [ ] M18.6.4 Metamorphic tests (decrypt(encrypt)=id, verify(sign)=true)
 
 [ ] M18.7 UmbraVOX Consumer
-  [ ] M18.7.1 test/Test/Crypto/Differential/Primitives.hs
+  [x] M18.7.1 test/Test/Crypto/Differential/Primitives.hs
   [ ] M18.7.2 test/Test/Crypto/Differential/ProtocolLibsignal.hs
   [ ] M18.7.3 test/Test/Crypto/Differential/Negative.hs
   [ ] M18.7.4 test/Test/Crypto/Differential/Fuzz.hs
