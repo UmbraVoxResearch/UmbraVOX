@@ -47,7 +47,7 @@ for target in build test verify quality vm-dev vm-build vm-test vm-verify \
 done
 
 # Check VM routing is default (UMBRAVOX_LOCAL=0)
-out=$(make -n build 2>&1 | head -1)
+out=$(make -n build 2>&1 | head -10)
 if echo "$out" | grep -q 'vm-build'; then
     check "make build routes to VM by default" "PASS"
 else
@@ -55,7 +55,7 @@ else
 fi
 
 # Check local override works
-out=$(UMBRAVOX_LOCAL=1 make -n build 2>&1 | head -3)
+out=$(UMBRAVOX_LOCAL=1 make -n build 2>&1 | head -10)
 if echo "$out" | grep -q 'cabal build'; then
     check "UMBRAVOX_LOCAL=1 make build runs cabal locally" "PASS"
 else

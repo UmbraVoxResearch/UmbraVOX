@@ -290,7 +290,13 @@ run:
 # --------------------------------------------------------------------------
 
 build:
-	@if [ "$(UMBRAVOX_LOCAL)" != "1" ]; then $(MAKE) vm-build; exit $$?; fi
+	@if [ "$(UMBRAVOX_LOCAL)" != "1" ]; then \
+		if [ -d build/vm/image ] || [ -L build/vm/image ]; then \
+			$(MAKE) vm-build; exit $$?; \
+		else \
+			echo -e "$(YELLOW)[BUILD]$(NC) No VM image found — building locally. Run 'make vm-image-build' for VM builds."; \
+		fi; \
+	fi
 	@echo -e "$(BLUE)[BUILD]$(NC) Building UmbraVOX..."
 	@cabal build all 2>&1 | tail -5
 	@echo -e "$(GREEN)[BUILD]$(NC) Build complete."
@@ -308,7 +314,13 @@ build-haskell:
 # --------------------------------------------------------------------------
 
 test:
-	@if [ "$(UMBRAVOX_LOCAL)" != "1" ]; then $(MAKE) vm-test; exit $$?; fi
+	@if [ "$(UMBRAVOX_LOCAL)" != "1" ]; then \
+		if [ -d build/vm/image ] || [ -L build/vm/image ]; then \
+			$(MAKE) vm-test; exit $$?; \
+		else \
+			echo -e "$(YELLOW)[TEST]$(NC) No VM image found — testing locally. Run 'make vm-image-build' for VM tests."; \
+		fi; \
+	fi
 	@$(MAKE) UMBRAVOX_LOCAL=1 build
 	@echo -e "$(BLUE)[TEST]$(NC) Running fast messaging-MVP hardening gate..."
 	@$(SUITE_LOCK) bash -c 'mkdir -p $(TEST_ARTIFACT_DIR); \
@@ -441,7 +453,13 @@ mcdc-report:
 # --------------------------------------------------------------------------
 
 verify:
-	@if [ "$(UMBRAVOX_LOCAL)" != "1" ]; then $(MAKE) vm-verify; exit $$?; fi
+	@if [ "$(UMBRAVOX_LOCAL)" != "1" ]; then \
+		if [ -d build/vm/image ] || [ -L build/vm/image ]; then \
+			$(MAKE) vm-verify; exit $$?; \
+		else \
+			echo -e "$(YELLOW)[VERIFY]$(NC) No VM image found — verifying locally. Run 'make vm-image-build' for VM verification."; \
+		fi; \
+	fi
 	@echo -e "$(BLUE)[VERIFY]$(NC) Running F* formal verification (all modules)..."
 	@$(SUITE_LOCK) bash -c 'mkdir -p $(TEST_ARTIFACT_DIR); \
 	log_file=$$(mktemp "$(TEST_ARTIFACT_DIR)/verify.XXXXXX.log"); \
