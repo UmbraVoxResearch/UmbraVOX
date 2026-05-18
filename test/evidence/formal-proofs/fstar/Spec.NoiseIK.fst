@@ -1,6 +1,11 @@
 (**
  * Spec.NoiseIK -- Pure functional specification of Noise_IK handshake
  *
+ * MODELING LIMITATION: chacha20_encrypt is the identity function, x25519
+ * returns constant zero, hmac returns constant zero.  Encrypt/decrypt
+ * roundtrip is trivially true.  Key agreement proves structural shape
+ * (4 DH legs, correct lengths) but not cryptographic security.
+ *
  * This module specifies the Noise_IK handshake pattern for authenticated
  * key exchange.  It mirrors the Haskell implementation in
  * src/UmbraVox/Network/Noise.hs.
