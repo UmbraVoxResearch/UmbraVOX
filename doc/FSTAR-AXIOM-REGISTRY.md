@@ -4,8 +4,10 @@
 
 ## Overview
 
-The UmbraVOX F* specifications contain **0 admit() calls** and **23 assume val
-declarations** across 24 specs (18 specs have 0 assume val).
+The UmbraVOX F* specifications contain **0 admit() calls** and **30 assume val
+declarations** across 24 specs (17 specs have 0 assume val). The increase
+from 23 to 30 reflects 7 hidden in-body `assume()` calls in Spec.X25519
+that were promoted to visible `assume val` for audit transparency.
 
 This document registers only the **irreducible** axioms — cryptographic hardness
 assumptions, cross-toolchain boundaries, and algebraic facts requiring tools
@@ -58,10 +60,9 @@ All irreducible axioms have empirical validation paths:
   equivalence between the F* model and the Haskell implementation against
   NIST/RFC test vectors.
 
-### Remaining Assume Vals (11, not listed above)
+### Remaining Assume Vals (18, not listed above)
 
-The remaining 11 `assume val` declarations (beyond the 12 irreducible axioms)
-are in Ed25519 group theory and cross-toolchain boundary areas:
+The remaining 18 `assume val` declarations (beyond the 12 irreducible axioms):
 
 1. **Ed25519 algebraic geometry** (8): `point_add_assoc`, `scalar_mult_add`,
    `scalar_mult_compose`, `scalar_mod_L_equiv`, `point_add_congruence_right`,
@@ -70,7 +71,12 @@ are in Ed25519 group theory and cross-toolchain boundary areas:
    capabilities — discharge path is Coq ring/field tactics.
 2. **Ed25519 group order** (1): `group_order_lemma` — ~2^252 iterations,
    computationally infeasible in any proof system.
-3. **Cross-toolchain boundary** (2): `seq_of_bs_length_bound`,
+3. **X25519 curve arithmetic** (7): `fmul_inverse`, `decode_encode_round_trip`,
+   `scalar_mult_zero`, `scalar_mult_one`, `dh_commutativity`,
+   `dh_commutativity_general`, `x25519_zero_u`. Promoted from hidden in-body
+   `assume()` to visible `assume val` for audit transparency. Several could
+   be proved by porting Ed25519 proofs (e.g., fmul_inverse via Fermat).
+4. **Cross-toolchain boundary** (2): `seq_of_bs_length_bound`,
    `sha256_refinement_axiom` — model the F*/GHC semantic gap.
 
 These are tracked as ongoing work in M13 and do not represent trust boundary items.
