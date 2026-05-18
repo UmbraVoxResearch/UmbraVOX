@@ -1,6 +1,12 @@
 (**
  * Spec.DoubleRatchet -- Pure functional specification of Signal Double Ratchet
  *
+ * MODELING LIMITATION: hmac_sha256 is a constant-zero stub. KDF outputs are
+ * deterministic constants, not real PRF outputs.  Forward secrecy proofs are
+ * structural (counter monotonicity), not computational (one-wayness).
+ * 2 assume vals: hmac_non_fixpoint, hmac_collision_resistance — these are
+ * genuine crypto hardness assumptions that CANNOT be satisfied by the stub.
+ *
  * This module specifies the Double Ratchet Algorithm for forward-secure
  * end-to-end encrypted messaging.  It mirrors the Haskell implementation
  * in src/UmbraVox/Crypto/Signal/DoubleRatchet.hs.

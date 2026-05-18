@@ -1,6 +1,14 @@
 (**
  * Spec.X3DH -- Pure functional specification of Signal X3DH key agreement
  *
+ * MODELING LIMITATION: All cryptographic primitives in this spec are
+ * constant-function stubs.  ed25519_verify always returns true, x25519
+ * returns constant zero, hmac returns constant zero.  As a result:
+ *   - DH commutativity proofs are trivially true (reflexivity)
+ *   - SPK rejection (spk_rejection_lemma) is vacuously true
+ *   - Key agreement proves structural shape, not cryptographic security
+ * These limitations are documented in the crypto audit scorecard.
+ *
  * This module specifies the Extended Triple Diffie-Hellman (X3DH) protocol
  * as used in the Signal protocol.  It mirrors the Haskell implementation in
  * src/UmbraVox/Crypto/Signal/X3DH.hs.

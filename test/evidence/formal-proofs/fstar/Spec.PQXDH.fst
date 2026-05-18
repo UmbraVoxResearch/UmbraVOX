@@ -1,6 +1,11 @@
 (**
  * Spec.PQXDH -- Pure functional specification of PQXDH hybrid key agreement
  *
+ * MODELING LIMITATION: All cryptographic primitives are constant-function
+ * stubs (x25519 = zero, mlkem_encaps/decaps = identity, hmac = zero).
+ * DH commutativity and ML-KEM correctness proofs are trivially true.
+ * Agreement lemma proves structural shape, not cryptographic security.
+ *
  * This module specifies the Post-Quantum Extended Triple Diffie-Hellman
  * (PQXDH) protocol, combining classical X3DH with ML-KEM-768.  Security
  * holds if EITHER the classical CDH problem OR the ML-KEM (Module-LWE)
