@@ -25,6 +25,8 @@ import qualified UmbraVox.Crypto.Ed25519 as Ed25519
 import qualified UmbraVox.Crypto.HMAC as HMAC
 import qualified UmbraVox.Crypto.HKDF as HKDF
 import qualified UmbraVox.Crypto.GCM as GCM
+import qualified UmbraVox.Crypto.ChaChaPoly as ChaChaPoly
+import qualified UmbraVox.Crypto.Keccak as Keccak
 
 -- | Run all differential primitive tests.
 -- Returns True if all pass, False if any fail.
@@ -39,6 +41,8 @@ differentialPrimitiveTests = do
         , testX25519Vectors
         , testEd25519Vectors
         , testAESGCMVectors
+        , testChaChaPolyVectors
+        , testSHA3Vectors
         ]
     let passed = length (filter id results)
         total = length results
@@ -201,3 +205,53 @@ testAESGCMVectors = do
             putStrLn "  FAIL: tc16-wrong-tag-rejected (accepted wrong tag!)"
             return False
     return (r1 && r2 && r3 && r4 && r5 && r6)
+
+-- ── ChaCha20-Poly1305 ──────────────────────────────────────────────
+
+testChaChaPolyVectors :: IO Bool
+testChaChaPolyVectors = do
+    putStrLn "  [ChaCha20-Poly1305] RFC 8439 vectors"
+    -- RFC 8439 Section 2.8.2
+    let key = hexToBS "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f"
+        nonce = hexToBS "070000004041424344454647"
+        aad = hexToBS "50515253c0c1c2c3c4c5c6c7"
+        pt = hexToBS "4c616469657320616e642047656e746c656d656e206f662074686520636c617373206f66202739393a204966204920636f756c64206f6666657220796f75206f6e6c79206f6e652074697020666f7220746865206675747572652c2073756e73637265656e20776f756c642062652069742e"
+        ct_expected = hexToBS "d31a8d34648e60db7b86afbc53ef7ec2a4aded51296e08fea9e2b5a736ee62d63dbea45e8ca9671282fafb69da92728b1a71de0a9e060b2905d6a5b67ecd3b3692ddbd7f2d778b8c9803aee328091b58fab324e4fad675945585808b4831d7bc3ff4def08e4b7a9de576d26586cec64b6116"
+        tag_expected = hexToBS "1ae10b594f09e26a7e902ecbd0600691"
+        (ct, tag) = ChaChaPoly.chachaPolyEncrypt key nonce aad pt
+    r1 <- check "ChaCha20-Poly1305" "rfc8439-ct" ct_expected ct
+    r2 <- check "ChaCha20-Poly1305" "rfc8439-tag" tag_expected tag
+    -- Decrypt roundtrip
+    case ChaChaPoly.chachaPolyDecrypt key nonce aad ct tag of
+        Nothing -> do
+            putStrLn "  FAIL: rfc8439-decrypt (returned Nothing)"
+            return False
+        Just dec -> do
+            r3 <- check "ChaCha20-Poly1305" "rfc8439-decrypt-roundtrip" pt dec
+            -- Negative: wrong tag rejected
+            case ChaChaPoly.chachaPolyDecrypt key nonce aad ct (hexToBS "00000000000000000000000000000000") of
+                Nothing -> do
+                    putStrLn "  PASS: rfc8439-wrong-tag-rejected"
+                    return (r1 && r2 && r3)
+                Just _ -> do
+                    putStrLn "  FAIL: rfc8439-wrong-tag-rejected (accepted!)"
+                    return False
+
+-- ── SHA-3 ───────────────────────────────────────────────────────────
+
+testSHA3Vectors :: IO Bool
+testSHA3Vectors = do
+    putStrLn "  [SHA-3] NIST FIPS 202 vectors"
+    -- SHA3-256 empty
+    r1 <- check "SHA3-256" "empty"
+        (hexToBS "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a")
+        (Keccak.sha3_256 BS.empty)
+    -- SHA3-256 "abc"
+    r2 <- check "SHA3-256" "abc"
+        (hexToBS "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532")
+        (Keccak.sha3_256 (C8.pack "abc"))
+    -- SHA3-512 empty
+    r3 <- check "SHA3-512" "empty"
+        (hexToBS "a69f73cca23a9ac5c8b567dc185a756e97c982164fe25859e0d1dcc1475c80a615b2123af1f5f94c11e3e9402c3ac558f500199d95b6d3e301758586281dcd26")
+        (Keccak.sha3_512 BS.empty)
+    return (r1 && r2 && r3)
