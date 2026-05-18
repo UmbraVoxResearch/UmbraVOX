@@ -295,17 +295,16 @@ let four_dh_legs_structural i_static_sec i_static_pub r_static_pub e_sec e_pub =
 (** Encrypt then decrypt roundtrip.
     Under the chacha20_encrypt model (identity function), encrypt then decrypt
     is trivially the identity.  The MAC check passes because we use the same key. *)
-val encrypt_decrypt_roundtrip :
+val encrypt_decrypt_roundtrip_placeholder :
     key:seq UInt8.t{Seq.length key = key_size}
     -> n:nat -> pt:seq UInt8.t
     -> Lemma (True)
-let encrypt_decrypt_roundtrip key n pt =
-  (* In this abstract model, chacha20_encrypt is the identity, so:
-       noise_encrypt key n pt = pt || HMAC(key, nonce || pt)
-       noise_decrypt key n (pt || HMAC(key, nonce || pt)) = Some pt
-     The full roundtrip proof requires instantiating with the concrete
-     ChaCha20 and HMAC specs and showing their composed properties. *)
-  ()
+    (** PLACEHOLDER: proves True, not actual encrypt/decrypt roundtrip.
+        Requires instantiating ChaCha20 + HMAC with concrete specs and
+        proving their composition. The abstract model uses identity
+        encryption so the roundtrip is trivially true, but the real
+        property needs ChaChaPoly AEAD correctness. *)
+let encrypt_decrypt_roundtrip_placeholder key n pt = ()
 
 (** Session key agreement: initiator and responder use the same chaining key
     to derive complementary session keys (initiator_send = responder_recv). *)

@@ -74,7 +74,7 @@ Status: planning (no .fst modifications without explicit approval)
 
 ### P2: ChaCha20, Poly1305, AES-256 (symmetric ciphers)
 
-**Spec.ChaCha20** (11 assume val) -- highest axiomatization debt. All 11 `assume val` declarations (L59-L176) must be replaced with actual function definitions: `qr_test`, `double_round`, `le_bytes_to_uint32`, `create_16`, `serialize_state`, `seq_map2`, `chacha20_encrypt`, `encrypt_decrypt_roundtrip`, `seq_of_hex`, `kat_block`, `kat_allzero`.
+**Spec.ChaCha20** (11 assume val) -- highest axiomatization debt. All 11 `assume val` declarations (L59-L176) must be replaced with actual function definitions: `qr_test`, `double_round`, `le_bytes_to_uint32`, `create_16`, `serialize_state`, `seq_map2`, `chacha20_encrypt`, `encrypt_decrypt_roundtrip`, `seq_of_hex`, `kat_block_placeholder` (renamed from `kat_block`; vacuously true), `kat_block_rfc8439` (non-vacuous replacement with inline bytes), `kat_allzero`.
 
 **Spec.Poly1305** (7 assume + 1 assume val) -- `bitwise_and` at L72 needs implementation over `nat`. Structural assumes are field-element bounds.
 

@@ -56,10 +56,12 @@ val nat_to_le : n:nat -> v:nat -> Tot (s:seq UInt8.t{Seq.length s = n})
 let nat_to_le n v =
   Seq.init n (fun (i:nat{i < n}) -> FStar.UInt8.uint_to_t ((v / pow2 (8 * i)) % 256))
 
-(** le_to_nat (nat_to_le n v) = v mod 2^(8*n) *)
-val le_roundtrip_lemma : n:nat -> v:nat
+(** PLACEHOLDER: proves True, not the actual roundtrip property
+    le_to_nat (nat_to_le n v) = v mod 2^(8*n).
+    A real proof requires induction on n with Seq.init / Seq.tail lemmas. *)
+val le_roundtrip_placeholder : n:nat -> v:nat
     -> Lemma (True)
-let le_roundtrip_lemma n v = ()
+let le_roundtrip_placeholder n v = ()
 
 (** -------------------------------------------------------------------- **)
 (** RFC 8439 Section 2.5.1 -- Clamping                                   **)
@@ -175,12 +177,13 @@ let poly1305_tag_length key msg = ()
 (** Correctness properties                                               **)
 (** -------------------------------------------------------------------- **)
 
-(** Poly1305 is a universal hash: for distinct messages m1, m2 and
-    uniformly random r, Pr[tag(m1) = tag(m2)] <= ceil(L/16) / p
-    where L = max(|m1|, |m2|). *)
-val poly1305_uf_cma_assumption : unit
+(** PLACEHOLDER: the UF-CMA security bound for Poly1305 is a computational
+    assumption (Pr[forge] <= ceil(L/16) / p for uniformly random r) that
+    cannot be proved within F* -- it requires a probabilistic argument over
+    the choice of r.  This lemma proves only True as a stub. *)
+val poly1305_uf_cma_placeholder : unit
     -> Lemma (True)
-let poly1305_uf_cma_assumption () = ()
+let poly1305_uf_cma_placeholder () = ()
 
 (** Processing an empty message returns the finalization of zero *)
 val empty_message_lemma : r:nat -> s:nat
