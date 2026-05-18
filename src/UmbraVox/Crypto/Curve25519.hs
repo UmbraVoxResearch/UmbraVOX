@@ -119,7 +119,10 @@ clampScalar !bs =
 -- Verified: All call sites in Handshake.hs, StealthAddress.hs, X3DH.hs,
 --   PQXDH.hs, and DoubleRatchet.hs updated to pattern-match on Maybe.
 x25519 :: ByteString -> ByteString -> Maybe ByteString
-x25519 !scalar !uCoord =
+x25519 !scalar !uCoord
+    | BS.length scalar /= 32 = Nothing  -- reject wrong-length inputs
+    | BS.length uCoord /= 32 = Nothing
+    | otherwise =
     let !k = decodeLE (clampScalar scalar)
         -- RFC 7748: decode u-coordinate, masking bit 255
         !u = decodeLE uCoord .&. (2 ^ (255 :: Int) - 1)

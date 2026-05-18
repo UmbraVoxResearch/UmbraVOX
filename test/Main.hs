@@ -28,6 +28,7 @@ import qualified Test.Crypto.ChaCha20 as ChaCha20
 import qualified Test.Crypto.Curve25519 as Curve25519
 import qualified Test.Crypto.Differential as Differential
 import qualified Test.Crypto.Differential.Primitives as DiffPrimitives
+import qualified Test.Crypto.Differential.Negative as DiffNegative
 import qualified Test.Crypto.Ed25519 as Ed25519
 import qualified Test.Crypto.Export as Export
 import qualified Test.Crypto.GCM as GCM
@@ -232,7 +233,9 @@ runSuiteArg suiteArg =
         "differential" -> runSuiteGroup "UmbraVox Differential C vs Haskell Suite"
             [Suite "differential" Differential.runTests]
         "differential-oracle" -> runSuiteGroup "UmbraVox Multi-Oracle Differential Suite"
-            [Suite "differential-oracle" DiffPrimitives.differentialPrimitiveTests]
+            [ Suite "differential-primitives" DiffPrimitives.differentialPrimitiveTests
+            , Suite "differential-negative" DiffNegative.differentialNegativeTests
+            ]
         "unicode" -> runSuiteGroup "UmbraVox Unicode Exhaustive Suite"
             [Suite "unicode" Unicode.runTests]
         "deferred" -> runSuiteGroup "UmbraVox Deferred Stub Suite" deferredSuites
