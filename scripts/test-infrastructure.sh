@@ -230,6 +230,25 @@ else
     check "Primality certificate script exists" "FAIL"
 fi
 
+# Inventory logs
+if [ -f test/evidence/formal-proofs/logs/assume-val-inventory.txt ]; then
+    inv_count=$(wc -l < test/evidence/formal-proofs/logs/assume-val-inventory.txt)
+    live_count=$(grep -RIn '^assume val' test/evidence/formal-proofs/fstar/ | wc -l)
+    if [ "$inv_count" -eq "$live_count" ]; then
+        check "Assume-val inventory matches live count ($live_count)" "PASS"
+    else
+        check "Assume-val inventory matches live count" "FAIL (log=$inv_count live=$live_count)"
+    fi
+else
+    check "Assume-val inventory log exists" "FAIL"
+fi
+
+if [ -f test/evidence/formal-proofs/logs/verification-summary.txt ]; then
+    check "Verification summary exists" "PASS"
+else
+    check "Verification summary exists" "FAIL"
+fi
+
 echo ""
 
 # ── Section 7: Scripts ────────────────────────────────────────────────
