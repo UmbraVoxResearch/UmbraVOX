@@ -169,11 +169,11 @@ CABALEOF
       };
     };
 
-    # Shut down after smoke completes (success or failure)
+    # Shut down after both smoke and dev-init complete (success or failure)
     systemd.services.umbravox-shutdown = {
-      description = "Shutdown after smoke";
+      description = "Shutdown after smoke and dev-init";
       wantedBy = [ "multi-user.target" ];
-      after = [ "umbravox-smoke.service" ];
+      after = [ "umbravox-smoke.service" "umbravox-dev-init.service" ];
       serviceConfig = {
         Type = "oneshot";
         ExecStart = "${pkgs.systemd}/bin/systemctl poweroff";
