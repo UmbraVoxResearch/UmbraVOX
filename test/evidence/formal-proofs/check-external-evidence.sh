@@ -3,7 +3,7 @@ set -Eeuo pipefail
 root="$(git rev-parse --show-toplevel)"
 cd "$root"
 
-PASS=0; FAIL=0
+PASS=0; FAIL=0; SKIP=0
 
 echo "=== External Evidence Check ==="
 
@@ -27,13 +27,13 @@ if [ -f scripts/primality-certificate.hs ]; then
   elif command -v runghc >/dev/null 2>&1; then
     CERT_CMD="timeout 60 runghc scripts/primality-certificate.hs"
   else
-    echo "  Primality certificate: SKIP (no GHC available)"; CERT_CMD=""
+    echo "  Primality certificate: SKIP (no GHC available)"; CERT_CMD=""; ((SKIP++))
   fi
   if [ -n "$CERT_CMD" ]; then
     if $CERT_CMD 2>/dev/null | grep -q 'PRIME_CERTIFICATE.*result=PRIME'; then
       echo "  Primality certificate: PASS"; ((PASS++))
     else
-      echo "  Primality certificate: SKIP (timeout or not compiled — run in VM)";
+      echo "  Primality certificate: SKIP (timeout or not compiled — run in VM)"; ((SKIP++))
     fi
   fi
 else
@@ -52,5 +52,5 @@ else
 fi
 
 echo ""
-echo "Results: $PASS passed, $FAIL failed"
+echo "Results: $PASS passed, $FAIL failed, $SKIP skipped"
 if [ "$FAIL" -gt 0 ]; then exit 1; fi

@@ -18,7 +18,7 @@ These represent the permanent trust boundary of the formal verification.
 
 ## Irreducible Axioms (12)
 
-### Cryptographic Hardness Assumptions (7)
+### Cryptographic Hardness Assumptions (8)
 
 These encode standard computational hardness assumptions from the cryptographic
 literature. They are unprovable in any constructive proof system without an explicit
@@ -33,6 +33,7 @@ adversary model.
 | 5 | Spec.StealthAddress | `unlinkability` | Stealth addresses for the same recipient are unlinkable (DDH on Curve25519) | Bernstein 2006, "Curve25519: new Diffie-Hellman speed records" |
 | 6 | Spec.VRF | `vrf_strong_uniqueness` | VRF output is uniquely bound to the secret key (DL hardness on Ed25519) | RFC 9381 Section 3 |
 | 7 | Spec.VRF | `vrf_collision_resistance` | VRF hash-to-curve + scalar multiplication is collision-resistant | RFC 9381, SHA-512 CR, Ed25519 DL hardness |
+| 8 | Spec.VRF | `dleq_correctness` | DLEQ proof verifies correctly for honest prover (DL relation on Ed25519) | RFC 9381 Section 5, Chaum-Pedersen 1992 |
 
 ### Cross-Toolchain Boundaries (4)
 
@@ -42,10 +43,10 @@ or linking path.
 
 | # | File | Axiom | Property | Validation |
 |---|------|-------|----------|------------|
-| 8 | Spec.SHA256.Refinement | `bs_of_seq` | ByteString-to-Seq conversion at F*/GHC boundary | Semantic model definition |
-| 9 | Spec.SHA256.Refinement | `seq_of_bs` | Seq-to-ByteString conversion at F*/GHC boundary | Semantic model definition |
-| 10 | Spec.SHA256.Refinement | `bs_seq_roundtrip` | seq_of_bs(bs_of_seq(s)) = s (roundtrip) | Semantic model definition |
-| 11 | Spec.SHA256.Refinement | `haskell_sha256` | Uninterpreted Haskell SHA-256 at F* boundary | NIST FIPS 180-4 KAT; Haskell property tests |
+| 9 | Spec.SHA256.Refinement | `bs_of_seq` | ByteString-to-Seq conversion at F*/GHC boundary | Semantic model definition |
+| 10 | Spec.SHA256.Refinement | `seq_of_bs` | Seq-to-ByteString conversion at F*/GHC boundary | Semantic model definition |
+| 11 | Spec.SHA256.Refinement | `bs_seq_roundtrip` | seq_of_bs(bs_of_seq(s)) = s (roundtrip) | Semantic model definition |
+| 12 | Spec.SHA256.Refinement | `haskell_sha256` | Uninterpreted Haskell SHA-256 at F* boundary | NIST FIPS 180-4 KAT; Haskell property tests |
 
 ### External Validation
 

@@ -242,13 +242,10 @@ Proof.
       destruct (Z.eq_dec x (-1)); [exists (-1); lia |].
       exfalso.
       assert (Hx_pos : 1 < Z.abs x). {
-        destruct x; simpl in *; try lia.
-        destruct p; lia.
-        destruct p; lia.
+        destruct x; simpl in *; lia.
       }
       assert (Hxn' : (Z.abs x | n)). {
-        destruct Hxn as [c Hc].
-        exists (Z.sgn x * c). rewrite Z.abs_sgn_spec. lia.
+        apply Z.divide_abs_l. exact Hxn.
       }
       assert (n mod (Z.abs x) = 0). {
         apply Z.mod_divide. lia. exact Hxn'.
@@ -261,18 +258,36 @@ Proof.
           rewrite Hc. rewrite Z.div_mul; [lia | lia].
         }
         assert (1 < n / Z.abs x). {
+          (* x | k and 1 <= k < n imply Z.abs x <= k < n *)
+          assert (Hxk' : (Z.abs x | k)). {
+            apply Z.divide_abs_l. exact Hxk.
+          }
+          assert (Hk_pos : 0 < k) by lia.
+          assert (Habs_le_k : Z.abs x <= k). {
+            destruct Hxk' as [c2 Hc2].
+            assert (c2 <> 0) by (intro; subst; lia).
+            assert (0 < Z.abs c2) by lia.
+            assert (k = Z.abs x * Z.abs c2). {
+              rewrite <- Z.abs_mul. lia.
+            }
+            assert (1 <= Z.abs c2) by lia.
+            assert (Z.abs x * 1 <= Z.abs x * Z.abs c2). {
+              apply Z.mul_le_mono_nonneg_l; lia.
+            }
+            lia.
+          }
+          assert (Z.abs x < n) by lia.
+          (* n / Z.abs x >= 2 because Z.abs x < n and Z.abs x | n *)
           destruct Hxn' as [c Hc].
           assert (0 < Z.abs x) by lia.
           rewrite Hc. rewrite Z.div_mul; [| lia].
-          assert (Z.abs c > 1). {
-            destruct (Z.eq_dec (Z.abs c) 1).
-            - assert (n = Z.abs x * 1). { rewrite <- e. rewrite <- Z.abs_mul. lia. }
-              lia.
-            - assert (0 < Z.abs c). {
-                assert (c <> 0) by (intro; subst; lia).
-                lia.
-              }
-              lia.
+          assert (c <> 0) by (intro; subst; lia).
+          assert (c <> 1). {
+            intro. subst c. lia.
+          }
+          assert (c <> -1). {
+            intro. subst c. assert (n = Z.abs x * -1) by lia.
+            assert (0 < n) by lia. lia.
           }
           lia.
         }
@@ -335,9 +350,13 @@ Proof.
   apply Z.mod_divide in Hmod; [| lia].
   destruct Hmod as [c Hc].
   assert (d * d <= n). {
-    assert (d <= Z.sqrt n) by lia.
-    assert (Z.sqrt n * Z.sqrt n <= n) by (apply Z.sqrt_spec; lia).
-    nia.
+    assert (Hds : d <= Z.sqrt n) by lia.
+    assert (Hss : Z.sqrt n * Z.sqrt n <= n) by (apply Z.sqrt_spec; lia).
+    assert (0 <= d) by lia.
+    assert (d * d <= Z.sqrt n * Z.sqrt n). {
+      apply Z.mul_le_mono_nonneg; lia.
+    }
+    lia.
   }
   eapply check_no_factor_sound; [exact Hlt | lia | exact Hfactors | lia | exact H].
 Qed.
