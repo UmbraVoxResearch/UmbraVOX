@@ -1,0 +1,52 @@
+UmbraVOX F* Verification Summary
+Generated: 2026-05-17
+Version: v0.1.2
+
+Total specs: 24
+Specs with 0 assume val: 18
+Total assume val: 23
+Total admit(): 0
+
+Per-spec breakdown:
+  Spec.SHA256                    assume val: 0
+N/A
+  Spec.SHA512                    assume val: 0
+N/A
+  Spec.ChaCha20                  assume val: 0
+N/A
+  Spec.AES256                    assume val: 0
+N/A
+  Spec.GCM                       assume val: 0
+N/A
+  Spec.X25519                    assume val: 0
+N/A
+  Spec.Ed25519                   assume val: 10
+  Spec.MLKEM768                  assume val: 0
+N/A
+  Spec.Poly1305                  assume val: 0
+N/A
+  Spec.HMAC                      assume val: 0
+N/A
+  Spec.HKDF                      assume val: 0
+N/A
+  Spec.GaloisField               assume val: 0
+N/A
+  Spec.Keccak.Permutation        assume val: 0
+N/A
+  Spec.Keccak.Sponge             assume val: 0
+N/A
+  Spec.Keccak.SHA3               assume val: 0
+N/A
+  Spec.ChaChaPoly                assume val: 1
+  Spec.DoubleRatchet             assume val: 2
+  Spec.NoiseIK                   assume val: 0
+N/A
+  Spec.PQXDH                     assume val: 0
+N/A
+  Spec.SenderKeys                assume val: 0
+N/A
+  Spec.StealthAddress            assume val: 1
+  Spec.VRF                       assume val: 3
+  Spec.X3DH                      assume val: 0
+N/A
+  Spec.SHA256.Refinement         assume val: 6

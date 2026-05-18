@@ -7,7 +7,7 @@
 
    If ZArith is not available, the Makefile skips this file gracefully. *)
 
-Require Import ZArith.
+From Stdlib Require Import ZArith Lia.
 Open Scope Z_scope.
 
 Definition ed25519_p : Z := 2^255 - 19.
@@ -21,7 +21,7 @@ Lemma p_positive : ed25519_p > 0.
 Proof. unfold ed25519_p. lia. Qed.
 
 Lemma p_odd : Z.odd ed25519_p = true.
-Proof. native_compute. reflexivity. Qed.
+Proof. vm_compute. reflexivity. Qed.
 
 Lemma L_positive : ed25519_L > 0.
 Proof. unfold ed25519_L. lia. Qed.
