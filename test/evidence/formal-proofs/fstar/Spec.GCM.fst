@@ -959,27 +959,29 @@ let constant_eq_correct a b =
     When encrypt/nonce/aad/ct are fixed, both functions compute
     H = E_K(0), J0 = nonce||1, then GHASH(pad(aad)||pad(ct)||len) XOR E_K(J0).
     By functional determinism (same arguments => same result), both tags agree. *)
-val gcm_encrypt_decrypt_same_tag :
+(** PLACEHOLDER: proves True via elaborate let-bindings that disguise the
+    vacuous postcondition. The actual GCM tag equality property (decrypt
+    recomputes the same GHASH tag as encrypt) is structurally obvious but
+    not stated in the ensures clause. Renamed to be honest. *)
+val gcm_tag_equality_placeholder :
     encrypt:aes_encrypt_fn_full
     -> nonce:seq UInt8.t{Seq.length nonce = nonce_size}
     -> aad:seq UInt8.t
     -> ct:seq UInt8.t
     -> Lemma (requires (Seq.length aad * 8 < pow2 64 /\ Seq.length ct * 8 < pow2 64))
              (ensures (
-               (* The tag recomputed by decrypt equals the one from encrypt
-                  on (aad, ct) — by structural identity of the computation. *)
                let zero_block : (s:seq UInt8.t{Seq.length s = 16}) = Seq.create 16 0uy in
                let h = Spec.GaloisField.bs_to_gf (encrypt zero_block) in
                let j0 = make_j0 nonce in
                let len_a = UInt64.uint_to_t (Seq.length aad * 8) in
                let len_c = UInt64.uint_to_t (Seq.length ct * 8) in
-               True (* placeholder: structural congruence, no additional fact needed *)))
-let gcm_encrypt_decrypt_same_tag encrypt nonce aad ct = ()
+               True (* PLACEHOLDER: ensures is True despite let-bindings above *)))
+let gcm_tag_equality_placeholder encrypt nonce aad ct = ()
 
 (** Encryption followed by decryption recovers the plaintext.
     Proof depends on:
       (1) gcm_encrypt_tag_length: tag has length tag_size (PROVED).
-      (2) gcm_encrypt_decrypt_same_tag: decrypt recomputes the same GHASH tag (PROVED).
+      (2) gcm_tag_equality_placeholder: decrypt recomputes the same GHASH tag (PLACEHOLDER — proves True).
       (3) constant_eq_correct: constant_eq returns true on equal tags (PROVED).
       (4) gctr_involutive: gctr(encrypt, icb, gctr(encrypt, icb, pt)) = pt (PROVED).
 
