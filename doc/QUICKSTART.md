@@ -18,9 +18,10 @@ preserved artifacts pending broader wiring.
 
 ## Common Commands (VM-First)
 
-All `make` targets below run inside the NixOS VM by default.  To run locally
-instead, prefix with `UMBRAVOX_LOCAL=1` (requires the full `nix-shell`
-toolchain).
+All `make` targets below run inside the NixOS VM by default when the VM image
+is present.  If no VM image is found, they automatically fall back to local
+execution.  To force local execution, prefix with `UMBRAVOX_LOCAL=1` (requires
+the full `nix-shell` toolchain).  `make run` always runs locally.
 
 ```bash
 nix-shell
