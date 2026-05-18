@@ -81,7 +81,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-test vm-verify firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot vm-record vm-visual-regression visual-reference-update clean cleandb cleanall help
+.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-test vm-verify firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot vm-record vm-visual-regression visual-reference-update differential-vectors test-differential-oracle test-differential-full fuzz-differential differential differential-evidence-check clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -1228,6 +1228,37 @@ vm-visual-regression:
 visual-reference-update:
 	@echo "Updating visual reference baselines..."
 	@cp -v build/evidence/screenshots/*.ansi test/evidence/visual-reference/ 2>/dev/null || echo "No screenshots to copy — run 'make vm-screenshot' first"
+
+# --------------------------------------------------------------------------
+# Cleanroom Multi-Oracle Differential Testing (v0.1.4)
+# --------------------------------------------------------------------------
+
+differential-vectors:
+	@echo -e "$(BLUE)[DIFFERENTIAL]$(NC) Generating test vectors..."
+	@chmod +x ./scripts/vm-differential-run.sh
+	@./scripts/vm-differential-run.sh vectors
+
+test-differential-oracle:
+	@echo -e "$(BLUE)[DIFFERENTIAL]$(NC) Running Tier 1 oracle differential tests (local KATs)..."
+	@chmod +x ./scripts/vm-differential-run.sh
+	@./scripts/vm-differential-run.sh test
+
+test-differential-full:
+	@echo -e "$(BLUE)[DIFFERENTIAL]$(NC) Running Tier 2 differential tests (VM + 10K vectors)..."
+	@chmod +x ./scripts/vm-differential-run.sh
+	@./scripts/vm-differential-run.sh full
+
+fuzz-differential:
+	@echo -e "$(BLUE)[DIFFERENTIAL]$(NC) Running Tier 3 AFL++ differential fuzzing..."
+	@echo -e "$(YELLOW)[DIFFERENTIAL]$(NC) Not yet implemented. See TODO M18.6."
+
+differential: test-differential-full
+	@echo -e "$(GREEN)[DIFFERENTIAL]$(NC) Differential testing complete."
+
+differential-evidence-check:
+	@echo -e "$(BLUE)[DIFFERENTIAL]$(NC) Checking evidence completeness..."
+	@chmod +x ./scripts/vm-differential-run.sh
+	@./scripts/vm-differential-run.sh evidence
 
 # --------------------------------------------------------------------------
 # Firecracker Isolated Smoke Testing
