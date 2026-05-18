@@ -26,13 +26,8 @@ import Data.Bits ((.&.), (.|.), shiftL, shiftR, testBit)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Word (Word8)
-import Debug.Trace (trace)
-import Numeric (showHex)
 
 import UmbraVox.Crypto.SHA512 (sha512)
-
-debugHex :: ByteString -> String
-debugHex = concatMap (\b -> let s = showHex b "" in if length s == 1 then '0':s else s) . BS.unpack
 
 ------------------------------------------------------------------------
 -- Field prime p = 2^255 - 19
@@ -266,42 +261,7 @@ ed25519PublicKey :: ByteString -> ByteString
 ed25519PublicKey !sk =
     let !h = sha512 sk
         !a = clampScalar (BS.take 32 h)
-        -- Debug: check if basepoint is on curve
-        !(bx, by, _bz, _bt) = basepoint
-        !lhs = fAdd (fMul (p - 1) (fMul bx bx)) (fMul by by)  -- -x^2 + y^2
-        !rhs = fAdd 1 (fMul curveD (fMul (fMul bx bx) (fMul by by)))  -- 1 + d*x^2*y^2
-        !onCurve = lhs == rhs
-        -- Expected basepoint x
-        !expectedBx = 15112221349535807912866137220509078750507884956996801397995314750206887553290
-        -- Check x^2 values
-        !candX2 = fMul bx bx
-        !expX2 = fMul expectedBx expectedBx
-        -- Check y and d
-        !ycheck = fMul 5 by
-        -- Check if expected bx satisfies curve eq
-        !expOnCurve = fAdd (fMul (p-1) expX2) (fMul by by) == fAdd 1 (fMul curveD (fMul expX2 (fMul by by)))
-        -- Test powMod directly
-        !testBase = 123456789 :: Integer
-        !exp1 = (p - 5) `div` 8
-        -- Check: powMod (powMod x exp1 p) 8 p * powMod x 5 p == x for random x?
-        -- Actually, check x^(p-1) == 1 (Fermat's little theorem)
-        !fermat1 = powMod testBase (p - 1) p
-        !fermat2 = powMod 42 (p - 1) p
-        -- Check powMod with exp = (p-5)/8 specifically
-        -- x^((p-5)/8 * 8) = x^(p-5), so x^((p-5)/8 * 8) * x^5 = x^(p-1+1-1) = x^(p-1) = 1 (for x != 0)
-        -- Actually: x^((p-5)/8) raised to 8th power should be x^(p-5)
-        !t1 = powMod testBase exp1 p
-        !t2 = powMod t1 8 p  -- should be testBase^(p-5) mod p
-        !t3 = powMod testBase (p - 5) p  -- direct computation
-        -- Test with the actual PK1 value
-        !y1_pk = 47479624107575003888650564472826962969894900474277872145390111081632372382423
-        !y1_2 = fMul y1_pk y1_pk
-        !u1 = fSub y1_2 1
-        !v1 = fAdd 1 (fMul curveD y1_2)
-        !uoverv = fMul u1 (modInv v1 p)  -- u/v directly
-        !sqrtCheck = powMod uoverv ((p + 3) `div` 8) p  -- direct sqrt computation
-        !sqrtCheck2 = fMul sqrtCheck sqrtCheck
-    in trace ("fermat(123456789)=" ++ show fermat1 ++ "\nfermat(42)=" ++ show fermat2 ++ "\nt^8 == base^(p-5): " ++ show (t2 == t3) ++ "\ndirect sqrt(u/v)=" ++ show sqrtCheck ++ "\nsqrt^2=" ++ show sqrtCheck2 ++ "\nu/v=" ++ show uoverv ++ "\nsqrt^2 == u/v: " ++ show (sqrtCheck2 == uoverv) ++ "\nsqrt^2 == -(u/v): " ++ show (sqrtCheck2 == fSub 0 uoverv)) (encodePoint (scalarMul a basepoint))
+    in encodePoint (scalarMul a basepoint)
 
 -- | Clamp the first 32 bytes of the SHA-512 hash per RFC 8032 Section 5.1.5.
 clampScalar :: ByteString -> Integer
