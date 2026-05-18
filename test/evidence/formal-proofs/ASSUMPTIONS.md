@@ -28,6 +28,13 @@ justification, external evidence path, and discharge plan (or permanent status).
 | ED-008 | Spec.Ed25519 | `sign_then_verify` | DERIVED_FROM_ALGEBRA | no | ED-006, ED-009 | Requires scalar_mod_L_equiv + encode_decode_round_trip | Ed25519 correctness (RFC 8032) | Prove after dependencies | BLOCKED_BY_TOOLING |
 | ED-009 | Spec.Ed25519 | `encode_decode_round_trip` | ALGEBRAIC_EXTERNAL | yes | ED-001 (prime) | Precondition fixed: now requires on_curve_ext == true. Square root recovery in GF(p) requires ~2^252 exponentiation (infeasible for Z3). | Standard elliptic curve encoding | Euler criterion + Fermat in Coq or specialized certificate | BLOCKED_BY_TOOLING |
 | ED-010 | Spec.Ed25519 | `distinct_messages_distinct_sigs` | CRYPTO_HARDNESS | yes | none | SHA-512 collision resistance + discrete log hardness | RFC 8032; DL hardness on Ed25519 | Cannot be proved unconditionally | CRYPTO_HARDNESS |
+| X2-001 | Spec.X25519 | `fmul_inverse` | DERIVED_FROM_ALGEBRA | yes | none | Fermat's little theorem: a * a^(p-2) = 1 mod p. PROVED in Ed25519; not yet ported to X25519 | Ed25519 fmul_inverse proof | Port from Ed25519 | PROVABLE_NOT_YET_PORTED |
+| X2-002 | Spec.X25519 | `decode_encode_round_trip` | ALGEBRAIC_EXTERNAL | yes | none | Byte-level induction: decode_le(encode_le(n)) = n. Straightforward but tedious | Standard encoding | Induction on 32-byte sequence | BLOCKED_BY_TOOLING |
+| X2-003 | Spec.X25519 | `scalar_mult_zero` | DERIVED_FROM_ALGEBRA | no | X2-001 | Montgomery ladder with k=0 yields z=0 | Curve arithmetic | Ladder analysis | BLOCKED_BY_TOOLING |
+| X2-004 | Spec.X25519 | `scalar_mult_one` | DERIVED_FROM_ALGEBRA | no | X2-001 | Montgomery ladder with k=1 preserves input | Curve arithmetic | Ladder analysis | BLOCKED_BY_TOOLING |
+| X2-005 | Spec.X25519 | `dh_commutativity` | DERIVED_FROM_ALGEBRA | no | X2-003, X2-004 | [a][b]G = [ab]G group homomorphism | Elliptic curve group law | Group law proof | BLOCKED_BY_TOOLING |
+| X2-006 | Spec.X25519 | `dh_commutativity_general` | DERIVED_FROM_ALGEBRA | no | X2-005 | Same as X2-005 for arbitrary base points | Elliptic curve group law | Group law proof | BLOCKED_BY_TOOLING |
+| X2-007 | Spec.X25519 | `x25519_zero_u` | DERIVED_FROM_ALGEBRA | no | X2-003 | Point at infinity stays at infinity under scalar mult | Curve arithmetic | Follows from scalar_mult_zero | BLOCKED_BY_TOOLING |
 | SR-001 | Spec.SHA256.Ref | `bs_of_seq` | CROSS_TOOLCHAIN_BOUNDARY | yes | none | Models Haskell ByteString at F*/GHC boundary; no shared extraction | Semantic model definition | Cannot be proved without shared extraction | CROSS_TOOLCHAIN_BOUNDARY |
 | SR-002 | Spec.SHA256.Ref | `seq_of_bs` | CROSS_TOOLCHAIN_BOUNDARY | yes | none | Inverse of bs_of_seq; models ByteString→Seq | Semantic model definition | Cannot be proved without shared extraction | CROSS_TOOLCHAIN_BOUNDARY |
 | SR-003 | Spec.SHA256.Ref | `bs_seq_roundtrip` | CROSS_TOOLCHAIN_BOUNDARY | yes | none | seq_of_bs(bs_of_seq(s)) = s; abstract boundary model | Semantic model definition | Cannot be proved without shared extraction | CROSS_TOOLCHAIN_BOUNDARY |
@@ -49,9 +56,10 @@ justification, external evidence path, and discharge plan (or permanent status).
 | CROSS_TOOLCHAIN_BOUNDARY | 5 | SR-001..005 |
 | REFINEMENT_BOUNDARY | 1 | SR-006 |
 | ALGEBRAIC_EXTERNAL | 4 | ED-001, ED-003, ED-007, ED-009 |
-| DERIVED_FROM_ALGEBRA | 4 | ED-004, ED-005, ED-006, VR-001 |
-| BLOCKED_BY_TOOLING | 2 | ED-002, ED-008 |
-| **Total** | **23** | |
+| DERIVED_FROM_ALGEBRA | 8 | ED-004, ED-005, ED-006, VR-001, X2-001, X2-003, X2-004, X2-005 |
+| PROVABLE_NOT_YET_PORTED | 1 | X2-001 (fmul_inverse proved in Ed25519) |
+| BLOCKED_BY_TOOLING | 4 | ED-002, ED-008, X2-002, X2-006, X2-007 |
+| **Total** | **30** | |
 
 ## Permanently Irreducible (cannot be proved in any system): 7
 

@@ -2,9 +2,11 @@
     Ed25519GroupLaw.v -- PROOF SKELETON (NOT VERIFIED) for the twisted
     Edwards curve group law for Ed25519.
 
-    STATUS: 8 Admitted, 15 Axiom, multiple Parameter declarations.
+    STATUS: DRAFT / NOT VERIFIED
+    8 Admitted.  15 Axiom.  11 Parameter.
     THIS FILE IS NOT IN THE BUILD (_CoqProject) AND IS NOT MACHINE-CHECKED.
     It documents the proof strategy and structure only.
+    Location: coq/draft/ -- moved out of the verified source tree.
 
     Targets (not yet proved):
       1. point_add_assoc       -- Associativity of the HWCD addition formula

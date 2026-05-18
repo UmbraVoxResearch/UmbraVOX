@@ -37,6 +37,8 @@
 #   make format-check - Check for tabs and trailing whitespace
 #   make codegen      - Generate Haskell + C + FFI from .spec files
 #   make check-evidence - Run external evidence verification checks
+#   make assurance-fast - Run fast documentation/hygiene/ledger checks (seconds, no compilation)
+#   make assurance      - Run full release-grade evidence suite (minutes, builds + tests)
 #   make quality      - Run the full pipeline (same as make)
 #   make vm-dev       - Interactive dev shell inside NixOS QEMU VM (M13.13)
 #   make vm-build     - Build inside NixOS VM (cabal build all)
@@ -79,7 +81,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence check-evidence lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-test vm-verify firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot vm-record vm-visual-regression visual-reference-update clean cleandb cleanall help
+.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-test vm-verify firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot vm-record vm-visual-regression visual-reference-update clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -228,6 +230,8 @@ help:
 	@echo "    make release-checksums Emit SHA-256 checksums for release artifacts"
 	@echo "    make format-check Check for tabs and trailing whitespace"
 	@echo "    make check-evidence Run external evidence verification checks"
+	@echo "    make assurance-fast Run fast documentation/hygiene/ledger checks (seconds, no compilation)"
+	@echo "    make assurance     Run full release-grade evidence suite (minutes, builds + tests)"
 	@echo "    make release-gate-assurance Run assurance matrix freshness gate"
 	@echo "    make verify-traffic Verify no plaintext in captured traffic"
 	@echo "    make quality     Same as make (lint/format-check are non-blocking)"
@@ -872,7 +876,178 @@ test-vm:
 # Quality Gate (all checks)
 # --------------------------------------------------------------------------
 
-quality: all check-evidence
+quality: all check-evidence assurance-fast
+
+# --------------------------------------------------------------------------
+# Assurance Evidence Suites
+# --------------------------------------------------------------------------
+
+ASSURANCE_LOG_DIR := test/evidence/formal-proofs/logs
+
+assurance-fast:
+	@echo -e "$(BLUE)[ASSURANCE-FAST]$(NC) Running fast documentation/hygiene/ledger checks..."
+	@mkdir -p $(ASSURANCE_LOG_DIR)
+	@pass=0; fail=0; skip=0; ts=$$(date -u +%Y%m%dT%H%M%SZ); \
+	log="$(ASSURANCE_LOG_DIR)/assurance-fast-$$ts.log"; \
+	exec > >(tee "$$log") 2>&1; \
+	\
+	echo "=== F* admit check ==="; \
+	admit_count=$$(grep -rn '\badmit\b\|admit()' $(FSTAR_DIR)/*.fst 2>/dev/null | grep -v '\*)\|(\*\|//' | grep -v 'admit_smt' | wc -l); \
+	if [ "$$admit_count" -eq 0 ]; then \
+		echo -e "$(GREEN)[PASS]$(NC) F* admit check: 0 admits found"; \
+		pass=$$((pass + 1)); \
+	else \
+		echo -e "$(RED)[FAIL]$(NC) F* admit check: $$admit_count admit(s) found"; \
+		grep -rn '\badmit\b\|admit()' $(FSTAR_DIR)/*.fst 2>/dev/null | grep -v '\*)\|(\*\|//' | grep -v 'admit_smt'; \
+		fail=$$((fail + 1)); \
+	fi; \
+	\
+	echo ""; \
+	echo "=== F* assume val inventory ==="; \
+	assume_count=$$(grep -rn 'assume val' $(FSTAR_DIR)/*.fst 2>/dev/null | wc -l); \
+	echo "  assume val count: $$assume_count"; \
+	echo "  (logged to $(ASSURANCE_LOG_DIR)/assume-val-inventory-$$ts.txt)"; \
+	grep -rn 'assume val' $(FSTAR_DIR)/*.fst 2>/dev/null > "$(ASSURANCE_LOG_DIR)/assume-val-inventory-$$ts.txt" || true; \
+	pass=$$((pass + 1)); \
+	\
+	echo ""; \
+	echo "=== Coq no-Admitted check ==="; \
+	admitted_count=$$(grep -rn '^\s*Admitted\.' test/evidence/formal-proofs/coq/*.v 2>/dev/null | grep -v '(\*' | wc -l); \
+	if [ "$$admitted_count" -eq 0 ]; then \
+		echo -e "$(GREEN)[PASS]$(NC) Coq no-Admitted check: 0 Admitted found"; \
+		pass=$$((pass + 1)); \
+	else \
+		echo -e "$(RED)[FAIL]$(NC) Coq no-Admitted check: $$admitted_count Admitted found"; \
+		grep -rn '^\s*Admitted\.' test/evidence/formal-proofs/coq/*.v 2>/dev/null | grep -v '(\*'; \
+		fail=$$((fail + 1)); \
+	fi; \
+	\
+	echo ""; \
+	echo "=== Ledger consistency ==="; \
+	if [ -x test/evidence/formal-proofs/check-assumption-ledger.sh ]; then \
+		if bash test/evidence/formal-proofs/check-assumption-ledger.sh; then \
+			echo -e "$(GREEN)[PASS]$(NC) Ledger consistency"; \
+			pass=$$((pass + 1)); \
+		else \
+			echo -e "$(RED)[FAIL]$(NC) Ledger consistency"; \
+			fail=$$((fail + 1)); \
+		fi; \
+	else \
+		echo -e "$(YELLOW)[SKIP]$(NC) Ledger consistency: check-assumption-ledger.sh not found"; \
+		skip=$$((skip + 1)); \
+	fi; \
+	\
+	echo ""; \
+	echo "=== Proof hygiene ==="; \
+	if [ -x test/evidence/formal-proofs/check-proof-hygiene.sh ]; then \
+		if bash test/evidence/formal-proofs/check-proof-hygiene.sh; then \
+			echo -e "$(GREEN)[PASS]$(NC) Proof hygiene"; \
+			pass=$$((pass + 1)); \
+		else \
+			echo -e "$(RED)[FAIL]$(NC) Proof hygiene"; \
+			fail=$$((fail + 1)); \
+		fi; \
+	else \
+		echo -e "$(YELLOW)[SKIP]$(NC) Proof hygiene: check-proof-hygiene.sh not found"; \
+		skip=$$((skip + 1)); \
+	fi; \
+	\
+	echo ""; \
+	echo "========================================"; \
+	echo "  ASSURANCE-FAST SUMMARY"; \
+	echo "  PASS: $$pass  FAIL: $$fail  SKIP: $$skip"; \
+	echo "  Log: $$log"; \
+	echo "========================================"; \
+	if [ "$$fail" -gt 0 ]; then \
+		echo -e "$(RED)[ASSURANCE-FAST]$(NC) FAIL ($$fail check(s) failed)"; \
+		exit 1; \
+	else \
+		echo -e "$(GREEN)[ASSURANCE-FAST]$(NC) PASS ($$pass passed, $$skip skipped)"; \
+	fi
+
+assurance: assurance-fast
+	@echo ""
+	@echo -e "$(BLUE)[ASSURANCE]$(NC) Running full release-grade evidence suite..."
+	@mkdir -p $(ASSURANCE_LOG_DIR)
+	@pass=0; fail=0; skip=0; ts=$$(date -u +%Y%m%dT%H%M%SZ); \
+	log="$(ASSURANCE_LOG_DIR)/assurance-full-$$ts.log"; \
+	exec > >(tee "$$log") 2>&1; \
+	\
+	echo "=== Coq build ==="; \
+	if command -v coqc >/dev/null 2>&1; then \
+		if make -C test/evidence/formal-proofs/coq; then \
+			echo -e "$(GREEN)[PASS]$(NC) Coq build"; \
+			pass=$$((pass + 1)); \
+		else \
+			echo -e "$(RED)[FAIL]$(NC) Coq build"; \
+			fail=$$((fail + 1)); \
+		fi; \
+	elif command -v nix-shell >/dev/null 2>&1; then \
+		if nix-shell --run "make -C test/evidence/formal-proofs/coq"; then \
+			echo -e "$(GREEN)[PASS]$(NC) Coq build (via nix-shell)"; \
+			pass=$$((pass + 1)); \
+		else \
+			echo -e "$(RED)[FAIL]$(NC) Coq build (via nix-shell)"; \
+			fail=$$((fail + 1)); \
+		fi; \
+	else \
+		echo -e "$(YELLOW)[SKIP]$(NC) Coq build: neither coqc nor nix-shell available"; \
+		skip=$$((skip + 1)); \
+	fi; \
+	\
+	echo ""; \
+	echo "=== Haskell build + tests ==="; \
+	if UMBRAVOX_LOCAL=1 cabal test umbravox-test --test-options='required'; then \
+		echo -e "$(GREEN)[PASS]$(NC) Haskell build + tests"; \
+		pass=$$((pass + 1)); \
+	else \
+		echo -e "$(RED)[FAIL]$(NC) Haskell build + tests"; \
+		fail=$$((fail + 1)); \
+	fi; \
+	\
+	echo ""; \
+	echo "=== Infrastructure tests ==="; \
+	if [ -x scripts/test-infrastructure.sh ]; then \
+		if bash scripts/test-infrastructure.sh; then \
+			echo -e "$(GREEN)[PASS]$(NC) Infrastructure tests"; \
+			pass=$$((pass + 1)); \
+		else \
+			echo -e "$(RED)[FAIL]$(NC) Infrastructure tests"; \
+			fail=$$((fail + 1)); \
+		fi; \
+	else \
+		echo -e "$(YELLOW)[SKIP]$(NC) Infrastructure tests: scripts/test-infrastructure.sh not found"; \
+		skip=$$((skip + 1)); \
+	fi; \
+	\
+	echo ""; \
+	echo "=== External evidence ==="; \
+	if [ -x test/evidence/formal-proofs/check-external-evidence.sh ]; then \
+		if bash test/evidence/formal-proofs/check-external-evidence.sh; then \
+			echo -e "$(GREEN)[PASS]$(NC) External evidence"; \
+			pass=$$((pass + 1)); \
+		else \
+			echo -e "$(RED)[FAIL]$(NC) External evidence"; \
+			fail=$$((fail + 1)); \
+		fi; \
+	else \
+		echo -e "$(YELLOW)[SKIP]$(NC) External evidence: check-external-evidence.sh not found"; \
+		skip=$$((skip + 1)); \
+	fi; \
+	\
+	echo ""; \
+	echo "========================================"; \
+	echo "  ASSURANCE (FULL) SUMMARY"; \
+	echo "  PASS: $$pass  FAIL: $$fail  SKIP: $$skip"; \
+	echo "  (plus assurance-fast checks above)"; \
+	echo "  Log: $$log"; \
+	echo "========================================"; \
+	if [ "$$fail" -gt 0 ]; then \
+		echo -e "$(RED)[ASSURANCE]$(NC) FAIL ($$fail check(s) failed)"; \
+		exit 1; \
+	else \
+		echo -e "$(GREEN)[ASSURANCE]$(NC) PASS ($$pass passed, $$skip skipped)"; \
+	fi
 
 check-evidence:
 	@echo "Running external evidence checks..."

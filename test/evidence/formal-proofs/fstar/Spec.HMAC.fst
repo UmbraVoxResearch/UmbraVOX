@@ -63,11 +63,8 @@ let prepare_key (h : hash_fn) (block_size : nat{block_size > 0})
     : Tot (s:seq UInt8.t{Seq.length s = block_size}) =
   if Seq.length key > block_size then
     let hashed = h key in
-    (* AUDIT NOTE: in-body assume — hash output length <= block_size.
-       This path is only used with abstract hash_fn; all concrete instances
-       (hmac_sha256_bounded, hmac_sha512_bounded) use prepare_key_bounded
-       which carries the length invariant via bounded_hash_fn type.
-       Requires h to have an output-length contract to discharge. *)
+    (* Unbounded path only; bounded variants carry length via type.
+       AUDIT NOTE: intentional assume — hash output <= block_size *)
     assume (Seq.length hashed <= block_size);
     pad_right block_size hashed
   else (
@@ -218,9 +215,11 @@ let hmac_structure_lemma h block_size key msg = ()
     computationally indistinguishable from a random function, under
     the assumption that the compression function of the underlying
     hash is a PRF. *)
-val hmac_prf_assumption : h:hash_fn -> block_size:nat{block_size > 0}
-    -> Lemma (True)  (* placeholder for the computational assumption *)
-let hmac_prf_assumption h block_size = ()
+(** PLACEHOLDER: proves True, not actual PRF indistinguishability.
+    Computational assumption, not provable in F*. *)
+val hmac_prf_placeholder : h:hash_fn -> block_size:nat{block_size > 0}
+    -> Lemma (True)
+let hmac_prf_placeholder h block_size = ()
 
 (** -------------------------------------------------------------------- **)
 (** KAT Test Vectors (RFC 4231)                                          **)
