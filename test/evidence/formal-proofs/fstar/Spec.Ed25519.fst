@@ -1891,11 +1891,18 @@ assume val sign_then_verify : sk:secret_key -> msg:seq UInt8.t
       square root recovery.
 
     Dependency chain: encode_decode_round_trip <- {fmul_inverse (PROVED),
-      decode_encode_le_round_trip (PROVED), recover_x correctness (infeasible)} *)
+      decode_encode_le_round_trip (PROVED), recover_x correctness (infeasible)}
+
+    PRECONDITION FIX (2026-05-17): Added on_curve_ext guard.
+    The theorem is false for off-curve points: e.g., pt=(3,1,1,3) passes
+    encode_point but fails decode_point when x=0 and sign bit is set.
+    For on-curve points, x=0 implies even parity, so the sign bit is
+    always consistent and decode_point succeeds. *)
 assume val encode_decode_round_trip : pt:ext_point
-    -> Lemma (match decode_point (encode_point pt) with
-              | None -> False
-              | Some pt' -> encode_point pt' == encode_point pt)
+    -> Lemma (requires on_curve_ext pt == true)
+             (ensures (match decode_point (encode_point pt) with
+                       | None -> False
+                       | Some pt' -> encode_point pt' == encode_point pt))
 
 (** Helper: decode_le of a byte sequence is bounded by 256^(length s). *)
 val decode_le_bound : s:seq UInt8.t

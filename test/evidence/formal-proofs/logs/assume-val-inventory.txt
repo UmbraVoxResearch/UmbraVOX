@@ -7,8 +7,8 @@ test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1669:assume val scalar_mult_c
 test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1720:assume val scalar_mod_L_equiv : n:nat
 test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1744:assume val point_add_congruence_right :
 test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1857:assume val sign_then_verify : sk:secret_key -> msg:seq UInt8.t
-test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1895:assume val encode_decode_round_trip : pt:ext_point
-test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:2355:assume val distinct_messages_distinct_sigs : sk:secret_key
+test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1901:assume val encode_decode_round_trip : pt:ext_point
+test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:2362:assume val distinct_messages_distinct_sigs : sk:secret_key
 test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:628:assume val prime_is_prime : unit -> Lemma (FStar.Math.Euclid.is_prime prime)
 test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:964:assume val group_order_lemma : unit
 test/evidence/formal-proofs/fstar/Spec.SHA256.Refinement.fst:111:assume val sha256_refinement_axiom : msg:seq UInt8.t{Seq.length msg < pow2 61}
