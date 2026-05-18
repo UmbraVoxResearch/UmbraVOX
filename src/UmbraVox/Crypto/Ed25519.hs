@@ -26,8 +26,13 @@ import Data.Bits ((.&.), (.|.), shiftL, shiftR, testBit)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Word (Word8)
+import Debug.Trace (trace)
+import Numeric (showHex)
 
 import UmbraVox.Crypto.SHA512 (sha512)
+
+debugHex :: ByteString -> String
+debugHex = concatMap (\b -> let s = showHex b "" in if length s == 1 then '0':s else s) . BS.unpack
 
 ------------------------------------------------------------------------
 -- Field prime p = 2^255 - 19
@@ -261,7 +266,14 @@ ed25519PublicKey :: ByteString -> ByteString
 ed25519PublicKey !sk =
     let !h = sha512 sk
         !a = clampScalar (BS.take 32 h)
-    in encodePoint (scalarMul a basepoint)
+        -- Debug: check if basepoint is on curve
+        !(bx, by, _bz, _bt) = basepoint
+        !lhs = fAdd (fMul (p - 1) (fMul bx bx)) (fMul by by)  -- -x^2 + y^2
+        !rhs = fAdd 1 (fMul curveD (fMul (fMul bx bx) (fMul by by)))  -- 1 + d*x^2*y^2
+        !onCurve = lhs == rhs
+        -- Expected basepoint x
+        !expectedBx = 15112221349535807912866137220509078750507884956996801397995314750206887553290
+    in trace ("BP on curve: " ++ show onCurve ++ "\nbx=" ++ show bx ++ "\nexpected bx=" ++ show expectedBx ++ "\nbx match=" ++ show (bx == expectedBx)) (encodePoint (scalarMul a basepoint))
 
 -- | Clamp the first 32 bytes of the SHA-512 hash per RFC 8032 Section 5.1.5.
 clampScalar :: ByteString -> Integer
