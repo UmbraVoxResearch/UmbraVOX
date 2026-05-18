@@ -403,9 +403,12 @@ let vrf_verifiability sk msg =
 (** We state it as a trivial lemma placeholder.                          **)
 (** -------------------------------------------------------------------- **)
 
-val vrf_pseudorandomness : sk:secret_key -> msg:seq UInt8.t
-    -> Lemma (True)   (* computational assumption: undischargeable in F* *)
-let vrf_pseudorandomness sk msg = ()
+(** PLACEHOLDER: proves True, not actual pseudorandomness.
+    VRF pseudorandomness (output indistinguishable from random without
+    the secret key) is a computational assumption per RFC 9381 Section 3. *)
+val vrf_pseudorandomness_placeholder : sk:secret_key -> msg:seq UInt8.t
+    -> Lemma (True)
+let vrf_pseudorandomness_placeholder sk msg = ()
 
 (** -------------------------------------------------------------------- **)
 (** Collision resistance of proof_to_hash                               **)

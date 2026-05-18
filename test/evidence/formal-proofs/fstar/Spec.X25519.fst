@@ -189,12 +189,13 @@ let fadd_inverse a =
   assert (fadd a (fsub 0 a) == (a + (prime - a)) % prime);
   assert (a + (prime - a) == prime)
 
-(** Multiplicative inverse: a * a^(-1) = 1 for a != 0 *)
-val fmul_inverse : a:felem{a <> 0}
+(** Multiplicative inverse: a * a^(-1) = 1 for a != 0.
+    ASSUMED: Fermat's little theorem gives a^(p-1) = 1 mod p for a != 0,
+    so a * a^(p-2) = 1.  The Ed25519 spec (Spec.Ed25519) has this PROVED
+    via Fermat; the X25519 finv definition is identical but the proof is
+    not yet ported.  Visible to auditing as an assume val. *)
+assume val fmul_inverse : a:felem{a <> 0}
     -> Lemma (fmul a (finv a) == 1)
-let fmul_inverse a =
-  (* By Fermat's little theorem: a^(p-1) = 1 mod p for a != 0 *)
-  assume (fmul a (finv a) == 1)
 
 (** -------------------------------------------------------------------- **)
 (** Little-endian encoding / decoding                                     **)
@@ -221,11 +222,12 @@ let encode_le (n : nat) : (s:seq UInt8.t{Seq.length s = 32}) =
   in
   Seq.init 32 (fun i -> byte_at i)
 
-(** Round-trip: decode(encode(n)) = n mod 2^256 *)
-val decode_encode_round_trip : n:nat{n < pow2 256}
+(** Round-trip: decode(encode(n)) = n mod 2^256.
+    ASSUMED: Requires induction over the 32-byte sequence showing each byte
+    round-trips through (n / 2^(8*i)) % 256.  Straightforward but tedious;
+    not yet mechanised.  Visible to auditing as an assume val. *)
+assume val decode_encode_round_trip : n:nat{n < pow2 256}
     -> Lemma (decode_le (encode_le n) == n)
-let decode_encode_round_trip n =
-  assume (decode_le (encode_le n) == n)
 
 (** -------------------------------------------------------------------- **)
 (** RFC 7748, Section 5 -- Scalar clamping                               **)
@@ -481,17 +483,19 @@ val ladder_step_in_field : u:felem -> st:ladder_state -> bit:nat{bit <= 1}
 let ladder_step_in_field u st bit = ()
 
 (** Multiplying by scalar 0 yields the point at infinity (z = 0),
-    which encodes as the all-zero coordinate. *)
-val scalar_mult_zero : u:felem
+    which encodes as the all-zero coordinate.
+    ASSUMED: Requires unrolling the Montgomery ladder with k=0 (all bits zero)
+    and showing the final z-coordinate is 0, making the result fmul 0 (finv 0) = 0.
+    Visible to auditing as an assume val. *)
+assume val scalar_mult_zero : u:felem
     -> Lemma (scalar_mult 0 u == 0)
-let scalar_mult_zero u =
-  assume (scalar_mult 0 u == 0)
 
-(** Multiplying by scalar 1 yields the original point. *)
-val scalar_mult_one : u:felem{u > 0}
+(** Multiplying by scalar 1 yields the original point.
+    ASSUMED: Requires showing the Montgomery ladder with k=1 performs one
+    differential addition step that preserves the input u-coordinate.
+    Visible to auditing as an assume val. *)
+assume val scalar_mult_one : u:felem{u > 0}
     -> Lemma (scalar_mult 1 u == u)
-let scalar_mult_one u =
-  assume (scalar_mult 1 u == u)
 
 (** -------------------------------------------------------------------- **)
 (** KAT Test Vectors (RFC 7748 Section 6.1)                              **)
@@ -646,22 +650,15 @@ let x25519_kat_shared_secret_bob () =
     (integers mod the group order l) yields the result.
 
     This is the most critical security property of the ECDH protocol. *)
-val dh_commutativity : a:scalar -> b:scalar
+(** ASSUMED: DH commutativity follows from scalar multiplication being a
+    group homomorphism: [a]([b]G) = [ab]G = [ba]G = [b]([a]G).  The full
+    algebraic proof requires reasoning about the Montgomery curve group law
+    which is not discharged by Z3 without an elliptic-curve library.
+    Visible to auditing as an assume val. *)
+assume val dh_commutativity : a:scalar -> b:scalar
     -> Lemma (
       let g : coordinate = Seq.append (Seq.create 1 9uy) (Seq.create 31 0uy) in
       x25519 a (x25519 b g) == x25519 b (x25519 a g))
-let dh_commutativity a b =
-  (* Prove the basepoint is a valid coordinate (length 32). *)
-  assert (Seq.length (Seq.create 1 9uy) = 1);
-  assert (Seq.length (Seq.create 31 0uy) = 31);
-  let g : coordinate = Seq.append (Seq.create 1 9uy) (Seq.create 31 0uy) in
-  (* DH commutativity: [a]([b]G) = [ab]G = [ba]G = [b]([a]G).
-     This holds because scalar multiplication on Curve25519 is a group
-     homomorphism of the cyclic prime-order group, so [a] o [b] = [a*b mod l]
-     = [b*a mod l] = [b] o [a].  The full algebraic proof requires reasoning
-     about the group law on the Montgomery curve, which is not discharged by
-     Z3 without a full elliptic-curve library. *)
-  assume (x25519 a (x25519 b g) == x25519 b (x25519 a g))
 
 (** Generalized DH commutativity for any base point, not just G=9.
     For any point P on the curve:
@@ -669,10 +666,12 @@ let dh_commutativity a b =
 
     Note: This holds when P is a point on Curve25519 (not a point of
     small order that would be annihilated by clamping). *)
-val dh_commutativity_general : a:scalar -> b:scalar -> p:coordinate
+(** ASSUMED: Generalized DH commutativity for arbitrary base points.
+    Same algebraic argument as dh_commutativity but for any point P on
+    Curve25519 (excluding small-order points annihilated by clamping).
+    Visible to auditing as an assume val. *)
+assume val dh_commutativity_general : a:scalar -> b:scalar -> p:coordinate
     -> Lemma (x25519 a (x25519 b p) == x25519 b (x25519 a p))
-let dh_commutativity_general a b p =
-  assume (x25519 a (x25519 b p) == x25519 b (x25519 a p))
 
 (** -------------------------------------------------------------------- **)
 (** Low-order point rejection                                             **)
@@ -685,10 +684,12 @@ let dh_commutativity_general a b p =
 let zero_coordinate : coordinate =
   Seq.create 32 0uy
 
-val x25519_zero_u : sk:scalar
+(** ASSUMED: The all-zero u-coordinate maps to all-zero output because
+    scalar multiplication of the point at infinity (u=0) stays at infinity.
+    Requires showing scalar_mult k 0 == 0 for all k, which needs induction
+    over the Montgomery ladder.  Visible to auditing as an assume val. *)
+assume val x25519_zero_u : sk:scalar
     -> Lemma (x25519 sk zero_coordinate == zero_coordinate)
-let x25519_zero_u sk =
-  assume (x25519 sk zero_coordinate == zero_coordinate)
 
 (** -------------------------------------------------------------------- **)
 (** Encoding/decoding consistency                                        **)

@@ -1161,11 +1161,11 @@ let gcm_tag_integrity encrypt key nonce aad pt bad_tag =
      computed_tag' == good_tag, so it returns None *)
 #pop-options
 
-(** GHASH is a universal hash function: for distinct inputs X, X',
-    Pr[GHASH_H(X) = GHASH_H(X')] <= ceil(max(|X|,|X'|)/128) / 2^128
-    (stated as an axiom since it requires probabilistic reasoning) *)
-val ghash_universal_hash_property : unit -> Lemma (True)
-let ghash_universal_hash_property () = ()
+(** PLACEHOLDER: proves True, not actual universal hash property.
+    GHASH universality (Pr[collision] <= ceil(L/128)/2^128) requires
+    probabilistic reasoning over the choice of H, not provable in F*. *)
+val ghash_universal_hash_placeholder : unit -> Lemma (True)
+let ghash_universal_hash_placeholder () = ()
 
 (** GHASH linearity: GHASH_H(X XOR Y) = GHASH_H(X) XOR GHASH_H(Y)
     when X and Y have the same length.

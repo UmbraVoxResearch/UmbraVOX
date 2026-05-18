@@ -227,14 +227,13 @@ let rec forward_secrecy_structural ck n =
 
 (** The one-way property of chain key advancement is a cryptographic
     assumption (pre-image resistance of HMAC-SHA256). *)
-val forward_secrecy_assumption :
+val forward_secrecy_placeholder :
     ck:seq UInt8.t{Seq.length ck = chain_key_size}
     -> Lemma (True)
-let forward_secrecy_assumption ck =
-  (* HMAC-SHA256 is a one-way function: given HMAC(ck, 0x01),
-     recovering ck is computationally infeasible.  This is a security
-     assumption about the underlying hash function, not a structural fact. *)
-  ()
+    (** PLACEHOLDER: proves True, not actual forward secrecy.
+        Real forward secrecy (pre-image resistance of HMAC-SHA256) is a
+        computational assumption, not provable in F*. *)
+let forward_secrecy_placeholder ck = ()
 
 (** -------------------------------------------------------------------- **)
 (** Break-in recovery property                                           **)
@@ -253,12 +252,11 @@ val break_in_recovery_structural :
               Seq.length rk' = root_key_size /\ Seq.length ck' = chain_key_size)
 let break_in_recovery_structural rk dh = kdf_rk_length_lemma rk dh
 
-val break_in_recovery_assumption :
+val break_in_recovery_placeholder :
     rk:seq UInt8.t{Seq.length rk = root_key_size}
     -> dh:seq UInt8.t{Seq.length dh = key_size}
     -> Lemma (True)
-let break_in_recovery_assumption rk dh =
-  (* The new root key is derived via HKDF from the fresh DH output, which
-     requires the new ephemeral secret.  This is a security property of
-     HKDF as a PRF, not dischargeable from the abstract model. *)
-  ()
+    (** PLACEHOLDER: proves True, not actual break-in recovery.
+        Real break-in recovery (HKDF PRF security + fresh DH contribution)
+        is a computational assumption, not provable in F*. *)
+let break_in_recovery_placeholder rk dh = ()

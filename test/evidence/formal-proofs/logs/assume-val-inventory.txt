@@ -20,4 +20,11 @@ test/evidence/formal-proofs/fstar/Spec.SHA256.Refinement.fst:80:assume val haske
 test/evidence/formal-proofs/fstar/Spec.StealthAddress.fst:325:assume val unlinkability
 test/evidence/formal-proofs/fstar/Spec.VRF.fst:209:assume val dleq_correctness :
 test/evidence/formal-proofs/fstar/Spec.VRF.fst:343:assume val vrf_strong_uniqueness : sk:secret_key -> msg:seq UInt8.t
-test/evidence/formal-proofs/fstar/Spec.VRF.fst:425:assume val vrf_collision_resistance : sk:secret_key -> msg1:seq UInt8.t -> msg2:seq UInt8.t
+test/evidence/formal-proofs/fstar/Spec.VRF.fst:428:assume val vrf_collision_resistance : sk:secret_key -> msg1:seq UInt8.t -> msg2:seq UInt8.t
+test/evidence/formal-proofs/fstar/Spec.X25519.fst:197:assume val fmul_inverse : a:felem{a <> 0}
+test/evidence/formal-proofs/fstar/Spec.X25519.fst:229:assume val decode_encode_round_trip : n:nat{n < pow2 256}
+test/evidence/formal-proofs/fstar/Spec.X25519.fst:490:assume val scalar_mult_zero : u:felem
+test/evidence/formal-proofs/fstar/Spec.X25519.fst:497:assume val scalar_mult_one : u:felem{u > 0}
+test/evidence/formal-proofs/fstar/Spec.X25519.fst:658:assume val dh_commutativity : a:scalar -> b:scalar
+test/evidence/formal-proofs/fstar/Spec.X25519.fst:673:assume val dh_commutativity_general : a:scalar -> b:scalar -> p:coordinate
+test/evidence/formal-proofs/fstar/Spec.X25519.fst:691:assume val x25519_zero_u : sk:scalar

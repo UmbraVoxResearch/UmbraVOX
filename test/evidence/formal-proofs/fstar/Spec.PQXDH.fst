@@ -195,12 +195,12 @@ let mlkem_correctness ek dk r =
 (** Correctness properties                                               **)
 (** -------------------------------------------------------------------- **)
 
-(** Hybrid security: the protocol is secure if EITHER the CDH problem
-    on Curve25519 OR the Module-LWE problem (ML-KEM-768) is hard.
-    An attacker must break BOTH to recover the shared secret. *)
-val pqxdh_hybrid_security_assumption : unit
+(** PLACEHOLDER: proves True, not actual hybrid security.
+    The real property (CDH OR Module-LWE hardness suffices) is a
+    computational assumption from the Signal PQXDH spec. *)
+val pqxdh_hybrid_security_placeholder : unit
     -> Lemma (True)
-let pqxdh_hybrid_security_assumption () = ()
+let pqxdh_hybrid_security_placeholder () = ()
 
 (** -------------------------------------------------------------------- **)
 (** IKM length: without optional DH4                                     **)

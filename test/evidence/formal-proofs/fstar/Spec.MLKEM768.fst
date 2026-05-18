@@ -1,10 +1,14 @@
 (**
  * Spec.MLKEM768 -- Pure functional specification of ML-KEM-768 (FIPS 203)
  *
- * This module provides a specification of ML-KEM-768 (formerly CRYSTALS-Kyber)
- * as defined in FIPS 203.  It mirrors the Haskell implementation in
- * src/UmbraVox/Crypto/MLKEM.hs and states correctness lemmas including
- * KAT vectors.
+ * PARAMETER VALIDATION ONLY -- all core functions (ntt, inv_ntt, cbd,
+ * sample_ntt, kpke_keygen/encrypt/decrypt, mlkem_keygen/encaps/decaps)
+ * are STUBS that return identity or constant values.  Lemmas marked
+ * (STUB) prove True and provide zero functional correctness assurance.
+ *
+ * The only genuinely verified content in this file is the parameter
+ * validation section, where assert_norm checks confirm that the ML-KEM-768
+ * constants (q=3329, n=256, k=3, etc.) match FIPS 203 Table 2.
  *
  * Reference: FIPS 203 (Module-Lattice-Based Key-Encapsulation Mechanism)
  *)
@@ -34,7 +38,9 @@ let ciphertext_size : nat = 1088
 let shared_secret_size : nat = 32
 
 (** -------------------------------------------------------------------- **)
-(** Parameter correctness: proved by normalization                        **)
+(** Parameter correctness: proved by normalization  [GENUINE PROOFS]      **)
+(** These assert_norm checks are real machine-checked proofs that the     **)
+(** ML-KEM-768 constants match FIPS 203 Table 2.                         **)
 (** -------------------------------------------------------------------- **)
 
 (** k=3, n=256, q=3329 are the correct FIPS 203 parameters *)
@@ -91,13 +97,14 @@ val inv_ntt : poly -> Tot poly
 let inv_ntt f_hat =
   f_hat
 
-(** NTT roundtrip: inv_ntt (ntt f) == f (mod q) *)
-val ntt_roundtrip_lemma : f:poly
+(** NTT roundtrip (STUB: proves True trivially because ntt and inv_ntt are
+    both identity functions -- provides zero correctness assurance) *)
+val ntt_roundtrip_stub : f:poly
     -> Lemma (inv_ntt (ntt f) == f)
-let ntt_roundtrip_lemma f =
+let ntt_roundtrip_stub f =
   (* ntt f = f by definition; inv_ntt f_hat = f_hat by definition.
-     Therefore inv_ntt (ntt f) = inv_ntt f = f.  Discharged by definitional
-     unfolding. *)
+     Therefore inv_ntt (ntt f) = inv_ntt f = f.  This is trivially true
+     because both functions are identity stubs. *)
   ()
 
 (** -------------------------------------------------------------------- **)
@@ -121,15 +128,16 @@ val cbd : eta:nat{eta > 0} -> seed:seq UInt8.t -> Tot poly
 let cbd eta seed =
   Seq.create mlkem_n 0  (* abstract *)
 
-(** CBD coefficients are bounded by eta *)
-val cbd_bound_lemma : eta:nat{eta > 0} -> seed:seq UInt8.t
+(** CBD coefficients are bounded by eta (STUB: proves True trivially because
+    cbd returns all-zero polynomial -- provides zero correctness assurance) *)
+val cbd_bound_stub : eta:nat{eta > 0} -> seed:seq UInt8.t
     -> Lemma (forall (i:nat{i < mlkem_n}).
         let c = Seq.index (cbd eta seed) i in
         c <= eta)
-let cbd_bound_lemma eta seed =
+let cbd_bound_stub eta seed =
   (* cbd eta seed = Seq.create mlkem_n 0 by definition.
      Seq.index (Seq.create mlkem_n 0) i = 0 for all i < mlkem_n.
-     0 <= eta since eta > 0.  Discharged by definitional unfolding. *)
+     0 <= eta since eta > 0.  Trivially true because cbd is a stub. *)
   ()
 
 (** -------------------------------------------------------------------- **)
@@ -143,14 +151,15 @@ val sample_ntt : seed:seq UInt8.t -> Tot poly
 let sample_ntt seed =
   Seq.create mlkem_n 0  (* abstract *)
 
-(** All coefficients are in [0, q) *)
-val sample_ntt_range_lemma : seed:seq UInt8.t
+(** All coefficients are in [0, q) (STUB: proves True trivially because
+    sample_ntt returns all-zero polynomial -- provides zero correctness assurance) *)
+val sample_ntt_range_stub : seed:seq UInt8.t
     -> Lemma (forall (i:nat{i < mlkem_n}).
         Seq.index (sample_ntt seed) i < mlkem_q)
-let sample_ntt_range_lemma seed =
+let sample_ntt_range_stub seed =
   (* sample_ntt seed = Seq.create mlkem_n 0 by definition.
      Seq.index (Seq.create mlkem_n 0) i = 0 for all i < mlkem_n.
-     0 < 3329 = mlkem_q.  Discharged by definitional unfolding. *)
+     0 < 3329 = mlkem_q.  Trivially true because sample_ntt is a stub. *)
   ()
 
 (** -------------------------------------------------------------------- **)
@@ -168,14 +177,14 @@ val decompress : d:nat{d > 0 && d < 16} -> y:nat{y < pow2 d} -> Tot nat
 let decompress d y =
   (y * mlkem_q + (pow2 d) / 2) / (pow2 d)
 
-(** Compress/decompress roundtrip is approximate:
-    |Decompress(Compress(x)) - x| <= round(q / 2^(d+1)) *)
-val compress_decompress_approx_lemma : d:nat{d > 0 && d < 16}
+(** Compress/decompress roundtrip (STUB: proves True -- the approximation
+    bound is not actually checked; provides zero correctness assurance) *)
+val compress_decompress_approx_stub : d:nat{d > 0 && d < 16}
     -> x:nat{x < mlkem_q}
     -> Lemma (let y = compress d x in
               let x' = decompress d y in
-              True)  (* approximation bound stated abstractly *)
-let compress_decompress_approx_lemma d x =
+              True)  (* STUB: proves True, not the actual bound *)
+let compress_decompress_approx_stub d x =
   ()
 
 (** -------------------------------------------------------------------- **)
@@ -200,13 +209,13 @@ val kpke_decrypt : dk:seq UInt8.t -> ct:seq UInt8.t
     -> Tot (seq UInt8.t)
 let kpke_decrypt dk ct = ct  (* abstract *)
 
-(** K-PKE correctness: decrypt(encrypt(m)) = m with overwhelming probability
-    (decryption failure probability < 2^{-164} for ML-KEM-768) *)
-val kpke_correctness_lemma : ek:seq UInt8.t -> dk:seq UInt8.t
+(** K-PKE correctness (STUB: proves True -- kpke functions are stubs;
+    provides zero correctness assurance) *)
+val kpke_correctness_stub : ek:seq UInt8.t -> dk:seq UInt8.t
     -> msg:seq UInt8.t{Seq.length msg = 32}
     -> r:seq UInt8.t{Seq.length r = 32}
-    -> Lemma (True)  (* holds with overwhelming probability *)
-let kpke_correctness_lemma ek dk msg r = ()
+    -> Lemma (True)  (* STUB: proves True *)
+let kpke_correctness_stub ek dk msg r = ()
 
 (** -------------------------------------------------------------------- **)
 (** ML-KEM: IND-CCA2 KEM (FIPS 203, Algorithm 16-18)                    **)
@@ -218,10 +227,11 @@ val mlkem_keygen : seed:seq UInt8.t{Seq.length seed = 64}
     -> Tot (seq UInt8.t & seq UInt8.t)
 let mlkem_keygen seed = (seed, seed)  (* abstract *)
 
-(** Encapsulation key is 1184 bytes *)
-val mlkem_keygen_ek_size : seed:seq UInt8.t{Seq.length seed = 64}
-    -> Lemma (let (ek, _) = mlkem_keygen seed in True)
-let mlkem_keygen_ek_size seed = ()
+(** Encapsulation key size (STUB: proves True -- does not actually check
+    that |ek| = 1184; provides zero correctness assurance) *)
+val mlkem_keygen_ek_size_stub : seed:seq UInt8.t{Seq.length seed = 64}
+    -> Lemma (let (ek, _) = mlkem_keygen seed in True)  (* STUB: proves True *)
+let mlkem_keygen_ek_size_stub seed = ()
 
 (** ML-KEM encapsulation: produces (shared_secret, ciphertext) from
     the encapsulation key and 32 bytes of randomness. *)
@@ -235,37 +245,39 @@ val mlkem_decaps : dk:seq UInt8.t -> ct:seq UInt8.t
     -> Tot (seq UInt8.t)
 let mlkem_decaps dk ct = ct  (* abstract *)
 
-(** ML-KEM correctness: decaps(dk, ct) = ss when (ss, ct) = encaps(ek, m) *)
-val mlkem_correctness_lemma : ek:seq UInt8.t -> dk:seq UInt8.t
+(** ML-KEM correctness (STUB: proves True -- mlkem functions are stubs;
+    provides zero correctness assurance) *)
+val mlkem_correctness_stub : ek:seq UInt8.t -> dk:seq UInt8.t
     -> m:seq UInt8.t{Seq.length m = 32}
-    -> Lemma (True)
-let mlkem_correctness_lemma ek dk m = ()
+    -> Lemma (True)  (* STUB: proves True *)
+let mlkem_correctness_stub ek dk m = ()
 
-(** Shared secret is always 32 bytes *)
-val mlkem_ss_length_lemma : ek:seq UInt8.t
+(** Shared secret length (STUB: proves True -- does not actually check
+    that |ss| = 32; provides zero correctness assurance) *)
+val mlkem_ss_length_stub : ek:seq UInt8.t
     -> m:seq UInt8.t{Seq.length m = 32}
-    -> Lemma (let (ss, _) = mlkem_encaps ek m in True)
-let mlkem_ss_length_lemma ek m = ()
+    -> Lemma (let (ss, _) = mlkem_encaps ek m in True)  (* STUB: proves True *)
+let mlkem_ss_length_stub ek m = ()
 
 (** -------------------------------------------------------------------- **)
 (** KAT Vectors (NIST ACVP test vectors for ML-KEM-768)                  **)
 (** -------------------------------------------------------------------- **)
 
-(** KAT 1: Key generation produces correct-length outputs.
-    For any valid 64-byte seed, |ek| = 1184 and |dk| = 2400. *)
-val kat_keygen_lengths : seed:seq UInt8.t{Seq.length seed = 64}
-    -> Lemma (True)
-let kat_keygen_lengths seed = ()
+(** KAT 1: Key generation lengths (STUB: proves True -- does not actually
+    check |ek| = 1184 or |dk| = 2400; provides zero correctness assurance) *)
+val kat_keygen_lengths_stub : seed:seq UInt8.t{Seq.length seed = 64}
+    -> Lemma (True)  (* STUB: proves True *)
+let kat_keygen_lengths_stub seed = ()
 
-(** KAT 2: Encapsulation produces correct-length outputs.
-    |ss| = 32 and |ct| = 1088. *)
-val kat_encaps_lengths : ek:seq UInt8.t -> m:seq UInt8.t{Seq.length m = 32}
-    -> Lemma (True)
-let kat_encaps_lengths ek m = ()
+(** KAT 2: Encapsulation lengths (STUB: proves True -- does not actually
+    check |ss| = 32 or |ct| = 1088; provides zero correctness assurance) *)
+val kat_encaps_lengths_stub : ek:seq UInt8.t -> m:seq UInt8.t{Seq.length m = 32}
+    -> Lemma (True)  (* STUB: proves True *)
+let kat_encaps_lengths_stub ek m = ()
 
-(** KAT 3: Implicit rejection -- decapsulating a modified ciphertext
-    yields a pseudorandom value derived from z, not the original ss. *)
-val kat_implicit_rejection : dk:seq UInt8.t -> ct:seq UInt8.t
+(** KAT 3: Implicit rejection (STUB: proves True -- does not actually verify
+    implicit rejection behavior; provides zero correctness assurance) *)
+val kat_implicit_rejection_stub : dk:seq UInt8.t -> ct:seq UInt8.t
     -> ct':seq UInt8.t{ct' =!= ct}
-    -> Lemma (True)
-let kat_implicit_rejection dk ct ct' = ()
+    -> Lemma (True)  (* STUB: proves True *)
+let kat_implicit_rejection_stub dk ct ct' = ()

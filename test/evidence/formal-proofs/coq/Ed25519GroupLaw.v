@@ -1,16 +1,21 @@
 (** ============================================================================
-    Ed25519GroupLaw.v -- Formal verification of the twisted Edwards curve
-    group law for Ed25519: -x^2 + y^2 = 1 + d*x^2*y^2 over GF(2^255 - 19)
+    Ed25519GroupLaw.v -- PROOF SKELETON (NOT VERIFIED) for the twisted
+    Edwards curve group law for Ed25519.
 
-    This file proves:
+    STATUS: 8 Admitted, 15 Axiom, multiple Parameter declarations.
+    THIS FILE IS NOT IN THE BUILD (_CoqProject) AND IS NOT MACHINE-CHECKED.
+    It documents the proof strategy and structure only.
+
+    Targets (not yet proved):
       1. point_add_assoc       -- Associativity of the HWCD addition formula
       2. point_add_congruence  -- Congruence under projective equivalence
       3. scalar_mult_add       -- [a+b]P = [a]P + [b]P
       4. scalar_mult_compose   -- [a]([b]P) = [a*b]P
       5. encode_decode_inv     -- Encode/decode round-trip for on-curve points
 
-    These correspond to the assume vals in Spec.Ed25519.fst and serve as the
-    external proof certificate that backs each one.
+    These correspond to the assume vals in Spec.Ed25519.fst. They require
+    ring/field tactics (from coq-prime or fiat-crypto) to discharge the
+    polynomial identity verifications.
 
     Proof strategy:
     - Axiomatize GF(p) as a commutative field (Rocq 9.1.1 core does not

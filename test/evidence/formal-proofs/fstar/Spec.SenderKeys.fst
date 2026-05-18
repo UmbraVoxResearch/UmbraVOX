@@ -161,25 +161,29 @@ let info_distinct () =
 (** assumption that HMAC is a PRF.                                       **)
 (** -------------------------------------------------------------------- **)
 
-(** PRF assumption: HMAC with a fixed key is computationally
-    indistinguishable from a random function (under HMAC-PRF security). *)
-val hmac_prf_assumption : hmac:hmac_fn -> ck:chain_key -> Lemma (True)
-let hmac_prf_assumption hmac ck = ()
+(** PLACEHOLDER: proves True, not actual PRF indistinguishability.
+    The HMAC-PRF security property (computational indistinguishability
+    from a random function) cannot be proved in F*. *)
+val hmac_prf_placeholder : hmac:hmac_fn -> ck:chain_key -> Lemma (True)
+let hmac_prf_placeholder hmac ck = ()
 
-(** MK and next-CK are derived with different constants from the same
-    CK, so they are domain-separated.  Under the PRF assumption they
-    are computationally independent. *)
-val mk_ck_domain_separation : hmac:hmac_fn -> ck:chain_key
-    -> Lemma (True)  (* PRF independence is a computational, not syntactic, property *)
-let mk_ck_domain_separation hmac ck = ()
+(** PLACEHOLDER: proves True, not actual domain separation independence.
+    MK and next-CK use different constants (0x01 vs 0x02) for domain
+    separation, but computational independence requires the PRF assumption. *)
+val mk_ck_domain_separation_placeholder : hmac:hmac_fn -> ck:chain_key
+    -> Lemma (True)
+let mk_ck_domain_separation_placeholder hmac ck = ()
 
 (** -------------------------------------------------------------------- **)
 (** Structural well-formedness                                           **)
 (** -------------------------------------------------------------------- **)
 
 (** The chain state after an advance has a well-formed iteration counter. *)
+(** Advancing the chain always produces a positive iteration counter.
+    Note: the original postcondition `iter > 0 \/ st.iter >= 0` was a
+    tautology (every nat is >= 0). Strengthened to prove iter > 0. *)
 val advance_iter_positive : hmac:bounded_hmac_fn -> st:chain_state
-    -> Lemma ((advance_chain hmac st).iter > 0 \/ st.iter >= 0)
+    -> Lemma ((advance_chain hmac st).iter > 0)
 let advance_iter_positive hmac st = ()
 
 (** -------------------------------------------------------------------- **)
