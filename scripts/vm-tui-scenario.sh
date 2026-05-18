@@ -17,7 +17,7 @@ mkdir -p "$OUTDIR"
 export TERM=xterm-256color
 
 # Find the built TUI binary
-UMBRAVOX=$(find /work/umbravox/dist-newstyle -name umbravox -type f -path '*/x/umbravox/build/*' 2>/dev/null | head -1)
+UMBRAVOX=$(find -L /work/umbravox/dist-newstyle -name umbravox -type f -path '*/x/umbravox/build/*' 2>/dev/null | head -1)
 if [ -z "$UMBRAVOX" ]; then
     echo "ERROR: umbravox binary not found in dist-newstyle"
     echo "SCENARIO_COMPLETE=NO"

@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 echo "=== UmbraVOX Visual Regression ==="
-mount /dev/vdb /mnt/src 2>/dev/null || mount -o ro /dev/vdb /mnt/src
-cp -a /mnt/src /work/umbravox
+
+# When launched via vm-dev-run.sh exec, /work/umbravox already exists
+# with build cache symlinks intact. Only copy fresh if missing.
+if [ ! -d /work/umbravox ]; then
+    mount /dev/vdb /mnt/src 2>/dev/null || mount -o ro /dev/vdb /mnt/src
+    cp -a /mnt/src /work/umbravox
+fi
 cd /work/umbravox
 bash scripts/vm-tui-scenario.sh /work/fresh
 REFDIR="test/evidence/visual-reference"

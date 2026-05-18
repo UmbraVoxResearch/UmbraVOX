@@ -4,6 +4,18 @@ All notable changes to UmbraVOX are documented in this file.
 
 The format is based on Keep a Changelog 1.1.0 and this project aims to follow Semantic Versioning.
 
+## [0.1.1] — 2026-05-17
+
+### Fixed
+- VM screenshot/record/visual-regression scripts no longer overwrite build cache symlink
+- vm-tui-scenario.sh uses `find -L` to follow symlinks into persistent cache
+- Screenshot/recording output copied to 9p shared directory for host access
+
+### Documentation
+- VM-DEVELOPMENT.md: screenshot/record/visual-regression commands, network policy, SOCKS5 test
+- VM-DEVELOPMENT.md: VM resources auto-scaling documentation
+- Infrastructure regression suite: 65 tests (up from 56)
+
 ## [0.1.0] — 2026-05-17
 
 ### Formal Verification Milestone

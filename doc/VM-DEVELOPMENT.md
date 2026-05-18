@@ -77,10 +77,12 @@ the guest, so subsequent builds reuse compiled artifacts.
 
 ### VM Resources
 
+VM resources auto-scale to 50% of the host, with a 25% minimum floor:
+
 | Resource | Value | Rationale |
 |----------|-------|-----------|
-| RAM | 16 GB | GHC parallel compilation benefits from large heap |
-| CPU cores | 8 | Parallel `cabal build -j` |
+| RAM | 50% of host (min 25%, floor 2 GB) | GHC parallel compilation benefits from large heap |
+| CPU cores | 50% of host (min 25%, floor 2) | Parallel `cabal build -j` |
 | Root disk | COW overlay | Disposable per session |
 | Cache disk | 4 GB qcow2 | Persists build artifacts across sessions |
 
@@ -138,6 +140,46 @@ ls build/vm-output/
 ```
 
 Use `make vm-extract` to check what's in the output directory.
+
+### TUI Screenshot / Recording / Visual Regression
+
+```bash
+make vm-screenshot          # Capture 8 TUI scenario frames (ANSI + HTML)
+make vm-record              # Record an asciinema session of the TUI scenario
+make vm-visual-regression   # Compare current TUI against reference baselines
+```
+
+These targets build the TUI binary inside the VM, then run `vm-tui-scenario.sh`
+which drives tmux through 8 key states (initial screen, help overlay, prefs
+dialog, identity panel, etc.).  Results are copied to the host via the 9p
+shared output directory (`build/vm-output/screenshots/`).
+
+To update reference baselines after intentional UI changes:
+
+```bash
+make visual-reference-update
+```
+
+### Network Policy
+
+The VM has **no network access by default** (`-nic none`).  Network access
+is controlled by `vm-network-policy.conf` in the repository root, which is
+read by `scripts/vm-network-policy.sh` before QEMU launches.
+
+```
+# vm-network-policy.conf — deny-all by default
+# Uncomment ALLOW rules to permit specific outbound connections:
+# ALLOW tcp 93.184.216.34 443
+```
+
+The policy file is host-side only — the VM guest cannot modify it.  See
+`vm-network-policy.conf` for the full syntax and per-VM-type sections.
+
+### SOCKS5 Transport Test
+
+```bash
+make vm-socks5-test         # Test SOCKS5 proxy transport in VM
+```
 
 ### Explicit `vm-*` Targets
 
