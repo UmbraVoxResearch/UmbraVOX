@@ -38,6 +38,7 @@ let
 
   # Formal verification
   coq = pkgs.coq;
+  coq-stdlib = pkgs.coqPackages.stdlib;
   tlaplus = pkgs.tlaplus;
   tlc = pkgs.tlaplus;
   z3 = pkgs.z3;
@@ -76,6 +77,7 @@ in pkgs.mkShell {
 
     # Formal verification
     coq
+    coq-stdlib
     tlaplus
     fstar
     z3

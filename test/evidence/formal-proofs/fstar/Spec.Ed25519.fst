@@ -583,7 +583,7 @@ let fadd_assoc a b c =
 val fmul_assoc : a:felem -> b:felem -> c:felem -> Lemma (fmul (fmul a b) c == fmul a (fmul b c))
 let fmul_assoc a b c =
   FStar.Math.Lemmas.lemma_mod_mul_distr_l (a * b) c prime;
-  FStar.Math.Lemmas.lemma_mod_mul_distr_l a (b * c) prime
+  FStar.Math.Lemmas.lemma_mod_mul_distr_r a (b * c) prime
 
 (** Distributivity: a * (b + c) = a*b + a*c *)
 val fmul_distrib : a:felem -> b:felem -> c:felem -> Lemma (fmul a (fadd b c) == fadd (fmul a b) (fmul a c))
@@ -803,6 +803,15 @@ let fmul_two a =
 val finv_cancel : z:felem{z <> 0} -> Lemma (fmul z (finv z) == 1)
 let finv_cancel z = fmul_inverse z
 
+(** pow 1 k == 1 for all k: local proof since FStar.Math.Fermat.pow_one
+    is not exported in the .fsti interface of this F* version. *)
+val pow_one_local : k:nat -> Lemma (ensures FStar.Math.Fermat.pow 1 k == 1) (decreases k)
+#push-options "--fuel 1 --ifuel 0"
+let rec pow_one_local (k : nat) : Lemma (ensures FStar.Math.Fermat.pow 1 k == 1) (decreases k) =
+  if k = 0 then ()
+  else pow_one_local (k - 1)
+#pop-options
+
 (** finv 1 == 1: inverse of 1 is 1 *)
 val finv_one : unit -> Lemma (finv 1 == 1)
 #push-options "--fuel 1 --ifuel 0 --z3rlimit 50"
@@ -810,7 +819,7 @@ let finv_one () =
   (* finv 1 = pow_mod 1 (prime-2).  1^n = 1 for all n, so pow_mod 1 (prime-2) = 1. *)
   pow_mod_equiv 1 (prime - 2);
   (* pow_mod 1 (prime-2) == pow 1 (prime-2) % prime *)
-  FStar.Math.Fermat.pow_one (prime - 2);
+  pow_one_local (prime - 2);
   (* pow 1 (prime-2) == 1 *)
   assert (FStar.Math.Fermat.pow 1 (prime - 2) == 1);
   assert (1 % prime == 1)
@@ -1187,18 +1196,6 @@ let point_add_identity_right p =
   end
 #pop-options
 
-(** Point addition with the identity is a no-op (left identity): O + P = P.
-
-    PROVED — Follows from point_add_comm + point_add_identity_right.
-    encode_point (point_add O P) == encode_point (point_add P O)  [commutativity]
-                                 == encode_point P                [right identity] *)
-val point_add_identity_left : p:ext_point
-    -> Lemma (encode_point (point_add point_identity p) ==
-              encode_point p)
-let point_add_identity_left p =
-  point_add_comm point_identity p;
-  point_add_identity_right p
-
 (** Point addition is commutative: P + Q = Q + P.
 
     PROVED: The HWCD formula is literally symmetric under input swap.
@@ -1221,6 +1218,18 @@ let point_add_comm p q =
   (* With A,B,C,D equal, E,F,G,H are equal, hence X3,Y3,Z3,T3 are equal *)
   assert (point_add p q == point_add q p)
 #pop-options
+
+(** Point addition with the identity is a no-op (left identity): O + P = P.
+
+    PROVED — Follows from point_add_comm + point_add_identity_right.
+    encode_point (point_add O P) == encode_point (point_add P O)  [commutativity]
+                                 == encode_point P                [right identity] *)
+val point_add_identity_left : p:ext_point
+    -> Lemma (encode_point (point_add point_identity p) ==
+              encode_point p)
+let point_add_identity_left p =
+  point_add_comm point_identity p;
+  point_add_identity_right p
 
 (** Point addition is associative: (P + Q) + R = P + (Q + R).
 
@@ -1310,6 +1319,22 @@ let point_add_comm p q =
 assume val point_add_assoc : p:ext_point -> q:ext_point -> r:ext_point
     -> Lemma (encode_point (point_add (point_add p q) r) ==
               encode_point (point_add p (point_add q r)))
+
+(** Helper: negation cancels in products: fmul (fsub 0 a) (fsub 0 b) == fmul a b.
+    Proof: (-a)*(-b) = a*b in GF(p). *)
+val neg_fmul_cancel : a:felem -> b:felem
+  -> Lemma (fmul (fsub 0 a) (fsub 0 b) == fmul a b)
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 200"
+let neg_fmul_cancel a b =
+  (* fsub 0 x = (prime - x) % prime.
+     fmul (fsub 0 a) (fsub 0 b) = (((prime-a)%p) * ((prime-b)%p)) % p
+     By mod_mul_distr_l/r: == ((prime-a)*(prime-b)) % p
+     (prime-a)*(prime-b) = prime^2 - prime*b - prime*a + a*b = prime*(prime-a-b) + a*b
+     So mod p == (a*b) % p == fmul a b. *)
+  FStar.Math.Lemmas.lemma_mod_mul_distr_l (prime - a) ((prime - b) % prime) prime;
+  FStar.Math.Lemmas.lemma_mod_mul_distr_r (prime - a) (prime - b) prime
+  (* Z3 can close: (prime-a)*(prime-b) % p = (a*b + prime*(prime-a-b)) % p = (a*b) % p *)
+#pop-options
 
 (** Doubling is consistent with addition: 2P = P + P.
 
@@ -1464,22 +1489,6 @@ let scalar_mult_zero p =
      returning point_identity immediately. *)
   assert_norm (int_bit_len 0 = 0);
   assert (scalar_mult 0 p == point_identity)
-
-(** Helper: negation cancels in products: fmul (fsub 0 a) (fsub 0 b) == fmul a b.
-    Proof: (-a)*(-b) = a*b in GF(p). *)
-val neg_fmul_cancel : a:felem -> b:felem
-  -> Lemma (fmul (fsub 0 a) (fsub 0 b) == fmul a b)
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 200"
-let neg_fmul_cancel a b =
-  (* fsub 0 x = (prime - x) % prime.
-     fmul (fsub 0 a) (fsub 0 b) = (((prime-a)%p) * ((prime-b)%p)) % p
-     By mod_mul_distr_l/r: == ((prime-a)*(prime-b)) % p
-     (prime-a)*(prime-b) = prime^2 - prime*b - prime*a + a*b = prime*(prime-a-b) + a*b
-     So mod p == (a*b) % p == fmul a b. *)
-  FStar.Math.Lemmas.lemma_mod_mul_distr_l (prime - a) ((prime - b) % prime) prime;
-  FStar.Math.Lemmas.lemma_mod_mul_distr_r (prime - a) (prime - b) prime
-  (* Z3 can close: (prime-a)*(prime-b) % p = (a*b + prime*(prime-a-b)) % p = (a*b) % p *)
-#pop-options
 
 (** Helper: fmul (prime-1) a == fsub 0 a for any a : felem.
     In GF(p), (p-1)*a = -a. *)
