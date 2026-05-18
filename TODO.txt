@@ -580,7 +580,7 @@ Note: 221 original assumes → 0 admit() + 30 assume val. 17/24 specs fully prov
   [~] M13.13.6 Verify all F* specs pass in VM (cabal run fstar-verify)
     Note: fstar-verify runs in VM but exits 1 — some specs need higher z3rlimit or more time. Needs investigation.
   [x] M13.13.7 Verify all Coq proofs build locally and in VM (make -C coq)
-    Note: Ed25519Constants.v builds clean with Rocq 9.1.1. Fixed imports to use From Stdlib Require. Ed25519GroupLaw.v excluded from build (has Admitted — proof skeleton only).
+    Note: Ed25519Constants.v builds clean with Rocq 9.1.1. Fixed imports to use From Stdlib Require. Ed25519GroupLaw.v moved to coq/draft/ (has Admitted — proof skeleton only, excluded from build).
   [x] M13.13.8 Verify Haskell test suite passes in VM (cabal run umbravox-test -- required)
     Note: VM build + test completes in ~32s with cache. EXIT=0 confirmed.
 
@@ -598,7 +598,7 @@ Note: 221 original assumes → 0 admit() + 30 assume val. 17/24 specs fully prov
   [x] M13.11.2 Ed25519Field.v — field operations, basic properties
     Note: 54 Qed, 0 Admitted, 0 Axiom. Modular add/sub/mul/opp with commutativity, associativity, distributivity, identities, inverses. 6 Fermat witnesses via pow_mod. Reduction identities (2^255→19, 2^256→38). Builds clean.
   [ ] M13.11.3 Ed25519Curve.v — curve equation, point addition formula
-  [ ] M13.11.4 Ed25519GroupLaw.v — associativity via ring/field tactic (EXPERIMENTAL)
+  [ ] M13.11.4 Ed25519GroupLaw.v — associativity via ring/field tactic (DRAFT, in coq/draft/)
   [ ] M13.11.5 Ed25519Scalar.v — scalar_mult_add, scalar_mult_compose
   [ ] M13.11.6 VRFDLEQ.v — DLEQ correctness
 

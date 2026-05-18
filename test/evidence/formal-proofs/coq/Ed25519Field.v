@@ -4,12 +4,31 @@
     Verified by the Coq type-checker (Rocq 9.1.1 / ZArith).
     Zero Admitted.  Zero Axiom.  Zero Parameter.
 
-    This file defines and proves properties of:
-      - fadd, fsub, fmul, fopp (field operations mod p)
-      - Commutativity, associativity, distributivity
-      - Additive and multiplicative identities
-      - Additive inverse
-      - Fermat's little theorem consequence (stated via pow_mod)
+    Purpose:
+      Define the four field operations (fadd, fsub, fmul, fopp) over
+      Z/pZ and prove the algebraic laws required for a commutative ring
+      (commutativity, associativity, distributivity, identities, inverses).
+
+    F* assumptions supported:
+      - Backs the field-arithmetic layer used by Spec.Ed25519.fst
+        (point_add, scalar_mult, encode/decode all rely on GF(p) ops).
+      - Provides concrete Fermat-witness evidence reused by Ed25519Prime.v.
+
+    What this file proves:
+      - fadd, fsub, fmul, fopp return values in [0, p)
+      - Commutativity and associativity of fadd and fmul
+      - Distributivity of fmul over fadd and fsub (both sides)
+      - Additive identity, multiplicative identity, additive inverse
+      - fopp is involutive; fsub a b = fadd a (fopp b)
+      - Congruence: operations respect mod-p equivalence classes
+      - Fermat's little theorem: a^(p-1) = 1 (mod p) for a in {2,3,5,7,11,13}
+      - Reduction identities: 2^255 -> 19, 2^256 -> 38 in GF(p)
+
+    What this file does NOT prove:
+      - Multiplicative inverse (finv) -- requires primality of p
+      - Full field structure (no Finv, so this is a commutative ring, not
+        a field; the field completion is in Ed25519GroupLaw.v via axioms)
+      - Any curve equation or group-law properties
 
     Build: nix-shell --run "make -C test/evidence/formal-proofs/coq"
     ============================================================================ *)

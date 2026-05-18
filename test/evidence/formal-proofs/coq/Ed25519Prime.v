@@ -4,7 +4,11 @@
     Verified by the Coq type-checker (Rocq 9.1.1 / ZArith).
     Zero Admitted.  Zero Axiom.  Zero Parameter.
 
-    This file proves:
+    F* assumptions supported:
+      - prime_is_prime (Spec.Ed25519.fst): primality evidence for p
+      - Underpins all field/group proofs that depend on GF(p) being a field
+
+    What this file proves:
       - p > 1, p is positive, p is odd, bit-length, p mod 8 = 5
       - p is not divisible by any prime up to sqrt-reachable range
       - 2^255 = 19 (mod p) and 2^256 = 38 (mod p)  -- field reduction identity
@@ -14,6 +18,13 @@
       - A verified trial-division primality checker (for small primes in
         the Pocklington chain)
       - Primality of 28 small primes via the verified checker
+
+    What this file does NOT prove:
+      - Full primality of 2^255-19 via a closed Pocklington theorem
+        (requires coq-prime / Thery library not in our Nix closure;
+        see "PRIMALITY OF 2^255-19" section below for details)
+      - Field operations or algebraic structure (see Ed25519Field.v)
+      - Any curve or group-law properties
 
     PRIMALITY OF 2^255-19
     ~~~~~~~~~~~~~~~~~~~~~
