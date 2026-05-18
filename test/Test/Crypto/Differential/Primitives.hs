@@ -116,10 +116,11 @@ testX25519Vectors = do
     let alice_sk = hexToBS "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a"
         bob_pk   = hexToBS "de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f"
         expected = hexToBS "4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742"
-    r1 <- check "X25519" "rfc7748-alice"
-        expected
-        (X25519.x25519 alice_sk bob_pk)
-    return r1
+    case X25519.x25519 alice_sk bob_pk of
+        Nothing -> do
+            putStrLn "  FAIL: rfc7748-alice (x25519 returned Nothing)"
+            return False
+        Just actual -> check "X25519" "rfc7748-alice" expected actual
 
 -- ── Ed25519 ─────────────────────────────────────────────────────────
 
