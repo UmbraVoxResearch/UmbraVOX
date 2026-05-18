@@ -217,7 +217,7 @@ CABALEOF
     lib = pkgs.lib;
     config = nixos.config;
     diskSize = "auto";
-    additionalSpace = "1024M";
+    additionalSpace = "2048M";
     format = "raw";
     partitionTableType = "legacy";
     copyChannel = false;
