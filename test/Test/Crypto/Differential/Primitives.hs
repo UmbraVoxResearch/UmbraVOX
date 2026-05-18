@@ -19,10 +19,12 @@ import Numeric (showHex)
 
 -- Import UmbraVOX crypto modules
 import qualified UmbraVox.Crypto.SHA256 as SHA256
+import qualified UmbraVox.Crypto.SHA512 as SHA512
 import qualified UmbraVox.Crypto.Curve25519 as X25519
 import qualified UmbraVox.Crypto.Ed25519 as Ed25519
 import qualified UmbraVox.Crypto.HMAC as HMAC
 import qualified UmbraVox.Crypto.HKDF as HKDF
+import qualified UmbraVox.Crypto.GCM as GCM
 
 -- | Run all differential primitive tests.
 -- Returns True if all pass, False if any fail.
@@ -31,10 +33,12 @@ differentialPrimitiveTests = do
     putStrLn "[DifferentialPrimitives] Running official vector tests..."
     results <- sequence
         [ testSHA256Vectors
+        , testSHA512Vectors
         , testHMACVectors
         , testHKDFVectors
         , testX25519Vectors
         , testEd25519Vectors
+        , testAESGCMVectors
         ]
     let passed = length (filter id results)
         total = length results
@@ -144,3 +148,46 @@ testEd25519Vectors = do
         (BS.singleton 1)
         (BS.singleton (if verify_ours then 1 else 0))
     return (r1 && r2 && r3)
+
+-- ── SHA-512 ─────────────────────────────────────────────────────────
+
+testSHA512Vectors :: IO Bool
+testSHA512Vectors = do
+    putStrLn "  [SHA-512] FIPS 180-4 vectors"
+    r1 <- check "SHA-512" "empty"
+        (hexToBS "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e")
+        (SHA512.sha512 BS.empty)
+    r2 <- check "SHA-512" "abc"
+        (hexToBS "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f")
+        (SHA512.sha512 (C8.pack "abc"))
+    return (r1 && r2)
+
+-- ── AES-256-GCM ─────────────────────────────────────────────────────
+
+testAESGCMVectors :: IO Bool
+testAESGCMVectors = do
+    putStrLn "  [AES-GCM] NIST SP 800-38D vectors"
+    -- TC14: 0 bytes plaintext, 0 bytes AAD, all-zero key/nonce
+    let key14 = BS.replicate 32 0
+        nonce14 = BS.replicate 12 0
+        (ct14, tag14) = GCM.gcmEncrypt key14 nonce14 BS.empty BS.empty
+    r1 <- check "AES-GCM" "tc14-ct" BS.empty ct14
+    r2 <- check "AES-GCM" "tc14-tag"
+        (hexToBS "530f8afbc74536b9a963b4f1c4cb738b") tag14
+    -- TC16: 60 bytes plaintext, all-zero key variant
+    let key16 = hexToBS "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308"
+        nonce16 = hexToBS "cafebabefacedbaddecaf888"
+        pt16 = hexToBS "d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b39"
+        (ct16, tag16) = GCM.gcmEncrypt key16 nonce16 BS.empty pt16
+    r3 <- check "AES-GCM" "tc16-ct"
+        (hexToBS "522dc1f099567d07f47f37a32a84427d643a8cdcbfe5c0c97598a2bd2555d1aa8cb08e48590dbb3da7b08b1056828838c5f61e6393ba7a0abcc9f662") ct16
+    r4 <- check "AES-GCM" "tc16-tag"
+        (hexToBS "eb9f796c8d356fc31a8433884b696f4f") tag16
+    -- Decrypt roundtrip
+    let decrypted16 = GCM.gcmDecrypt key16 nonce16 BS.empty ct16 tag16
+    r5 <- case decrypted16 of
+        Nothing -> do
+            putStrLn "  FAIL: tc16-decrypt (returned Nothing)"
+            return False
+        Just dec -> check "AES-GCM" "tc16-decrypt-roundtrip" pt16 dec
+    return (r1 && r2 && r3 && r4 && r5)
