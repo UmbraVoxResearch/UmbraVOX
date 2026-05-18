@@ -552,8 +552,9 @@ Note: Findings from attic/doc-legacy spec comparison (2026-05-11).
 ================================================================================
 MILESTONE M13: F* FORMAL VERIFICATION — 100% COVERAGE
 ================================================================================
-Note: 221 original assumes → 0 admit() + 23 assume val. 18/24 specs fully proved (0 assume val).
-  Remaining: Ed25519 (10), SHA256.Refinement (6), VRF (3), DoubleRatchet (2), ChaChaPoly (1), StealthAddress (1).
+Note: 221 original assumes → 0 admit() + 30 assume val. 17/24 specs fully proved (0 assume val).
+  Remaining: Ed25519 (10), X25519 (7, promoted from hidden assume), SHA256.Refinement (6), VRF (3), DoubleRatchet (2), ChaChaPoly (1), StealthAddress (1).
+  All Lemma(True) placeholders honestly renamed. All hidden assume() made visible.
       Full ledger: test/evidence/formal-proofs/ASSUMPTIONS.md
 
 [x] M13.8 Zero admit() milestone — all 178 admits eliminated
