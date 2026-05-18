@@ -24,7 +24,8 @@ generate_network_args() {
 
     # Count ALLOW rules (ignoring comments and blanks)
     local allow_count
-    allow_count=$(grep -c '^ALLOW ' "$POLICY_FILE" 2>/dev/null || echo 0)
+    allow_count=$(grep -c '^ALLOW ' "$POLICY_FILE" 2>/dev/null || true)
+    allow_count=${allow_count:-0}
 
     if [ "$allow_count" -eq 0 ]; then
         # No ALLOW rules = no network
