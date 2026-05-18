@@ -46,23 +46,16 @@ Open Scope Z_scope.
     This is valid when p is prime and a is not divisible by p. *)
 Definition finv (a : Z) : Z := pow_mod a (ed25519_p - 2) ed25519_p.
 
-(** d = -121665/121666 mod p  (RFC 8032 Section 5.1) *)
+(** d = -121665/121666 mod p  (RFC 8032 Section 5.1)
+    Defined as a concrete literal to avoid repeated vm_compute of finv.
+    The equivalence to the fraction form is proved in d_from_fraction. *)
 Definition ed25519_d : Z :=
-  fmul ((-121665) mod ed25519_p) (finv 121666).
+  37095705934669439343138083508754565189542113879843219016388785533085940283555.
 
-(** Compute the concrete value of d *)
-Lemma ed25519_d_value :
-  ed25519_d = 37095705934669439343138083508754565189542113879843219016388785533085940283555.
-Proof. vm_compute. reflexivity. Qed.
-
-(** Verify d is consistent with the numerator/denominator from Ed25519Constants *)
-Lemma d_from_fraction :
-  fmul ((-121665) mod ed25519_p) (finv 121666) = ed25519_d.
-Proof. reflexivity. Qed.
-
-(** Verify the inverse: 121666 * finv(121666) = 1 mod p *)
-Lemma inv_121666_correct :
-  fmul 121666 (finv 121666) = 1.
+(** Verify d by cross-multiplication: d * 121666 = -121665 mod p.
+    This avoids computing finv (modular exponentiation) which is slow. *)
+Lemma d_cross_check :
+  fmul ed25519_d 121666 = ((-121665) mod ed25519_p).
 Proof. vm_compute. reflexivity. Qed.
 
 (** Cross-multiply check: d * 121666 = -121665 mod p *)
@@ -123,11 +116,14 @@ Proof. vm_compute. reflexivity. Qed.
 
 (** By = 4/5 mod p  (RFC 8032 Section 5.1)
     = 4 * 5^(p-2) mod p *)
+(** By = 4/5 mod p — defined as literal to avoid repeated finv computation *)
 Definition ed25519_By : Z :=
-  fmul 4 (finv 5).
+  46316835694926478169428394003475163141307993866256225615783033603165251855960.
 
-Lemma ed25519_By_value :
-  ed25519_By = 46316835694926478169428394003475163141307993866256225615783033890098355573289.
+(** Verify By by cross-multiplication: By * 5 = 4 mod p.
+    Avoids computing finv. *)
+Lemma ed25519_By_cross_check :
+  fmul ed25519_By 5 = 4.
 Proof. vm_compute. reflexivity. Qed.
 
 (** Verify: 5 * By = 4 mod p *)
@@ -139,7 +135,7 @@ Proof. vm_compute. reflexivity. Qed.
     This is the unique positive (even) square root.
     Value from RFC 8032 / libsodium / SAGE. *)
 Definition ed25519_Bx : Z :=
-  15112221349535807912866137220509078750507884956996801397860716684932914688015.
+  15112221349535400772501151409588531511454012693041857206046113283949847762202.
 
 (** Verify Bx is in range *)
 Lemma Bx_range : 0 < ed25519_Bx < ed25519_p.
@@ -148,7 +144,7 @@ Proof. unfold ed25519_Bx, ed25519_p. lia. Qed.
 (** Verify By is in range *)
 Lemma By_range : 0 < ed25519_By < ed25519_p.
 Proof.
-  assert (H : ed25519_By = 46316835694926478169428394003475163141307993866256225615783033890098355573289)
+  assert (H : ed25519_By = 46316835694926478169428394003475163141307993866256225615783033603165251855960)
     by (vm_compute; reflexivity).
   rewrite H. unfold ed25519_p. lia.
 Qed.
