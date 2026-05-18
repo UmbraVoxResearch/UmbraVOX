@@ -1,0 +1,33 @@
+{
+  "schema": "umbravox-differential-primitive-v1",
+  "primitive": "sha256",
+  "standard": "NIST FIPS 180-4",
+  "oracle_class": "official-vector",
+  "correspondence_scope": {
+    "bit_exact": true,
+    "encoding_in_scope": true,
+    "error_behavior_in_scope": false,
+    "timing_behavior_in_scope": false,
+    "constant_time_claimed": false
+  },
+  "vectors": [
+    {
+      "id": "fips180-4-example1",
+      "description": "One-block message 'abc'",
+      "input_hex": "616263",
+      "output_hex": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    },
+    {
+      "id": "fips180-4-example2",
+      "description": "Two-block message (448 bits)",
+      "input_hex": "6162636462636465636465666465666765666768666768696768696a68696a6b696a6b6c6a6b6c6d6b6c6d6e6c6d6e6f6d6e6f706e6f7071",
+      "output_hex": "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
+    },
+    {
+      "id": "fips180-4-empty",
+      "description": "Empty message",
+      "input_hex": "",
+      "output_hex": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

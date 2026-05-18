@@ -1,0 +1,36 @@
+{
+  "schema": "umbravox-differential-primitive-v1",
+  "primitive": "x25519",
+  "standard": "RFC 7748 Section 6.1",
+  "oracle_class": "official-vector",
+  "correspondence_scope": {
+    "bit_exact": true,
+    "encoding_in_scope": true,
+    "error_behavior_in_scope": false,
+    "timing_behavior_in_scope": false,
+    "constant_time_claimed": false
+  },
+  "vectors": [
+    {
+      "id": "rfc7748-6.1-alice",
+      "description": "Alice's X25519 scalar multiplication",
+      "private_hex": "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a",
+      "public_hex": "de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f",
+      "shared_secret_hex": "4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742"
+    },
+    {
+      "id": "rfc7748-6.1-bob",
+      "description": "Bob's X25519 scalar multiplication",
+      "private_hex": "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb",
+      "public_hex": "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a",
+      "shared_secret_hex": "4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742"
+    },
+    {
+      "id": "rfc7748-6.1-basepoint",
+      "description": "Basepoint multiplication (u=9)",
+      "private_hex": "a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4",
+      "public_hex": "0900000000000000000000000000000000000000000000000000000000000000",
+      "shared_secret_hex": "c3da55379de9c6908e94ea4df28d084f32eccf03491c71f754b4075577a28552"
+    }
+  ]
+}
