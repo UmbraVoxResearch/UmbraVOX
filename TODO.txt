@@ -72,9 +72,9 @@ libsignal = protocol oracle only. Independent oracles for primitives.
   [ ] M18.4.4 Document known divergences (wire format, transcript labels, domain separation)
 
 [ ] M18.5 Negative / Fail-Closed Testing
-  [~] M18.5.1 AEAD: wrong key/nonce/AAD, truncated ct/tag, bit-flip, nonce reuse, tag truncation
-  [ ] M18.5.2 Ed25519: malleability (S vs L-S), non-canonical, small-order, wrong message
-  [ ] M18.5.3 X25519: all-zero, low-order, non-canonical encodings
+  [x] M18.5.1 AEAD: wrong key/nonce/AAD, truncated ct/tag, bit-flip, nonce reuse, tag truncation
+  [x] M18.5.2 Ed25519: malleability (S vs L-S), non-canonical, small-order, wrong message
+  [x] M18.5.3 X25519: all-zero, low-order, non-canonical encodings
   [ ] M18.5.4 ML-KEM: malformed ek/dk, coefficients >= q, truncated
   [ ] M18.5.5 Protocol: stale prekeys, replay, corrupted headers, downgrade, state rollback
   [ ] M18.5.6 Define rejection boundary per test (parser/decoder/primitive/protocol/policy)
@@ -88,7 +88,7 @@ libsignal = protocol oracle only. Independent oracles for primitives.
 [ ] M18.7 UmbraVOX Consumer
   [x] M18.7.1 test/Test/Crypto/Differential/Primitives.hs
   [ ] M18.7.2 test/Test/Crypto/Differential/ProtocolLibsignal.hs
-  [ ] M18.7.3 test/Test/Crypto/Differential/Negative.hs
+  [x] M18.7.3 test/Test/Crypto/Differential/Negative.hs
   [ ] M18.7.4 test/Test/Crypto/Differential/Fuzz.hs
   [ ] M18.7.5 test/Test/Crypto/Differential/Evidence.hs
 
