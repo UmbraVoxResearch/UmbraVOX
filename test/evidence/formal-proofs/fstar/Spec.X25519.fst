@@ -319,12 +319,96 @@ let encode_le (n : nat) : (s:seq UInt8.t{Seq.length s = 32}) =
   in
   Seq.init 32 (fun i -> byte_at i)
 
-(** Round-trip: decode(encode(n)) = n mod 2^256.
-    ASSUMED: Requires induction over the 32-byte sequence showing each byte
-    round-trips through (n / 2^(8*i)) % 256.  Straightforward but tedious;
-    not yet mechanised.  Visible to auditing as an assume val. *)
-assume val decode_encode_round_trip : n:nat{n < pow2 256}
+(** Generalized encoding: encode a natural number as a k-byte
+    little-endian sequence.  Used for the inductive round-trip proof. *)
+val encode_le_n : k:nat -> v:nat -> Tot (s:seq UInt8.t{Seq.length s = k})
+let encode_le_n (k : nat) (v : nat) : (s:seq UInt8.t{Seq.length s = k}) =
+  let byte_at (i : nat{i < k}) : UInt8.t =
+    FStar.UInt8.uint_to_t ((v / pow2 (8 * i)) % 256)
+  in
+  Seq.init k (fun i -> byte_at i)
+
+(** encode_le is encode_le_n specialised to k=32. *)
+val encode_le_is_encode_le_n : n:nat
+    -> Lemma (encode_le n == encode_le_n 32 n)
+let encode_le_is_encode_le_n n =
+  assert (Seq.equal (encode_le n) (encode_le_n 32 n))
+
+(** Helper: digit decomposition for mod.
+    v % (256 * m) = (v % 256) + 256 * ((v / 256) % m) for m > 0. *)
+val mod_digit_decomposition : v:nat -> m:pos
+    -> Lemma (v % (256 * m) = (v % 256) + 256 * ((v / 256) % m))
+#push-options "--z3rlimit 200"
+let mod_digit_decomposition v m =
+  FStar.Math.Lemmas.euclidean_division_definition v 256;
+  FStar.Math.Lemmas.euclidean_division_definition (v / 256) m;
+  let q = (v / 256) / m in
+  let r_low = v % 256 in
+  let r_mid = (v / 256) % m in
+  let r = 256 * r_mid + r_low in
+  assert (r_mid < m);
+  assert (r_low < 256);
+  assert (r < 256 * m);
+  assert (v == (256 * m) * q + r);
+  FStar.Math.Lemmas.lemma_div_mod v (256 * m);
+  assert (v % (256 * m) < 256 * m);
+  assert ((256 * m) * (v / (256 * m)) + v % (256 * m) == (256 * m) * q + r)
+#pop-options
+
+(** decode_le(encode_le_n(k, v)) = v mod 2^(8*k) for any k, v. *)
+#push-options "--z3rlimit 100"
+val decode_encode_le_aux : k:nat -> v:nat
+    -> Lemma (ensures decode_le (encode_le_n k v) == v % pow2 (8 * k))
+             (decreases k)
+let rec decode_encode_le_aux k v =
+  if k = 0 then begin
+    assert (Seq.length (encode_le_n 0 v) = 0);
+    assert (decode_le (encode_le_n 0 v) == 0);
+    assert_norm (pow2 0 = 1);
+    assert (v % pow2 (8 * 0) == v % 1);
+    assert (v % 1 == 0)
+  end else begin
+    let s = encode_le_n k v in
+    assert (Seq.length s = k);
+    assert_norm (pow2 (8 * 0) = 1);
+    assert_norm (pow2 8 = 256);
+    assert (Seq.index s 0 == FStar.UInt8.uint_to_t ((v / pow2 (8 * 0)) % 256));
+    assert (UInt8.v (Seq.index s 0) = v % 256);
+    let tl = Seq.tail s in
+    assert (Seq.length tl = k - 1);
+    let shifted = encode_le_n (k - 1) (v / 256) in
+    let aux (i:nat{i < k - 1}) : Lemma (Seq.index tl i == Seq.index shifted i) =
+      assert (Seq.index tl i == Seq.index s (i + 1));
+      assert (Seq.index s (i + 1) == FStar.UInt8.uint_to_t ((v / pow2 (8 * (i + 1))) % 256));
+      assert (Seq.index shifted i == FStar.UInt8.uint_to_t (((v / 256) / pow2 (8 * i)) % 256));
+      FStar.Math.Lemmas.pow2_plus 8 (8 * i);
+      FStar.Math.Lemmas.division_multiplication_lemma v 256 (pow2 (8 * i));
+      assert_norm (8 * (i + 1) = 8 + 8 * i);
+      assert (pow2 (8 * (i + 1)) = 256 * pow2 (8 * i));
+      assert (v / pow2 (8 * (i + 1)) = v / (256 * pow2 (8 * i)));
+      FStar.Math.Lemmas.division_multiplication_lemma v 256 (pow2 (8 * i))
+    in
+    FStar.Classical.forall_intro aux;
+    assert (Seq.equal tl shifted);
+    decode_encode_le_aux (k - 1) (v / 256);
+    assert (decode_le shifted == (v / 256) % pow2 (8 * (k - 1)));
+    assert_norm (8 * k = 8 + 8 * (k - 1));
+    FStar.Math.Lemmas.pow2_plus 8 (8 * (k - 1));
+    assert (pow2 (8 * k) = 256 * pow2 (8 * (k - 1)));
+    mod_digit_decomposition v (pow2 (8 * (k - 1)))
+  end
+#pop-options
+
+(** Round-trip: decode(encode(n)) = n for n < 2^256.
+    PROVED by induction via decode_encode_le_aux, specialised to k=32. *)
+val decode_encode_round_trip : n:nat{n < pow2 256}
     -> Lemma (decode_le (encode_le n) == n)
+let decode_encode_round_trip n =
+  encode_le_is_encode_le_n n;
+  decode_encode_le_aux 32 n;
+  assert (decode_le (encode_le_n 32 n) == n % pow2 (8 * 32));
+  assert_norm (8 * 32 = 256);
+  assert (n % pow2 256 == n)
 
 (** -------------------------------------------------------------------- **)
 (** RFC 7748, Section 5 -- Scalar clamping                               **)
@@ -579,13 +663,119 @@ val ladder_step_in_field : u:felem -> st:ladder_state -> bit:nat{bit <= 1}
               x2 < prime /\ x3 < prime /\ z2 < prime /\ z3 < prime)
 let ladder_step_in_field u st bit = ()
 
-(** Multiplying by scalar 0 yields the point at infinity (z = 0),
-    which encodes as the all-zero coordinate.
-    ASSUMED: Requires unrolling the Montgomery ladder with k=0 (all bits zero)
-    and showing the final z-coordinate is 0, making the result fmul 0 (finv 0) = 0.
-    Visible to auditing as an assume val. *)
-assume val scalar_mult_zero : u:felem
+(** -------------------------------------------------------------------- **)
+(** Helper lemmas for scalar_mult_zero proof                             **)
+(** -------------------------------------------------------------------- **)
+
+(** fmul with 0 on the left: 0 * a = 0 *)
+val fmul_zero_left : a:felem -> Lemma (fmul 0 a == 0)
+let fmul_zero_left a = assert (fmul 0 a == (0 * a) % prime)
+
+(** finv 0 = 0.  pow_mod 0 n = 0 for all n > 0.
+    When n is odd: fmul 0 (pow_mod (fsqr 0) (n/2)) = 0.
+    When n is even and > 0: pow_mod (fsqr 0) (n/2) = pow_mod 0 (n/2).
+    Either way the result is 0 by induction. *)
+val pow_mod_zero : n:nat{n > 0}
+    -> Lemma (ensures pow_mod 0 n == 0)
+             (decreases n)
+#push-options "--fuel 2 --ifuel 0 --z3rlimit 20"
+let rec pow_mod_zero n =
+  if n = 1 then begin
+    assert (pow_mod 0 1 == fmul 0 (pow_mod (fsqr 0) 0));
+    assert (pow_mod (fsqr 0) 0 == 1);
+    fmul_zero_left 1
+  end else if n % 2 = 1 then begin
+    assert (pow_mod 0 n == fmul 0 (pow_mod (fsqr 0) (n / 2)));
+    fmul_zero_left (pow_mod (fsqr 0) (n / 2))
+  end else begin
+    assert (fsqr 0 == 0);
+    assert (pow_mod 0 n == pow_mod (fsqr 0) (n / 2));
+    assert (pow_mod (fsqr 0) (n / 2) == pow_mod 0 (n / 2));
+    pow_mod_zero (n / 2)
+  end
+#pop-options
+
+val finv_zero : unit -> Lemma (finv 0 == 0)
+let finv_zero () = pow_mod_zero (prime - 2)
+
+(** get_bit 0 t = 0 for all t *)
+val get_bit_zero : t:nat -> Lemma (get_bit 0 t == 0)
+let get_bit_zero t = assert (0 / pow2 t == 0)
+
+(** When z_2 = 0 and bit = 0, ladder_step preserves z_2 = 0.
+    Proof: with bit=0, sx2=x_2, sz2=z_2=0, so a = fadd x_2 0 = x_2,
+    b = fsub x_2 0 = x_2, aa = fsqr x_2 = bb, e = fsub aa bb = 0,
+    and nz2 = fmul 0 (...) = 0. *)
+val ladder_step_preserves_z2_zero : u:felem -> x_2:felem -> x_3:felem -> z_3:felem
+    -> Lemma (let (_, _, nz2, _) = ladder_step u (x_2, x_3, 0, z_3) 0 in nz2 == 0)
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 40"
+let ladder_step_preserves_z2_zero u x_2 x_3 z_3 =
+  let a  = fadd x_2 0 in
+  let aa = fsqr a in
+  let b  = fsub x_2 0 in
+  let bb = fsqr b in
+  let e  = fsub aa bb in
+  fsub_identity x_2;
+  fadd_identity x_2;
+  assert (a == x_2);
+  assert (b == x_2);
+  assert (aa == bb);
+  fsub_self aa;
+  assert (e == 0);
+  fmul_zero_left (fadd bb (fmul a24 e))
+#pop-options
+
+(** The Montgomery ladder loop with k=0, z_2=0, swap=0 maintains z_2=0
+    and swap=0 throughout.  By induction on t: get_bit 0 t = 0, so
+    swap'=0 (no swap), the step sees z_2=0 and preserves it. *)
+val ladder_loop_zero_k_z2 : u:felem -> t:int -> x_2:felem -> x_3:felem -> z_3:felem
+    -> Lemma (ensures (let (_, _, z2_f, _, sw_f) = ladder_loop u 0 t x_2 x_3 0 z_3 0 in
+                        z2_f == 0 /\ sw_f == 0))
+             (decreases (if t < 0 then 0 else t + 1))
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 40"
+let rec ladder_loop_zero_k_z2 u t x_2 x_3 z_3 =
+  if t < 0 then ()
+  else begin
+    get_bit_zero t;
+    (* swap=0, k_t=0, so swap'=0, no swap *)
+    (* ladder_step called with (x_2, x_3, 0, z_3) 0 *)
+    ladder_step_preserves_z2_zero u x_2 x_3 z_3;
+    let (nx2, nx3, nz2, nz3) = ladder_step u (x_2, x_3, 0, z_3) 0 in
+    assert (nz2 == 0);
+    ladder_loop_zero_k_z2 u (t - 1) nx2 nx3 nz3
+  end
+#pop-options
+
+(** -------------------------------------------------------------------- **)
+(** scalar_mult_zero (PROVED)                                            **)
+(** -------------------------------------------------------------------- **)
+
+(** Multiplying by scalar 0 yields the point at infinity (u-coordinate 0).
+
+    PROVED by showing the Montgomery ladder with k=0 maintains z_2=0
+    as an invariant (all bits of k are zero, so no swap ever occurs
+    and z_2=0 propagates through ladder_step).  The final result is
+    fmul x_2 (finv 0) = fmul x_2 0 = 0.
+
+    Proof chain:
+    1. get_bit_zero: all bits of 0 are 0
+    2. ladder_step_preserves_z2_zero: z_2=0 is invariant when bit=0
+    3. ladder_loop_zero_k_z2: induction over the loop
+    4. finv_zero: finv 0 = pow_mod 0 (p-2) = 0
+    5. fmul_zero: x * 0 = 0 *)
+val scalar_mult_zero : u:felem
     -> Lemma (scalar_mult 0 u == 0)
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 40"
+let scalar_mult_zero u =
+  let u_fe : felem = u % prime in
+  assert (u_fe == u);
+  ladder_loop_zero_k_z2 u_fe 254 1 u_fe 1;
+  let (x_2, x_3, z_2, z_3, swap_final) = ladder_loop u_fe 0 254 1 u_fe 0 1 0 in
+  assert (z_2 == 0);
+  assert (swap_final == 0);
+  finv_zero ();
+  fmul_zero x_2
+#pop-options
 
 (** Multiplying by scalar 1 yields the original point.
     ASSUMED: Requires showing the Montgomery ladder with k=1 performs one

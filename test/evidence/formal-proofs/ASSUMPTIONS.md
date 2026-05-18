@@ -4,7 +4,7 @@
 
 **Date:** 2026-05-17 (updated 2026-05-17)
 **F* specs:** 17 total, 14 with 0 assume val
-**assume val count:** 23
+**assume val count:** 22
 **admit() count:** 0
 **Status:** ALL PLANS COMPLETE — every assume val has a classification, documented
 justification, external evidence path, and discharge plan (or permanent status).
@@ -30,8 +30,8 @@ justification, external evidence path, and discharge plan (or permanent status).
 | ED-010 | Spec.Ed25519 | `distinct_messages_distinct_sigs` | CRYPTO_HARDNESS | yes | none | SHA-512 collision resistance + discrete log hardness | RFC 8032; DL hardness on Ed25519 | Cannot be proved unconditionally | CRYPTO_HARDNESS |
 | X2-001 | Spec.X25519 | `prime_is_prime` | ALGEBRAIC_EXTERNAL | yes | none | Primality of 2^255-19 (same as ED-001). Z3 cannot trial-divide a 255-bit number. | CAS verification, Coq Pocklington certificate | Coq or CAS | EXTERNALLY_VERIFIED |
 | ~~X2-001~~ | ~~Spec.X25519~~ | ~~`fmul_inverse`~~ | ~~DERIVED_FROM_ALGEBRA~~ | — | — | **PROVED** in v0.1.3 via Fermat's little theorem (ported from Ed25519 proof). Replaced by X2-001 prime_is_prime root. | — | — | **DISCHARGED** |
-| X2-002 | Spec.X25519 | `decode_encode_round_trip` | ALGEBRAIC_EXTERNAL | yes | none | Byte-level induction: decode_le(encode_le(n)) = n. Straightforward but tedious | Standard encoding | Induction on 32-byte sequence | BLOCKED_BY_TOOLING |
-| X2-003 | Spec.X25519 | `scalar_mult_zero` | DERIVED_FROM_ALGEBRA | no | X2-001 | Montgomery ladder with k=0 yields z=0 | Curve arithmetic | Ladder analysis | BLOCKED_BY_TOOLING |
+| ~~X2-002~~ | ~~Spec.X25519~~ | ~~`decode_encode_round_trip`~~ | ~~ALGEBRAIC_EXTERNAL~~ | — | — | **PROVED** via byte-level induction on 32-byte sequence. | — | — | **DISCHARGED** |
+| ~~X2-003~~ | ~~Spec.X25519~~ | ~~`scalar_mult_zero`~~ | ~~DERIVED_FROM_ALGEBRA~~ | — | — | **PROVED** via z_2=0 invariant: all bits of k=0 are zero, so no swap occurs and ladder_step preserves z_2=0; finv 0 = 0, so result is fmul x_2 0 = 0. | — | — | **DISCHARGED** |
 | X2-004 | Spec.X25519 | `scalar_mult_one` | DERIVED_FROM_ALGEBRA | no | X2-001 | Montgomery ladder with k=1 preserves input | Curve arithmetic | Ladder analysis | BLOCKED_BY_TOOLING |
 | X2-005 | Spec.X25519 | `dh_commutativity` | DERIVED_FROM_ALGEBRA | no | X2-003, X2-004 | [a][b]G = [ab]G group homomorphism | Elliptic curve group law | Group law proof | BLOCKED_BY_TOOLING |
 | X2-006 | Spec.X25519 | `dh_commutativity_general` | DERIVED_FROM_ALGEBRA | no | X2-005 | Same as X2-005 for arbitrary base points | Elliptic curve group law | Group law proof | BLOCKED_BY_TOOLING |
@@ -56,11 +56,11 @@ justification, external evidence path, and discharge plan (or permanent status).
 | CRYPTO_HARDNESS | 7 | CP-001, DR-001, DR-002, ED-010, SA-001, VR-002, VR-003 |
 | CROSS_TOOLCHAIN_BOUNDARY | 5 | SR-001..005 |
 | REFINEMENT_BOUNDARY | 1 | SR-006 |
-| ALGEBRAIC_EXTERNAL | 4 | ED-001, ED-003, ED-007, ED-009 |
-| DERIVED_FROM_ALGEBRA | 8 | ED-004, ED-005, ED-006, VR-001, X2-001, X2-003, X2-004, X2-005 |
-| PROVABLE_NOT_YET_PORTED | 1 | X2-001 (fmul_inverse proved in Ed25519) |
-| BLOCKED_BY_TOOLING | 4 | ED-002, ED-008, X2-002, X2-006, X2-007 |
-| **Total** | **30** | |
+| ALGEBRAIC_EXTERNAL | 5 | ED-001, ED-003, ED-007, ED-009, X2-001 (prime_is_prime) |
+| DERIVED_FROM_ALGEBRA | 6 | ED-004, ED-005, ED-006, VR-001, X2-004, X2-005 |
+| BLOCKED_BY_TOOLING | 4 | ED-002, ED-008, X2-006, X2-007 |
+| **Total (active)** | **28** | |
+| DISCHARGED (proved) | 3 | fmul_inverse, decode_encode_round_trip, scalar_mult_zero |
 
 ## Permanently Irreducible (cannot be proved in any system): 7
 

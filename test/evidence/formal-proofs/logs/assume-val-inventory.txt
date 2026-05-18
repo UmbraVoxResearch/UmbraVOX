@@ -22,9 +22,7 @@ test/evidence/formal-proofs/fstar/Spec.VRF.fst:209:assume val dleq_correctness :
 test/evidence/formal-proofs/fstar/Spec.VRF.fst:343:assume val vrf_strong_uniqueness : sk:secret_key -> msg:seq UInt8.t
 test/evidence/formal-proofs/fstar/Spec.VRF.fst:428:assume val vrf_collision_resistance : sk:secret_key -> msg1:seq UInt8.t -> msg2:seq UInt8.t
 test/evidence/formal-proofs/fstar/Spec.X25519.fst:199:assume val prime_is_prime : unit -> Lemma (FStar.Math.Euclid.is_prime prime)
-test/evidence/formal-proofs/fstar/Spec.X25519.fst:326:assume val decode_encode_round_trip : n:nat{n < pow2 256}
-test/evidence/formal-proofs/fstar/Spec.X25519.fst:587:assume val scalar_mult_zero : u:felem
-test/evidence/formal-proofs/fstar/Spec.X25519.fst:594:assume val scalar_mult_one : u:felem{u > 0}
-test/evidence/formal-proofs/fstar/Spec.X25519.fst:755:assume val dh_commutativity : a:scalar -> b:scalar
-test/evidence/formal-proofs/fstar/Spec.X25519.fst:770:assume val dh_commutativity_general : a:scalar -> b:scalar -> p:coordinate
-test/evidence/formal-proofs/fstar/Spec.X25519.fst:788:assume val x25519_zero_u : sk:scalar
+test/evidence/formal-proofs/fstar/Spec.X25519.fst:784:assume val scalar_mult_one : u:felem{u > 0}
+test/evidence/formal-proofs/fstar/Spec.X25519.fst:945:assume val dh_commutativity : a:scalar -> b:scalar
+test/evidence/formal-proofs/fstar/Spec.X25519.fst:960:assume val dh_commutativity_general : a:scalar -> b:scalar -> p:coordinate
+test/evidence/formal-proofs/fstar/Spec.X25519.fst:978:assume val x25519_zero_u : sk:scalar
