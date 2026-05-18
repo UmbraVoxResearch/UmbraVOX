@@ -61,7 +61,7 @@ libsignal = protocol oracle only. Independent oracles for primitives.
   [x] M18.3.5 X25519: RFC 7748 + Wycheproof (~40) + HACL* + libsodium + Monocypher
   [x] M18.3.6 Ed25519: RFC 8032 + Wycheproof (~100) + HACL* + libsodium + Monocypher
   [x] M18.3.7 AES-256-GCM: NIST SP 800-38D + Wycheproof (~300) + HACL* + BoringSSL
-  [ ] M18.3.8 ChaCha20-Poly1305: RFC 8439 + HACL* + libsodium + Monocypher
+  [x] M18.3.8 ChaCha20-Poly1305: RFC 8439 + HACL* + libsodium + Monocypher
   [ ] M18.3.9 ML-KEM-768: FIPS 203 KAT + PQClean + liboqs
   [x] M18.3.10 SHA-3/SHAKE: NIST CAVP + HACL* + RustCrypto
 
