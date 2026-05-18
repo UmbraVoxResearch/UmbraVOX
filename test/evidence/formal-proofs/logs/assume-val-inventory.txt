@@ -1,0 +1,23 @@
+test/evidence/formal-proofs/fstar/Spec.ChaChaPoly.fst:228:assume val tag_forgery_ct_axiom
+test/evidence/formal-proofs/fstar/Spec.DoubleRatchet.fst:105:assume val hmac_non_fixpoint :
+test/evidence/formal-proofs/fstar/Spec.DoubleRatchet.fst:136:assume val hmac_collision_resistance :
+test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1319:assume val point_add_assoc : p:ext_point -> q:ext_point -> r:ext_point
+test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1641:assume val scalar_mult_add : a:nat -> b:nat -> p:ext_point
+test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1669:assume val scalar_mult_compose : a:nat -> b:nat -> p:ext_point
+test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1720:assume val scalar_mod_L_equiv : n:nat
+test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1744:assume val point_add_congruence_right :
+test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1857:assume val sign_then_verify : sk:secret_key -> msg:seq UInt8.t
+test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1895:assume val encode_decode_round_trip : pt:ext_point
+test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:2355:assume val distinct_messages_distinct_sigs : sk:secret_key
+test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:628:assume val prime_is_prime : unit -> Lemma (FStar.Math.Euclid.is_prime prime)
+test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:964:assume val group_order_lemma : unit
+test/evidence/formal-proofs/fstar/Spec.SHA256.Refinement.fst:111:assume val sha256_refinement_axiom : msg:seq UInt8.t{Seq.length msg < pow2 61}
+test/evidence/formal-proofs/fstar/Spec.SHA256.Refinement.fst:63:assume val bs_of_seq : seq UInt8.t -> haskell_bytestring
+test/evidence/formal-proofs/fstar/Spec.SHA256.Refinement.fst:64:assume val seq_of_bs : haskell_bytestring -> seq UInt8.t
+test/evidence/formal-proofs/fstar/Spec.SHA256.Refinement.fst:67:assume val bs_seq_roundtrip : s:seq UInt8.t
+test/evidence/formal-proofs/fstar/Spec.SHA256.Refinement.fst:75:assume val seq_of_bs_length_bound : bs:haskell_bytestring
+test/evidence/formal-proofs/fstar/Spec.SHA256.Refinement.fst:80:assume val haskell_sha256 : haskell_bytestring -> haskell_bytestring
+test/evidence/formal-proofs/fstar/Spec.StealthAddress.fst:325:assume val unlinkability
+test/evidence/formal-proofs/fstar/Spec.VRF.fst:209:assume val dleq_correctness :
+test/evidence/formal-proofs/fstar/Spec.VRF.fst:343:assume val vrf_strong_uniqueness : sk:secret_key -> msg:seq UInt8.t
+test/evidence/formal-proofs/fstar/Spec.VRF.fst:425:assume val vrf_collision_resistance : sk:secret_key -> msg1:seq UInt8.t -> msg2:seq UInt8.t
