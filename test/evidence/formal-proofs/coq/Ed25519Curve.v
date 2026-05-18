@@ -159,7 +159,7 @@ Qed.
 
 Lemma basepoint_on_curve : on_curve ed25519_Bx ed25519_By.
 Proof.
-  unfold on_curve. vm_compute. reflexivity.
+  apply on_curve_b_correct. vm_compute. reflexivity.
 Qed.
 
 Lemma basepoint_on_curve_b : on_curve_b ed25519_Bx ed25519_By = true.
