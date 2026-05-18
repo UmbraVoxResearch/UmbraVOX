@@ -1,0 +1,48 @@
+{
+  "schema": "umbravox-differential-primitive-v1",
+  "primitive": "aes-256-gcm",
+  "standard": "NIST SP 800-38D",
+  "oracle_class": "official-vector",
+  "correspondence_scope": {
+    "bit_exact": true,
+    "encoding_in_scope": true,
+    "error_behavior_in_scope": true,
+    "timing_behavior_in_scope": false,
+    "constant_time_claimed": false
+  },
+  "vectors": [
+    {
+      "id": "nist-gcm-tc14",
+      "description": "Test Case 14: AES-256-GCM, 0 bytes plaintext, 0 bytes AAD",
+      "key_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "iv_hex": "000000000000000000000000",
+      "plaintext_hex": "",
+      "aad_hex": "",
+      "ciphertext_hex": "",
+      "tag_hex": "530f8afbc74536b9a963b4f1c4cb738b"
+    },
+    {
+      "id": "nist-gcm-tc16",
+      "description": "Test Case 16: AES-256-GCM, 64 bytes plaintext, 0 bytes AAD",
+      "key_hex": "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308",
+      "iv_hex": "cafebabefacedbaddecaf888",
+      "plaintext_hex": "d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b39",
+      "aad_hex": "",
+      "ciphertext_hex": "522dc1f099567d07f47f37a32a84427d643a8cdcbfe5c0c97598a2bd2555d1aa8cb08e48590dbb3da7b08b1056828838c5f61e6393ba7a0abcc9f662",
+      "tag_hex": "76fc6ece0f4e1768cddf8853bb2d551b"
+    }
+  ],
+  "negative_vectors": [
+    {
+      "id": "nist-gcm-wrong-tag",
+      "description": "Decryption with wrong tag must fail",
+      "key_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "iv_hex": "000000000000000000000000",
+      "ciphertext_hex": "",
+      "aad_hex": "",
+      "tag_hex": "000000000000000000000000deadbeef",
+      "expected_result": "reject",
+      "rejection_boundary": "primitive-wrapper"
+    }
+  ]
+}
