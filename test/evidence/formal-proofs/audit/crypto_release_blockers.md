@@ -1,6 +1,17 @@
 # Crypto Release Blockers
 
-Date: 2026-05-17 | Version: v0.1.3
+Date: 2026-05-17 | Version: v0.1.3+
+
+## CRITICAL — Found by Differential Testing
+
+0. **OPEN** Ed25519 public key derivation produces wrong output
+   - ed25519PublicKey diverges from RFC 8032 Section 7.1 Test 1 at byte 22
+   - Our:  `...daa62325af021a68f707511a`
+   - RFC:  `...daa3f4a18446b0b8d183f8e8`
+   - Sign-then-verify works internally but fails interop
+   - Root cause: likely scalar multiplication or point encoding arithmetic bug
+   - Impact: ALL Ed25519 signatures are non-standard
+   - Status: fix in progress
 
 ## Must-Fix (misleading or false claims)
 
