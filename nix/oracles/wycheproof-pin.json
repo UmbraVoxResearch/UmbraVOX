@@ -1,0 +1,14 @@
+{
+  "name": "Wycheproof",
+  "owner": "google",
+  "repo": "wycheproof",
+  "description": "Google Project Wycheproof — edge-case test vectors for crypto implementations.",
+  "license": "Apache-2.0",
+  "vectors": {
+    "aes_gcm": "~300 vectors (nonce sizes, tag sizes, special GHASH cases)",
+    "ecdh_x25519": "~40 vectors (non-canonical, low-order, twist)",
+    "eddsa_ed25519": "~100 vectors (malleability, small subgroups, special R/S)",
+    "hkdf": "~30 vectors"
+  },
+  "note": "JSON format, loadable at test time without binary dependencies. Vectors specifically target implementation bugs that hand-written edge cases miss."
+}

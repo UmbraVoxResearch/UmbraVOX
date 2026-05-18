@@ -1,0 +1,10 @@
+{
+  "name": "libsignal",
+  "owner": "signalapp",
+  "repo": "libsignal",
+  "rev": "v0.64.1",
+  "description": "Protocol oracle for X3DH, PQXDH, Double Ratchet. NOT used as a primitive oracle.",
+  "audit": "NCC Group 2023",
+  "license": "AGPL-3.0",
+  "note": "Low-level crypto delegates to ring/aws-lc-rs — record actual primitive dependency."
+}
