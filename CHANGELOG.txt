@@ -4,17 +4,33 @@ All notable changes to UmbraVOX are documented in this file.
 
 The format is based on Keep a Changelog 1.1.0 and this project aims to follow Semantic Versioning.
 
-## [0.1.1] — 2026-05-17
+## [0.1.2] — 2026-05-17
 
 ### Fixed
 - VM screenshot/record/visual-regression scripts no longer overwrite build cache symlink
 - vm-tui-scenario.sh uses `find -L` to follow symlinks into persistent cache
-- Screenshot/recording output copied to 9p shared directory for host access
+- make run always local (no VM dependency for TUI launch)
+- Graceful fallback to local build/test/verify when VM image absent
+- VM disk image size increased (2048M headroom for Coq stdlib closure)
+- Ed25519 proof fixes: fmul_assoc, pow_one_local, lemma ordering
+- Coq Ed25519Constants.v: From Stdlib Require (Rocq 9.1.1 compatible)
+- Evidence harness: primality cert timeout + compiled binary detection
+
+### Added
+- F* verification inventory logs (assume-val, admit, per-spec summary)
+- Infrastructure regression suite: 67 tests (up from 56)
+- Coq stdlib in local shell.nix for host-side Coq development
+- Screenshot/recording output copied to 9p shared directory
 
 ### Documentation
-- VM-DEVELOPMENT.md: screenshot/record/visual-regression commands, network policy, SOCKS5 test
-- VM-DEVELOPMENT.md: VM resources auto-scaling documentation
-- Infrastructure regression suite: 65 tests (up from 56)
+- VM-DEVELOPMENT.md: screenshot/record/visual-regression, network policy, SOCKS5
+- F* axiom registry: corrected to 18/24 specs fully proved
+- shell.nix banner: 24 F* specs (was 17)
+
+## [0.1.1] — 2026-05-17
+
+### Fixed
+- VM shutdown waits for dev-init, network policy grep fix
 
 ## [0.1.0] — 2026-05-17
 
