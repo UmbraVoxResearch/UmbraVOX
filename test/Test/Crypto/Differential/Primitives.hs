@@ -28,6 +28,10 @@ import qualified UmbraVox.Crypto.GCM as GCM
 import qualified UmbraVox.Crypto.ChaChaPoly as ChaChaPoly
 import qualified UmbraVox.Crypto.Keccak as Keccak
 import qualified UmbraVox.Crypto.Poly1305 as Poly1305
+import UmbraVox.Crypto.MLKEM
+    ( MLKEMEncapKey(..), MLKEMDecapKey(..), MLKEMCiphertext(..)
+    , mlkemKeyGen, mlkemEncaps, mlkemDecaps
+    )
 
 -- | Run all differential primitive tests.
 -- Returns True if all pass, False if any fail.
@@ -45,6 +49,7 @@ differentialPrimitiveTests = do
         , testChaChaPolyVectors
         , testSHA3Vectors
         , testPoly1305Vectors
+        , testMLKEMVectors
         ]
     let passed = length (filter id results)
         total = length results
@@ -290,3 +295,59 @@ testPoly1305Vectors = do
         tag_expected = hexToBS "a8061dc1305136c6c22b8baf0c0127a9"
     r1 <- check "Poly1305" "rfc8439-s2.5.2" tag_expected (Poly1305.poly1305 key msg)
     return r1
+
+-- ── ML-KEM-768 ─────────────────────────────────────────────────────
+
+testMLKEMVectors :: IO Bool
+testMLKEMVectors = do
+    putStrLn "  [ML-KEM-768] Round-trip, determinism, and size checks"
+
+    -- Deterministic 32-byte seeds
+    let d  = BS.pack [0x01..0x20]  -- keygen seed d (32 bytes)
+        z  = BS.pack [0x21..0x40]  -- keygen seed z (32 bytes)
+        m  = BS.pack [0x41..0x60]  -- encaps message/seed (32 bytes)
+
+    -- ── 1. Round-trip: keygen -> encaps -> decaps, shared secrets match ──
+    let (ek, dk) = mlkemKeyGen d z
+        (ct, ssEncaps) = mlkemEncaps ek m
+        ssDecaps = mlkemDecaps dk ct
+    r1 <- if ssEncaps == ssDecaps
+          then do putStrLn "  PASS: mlkem-roundtrip (ss match)"
+                  return True
+          else do putStrLn "  FAIL: mlkem-roundtrip (ss mismatch)"
+                  putStrLn $ "    encaps ss: " ++ bsToHex ssEncaps
+                  putStrLn $ "    decaps ss: " ++ bsToHex ssDecaps
+                  return False
+
+    -- ── 2. Determinism: same seeds -> identical outputs ──
+    let (ek2, dk2) = mlkemKeyGen d z
+        (ct2, ssEncaps2) = mlkemEncaps ek2 m
+    r2a <- check "ML-KEM" "determinism-ek" (unwrapEK ek) (unwrapEK ek2)
+    r2b <- check "ML-KEM" "determinism-dk" (unwrapDK dk) (unwrapDK dk2)
+    r2c <- check "ML-KEM" "determinism-ct" (unwrapCT ct) (unwrapCT ct2)
+    r2d <- check "ML-KEM" "determinism-ss" ssEncaps ssEncaps2
+
+    -- ── 3. Key/ciphertext/ss size checks ──
+    let ekLen = BS.length (unwrapEK ek)
+        dkLen = BS.length (unwrapDK dk)
+        ctLen = BS.length (unwrapCT ct)
+        ssLen = BS.length ssEncaps
+    r3a <- sizeCheck "ML-KEM" "ek-size" 1184 ekLen
+    r3b <- sizeCheck "ML-KEM" "dk-size" 2400 dkLen
+    r3c <- sizeCheck "ML-KEM" "ct-size" 1088 ctLen
+    r3d <- sizeCheck "ML-KEM" "ss-size" 32 ssLen
+
+    return (and [r1, r2a, r2b, r2c, r2d, r3a, r3b, r3c, r3d])
+  where
+    unwrapEK (MLKEMEncapKey bs) = bs
+    unwrapDK (MLKEMDecapKey bs) = bs
+    unwrapCT (MLKEMCiphertext bs) = bs
+
+    sizeCheck :: String -> String -> Int -> Int -> IO Bool
+    sizeCheck suite name expected actual =
+        if expected == actual
+        then do putStrLn $ "  PASS: " ++ name ++ " (" ++ show actual ++ " bytes)"
+                return True
+        else do putStrLn $ "  FAIL: " ++ name ++ " (expected " ++ show expected
+                            ++ ", got " ++ show actual ++ ")"
+                return False

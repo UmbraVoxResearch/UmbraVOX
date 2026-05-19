@@ -4,14 +4,20 @@
 
 ## Overview
 
-The UmbraVOX F* specifications contain **0 admit() calls** and **28 assume val
-declarations** across 24 specs (17 specs have 0 assume val). 5 Coq files
-provide **187 Qed proofs** (0 Admitted) backing Ed25519 curve, field, scalar,
-prime, and constant properties.
+The UmbraVOX F* specifications contain **0 admit() calls** and **30 assume val
+declarations** across 24 specs (17 specs have 0 assume val). 9 Coq files
+provide **350 Qed proofs** (0 Admitted) backing Ed25519 curve, field, scalar,
+prime, constant, group associativity instances, DLEQ, and sqrt-ratio properties.
+
+**Key v0.1.8 milestones:**
+- `sign_then_verify`: PROVED (was the broadest assume val)
+- `encode_decode_round_trip`: PROVED (sqrt_ratio_correct isolated)
+- 64 concrete associativity instances machine-checked in Coq
+- Sqrt-ratio formula verified for 3 points via Coq vm_compute
 
 This document registers only the **irreducible** axioms — cryptographic hardness
 assumptions, cross-toolchain boundaries, and algebraic facts requiring tools
-beyond Z3. For the complete inventory of all 28 assume vals with categories
+beyond Z3. For the complete inventory of all 30 assume vals with categories
 and dependency analysis, see `test/evidence/formal-proofs/ASSUMPTIONS.md`.
 
 These represent the permanent trust boundary of the formal verification.
@@ -64,22 +70,24 @@ All irreducible axioms have empirical validation paths:
 
 The remaining 18 `assume val` declarations (beyond the 12 irreducible axioms):
 
-1. **Ed25519 algebraic geometry** (8): `point_add_assoc`, `scalar_mult_add`,
+1. **Ed25519 group theory** (8): `point_add_assoc`, `scalar_mult_add`,
    `scalar_mult_compose`, `scalar_mod_L_equiv`, `point_add_congruence_right`,
-   `sign_then_verify`, `encode_decode_round_trip`, `prime_is_prime`. These
-   require algebraic geometry proofs (twisted Edwards group law) beyond Z3's
-   capabilities — discharge path is Coq ring/field tactics.
-2. **Ed25519 group order** (1): `group_order_lemma` — ~2^252 iterations,
-   computationally infeasible in any proof system.
-3. **X25519 curve arithmetic** (7): `fmul_inverse`, `decode_encode_round_trip`,
-   `scalar_mult_zero`, `scalar_mult_one`, `dh_commutativity`,
-   `dh_commutativity_general`, `x25519_zero_u`. Promoted from hidden in-body
-   `assume()` to visible `assume val` for audit transparency. Several could
-   be proved by porting Ed25519 proofs (e.g., fmul_inverse via Fermat).
-4. **Cross-toolchain boundary** (2): `seq_of_bs_length_bound`,
+   `group_order_lemma`, `prime_is_prime` (Ed25519), `sqrt_ratio_correct`.
+   Discharge path: Coq ring/field tactics (group theory), Coq vm_compute
+   (primality, sqrt-ratio).
+   Note: `sign_then_verify` and `encode_decode_round_trip` were PROVED in v0.1.8.
+2. **Ed25519 on-curve preservation** (3): `point_add_preserves_on_curve_ext`,
+   `point_double_preserves_on_curve_ext`, `scalar_mult_preserves_on_curve_ext`.
+   Added in v0.1.8 to prove sign_then_verify. Discharge path: Coq or Fiat-Crypto
+   (HWCD/EFD completeness, degree-8 polynomial identity).
+3. **Ed25519 congruence** (1): `scalar_mult_congruence`.
+   Projective equivalence under scalar_mult. Same complexity as point_add_congruence_right.
+4. **X25519 curve arithmetic** (4): `prime_is_prime` (X25519), `scalar_mult_one`,
+   `dh_commutativity`, `dh_commutativity_general`.
+   Note: `fmul_inverse`, `decode_encode_round_trip`, `scalar_mult_zero`, `x25519_zero_u`
+   were PROVED in v0.1.4-v0.1.5.
+5. **Cross-toolchain boundary** (2): `seq_of_bs_length_bound`,
    `sha256_refinement_axiom` — model the F*/GHC semantic gap.
-
-These are tracked as ongoing work in M13 and do not represent trust boundary items.
 
 ### Dependency Root Analysis
 

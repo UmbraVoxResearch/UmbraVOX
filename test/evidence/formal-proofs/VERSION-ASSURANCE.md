@@ -5,6 +5,37 @@ Tracks what changed, what did NOT change, and how to verify.
 
 ---
 
+## v0.1.8 Assurance Delta
+
+**Theme:** Formal proof breakthroughs — sign_then_verify and encode_decode_round_trip proved
+
+**What changed since v0.1.4:**
+- sign_then_verify: PROVED (was the broadest assume val in the project)
+- encode_decode_round_trip: PROVED (sqrt_ratio_correct isolated as narrow field-arithmetic fact)
+- 9 Coq files, 350 Qed (up from 171): Ed25519GroupAssoc (64 instances), Ed25519SqrtRatio (3 concrete verifications), Ed25519GroupPartial (projective equivalence)
+- ML-KEM-768: confirmed as REAL implementation (not stubs), sampleNTT fix
+- AFL++ fuzzing harnesses: 3 harnesses (GCM, Ed25519, X25519) ready
+- TUI local screenshots: 8/8 captured and validated (R1.4-6 complete)
+- 36/36 differential suites, protocol self-consistency traces
+
+**7 permanently irreducible crypto hardness assumptions:**
+1. tag_forgery_ct_axiom (Poly1305 UF-CMA, Bernstein 2005)
+2. hmac_non_fixpoint (HMAC-SHA256 PRF non-fixpoint, FIPS 198-1)
+3. hmac_collision_resistance (HMAC-SHA256 collision resistance, FIPS 180-4)
+4. distinct_messages_distinct_sigs (Ed25519 SHA-512 CR + DL, RFC 8032)
+5. unlinkability (Stealth address DDH on Curve25519, Bernstein 2006)
+6. vrf_strong_uniqueness (VRF DL hardness, RFC 9381)
+7. vrf_collision_resistance (VRF hash+DL hardness, RFC 9381)
+
+These can never be proved unconditionally in any proof system.
+
+**What this version does NOT claim:**
+- Does not prove universal Ed25519 group law associativity (64 concrete instances, not universal)
+- Does not claim constant-time behavior
+- Does not claim protocol-level interop with libsignal
+
+---
+
 ## v0.1.4 Assurance Delta
 
 **Theme:** Multi-oracle cleanroom differential testing — runtime correspondence evidence
@@ -106,16 +137,19 @@ All issues documented in commit history (`v0.1.1..v0.1.2`).
 
 ## Baseline Counts
 
-| Metric | v0.1.1 | v0.1.2 | v0.1.3 | v0.1.4 |
-|--------|--------|--------|--------|--------|
-| F* `admit()` | 0 | 0 | 0 | 0 |
-| F* `assume val` | 23 | 30 | 28 | 28 |
-| Coq `Qed` | 5 | 153 | 171 | 171 |
-| Coq `Admitted` (verified) | 0 | 0 | 0 | 0 |
-| Infra tests | 65 | 67 | 67 | 67 |
-| Assurance checks | -- | -- | 5/5 | 5/5 |
-| Differential suites | -- | -- | -- | 21/21 |
-| Security fixes from testing | -- | -- | -- | 1 |
+| Metric | v0.1.1 | v0.1.2 | v0.1.3 | v0.1.4 | v0.1.8 |
+|--------|--------|--------|--------|--------|--------|
+| F* `admit()` | 0 | 0 | 0 | 0 | 0 |
+| F* `assume val` | 23 | 30 | 28 | 28 | 30 |
+| Coq `Qed` | 5 | 153 | 171 | 171 | 350 |
+| Coq files | 1 | 3 | 4 | 4 | 9 |
+| Coq `Admitted` (verified) | 0 | 0 | 0 | 0 | 0 |
+| Infra tests | 65 | 67 | 67 | 67 | 67 |
+| Assurance checks | -- | -- | 5/5 | 5/5 | 8/8 |
+| Differential suites | -- | -- | -- | 21/21 | 36/36 |
+| TUI screenshots | -- | -- | -- | -- | 8/8 |
+| Proved theorems | -- | -- | -- | -- | sign_then_verify, encode_decode_round_trip |
+| Irreducible (permanent) | 7 | 7 | 7 | 7 | 7 |
 
 ---
 

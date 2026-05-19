@@ -971,12 +971,389 @@ assume val dh_commutativity_general : a:scalar -> b:scalar -> p:coordinate
 let zero_coordinate : coordinate =
   Seq.create 32 0uy
 
-(** ASSUMED: The all-zero u-coordinate maps to all-zero output because
+(** -------------------------------------------------------------------- **)
+(** Helper lemmas for x25519_zero_u proof                               **)
+(** -------------------------------------------------------------------- **)
+
+(** When u=0, both sz2=0, sz3=0, ladder_step produces nz2=0, nx3=0, nz3=0.
+    This holds regardless of the values of sx2 and sx3, because:
+    - With sz2=0: a = sx2, b = sx2, so aa = bb, e = 0, nz2 = fmul 0 (...) = 0
+    - With sz3=0: c = sx3, d = sx3, da = fmul sx3 sx2, cb = fmul sx3 sx2
+      so da == cb, s = fadd da da = ..., BUT df = fsub da cb = 0
+      nx3 = fsqr s (could be nonzero), nz3 = fmul 0 (fsqr 0) = 0
+    Actually: when sz2=0 AND sz3=0:
+    - c = fadd sx3 0 = sx3, d = fsub sx3 0 = sx3
+    - da = fmul sx3 sx2, cb = fmul sx3 sx2, so da == cb
+    - df = fsub da cb = 0, so nz3 = fmul 0 (fsqr 0) = 0
+    - s = fadd da da, nx3 = fsqr s (could be nonzero)
+    But we also have a = fadd sx2 0 = sx2, b = fsub sx2 0 = sx2
+    - aa = bb, e = 0, nz2 = 0, nx2 = fmul aa bb
+    So the invariant is: nz2 = 0, nz3 = 0.
+    For nx3: da = fmul sx3 sx2, cb = fmul sx3 sx2, s = fadd da cb.
+    Since da == cb, df = 0, but nx3 = fsqr s which is not necessarily 0.
+
+    However we need a STRONGER invariant: x_3 = 0 as well.
+    When sx3 = 0 (and sz2=0, sz3=0):
+    - c = 0, d = 0, da = 0, cb = 0, s = 0, df = 0
+    - nx3 = fsqr 0 = 0, nz3 = fmul 0 0 = 0 *)
+
+(** When u=0 and the swapped state has both z-coordinates zero AND sx3=0,
+    ladder_step preserves x_3=0, z_2=0, z_3=0. *)
+val ladder_step_u_zero_z_zero_no_swap : x_2:felem
+    -> Lemma (let (nx2, nx3, nz2, nz3) = ladder_step 0 (x_2, 0, 0, 0) 0 in
+              nx3 == 0 /\ nz2 == 0 /\ nz3 == 0)
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 40"
+let ladder_step_u_zero_z_zero_no_swap x_2 =
+  (* bit=0 so no swap inside ladder_step: sx2=x_2, sx3=0, sz2=0, sz3=0 *)
+  let a  = fadd x_2 0 in
+  let b  = fsub x_2 0 in
+  fadd_identity x_2;
+  fsub_identity x_2;
+  assert (a == x_2);
+  assert (b == x_2);
+  let aa = fsqr a in
+  let bb = fsqr b in
+  assert (aa == bb);
+  fsub_self aa;
+  let e = fsub aa bb in
+  assert (e == 0);
+  fmul_zero_left (fadd bb (fmul a24 e));
+  (* nz2 = 0 *)
+  (* sx3=0, sz3=0: c=0, d=0 *)
+  let c = fadd 0 0 in
+  let d = fsub 0 0 in
+  fadd_identity 0;
+  fsub_self 0;
+  assert (c == 0);
+  assert (d == 0);
+  fmul_zero_left a;
+  fmul_zero_left b;
+  let da = fmul d a in
+  let cb = fmul c b in
+  assert (da == 0);
+  assert (cb == 0);
+  fadd_identity 0;
+  fsub_self 0;
+  let s = fadd da cb in
+  let df = fsub da cb in
+  assert (s == 0);
+  assert (df == 0);
+  assert (fsqr 0 == 0);
+  fmul_zero_left (fsqr df)
+  (* nx3 = fsqr 0 = 0, nz3 = fmul 0 (fsqr 0) = 0 *)
+#pop-options
+
+(** When u=0 and the swapped state has sx2=0, sz2=0, sz3=0 (from a swap),
+    ladder_step produces nx3=0, nz2=0, nz3=0. *)
+val ladder_step_u_zero_z_zero_swapped : x_3:felem
+    -> Lemma (let (nx2, nx3, nz2, nz3) = ladder_step 0 (0, x_3, 0, 0) 0 in
+              nx3 == 0 /\ nz2 == 0 /\ nz3 == 0)
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 40"
+let ladder_step_u_zero_z_zero_swapped x_3 =
+  (* bit=0: sx2=0, sx3=x_3, sz2=0, sz3=0 *)
+  let a  = fadd 0 0 in
+  let b  = fsub 0 0 in
+  fadd_identity 0;
+  fsub_self 0;
+  assert (a == 0);
+  assert (b == 0);
+  let aa = fsqr 0 in
+  let bb = fsqr 0 in
+  assert (aa == 0);
+  assert (bb == 0);
+  fsub_self 0;
+  let e = fsub aa bb in
+  assert (e == 0);
+  fmul_zero (0);
+  (* nx2 = fmul 0 0 = 0, nz2 = fmul 0 (...) = 0 *)
+  fmul_zero_left (fadd bb (fmul a24 e));
+  (* For x_3, z_3=0 side: *)
+  let c = fadd x_3 0 in
+  let d = fsub x_3 0 in
+  fadd_identity x_3;
+  fsub_identity x_3;
+  assert (c == x_3);
+  assert (d == x_3);
+  fmul_zero x_3;
+  let da = fmul d a in
+  let cb = fmul c b in
+  assert (da == 0);
+  assert (cb == 0);
+  fadd_identity 0;
+  fsub_self 0;
+  let s = fadd da cb in
+  let df = fsub da cb in
+  assert (s == 0);
+  assert (df == 0);
+  assert (fsqr 0 == 0);
+  fmul_zero_left (fsqr df)
+  (* nx3 = 0, nz3 = 0 *)
+#pop-options
+
+(** The first step of the ladder with u=0 from initial state (1, 0, 0, 1)
+    produces x_3=0, z_2=0, z_3=0, regardless of the swap bit.
+
+    Case 1 (no swap): sz2=0 already, so a=1, b=1, aa=bb=1, e=0, nz2=0.
+      c = fadd 0 1 = 1, d = fsub 0 1 = p-1, da = p-1, cb = 1,
+      s = fadd (p-1) 1 = 0, nx3 = 0. nz3 = fmul 0 (...) = 0.
+
+    Case 2 (swap): sx2=0, sx3=1, sz2=1, sz3=0.
+      a = fadd 0 1 = 1, b = fsub 0 1 = p-1, aa = 1, bb = (p-1)^2 mod p = 1.
+      e = 0, nz2 = 0. c = fadd 1 0 = 1, d = fsub 1 0 = 1.
+      da = fmul 1 1 = 1, cb = fmul 1 (p-1) = p-1.
+      s = fadd 1 (p-1) = 0, nx3 = 0. nz3 = fmul 0 (...) = 0. *)
+val ladder_step_u_zero_initial_no_swap : unit
+    -> Lemma (let (nx2, nx3, nz2, nz3) = ladder_step 0 (1, 0, 0, 1) 0 in
+              nx3 == 0 /\ nz2 == 0 /\ nz3 == 0)
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 100"
+let ladder_step_u_zero_initial_no_swap () =
+  (* bit=0: sx2=1, sx3=0, sz2=0, sz3=1 *)
+  let a  = fadd 1 0 in
+  let b  = fsub 1 0 in
+  fadd_identity 1;
+  fsub_identity 1;
+  assert (a == 1);
+  assert (b == 1);
+  let aa = fsqr 1 in
+  let bb = fsqr 1 in
+  fmul_identity 1;
+  assert (aa == 1);
+  assert (bb == 1);
+  fsub_self 1;
+  let e = fsub aa bb in
+  assert (e == 0);
+  fmul_zero_left (fadd bb (fmul a24 e));
+  (* nz2 = 0 *)
+  (* sx3=0, sz3=1: c = fadd 0 1 = 1, d = fsub 0 1 *)
+  let c = fadd 0 1 in
+  let d = fsub 0 1 in
+  assert (c == 1);
+  (* d = (0 - 1 + prime) % prime = prime - 1 *)
+  let da = fmul d a in  (* fmul (p-1) 1 = p-1 *)
+  let cb = fmul c b in  (* fmul 1 1 = 1 *)
+  fmul_identity d;
+  fmul_identity c;
+  assert (da == d);
+  assert (cb == 1);
+  (* s = fadd (p-1) 1 = 0, since (p-1)+1 = p, p mod p = 0 *)
+  let s = fadd da cb in
+  assert (s == fadd d 1);
+  assert (d == (0 - 1 + prime) % prime);
+  assert (d == (prime - 1) % prime);
+  assert (d == prime - 1);
+  assert (fadd (prime - 1) 1 == (prime - 1 + 1) % prime);
+  assert (prime - 1 + 1 == prime);
+  assert (prime % prime == 0);
+  assert (s == 0);
+  assert (fsqr 0 == 0);
+  (* nx3 = fsqr s = 0 *)
+  (* nz3 = fmul 0 (fsqr df) = 0 *)
+  let df = fsub da cb in
+  fmul_zero_left (fsqr df)
+#pop-options
+
+val ladder_step_u_zero_initial_swapped : unit
+    -> Lemma (let (nx2, nx3, nz2, nz3) = ladder_step 0 (0, 1, 1, 0) 0 in
+              nx3 == 0 /\ nz2 == 0 /\ nz3 == 0)
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 100"
+let ladder_step_u_zero_initial_swapped () =
+  (* After swap of (1,0,0,1): sx2=0, sx3=1, sz2=1, sz3=0 *)
+  (* bit=0 in ladder_step: no swap inside *)
+  let a  = fadd 0 1 in
+  let b  = fsub 0 1 in
+  assert (a == 1);
+  assert (b == (0 - 1 + prime) % prime);
+  assert (b == prime - 1);
+  let aa = fsqr a in
+  let bb = fsqr b in
+  fmul_identity 1;
+  assert (aa == 1);
+  (* (p-1)^2 mod p = 1: (p-1)^2 = p^2 - 2p + 1 = p(p-2) + 1, mod p = 1 *)
+  assert (bb == ((prime - 1) * (prime - 1)) % prime);
+  fsub_self aa;
+  (* e = fsub aa bb: need aa == bb *)
+  (* We need to show bb == 1 *)
+  assert ((prime - 1) * (prime - 1) == prime * prime - 2 * prime + 1);
+  FStar.Math.Lemmas.lemma_mod_plus 1 (prime - 2) prime;
+  assert (bb == 1);
+  let e = fsub aa bb in
+  assert (e == 0);
+  fmul_zero_left (fadd bb (fmul a24 e));
+  (* nz2 = 0 *)
+  (* sx3=1, sz3=0: c = fadd 1 0 = 1, d = fsub 1 0 = 1 *)
+  let c = fadd 1 0 in
+  let d = fsub 1 0 in
+  fadd_identity 1;
+  fsub_identity 1;
+  assert (c == 1);
+  assert (d == 1);
+  let da = fmul d a in  (* fmul 1 1 = 1 *)
+  let cb = fmul c b in  (* fmul 1 (p-1) = p-1 *)
+  fmul_identity 1;
+  fmul_identity b;
+  assert (da == 1);
+  assert (cb == prime - 1);
+  let s = fadd da cb in
+  assert (s == fadd 1 (prime - 1));
+  assert (fadd 1 (prime - 1) == (1 + (prime - 1)) % prime);
+  assert (1 + (prime - 1) == prime);
+  assert (prime % prime == 0);
+  assert (s == 0);
+  assert (fsqr 0 == 0);
+  let df = fsub da cb in
+  fmul_zero_left (fsqr df)
+#pop-options
+
+(** After the first ladder step with u=0, the invariant x_3=0, z_2=0, z_3=0
+    holds.  This covers both possible swap directions in the loop. *)
+val ladder_first_step_u_zero : k:nat
+    -> Lemma (let k_t = get_bit k 254 in
+              let swap' = k_t in  (* initial swap=0, so swap' = XOR 0 k_t = k_t *)
+              let (sx2, sx3, sz2, sz3) =
+                if swap' = 1 then (0, 1, 1, 0) else (1, 0, 0, 1) in
+              let (nx2, nx3, nz2, nz3) = ladder_step 0 (sx2, sx3, sz2, sz3) 0 in
+              nx3 == 0 /\ nz2 == 0 /\ nz3 == 0)
+let ladder_first_step_u_zero k =
+  let k_t = get_bit k 254 in
+  if k_t = 1 then ladder_step_u_zero_initial_swapped ()
+  else ladder_step_u_zero_initial_no_swap ()
+
+(** Inductive invariant: when u=0 and (x_3=0, z_2=0, z_3=0), the ladder loop
+    preserves these through all remaining iterations.
+    At the end, z_2=0 and z_3=0, guaranteeing the result is 0. *)
+val ladder_loop_u_zero_inv : k:nat -> t:int -> x_2:felem -> swap:nat{swap <= 1}
+    -> Lemma (ensures (let (_, x3f, z2f, z3f, _) = ladder_loop 0 k t x_2 0 0 0 swap in
+                        x3f == 0 /\ z2f == 0 /\ z3f == 0))
+             (decreases (if t < 0 then 0 else t + 1))
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 60"
+let rec ladder_loop_u_zero_inv k t x_2 swap =
+  if t < 0 then ()
+  else begin
+    let k_t = get_bit k t in
+    let swap' = (if swap = k_t then 0 else 1) in
+    let (sx2, sx3, sz2, sz3) =
+      if swap' = 1 then (0, x_2, 0, 0) else (x_2, 0, 0, 0) in
+    (* In both cases, ladder_step 0 (sx2, 0_or_x2, 0, 0) 0 preserves the invariant *)
+    if swap' = 1 then begin
+      (* sx2=x_3=0, sx3=x_2, sz2=z_3=0, sz3=z_2=0 *)
+      ladder_step_u_zero_z_zero_swapped x_2;
+      let (nx2, nx3, nz2, nz3) = ladder_step 0 (0, x_2, 0, 0) 0 in
+      assert (nx3 == 0 /\ nz2 == 0 /\ nz3 == 0);
+      ladder_loop_u_zero_inv k (t - 1) nx2 k_t
+    end else begin
+      (* sx2=x_2, sx3=x_3=0, sz2=z_2=0, sz3=z_3=0 *)
+      ladder_step_u_zero_z_zero_no_swap x_2;
+      let (nx2, nx3, nz2, nz3) = ladder_step 0 (x_2, 0, 0, 0) 0 in
+      assert (nx3 == 0 /\ nz2 == 0 /\ nz3 == 0);
+      ladder_loop_u_zero_inv k (t - 1) nx2 k_t
+    end
+  end
+#pop-options
+
+(** scalar_mult k 0 == 0 for any scalar k.
+
+    PROVED by showing:
+    1. The first ladder step with u=0 from initial state (1, 0, 0, 1)
+       produces (x_2', 0, 0, 0) regardless of the first bit of k.
+    2. The invariant (x_3=0, z_2=0, z_3=0) is preserved for all subsequent steps.
+    3. At the end, both z_2=0 and z_3=0, so regardless of final swap:
+       fmul xr (finv 0) = fmul xr 0 = 0.
+
+    Proof chain:
+    1. ladder_first_step_u_zero: first step establishes the invariant
+    2. ladder_loop_u_zero_inv: induction preserves it
+    3. finv_zero + fmul_zero: final projection yields 0 *)
+val scalar_mult_u_zero : k:nat -> Lemma (scalar_mult k 0 == 0)
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 80"
+let scalar_mult_u_zero k =
+  let u_fe : felem = 0 % prime in
+  assert (u_fe == 0);
+  (* Initial state: (1, 0, 0, 1), swap=0 *)
+  (* First iteration: t=254 *)
+  let k_254 = get_bit k 254 in
+  let swap' = k_254 in  (* XOR of 0 and k_254 *)
+  let (sx2, sx3, sz2, sz3) =
+    if swap' = 1 then (0, 1, 1, 0) else (1, 0, 0, 1) in
+  ladder_first_step_u_zero k;
+  let (nx2, nx3, nz2, nz3) = ladder_step 0 (sx2, sx3, sz2, sz3) 0 in
+  assert (nx3 == 0 /\ nz2 == 0 /\ nz3 == 0);
+  (* Remaining iterations: t=253 down to 0, invariant holds *)
+  ladder_loop_u_zero_inv k 253 nx2 k_254;
+  let (x_2f, x_3f, z_2f, z_3f, swap_final) = ladder_loop 0 k 253 nx2 0 0 0 k_254 in
+  assert (z_2f == 0 /\ z_3f == 0);
+  (* Final result: regardless of swap_final, zr=0 *)
+  finv_zero ();
+  fmul_zero (if swap_final = 1 then x_3f else x_2f)
+#pop-options
+
+(** decode_le of all-zero bytes is 0 *)
+val decode_le_zero : s:seq UInt8.t{Seq.length s > 0}
+    -> Lemma (requires (forall (i:nat{i < Seq.length s}). Seq.index s i == 0uy))
+             (ensures decode_le s == 0)
+             (decreases (Seq.length s))
+#push-options "--fuel 2 --ifuel 0 --z3rlimit 20"
+let rec decode_le_zero s =
+  assert (UInt8.v (Seq.index s 0) = 0);
+  if Seq.length s = 1 then ()
+  else begin
+    let tl = Seq.tail s in
+    assert (Seq.length tl = Seq.length s - 1);
+    assert (Seq.length tl > 0);
+    let aux (i:nat{i < Seq.length tl}) : Lemma (Seq.index tl i == 0uy) =
+      assert (Seq.index tl i == Seq.index s (i + 1)) in
+    FStar.Classical.forall_intro aux;
+    decode_le_zero tl
+  end
+#pop-options
+
+(** encode_le 0 produces all-zero bytes *)
+val encode_le_zero : unit -> Lemma (encode_le 0 == zero_coordinate)
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 40"
+let encode_le_zero () =
+  let s = encode_le 0 in
+  let z = zero_coordinate in
+  let aux (i:nat{i < 32}) : Lemma (Seq.index s i == 0uy) =
+    assert (Seq.index s i == FStar.UInt8.uint_to_t ((0 / pow2 (8 * i)) % 256));
+    assert (0 / pow2 (8 * i) == 0);
+    assert (0 % 256 == 0)
+  in
+  FStar.Classical.forall_intro aux;
+  let aux2 (i:nat{i < 32}) : Lemma (Seq.index z i == 0uy) =
+    () in
+  FStar.Classical.forall_intro aux2;
+  assert (Seq.equal s z)
+#pop-options
+
+(** PROVED: The all-zero u-coordinate maps to all-zero output because
     scalar multiplication of the point at infinity (u=0) stays at infinity.
-    Requires showing scalar_mult k 0 == 0 for all k, which needs induction
-    over the Montgomery ladder.  Visible to auditing as an assume val. *)
-assume val x25519_zero_u : sk:scalar
+
+    Proof chain:
+    1. decode_le_zero / decode of zero_coordinate: u_raw = 0
+    2. scalar_mult_u_zero: scalar_mult k 0 == 0 for all k
+    3. encode_le_zero: encode_le 0 == zero_coordinate *)
+val x25519_zero_u : sk:scalar
     -> Lemma (x25519 sk zero_coordinate == zero_coordinate)
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 100"
+let x25519_zero_u sk =
+  let clamped = clamp_scalar sk in
+  let k = decode_le clamped in
+  let z = zero_coordinate in
+  (* decode_le of all-zero bytes is 0 *)
+  let aux (i:nat{i < 32}) : Lemma (Seq.index z i == 0uy) = () in
+  FStar.Classical.forall_intro aux;
+  decode_le_zero z;
+  assert (decode_le z == 0);
+  let u_raw = decode_le z in
+  assert (u_raw == 0);
+  let u = u_raw % pow2 255 in
+  assert (u == 0);
+  let u_fe : felem = u % prime in
+  assert (u_fe == 0);
+  scalar_mult_u_zero k;
+  assert (scalar_mult k u_fe == 0);
+  encode_le_zero ();
+  assert (encode_le 0 == zero_coordinate)
+#pop-options
 
 (** -------------------------------------------------------------------- **)
 (** Encoding/decoding consistency                                        **)

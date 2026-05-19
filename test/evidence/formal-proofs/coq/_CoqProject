@@ -4,4 +4,7 @@ Ed25519Prime.v
 Ed25519Field.v
 Ed25519Curve.v
 Ed25519Scalar.v
+Ed25519GroupPartial.v
+Ed25519GroupAssoc.v
+Ed25519SqrtRatio.v
 VRFDLEQ.v

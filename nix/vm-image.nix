@@ -72,36 +72,16 @@ let
   ]);
 
   nixosConfig = { config, lib, modulesPath, pkgs, ... }: {
-    imports = [ (modulesPath + "/profiles/qemu-guest.nix") ];
+    imports = [ ./vm-base.nix ];
 
     boot.loader.grub.device = "/dev/vda";
-    boot.kernelParams = [ "console=ttyS0" "panic=1" ];
+    # QEMU image also loads virtio_scsi (not needed for Firecracker)
     boot.initrd.availableKernelModules = [
       "virtio_pci" "virtio_blk" "virtio_scsi" "virtio_net" "ext4"
     ];
 
-    fileSystems."/" = {
-      device = "/dev/vda1";
-      fsType = "ext4";
-    };
-
-    swapDevices = [];
-    networking.hostName = "umbravox-vm";
-    networking.firewall.enable = false;
-
-    # Serial console — auto-login root
-    systemd.services."serial-getty@ttyS0".enable = true;
-    services.getty.autologinUser = "root";
-
     # All dev tools pre-installed
     environment.systemPackages = devToolsPkgs;
-
-    # Writable workspace (tmpfs, sized for build artifacts)
-    fileSystems."/work" = {
-      device = "tmpfs";
-      fsType = "tmpfs";
-      options = [ "size=8G" "mode=1777" ];
-    };
 
     # Auto-run smoke pipeline on boot, then shut down
     systemd.services.umbravox-smoke = {
@@ -186,25 +166,6 @@ CABALEOF
     environment.etc."umbravox-fstar-cache" = lib.mkIf (fstarCachePath != null) {
       source = fstarCachePath;
     };
-
-    # FHS compatibility for Makefile (SHELL := /bin/bash) and shebangs
-    system.activationScripts.fhsCompat = ''
-      mkdir -p /bin /usr/bin
-      ln -sf /run/current-system/sw/bin/bash /bin/bash
-      ln -sf /run/current-system/sw/bin/sh /bin/sh
-      ln -sf /run/current-system/sw/bin/env /usr/bin/env
-    '';
-
-    # Minimize image size
-    documentation.enable = false;
-    programs.command-not-found.enable = false;
-    services.udisks2.enable = false;
-    security.polkit.enable = false;
-    xdg.mime.enable = false;
-    xdg.icons.enable = false;
-    nix.enable = false;
-
-    system.stateVersion = "25.05";
   };
 
   nixos = import (pkgs.path + "/nixos") {
@@ -217,7 +178,7 @@ CABALEOF
     lib = pkgs.lib;
     config = nixos.config;
     diskSize = "auto";
-    additionalSpace = "2048M";
+    additionalSpace = "4096M";
     format = "raw";
     partitionTableType = "legacy";
     copyChannel = false;
@@ -225,43 +186,18 @@ CABALEOF
 
   # Firecracker-specific NixOS config: no GRUB, rootfs is /dev/vda directly
   firecrackerNixosConfig = { config, lib, modulesPath, pkgs, ... }: {
-    imports = [ (modulesPath + "/profiles/qemu-guest.nix") ];
+    imports = [ ./vm-base.nix ];
 
     boot.loader.grub.enable = false;
     boot.kernelParams = [ "console=ttyS0" "panic=1" "reboot=k" ];
-    boot.initrd.availableKernelModules = [
-      "virtio_pci" "virtio_blk" "virtio_net" "ext4"
-    ];
 
+    # Firecracker rootfs is /dev/vda (no partition table)
     fileSystems."/" = {
       device = "/dev/vda";
       fsType = "ext4";
     };
 
-    swapDevices = [];
-    networking.hostName = "umbravox-vm";
-    networking.firewall.enable = false;
-
-    systemd.services."serial-getty@ttyS0".enable = true;
-    services.getty.autologinUser = "root";
-
     environment.systemPackages = devToolsPkgs;
-
-    fileSystems."/work" = {
-      device = "tmpfs";
-      fsType = "tmpfs";
-      options = [ "size=8G" "mode=1777" ];
-    };
-
-    documentation.enable = false;
-    programs.command-not-found.enable = false;
-    services.udisks2.enable = false;
-    security.polkit.enable = false;
-    xdg.mime.enable = false;
-    xdg.icons.enable = false;
-    nix.enable = false;
-
-    system.stateVersion = "25.05";
   };
 
   firecrackerNixos = import (pkgs.path + "/nixos") {
