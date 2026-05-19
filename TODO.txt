@@ -83,7 +83,7 @@ libsignal = protocol oracle only. Independent oracles for primitives.
   [ ] M18.6.1 Deterministic PRNG (seed 42), 10K vectors/primitive
   [ ] M18.6.2 AFL++ parser fuzzing with oracle-generated seed corpus
   [ ] M18.6.3 Differential parser fuzzing (same input to both, classify differences)
-  [ ] M18.6.4 Metamorphic tests (decrypt(encrypt)=id, verify(sign)=true)
+  [x] M18.6.4 Metamorphic tests (decrypt(encrypt)=id, verify(sign)=true)
 
 [ ] M18.7 UmbraVOX Consumer
   [x] M18.7.1 test/Test/Crypto/Differential/Primitives.hs
@@ -94,7 +94,7 @@ libsignal = protocol oracle only. Independent oracles for primitives.
 
 [ ] M18.8 Evidence Integration
   [ ] M18.8.1 Evidence manifest (JSON, oracle commits, vector counts, pass/fail)
-  [ ] M18.8.2 Update ASSURANCE-MATRIX.md with differential columns
+  [x] M18.8.2 Update ASSURANCE-MATRIX.md with differential columns
   [ ] M18.8.3 Update VERSION-ASSURANCE.md for v0.1.4
   [ ] M18.8.4 Update check-external-evidence.sh for differential evidence
 
