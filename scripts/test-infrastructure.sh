@@ -90,7 +90,7 @@ if command -v nix-shell >/dev/null 2>&1; then
     else
         check "shell-minimal.nix provides qemu-system-x86_64" "FAIL"
     fi
-    if nix-shell shell-minimal.nix --run "command -v ghc" >/dev/null 2>&1; then
+    if nix-shell --pure shell-minimal.nix --run "command -v ghc" >/dev/null 2>&1; then
         check "shell-minimal.nix does NOT provide ghc" "FAIL (ghc found)"
     else
         check "shell-minimal.nix does NOT provide ghc" "PASS"

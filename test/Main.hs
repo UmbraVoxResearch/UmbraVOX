@@ -30,6 +30,8 @@ import qualified Test.Crypto.Differential as Differential
 import qualified Test.Crypto.Differential.Primitives as DiffPrimitives
 import qualified Test.Crypto.Differential.Negative as DiffNegative
 import qualified Test.Crypto.Differential.Metamorphic as DiffMetamorphic
+import qualified Test.Crypto.Differential.Fuzz as DiffFuzz
+import qualified Test.Crypto.Differential.ProtocolSelfConsistency as DiffProtocolSC
 import qualified Test.Crypto.Ed25519 as Ed25519
 import qualified Test.Crypto.Export as Export
 import qualified Test.Crypto.GCM as GCM
@@ -237,6 +239,8 @@ runSuiteArg suiteArg =
             [ Suite "differential-primitives" DiffPrimitives.differentialPrimitiveTests
             , Suite "differential-negative" DiffNegative.differentialNegativeTests
             , Suite "differential-metamorphic" DiffMetamorphic.metamorphicTests
+            , Suite "differential-fuzz" DiffFuzz.fuzzTests
+            , Suite "differential-protocol-sc" DiffProtocolSC.protocolSelfConsistencyTests
             ]
         "unicode" -> runSuiteGroup "UmbraVox Unicode Exhaustive Suite"
             [Suite "unicode" Unicode.runTests]

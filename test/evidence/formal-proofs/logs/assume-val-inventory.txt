@@ -6,9 +6,12 @@ test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1641:assume val scalar_mult_a
 test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1669:assume val scalar_mult_compose : a:nat -> b:nat -> p:ext_point
 test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1720:assume val scalar_mod_L_equiv : n:nat
 test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1744:assume val point_add_congruence_right :
-test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1857:assume val sign_then_verify : sk:secret_key -> msg:seq UInt8.t
-test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1901:assume val encode_decode_round_trip : pt:ext_point
-test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:2363:assume val distinct_messages_distinct_sigs : sk:secret_key
+test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:2190:assume val scalar_mult_congruence : k:nat -> p1:ext_point -> p2:ext_point
+test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:2659:assume val sqrt_ratio_correct : u:felem -> v:felem{v <> 0}
+test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:2799:assume val point_add_preserves_on_curve_ext :
+test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:2817:assume val point_double_preserves_on_curve_ext :
+test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:2847:assume val scalar_mult_preserves_on_curve_ext : n:nat -> pt:ext_point
+test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:3366:assume val distinct_messages_distinct_sigs : sk:secret_key
 test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:628:assume val prime_is_prime : unit -> Lemma (FStar.Math.Euclid.is_prime prime)
 test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:964:assume val group_order_lemma : unit
 test/evidence/formal-proofs/fstar/Spec.SHA256.Refinement.fst:111:assume val sha256_refinement_axiom : msg:seq UInt8.t{Seq.length msg < pow2 61}
@@ -25,4 +28,3 @@ test/evidence/formal-proofs/fstar/Spec.X25519.fst:199:assume val prime_is_prime 
 test/evidence/formal-proofs/fstar/Spec.X25519.fst:784:assume val scalar_mult_one : u:felem{u > 0}
 test/evidence/formal-proofs/fstar/Spec.X25519.fst:945:assume val dh_commutativity : a:scalar -> b:scalar
 test/evidence/formal-proofs/fstar/Spec.X25519.fst:960:assume val dh_commutativity_general : a:scalar -> b:scalar -> p:coordinate
-test/evidence/formal-proofs/fstar/Spec.X25519.fst:978:assume val x25519_zero_u : sk:scalar

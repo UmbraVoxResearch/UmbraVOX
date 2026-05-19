@@ -1,0 +1,27 @@
+[package]
+name = "primitive-oracle"
+version = "0.1.0"
+edition = "2021"
+description = "Multi-oracle crypto primitive test vector generator for UmbraVOX differential testing"
+
+# This crate is built ONLY inside the primitive-oracle VM (nix/vm-primitive-oracle-suite.nix).
+# It wraps multiple independent crypto libraries and generates JSON test vectors.
+# It is NOT linked into UmbraVOX runtime.
+
+[dependencies]
+# RustCrypto crates (independent implementations)
+sha2 = "0.10"
+hmac = "0.12"
+hkdf = "0.12"
+aes-gcm = "0.10"
+chacha20poly1305 = "0.10"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hex = "0.4"
+
+# CLI
+clap = { version = "4", features = ["derive"] }

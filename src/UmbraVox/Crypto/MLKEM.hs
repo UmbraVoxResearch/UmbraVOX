@@ -31,7 +31,7 @@ import Control.Monad (forM_)
 import Control.Monad.ST (ST, runST)
 import Data.Array (Array, listArray, (!), elems, array)
 import Data.Array.ST (STUArray, newListArray, readArray, writeArray, freeze)
-import Data.Bits ((.&.), (.|.), shiftL, shiftR, testBit, xor)
+import Data.Bits ((.&.), (.|.), shiftL, shiftR, testBit)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Int (Int16)
@@ -326,17 +326,26 @@ sampleCBD eta bs =
 -- Uses SHAKE-128 as the XOF per FIPS 203.
 sampleNTT :: ByteString -> Poly
 sampleNTT seed =
-    let coeffs = sampleLoop seed 0 [] 672
+    let -- Generate a large SHAKE-128 stream upfront.  672 bytes yields ~364
+        -- expected accepted coefficients (acceptance rate ≈ 81.3%), which is
+        -- well above 256.  Use 840 bytes (~95% CDF margin) so we almost
+        -- never need a retry, and 1680 bytes as a fallback.
+        coeffs = sampleLoop seed 0 [] 840 0
     in Poly (listArray (0, _N - 1) coeffs)
   where
-    sampleLoop :: ByteString -> Int -> [Int16] -> Int -> [Int16]
-    sampleLoop sd n acc streamLen
+    sampleLoop :: ByteString -> Int -> [Int16] -> Int -> Int -> [Int16]
+    sampleLoop sd n acc streamLen consumed
         | n >= 256 = take 256 (reverse acc)
         | otherwise =
-            let stream = BS.unpack (shake128 sd streamLen)
+            let fullStream = BS.unpack (shake128 sd streamLen)
+                -- Skip bytes already processed in previous iterations
+                stream = drop consumed fullStream
                 (n', acc') = rejection stream n acc
+                -- All bytes in the current stream have been consumed
+                consumed' = streamLen
             in if n' >= 256 then take 256 (reverse acc')
-               else sampleLoop sd n' acc' (streamLen * 2)
+               -- Double the stream length and continue from where we left off
+               else sampleLoop sd n' acc' (streamLen * 2) consumed'
     rejection :: [Word8] -> Int -> [Int16] -> (Int, [Int16])
     rejection _ 256 acc = (256, acc)
     rejection (b0:b1:b2:rest) n acc =

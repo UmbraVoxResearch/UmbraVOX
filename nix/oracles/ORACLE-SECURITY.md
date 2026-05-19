@@ -96,3 +96,46 @@ testing, we review its security posture. This file documents the review.
 
 All oracle dependencies are TEST-ONLY. None are linked into the UmbraVOX
 runtime binary unless explicitly approved.
+
+## CVE Review for Tested Primitives
+
+| Oracle | Relevant CVEs | Affects our usage? | Status |
+|--------|--------------|-------------------|--------|
+| HACL* | None known | N/A | Clean |
+| libsodium | CVE-2019-6978 (hex encoding heap overflow) | No (crypto primitives unaffected) | Clean |
+| BoringSSL | Inherits OpenSSL history; actively patched | Pin to recent commit | Pin required |
+| Monocypher | None known | N/A | Clean |
+| libsignal | None known for protocol logic | N/A | Clean |
+| PQClean | None known | N/A | Clean |
+| liboqs | OQS-2023-01 (side-channel in Kyber reference) | No (we test correctness, not timing) | Clean for our usage |
+| RustCrypto | Various per-crate; pin to post-fix versions | Check per crate | Pin required |
+
+**Review date**: 2026-05-19
+**Next review**: Before each major oracle version bump.
+
+## Pin Requirements
+
+All oracle pins MUST:
+1. Use exact commit SHA (not branch name or floating tag)
+2. Include content hash (SHA-256 or Nix SRI hash) for reproducibility
+3. Be recorded in `nix/oracles/*.json` with `rev` and `hash` fields
+4. Resolve to fixed-output Nix derivations (deterministic builds)
+5. Be updated only via explicit commit with changelog entry
+
+Current pin status:
+
+| Oracle | Pinned? | Hash verified? | Notes |
+|--------|---------|---------------|-------|
+| HACL* | Tag (main) | No (needs SHA) | Pending: pin to specific commit |
+| libsodium | Version 1.0.20 | No (needs SHA) | Pending: add Nix fetchurl hash |
+| BoringSSL | Branch (master) | No (needs SHA) | Pending: pin to specific commit |
+| Monocypher | Version 4.0.2 | No (needs SHA) | Pending: add Nix fetchurl hash |
+| libsignal | Tag v0.64.1 | No (needs SHA) | Pending: pin to specific commit |
+| PQClean | Branch (main) | No (needs SHA) | Pending: pin to specific commit |
+| liboqs | Branch (main) | No (needs SHA) | Pending: pin to specific commit |
+| RustCrypto | crates.io via Cargo.lock | Yes (Cargo.lock) | Locked by cargo |
+| Wycheproof | Repository | No (needs SHA) | Pending: pin to specific commit |
+
+**Action items**: When oracle VMs are built, each pin file must be updated
+with exact `rev` (commit SHA) and `hash` (Nix SRI hash from `nix-prefetch-url`
+or `nix-prefetch-git`).
