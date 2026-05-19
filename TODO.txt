@@ -77,7 +77,7 @@ libsignal = protocol oracle only. Independent oracles for primitives.
   [x] M18.5.3 X25519: all-zero, low-order, non-canonical encodings
   [ ] M18.5.4 ML-KEM: malformed ek/dk, coefficients >= q, truncated
   [ ] M18.5.5 Protocol: stale prekeys, replay, corrupted headers, downgrade, state rollback
-  [ ] M18.5.6 Define rejection boundary per test (parser/decoder/primitive/protocol/policy)
+  [x] M18.5.6 Define rejection boundary per test (parser/decoder/primitive/protocol/policy)
 
 [ ] M18.6 Fuzzing
   [ ] M18.6.1 Deterministic PRNG (seed 42), 10K vectors/primitive
@@ -90,16 +90,16 @@ libsignal = protocol oracle only. Independent oracles for primitives.
   [ ] M18.7.2 test/Test/Crypto/Differential/ProtocolLibsignal.hs
   [x] M18.7.3 test/Test/Crypto/Differential/Negative.hs
   [ ] M18.7.4 test/Test/Crypto/Differential/Fuzz.hs
-  [ ] M18.7.5 test/Test/Crypto/Differential/Evidence.hs
+  [x] M18.7.5 test/Test/Crypto/Differential/Evidence.hs
 
 [ ] M18.8 Evidence Integration
   [ ] M18.8.1 Evidence manifest (JSON, oracle commits, vector counts, pass/fail)
   [x] M18.8.2 Update ASSURANCE-MATRIX.md with differential columns
-  [ ] M18.8.3 Update VERSION-ASSURANCE.md for v0.1.4
+  [x] M18.8.3 Update VERSION-ASSURANCE.md for v0.1.4
   [ ] M18.8.4 Update check-external-evidence.sh for differential evidence
 
 [ ] M18.9 Tiered CI
-  [ ] M18.9.1 Tier 1 (every push, <90s): local KATs + Wycheproof (make test-differential)
+  [x] M18.9.1 Tier 1 (every push, <90s): local KATs + Wycheproof (make test-differential)
   [ ] M18.9.2 Tier 2 (nightly, <10min): VM + 10K vectors (make test-differential-full)
   [ ] M18.9.3 Tier 3 (weekly, <2hr): AFL++ + protocol traces (make fuzz-differential)
 

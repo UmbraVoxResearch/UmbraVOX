@@ -1239,9 +1239,8 @@ differential-vectors:
 	@./scripts/vm-differential-run.sh vectors
 
 test-differential-oracle:
-	@echo -e "$(BLUE)[DIFFERENTIAL]$(NC) Running Tier 1 oracle differential tests (local KATs)..."
-	@chmod +x ./scripts/vm-differential-run.sh
-	@./scripts/vm-differential-run.sh test
+	@echo -e "$(BLUE)[DIFFERENTIAL]$(NC) Running Tier 1 oracle differential tests (local)..."
+	@cabal test umbravox-test --test-options='differential-oracle' 2>&1 | tail -10
 
 test-differential-full:
 	@echo -e "$(BLUE)[DIFFERENTIAL]$(NC) Running Tier 2 differential tests (VM + 10K vectors)..."

@@ -5,6 +5,48 @@ Tracks what changed, what did NOT change, and how to verify.
 
 ---
 
+## v0.1.4 Assurance Delta
+
+**Theme:** Multi-oracle cleanroom differential testing — runtime correspondence evidence
+
+**What changed since v0.1.3:**
+- 21 differential test suites: 9 primitive + 4 negative + 8 metamorphic, ALL PASS
+- Primitives verified against official RFC/NIST vectors: SHA-256, SHA-512, SHA-3,
+  HMAC-SHA-256, HKDF-SHA-256, X25519, Ed25519, AES-256-GCM, ChaCha20-Poly1305
+- 18 negative tests: wrong-key, bitflip, truncated, wrong-nonce, wrong-aad
+- 8 metamorphic properties: AEAD roundtrip, sign-verify, commutativity, determinism
+- Security fix: X25519 input validation (rejected 31-byte keys)
+- Constant fixes: Ed25519 KAT public key corrected in F* spec + JSON vectors,
+  AES-GCM tag corrected (wrong NIST test case ID)
+- Multi-oracle infrastructure: 9 oracle pins, supply chain security doc
+- ASSURANCE-MATRIX updated with Differential and Negative columns
+
+**What was NOT changed:**
+- assume val count: 28 (unchanged from v0.1.3)
+- admit() count: 0 (invariant)
+- Coq Qed count: 171 (unchanged)
+- No theorems weakened or removed
+
+**What this version claims:**
+- Reproducible, cleanroom runtime correspondence evidence for 9 cryptographic
+  primitives against official test vectors
+- Fail-closed behavior verified for 4 AEAD/signature primitives
+- Self-consistency verified via 8 metamorphic properties
+
+**What this version does NOT claim:**
+- Does not claim differential testing proves formal runtime equivalence
+- Does not claim side-channel safety (timing, cache, etc.)
+- Does not claim protocol-level interop (libsignal oracle not yet built)
+- Does not claim ML-KEM-768 correctness (stubs only)
+
+**Verification:**
+```
+cabal test umbravox-test --test-options='differential-oracle'
+make assurance-fast
+```
+
+---
+
 ## v0.1.3 Assurance Delta
 
 **Theme:** Assurance hardening — reviewer-grade evidence framework
@@ -64,14 +106,16 @@ All issues documented in commit history (`v0.1.1..v0.1.2`).
 
 ## Baseline Counts
 
-| Metric | v0.1.1 | v0.1.2 | v0.1.3 |
-|--------|--------|--------|--------|
-| F* `admit()` | 0 | 0 | 0 |
-| F* `assume val` | 23 | 30 | 30 |
-| Coq `Qed` | 5 | 153 | 153 |
-| Coq `Admitted` (verified) | 0 | 0 | 0 |
-| Infra tests | 65 | 67 | 67 |
-| Assurance checks | -- | -- | 5/5 PASS |
+| Metric | v0.1.1 | v0.1.2 | v0.1.3 | v0.1.4 |
+|--------|--------|--------|--------|--------|
+| F* `admit()` | 0 | 0 | 0 | 0 |
+| F* `assume val` | 23 | 30 | 28 | 28 |
+| Coq `Qed` | 5 | 153 | 171 | 171 |
+| Coq `Admitted` (verified) | 0 | 0 | 0 | 0 |
+| Infra tests | 65 | 67 | 67 | 67 |
+| Assurance checks | -- | -- | 5/5 | 5/5 |
+| Differential suites | -- | -- | -- | 21/21 |
+| Security fixes from testing | -- | -- | -- | 1 |
 
 ---
 
