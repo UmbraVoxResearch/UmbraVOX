@@ -8,6 +8,23 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 
 (No unreleased changes.)
 
+## [0.1.5] — 2026-05-18
+
+### Formal Verification
+- Coq Ed25519Scalar.v: 16 Qed proofs for scalar_fmul exponentiation (add, compose, range, successor, squaring, fixed points); backs F* scalar_mult_add and scalar_mult_compose
+- 5 Coq files total: 187 Qed, 0 Admitted
+
+### Differential Testing
+- 22 differential suites (10 primitive + 4 negative + 8 metamorphic), ALL PASS
+- Ed25519 Test 2 added: full pubkey derivation + sign + verify against RFC 8032
+- Ed25519 malleability tests: S-malleability, non-canonical S, zero-R, identity-R — all correctly rejected
+- Poly1305 RFC 8439 vector added to primitive suite
+- HKDF TC3 (zero-length salt) added to primitive suite
+
+### Fixed
+- Ed25519 Test 2 signature corrected (wrong hex from RFC)
+- Stale timestamped log files cleaned up; .gitignore added for logs directory
+
 ## [0.1.4] — 2026-05-18
 
 ### Multi-Oracle Differential Testing
@@ -204,11 +221,11 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - Added boundary/edge case differential tests (empty input, pad boundaries, block boundaries, AES roundtrip) (M6.2.4).
 - Added HACL* adoption evaluation (`doc/hacl-evaluation.md`) with coverage assessment and correspondence argument (M6.3.5, M6.3.6).
 - Added differential test harness (`Test.Crypto.Differential`) comparing C/FFI output against Haskell oracle for all 10 primitives with NIST/RFC test vectors and property-based fuzzing (M6.2).
-- Added F* assume reduction plan (`doc/fstar-assume-reduction.md`) categorizing 217 assumes across 17 specs with prioritized reduction strategy (M6.3.2).
+- Added F* assume reduction plan (`doc/attic/fstar-assume-reduction.md`) categorizing 217 assumes across 17 specs with prioritized reduction strategy (M6.3.2).
 - Added real UDP transport with sequence-number reliability layer (F4.1).
 - Added SOCKS5 proxy transport for TCP-over-Tor connectivity (F4.3).
 - Added transport provider plugin documentation (`doc/transport-providers.md`) covering manifest format, TransportHandle interface, plugin host modes, and provider lifecycle (F4.2).
-- Added KaRaMeL/Low* extraction evaluation document (`doc/karamel-evaluation.md`) assessing extractability of all 17 F* specs (F3.1).
+- Added KaRaMeL/Low* extraction evaluation document (`doc/attic/karamel-evaluation.md`) assessing extractability of all 17 F* specs (F3.1).
 - Added arm64 NixOS VM image stub (`nix/vm-image-aarch64.nix`) for cross-architecture testing via QEMU system emulation (M5.5.1).
 - Added cross-architecture test matrix documentation in `doc/runner-classes.md` (M5.5.2).
 - Added TAP+bridge dual-LAN network setup script (`scripts/vm-network-setup.sh`) for privileged integration testing with pcap capture (M5.3.3).
@@ -299,14 +316,15 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - Added app-layer AEAD storage encryption module for persistent message content and conversation name confidentiality at rest (AES-256-GCM with HKDF-derived keys).
 - Strengthened session restore safety boundaries to avoid local loopback/self-delivery risk after persistence restore.
 - Tightened logging assurance posture through redaction/scope controls and separation of pre-auth transport arrival vs trusted session establishment semantics.
-- Restored full green formal verification gate (17 F* specs) and retained verification as a hard quality gate.
+- Restored full green formal verification gate (24 F* specs) and retained verification as a hard quality gate.
 
 ## [0.0.6] - 2026-05-08
 
 ### Added
 - Tagged release baseline `v0.0.6` and stabilized active MVP hardening branch state.
 
-[Unreleased]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.2...v0.1.4
 [0.1.3]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.2...v0.1.4
 [0.1.2]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.1...v0.1.2
