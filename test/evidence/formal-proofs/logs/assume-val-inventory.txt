@@ -1,6 +1,6 @@
 test/evidence/formal-proofs/fstar/Spec.ChaChaPoly.fst:228:assume val tag_forgery_ct_axiom
-test/evidence/formal-proofs/fstar/Spec.DoubleRatchet.fst:105:assume val hmac_non_fixpoint :
-test/evidence/formal-proofs/fstar/Spec.DoubleRatchet.fst:136:assume val hmac_collision_resistance :
+test/evidence/formal-proofs/fstar/Spec.DoubleRatchet.fst:111:assume val hmac_non_fixpoint :
+test/evidence/formal-proofs/fstar/Spec.DoubleRatchet.fst:142:assume val hmac_collision_resistance :
 test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1319:assume val point_add_assoc : p:ext_point -> q:ext_point -> r:ext_point
 test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1641:assume val scalar_mult_add : a:nat -> b:nat -> p:ext_point
 test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1669:assume val scalar_mult_compose : a:nat -> b:nat -> p:ext_point
@@ -8,7 +8,7 @@ test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1720:assume val scalar_mod_L_
 test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1744:assume val point_add_congruence_right :
 test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1857:assume val sign_then_verify : sk:secret_key -> msg:seq UInt8.t
 test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:1901:assume val encode_decode_round_trip : pt:ext_point
-test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:2362:assume val distinct_messages_distinct_sigs : sk:secret_key
+test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:2363:assume val distinct_messages_distinct_sigs : sk:secret_key
 test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:628:assume val prime_is_prime : unit -> Lemma (FStar.Math.Euclid.is_prime prime)
 test/evidence/formal-proofs/fstar/Spec.Ed25519.fst:964:assume val group_order_lemma : unit
 test/evidence/formal-proofs/fstar/Spec.SHA256.Refinement.fst:111:assume val sha256_refinement_axiom : msg:seq UInt8.t{Seq.length msg < pow2 61}

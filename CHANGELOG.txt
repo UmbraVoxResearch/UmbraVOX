@@ -4,6 +4,34 @@ All notable changes to UmbraVOX are documented in this file.
 
 The format is based on Keep a Changelog 1.1.0 and this project aims to follow Semantic Versioning.
 
+## [0.1.4] — 2026-05-18
+
+### Multi-Oracle Differential Testing
+- 21 test suites (9 primitive + 4 negative + 8 metamorphic), ALL PASS
+- Primitives verified: SHA-256, SHA-512, SHA-3, HMAC, HKDF, X25519, Ed25519, AES-GCM, ChaCha20-Poly1305
+- 18 negative tests: wrong-key, bitflip, truncated, wrong-nonce/aad rejection
+- 8 metamorphic properties: AEAD roundtrip, sign-verify, commutativity, determinism, avalanche
+- Multi-oracle infrastructure: 9 oracle pins, supply chain security doc, orchestration script
+
+### Security
+- X25519 input validation: reject wrong-length keys (was accepting 31-byte pubkeys)
+
+### Fixed
+- Ed25519 KAT public key corrected in F* spec and JSON vectors (verified against RFC 8032 text + nacl)
+- AES-GCM TC16 tag corrected (wrong NIST test case ID, verified against Python cryptography)
+- Ed25519.hs debug code removed (35 lines of trace instrumentation from prior session)
+
+### Added
+- test/Test/Crypto/Differential/Primitives.hs: 9 primitive suites against RFC/NIST vectors
+- test/Test/Crypto/Differential/Negative.hs: 4 fail-closed suites (18 rejection checks)
+- test/Test/Crypto/Differential/Metamorphic.hs: 8 self-consistency property suites
+- test/Test/Crypto/Differential/Evidence.hs: structured manifest generation
+- test/vectors/rfc/: 7 official vector files (SHA-256, SHA-512, HMAC, HKDF, X25519, Ed25519, AES-GCM, ChaCha20-Poly1305)
+- make test-differential-oracle: Tier 1 local differential tests
+- VERSION-ASSURANCE.md updated with v0.1.4 delta and baseline counts
+- ASSURANCE-MATRIX.md: Differential and Negative columns added
+- Project charter (doc/PROJECT-CHARTER.md)
+
 ## [0.1.3] — 2026-05-18
 
 ### Assurance Hardening
