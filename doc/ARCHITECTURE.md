@@ -85,6 +85,21 @@ Set `UMBRAVOX_LOCAL=1` to bypass the VM and run locally using the full
 - `Runtime/Headless` — terminal-independent runtime for VM/integration testing.
 - `Tools/` contains quality-gate helpers including F* verification, release orchestration, and VM smoke testing.
 
+## Differential Testing
+
+Multi-oracle differential testing validates that the active Haskell crypto
+implementations produce correct output for all supported primitives:
+
+- 10 primitive suites test against RFC/NIST vectors (SHA-256, SHA-512, SHA-3,
+  HMAC, HKDF, X25519, Ed25519, AES-GCM, ChaCha20-Poly1305, Poly1305).
+- 4 negative suites verify fail-closed rejection (wrong key, bitflip,
+  truncated ciphertext, Ed25519 malleability).
+- 8 metamorphic suites check self-consistency properties (AEAD roundtrip,
+  sign-verify, commutativity, determinism, avalanche).
+
+All 22 suites are part of `make test-differential` (Tier 1, <90s) and are
+wired into the required test gate via `coreCryptoSuites`.
+
 ## Test Architecture
 
 - `test/Main.hs` exposes tiered suite entrypoints.

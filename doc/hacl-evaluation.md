@@ -217,7 +217,7 @@ Provenance" and in the "Assumption gaps" column of the Primitive Matrix.
    primitives, prove them equivalent to the existing F* specs via
    refinement lemmas, and extract them to C via KaRaMeL. This replaces
    the `.spec` to C path entirely with a machine-checked F* to C path.
-   See `doc/karamel-evaluation.md` for the full cost/benefit analysis;
+   See `doc/attic/karamel-evaluation.md` for the full cost/benefit analysis;
    estimated effort is 35-63 person-weeks from scratch or 12-17 weeks
    partial via HACL* adoption.
 

@@ -4,8 +4,9 @@ This file is a reference index only. All authoritative project information lives
 
 ## Project Status
 
-MVP is functional. The fast messaging gate is green. 17 F* formal
-specifications are present, and the current full `make verify` run is green.
+MVP is functional. The fast messaging gate is green. 24 F* formal
+specifications are present (0 admit, 28 assume val), and the current full
+`make verify` run is green. 5 Coq files provide 187 Qed proofs (0 Admitted).
 10 `.spec` files generate 30 Haskell + C + FFI outputs.
 
 Current assurance model:

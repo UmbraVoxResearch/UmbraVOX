@@ -4,14 +4,14 @@
 
 ## Overview
 
-The UmbraVOX F* specifications contain **0 admit() calls** and **30 assume val
-declarations** across 24 specs (17 specs have 0 assume val). The increase
-from 23 to 30 reflects 7 hidden in-body `assume()` calls in Spec.X25519
-that were promoted to visible `assume val` for audit transparency.
+The UmbraVOX F* specifications contain **0 admit() calls** and **28 assume val
+declarations** across 24 specs (17 specs have 0 assume val). 5 Coq files
+provide **187 Qed proofs** (0 Admitted) backing Ed25519 curve, field, scalar,
+prime, and constant properties.
 
 This document registers only the **irreducible** axioms — cryptographic hardness
 assumptions, cross-toolchain boundaries, and algebraic facts requiring tools
-beyond Z3. For the complete inventory of all 23 assume vals with categories
+beyond Z3. For the complete inventory of all 28 assume vals with categories
 and dependency analysis, see `test/evidence/formal-proofs/ASSUMPTIONS.md`.
 
 These represent the permanent trust boundary of the formal verification.

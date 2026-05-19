@@ -209,7 +209,7 @@ F2 Prefs -> Settings
 * Default port sequence beginning at 7853
 * Identity persistence across restart for the local node
 * Tiered hardening harness: core, TCP, fault, recovery, deferred, soak
-* 17 F* formal verification specs
+* 24 F* formal verification specs (0 admit, 28 assume val) + 187 Coq Qed
 * Explicit distinction between active MVP code and deferred research code
 
 ## Keyboard
@@ -368,10 +368,12 @@ active assurance claim.
 * The F* layer is handwritten, not generated from NIST or RFC text. Its role
   is to formalize and verify algorithm properties against the intended
   standards.
-* 17 F* specifications are present, and the current full `make verify` run is
-  green under the active toolchain. That means the handwritten formal model
-  suite is internally consistent again. It does not by itself prove that the
-  active Haskell implementation refines those models.
+* 24 F* specifications are present (0 admit, 28 assume val), and the current
+  full `make verify` run is green under the active toolchain. 5 Coq files
+  provide 187 Qed proofs (0 Admitted) backing Ed25519 curve/field/scalar
+  properties. That means the handwritten formal model suite is internally
+  consistent. It does not by itself prove that the active Haskell
+  implementation refines those models.
 
 What this means in practice:
 
