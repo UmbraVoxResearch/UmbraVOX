@@ -1,0 +1,3 @@
+# Keep only the canonical inventory files, ignore timestamped copies
+assume-val-inventory-*.txt
+assurance-fast-*.log

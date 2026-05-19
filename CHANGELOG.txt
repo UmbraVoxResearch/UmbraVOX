@@ -4,6 +4,10 @@ All notable changes to UmbraVOX are documented in this file.
 
 The format is based on Keep a Changelog 1.1.0 and this project aims to follow Semantic Versioning.
 
+## [Unreleased]
+
+(No unreleased changes.)
+
 ## [0.1.4] — 2026-05-18
 
 ### Multi-Oracle Differential Testing
@@ -54,10 +58,15 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 ### Added
 - Coq Ed25519Prime.v: Pocklington certificate, Fermat witnesses, verified checker (94 Qed, 0 Admitted)
 - Coq Ed25519Field.v: field operations and basic properties (54 Qed, 0 Admitted)
+- Coq Ed25519Curve.v: curve equation, d non-square, basepoint on-curve (builds on host)
 - Coq headers hardened with proper module documentation
 - Ed25519GroupLaw.v moved to coq/draft/ (has Admitted — proof skeleton only)
+- F* X25519: decode_encode_round_trip + scalar_mult_zero proved, fmul_inverse proved (28 assume val)
 - ASSUMPTIONS.md updated with 7 X25519 entries (30 total assume vals)
 - Assume val inventory logs with timestamps
+- Full crypto-assurance audit across all 24 F* specs + 4 Coq files
+- SHA-512 K-constant verification + protocol stub warnings documented
+- Assurance scorecard and release blockers documented
 
 ### Documentation
 - QUICKSTART notes on graceful local fallback when VM image absent
@@ -88,8 +97,20 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 
 ## [0.1.1] — 2026-05-17
 
+### Security
+- VM network policy — host-side firewall config for dev VMs
+
+### Added
+- Coq stdlib in VM image for in-guest Coq development
+- Screenshot pipeline, video recording, and visual regression infrastructure (65 tests)
+- VM type sections in network policy documentation for multi-VM testing
+
+### Changed
+- M6.3: SHA-256 refinement proofs complete, round-state lemmas verified
+
 ### Fixed
 - VM shutdown waits for dev-init, network policy grep fix
+- R1.8.4: wide character wrapping tests and cleanup
 
 ## [0.1.0] — 2026-05-17
 
@@ -109,74 +130,6 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - virtio-9p shared output (guest /output/ → host build/vm-output/)
 - Infrastructure regression suite: 56 tests (make test-infra)
 - Shell identity banners for all 3 environments
-
-## [Unreleased]
-
-### Added
-- R1.7.e: tui-sim-chat test coverage for all 5 toolbar buttons (bold, italic, color, link, emoji), insert link dialog (tab cycling, typing, submit, escape), emoji picker (category tab, page navigation, escape), format prompt submission (bold, italic), and rich cursor movement across bold, italic, and link markdown markers.
-- M15.1.5: concurrent encrypt thread race test — 20 threads persist unique counter values simultaneously; validates atomic write+fsync+rename prevents corruption.
-- M15.3.4-6: SecureBytes mlock/munlock/madvise integration — csrc/secure_mlock.c provides platform-portable memory locking (POSIX mlock, MADV_DONTDUMP/MADV_NOCORE, stubs for Windows/WASM). newSecureBytes now locks pages against swap-out and excludes from core dumps. 6 new tests in Test.Crypto.SecureBytes verify zeroing, round-trip, and mlock integration.
-- M15.3.3: IO-boundary key wrapping — KeyStore.hs and Export.hs wrap derived encryption keys in SecureBytes via withSecureKey. Pure crypto function signatures unchanged (GC-heap copy limitation documented).
-- M16.1.5: MC/DC condition tables for 5 compound Boolean guards (10 atomic conditions) across AES, Ed25519, ML-KEM, and Keccak modules. Tables in test/evidence/condition-tables/crypto-compound-guards.md.
-- M17.3.1: KeyStore disk write guards — saveIdentityKey/saveIdentityKeyAt/saveIdentityKeyWithPassphrase gated by PluginIdentityPersistence. Silent no-op when disabled (ephemeral-by-default).
-- M17.5.4: Swap encryption warning — UmbraVox.App.SwapCheck reads /proc/swaps on Linux; warns in status bar when ephemeral mode is active and swap is detected.
-- M17.3.6: Startup .pref file guard — persistence preference writes gated by message-storage plugin + ephemeral check.
-
-### Added
-- F4.3: SOCKS5 live proxy test — Test.Network.Socks5Live spawns microsocks + echo server on loopback, verifies round-trip through SOCKS5 CONNECT. Closes M6.4 (transport plugin ecosystem).
-- VM testing infrastructure: 5 new scripts (vm-tui-scenario.sh, vm-screenshot-capture.sh, vm-record-session.sh, vm-visual-regression.sh, vm-socks5-test.sh) for screenshot capture, video recording, visual regression, and SOCKS5 integration testing inside NixOS VMs.
-- Nix: added tmux, aha, asciinema to vm-image.nix; microsocks to vm-test-image.nix and shell.nix.
-- Makefile: 5 new targets (vm-socks5-test, vm-screenshot, vm-record, vm-visual-regression, visual-reference-update).
-
-### Fixed
-- Handshake: integer overflow in deserializeBundle pqLen arithmetic — validate bounds before offset computation to prevent bypass on crafted packets (Handshake.hs:98).
-- RatchetPersist: counter overflow guard — reject rsSendN >= 0xFFFFFFFE before persisting to prevent GCM nonce reuse (RatchetPersist.hs:133). Defense-in-depth alongside DoubleRatchet's own check.
-- ConfigFile: verifyConfigHash used isPrefixOf for key filtering, matching unrelated keys like config_hash_pin_old. Now uses exact key match via parseLine (ConfigFile.hs:121).
-- Plugin/Registry: resolveEnable silently included phantom dependencies for unknown plugins. Now skips unknown deps instead of injecting them (Registry.hs:147).
-- TUI/Dialog: overlayBounds rightW-2 could go negative at small terminal sizes. Now clamped to min 1 (Dialog.hs:82).
-- TUI/Render: shortFingerprint on empty ByteString produced empty string. Now pads to 4 bytes (Render.hs:535).
-- UDP tests: replaced threadDelay-based synchronization with MVar ready signals to prevent race conditions (UDP.hs).
-- Main: --enable-plugin with unknown plugin name now warns to stderr instead of silently ignoring (Main.hs:86).
-
-### Added
-- F4.1: UDP transport loopback test suite — 4 tests (round-trip, exact bytes, multi-message ordering, 1KB payload) verifying the seq/ACK reliability layer over localhost.
-- M16.1.5: updated MC/DC condition tables with defensive guard analysis — Guards 1, 2, 5 documented as structurally unreachable false paths via private functions (acceptable under DO-178C when documented).
-- M17.4.3: --enable-plugin flag wired for runtime effect — resolves dependencies via resolveEnable and enables in runtime plugin registry.
-- M17.7.4: config file hash pinning (paranoid mode) — verifyConfigHash computes SHA-256 of config excluding the pin line; set config_hash_pin=<hex> to enable; warns on stderr if mismatch.
-
-### Changed
-- TUI: modals now center on the right (chat) pane instead of the full screen.
-- M17.7.1: ephemeral mode shows short session fingerprint [abcd1234] in status bar when idle.
-- M17.3.7: createDirectoryIfMissing in Startup.hs moved after ephemeral check — no directory creation in ephemeral mode.
-- M17.3.2: Anthony SQL operations confirmed guarded at architecture level (cfgAnthonyDB = Nothing in ephemeral mode).
-
-### Fixed
-- Handshake: fix crash on empty ByteString in getW32BE when peer disconnects during recv (Handshake.hs:48). Added getW32BESafe with length check; recvBundle and recvInitialMessage now fail cleanly instead of crashing on incomplete length headers.
-
-### Added
-- M14.2.2: nix/vm-openbsd.nix — Nix shell environment providing host-side QEMU + SSH tooling for the OpenBSD smoke lane.
-- M14.2.3: nix/vm-netbsd.nix — Nix shell environment providing host-side QEMU + SSH tooling for the NetBSD smoke lane.
-- M14.2.4: nix/vm-dragonfly.nix — Nix shell environment providing host-side QEMU + SSH tooling for the DragonFlyBSD smoke lane (exits 0 with INFO if GHC binary package unavailable).
-- M14.2.2: scripts/vm-openbsd-setup.sh — downloads OpenBSD 7.x amd64 cloud image (or uses cache in build/vm/), boots QEMU, installs GHC + cabal-install via pkg_add, copies source via tar-over-SSH, runs cabal build + test.
-- M14.2.3: scripts/vm-netbsd-setup.sh — downloads NetBSD 10.x amd64 cloud image (or uses cache), boots QEMU, installs GHC via pkgin, runs cabal build + test.
-- M14.2.4: scripts/vm-dragonfly-setup.sh — downloads DragonFlyBSD 6.x ISO (or uses cache), boots QEMU, attempts pkg install ghc (INFO skip if unavailable), runs cabal build + test if GHC present.
-- M14.2.2: make vm-smoke-openbsd — Makefile target invoking vm-openbsd-setup.sh inside nix-shell nix/vm-openbsd.nix.
-- M14.2.3: make vm-smoke-netbsd — Makefile target invoking vm-netbsd-setup.sh inside nix-shell nix/vm-netbsd.nix.
-- M14.2.4: make vm-smoke-dragonfly — Makefile target invoking vm-dragonfly-setup.sh inside nix-shell nix/vm-dragonfly.nix.
-- M14.2.1: nix/vm-freebsd.nix — Nix expression that fetches FreeBSD 14.2-RELEASE amd64 VM qcow2 from the FreeBSD CDN and exposes it as a Nix store path.
-- M14.2.5: nix/vm-omnios.nix — Nix expression that fetches OmniOS CE r151052 cloud VMDK and converts it to qcow2 via a Nix derivation.
-- M14.5.6: scripts/vm-freebsd-setup.sh — downloads FreeBSD image (or uses cache), builds init ISO with in-guest smoke script, boots QEMU VM, installs GHC + cabal via pkg, runs cabal build + test.
-- M14.5.8: scripts/vm-illumos-setup.sh — downloads OmniOS image (or uses cache), converts VMDK, boots QEMU VM, installs GHC via ooce publisher, runs cabal build + test.
-- M14.5.6: make vm-smoke-freebsd — Makefile target calling vm-freebsd-setup.sh.
-- M14.5.8: make vm-smoke-illumos — Makefile target calling vm-illumos-setup.sh.
-- M14.3.1-8: scripts/vm-build-test.sh — universal in-guest POSIX build+test script; works on FreeBSD, OpenBSD, NetBSD, OmniOS/illumos, Linux arm64, DragonFlyBSD; emits VM_BUILD_TEST=PASS/FAIL.
-- M14.4.1-5: scripts/release-package-platform.sh — platform release packaging script; takes platform name (freebsd, openbsd, netbsd, illumos, linux-arm64); creates umbravox-{version}-{platform}-{arch}.tar.gz with binary, README, LICENSE, doc/QUICKSTART.md and provenance manifest.
-- M14.5.1: make release-freebsd — FreeBSD platform release tarball via nix-shell.
-- M14.5.2: make release-openbsd — OpenBSD platform release tarball via nix-shell.
-- M14.5.3: make release-netbsd — NetBSD platform release tarball via nix-shell.
-- M14.5.4: make release-illumos — illumos/OmniOS platform release tarball via nix-shell.
-- M14.5.5: make release-linux-arm64 — Linux arm64 platform release tarball via nix-shell.
-- M14.5.9: make vm-smoke-arm64 — Linux arm64 QEMU VM smoke via qemu-system-aarch64; requires arm64 image in build/vm-cache/arm64/.
 
 ## [0.0.8] — 2026-05-10
 
@@ -353,8 +306,9 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 ### Added
 - Tagged release baseline `v0.0.6` and stabilized active MVP hardening branch state.
 
-[Unreleased]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.3...HEAD
-[0.1.3]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.2...v0.1.3
+[Unreleased]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.2...v0.1.4
+[0.1.3]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.2...v0.1.4
 [0.1.2]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.0.8...v0.1.0

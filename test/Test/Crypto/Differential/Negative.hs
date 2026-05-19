@@ -61,6 +61,17 @@ mustRejectBool suite name True = do
     putStrLn $ "  FAIL: " ++ name ++ " (accepted — should have rejected!)"
     return False
 
+-- | Report an edge-case result without hiding findings.
+-- Returns True (pass) when the input is rejected, False (finding) when accepted.
+-- The 'finding' string documents what acceptance means for security.
+reportEdge :: String -> String -> String -> Bool -> IO Bool
+reportEdge _suite name _finding False = do
+    putStrLn $ "  PASS: " ++ name ++ " (rejected)"
+    return True
+reportEdge _suite name finding True = do
+    putStrLn $ "  FINDING: " ++ name ++ " (accepted) — " ++ finding
+    return False
+
 flipBit :: Int -> ByteString -> ByteString
 flipBit idx bs
     | idx >= BS.length bs = bs
@@ -102,7 +113,48 @@ testEd25519Negative = do
     r6 <- mustRejectBool "Ed25519" "zero-signature"
         (Ed25519.ed25519Verify pk msg (BS.replicate 64 0))
 
-    return (and [r1, r2, r3, r4, r5, r6])
+    -- ── Ed25519 Signature Malleability Tests (crypto audit edge cases) ──
+
+    -- S-malleability: Given valid (R, S), compute S' = L - S.
+    -- A conformant implementation MUST reject S' because S' >= L (or
+    -- equivalently S' is not the canonical representative mod L).
+    -- Finding: If this test FAILs, the implementation accepts malleable
+    -- signatures, which can be exploited for transaction malleability.
+    let sigR = BS.take 32 sig
+        sigSbs = BS.drop 32 sig
+        sigS = Ed25519.decodeLE sigSbs
+        -- S' = L - S  (this is congruent to -S mod L, i.e. L - S)
+        sMalleable = Ed25519.groupL - sigS
+        malleableSig = sigR `BS.append` Ed25519.encodeLEn 32 sMalleable
+    r7 <- reportEdge "Ed25519" "S-malleability (S' = L - S)"
+        "Vulnerability: accepts malleable signatures (S' = L - S congruent to -S mod L)"
+        (Ed25519.ed25519Verify pk msg malleableSig)
+
+    -- Non-canonical S: S = S_valid + L (still congruent mod L but >= L).
+    -- Must be rejected by the S < L check.
+    let nonCanonicalS = sigS + Ed25519.groupL
+        nonCanonicalSig = sigR `BS.append` Ed25519.encodeLEn 32 nonCanonicalS
+    r8 <- reportEdge "Ed25519" "non-canonical S (S + L)"
+        "Vulnerability: accepts non-canonical S >= L"
+        (Ed25519.ed25519Verify pk msg nonCanonicalSig)
+
+    -- All-zero R: R = 0 (32 zero bytes) + valid S.
+    -- Zero is not on the curve (or decodes to identity depending on impl).
+    let zeroRSig = BS.replicate 32 0 `BS.append` sigSbs
+    r9 <- reportEdge "Ed25519" "all-zero R point"
+        "Finding: accepts signature with R = 0 (32 zero bytes)"
+        (Ed25519.ed25519Verify pk msg zeroRSig)
+
+    -- Identity R: R = encode(identity) = 0x01 followed by 31 zero bytes.
+    -- The identity point encodes as (0,1) in Ed25519, which is byte 0x01
+    -- followed by 31 zero bytes.
+    let identityR = BS.cons 0x01 (BS.replicate 31 0)
+        identityRSig = identityR `BS.append` sigSbs
+    r10 <- reportEdge "Ed25519" "identity R point"
+        "Finding: accepts signature with R = identity point"
+        (Ed25519.ed25519Verify pk msg identityRSig)
+
+    return (and [r1, r2, r3, r4, r5, r6, r7, r8, r9, r10])
 
 -- ── X25519 Negative Tests ───────────────────────────────────────────
 

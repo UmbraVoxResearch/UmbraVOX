@@ -27,6 +27,7 @@ import qualified UmbraVox.Crypto.HKDF as HKDF
 import qualified UmbraVox.Crypto.GCM as GCM
 import qualified UmbraVox.Crypto.ChaChaPoly as ChaChaPoly
 import qualified UmbraVox.Crypto.Keccak as Keccak
+import qualified UmbraVox.Crypto.Poly1305 as Poly1305
 
 -- | Run all differential primitive tests.
 -- Returns True if all pass, False if any fail.
@@ -43,6 +44,7 @@ differentialPrimitiveTests = do
         , testAESGCMVectors
         , testChaChaPolyVectors
         , testSHA3Vectors
+        , testPoly1305Vectors
         ]
     let passed = length (filter id results)
         total = length results
@@ -114,7 +116,15 @@ testHKDFVectors = do
     r1 <- check "HKDF" "tc1"
         tc1_okm
         (HKDF.hkdfSHA256 tc1_salt tc1_ikm tc1_info 42)
-    return r1
+    -- TC3: zero-length salt and info (RFC 5869 Test Case 3)
+    let tc3_ikm  = hexToBS "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"
+        tc3_salt = BS.empty
+        tc3_info = BS.empty
+        tc3_okm  = hexToBS "8da4e775a563c18f715f802a063c5a31b8a11f5c5ee1879ec3454e5f3c738d2d9d201395faa4b61a96c8"
+    r2 <- check "HKDF" "tc3"
+        tc3_okm
+        (HKDF.hkdfSHA256 tc3_salt tc3_ikm tc3_info 42)
+    return (r1 && r2)
 
 -- ── X25519 ──────────────────────────────────────────────────────────
 
@@ -151,7 +161,20 @@ testEd25519Vectors = do
     r3 <- check "Ed25519" "rfc8032-test1-sign-verify-roundtrip"
         (BS.singleton 1)
         (BS.singleton (if verify_ours then 1 else 0))
-    return (r1 && r2 && r3)
+    -- Test 2: RFC 8032 Section 7.1 (1-byte message 0x72)
+    let sk2 = hexToBS "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb"
+        pk2_expected = hexToBS "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c"
+        pk2_derived = Ed25519.ed25519PublicKey sk2
+    r4 <- check "Ed25519" "rfc8032-test2-pubkey" pk2_expected pk2_derived
+    let msg2 = hexToBS "72"
+        sig2 = hexToBS "92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00"
+    r5 <- check "Ed25519" "rfc8032-test2-pubkey-sign"
+        sig2
+        (Ed25519.ed25519Sign sk2 msg2)
+    r6 <- check "Ed25519" "rfc8032-test2-verify"
+        (BS.singleton 1)
+        (BS.singleton (if Ed25519.ed25519Verify pk2_expected msg2 sig2 then 1 else 0))
+    return (r1 && r2 && r3 && r4 && r5 && r6)
 
 -- ── SHA-512 ─────────────────────────────────────────────────────────
 
@@ -255,3 +278,15 @@ testSHA3Vectors = do
         (hexToBS "a69f73cca23a9ac5c8b567dc185a756e97c982164fe25859e0d1dcc1475c80a615b2123af1f5f94c11e3e9402c3ac558f500199d95b6d3e301758586281dcd26")
         (Keccak.sha3_512 BS.empty)
     return (r1 && r2 && r3)
+
+-- ── Poly1305 ───────────────────────────────────────────────────────
+
+testPoly1305Vectors :: IO Bool
+testPoly1305Vectors = do
+    putStrLn "  [Poly1305] RFC 8439 Section 2.5.2 vectors"
+    -- RFC 8439 Section 2.5.2: tag computation
+    let key = hexToBS "85d6be7857556d337f4452fe42d506a80103808afb0db2fd4abff6af4149f51b"
+        msg = C8.pack "Cryptographic Forum Research Group"
+        tag_expected = hexToBS "a8061dc1305136c6c22b8baf0c0127a9"
+    r1 <- check "Poly1305" "rfc8439-s2.5.2" tag_expected (Poly1305.poly1305 key msg)
+    return r1

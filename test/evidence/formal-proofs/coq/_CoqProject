@@ -3,3 +3,4 @@ Ed25519Constants.v
 Ed25519Prime.v
 Ed25519Field.v
 Ed25519Curve.v
+Ed25519Scalar.v
