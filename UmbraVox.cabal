@@ -374,6 +374,7 @@ test-suite umbravox-test
     Test.Crypto.Differential
     Test.Crypto.Differential.Primitives
     Test.Crypto.Differential.Negative
+    Test.Crypto.Differential.Metamorphic
     Test.Crypto.Ed25519
     Test.Crypto.ChaCha20
     Test.Crypto.Signal.X3DH

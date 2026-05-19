@@ -29,6 +29,7 @@ import qualified Test.Crypto.Curve25519 as Curve25519
 import qualified Test.Crypto.Differential as Differential
 import qualified Test.Crypto.Differential.Primitives as DiffPrimitives
 import qualified Test.Crypto.Differential.Negative as DiffNegative
+import qualified Test.Crypto.Differential.Metamorphic as DiffMetamorphic
 import qualified Test.Crypto.Ed25519 as Ed25519
 import qualified Test.Crypto.Export as Export
 import qualified Test.Crypto.GCM as GCM
@@ -235,6 +236,7 @@ runSuiteArg suiteArg =
         "differential-oracle" -> runSuiteGroup "UmbraVox Multi-Oracle Differential Suite"
             [ Suite "differential-primitives" DiffPrimitives.differentialPrimitiveTests
             , Suite "differential-negative" DiffNegative.differentialNegativeTests
+            , Suite "differential-metamorphic" DiffMetamorphic.metamorphicTests
             ]
         "unicode" -> runSuiteGroup "UmbraVox Unicode Exhaustive Suite"
             [Suite "unicode" Unicode.runTests]

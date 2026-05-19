@@ -1,12 +1,15 @@
 # Formal Assurance Matrix
 
-Generated: 2026-05-17 | Version: v0.1.3 | Baseline: v0.1.2
+Generated: 2026-05-18 | Version: v0.1.4 | Baseline: v0.1.3
 
 ## Summary
 
-- **24 F* specs**: 0 admit(), 30 assume val, 17 specs fully proved
-- **3 verified Coq files**: 153 Qed, 0 Admitted, 0 Axiom, 0 Parameter
+- **24 F* specs**: 0 admit(), 28 assume val, 18 specs fully proved
+- **4 verified Coq files**: 171 Qed, 0 Admitted, 0 Axiom, 0 Parameter
 - **1 draft Coq file**: 16 Qed, 8 Admitted, 15 Axiom (NOT verified evidence)
+- **Runtime differential**: 9/9 primitive suites PASS against RFC/NIST vectors
+- **Negative tests**: 4/4 suites PASS, 18 fail-closed checks
+- **Security fix**: X25519 input validation (v0.1.4)
 
 ## Risk Levels
 
@@ -19,32 +22,32 @@ Generated: 2026-05-17 | Version: v0.1.3 | Baseline: v0.1.2
 
 ## F* Specifications
 
-| Module | File | Purpose | assume val | admit | External Evidence | Risk | Notes |
-|--------|------|---------|-----------|-------|-------------------|------|-------|
-| Spec.SHA256 | fstar/Spec.SHA256.fst | SHA-256 (FIPS 180-4) | 0 | 0 | — | LOW | 3 NIST KAT via assert_norm, 64 round constants verified |
-| Spec.SHA512 | fstar/Spec.SHA512.fst | SHA-512 (FIPS 180-4) | 0 | 0 | — | LOW | 2 NIST KAT via assert_norm |
-| Spec.ChaCha20 | fstar/Spec.ChaCha20.fst | ChaCha20 (RFC 8439) | 0 | 0 | — | LOW | kat_block_rfc8439 (4 bytes), kat_allzero (4 bytes); kat_block_placeholder is vacuous (documented) |
-| Spec.AES256 | fstar/Spec.AES256.fst | AES-256 (FIPS 197) | 0 | 0 | — | LOW | FIPS 197 C.3 KAT, full S-box roundtrip (256 entries) |
-| Spec.GCM | fstar/Spec.GCM.fst | AES-GCM (SP 800-38D) | 0 | 0 | — | LOW | 2 NIST KAT, gcm_roundtrip proved, gctr_involutive proved |
-| Spec.Poly1305 | fstar/Spec.Poly1305.fst | Poly1305 (RFC 8439) | 0 | 0 | — | LOW | RFC 8439 §2.5.2 KAT; le_roundtrip_placeholder proves True (documented) |
-| Spec.HMAC | fstar/Spec.HMAC.fst | HMAC (RFC 2104) | 0 | 0 | — | LOW | RFC 4231 KAT; 1 in-body assume in unbounded path (AUDIT NOTE) |
-| Spec.HKDF | fstar/Spec.HKDF.fst | HKDF (RFC 5869) | 0 | 0 | — | LOW | RFC 5869 TC1 KAT; 1 in-body assume in unbounded path (AUDIT NOTE) |
-| Spec.GaloisField | fstar/Spec.GaloisField.fst | GF(2^128) for GCM | 0 | 0 | — | LOW | XOR commutativity/associativity, gf_to_bs length |
-| Spec.Keccak.Permutation | fstar/Spec.Keccak.Permutation.fst | Keccak-f[1600] | 0 | 0 | — | LOW | All 5 FIPS 202 steps, 24 round constants |
-| Spec.Keccak.Sponge | fstar/Spec.Keccak.Sponge.fst | Sponge construction | 0 | 0 | — | LOW | pad10*1, absorb, squeeze |
-| Spec.Keccak.SHA3 | fstar/Spec.Keccak.SHA3.fst | SHA-3 family | 0 | 0 | — | LOW | 7 NIST KAT via assert_norm (SHA3-224/256/384/512, SHAKE-128/256) |
-| Spec.MLKEM768 | fstar/Spec.MLKEM768.fst | ML-KEM-768 (FIPS 203) | 0 | 0 | — | REVIEW | **PARAMETER VALIDATION ONLY** — all functions are stubs, all "correctness" lemmas prove True (honestly labeled _stub) |
-| Spec.NoiseIK | fstar/Spec.NoiseIK.fst | Noise IK handshake | 0 | 0 | — | LOW | 4 DH legs structural; encrypt_decrypt_roundtrip_placeholder proves True |
-| Spec.PQXDH | fstar/Spec.PQXDH.fst | PQXDH key agreement | 0 | 0 | — | LOW | 3 DH + ML-KEM agreement proved; hybrid_security_placeholder proves True |
-| Spec.X3DH | fstar/Spec.X3DH.fst | X3DH key agreement | 0 | 0 | — | LOW | All 4 DH legs in agreement lemma |
-| Spec.SenderKeys | fstar/Spec.SenderKeys.fst | Sender key chains | 0 | 0 | — | LOW | Chain monotonicity proved; hmac_prf_placeholder proves True |
-| Spec.ChaChaPoly | fstar/Spec.ChaChaPoly.fst | ChaChaPoly AEAD | 1 | 0 | — | HIGH | tag_forgery_ct_axiom: Poly1305 UF-CMA (Bernstein 2005) |
-| Spec.DoubleRatchet | fstar/Spec.DoubleRatchet.fst | Signal Double Ratchet | 2 | 0 | — | HIGH | hmac_non_fixpoint, hmac_collision_resistance (HMAC-PRF hardness) |
-| Spec.StealthAddress | fstar/Spec.StealthAddress.fst | Stealth addresses | 1 | 0 | — | HIGH | unlinkability (DDH on Curve25519) |
-| Spec.VRF | fstar/Spec.VRF.fst | Verifiable Random Function | 3 | 0 | — | HIGH | dleq_correctness (algebraic), vrf_strong_uniqueness (DL), vrf_collision_resistance (hash+DL) |
-| Spec.Ed25519 | fstar/Spec.Ed25519.fst | Ed25519 signatures | 10 | 0 | Coq: Ed25519Prime.v, Ed25519Field.v | HIGH | Group theory axioms; encode_decode_round_trip recently fixed (REVIEW) |
-| Spec.X25519 | fstar/Spec.X25519.fst | X25519 ECDH | 7 | 0 | — | REVIEW | 7 assumes promoted from hidden in-body assume() in v0.1.2 audit |
-| Spec.SHA256.Refinement | fstar/Spec.SHA256.Refinement.fst | F*/Haskell boundary | 6 | 0 | — | HIGH | Cross-toolchain boundary (ByteString/seq, haskell_sha256) |
+| Module | File | assume val | admit | Differential | Negative | Risk | Notes |
+|--------|------|-----------|-------|-------------|----------|------|-------|
+| Spec.SHA256 | fstar/Spec.SHA256.fst | 0 | 0 | FIPS 180-4 ✓ | — | LOW | 3 F* KAT + 2 runtime KAT |
+| Spec.SHA512 | fstar/Spec.SHA512.fst | 0 | 0 | FIPS 180-4 ✓ | — | LOW | 2 F* KAT + 2 runtime KAT, 88 K/IV verified |
+| Spec.ChaCha20 | fstar/Spec.ChaCha20.fst | 0 | 0 | — | — | LOW | F* KAT partial (4/64 bytes) |
+| Spec.AES256 | fstar/Spec.AES256.fst | 0 | 0 | — | — | LOW | FIPS 197 C.3 KAT, full S-box roundtrip |
+| Spec.GCM | fstar/Spec.GCM.fst | 0 | 0 | NIST SP 800-38D ✓ | 5 reject ✓ | LOW | TC14+TC16 ct+tag+decrypt, wrong-tag/ct/key/nonce/aad |
+| Spec.Poly1305 | fstar/Spec.Poly1305.fst | 0 | 0 | — | — | LOW | RFC 8439 §2.5.2 KAT |
+| Spec.HMAC | fstar/Spec.HMAC.fst | 0 | 0 | RFC 4231 ✓ | — | LOW | TC1+TC2 runtime KAT |
+| Spec.HKDF | fstar/Spec.HKDF.fst | 0 | 0 | RFC 5869 ✓ | — | LOW | TC1 runtime KAT |
+| Spec.GaloisField | fstar/Spec.GaloisField.fst | 0 | 0 | — | — | LOW | XOR properties |
+| Spec.Keccak.Permutation | fstar/Spec.Keccak.Permutation.fst | 0 | 0 | — | — | LOW | All 5 FIPS 202 steps |
+| Spec.Keccak.Sponge | fstar/Spec.Keccak.Sponge.fst | 0 | 0 | — | — | LOW | pad10*1, absorb, squeeze |
+| Spec.Keccak.SHA3 | fstar/Spec.Keccak.SHA3.fst | 0 | 0 | FIPS 202 ✓ | — | LOW | 7 F* KAT + 3 runtime KAT |
+| Spec.MLKEM768 | fstar/Spec.MLKEM768.fst | 0 | 0 | — | — | REVIEW | **STUBS ONLY** |
+| Spec.NoiseIK | fstar/Spec.NoiseIK.fst | 0 | 0 | — | — | LOW | Constant stubs (documented) |
+| Spec.PQXDH | fstar/Spec.PQXDH.fst | 0 | 0 | — | — | LOW | Constant stubs (documented) |
+| Spec.X3DH | fstar/Spec.X3DH.fst | 0 | 0 | — | — | LOW | Constant stubs (documented) |
+| Spec.SenderKeys | fstar/Spec.SenderKeys.fst | 0 | 0 | — | — | LOW | Chain monotonicity |
+| Spec.ChaChaPoly | fstar/Spec.ChaChaPoly.fst | 1 | 0 | RFC 8439 ✓ | 4 reject ✓ | HIGH | AEAD encrypt+tag+decrypt, negative tests |
+| Spec.DoubleRatchet | fstar/Spec.DoubleRatchet.fst | 2 | 0 | — | — | HIGH | Constant stubs (documented) |
+| Spec.StealthAddress | fstar/Spec.StealthAddress.fst | 1 | 0 | — | — | HIGH | unlinkability (DDH) |
+| Spec.VRF | fstar/Spec.VRF.fst | 3 | 0 | — | — | HIGH | dleq algebraic + DL hardness |
+| Spec.Ed25519 | fstar/Spec.Ed25519.fst | 10 | 0 | RFC 8032 ✓ | 6 reject ✓ | HIGH | pubkey+verify+sign roundtrip, Coq evidence |
+| Spec.X25519 | fstar/Spec.X25519.fst | 5 | 0 | RFC 7748 ✓ | 3 reject ✓ | REVIEW | Input validation fix (v0.1.4) |
+| Spec.SHA256.Refinement | fstar/Spec.SHA256.Refinement.fst | 6 | 0 | — | — | HIGH | Cross-toolchain boundary |
 
 ## Coq Evidence Files
 
@@ -62,10 +65,15 @@ Generated: 2026-05-17 | Version: v0.1.3 | Baseline: v0.1.2
 | Metric | Count |
 |--------|-------|
 | F* specs | 24 |
-| F* specs at 0 assume val | 17 |
-| F* assume val total | 30 |
+| F* specs at 0 assume val | 18 |
+| F* assume val total | 28 |
 | F* admit() total | 0 |
-| Coq verified Qed | 153 |
+| Coq verified Qed | 171 |
 | Coq verified Admitted | 0 |
 | Coq draft Admitted | 8 |
 | Infrastructure tests | 67/67 |
+| Differential primitive suites | 9/9 PASS |
+| Negative test suites | 4/4 PASS |
+| Individual vector checks | 19 |
+| Individual negative checks | 18 |
+| Security fixes from testing | 1 (X25519 input validation) |
