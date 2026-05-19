@@ -51,6 +51,14 @@ else
   echo "  F* admits: PASS (0)"; ((PASS++))
 fi
 
+echo "[4/4] Checking differential test vectors exist..."
+vector_count=$(ls test/vectors/rfc/*.json 2>/dev/null | wc -l)
+if [ "$vector_count" -ge 5 ]; then
+  echo "  Differential vectors: PASS ($vector_count files)"; ((PASS++))
+else
+  echo "  Differential vectors: FAIL (need >= 5, found $vector_count)"; ((FAIL++))
+fi
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed, $SKIP skipped"
 if [ "$FAIL" -gt 0 ]; then exit 1; fi
