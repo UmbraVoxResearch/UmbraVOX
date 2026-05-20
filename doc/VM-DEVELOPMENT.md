@@ -144,6 +144,10 @@ ls build/vm-output/
 
 Use `make vm-extract` to check what's in the output directory.
 
+For `vm-build`, `vm-test`, and `vm-verify`, the guest also writes
+`/output/vm-exec-status` (host: `build/vm-output/vm-exec-status`) so the
+host command exits with the same pass/fail status as the in-guest command.
+
 ### TUI Screenshot / Recording / Visual Regression
 
 ```bash

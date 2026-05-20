@@ -236,9 +236,17 @@ echo "  UmbraVOX VM: $cmd"
 echo "========================================"
 echo ""
 
-# Run the command
+# Run the command and preserve its exit status.
+set +e
 $cmd
 STATUS=\$?
+set -e
+
+# Persist command status to host-visible shared output.
+if [ -d /output ]; then
+    printf "%s\n" "\$STATUS" > /output/vm-exec-status 2>/dev/null || true
+    sync 2>/dev/null || true
+fi
 
 echo ""
 if [ \$STATUS -eq 0 ]; then
@@ -248,7 +256,8 @@ else
 fi
 
 # Power off after command completes
-systemctl poweroff
+systemctl poweroff || true
+exit \$STATUS
 EXECEOF
     fi
 
@@ -276,6 +285,10 @@ fi
 # Shared output directory (host ↔ guest via virtio-9p)
 OUTPUT_DIR="$REPO_ROOT/build/vm-output"
 mkdir -p "$OUTPUT_DIR"
+VM_STATUS_FILE="$OUTPUT_DIR/vm-exec-status"
+if [ "$MODE" != "interactive" ] && [ "$MODE" != "gui" ]; then
+    rm -f "$VM_STATUS_FILE" 2>/dev/null || true
+fi
 
 # Auto-scale VM resources: 50% of host, minimum 25%
 HOST_CORES=$(nproc 2>/dev/null || echo 4)
@@ -332,12 +345,28 @@ echo ""
 # In interactive mode, the init script drops into a shell.
 # In exec mode, the init script runs the command and powers off.
 
+set +e
 qemu-system-x86_64 "${QEMU_ARGS[@]}"
 QEMU_EXIT=$?
+set -e
 
 # Cleanup
 rm -f "$OVERLAY" "$SRC_DISK" 2>/dev/null || true
 
 if [ "$MODE" != "interactive" ] && [ "$MODE" != "gui" ]; then
-    exit $QEMU_EXIT
+    if [ -f "$VM_STATUS_FILE" ]; then
+        STATUS_RAW="$(head -n 1 "$VM_STATUS_FILE" 2>/dev/null || true)"
+        if [[ "$STATUS_RAW" =~ ^[0-9]+$ ]]; then
+            if [ "$STATUS_RAW" -eq 0 ]; then
+                echo -e "${GREEN}[VM-DEV]${NC} Guest command completed successfully."
+            else
+                echo -e "${RED}[VM-DEV]${NC} Guest command failed with exit ${STATUS_RAW}."
+            fi
+            exit "$STATUS_RAW"
+        fi
+        echo -e "${YELLOW}[VM-DEV]${NC} Invalid vm-exec-status payload: '$STATUS_RAW'; falling back to QEMU exit."
+    else
+        echo -e "${YELLOW}[VM-DEV]${NC} Missing vm-exec-status marker; falling back to QEMU exit."
+    fi
+    exit "$QEMU_EXIT"
 fi
