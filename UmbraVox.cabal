@@ -387,6 +387,8 @@ test-suite umbravox-test
     Test.Crypto.Differential.Fuzz
     Test.Crypto.Differential.ProtocolLibsignal
     Test.Crypto.Differential.ProtocolSelfConsistency
+    Test.Crypto.Differential.Evidence
+    Test.Crypto.SignalCompat
     Test.Crypto.Ed25519
     Test.Crypto.ChaCha20
     Test.Crypto.Signal.X3DH

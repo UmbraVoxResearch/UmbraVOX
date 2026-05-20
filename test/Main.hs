@@ -2,6 +2,7 @@ module Main (main) where
 
 import System.Environment (getArgs)
 import System.Exit (exitFailure, exitSuccess)
+import System.IO (hSetEncoding, stdout, stderr, utf8)
 import Data.List (find, intercalate)
 
 import qualified Test.App.Startup as AppStartup
@@ -31,6 +32,7 @@ import qualified Test.Crypto.Differential.Primitives as DiffPrimitives
 import qualified Test.Crypto.Differential.Negative as DiffNegative
 import qualified Test.Crypto.Differential.Metamorphic as DiffMetamorphic
 import qualified Test.Crypto.Differential.Fuzz as DiffFuzz
+import qualified Test.Crypto.Differential.ProtocolLibsignal as DiffProtocolLibsignal
 import qualified Test.Crypto.Differential.ProtocolSelfConsistency as DiffProtocolSC
 import qualified Test.Crypto.Ed25519 as Ed25519
 import qualified Test.Crypto.Export as Export
@@ -49,6 +51,7 @@ import qualified Test.Crypto.Random as Random
 import qualified Test.Crypto.SHA256 as SHA256
 import qualified Test.Crypto.SHA512 as SHA512
 import qualified Test.CryptoIntegrity as CryptoIntegrity
+import qualified Test.Crypto.SignalCompat as SignalCompat
 import qualified Test.Crypto.Signal.DoubleRatchet as DoubleRatchet
 import qualified Test.Crypto.Signal.SenderKeys as SenderKeys
 import qualified Test.Crypto.Signal.Session as Session
@@ -155,6 +158,8 @@ data Suite = Suite
 
 main :: IO ()
 main = do
+    hSetEncoding stdout utf8
+    hSetEncoding stderr utf8
     args <- getArgs
     ok <- case args of
         ("startup-process-child":answer:_) -> AppStartup.runStartupProcessChild answer
@@ -242,6 +247,7 @@ runSuiteArg suiteArg =
             , Suite "differential-metamorphic" DiffMetamorphic.metamorphicTests
             , Suite "differential-fuzz" DiffFuzz.fuzzTests
             , Suite "differential-protocol-sc" DiffProtocolSC.protocolSelfConsistencyTests
+            , Suite "differential-protocol-libsignal" DiffProtocolLibsignal.protocolLibsignalTests
             ]
         "unicode" -> runSuiteGroup "UmbraVox Unicode Exhaustive Suite"
             [Suite "unicode" Unicode.runTests]
@@ -320,6 +326,7 @@ coreSuites =
     , Suite "sender-keys" SenderKeys.runTests
     , Suite "signal-session" Session.runTests
     , Suite "signal-wire-compat" SignalWireCompat.signalWireCompatTests
+    , Suite "signal-compat" SignalCompat.signalCompatTests
     , Suite "mdns" MDNS.runTests
     , Suite "network-protocol" Protocol.runTests
     , Suite "chat-message" ChatMessage.runTests
@@ -395,6 +402,7 @@ coreCryptoSuites =
     , Suite "sender-keys" SenderKeys.runTests
     , Suite "signal-session" Session.runTests
     , Suite "signal-wire-compat" SignalWireCompat.signalWireCompatTests
+    , Suite "signal-compat" SignalCompat.signalCompatTests
     , Suite "security" Security.runTests
     , Suite "differential" Differential.runTests
     , Suite "m11-symmetric" M11Symmetric.runTests

@@ -268,6 +268,34 @@ Existing tests preserved unchanged:
   Signal bridge tests are ADDITIVE alongside existing oracle-based tests.
 
 ================================================================================
+MILESTONE M20: CODEBASE QUALITY + ARCHITECTURAL IMPROVEMENTS (v0.2.1)
+================================================================================
+Note: Items from codebase audit (2026-05-20).
+
+[ ] M20.1 Critical architectural fixes
+  [ ] M20.1.1 Eliminate unsafePerformIO global state (RuntimeLog, Random, Version)
+  [ ] M20.1.2 Break Network→TUI dependency (Listener.hs imports addSession)
+  [ ] M20.1.3 Move Bridge/Signal/Main.hs out of library namespace
+
+[ ] M20.2 Error handling hardening
+  [ ] M20.2.1 Convert crypto error calls to Either/Maybe (AES, GCM, ChaChaPoly)
+  [ ] M20.2.2 Add stub module documentation (WARNING comments, not pragmas)
+
+[ ] M20.3 Module cleanup
+  [ ] M20.3.1 Move consensus/economics stubs to deferred build target
+  [ ] M20.3.2 Consolidate 5 transport stubs into Stubs.hs
+  [ ] M20.3.3 Verify all test files wired into Main.hs + cabal
+  [ ] M20.3.4 Attic docs archival (future, not now)
+
+[ ] M20.4 Security hardening
+  [ ] M20.4.1 Complete M15.3.2 SecureBytes migration for secret key fields
+  [ ] M20.4.2 Audit and resolve all M-series TODO comments in source
+
+[ ] M20.5 VM isolation completion
+  [ ] M20.5.1 Migrate all Makefile test targets to VM-default
+  [ ] M20.5.2 Update flake.nix to not pull GHC into host store
+
+================================================================================
 BLOCKED (EXTERNAL DEPENDENCIES)
 ================================================================================
 

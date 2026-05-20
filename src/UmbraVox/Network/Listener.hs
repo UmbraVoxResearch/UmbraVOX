@@ -27,7 +27,7 @@ import qualified Data.Set as Set
 import Data.List (intercalate, stripPrefix)
 import System.IO.Error (isUserError, ioeGetErrorString)
 
-import UmbraVox.App.Config (AppConfig(..), ConnectionMode(..))
+import UmbraVox.App.Config (AppConfig(..), ConnectionMode(..), SessionId)
 import UmbraVox.App.Defaults (maxInboundConnections)
 import UmbraVox.App.RuntimeLog (logEvent)
 import UmbraVox.App.State (CoreState(..))
@@ -41,8 +41,8 @@ import UmbraVox.Network.ProviderRuntime
     , bindListenerWithProvider, closeProviderListener
     )
 import UmbraVox.Network.TransportClass (AnyTransport, anyClose, anyInfo)
+import UmbraVox.Chat.Session (ChatSession)
 import UmbraVox.Protocol.Handshake (fingerprint, handshakeResponder)
-import UmbraVox.TUI.Actions.Session (addSession)
 
 -- | Callbacks supplied by the caller to handle presentation-layer side-effects.
 data ListenerCallbacks = ListenerCallbacks
@@ -52,6 +52,9 @@ data ListenerCallbacks = ListenerCallbacks
     , lcOnNewSession :: IO ()
       -- ^ Called after a new session is established (e.g. to scroll the TUI
       --   contact list to the last entry, or do nothing in headless mode).
+    , lcAddSession   :: AppConfig -> AnyTransport -> ChatSession -> String -> IO SessionId
+      -- ^ Register a new session with the application (e.g. via
+      --   'UmbraVox.TUI.Actions.Session.addSession' in TUI mode).
     }
 
 -- | No-op callbacks suitable for headless / test contexts.
@@ -59,6 +62,7 @@ noopCallbacks :: ListenerCallbacks
 noopCallbacks = ListenerCallbacks
     { lcOnStatus     = \_ -> pure ()
     , lcOnNewSession = pure ()
+    , lcAddSession   = \_ _ _ _ -> pure 0
     }
 
 --------------------------------------------------------------------------------
@@ -163,7 +167,7 @@ acceptLoopCore cs cbs ik port connCount listener = do
                 session <- handshakeResponder at ik trustCheck
                 let info = anyInfo at
                     peerLabel = if null info then "peer:" ++ show port else info
-                sid <- addSession cfg at session peerLabel
+                sid <- lcAddSession cbs cfg at session peerLabel
                 tryPEXExchange cfg at
                 lcOnNewSession cbs
                 lcOnStatus cbs ("Session #" ++ show sid)
