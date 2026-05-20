@@ -718,12 +718,10 @@ Note: 221 original assumes → 0 admit() + 30 assume val. 17/24 specs fully prov
     [x] M13.11.4.c Closure cofactors computed via sympy Groebner basis.
       Note: G = A*C1 + B*C2 where A has 15 terms, B has 15 terms, remainder = 0.
       Cofactors verified: expand(A*C1 + B*C2 - G) = 0.
-    [~] M13.11.4.d Universal closure (ED-008b): on_curve preservation for ALL points.
-      Track A: field [H1 H2] with curve equation hypotheses (coqprime SMain.v approach).
-        Status: field [H1 H2] rejected ("not a valid field equation") on cross-multiplied form.
-        Next: try affine form, or field_simplify_eq [H1 H2], or match SMain.v's pattern exactly.
-      Track B: polynomial certificate — verify G = A*C1 + B*C2 via ring in Coq.
-        Status: cofactors A, B computed and verified in Python. Need Coq encoding.
+    [x] M13.11.4.d Universal closure (ED-008b): PROVED via polynomial certificate.
+      Note: te_add_closure_cross in Ed25519GroupUniversal.v. Cofactors A, B (15 terms each)
+      computed via sympy Groebner basis, verified by Coq ring tactic. Cross-multiplied form.
+      Track A (field [H1 H2]) rejected by tactic; Track B (certificate) succeeded.
     [ ] M13.11.4.e Universal completeness: denominators 1±d*x1*x2*y1*y2 ≠ 0 for on-curve points.
       Note: Requires d_nonsquare + field reasoning (Bernstein-Lange 2007 Thm 3.3).
     [ ] M13.11.4.f Universal associativity (ED-003): decompose into named polynomial obligations.
@@ -736,7 +734,7 @@ Note: 221 original assumes → 0 admit() + 30 assume val. 17/24 specs fully prov
     [ ] M13.11.4.h Primality of 2^255-19 via PocklingtonRefl (blocked by bignums plugin).
       Note: Full factorization chain computed (14 levels). All Pocklington conditions
       machine-verified in Ed25519Prime.v. PocklingtonRefl import fails due to findlib.
-    Current totals: 11 Coq files, 415 Qed, 0 Admitted.
+    Current totals: 11 Coq files, 418 Qed, 0 Admitted.
   [x] M13.11.5 Ed25519Scalar.v — scalar_mult_add, scalar_mult_compose
   [x] M13.11.6 VRFDLEQ.v — DLEQ correctness
 
