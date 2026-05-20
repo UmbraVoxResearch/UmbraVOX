@@ -140,7 +140,7 @@ in pkgs.mkShell {
     echo "    Coq $(coqc --version 2>/dev/null | head -1 | sed 's/The Rocq Prover, version //' || echo 'N/A')"
     echo ""
     echo -e "  \033[32mProject:\033[0m"
-    echo "    Tiered messaging hardening | 24 F* specs | 13 Coq files | 30 generated outputs"
+    echo "    Tiered messaging hardening | 24 F* specs | 14 Coq files | 30 generated outputs"
     echo "    Crypto: SHA-2/3, AES-GCM, X25519, Ed25519, ML-KEM-768, Poly1305"
     echo "    Protocol: PQXDH, Signal Double Ratchet, Stealth Addresses"
     echo ""
