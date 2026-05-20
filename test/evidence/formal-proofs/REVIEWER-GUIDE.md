@@ -3,8 +3,8 @@
 This document helps an independent reviewer understand and reproduce the
 formal verification evidence in UmbraVOX.
 
-**Current baseline:** 0 `admit()`, 30 `assume val` across 24 F\* specs,
-415 Coq `Qed` across 11 verified files, 67 infrastructure tests.
+**Current baseline:** 0 `admit()`, 25 `assume val` across 24 F\* specs,
+444 Coq `Qed` across 13 verified files, 67 infrastructure tests.
 
 ---
 
@@ -68,17 +68,17 @@ properties; Coq covers number-theoretic foundations.
 
 ---
 
-## Interpreting the 30 assume val Declarations
+## Interpreting the 25 assume val Declarations
 
-The 30 `assume val` declarations are **not** 30 independent holes in the
+The 25 `assume val` declarations are **not** 25 independent holes in the
 verification. They collapse into fewer independent trust roots. See
 `ASSUMPTION-GRAPH.md` for the full dependency analysis.
 
 | Category                        | Count | Notes                                         |
 |---------------------------------|-------|-----------------------------------------------|
 | Cryptographic hardness          | 7     | Unprovable without an adversary model          |
-| X25519 curve arithmetic         | 7     | Portable from existing Ed25519 proofs          |
-| Ed25519 algebraic geometry      | 10    | Need Coq ring/field tactics to discharge       |
+| X25519 curve arithmetic         | 3     | DH commutativity + prime_is_prime              |
+| Ed25519 algebraic geometry      | 9     | Need Coq ring/field tactics to discharge       |
 | Cross-toolchain boundary (F\*/GHC) | 6  | Semantic gap between F\* specs and Haskell runtime |
 
 The cryptographic-hardness assumptions are inherently unprovable in a

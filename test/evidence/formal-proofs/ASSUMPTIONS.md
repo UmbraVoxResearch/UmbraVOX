@@ -4,7 +4,7 @@
 
 **Date:** 2026-05-17 (updated 2026-05-20)
 **F* specs:** 24 total, 17 with 0 assume val
-**assume val count:** 27
+**assume val count:** 25
 **admit() count:** 0
 **Status:** ALL PLANS COMPLETE — every assume val has a classification, documented
 justification, external evidence path, and discharge plan (or permanent status).
@@ -24,7 +24,7 @@ justification, external evidence path, and discharge plan (or permanent status).
 | ED-004 | Spec.Ed25519 | `scalar_mult_add` | DERIVED_FROM_ALGEBRA | no | ED-003 (assoc) | Induction on first arg + associativity | Standard group theory | Prove by induction (ED-003 resolved) | UNBLOCKED |
 | ED-005 | Spec.Ed25519 | `scalar_mult_compose` | DERIVED_FROM_ALGEBRA | no | ED-004 | Follows from scalar_mult_add by induction | Standard group theory | Prove after ED-004 (ED-003 chain resolved) | UNBLOCKED |
 | ED-006 | Spec.Ed25519 | `scalar_mod_L_equiv` | DERIVED_FROM_ALGEBRA | no | ED-002, ED-004 | Requires group_order_lemma + scalar_mult_add | Standard group theory | Prove after ED-002 + ED-004 (ED-003 chain resolved; still needs ED-002) | BLOCKED_BY_TOOLING |
-| ~~ED-007~~ | ~~Spec.Ed25519~~ | ~~`point_add_congruence_right`~~ | ~~ALGEBRAIC_EXTERNAL~~ | -- | -- | **PROVED** (2026-05-20) via polynomial certificate in Ed25519GroupUniversal.v. 12 Qed, degree-8 projective coordinate identity verified by Coq ring tactic. | -- | -- | **DISCHARGED** |
+| ~~ED-007~~ | ~~Spec.Ed25519~~ | ~~`point_add_congruence_right`~~ | ~~ALGEBRAIC_EXTERNAL~~ | -- | -- | **PROVED** (2026-05-20) via polynomial certificate in Ed25519CongruenceUniversal.v. 12 Qed, degree-8 projective coordinate identity verified by Coq ring tactic. | -- | -- | **DISCHARGED** |
 | ~~ED-008~~ | ~~Spec.Ed25519~~ | ~~`sign_then_verify`~~ | ~~DERIVED_FROM_ALGEBRA~~ | -- | -- | **PROVED** (v0.1.8) via 4 narrow algebraic assumptions: point_add/double_preserves_on_curve_ext, scalar_mult_preserves_on_curve_ext, scalar_mult_congruence. | -- | -- | **DISCHARGED** |
 | ED-008a | Spec.Ed25519 | `scalar_mult_congruence` | DERIVED_FROM_ALGEBRA | no | ED-003 | Projective equivalence preserved by scalar_mult. Same complexity as point_add_congruence_right. | Standard projective geometry | Coq or Fiat-Crypto (ED-003 resolved) | UNBLOCKED |
 | ~~ED-008b~~ | ~~Spec.Ed25519~~ | ~~`point_add_preserves_on_curve_ext`~~ | ~~ALGEBRAIC_EXTERNAL~~ | -- | -- | **PROVED** (2026-05-20) via polynomial certificate in Ed25519GroupUniversal.v (te_add_closure_cross). Cofactors A, B (15 terms each) computed via sympy Groebner basis, verified by Coq ring tactic. Cross-multiplied form avoids denominator invertibility. | -- | -- | **DISCHARGED** |

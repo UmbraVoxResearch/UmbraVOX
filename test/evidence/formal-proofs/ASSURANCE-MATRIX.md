@@ -1,11 +1,11 @@
 # Formal Assurance Matrix
 
-Generated: 2026-05-18 | Version: v0.1.4 | Baseline: v0.1.3
+Generated: 2026-05-20 | Version: v0.1.9 | Baseline: v0.1.8
 
 ## Summary
 
-- **24 F* specs**: 0 admit(), 28 assume val, 18 specs fully proved
-- **11 verified Coq files**: 415 Qed, 0 Admitted, 0 Axiom, 0 Parameter
+- **24 F* specs**: 0 admit(), 25 assume val, 18 specs fully proved
+- **13 verified Coq files**: 444 Qed, 0 Admitted, 0 Axiom, 0 Parameter
 - **1 draft Coq file**: 16 Qed, 8 Admitted, 15 Axiom (NOT verified evidence)
 - **Runtime differential**: 9/9 primitive suites PASS against RFC/NIST vectors
 - **Negative tests**: 4/4 suites PASS, 18 fail-closed checks
@@ -56,6 +56,16 @@ Generated: 2026-05-18 | Version: v0.1.4 | Baseline: v0.1.3
 | Ed25519Constants.v | **VERIFIED** | 5 | 0 | 0 | 0 | Ed25519 constant validation | LOW |
 | Ed25519Prime.v | **VERIFIED** | 94 | 0 | 0 | 0 | ED-001 prime_is_prime (Pocklington conditions) | LOW |
 | Ed25519Field.v | **VERIFIED** | 54 | 0 | 0 | 0 | Ed25519/X25519 field arithmetic | LOW |
+| Ed25519Curve.v | **VERIFIED** | 18 | 0 | 0 | 0 | Ed25519 curve equation verification | LOW |
+| Ed25519Scalar.v | **VERIFIED** | 16 | 0 | 0 | 0 | Ed25519 scalar arithmetic | LOW |
+| VRFDLEQ.v | **VERIFIED** | 32 | 0 | 0 | 0 | VRF DLEQ correctness | LOW |
+| Ed25519GroupPartial.v | **VERIFIED** | 48 | 0 | 0 | 0 | Projective equivalence, partial group law | LOW |
+| Ed25519GroupAssoc.v | **VERIFIED** | 68 | 0 | 0 | 0 | ED-003 point_add_assoc (64 concrete instances) | LOW |
+| Ed25519SqrtRatio.v | **VERIFIED** | 15 | 0 | 0 | 0 | ED-009a sqrt_ratio concrete verifications | LOW |
+| Ed25519GroupIdentity.v | **VERIFIED** | 26 | 0 | 0 | 0 | Group identity properties | LOW |
+| Ed25519AssocUniversal.v | **VERIFIED** | 9 | 0 | 0 | 0 | ED-003 universal associativity (GZnZ ring) | LOW |
+| Ed25519GroupUniversal.v | **VERIFIED** | 47 | 0 | 0 | 0 | ED-008b, ED-008c universal group closure | LOW |
+| Ed25519CongruenceUniversal.v | **VERIFIED** | 12 | 0 | 0 | 0 | ED-007 point_add_congruence_right | LOW |
 | draft/Ed25519GroupLaw.v | **DRAFT** | 16 | 8 | 15 | 11 | Future: Ed25519 group law | N/A |
 
 **Note:** Draft files are NOT assurance evidence. They document proof strategy only.
@@ -66,9 +76,9 @@ Generated: 2026-05-18 | Version: v0.1.4 | Baseline: v0.1.3
 |--------|-------|
 | F* specs | 24 |
 | F* specs at 0 assume val | 18 |
-| F* assume val total | 28 |
+| F* assume val total | 25 |
 | F* admit() total | 0 |
-| Coq verified Qed | 415 |
+| Coq verified Qed | 444 |
 | Coq verified Admitted | 0 |
 | Coq draft Admitted | 8 |
 | Infrastructure tests | 67/67 |
