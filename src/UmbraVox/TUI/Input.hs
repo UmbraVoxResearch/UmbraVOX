@@ -31,6 +31,7 @@ import UmbraVox.TUI.Dialog
     , verifyOverlayLines, keysOverlayLines, promptOverlayLines, settingsTabLabels
     , regenKeyOverlayLines, exportWarnOverlayLines, exportKeysOverlayLines
     , wrapOverlayLines, insertLinkOverlayLines, emojiPickerOverlayLines
+    , bridgeSelectOverlayLines, bridgeAuthOverlayLines
     )
 import UmbraVox.TUI.EmojiPicker
     ( emojiCategories, emojiByCategory, searchEmoji
@@ -327,6 +328,8 @@ dialogLineCount st DlgEmojiPicker = do
     cat  <- readIORef (asEmojiCategory st)
     page <- readIORef (asEmojiPage st)
     pure (length (emojiPickerOverlayLines q cat page))
+dialogLineCount _ DlgBridgeSelect = pure (length bridgeSelectOverlayLines)
+dialogLineCount _ DlgBridgeAuth = pure (length bridgeAuthOverlayLines)
 dialogLineCount st (DlgPrompt title _) = do
     buf <- readIORef (asDialogBuf st)
     pure (length (promptOverlayLines title buf))
@@ -356,6 +359,8 @@ dialogLines st DlgEmojiPicker = do
     cat  <- readIORef (asEmojiCategory st)
     page <- readIORef (asEmojiPage st)
     pure (emojiPickerOverlayLines q cat page)
+dialogLines _  DlgBridgeSelect = pure bridgeSelectOverlayLines
+dialogLines _  DlgBridgeAuth = pure bridgeAuthOverlayLines
 dialogLines st (DlgPrompt title _) = do
     buf <- readIORef (asDialogBuf st)
     pure (promptOverlayLines title buf)
@@ -511,6 +516,8 @@ handleDialogMouseClick st lay dlg rows rawLines row col = do
                 DlgExportKeys    -> handleDlgCloseOnly st lay DlgExportKeys lineCount rows rawLines row col
                 DlgInsertLink    -> handleDlgInsertLinkClick st lay lineCount rows row col
                 DlgEmojiPicker   -> handleDlgEmojiPickerClick st lay lineCount rows rawLines row col
+                DlgBridgeSelect  -> handleDlgBridgeSelectClick st lay lineCount rows row col
+                DlgBridgeAuth    -> handleDlgCloseOnly st lay DlgBridgeAuth lineCount rows rawLines row col
                 _                -> handleDlgCloseOnly st lay dlg lineCount rows rawLines row col
 
 handleDlgCloseOnly :: AppState -> Layout -> DialogMode -> Int -> [String] -> [String] -> Int -> Int -> IO ()
@@ -529,6 +536,7 @@ closeOnlyLines st DlgRegenKey = do
     regenKeyOverlayLines checked
 closeOnlyLines _  DlgExportWarn = pure (exportWarnOverlayLines False)
 closeOnlyLines st DlgExportKeys = exportKeysOverlayLines st
+closeOnlyLines _  DlgBridgeAuth = pure bridgeAuthOverlayLines
 closeOnlyLines _  _          = pure []
 
 handleDlgBrowseClick :: AppState -> Layout -> Int -> [String] -> [String] -> Int -> Int -> IO ()
@@ -1212,6 +1220,8 @@ handleDialog st key = do
         Just DlgExportKeys -> handleScrollableReadOnly st key DlgExportKeys
         Just DlgInsertLink   -> handleInsertLinkDlg st key
         Just DlgEmojiPicker  -> handleEmojiPickerDlg st key
+        Just DlgBridgeSelect -> handleBridgeSelectDlg st key
+        Just DlgBridgeAuth   -> handleScrollableReadOnly st key DlgBridgeAuth
         Just (DlgPrompt _ cb) ->
             handleScrollableInteractive st key $ case key of
                 KeyEnter     -> submitPrompt st cb
@@ -1424,6 +1434,27 @@ handleDlgEmojiPickerClick st lay lineCount rows _rawLines row col = do
             case overlayContentLine lay lineCount row col of
                 Just _lineIx -> pure ()  -- cell-level click not yet implemented
                 Nothing -> pure ()
+
+-- Bridge dialogs -----------------------------------------------------------
+
+handleDlgBridgeSelectClick :: AppState -> Layout -> Int -> [String] -> Int -> Int -> IO ()
+handleDlgBridgeSelectClick st lay lineCount rows row col = do
+    let footerIx = lineCount - 1
+        btn = overlayButtonHit lay lineCount row col footerIx rows
+    case lookup True [ (btn "select", handleBridgeSelectDlg st KeyEnter)
+                     , (btn "cancel", closeDialog st)
+                     ] of
+        Just action -> action
+        Nothing -> pure ()
+
+handleBridgeSelectDlg :: AppState -> InputEvent -> IO ()
+handleBridgeSelectDlg st KeyEnter = do
+    writeIORef (asDialogMode st) (Just DlgBridgeAuth)
+    writeIORef (asDialogScroll st) 0
+handleBridgeSelectDlg st (KeyChar '1') = do
+    writeIORef (asDialogMode st) (Just DlgBridgeAuth)
+    writeIORef (asDialogScroll st) 0
+handleBridgeSelectDlg _ _ = pure ()
 
 decodeIdentityHex :: String -> Maybe IdentityKey
 decodeIdentityHex input = do
