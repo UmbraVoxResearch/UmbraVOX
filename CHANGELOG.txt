@@ -19,6 +19,8 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - TUI: [B] prefix, [External Encryption] label, Bridge contact status
 - SecureFd: credential fd inheritance via memfd/mkstemp for plugin security
 - Signal-Server VM: NixOS config with PostgreSQL, Redis, ZooKeeper, Java 21
+- Signal-Server VM: two-stage build (build VM + runtime VM), nix-build inside VM, FOD hash approach
+- vm-build-only and vm-run-gui Makefile targets for VM-isolated builds and graphical console
 - Wire-compat test orchestration scaffold
 - Reusable bridge plugin template, authoring guide, JSON envelope schema
 
@@ -42,6 +44,9 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - Closure cofactors computed via sympy Groebner basis (A*C1 + B*C2 = G, verified)
 - Pocklington certificate factorization chain computed (14 levels, all witnesses identified)
 - F* 100% coverage: 221 admits eliminated, 24/24 specs 0 admit(), 30 assume val classified (M13 phases 1-6)
+
+### Security
+- Git history rewritten to remove Stripe test key pattern from secrets.yml
 
 ### Infrastructure
 - Zero unused-package warnings (cleaned cabal dependencies)
