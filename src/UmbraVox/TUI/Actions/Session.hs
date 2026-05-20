@@ -39,7 +39,7 @@ addSession cfg t session peerName = do
     ref <- newIORef session; histRef <- newIORef []; stRef <- newIORef Online
     lock <- newMVar ()
     tid <- forkIO (recvLoopTUI cfg sid peerName t ref lock histRef)
-    let si = SessionInfo (Just t) ref lock (Just tid) peerName histRef stRef
+    let si = SessionInfo (Just t) (RatchetCrypto ref) lock (Just tid) peerName histRef stRef
     modifyIORef' (cfgSessions cfg) (Map.insert sid si)
     -- Persist conversation to DB (graceful on failure)
     mDb <- readIORef (cfgAnthonyDB cfg)
@@ -67,7 +67,7 @@ addLoopbackSession cfg label = do
                       Nothing -> error "addLoopbackSession: ratchet init with random keys returned Nothing (impossible)"
     ref <- newIORef session; histRef <- newIORef []; stRef <- newIORef Local
     lock <- newMVar ()
-    let si = SessionInfo Nothing ref lock Nothing label histRef stRef
+    let si = SessionInfo Nothing (RatchetCrypto ref) lock Nothing label histRef stRef
     modifyIORef' (cfgSessions cfg) (Map.insert sid si)
     -- Persist conversation to DB (graceful on failure)
     mDb <- readIORef (cfgAnthonyDB cfg)
@@ -85,25 +85,27 @@ addLoopbackSession cfg label = do
 
 -- | Send a bytestring to a session (remote or loopback).
 sendToSession :: SessionInfo -> BS.ByteString -> IO SendResult
-sendToSession si msg = do
-    withMVar (siSessionLock si) $ \_ -> do
-        session <- readIORef (siSession si)
+sendToSession si msg = case siCrypto si of
+    BridgeCrypto _bs -> error "bridge not implemented"
+    RatchetCrypto ref -> do
+      withMVar (siSessionLock si) $ \_ -> do
+        session <- readIORef ref
         sendResult <- sendChatMessage session msg
         case sendResult of
           Left _ratchetErr -> pure SendUnavailable
           Right (session', wire) -> do
-            writeIORef (siSession si) session'
+            writeIORef ref session'
             case siTransport si of
               Just t  -> anySend t (encodeMessage wire) >> pure SendDelivered
               Nothing -> do
                 status <- readIORef (siStatus si)
                 case status of
                   Local -> do
-                    session2 <- readIORef (siSession si)
+                    session2 <- readIORef ref
                     recvResult <- recvChatMessage session2 wire
                     case recvResult of
                         Left _ratchetErr2                -> pure ()
-                        Right (Just (session3, _pt))     -> writeIORef (siSession si) session3
+                        Right (Just (session3, _pt))     -> writeIORef ref session3
                         Right Nothing                    -> pure ()
                     ts <- timestamp
                     let savedLine = case payloadHistoryText msg of

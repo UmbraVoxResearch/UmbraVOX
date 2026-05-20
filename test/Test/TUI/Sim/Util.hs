@@ -131,7 +131,7 @@ addTestSessionWithHistory cfg label history = do
     lock <- newMVar ()
     histRef <- newIORef history
     stRef <- newIORef Local
-    let si = SessionInfo Nothing ref lock Nothing label histRef stRef
+    let si = SessionInfo Nothing (RatchetCrypto ref) lock Nothing label histRef stRef
     modifyIORef' (cfgSessions cfg) (Map.insert sid si)
     pure sid
   where

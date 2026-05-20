@@ -283,7 +283,7 @@ testOfflineSessionRejectsSend = do
     lock <- newMVar ()
     histRef <- newIORef ["Peer: old message"]
     stRef <- newIORef Offline
-    let si = SessionInfo Nothing ref lock Nothing "restored-offline" histRef stRef
+    let si = SessionInfo Nothing (RatchetCrypto ref) lock Nothing "restored-offline" histRef stRef
     writeIORef (cfgSessions cfg) (Map.singleton sid si)
     result <- sendToSession si (BC.pack "must not loop")
     hist <- readIORef histRef

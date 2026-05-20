@@ -57,7 +57,7 @@ import UmbraVox.App.Config
 import UmbraVox.Plugin.Registry (defaultPersistencePlugins, enablePlugin, resolveEnable)
 import qualified UmbraVox.Plugin.Registry as Registry
 import UmbraVox.App.Types
-    ( SessionInfo(..), ContactStatus(..) )
+    ( SessionInfo(..), SessionCrypto(..), ContactStatus(..) )
 import UmbraVox.Protocol.Handshake (genIdentity)
 import UmbraVox.Protocol.Encoding (defaultPorts)
 import UmbraVox.Network.ProviderCatalog
@@ -399,7 +399,7 @@ restoreConversation cfg db (convId, _pubkey, name, _created) = do
     statRef <- newIORef Offline
     let si = SessionInfo
             { siTransport = Nothing
-            , siSession = sessRef
+            , siCrypto = RatchetCrypto sessRef
             , siSessionLock = lockRef
             , siRecvTid = Nothing
             , siPeerName = name
