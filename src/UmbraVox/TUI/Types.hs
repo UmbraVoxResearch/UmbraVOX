@@ -56,7 +56,8 @@ menuTabItems :: MenuTab -> [String]
 menuTabItems MenuHelp     = ["Help", "About"]
 menuTabItems MenuPrefs
     = ["Settings", "Toggle Rich Text"]
-    ++ if pluginEnabled PluginChatTransfer then ["Export Chat", "Import Chat"] else []
+    ++ (if pluginEnabled PluginChatTransfer then ["Export Chat", "Import Chat"] else [])
+    ++ ["New Bridge Chat"]
 menuTabItems MenuIdentity = ["Regenerate Key", "Export Keys", "Import Keys", "Toggle Key Info"]
 menuTabItems MenuQuit     = ["Quit"]
 
