@@ -126,6 +126,16 @@ renderUnderlinedLabel label mIx =
             csi "24m"
         | otherwise = putChar ch
 
+-- | Prefix for bridge sessions in the contact list and chat header.
+sessionPrefix :: SessionCrypto -> String
+sessionPrefix (RatchetCrypto _) = ""
+sessionPrefix (BridgeCrypto _)  = "[B] "
+
+-- | Longer label for bridge sessions shown in the chat separator.
+sessionCryptoLabel :: SessionCrypto -> String
+sessionCryptoLabel (RatchetCrypto _) = ""
+sessionCryptoLabel (BridgeCrypto _)  = "[External Encryption]"
+
 -- | Render a single contact row (left pane content)
 renderContactCell :: Layout -> [(SessionId, SessionInfo)] -> Int -> Pane -> Int -> Int -> IO ()
 renderContactCell lay entries sel focus cScroll row = do
@@ -144,10 +154,11 @@ renderContactCell lay entries sel focus cScroll row = do
     if idx >= 0 && idx < length entries then do
         let (_, si) = entries !! idx
         tag <- statusTag <$> readIORef (siStatus si)
-        let mk = if idx == sel then " \x25B8 " else "   "
+        let pfx = sessionPrefix (siCrypto si)
+            mk = if idx == sel then " \x25B8 " else "   "
             sbW = if showScrollbar then 1 else 0
             nameW = max 0 (lw - 2 - displayWidth mk - displayWidth tag - sbW)
-            cell = mk ++ padR nameW (siPeerName si) ++ tag
+            cell = mk ++ padR nameW (pfx ++ siPeerName si) ++ tag
         when (idx == sel) $ if focus == ContactPane then bold >> setFg 34 else bold
         putStr cell
         resetSGR
@@ -363,14 +374,24 @@ renderIdentityPanel lay grid st mIk = do
         goto panelRow lw
         withPanelFrame (putStr "\x2502")
 
--- | Mid-border separator between content and input row
-renderMidBorder :: Layout -> RenderGrid -> IO ()
-renderMidBorder lay grid = do
+-- | Mid-border separator between content and input row.
+-- When the selected session uses bridge crypto, the right-pane portion
+-- of this separator shows an "[External Encryption]" warning label.
+renderMidBorder :: Layout -> RenderGrid -> Maybe SessionInfo -> IO ()
+renderMidBorder lay grid selSi = do
     let lw = lLeftW lay; rw = lRightW lay
         borderRow = gSepRow grid
+        label = maybe "" (sessionCryptoLabel . siCrypto) selSi
+        labelW = displayWidth label
+        dashW = max 0 (rw - 1 - labelW)
     goto borderRow 1; setFg 35
     putStr $ "\x2502" ++ replicate (lw - 2) ' ' ++ "\x2502"
-          ++ replicate (rw - 1) '\x2500' ++ "\x2524"
+    if null label
+        then putStr $ replicate (rw - 1) '\x2500' ++ "\x2524"
+        else do
+            putStr $ replicate dashW '\x2500'
+            setFg 33; bold; putStr label; resetSGR; setFg 35
+            putStr "\x2524"
     resetSGR
 
 -- | Input row: blank left pane, input field on right.
@@ -744,7 +765,7 @@ render st = do
                     renderPaneRow lay grid entries selSi sel' richEnabled focus scroll' cScroll' row
                 when (lIdentityH lay > 0) $
                     renderIdentityPanel lay grid st mIk
-                renderMidBorder lay grid
+                renderMidBorder lay grid selSi
                 renderInputRow lay grid focus richEnabled buf inputCursor inputScroll mSelStart
                 renderBottomBorder lay grid
                 renderStatusBar lay st status richEnabled nSessions
@@ -789,7 +810,8 @@ sessionRenderToken (sid, si) = do
     hist <- readIORef (siHistory si)
     let msgCount = length hist
         newest = if null hist then "" else head hist
-    pure (show sid ++ "|" ++ siPeerName si ++ "|" ++ tag ++ "|" ++ show msgCount ++ "|" ++ newest)
+        cryptoTag = sessionPrefix (siCrypto si)
+    pure (show sid ++ "|" ++ cryptoTag ++ siPeerName si ++ "|" ++ tag ++ "|" ++ show msgCount ++ "|" ++ newest)
 
 selectedSessionRenderToken :: SessionInfo -> IO String
 selectedSessionRenderToken si = do
