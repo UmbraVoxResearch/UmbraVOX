@@ -74,17 +74,14 @@ Note: 221 original assumes → 0 admit() + 30 assume val. 17/24 specs fully prov
 [ ] M13.11 Coq external verification
   [ ] M13.11.4.e Universal completeness: denominators 1±d*x1*x2*y1*y2 ≠ 0 for on-curve points.
     Note: Requires d_nonsquare + field reasoning (Bernstein-Lange 2007 Thm 3.3).
-  [ ] M13.11.4.f Universal associativity (ED-003): decompose into named polynomial obligations.
-    - x-numerator identity, x-denominator identity, y-numerator identity, y-denominator identity
-    - Denominator nonzero obligations (from completeness)
-    - Assembly: combine into proj_eq
-    Track A: field [H1 H2 H3] (coqprime SMain.v proves Weierstrass this way)
-    Track B: polynomial certificate via sympy → ring
+  [x] M13.11.4.f Universal associativity (ED-003): PROVED via Ed25519AssocUniversal.v.
+    9 Qed, polynomial certificate (sympy Groebner basis → Coq ring), 240 terms.
+    Cross-multiplied form for both x and y coordinates; 6 cofactors (A/B/C per coord).
   [ ] M13.11.4.g Concrete instance reorganization (Ed25519GroupAssoc.v): label coverage categories.
   [ ] M13.11.4.h Primality of 2^255-19 via PocklingtonRefl (blocked by bignums plugin).
     Note: Full factorization chain computed (14 levels). All Pocklington conditions
     machine-verified in Ed25519Prime.v. PocklingtonRefl import fails due to findlib.
-  Current totals: 11 Coq files, 418 Qed, 0 Admitted.
+  Current totals: 12 Coq files, 427 Qed, 0 Admitted.
 
 [~] M13.3 Phase 3: Curve arithmetic
   [~] M13.3.2 Ed25519: 10 assume val remaining (algebraic/curve geometry). fadd/fmul/distrib proved; all KAT via assert_norm.
