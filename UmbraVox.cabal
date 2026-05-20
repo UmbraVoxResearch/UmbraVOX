@@ -431,6 +431,7 @@ test-suite umbravox-test
     Test.Crypto.KeyStore
     Test.Crypto.Signal.SenderKeys
     Test.Crypto.Signal.Session
+    Test.Crypto.SignalWireCompat
     Test.Plugin.Registry
     Test.Plugin.EphemeralIntegration
     Test.Storage.Anthony
