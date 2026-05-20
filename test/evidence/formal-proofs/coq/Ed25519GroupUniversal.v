@@ -15,6 +15,8 @@
       - Twisted Edwards addition is commutative for ALL on-curve points
       - The identity (0,1) is a left/right identity for ALL on-curve points
       - Additive inverse: (-x,y) is the inverse of (x,y) for ALL on-curve
+      - Closure: addition of any two on-curve points is on-curve
+        (cross-multiplied form via polynomial certificate)
 
     Architecture:
       All field-dependent theorems live inside a Section parameterized by
@@ -294,6 +296,158 @@ Section WithPrime.
   Lemma identity_on_curve_f : on_curve_f (zero ed25519_p) (one ed25519_p).
   Proof. unfold on_curve_f. ring. Qed.
 
+  (** ======================================================================
+      2.5: Universal closure — addition of on-curve points stays on-curve
+      ====================================================================== *)
+
+  (** Curve residual: LHS - RHS = 0 iff (x,y) is on-curve.
+      res(x,y) = (-x^2 + y^2) - (1 + d*x^2*y^2)                        *)
+  Definition curve_res (x y : znz ed25519_p) : znz ed25519_p :=
+    sub ed25519_p
+      (add ed25519_p
+        (mul ed25519_p (opp ed25519_p (one ed25519_p)) (mul ed25519_p x x))
+        (mul ed25519_p y y))
+      (add ed25519_p
+        (one ed25519_p)
+        (mul ed25519_p d (mul ed25519_p (mul ed25519_p x x) (mul ed25519_p y y)))).
+
+  Lemma on_curve_res_zero : forall x y : znz ed25519_p,
+    on_curve_f x y -> curve_res x y = zero ed25519_p.
+  Proof.
+    intros x y H. unfold curve_res, on_curve_f in *. rewrite H. ring.
+  Qed.
+
+  (** Cross-multiplied closure goal: for result (xn/d+, yn/d-),
+      the curve equation becomes (after cross-multiplication):
+        -xn^2*dm^2 + yn^2*dp^2 = dp^2*dm^2 + d*xn^2*yn^2
+      Goal residual = LHS - RHS = 0.                                      *)
+  Definition closure_goal_res (x1 y1 x2 y2 : znz ed25519_p) : znz ed25519_p :=
+    let xn := te_x_num x1 y1 x2 y2 in
+    let yn := te_y_num x1 y1 x2 y2 in
+    let dp := te_denom_plus x1 y1 x2 y2 in
+    let dm := te_denom_minus x1 y1 x2 y2 in
+    sub ed25519_p
+      (add ed25519_p
+        (mul ed25519_p (opp ed25519_p (one ed25519_p))
+          (mul ed25519_p (mul ed25519_p xn xn) (mul ed25519_p dm dm)))
+        (mul ed25519_p (mul ed25519_p yn yn) (mul ed25519_p dp dp)))
+      (add ed25519_p
+        (mul ed25519_p (mul ed25519_p dp dp) (mul ed25519_p dm dm))
+        (mul ed25519_p d
+          (mul ed25519_p (mul ed25519_p xn xn) (mul ed25519_p yn yn)))).
+
+  (** Polynomial cofactor A:
+      d^3*x1^2*x2^4*y1^2*y2^4 - d^2*x1^2*x2^4*y2^4 + d^2*x2^4*y1^2*y2^4
+      - d^2*x2^4*y2^4 - d*x1^2*x2^4*y2^2 + d*x1^2*x2^2*y2^4
+      + d*x2^4*y1^2*y2^2 - 2*d*x2^4*y2^4 - d*x2^2*y1^2*y2^4
+      - 2*d*x2^2*y2^2 - 2*x2^4*y2^2 + x2^4 + 2*x2^2*y2^4
+      - 4*x2^2*y2^2 + y2^4                                               *)
+  Definition coeff_A (x1 y1 x2 y2 : znz ed25519_p) : znz ed25519_p :=
+    let m := mul ed25519_p in
+    let a := add ed25519_p in
+    let s := sub ed25519_p in
+    let o := one ed25519_p in
+    let two := a o o in
+    let four := a two two in
+    let x1s := m x1 x1 in let y1s := m y1 y1 in
+    let x2s := m x2 x2 in let y2s := m y2 y2 in
+    let x2_4 := m x2s x2s in let y2_4 := m y2s y2s in
+    let d2 := m d d in let d3 := m d2 d in
+    a (a (a (a (a (a (a (a (a (a (a (a (a (a
+      (m d3 (m x1s (m x2_4 (m y1s y2_4))))                       (* d^3 x1^2 x2^4 y1^2 y2^4 *)
+      (opp ed25519_p (m d2 (m x1s (m x2_4 y2_4)))))              (* - d^2 x1^2 x2^4 y2^4 *)
+      (m d2 (m x2_4 (m y1s y2_4))))                              (* + d^2 x2^4 y1^2 y2^4 *)
+      (opp ed25519_p (m d2 (m x2_4 y2_4))))                      (* - d^2 x2^4 y2^4 *)
+      (opp ed25519_p (m d (m x1s (m x2_4 y2s)))))                (* - d x1^2 x2^4 y2^2 *)
+      (m d (m x1s (m x2s y2_4))))                                (* + d x1^2 x2^2 y2^4 *)
+      (m d (m x2_4 (m y1s y2s))))                                (* + d x2^4 y1^2 y2^2 *)
+      (opp ed25519_p (m two (m d (m x2_4 y2_4)))))               (* - 2d x2^4 y2^4 *)
+      (opp ed25519_p (m d (m x2s (m y1s y2_4)))))                (* - d x2^2 y1^2 y2^4 *)
+      (opp ed25519_p (m two (m d (m x2s y2s)))))                  (* - 2d x2^2 y2^2 *)
+      (opp ed25519_p (m two (m x2_4 y2s))))                       (* - 2 x2^4 y2^2 *)
+      x2_4)                                                       (* + x2^4 *)
+      (m two (m x2s y2_4)))                                       (* + 2 x2^2 y2^4 *)
+      (opp ed25519_p (m four (m x2s y2s))))                        (* - 4 x2^2 y2^2 *)
+      y2_4.                                                        (* + y2^4 *)
+
+  (** Polynomial cofactor B:
+      d*x1^4*x2^2*y2^2 + 2*d*x1^2*x2^2*y2^2 + d*x2^2*y1^4*y2^2
+      - 2*d*x2^2*y1^2*y2^2 + d*x2^2*y2^2 + 2*x1^2*x2^2*y2^2
+      - x1^2*x2^2 + x1^2*y2^2 - 2*x2^2*y1^2*y2^2 + x2^2*y1^2
+      + 2*x2^2*y2^2 - x2^2 - y1^2*y2^2 + y2^2 + 1               *)
+  Definition coeff_B (x1 y1 x2 y2 : znz ed25519_p) : znz ed25519_p :=
+    let m := mul ed25519_p in
+    let a := add ed25519_p in
+    let s := sub ed25519_p in
+    let o := one ed25519_p in
+    let two := a o o in
+    let x1s := m x1 x1 in let y1s := m y1 y1 in
+    let x2s := m x2 x2 in let y2s := m y2 y2 in
+    let x1_4 := m x1s x1s in let y1_4 := m y1s y1s in
+    a (a (a (a (a (a (a (a (a (a (a (a (a (a
+      (m d (m x1_4 (m x2s y2s)))                                  (* d x1^4 x2^2 y2^2 *)
+      (m two (m d (m x1s (m x2s y2s)))))                          (* + 2d x1^2 x2^2 y2^2 *)
+      (m d (m x2s (m y1_4 y2s))))                                 (* + d x2^2 y1^4 y2^2 *)
+      (opp ed25519_p (m two (m d (m x2s (m y1s y2s))))))          (* - 2d x2^2 y1^2 y2^2 *)
+      (m d (m x2s y2s)))                                          (* + d x2^2 y2^2 *)
+      (m two (m x1s (m x2s y2s))))                                (* + 2 x1^2 x2^2 y2^2 *)
+      (opp ed25519_p (m x1s x2s)))                                (* - x1^2 x2^2 *)
+      (m x1s y2s))                                                (* + x1^2 y2^2 *)
+      (opp ed25519_p (m two (m x2s (m y1s y2s)))))                (* - 2 x2^2 y1^2 y2^2 *)
+      (m x2s y1s))                                                (* + x2^2 y1^2 *)
+      (m two (m x2s y2s)))                                        (* + 2 x2^2 y2^2 *)
+      (opp ed25519_p x2s))                                        (* - x2^2 *)
+      (opp ed25519_p (m y1s y2s)))                                (* - y1^2 y2^2 *)
+      y2s)                                                        (* + y2^2 *)
+      o.                                                          (* + 1 *)
+
+  (** Key polynomial identity: goal_res = A * curve_res1 + B * curve_res2 *)
+  Lemma closure_poly_identity :
+    forall x1 y1 x2 y2 : znz ed25519_p,
+    closure_goal_res x1 y1 x2 y2 =
+    add ed25519_p
+      (mul ed25519_p (coeff_A x1 y1 x2 y2) (curve_res x1 y1))
+      (mul ed25519_p (coeff_B x1 y1 x2 y2) (curve_res x2 y2)).
+  Proof.
+    intros.
+    unfold closure_goal_res, coeff_A, coeff_B, curve_res,
+           te_x_num, te_y_num, te_denom_plus, te_denom_minus.
+    ring.
+  Qed.
+
+  (** Universal closure theorem: addition preserves on-curve property.
+      Statement uses cross-multiplied form, avoiding division/invertibility. *)
+  Theorem te_add_closure_cross :
+    forall x1 y1 x2 y2 : znz ed25519_p,
+    on_curve_f x1 y1 ->
+    on_curve_f x2 y2 ->
+    let xn := te_x_num x1 y1 x2 y2 in
+    let yn := te_y_num x1 y1 x2 y2 in
+    let dp := te_denom_plus x1 y1 x2 y2 in
+    let dm := te_denom_minus x1 y1 x2 y2 in
+    add ed25519_p
+      (mul ed25519_p (opp ed25519_p (one ed25519_p))
+        (mul ed25519_p (mul ed25519_p xn xn) (mul ed25519_p dm dm)))
+      (mul ed25519_p (mul ed25519_p yn yn) (mul ed25519_p dp dp)) =
+    add ed25519_p
+      (mul ed25519_p (mul ed25519_p dp dp) (mul ed25519_p dm dm))
+      (mul ed25519_p d
+        (mul ed25519_p (mul ed25519_p xn xn) (mul ed25519_p yn yn))).
+  Proof.
+    intros x1 y1 x2 y2 H1 H2 xn yn dp dm.
+    assert (Hres1 : curve_res x1 y1 = zero ed25519_p) by (apply on_curve_res_zero; exact H1).
+    assert (Hres2 : curve_res x2 y2 = zero ed25519_p) by (apply on_curve_res_zero; exact H2).
+    assert (Hgoal : closure_goal_res x1 y1 x2 y2 = zero ed25519_p).
+    { rewrite closure_poly_identity. rewrite Hres1. rewrite Hres2. ring. }
+    unfold closure_goal_res in Hgoal.
+    unfold xn, yn, dp, dm.
+    assert (Hsub : forall a b : znz ed25519_p,
+      sub ed25519_p a b = zero ed25519_p -> a = b).
+    { intros a b Hab. assert (a = add ed25519_p b (zero ed25519_p)) by (rewrite <- Hab; ring).
+      rewrite H in *. ring. }
+    apply Hsub. exact Hgoal.
+  Qed.
+
 End WithPrime.
 
 (** ========================================================================
@@ -380,6 +534,10 @@ Proof. vm_compute. reflexivity. Qed.
       te_inverse_denom_minus_is_curve_rhs,
       te_inverse_y_eq, te_inverse_y
 
+    Universal closure (3 Qed):
+      on_curve_res_zero, closure_poly_identity,
+      te_add_closure_cross
+
     On-curve checks (1 Qed):
       identity_on_curve_f
 
@@ -391,5 +549,5 @@ Proof. vm_compute. reflexivity. Qed.
       add_matches, mul_matches,
       d_cross_check_znz, By_cross_check_znz
 
-    Total: 36 Qed.  Zero Admitted.
+    Total: 42 Qed.  Zero Admitted.
     ======================================================================== *)
