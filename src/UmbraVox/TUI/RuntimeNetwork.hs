@@ -123,6 +123,7 @@ tuiCallbacks :: AppState -> ListenerCallbacks
 tuiCallbacks st = ListenerCallbacks
     { lcOnStatus     = emitStatus st
     , lcOnNewSession = selectLast st
+    , lcAddSession   = addSession
     }
 
 -- | Thin TUI wrapper around 'Network.Listener.startListener'.
