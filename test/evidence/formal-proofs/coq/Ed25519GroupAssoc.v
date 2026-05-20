@@ -217,232 +217,309 @@ Lemma assoc_1_1_0 :
           (ext_point_add B1 (ext_point_add B1 B0)).
 Proof. assoc_vm. Qed.
 
+(** [S] a=b=c=1 -- all-basepoint triple *)
 Lemma assoc_1_1_1 :
   proj_eq (ext_point_add (ext_point_add B1 B1) B1)
           (ext_point_add B1 (ext_point_add B1 B1)).
 Proof. assoc_vm. Qed.
 
+(** [S] a=b=1 *)
 Lemma assoc_1_1_2 :
   proj_eq (ext_point_add (ext_point_add B1 B1) B2)
           (ext_point_add B1 (ext_point_add B1 B2)).
 Proof. assoc_vm. Qed.
 
+(** [S] a=b=1 *)
 Lemma assoc_1_1_3 :
   proj_eq (ext_point_add (ext_point_add B1 B1) B3)
           (ext_point_add B1 (ext_point_add B1 B3)).
 Proof. assoc_vm. Qed.
 
+(** [I] c=0 *)
 Lemma assoc_1_2_0 :
   proj_eq (ext_point_add (ext_point_add B1 B2) B0)
           (ext_point_add B1 (ext_point_add B2 B0)).
 Proof. assoc_vm. Qed.
 
+(** [F] a=1, b=2, c=1 *)
 Lemma assoc_1_2_1 :
   proj_eq (ext_point_add (ext_point_add B1 B2) B1)
           (ext_point_add B1 (ext_point_add B2 B1)).
 Proof. assoc_vm. Qed.
 
+(** [S] b=c=2 *)
 Lemma assoc_1_2_2 :
   proj_eq (ext_point_add (ext_point_add B1 B2) B2)
           (ext_point_add B1 (ext_point_add B2 B2)).
 Proof. assoc_vm. Qed.
 
+(** [F] a=1, b=2, c=3 *)
 Lemma assoc_1_2_3 :
   proj_eq (ext_point_add (ext_point_add B1 B2) B3)
           (ext_point_add B1 (ext_point_add B2 B3)).
 Proof. assoc_vm. Qed.
 
+(** [I] c=0 *)
 Lemma assoc_1_3_0 :
   proj_eq (ext_point_add (ext_point_add B1 B3) B0)
           (ext_point_add B1 (ext_point_add B3 B0)).
 Proof. assoc_vm. Qed.
 
+(** [F] a=1, b=3, c=1 *)
 Lemma assoc_1_3_1 :
   proj_eq (ext_point_add (ext_point_add B1 B3) B1)
           (ext_point_add B1 (ext_point_add B3 B1)).
 Proof. assoc_vm. Qed.
 
+(** [F] a=1, b=3, c=2 *)
 Lemma assoc_1_3_2 :
   proj_eq (ext_point_add (ext_point_add B1 B3) B2)
           (ext_point_add B1 (ext_point_add B3 B2)).
 Proof. assoc_vm. Qed.
 
+(** [S] b=c=3 *)
 Lemma assoc_1_3_3 :
   proj_eq (ext_point_add (ext_point_add B1 B3) B3)
           (ext_point_add B1 (ext_point_add B3 B3)).
 Proof. assoc_vm. Qed.
 
-(** --- a=2 block (16 instances) --- *)
+(** --- a=2 block (16 instances: 7 Identity, 5 Self-addition, 4 Full) --- *)
 
+(** [I,S] b=c=0 *)
 Lemma assoc_2_0_0 :
   proj_eq (ext_point_add (ext_point_add B2 B0) B0)
           (ext_point_add B2 (ext_point_add B0 B0)).
 Proof. assoc_vm. Qed.
 
+(** [I] b=0 *)
 Lemma assoc_2_0_1 :
   proj_eq (ext_point_add (ext_point_add B2 B0) B1)
           (ext_point_add B2 (ext_point_add B0 B1)).
 Proof. assoc_vm. Qed.
 
+(** [I] b=0 *)
 Lemma assoc_2_0_2 :
   proj_eq (ext_point_add (ext_point_add B2 B0) B2)
           (ext_point_add B2 (ext_point_add B0 B2)).
 Proof. assoc_vm. Qed.
 
+(** [I] b=0 *)
 Lemma assoc_2_0_3 :
   proj_eq (ext_point_add (ext_point_add B2 B0) B3)
           (ext_point_add B2 (ext_point_add B0 B3)).
 Proof. assoc_vm. Qed.
 
+(** [I] c=0 *)
 Lemma assoc_2_1_0 :
   proj_eq (ext_point_add (ext_point_add B2 B1) B0)
           (ext_point_add B2 (ext_point_add B1 B0)).
 Proof. assoc_vm. Qed.
 
+(** [S] b=c=1 *)
 Lemma assoc_2_1_1 :
   proj_eq (ext_point_add (ext_point_add B2 B1) B1)
           (ext_point_add B2 (ext_point_add B1 B1)).
 Proof. assoc_vm. Qed.
 
+(** [F] a=2, b=1, c=2 *)
 Lemma assoc_2_1_2 :
   proj_eq (ext_point_add (ext_point_add B2 B1) B2)
           (ext_point_add B2 (ext_point_add B1 B2)).
 Proof. assoc_vm. Qed.
 
+(** [F] a=2, b=1, c=3 *)
 Lemma assoc_2_1_3 :
   proj_eq (ext_point_add (ext_point_add B2 B1) B3)
           (ext_point_add B2 (ext_point_add B1 B3)).
 Proof. assoc_vm. Qed.
 
+(** [I,S] a=b=2, c=0 *)
 Lemma assoc_2_2_0 :
   proj_eq (ext_point_add (ext_point_add B2 B2) B0)
           (ext_point_add B2 (ext_point_add B2 B0)).
 Proof. assoc_vm. Qed.
 
+(** [S] a=b=2 *)
 Lemma assoc_2_2_1 :
   proj_eq (ext_point_add (ext_point_add B2 B2) B1)
           (ext_point_add B2 (ext_point_add B2 B1)).
 Proof. assoc_vm. Qed.
 
+(** [S] a=b=c=2 *)
 Lemma assoc_2_2_2 :
   proj_eq (ext_point_add (ext_point_add B2 B2) B2)
           (ext_point_add B2 (ext_point_add B2 B2)).
 Proof. assoc_vm. Qed.
 
+(** [S] a=b=2 *)
 Lemma assoc_2_2_3 :
   proj_eq (ext_point_add (ext_point_add B2 B2) B3)
           (ext_point_add B2 (ext_point_add B2 B3)).
 Proof. assoc_vm. Qed.
 
+(** [I] c=0 *)
 Lemma assoc_2_3_0 :
   proj_eq (ext_point_add (ext_point_add B2 B3) B0)
           (ext_point_add B2 (ext_point_add B3 B0)).
 Proof. assoc_vm. Qed.
 
+(** [F] a=2, b=3, c=1 *)
 Lemma assoc_2_3_1 :
   proj_eq (ext_point_add (ext_point_add B2 B3) B1)
           (ext_point_add B2 (ext_point_add B3 B1)).
 Proof. assoc_vm. Qed.
 
+(** [F] a=2, b=3, c=2 *)
 Lemma assoc_2_3_2 :
   proj_eq (ext_point_add (ext_point_add B2 B3) B2)
           (ext_point_add B2 (ext_point_add B3 B2)).
 Proof. assoc_vm. Qed.
 
+(** [S] b=c=3 *)
 Lemma assoc_2_3_3 :
   proj_eq (ext_point_add (ext_point_add B2 B3) B3)
           (ext_point_add B2 (ext_point_add B3 B3)).
 Proof. assoc_vm. Qed.
 
-(** --- a=3 block (16 instances) --- *)
+(** --- a=3 block (16 instances: 7 Identity, 5 Self-addition, 4 Full) --- *)
 
+(** [I,S] b=c=0 *)
 Lemma assoc_3_0_0 :
   proj_eq (ext_point_add (ext_point_add B3 B0) B0)
           (ext_point_add B3 (ext_point_add B0 B0)).
 Proof. assoc_vm. Qed.
 
+(** [I] b=0 *)
 Lemma assoc_3_0_1 :
   proj_eq (ext_point_add (ext_point_add B3 B0) B1)
           (ext_point_add B3 (ext_point_add B0 B1)).
 Proof. assoc_vm. Qed.
 
+(** [I] b=0 *)
 Lemma assoc_3_0_2 :
   proj_eq (ext_point_add (ext_point_add B3 B0) B2)
           (ext_point_add B3 (ext_point_add B0 B2)).
 Proof. assoc_vm. Qed.
 
+(** [I] b=0 *)
 Lemma assoc_3_0_3 :
   proj_eq (ext_point_add (ext_point_add B3 B0) B3)
           (ext_point_add B3 (ext_point_add B0 B3)).
 Proof. assoc_vm. Qed.
 
+(** [I] c=0 *)
 Lemma assoc_3_1_0 :
   proj_eq (ext_point_add (ext_point_add B3 B1) B0)
           (ext_point_add B3 (ext_point_add B1 B0)).
 Proof. assoc_vm. Qed.
 
+(** [S] b=c=1 *)
 Lemma assoc_3_1_1 :
   proj_eq (ext_point_add (ext_point_add B3 B1) B1)
           (ext_point_add B3 (ext_point_add B1 B1)).
 Proof. assoc_vm. Qed.
 
+(** [F] a=3, b=1, c=2 *)
 Lemma assoc_3_1_2 :
   proj_eq (ext_point_add (ext_point_add B3 B1) B2)
           (ext_point_add B3 (ext_point_add B1 B2)).
 Proof. assoc_vm. Qed.
 
+(** [F] a=3, b=1, c=3 *)
 Lemma assoc_3_1_3 :
   proj_eq (ext_point_add (ext_point_add B3 B1) B3)
           (ext_point_add B3 (ext_point_add B1 B3)).
 Proof. assoc_vm. Qed.
 
+(** [I] c=0 *)
 Lemma assoc_3_2_0 :
   proj_eq (ext_point_add (ext_point_add B3 B2) B0)
           (ext_point_add B3 (ext_point_add B2 B0)).
 Proof. assoc_vm. Qed.
 
+(** [F] a=3, b=2, c=1 *)
 Lemma assoc_3_2_1 :
   proj_eq (ext_point_add (ext_point_add B3 B2) B1)
           (ext_point_add B3 (ext_point_add B2 B1)).
 Proof. assoc_vm. Qed.
 
+(** [S] b=c=2 *)
 Lemma assoc_3_2_2 :
   proj_eq (ext_point_add (ext_point_add B3 B2) B2)
           (ext_point_add B3 (ext_point_add B2 B2)).
 Proof. assoc_vm. Qed.
 
+(** [F] a=3, b=2, c=3 *)
 Lemma assoc_3_2_3 :
   proj_eq (ext_point_add (ext_point_add B3 B2) B3)
           (ext_point_add B3 (ext_point_add B2 B3)).
 Proof. assoc_vm. Qed.
 
+(** [I,S] a=b=3, c=0 *)
 Lemma assoc_3_3_0 :
   proj_eq (ext_point_add (ext_point_add B3 B3) B0)
           (ext_point_add B3 (ext_point_add B3 B0)).
 Proof. assoc_vm. Qed.
 
+(** [S] a=b=3 *)
 Lemma assoc_3_3_1 :
   proj_eq (ext_point_add (ext_point_add B3 B3) B1)
           (ext_point_add B3 (ext_point_add B3 B1)).
 Proof. assoc_vm. Qed.
 
+(** [S] a=b=3 *)
 Lemma assoc_3_3_2 :
   proj_eq (ext_point_add (ext_point_add B3 B3) B2)
           (ext_point_add B3 (ext_point_add B3 B2)).
 Proof. assoc_vm. Qed.
 
+(** [S] a=b=c=3 *)
 Lemma assoc_3_3_3 :
   proj_eq (ext_point_add (ext_point_add B3 B3) B3)
           (ext_point_add B3 (ext_point_add B3 B3)).
 Proof. assoc_vm. Qed.
 
 (** ========================================================================
-    Section 5: Summary
+    Section 5: Summary and Coverage
     ========================================================================
 
     Machine-checked associativity instances: 64
       For all a, b, c in {0, 1, 2, 3}:
         point_add(point_add([a]B, [b]B), [c]B) ~ point_add([a]B, point_add([b]B, [c]B))
+
+    Coverage categories (primary classification -- each instance counted once):
+
+      [I] Identity triples (a=0 or b=0 or c=0):          37 instances
+          - a=0 block:  all 16 triples (0,_,_)
+          - b=0 only:   (1,0,_), (2,0,_), (3,0,_) = 12
+          - c=0 only:   (1,{1-3},0), (2,{1-3},0), (3,{1-3},0) = 9
+          These test that the identity element [0]B participates
+          correctly in associativity.
+
+      [S] Self-addition (a=b or b=c, all > 0):            15 instances
+          - a=b cases:  (k,k,c) for k in {1,2,3}, c in {1,2,3} = 9
+          - b=c cases:  (a,k,k) for k in {1,2,3}, a in {1,2,3} = 9
+          - overlap:    (k,k,k) for k in {1,2,3} = 3
+          - total:      9 + 9 - 3 = 15
+          These test doubling-like behavior where adjacent operands
+          in the triple are the same point.
+
+      [F] Full non-trivial (a!=b, b!=c, all > 0):         12 instances
+          All distinct-adjacent triples from {1,2,3}^3:
+            (1,2,1) (1,2,3) (1,3,1) (1,3,2)
+            (2,1,2) (2,1,3) (2,3,1) (2,3,2)
+            (3,1,2) (3,1,3) (3,2,1) (3,2,3)
+          These test genuine 3-point associativity with no identity
+          elements and no adjacent duplicates.
+
+      Cross-tagged instances [I,S]:                         7 instances
+          Identity triples that also have a=b or b=c:
+            (0,0,0) (0,0,1) (0,0,2) (0,0,3) -- a=b=0
+            (0,1,1) (0,2,2) (0,3,3)          -- b=c with a=0
+            plus (1,0,0) (1,1,0) (2,0,0) (2,2,0) (3,0,0) (3,3,0)
+          These are counted under [I] for the primary tally.
+
+      Total: 37 + 15 + 12 = 64                       (all instances)
 
     Points covered: [0]B = O, [1]B, [2]B, [3]B  (the identity and
     the first three non-trivial basepoint multiples).
@@ -458,7 +535,7 @@ Proof. assoc_vm. Qed.
     integer arithmetic (proj_eq_b) discharged by Coq's vm_compute
     kernel reduction.  No axioms, no admits, no parameters.
 
-    REMAINING BLOCKER for universal associativity:
-      ring/field tactic over GF(2^255-19) from coq-prime or fiat-crypto,
-      needed to discharge the polynomial identity for arbitrary points.
+    NOTE: Universal associativity for all curve points is now proved
+    in Ed25519AssocUniversal.v.  These 64 instances are retained as
+    regression tests exercising the concrete vm_compute path.
 *)
