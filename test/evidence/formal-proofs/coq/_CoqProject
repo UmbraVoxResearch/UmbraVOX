@@ -11,3 +11,4 @@ Ed25519SqrtRatio.v
 VRFDLEQ.v
 Ed25519GroupUniversal.v
 Ed25519AssocUniversal.v
+Ed25519CongruenceUniversal.v
