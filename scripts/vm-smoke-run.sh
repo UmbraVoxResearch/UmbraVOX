@@ -29,8 +29,14 @@ else
 fi
 
 # ── Copy to writable workspace ──────────────────────────────────────
-echo "copying source to /work/umbravox ..."
-cp -a /mnt/src/. /work/umbravox/
+if [ ! -f /work/umbravox/.vm-source-ready ]; then
+    echo "copying source to /work/umbravox ..."
+    mkdir -p /work/umbravox
+    cp -a /mnt/src/. /work/umbravox/
+    touch /work/umbravox/.vm-source-ready
+else
+    echo "workspace already prepared at /work/umbravox (marker present)"
+fi
 cd /work/umbravox
 echo "workspace ready: $(du -sh /work/umbravox 2>/dev/null | cut -f1)"
 echo ""
