@@ -261,15 +261,15 @@ DISK_IMG="$(readlink -f "$VM_IMAGE_PATH/nixos.img")"
 SRC_DISK="$(create_source_disk)"
 OVERLAY="$(mktemp /tmp/umbravox-vm-dev-overlay.XXXXXX.qcow2)"
 
+echo -e "${BLUE}[VM-DEV]${NC} Creating COW overlay..." >&2
+qemu-img create -f qcow2 -b "$DISK_IMG" -F raw "$OVERLAY" >/dev/null 2>&1
+
 # Persistent build cache disk (survives across VM sessions)
 CACHE_DISK="$VM_CACHE_DIR/build-cache.qcow2"
 if [ ! -f "$CACHE_DISK" ]; then
     echo -e "${BLUE}[VM-DEV]${NC} Creating persistent build cache disk (4GB)..." >&2
     qemu-img create -f qcow2 "$CACHE_DISK" 4G >/dev/null 2>&1
 fi
-
-echo -e "${BLUE}[VM-DEV]${NC} Creating COW overlay..." >&2
-qemu-img create -f qcow2 -b "$DISK_IMG" -F raw "$OVERLAY" >/dev/null 2>&1
 
 # Shared output directory (host ↔ guest via virtio-9p)
 OUTPUT_DIR="$REPO_ROOT/build/vm-output"
