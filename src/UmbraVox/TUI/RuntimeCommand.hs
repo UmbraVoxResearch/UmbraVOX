@@ -75,6 +75,7 @@ data RuntimeCommand
     | CmdOpenExportWarn
     | CmdOpenImportKey
     | CmdToggleKeyInfo
+    | CmdNewBridgeChat
     | CmdQuit
     deriving stock (Eq, Show)
 
@@ -95,6 +96,7 @@ menuPrefsCommands :: [RuntimeCommand]
 menuPrefsCommands =
     [CmdOpenSettings, CmdToggleRichText]
     ++ (if pluginEnabled PluginChatTransfer then [CmdExportChat, CmdImportChat] else [])
+    ++ [CmdNewBridgeChat]
 
 (!!?) :: [a] -> Int -> Maybe a
 (!!?) [] _ = Nothing
@@ -256,6 +258,8 @@ runRuntimeCommand st cmd =
             let newShown = not shown
             writeIORef (asShowIdentity st) newShown
             setStatus st (if newShown then "Key info shown" else "Key info hidden")
+        CmdNewBridgeChat       ->
+            setStatus st "Bridge chat: not yet implemented"
         CmdQuit                -> quitApp st
 
 openFormatPrompt :: AppState -> String -> (String -> IO ()) -> IO ()
