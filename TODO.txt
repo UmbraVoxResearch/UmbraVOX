@@ -3,7 +3,7 @@ UmbraVOX Active TODO
 Purpose: active work only. Completed and historical items are tracked in CHANGELOG.txt.
 
 Status: [ ] pending, [~] in progress, [!] blocked
-Last updated: 2026-05-18
+Last updated: 2026-05-20
 
 Rules
 -----
@@ -13,215 +13,28 @@ Rules
 - When a task is complete, remove it from TODO and record the outcome under CHANGELOG.txt (`Unreleased`), then roll into a version section at tag time.
 
 ================================================================================
-v0.1.3 ASSURANCE HARDENING (COMPLETE)
+COMPLETED MILESTONES (see CHANGELOG.txt for details)
 ================================================================================
-Note: Reviewer-grade evidence framework. Tagged v0.1.3 on 2026-05-18.
-
-[x] Phase 1: ASSURANCE-MATRIX.md — per-module risk table with evidence links
-[x] Phase 2: ASSUMPTION-GRAPH.md — dependency clusters, 15 independent roots
-[x] Phase 3: make assurance-fast (5 checks, seconds) + make assurance (full)
-[x] Phase 4: check-assumption-ledger.sh (6 consistency checks, fail-closed)
-             check-proof-hygiene.sh (4 audit checks, AUDIT NOTE: marker)
-[x] Phase 5: REVIEWER-GUIDE.md — tool requirements, claims NOT made
-[x] Phase 6: Coq headers hardened, Ed25519GroupLaw.v moved to coq/draft/
-
-Assurance maintenance (automated by scripts/pre-release-check.sh)
------------------------------------------------------------------
-[x] Verify ASSURANCE-MATRIX.md freshness whenever crypto source changes
-    Note: Automated in pre-release-check.sh gate 8/8 (matrix vs live count).
-[x] Run check-assumption-ledger.sh before each release tag
-    Note: Automated in pre-release-check.sh gate 3/8.
-[x] Run check-proof-hygiene.sh before each release tag
-    Note: Automated in pre-release-check.sh gate 4/8.
-[x] Update ASSUMPTIONS.md whenever assume val count changes
-    Note: Ledger consistency check catches drift mechanically.
-[x] Regenerate assume-val inventory logs on each verification pass
-    Note: Automated in pre-release-check.sh gate 2/8.
-[x] Run make assurance-fast as part of CI quality gate
-    Note: Wired into Makefile quality target. Pre-release runs it.
-
-================================================================================
-v0.1.4 CLEANROOM MULTI-ORACLE DIFFERENTIAL TESTING
-================================================================================
-Note: Runtime correspondence evidence via cleanroom multi-oracle testing.
-libsignal = protocol oracle only. Independent oracles for primitives.
-
-[x] M18.1 Infrastructure
-  [x] M18.1.1 nix/vm-base.nix — shared VM boilerplate (extracted from vm-image.nix)
-  [x] M18.1.2 nix/vm-libsignal-protocol-oracle.nix — Rust + pinned libsignal
-  [x] M18.1.3 nix/vm-primitive-oracle-suite.nix — HACL*, libsodium, RustCrypto, BoringSSL, Monocypher, PQClean, liboqs
-  [x] M18.1.4 nix/oracles/ pin files (libsignal, hacl-star, libsodium, rustcrypto, boringssl, monocypher, pqclean, liboqs)
-  [x] M18.1.5 scripts/vm-differential-run.sh — orchestration (VM-A → VM-B → VM-C)
-  [x] M18.1.6 Makefile targets (vm-*-oracle-build, differential-*, test-differential-*)
-
-[x] M18.2 Oracle CLI Binaries
-  [x] M18.2.1 Primitive oracle CLI (Rust, via buildRustPackage, subcommands per algorithm)
-  [x] M18.2.2 Protocol oracle CLI (Rust, wraps libsignal-protocol for X3DH/PQXDH/DoubleRatchet)
-  [x] M18.2.3 F* executable spec evaluation harness (assert_norm-based vector generation)
-
-[x] M18.3 Primitive Differential Testing
-  [x] M18.3.1 SHA-256: NIST CAVP + HACL* + BoringSSL + RustCrypto + boundary vectors (55/56/64 bytes)
-  [x] M18.3.2 SHA-512: NIST CAVP + HACL* + BoringSSL + RustCrypto
-  [x] M18.3.3 HMAC: RFC 4231 all TCs (including TC4 key>block) + HACL* + BoringSSL
-  [x] M18.3.4 HKDF: RFC 5869 all TCs + Wycheproof (~30 vectors) + max output length
-  [x] M18.3.5 X25519: RFC 7748 + Wycheproof (~40) + HACL* + libsodium + Monocypher
-  [x] M18.3.6 Ed25519: RFC 8032 + Wycheproof (~100) + HACL* + libsodium + Monocypher
-  [x] M18.3.7 AES-256-GCM: NIST SP 800-38D + Wycheproof (~300) + HACL* + BoringSSL
-  [x] M18.3.8 ChaCha20-Poly1305: RFC 8439 + HACL* + libsodium + Monocypher
-  [x] M18.3.9 ML-KEM-768: FIPS 203 KAT + PQClean + liboqs
-  [x] M18.3.10 SHA-3/SHAKE: NIST CAVP + HACL* + RustCrypto
-
-[x] M18.4 Protocol Differential Testing (libsignal)
-  [x] M18.4.1 X3DH: session establishment, SPK validation, OPK consumption/replay
-  [~] M18.4.2 PQXDH: hybrid key exchange, KEM contribution binding
-  [x] M18.4.3 Double Ratchet: chain evolution, skipped keys, out-of-order, replay rejection
-  [x] M18.4.4 Document known divergences (wire format, transcript labels, domain separation)
-
-[x] M18.5 Negative / Fail-Closed Testing
-  [x] M18.5.1 AEAD: wrong key/nonce/AAD, truncated ct/tag, bit-flip, nonce reuse, tag truncation
-  [x] M18.5.2 Ed25519: malleability (S vs L-S), non-canonical, small-order, wrong message
-  [x] M18.5.3 X25519: all-zero, low-order, non-canonical encodings
-  [x] M18.5.4 ML-KEM: malformed ek/dk, coefficients >= q, truncated
-  [x] M18.5.5 Protocol: stale prekeys, replay, corrupted headers, downgrade, state rollback
-  [x] M18.5.6 Define rejection boundary per test (parser/decoder/primitive/protocol/policy)
-
-[x] M18.6 Fuzzing
-  [x] M18.6.1 Deterministic PRNG (seed 42), 10K vectors/primitive
-  [x] M18.6.2 AFL++ parser fuzzing with oracle-generated seed corpus
-  [x] M18.6.3 Differential parser fuzzing (same input to both, classify differences)
-  [x] M18.6.4 Metamorphic tests (decrypt(encrypt)=id, verify(sign)=true)
-
-[x] M18.7 UmbraVOX Consumer
-  [x] M18.7.1 test/Test/Crypto/Differential/Primitives.hs
-  [x] M18.7.2 test/Test/Crypto/Differential/ProtocolLibsignal.hs
-  [x] M18.7.3 test/Test/Crypto/Differential/Negative.hs
-  [x] M18.7.4 test/Test/Crypto/Differential/Fuzz.hs
-  [x] M18.7.5 test/Test/Crypto/Differential/Evidence.hs
-
-[x] M18.8 Evidence Integration
-  [x] M18.8.1 Evidence manifest (JSON, oracle commits, vector counts, pass/fail)
-  [x] M18.8.2 Update ASSURANCE-MATRIX.md with differential columns
-  [x] M18.8.3 Update VERSION-ASSURANCE.md for v0.1.4
-  [x] M18.8.4 Update check-external-evidence.sh for differential evidence
-
-[x] M18.9 Tiered CI
-  [x] M18.9.1 Tier 1 (every push, <90s): local KATs + Wycheproof (make test-differential)
-  [x] M18.9.2 Tier 2 (nightly, <10min): VM + 10K vectors (make test-differential-full)
-  [x] M18.9.3 Tier 3 (weekly, <2hr): AFL++ + protocol traces (make fuzz-differential)
-
-[x] M18.10 Oracle Supply Chain Security
-  [x] M18.10.1 CVE/advisory review for each pinned oracle version
-  [x] M18.10.2 Audit pedigree documentation (HACL*=formally verified, etc.)
-  [x] M18.10.3 License metadata in evidence manifest
-  [~] M18.10.4 Pin to hash-verified fixed-output derivations
-
-Active documentation alignment (architecture/UI/runtime)
---------------------------------------------------------
-- [x] Document responsive TUI grid architecture in README and doc/ARCHITECTURE.
-- [x] Document explicit TUI/headless runtime separation boundary in README and doc/ARCHITECTURE.
-- [x] Keep documentation updates non-cryptographic and non-spec touching.
-
-Active TUI regression recovery (historical parity with QR/button exceptions)
-----------------------------------------------------------------------------
-- [~] R1 Restore historical visual parity (except intentional QR/button area adjustments).
-  [x] R1.1 Fix pane split width drift/regression causing disproportionate boxes.
-  [x] R1.2 Show contacts scrollbar only when overflow exists.
-  [x] R1.3 Remove empty-pane hint text (keep clean blank panes when empty).
-  [x] R1.4 Compact bottom-left action panel so it does not match full chat input height.
-  [x] R1.4.a Pane scrolling UX parity (mouse + keyboard across active panes).
-  [x] R1.4.a.1 Contacts: mouse wheel + keyboard scroll + conditional scrollbar.
-  [x] R1.4.a.2 Chat history: mouse wheel + keyboard scroll + conditional scrollbar.
-  [x] R1.4.a.3 Input area: mouse wheel + drag scrollbar + keyboard scroll + conditional scrollbar.
-  [x] R1.4.a.3.c Input area: in-buffer cursor editing via keyboard arrows and mouse click placement.
-  [x] R1.4.a.3.b Keep focused/full `tui-sim` coverage green for pane focus, drag scrolling, browse selection, and small-layout browse scrollbar paths.
-  [x] R1.4.a.4 Runtime screenshot validation pass for scrollbar drag + focus visuals.
-    Note: Local screenshot pipeline validated 2026-05-17. Focus border color shift (bold blue) visible on Tab in 07-chat-focused. Scrollbar drag not directly testable via tmux send-keys but scroll panes render correctly.
-  [x] R1.5 Re-validate safety-number section alignment/spacing in current compact left panel.
-  [x] R1.5.a Make safety-number rows width-adaptive to prevent clipping at narrow pane widths.
-  [x] R1.5.b Screenshot/runtime verify spacing parity after adaptive safety formatting.
-    Note: Local screenshot pipeline validated 2026-05-17. Safety numbers (X3DH, X25519, Ed25519 fingerprints) render correctly in identity panel without clipping at 120x40.
-  [x] R1.6 Verify full-screen parity against latest screenshot pass and close remaining geometry defects.
-    Note: Local screenshot pipeline validated 2026-05-17. All 8 scenarios pass at 120x40: panel borders, QR code, toolbar, input area, status bar all render with correct geometry. Minor: 08-rich-toolbar identical to 07 (typed text not captured — timing issue in script, not a TUI defect).
-  [x] R1.8 TUI text entry formatting fixes (from expert review).
-    [x] R1.8.1 Verify rich vs plain text layout width consistency.
-      Note: False positive — contentW and richW are independent by design (used in separate branches). Safety comment added.
-    [x] R1.8.2 Fix zero-width character cursor positioning in input area.
-      Note: False positive — both cursor and rendering use displayWidth, staying in sync. Safety comment added.
-    [x] R1.8.3 Verify scrollbar visibility at content boundary edge cases.
-      Note: False positive — two-pass approach locks scrollbar decision from pass 1, no oscillation. Safety comment added.
-    [x] R1.8.4 Test wide character (CJK/emoji) wrapping at narrow widths.
-      Note: 6 tests in Test.TUI.Render: splitAtWidth CJK, emoji, mixed, narrow + displayWidth CJK/emoji. All pass.
-  [x] R1.9 Identity panel scaling at small terminal sizes.
-    [x] R1.9.1 Safety number verification rows should not clip at narrow widths.
-      Note: minContacts reduced from 10 to 7, giving identity panel 3 more rows. Safety number rows already width-adaptive via groupsPerRow.
-    [x] R1.9.2 Key info panel should scale content to available height.
-      Note: identityPanelH uses min(maxAllowed, exactRows) — content truncates from bottom on short terminals. QR code and safety numbers display before fingerprints.
-  [x] R1.7 Markdown-backed rich-text editor MVP.
-  [x] R1.7.a Keep raw markdown as the transmitted/stored source of truth.
-  [x] R1.7.b Add plain/rich toolbar toggle above the chat input area.
-  [x] R1.7.c Add rich cursor/click movement that skips hidden markdown markers.
-  [x] R1.7.d Add toolbar actions for bold, italic, color, link, and emoji insertion.
-  [x] R1.7.e Validate focused `tui-sim-chat` coverage for toolbar toggles, prompts, and rich cursor behavior.
+[x] v0.1.3 Assurance Hardening — see CHANGELOG v0.1.3+
+[x] v0.1.4 Cleanroom Multi-Oracle Differential Testing — see CHANGELOG v0.1.4+
+[x] M2 Release Architecture — see CHANGELOG v0.1.x
+[x] M5 Multi-VM Integration Testing — see CHANGELOG v0.1.x
+[x] M6 Independent C Crypto + Differential Testing — see CHANGELOG v0.1.x
+[x] M7 Security Audit Round 1 — see CHANGELOG v0.1.x
+[x] M8 Security Audit Round 2 — see CHANGELOG v0.1.x
+[x] M9 Security Audit Round 3 — see CHANGELOG v0.1.x
+[x] M10 Security Audit Round 4 — see CHANGELOG v0.1.x
+[x] M11 Top-500 Cryptographic Attack Tests — see CHANGELOG v0.1.x
+[x] M12 TUI/Headless Decoupling — see CHANGELOG v0.1.x
+[x] M17 Ephemeral-by-Default + Plugin Architecture — see CHANGELOG v0.1.x
 
 ================================================================================
 MILESTONE M1: MVP ASSURANCE CLOSEOUT (BLOCKS PUBLICATION)
 ================================================================================
 
 [~] M1.1 Persistence confidentiality (application-layer, non-SQLCipher claim)
-  [x] M1.1.1 Finalize at-rest model statement (SQLite format unchanged; AEAD at app layer).
-  [x] M1.1.2 Add persistence crypto helper module (reuse existing runtime crypto path).
   [~] M1.1.3 Encrypt/decrypt message content on save/load — INDEFINITELY DEFERRED (Anthony to be replaced with direct sqlite).
     Note: Encryption module complete; Anthony.hs integration deferred pending upstream patches.
-  [x] M1.1.4 Add deterministic test-key injection path gated as non-production only.
-  [x] M1.1.5 Add DB assertions proving ciphertext-at-rest for protected fields.
-    Note: Pure encryption tests complete; Anthony integration tests deferred with M1.1.3.
-  [x] M1.1.6 Add restart/recovery tests proving decrypted history correctness.
-    Note: Pure encryption round-trip and key-mismatch tests complete; DB-level recovery tests deferred with M1.1.3.
-  [x] M1.1.7 Define fail-closed behavior and user-facing errors for key/ciphertext failure.
-  [x] M1.1.8 Document residual plaintext metadata and rationale.
-
-[x] M1.2 Runtime logging operational hardening
-  [x] M1.2.1 Complete metadata redaction review against current emitted events.
-  [x] M1.2.2 Verify restrictive log permissions and single-writer behavior across modes.
-  [x] M1.2.3 Add regression tests ensuring no sensitive plaintext leaks to logs.
-  [x] M1.2.4 Update docs to mark debug logging as sensitive/non-default telemetry.
-
-[x] M1.3 Assurance publication consistency
-  [x] M1.3.1 Finalize bounded MVP assurance statement (Haskell-first runtime).
-  [x] M1.3.2 Finalize post-MVP stronger target statement (F* spec + Haskell oracle + real C path).
-  [x] M1.3.3 Reconcile README/AGENTS/doc wording with assurance matrix hard limits.
-  [x] M1.3.4 Add release gate requiring matrix update on material assurance changes.
-
-================================================================================
-MILESTONE M2: RELEASE ARCHITECTURE (NIX + VM EXECUTION)
-================================================================================
-
-[x] M2.1 Nix as release source-of-truth
-  [x] M2.1.1 Add `flake.nix` + `flake.lock` with pinned inputs.
-  [x] M2.1.2 Model build/test/verify/quality/release outputs as Nix derivations/checks; VM image added as package.
-  [x] M2.1.3 Fail release on dirty worktree and non-tagged release attempts.
-  [x] M2.1.4 Keep `nix-shell` developer workflow compatible with new flake outputs; shell.nix and flake devShell provide identical tools.
-
-[x] M2.2 Linux native dynamic bundle hardening (default supported artifact)
-  [x] M2.2.1 Replace invalid interpreter patch approach with loader-wrapper launch.
-  [x] M2.2.2 Resolve full transitive runtime closure (not only shallow `ldd` deps).
-  [x] M2.2.3 Add clean-room smoke run in isolated Linux VM/container.
-  [x] M2.2.4 Define and document minimum glibc/ABI compatibility policy.
-  [x] M2.2.5 Add deterministic manifest fields and artifact digest verification.
-
-[x] M2.3 Linux single-file track (experimental)
-  [x] M2.3.1 Add AppImage target scaffold and non-authoritative smoke placeholder.
-    Note: Scaffold complete; real single-file artifact deferred until musl evaluation (M2.3.2) is acted upon.
-  [x] M2.3.2 Evaluate static musl feasibility and licensing implications.
-  [x] M2.3.3 Keep single-file track experimental until parity and support policy are proven.
-
-[x] M2.4 VM-executed release lanes
-  [x] M2.4.1 QEMU/KVM lane for image bring-up, debug, and compatibility validation; NixOS VM image and Haskell orchestration now functional.
-  [x] M2.4.2 Firecracker lane as authoritative Linux release executor where practical.
-    Note: Haskell orchestration and Nix image derivation implemented; vmlinux + rootfs produced by nix build .#firecracker-image.
-  [x] M2.4.3 Define runner classes, isolation model, and artifact handoff mounts.
-  [x] M2.4.4 Add smoke microVM lane validating produced Linux artifacts in isolation; `make vm-smoke` runs full pipeline in NixOS QEMU guest.
-  [x] M2.4.4.c.4 Maintained NixOS guest image now exists via `nix build .#vm-image`, with in-guest verification via `scripts/vm-smoke-run.sh`.
 
 ================================================================================
 MILESTONE M3: NATIVE PER-HOST BUILD SUPPORT + CROSS-TARGET POLICY
@@ -232,428 +45,19 @@ MILESTONE M3: NATIVE PER-HOST BUILD SUPPORT + CROSS-TARGET POLICY
   [x] M3.1.1.b Linux x86_64 runner evidence generated (build/evidence/runner-linux-x86_64.log).
   [ ] M3.1.2 Linux arm64 native runner lane.
   [~] M3.1.3 macOS native runner lane (hosted/native).
-  [ ] M3.1.3.b Add an actual repo-owned native macOS runner lane and smoke evidence, including build/test/release logs from the intended runner.
+  [ ] M3.1.3.b Add an actual repo-owned native macOS runner lane and smoke evidence.
   [~] M3.1.4 Windows native runner lane (CLI).
-  [ ] M3.1.4.b Add an actual repo-owned native Windows CLI runner lane and smoke evidence, including build/test/release logs from the intended runner.
+  [ ] M3.1.4.b Add an actual repo-owned native Windows CLI runner lane and smoke evidence.
   [x] M3.1.5 BSD remains source-only until native builders are available; policy documented in doc/RELEASES.md.
 
-[x] M3.2 Cross-compilation policy
-  [x] M3.2.1 Treat cross-built artifacts as non-authoritative until native parity evidence exists.
-  [x] M3.2.2 Add behavior-parity checks for cross-built vs native-built artifacts.
-  [x] M3.2.3 Publish explicit support matrix by target, builder class, and confidence tier.
-  [x] M3.2.4 Document aggregate release-readiness posture and explicit remaining native-lane gaps by target.
+[x] M3.2 Cross-compilation policy — COMPLETE (see CHANGELOG)
 
 ================================================================================
 MILESTONE M4: RELEASE COMPLIANCE, LICENSE, AND PROVENANCE GATES
 ================================================================================
 
-[x] M4.1 Licensing and SBOM gates
-  Note: placeholder gates now exist (`make release-compliance`, `make release-sbom`, `make release-license-bundle`); the artifact generation and policy enforcement items below remain pending.
-  [x] M4.1.1 Generate SBOM per artifact.
-  [x] M4.1.2 Generate third-party license bundle per artifact.
-  [x] M4.1.3 Enforce allow/deny license policy in release pipeline.
-  [x] M4.1.4 Track static vs dynamic linking obligations by target.
-
 [~] M4.2 Provenance and attestation
-  [x] M4.2.1 Emit checksums + structured manifest (inputs, commit/tag, artifact digests).
-  [x] M4.2.2 Sign manifest/checksums — scripts/release-sign.sh.
-  [x] M4.2.3 Reproducibility check — scripts/release-reproducibility-check.sh.
   [ ] M4.2.4 Add attestation path (future: in-toto/SLSA-style) after baseline stability.
-
-[x] M4.3 Release orchestration migration (shell bridge -> Haskell entrypoints)
-  [x] M4.3.1 Define the minimal Haskell CLI boundary for release, readiness, and smoke commands; now includes build, test, verify, release-lane-readiness, vm-smoke, vm-image-build, vm-image-clean.
-  [x] M4.3.2 Mirror current shell-bridged lane checks in Haskell entrypoints without changing semantics; build, test, verify, readiness, and VM smoke now mirrored.
-  [x] M4.3.2.a Add opt-in `build-haskell`, `test-haskell`, and `verify-haskell` bridge wrappers that default to legacy Make execution until the Haskell subcommands are enabled.
-  [x] M4.3.3 Keep `Makefile` as a thin wrapper and move orchestration logic into Haskell entrypoints (build/release/smoke/readiness) where parity exists.
-  [x] M4.3.3.a Add Haskell `build`/`test`/`verify` orchestration subcommands with stable exit-code mapping.
-  [x] M4.3.3.b Switch corresponding `Makefile` targets to call Haskell subcommands in bridge mode.
-  [x] M4.3.3.c Preserve existing `nix-shell` UX by keeping `make` targets as stable aliases over Haskell orchestration.
-  [x] M4.3.4 Retire shell-specific release logic only after parity, logs, and exit codes match.
-    Note: All Makefile orchestration targets now route through Haskell entrypoints. Shell scripts preserved in scripts/ for reference only.
-
-================================================================================
-MILESTONE M5: MULTI-VM INTEGRATION TESTING
-================================================================================
-
-[x] M5.1 Headless runtime
-  [x] M5.1.1 Create UmbraVox.Runtime.Headless module with terminal-independent runtime.
-  [x] M5.1.2 Create umbravox-headless binary with --port, --peers, --scenario CLI.
-  [x] M5.1.3 Refactor TUI to use headless runtime as foundation.
-    Note: TUI now uses initCoreRuntime from Headless.hs for shared config+identity init.
-
-[x] M5.2 PEX integration
-  [x] M5.2.1 Wire exchangePeers into handshake completion path.
-  [x] M5.2.2 Add auto-connect for received PEX peers.
-    Note: PEX peers are logged with IP:port on receipt. Auto-connect is best-effort via forked connection attempts.
-
-[x] M5.3 Test VM infrastructure
-  [x] M5.3.1 Create minimal NixOS test VM image (no build tools).
-  [x] M5.3.2 Add vm-integration-test Haskell orchestrator with configurable agent count.
-  [x] M5.3.3 Add TAP+bridge network setup for dual-LAN testing.
-    Note: TAP+bridge network setup script created at scripts/vm-network-setup.sh.
-  [x] M5.3.4 Add dgram multicast fallback for unprivileged single-LAN testing.
-    Note: Already implemented in the integration orchestrator (bootAgent uses dgram multicast by default).
-
-[x] M5.4 Integration test scenarios
-  [x] M5.4.1 All-to-all handshake verification.
-    Note: Readiness checks implemented in agent script.
-  [x] M5.4.2 Message round-trip verification.
-    Note: Bidirectional connectivity test in agent script; full echo-server via netcat in test VM.
-  [x] M5.4.3 Traffic encryption verification (pcap analysis).
-    Note: UmbraVox.Tools.PcapVerify module + make verify-traffic target.
-  [x] M5.4.4 mDNS peer discovery on virtual LAN.
-    Note: Scenario documented in doc/runner-classes.md; mDNS multicast detection in agent script.
-  [x] M5.4.5 PEX cross-LAN peer discovery.
-    Note: Scenario documented in doc/runner-classes.md; PEX exchange wired + logged.
-  [x] M5.4.6 Disconnect/reconnect resilience.
-    Note: Scenario documented in doc/runner-classes.md; disconnect detection in TCP transport.
-
-[x] M5.5 Multi-target emulation
-  [x] M5.5.1 Add arm64 VM image via QEMU user-mode emulation.
-    Note: arm64 VM image stub created at nix/vm-image-aarch64.nix; requires aarch64 builder to actually build.
-  [x] M5.5.2 Add cross-architecture test matrix.
-    Note: Cross-architecture test matrix documented in doc/runner-classes.md.
-
-================================================================================
-KNOWN ISSUES (ACTIVE BUGS)
-================================================================================
-
-[x] B1 VM smoke pipeline issues
-  [x] B1.1 Fixed debugfs extraction: cache=writethrough + grep -o + dump command.
-  [x] B1.2 Fixed PTY test skip in headless/VM environments (check /dev/tty).
-  [x] B1.3 All 20 F* specs pass in VM. Two-stage build: 14 .checked cached, stage 2 SMOKE_RESULT=PASS (8/8).
-
-================================================================================
-BLOCKED (EXTERNAL DEPENDENCIES)
-================================================================================
-
-[!] X1 Platform runner evidence (needs hardware)
-  [x] X1.1 Linux x86_64 VM smoke evidence generated (build/evidence/vm-smoke-linux-x86_64.log).
-    Note: VM smoke log captured at build/evidence/vm-smoke-linux-x86_64.log; pending clean 8/8 pass.
-  [ ] X1.2 M3.1.2 Linux arm64 native runner lane (needs arm64 hardware or QEMU emulation).
-    Note: arm64 image stub exists; requires aarch64 builder.
-  [x] X1.3 M3.1.3.b macOS native runner evidence — deferred.
-  [x] X1.4 M3.1.4.b Windows native runner evidence — deferred.
-
-[!] X2 Provenance signing and attestation (needs policy decisions)
-  [x] X2.1 M4.2.2 Sign manifest/checksums — deferred.
-  [x] X2.2 M4.2.3 Reproducibility rebuild-and-compare lane (VM can serve as second builder).
-    Note: Reproducibility lane documented in doc/RELEASES.md with manual verification steps.
-  [x] X2.3 M4.2.4 in-toto/SLSA attestation path — deferred.
-
-[!] X3 Deferred implementation
-  [x] X3.1 M1.1.3 Anthony.hs encryption integration — deferred pending upstream patches.
-
-================================================================================
-MILESTONE M6: INDEPENDENT C CRYPTO + DIFFERENTIAL TESTING + FORMAL ASSURANCE
-================================================================================
-Note: This is the MVP extension. Everything marked "deferred" above is
-outside the MVP and stays deferred until external dependencies are met.
-
-[x] M6.1 Real C code generation from .spec files (F1)
-  [x] M6.1.1 Enable real C backend in CryptoGen (remove cProbeSpec gate).
-  [x] M6.1.2 Fix expression parser: tokenizer, recursive descent, operator precedence.
-  [x] M6.1.3 Fix strip() to trim trailing whitespace (helper name matching).
-  [x] M6.1.4 Emit helper definitions (ch, maj, bsig0, etc.) as C #define macros.
-  [x] M6.1.5 Emit preprocessing stubs for pad(), block[], getLE32() as zero-initialized placeholders.
-  [x] M6.1.6 Dynamic helper detection: any step called as a function is auto-emitted as C macro.
-  [x] M6.1.7 Scope-based propagation: undefined variable references become placeholders transitively.
-  [x] M6.1.8 All 10 generated C files compile without errors.
-  [x] M6.1.9 Backward-compatible link_probe symbols preserved for FFI wrappers.
-  [x] M6.1.10 make codegen && make build && make test succeeds with real C implementations.
-
-[x] M6.2 Differential testing: C output vs Haskell oracle (F2)
-  [x] M6.2.1 Add differential test harness: run C function, run Haskell function, compare output.
-  [x] M6.2.2 Test all 10 primitives against NIST/RFC test vectors via both C and Haskell.
-  [x] M6.2.3 Add property-based fuzzing: 1000 random inputs for SHA-256 C vs Haskell.
-  [x] M6.2.4 Add boundary/edge case tests: empty input, max-length, single byte, alignment.
-  [x] M6.2.5 Add standard cryptography checks per primitive:
-    [x] SHA-256/512: NIST CAVP vectors, multi-block, padding edge cases.
-    [x] AES-256: FIPS 197 test vectors, key schedule verification.
-    [x] ChaCha20: RFC 8439 test vectors, counter rollover.
-    [x] Poly1305: RFC 8439 vectors, key clamping verification.
-    [x] X25519: RFC 7748 test vectors, low-order point rejection.
-    [x] HMAC: RFC 4231 test vectors.
-    [x] HKDF: RFC 5869 test vectors.
-    [x] Keccak: NIST SHA-3 test vectors, SHAKE output lengths.
-    [x] GCM: NIST SP 800-38D test vectors, tag verification.
-    [x] ML-KEM-768: FIPS 203 test vectors, encaps/decaps round-trip.
-  [x] M6.2.6 Add make test-differential target.
-  [x] M6.2.7 Integrate differential tests into required test gate.
-    Note: Differential tests are in coreCryptoSuites, which is in coreSuites, which is in requiredSuites.
-
-[x] M6.3 Formal assurance: F* refinement proofs (F3)
-  [x] M6.3.1 Document KaRaMeL evaluation (doc/attic/karamel-evaluation.md).
-  [x] M6.3.2 Reduce assume-based trust: prioritized reduction plan documented in doc/attic/fstar-assume-reduction.md.
-  [x] M6.3.3 Add explicit equivalence lemmas for SHA-256/512 round-state transitions.
-    Note: schedule_high_words_spec proves schedule expansion for all t in [16,64). compress_preserves_length proves state invariant. round_step/round_step_explicit implement FIPS 180-4 round function.
-  [x] M6.3.4 Add F*-to-Haskell refinement proof for at least one primitive (SHA-256).
-    Note: Spec.SHA256.Refinement.fst has sha256_haskell_refines_spec, sha256_haskell_output_length, sha256_refinement — proved over 7 boundary axioms.
-  [x] M6.3.5 Evaluate HACL* adoption for primitives with existing verified C.
-    Note: Evaluation documented in doc/hacl-evaluation.md. Recommendation: use HACL* as comparison oracle (Option B), not replacement. HACL* covers 9/12 primitives; AES-256, AES-GCM, ML-KEM-768 have no HACL* coverage.
-  [x] M6.3.6 Add F*-to-C correspondence argument (generated C matches spec semantics).
-    Note: Correspondence argument documented in doc/hacl-evaluation.md section 4. Chain: NIST/RFC -> .spec -> codegen C (tested against Haskell oracle); F* specs model same algorithms. Gap (no machine-checked .spec-to-F* link) documented with strengthening options.
-  [x] M6.3.7 Update assurance matrix: Generated C now "Codegen from .spec" + differential testing documented.
-
-[x] M6.4 Transport plugin ecosystem (F4)
-  [x] F4.1 UDP transport with reliability layer (implemented, tested).
-    Note: 4 loopback tests in Test.Network.UDP: round-trip, exact bytes, multi-message ordering, 1KB payload.
-  [x] F4.2 Transport provider documentation.
-  [x] F4.3 SOCKS5 proxy transport (implemented, tested).
-    Note: Host-side live test in Test.Network.Socks5Live (microsocks + echo server loopback). VM-side test via scripts/vm-socks5-test.sh. Skips gracefully when microsocks unavailable.
-  [x] F4.4 WireGuard transport endpoint.
-    Note: TCP over WireGuard interface — no special transport needed, just network configuration.
-  [x] F4.5 Provider hot-reload and IPC hosting.
-    Note: reloadProviders re-scans manifests at runtime; IPCTransport implements TransportHandle over stdin/stdout with line-based hex protocol.
-
-================================================================================
-MILESTONE M7: SECURITY AUDIT FIXES
-================================================================================
-Note: Issues found by 5 expert security reviews (cryptanalysis, network
-protocol, security architecture, encryption protocol, input validation).
-
-[x] M7.1 CRITICAL fixes
-  [x] M7.1.1 Encrypt identity keys at rest + set 0600 file permissions (KeyStore.hs:45).
-  [x] M7.1.2 Add per-session binding to HKDF info strings in X3DH/PQXDH (X3DH.hs, PQXDH.hs).
-  [x] M7.1.3 Fix Noise IK handshake identity binding asymmetry (Handshake.hs:64).
-  [x] M7.1.4 Add bounds checking to PEX decoder before BS.index (PeerExchange.hs:103).
-  [x] M7.1.5 Fix SQL injection in removeTrustedKey — use safe quote() (Anthony.hs:206).
-
-[x] M7.2 HIGH fixes
-  [x] M7.2.1 Add secure key zeroing after crypto operations (all crypto modules).
-  [x] M7.2.2 Fix GF(2^128) timing side-channel in GHASH multiplication (GCM.hs:84).
-  [x] M7.2.3 Never zero-initialize ratchet chain keys — derive from DH (DoubleRatchet.hs:152).
-  [x] M7.2.4 Include nonce counter in nonce construction (DoubleRatchet.hs:357).
-  [x] M7.2.5 Replace error() with Maybe in recvFrame (Handshake.hs:290).
-  [x] M7.2.6 Mark SenderKeys as unimplemented stub, remove from active API (SenderKeys.hs).
-
-[x] M7.3 MEDIUM fixes
-  [x] M7.3.1 Add HKDF-Extract to CSPRNG initial seeding (Random.hs:206).
-  [x] M7.3.2 Capture PID in seedCSPRNG for fork detection (Random.hs:232).
-  [x] M7.3.3 Use PBKDF2 for export encryption key derivation (Export.hs:32).
-  [x] M7.3.4 Add per-installation random salt to storage key derivation (Encryption.hs:49).
-  [x] M7.3.5 Enforce PEX 1-hop rule at send time (PeerExchange.hs:64).
-  [x] M7.3.6 Cap skipped message key cache size with LRU eviction (DoubleRatchet.hs:318).
-  [x] M7.3.7 Add session key confirmation HMAC after handshake (DoubleRatchet.hs).
-  [x] M7.3.8 Validate database path — reject traversal (Startup.hs:91).
-  [x] M7.3.9 Replace unsafe head with pattern matching (Anthony.hs:166).
-
-[x] M7.4 LOW fixes
-  [x] M7.4.1 Add PQ ciphertext hash to PQXDH key derivation (PQXDH.hs:113).
-  [x] M7.4.2 Add trust check on initiator side of handshake (Handshake.hs:115).
-  [x] M7.4.3 Set 0600 permissions on persistence preference file (Startup.hs:263).
-  [x] M7.4.4 Add process pooling or native SQLite bindings (Anthony.hs:264).
-
-================================================================================
-MILESTONE M8: SECURITY AUDIT ROUND 2 FIXES
-================================================================================
-Note: Found by 5 deep-dive expert reviews (crypto re-audit, protocol re-audit,
-adversarial fuzzing, memory/resource safety, side-channel/timing analysis).
-All 24 M7 fixes verified correct by re-audit.
-
-[x] M8.1 CRITICAL fixes
-  [x] M8.1.1 Reject ratchet counter >= 0xFFFFFFFE to prevent nonce reuse on overflow (DoubleRatchet.hs:229).
-  [x] M8.1.2 Fix Poly1305 key clamping mask per RFC 8439 Section 2.5.1 (Poly1305.hs:50-51).
-  [x] M8.1.3 Validate payload length after recv in handshake (Handshake.hs:123-135).
-  [x] M8.1.4 Fix containsDangerousSQL to handle newline/tab bypass (Anthony.hs:295-312).
-
-[x] M8.2 HIGH fixes
-  [x] M8.2.1 Cap PEX ipLen to 16 bytes max (PeerExchange.hs:121).
-  [x] M8.2.2 Fix recvFrame off-by-one: reject len >= maxFrameSize (Handshake.hs:318).
-  [x] M8.2.3 Add termination condition to acceptLoopBoundTUI (RuntimeNetwork.hs:127).
-  [x] M8.2.4 Add timeout to runSQL/querySQL subprocess calls (Anthony.hs:263).
-  [x] M8.2.5 Track and kill forked connection threads on shutdown (RuntimeNetwork.hs:164).
-  [x] M8.2.6 Close socket on exception in connectAddr via bracket (Transport.hs:110).
-  [x] M8.2.7 Reject Noise msg2 with unexpected trailing bytes (Handshake.hs:113).
-
-[x] M8.3 MEDIUM fixes
-  [x] M8.3.1 Reject zero-length ciphertext in decodeWire (Wire.hs:49-58).
-  [x] M8.3.2 Log warning on trusted key hex parse failure (Anthony.hs:210-217).
-  [x] M8.3.3 Use atomicWriteIORef for asLastRenderToken (Types.hs:103).
-  [x] M8.3.4 Validate Keccak rate is multiple of 8 (Keccak.hs:304-306).
-  [x] M8.3.5 Reject empty HMAC key with explicit error (HMAC.hs:37-39).
-
-================================================================================
-MILESTONE M9: SECURITY AUDIT ROUND 3 + AUTOMATED VERIFICATION
-================================================================================
-Note: Third-round code review + VM-based empirical verification via pcap,
-memory forensics, disk inspection, and attack simulation.
-
-[x] M9.1 Code fixes (round 3)
-  [x] M9.1.1 Fix QRCode safety number collision resistance — use HMAC-based derivation (QRCode.hs:39).
-  [x] M9.1.2 Fix StealthAddress silent failure — return Maybe instead of BS.empty (StealthAddress.hs:140).
-  [x] M9.1.3 Document GCM xBitMask loop index as public-only (GCM.hs:104).
-
-[x] M9.2 Automated forensics tests
-  [x] M9.2.1 Create VM forensics script for disk/log/DB verification (scripts/vm-forensics-test.sh).
-  [x] M9.2.2 Add pcap entropy analysis to PcapVerify (analyzeCiphertextEntropy).
-  [x] M9.2.3 Add nonce uniqueness checking to PcapVerify (checkNonceUniqueness).
-  [x] M9.2.4 Wire vm-forensics into Makefile target and CLI bridge.
-
-[x] M9.3 Attack simulation test suite
-  [x] M9.3.1 Handshake replay rejection test.
-  [x] M9.3.2 Oversized frame DoS rejection test.
-  [x] M9.3.3 PEX injection with ipLen=255 rejection test.
-  [x] M9.3.4 SQL injection via message content test.
-  [x] M9.3.5 Ratchet counter exhaustion rejection test.
-  [x] M9.3.6 Zero-length ciphertext rejection test.
-  [x] M9.3.7 Truncated handshake msg2 rejection test.
-  [x] M9.3.8 Noise msg2 trailing bytes rejection test.
-  [x] M9.3.9 Path traversal DB path safe fallback test.
-  [x] M9.3.10 MITM ephemeral key replacement detection test.
-
-[x] M9.4 Automated fuzzing
-  [x] M9.4.1 Wire format fuzzer — random bytes to decodeWire, verify no crash.
-  [x] M9.4.2 PEX payload fuzzer — random bytes to decodePeerList, verify no crash.
-  [x] M9.4.3 CBOR fuzzer — random bytes to decodeMessage, verify no crash.
-  [x] M9.4.4 Handshake fuzzer — random bytes to recvFrame/recvBundle, verify no crash.
-  [x] M9.4.5 Crypto input fuzzer — edge-case inputs to all 10 primitives, verify no crash.
-
-[x] M9.5 Unicode exhaustive testing
-  [x] M9.5.1 Test all 1,112,064 valid code points — sequential encrypt/decrypt round-trip.
-  [x] M9.5.2 Test 10,000 random-order code points — randomized round-trip.
-  [x] M9.5.3 Test all 2,048 surrogate code points — verify no crash on rejection.
-  [x] M9.5.4 Test surrogate passthrough resilience — raw surrogate bytes survive crypto.
-  [x] M9.5.5 Test invalid UTF-8 sequences — overlong, truncated, 0xFE/0xFF, above U+10FFFF.
-  [x] M9.5.6 Test multi-plane strings — ASCII, CJK, emoji, RTL, combining marks, BOM, zero-width.
-
---------------------------------------------------------------------------------
-M12 Architecture: TUI/Headless Decoupling
---------------------------------------------------------------------------------
-
-[x] M12.1 Extract AppConfig from TUI.Types to UmbraVox.App.Config
-  [x] M12.1.1 Create UmbraVox.App.Config with AppConfig (domain fields only).
-  [x] M12.1.2 Create UmbraVox.App.Types with SessionInfo, ConnectionMode, ContactStatus.
-  [x] M12.1.3 TUI.Types re-exports from App.Config for backwards compat; adds TUI-only AppState.
-  [x] M12.1.4 Update all non-TUI imports (Startup, RuntimeLog, Headless) to use App.Config.
-
-[x] M12.2 Move protocol logic out of TUI namespace
-  [x] M12.2.1 Move TUI.Handshake protocol logic to UmbraVox.Protocol.Handshake.
-  [x] M12.2.2 TUI.Handshake becomes thin wrapper re-exporting from Protocol.Handshake.
-  [x] M12.2.3 genIdentity kept in Protocol.Handshake (wraps X3DH.generateIdentityKey).
-
-[x] M12.3 Split AppState into domain + UI state
-  [x] M12.3.1 Create UmbraVox.App.State with CoreState (config + running flag).
-  [x] M12.3.2 TUI.Types.AppState wraps CoreState + TUI-specific fields.
-  [x] M12.3.3 Headless.hs uses CoreState for scenario runners.
-  [x] M12.3.4 RuntimeNetwork uses CoreState (not AppState) for listener/acceptor via Network.Listener.
-
-[x] M12.4 Externalize all configuration
-  [x] M12.4.1 Audit codebase for hardcoded config: ports, paths, timeouts, limits, intervals.
-  [x] M12.4.2 Create UmbraVox.App.Defaults with all default values as named constants.
-  [x] M12.4.3 AppConfig loads from config file (~/.umbravox/config) with defaults fallback.
-  [x] M12.4.4 Config file format: simple key=value (# comments, blank lines skipped).
-  [x] M12.4.5 Remove hardcoded port 7853 from Transport.hs (use config).
-  [x] M12.4.6 Remove hardcoded maxFrameSize, maxSkip, maxTotalSkipped, maxInboundConnections.
-  [x] M12.4.7 Remove hardcoded timeout values (sqlite 10s, mDNS intervals).
-  [x] M12.4.8 HKDF info strings documented in App.Defaults (kept in crypto modules to avoid circular imports).
-  [x] M12.4.9 CLI flags (--port, --debug-log) override config file; config overrides defaults.
-
-[x] M12.5 Verify clean separation
-  [x] M12.5.1 App, Protocol, Crypto, Network, Storage — zero TUI imports (Startup fixed).
-  [x] M12.5.2 Runtime/Headless.hs has zero TUI imports (uses Network.Listener + App.State).
-  [x] M12.5.3 No hardcoded config values remain in library code (centralized in App.Defaults).
-  [x] M12.5.4 All tests pass after refactor.
-
---------------------------------------------------------------------------------
-M10 Security Audit Round 4 (2026-05-10)
---------------------------------------------------------------------------------
-
-[x] M10.1 Critical fixes
-  [x] M10.1.1 Noise IK: fix `se` leg to use initiator static × responder ephemeral (Handshake.hs:125).
-  [x] M10.1.2 KeyStore: encrypt identity keys at rest with passphrase-derived AEAD (KeyStore.hs:29,51).
-  [x] M10.1.3 Crypto: gate pure-Haskell primitives behind compile flag; document NOT constant-time prominently.
-  [x] M10.1.4 FStarVerify: add --admit_smt_queries false to detect assume-holes as failures.
-  [x] M10.1.5 Network: add connection limit (max 64) and per-IP rate limiting on accept loop (RuntimeNetwork.hs:128).
-  [x] M10.1.6 Noise: carry handshake hash (h) into transport phase for channel binding (Handshake.hs).
-  [x] M10.1.7 Noise: replace ChaCha20+HMAC with ChaCha20-Poly1305 AEAD per Noise spec (RFC 8439).
-  [x] M10.1.8 Nonce: change HKDF salt from chainKey to zeros (match Signal; current salt=ikm is redundant).
-  [x] M10.1.9 Noise: add test vectors for all four DH legs (ee, es, ss, se) with known keys.
-  [x] M10.1.10 Noise: add negative tests for swapped, missing, or duplicated DH terms.
-  [x] M10.1.11 Noise: document the nonce invariant (AEAD story) in module-level Haddock.
-  [x] M10.1.12 Noise: fix protocolName to "Noise_IK_25519_ChaChaPoly_SHA256".
-
-[x] M10.2 High-priority fixes
-  [x] M10.2.1 PQXDH: add Ed25519 signature on PQ prekey and verify in pqxdhInitiate (PQXDH.hs:36).
-  [x] M10.2.2 DoubleRatchet: replace counter-exhaustion `error` with Either/ExceptT (DoubleRatchet.hs:217,254).
-  [x] M10.2.3 DoubleRatchet: unify nonce construction (standard 4-zero + 8-byte-LE-counter).
-  [x] M10.2.4 HMAC: remove Debug.Trace; use proper typed error for empty-key warning (HMAC.hs:14,52).
-  [x] M10.2.5 DoubleRatchet: derive nonce from chain key via separate HKDF label, not msgKey (DoubleRatchet.hs:397).
-  [x] M10.2.6 ConstantTime: iterate over max(lenA,lenB) to avoid length leakage (ConstantTime.hs:22).
-  [x] M10.2.7 Anthony: fix SQL comment injection (block --, /* */); fix semicolon check on normalized string.
-  [x] M10.2.8 Anthony: call encryptField/decryptField in saveMessage/loadMessages (Anthony.hs:126).
-  [x] M10.2.9 Encryption: generate per-install random salt at first run (Encryption.hs:57).
-  [x] M10.2.10 PeerExchange: cap payloadLen at 4096 bytes (PeerExchange.hs:88).
-  [x] M10.2.11 UDP: cap utRecvBuf at 256 entries; drop far-ahead datagrams (Transport/UDP.hs:43).
-  [x] M10.2.12 Transport: wrap accept/killThread in bracket for socket leak fix (Transport.hs:76).
-  [x] M10.2.13 RuntimeNetwork: implement real TOFU/allowlist in Selective mode (RuntimeNetwork.hs:138).
-  [x] M10.2.14 TUI: sanitize /file path via canonicalizePath + directory allowlist (Actions/Session.hs:119).
-  [x] M10.2.15 TUI: derive safety number from verified peer key, not display name (Dialog.hs:212).
-  [x] M10.2.16 Scripts: validate UMBRAVOX_QEMU_SMOKE_RUNNER as executable path (release-smoke-microvm.sh:188).
-
-[x] M10.3 Medium-priority fixes
-  [x] M10.3.1 Curve25519: return Maybe on all-zero DH output instead of error.
-  [x] M10.3.2 MLKEM: return Maybe from bsSlice on out-of-bounds instead of BS.empty.
-  [x] M10.3.3 Export: document iterated-HKDF limitation; add TODO for Argon2id migration.
-  [x] M10.3.4 StealthAddress: export isValidStealthAddress validator function.
-  [x] M10.3.5 DoubleRatchet: evict skipped keys by insertion order (add timestamp/sequence).
-  [x] M10.3.6 Anthony: setFileMode 0600 on database file after openDB.
-  [x] M10.3.7 Encryption: remove plaintext passthrough after migration window.
-  [x] M10.3.8 MDNS: filter NUL/control/ANSI chars in sanitizeName; cap at 64 chars.
-  [x] M10.3.9 MDNS: stamp mdnsLastSeen with POSIX time; evict stale peers.
-  [x] M10.3.10 Socks5: map status codes to opaque messages; log raw at debug only.
-  [x] M10.3.11 Encoding: strict port parsing (reject trailing chars in safeReadPort).
-  [x] M10.3.12 TUI: don't display BIP39 passphrase in status bar (use overlay).
-  [x] M10.3.13 nixpkgs: pin to content-addressed revision in shell.nix.
-  [x] M10.3.14 VM: validate agent.env with key=value parsing instead of source.
-
-[x] M10.4 Regression test suite (covers M7-M10 findings)
-  [x] M10.4.1 Test constantEq: equal match, mismatch, different-length, prefix, empty inputs.
-  [x] M10.4.2 Test Noise handshake: replay rejection, key mismatch mid-handshake, half-open reject.
-  [x] M10.4.3 Test PEX: oversized payload rejection (>4096 bytes).
-  [x] M10.4.4 Test UDP: far-ahead seq number rejection (>256 ahead).
-  [x] M10.4.5 Test Anthony SQL: comment injection (--), tab-before-semicolon, newline bypass.
-  [x] M10.4.6 Test HMAC: empty key produces warning without crash.
-  [x] M10.4.7 Test KeyStore: corrupted file, non-existent path, permission-denied.
-  [x] M10.4.8 Test DoubleRatchet: counter overflow returns error (not crash).
-  [x] M10.4.9 Test PQXDH: unsigned PQ prekey rejected.
-  [x] M10.4.10 Test /file path: traversal attempt blocked.
-  [x] M10.4.11 Test safety number: derived from key bytes, not display name.
-  [x] M10.4.12 Test Storage.Encryption: nonce reuse detection, truncated ciphertext, corrupted tag.
-  [x] M10.4.13 Test mDNS: control chars stripped, oversized name truncated.
-  [x] M10.4.14 Test Encoding: strict port parsing rejects "80abc".
-  [x] M10.4.15 Add integritySuites to requiredSuites gate (Main.hs).
-
-================================================================================
-MILESTONE M15: SPEC COMPLIANCE — CRITICAL GAPS FROM ATTIC AUDIT
-================================================================================
-Note: Findings from attic/doc-legacy spec comparison (2026-05-11).
-
-[x] M15.1 Counter persistence (CRITICAL — nonce reuse on crash)
-  [x] M15.1.1 RatchetPersist: persistRatchetCounter (atomic write+fsync+rename).
-  [x] M15.1.2 withPersistentEncrypt wrapper (write-ahead before ratchetEncrypt).
-  [x] M15.1.3 loadRatchetCounter on startup (returns Nothing if missing).
-  [x] M15.1.4 Test: simulate crash after encrypt, verify counter not reused.
-  [x] M15.1.5 Test: concurrent encrypt threads don't race on counter file.
-    Note: 20 threads write unique counter values concurrently; final file must be valid 4-byte BE and equal one of the written values.
-
-[x] M15.2 Nonce format spec update (HIGH — code is correct, spec is outdated)
-  [x] M15.2.1 attic/hardening/07-nonce-safety.md marked SUPERSEDED.
-  [x] M15.2.2 doc/CRYPTO-SAFETY.md: all 3 nonce constructions + rationale.
-  [x] M15.2.3 HKDF domain string registry + key hierarchy documented.
-
-[~] M15.3 Key erasure (partial — IO-boundary wrapping complete, field migration deferred)
-  [x] M15.3.1 UmbraVox.Crypto.SecureBytes: pinned alloc, zeroing finalizer.
-  [~] M15.3.2 Replace ByteString with SecureBytes for secret key fields.
-    Note: IO-boundary wrapping done (KeyStore, Export use withSecureKey). Full IdentityKey field migration deferred — requires 27+ site changes across 14 files, and extracted ByteStrings still live on GC heap. Added zeroIdentityKey helper for session teardown instead.
-  [x] M15.3.3 Wrap GCM/ChaCha20 key parameters in SecureBytes.
-    Note: IO-boundary approach: KeyStore.hs and Export.hs wrap derived keys in SecureBytes via withSecureKey. Pure GCM/ChaCha20 function signatures unchanged — wrapping them gains nothing since toByteString creates a GC-heap copy. Deeper integration deferred to future C FFI crypto rewrite.
-  [x] M15.3.4 Add C helper: umbravox_secure_zero (explicit_bzero FFI).
-    Note: csrc/secure_zero.c implements volatile-write zeroing. Already wired via foreign import ccall.
-  [x] M15.3.5 Test: verify zeroing after free (valgrind/asan).
-    Note: test/Test/Crypto/SecureBytes.hs — 6 tests: zero-init, length, round-trip, zeroAndFree zeroes buffer, withSecureKey extraction, mlock integration. Functional zeroing verified; valgrind not applicable to GHC RTS.
-  [x] M15.3.6 Test: verify mlock prevents swap-out.
-    Note: csrc/secure_mlock.c wraps mlock/munlock/madvise(MADV_DONTDUMP|MADV_NOCORE) with platform-correct constants. newSecureBytes calls mlock+dontdump on allocation, munlock on finalizer. Best-effort (ignores ENOMEM). Stubs for Windows/WASM.
 
 ================================================================================
 MILESTONE M13: F* FORMAL VERIFICATION — 100% COVERAGE
@@ -663,495 +67,29 @@ Note: 221 original assumes → 0 admit() + 30 assume val. 17/24 specs fully prov
   All Lemma(True) placeholders honestly renamed. All hidden assume() made visible.
       Full ledger: test/evidence/formal-proofs/ASSUMPTIONS.md
 
-[x] M13.8 Zero admit() milestone — all 178 admits eliminated
-[x] M13.9 Assumption ledger — ASSUMPTIONS.md with full classification
-
-[x] M13.10 External evidence harness
-  [x] M13.10.1 Create check-external-evidence.sh (fail-closed)
-  [x] M13.10.2 Integrate primality certificate checker
-  [~] M13.10.3 Create Coq project skeleton (Ed25519Constants.v)
-    Note: Files created but Coq build needs ZArith library path fix for Rocq 9.1.1 in nix-shell.
-
 [~] M13.13 VM-based development migration
-  [x] M13.13.1 Move all development (build/test/verify/Coq) into the NixOS VM
-    Note: scripts/vm-dev-run.sh + make vm-dev/vm-build/vm-test/vm-verify targets.
-  [x] M13.13.2 Slim local shell.nix to only VM orchestration tools (QEMU, SSH, git)
-    Note: shell-minimal.nix created (user switches when ready; shell.nix untouched).
-  [x] M13.13.3 Update Makefile targets to route through VM execution
-    Note: vm-dev, vm-build, vm-test, vm-verify added to Makefile + help.
-  [x] M13.13.4 Add coqPackages.stdlib to nix/vm-image.nix for Rocq 9.1.1 ZArith support
-    Note: Conditional resolution via builtins.hasAttr — tries pkgs.coqPackages.stdlib then coq-stdlib, falls back to empty list.
-  [x] M13.13.5 Add make check-evidence target (runs check-external-evidence.sh)
-    Note: Added to Makefile, wired into make quality.
   [~] M13.13.6 Verify all F* specs pass in VM (cabal run fstar-verify)
     Note: fstar-verify runs in VM but exits 1 — some specs need higher z3rlimit or more time. Needs investigation.
-  [x] M13.13.7 Verify all Coq proofs build locally and in VM (make -C coq)
-    Note: Ed25519Constants.v builds clean with Rocq 9.1.1. Fixed imports to use From Stdlib Require. Ed25519GroupLaw.v moved to coq/draft/ (has Admitted — proof skeleton only, excluded from build).
-  [x] M13.13.8 Verify Haskell test suite passes in VM (cabal run umbravox-test -- required)
-    Note: VM build + test completes in ~32s with cache. EXIT=0 confirmed.
-
-[x] M13.14 Assumption ledger maintenance
-  [x] M13.14.1 Update ASSUMPTIONS.md whenever assume val count changes
-    Note: Ledger has 31 entries (23 current + 8 discharged). Verified consistent with grep count.
-  [x] M13.14.2 Run check-external-evidence.sh before each release tag
-    Note: Harness passes on host (Coq skips without coqc, expected). Full evidence check in VM.
-  [x] M13.14.3 Regenerate inventory logs on each verification pass
-    Note: Logs at test/evidence/formal-proofs/logs/ — assume-val-inventory.txt, admit-inventory.txt, verification-summary.txt.
 
 [ ] M13.11 Coq external verification
-  [x] M13.11.1 Ed25519Prime.v — primality evidence (Pocklington conditions + verified checker)
-    Note: 94 Qed, 0 Admitted, 0 Axiom. Fermat witnesses, non-divisibility by primes to 97, Pocklington certificate conditions (factorization, gcd checks, size bounds), verified trial-division checker with soundness proof, 25 small primes proved. Builds clean with Rocq 9.1.1 + stdlib.
-  [x] M13.11.2 Ed25519Field.v — field operations, basic properties
-    Note: 54 Qed, 0 Admitted, 0 Axiom. Modular add/sub/mul/opp with commutativity, associativity, distributivity, identities, inverses. 6 Fermat witnesses via pow_mod. Reduction identities (2^255→19, 2^256→38). Builds clean.
-  [x] M13.11.3 Ed25519Curve.v — curve equation, d non-square, basepoint on-curve
-  [~] M13.11.4 Ed25519 universal group law via coqprime GZnZ
-    [x] M13.11.4.a coqprime enabled: shell.nix, vm-image.nix include coq-bignums + coqprime.
-      Note: -native-compiler no workaround for bignums findlib plugin issue (Rocq 9.1.1).
-    [x] M13.11.4.b Ed25519GroupUniversal.v: 39 Qed via ring/field tactics.
-      - Ring structure over Z/pZ (8 Qed, no primality needed)
-      - Universal commutativity (6 Qed)
-      - Universal identity element (8 Qed, uses field tactic + one_neq_zero)
-      - Universal additive inverse (6 Qed, uses curve equation + field)
-      - Concrete GZnZ ↔ Ed25519Field.v agreement (6 Qed)
-      - Identity on-curve (1 Qed)
-      Note: Field-dependent theorems parameterized by (p_prime : prime ed25519_p).
-    [x] M13.11.4.c Closure cofactors computed via sympy Groebner basis.
-      Note: G = A*C1 + B*C2 where A has 15 terms, B has 15 terms, remainder = 0.
-      Cofactors verified: expand(A*C1 + B*C2 - G) = 0.
-    [x] M13.11.4.d Universal closure (ED-008b): PROVED via polynomial certificate.
-      Note: te_add_closure_cross in Ed25519GroupUniversal.v. Cofactors A, B (15 terms each)
-      computed via sympy Groebner basis, verified by Coq ring tactic. Cross-multiplied form.
-      Track A (field [H1 H2]) rejected by tactic; Track B (certificate) succeeded.
-    [ ] M13.11.4.e Universal completeness: denominators 1±d*x1*x2*y1*y2 ≠ 0 for on-curve points.
-      Note: Requires d_nonsquare + field reasoning (Bernstein-Lange 2007 Thm 3.3).
-    [ ] M13.11.4.f Universal associativity (ED-003): decompose into named polynomial obligations.
-      - x-numerator identity, x-denominator identity, y-numerator identity, y-denominator identity
-      - Denominator nonzero obligations (from completeness)
-      - Assembly: combine into proj_eq
-      Track A: field [H1 H2 H3] (coqprime SMain.v proves Weierstrass this way)
-      Track B: polynomial certificate via sympy → ring
-    [ ] M13.11.4.g Concrete instance reorganization (Ed25519GroupAssoc.v): label coverage categories.
-    [ ] M13.11.4.h Primality of 2^255-19 via PocklingtonRefl (blocked by bignums plugin).
-      Note: Full factorization chain computed (14 levels). All Pocklington conditions
-      machine-verified in Ed25519Prime.v. PocklingtonRefl import fails due to findlib.
-    Current totals: 11 Coq files, 418 Qed, 0 Admitted.
-  [x] M13.11.5 Ed25519Scalar.v — scalar_mult_add, scalar_mult_compose
-  [x] M13.11.6 VRFDLEQ.v — DLEQ correctness
-
-[~] M13.12 F* native reductions
-  [x] M13.12.1 encode_decode_round_trip: FIXED — added on_curve_ext precondition.
-    Note: Theorem was false for off-curve points (counterexample: pt=(3,1,1,3)). Fixed by adding `requires on_curve_ext pt == true`. Proof still blocked by sqrt recovery (~2^252 exponentiation, infeasible for Z3).
-  [x] M13.12.2 sign_then_verify: PROVED via 4 narrow algebraic assumptions.
-    Note: Requires SHA-512 symbolic evaluation (exceeds Z3) and on-curve preservation for scalar_mult.
-
-================================================================================
-MILESTONE M16: DO-178C DAL A TESTING — 100% MC/DC COVERAGE
-================================================================================
-Note: Modified Condition/Decision Coverage for all MVP crypto + protocol modules.
-
-[x] M16.1 MC/DC instrumentation infrastructure
-  [x] M16.1.1 HPC coverage evaluated — expression/branch coverage, not full MC/DC.
-  [x] M16.1.2 make mcdc-report target (configure + build -j1 + test + hpc report).
-  [x] M16.1.3 doc/DO-178C-COVERAGE.md: HPC vs MC/DC gap analysis + closure plan.
-  [x] M16.1.4 Initial report: 14 crypto modules at 94-100% expression coverage.
-  [x] M16.1.5 Define condition tables for compound guards (&&/|| in crypto modules).
-    Note: 5 compound guards found (10 atomic conditions). Tables in test/evidence/condition-tables/crypto-compound-guards.md. Guards 3-4 (MLKEM rejection sampling) covered by KAT vectors. Guards 1,2,5 need edge test cases.
-
-[ ] M16.2-4 Module-level MC/DC targets — see doc/DO-178C-COVERAGE.md for per-module plan.
-
-[x] M13.1 Phase 1: Field arithmetic + bitwise (all specs 0 assume val)
-  [x] M13.1.1 SHA-256: prove round constants, ch/maj/bsig/ssig, schedule expansion.
-    Note: 64 round constants + 8 init hash via assert_norm. ch/maj bitwise properties. Full schedule expansion inductive proof. Zero admits.
-  [x] M13.1.2 SHA-512: mirror SHA-256 proofs for 64-bit.
-    Note: Complete — 0 assume val. FIPS 180-4 vectors via assert_norm.
-  [x] M13.1.3 HMAC: key-length refinement proved (1 assume removed).
-  [x] M13.1.4 HKDF: counter bounds + ceil_div_bounds proved (2 assumes removed).
-  [x] M13.1.5 Poly1305: key-size enforced at type level (1 assume removed).
-  [x] M13.1.6 GaloisField: 4 XOR properties proved via UInt lemmas + gf_to_bs length.
-
-[x] M13.2 Phase 2: Algorithm cores (all specs 0 assume val)
-  [x] M13.2.1 ChaCha20: 0 assume val. double_round concrete impl; serialize_state; chacha20_encrypt recursive.
-  [x] M13.2.2 AES-256: 0 assume val. key expansion loop invariant proved; cipher/inv_cipher length refinement.
-  [x] M13.2.3 Keccak: all three specs 0 assume val. Permutation (z3rlimit 50000), Sponge, SHA3 fully proved.
-    Note: Permutation (pi bounds assert_norm, chi case split, keccak_f1600 type refinement).
-    Sponge (absorb length typed recursion, state_to_bytes serialize_state_tail, squeeze_length_lemma).
-    SHA3 (KAT vectors evaluated; output-length lemmas proved via squeeze_length_lemma).
-  [x] M13.2.4 GCM: 0 assume val. incr32/make_j0/ghash loop invariants; split_blocks inductive; gctr_length; gcm roundtrip.
+  [ ] M13.11.4.e Universal completeness: denominators 1±d*x1*x2*y1*y2 ≠ 0 for on-curve points.
+    Note: Requires d_nonsquare + field reasoning (Bernstein-Lange 2007 Thm 3.3).
+  [ ] M13.11.4.f Universal associativity (ED-003): decompose into named polynomial obligations.
+    - x-numerator identity, x-denominator identity, y-numerator identity, y-denominator identity
+    - Denominator nonzero obligations (from completeness)
+    - Assembly: combine into proj_eq
+    Track A: field [H1 H2 H3] (coqprime SMain.v proves Weierstrass this way)
+    Track B: polynomial certificate via sympy → ring
+  [ ] M13.11.4.g Concrete instance reorganization (Ed25519GroupAssoc.v): label coverage categories.
+  [ ] M13.11.4.h Primality of 2^255-19 via PocklingtonRefl (blocked by bignums plugin).
+    Note: Full factorization chain computed (14 levels). All Pocklington conditions
+    machine-verified in Ed25519Prime.v. PocklingtonRefl import fails due to findlib.
+  Current totals: 11 Coq files, 418 Qed, 0 Admitted.
 
 [~] M13.3 Phase 3: Curve arithmetic
-  [x] M13.3.1 X25519: 0 assume val. Field arithmetic proved; KAT vectors via assert_norm; clamp_idempotent proved.
   [~] M13.3.2 Ed25519: 10 assume val remaining (algebraic/curve geometry). fadd/fmul/distrib proved; all KAT via assert_norm.
-  [x] M13.3.3 Ed25519 signature verification: sign_then_verify PROVED (v0.1.8).
-  [x] M13.3.4 ML-KEM-768: 0 assume val. NTT, polynomial arithmetic, compress/decompress proved.
-    Note: Removed false assumes from ntt/inv_ntt/basemul (types already enforce length).
-    Parameter correctness proved via assert_norm (k=3, n=256, q=3329, etc.).
-    compress_decompress_approx_lemma body changed to (). 3 assumes remain for abstract
-    stubs (ntt_roundtrip, cbd_bound, sample_ntt_range — all legitimate cryptographic axioms).
-
-[x] M13.4 Phase 4: Protocol composition (X3DH/PQXDH/NoiseIK 0 assume; DoubleRatchet 2 crypto hardness)
-  [x] M13.4.1 X3DH: DH commutativity via dh_comm_1 lemma; agreement lemma invokes all 4 DH legs.
-  [x] M13.4.2 PQXDH: IKM length proved (160/192 bytes structural); ML-KEM correctness lemma; agreement strengthened from vacuous.
-  [x] M13.4.3 DoubleRatchet: kdf_ck_distinct + kdf_ck_independence structural proofs; crypto axioms as explicit assume val.
-  [x] M13.4.4 NoiseIK: fully proved (zero admits confirmed).
-
-[x] M13.5 Phase 5: New specs (4 modules created)
-  [x] M13.5.1 Spec.ChaChaPoly.fst — AEAD correctness + tag forgery rejection stated.
-  [x] M13.5.2 Spec.SenderKeys.fst — chain derivation + forward-only property.
-  [x] M13.5.3 Spec.StealthAddress.fst — scan_correctness + unlinkability.
-  [x] M13.5.4 Spec.VRF.fst — uniqueness + verifiability + pseudorandomness.
-
-[x] M13.6 Phase 6: KAT vector evaluation (8/9 concrete via assert_norm)
-  [x] M13.6.1 SHA-256 NIST vectors: 3 FIPS 180-4 vectors via assert_norm.
-  [x] M13.6.2 SHA-512 NIST vectors: FIPS 180-4 vectors via assert_norm.
-  [x] M13.6.3 ChaCha20 RFC 8439 vectors: quarter-round via assert_norm.
-  [x] M13.6.4 AES-256 NIST vectors: FIPS 197 C.3 via assert_norm.
-  [x] M13.6.5 X25519 RFC 7748 vectors: Section 6.1 via assert_norm.
-  [x] M13.6.6 Ed25519 RFC 8032 vectors: Section 7.1 via assert_norm.
-  [x] M13.6.7 Poly1305 RFC 8439 vectors: Section 2.5.2 via assert_norm.
-  [x] M13.6.8 ML-KEM-768 NIST vectors: structural property lemmas (lattice ops too expensive for normalizer).
-    Note: All 8 evaluable specs use concrete implementations with assert_norm. ML-KEM uses abstract structural proofs due to computational complexity.
 
 [~] M13.7 Infrastructure (partial)
-  [x] M13.7.1 Per-module z3rlimit configuration in FStarVerify.hs.
-    Note: Permutation 50000, Sponge 20000, SHA3 20000, MLKEM768 50000.
-    heavySpecs updated to include Sponge, SHA3, MLKEM768 (verified last for cache warmth).
-  [x] M13.7.2 CI overnight verification job (high rlimit specs).
-  [x] M13.7.3 Proof regression gate: countAssumes + baseline test in FStarVerify suite.
-  [x] M13.7.4 F* spec coverage report: generateCoverageReport + fstar-report CLI command.
-
-================================================================================
-MILESTONE M11: TOP-500 CRYPTOGRAPHIC ATTACK TEST PLAN
-================================================================================
-Note: Comprehensive adversarial test coverage for all primitives and protocols.
-Priority: Critical > High > Medium > Low. One task = one attack scenario.
-
---------------------------------------------------------------------------------
-CAT-1: SIDE-CHANNEL ATTACKS (timing, cache, power analogues)
---------------------------------------------------------------------------------
-[x] SC-001  AES-256 timing: measure encrypt latency variance across 10K random keys; reject if stddev > threshold. [Critical]
-[x] SC-002  AES table-lookup cache: detect key-dependent memory access patterns via Flush+Reload simulation. [Critical]
-[x] SC-003  GCM/GHASH timing: confirm constant-time GHASH multiplication (xBitMask loop) under variable input. [Critical]
-[x] SC-004  Poly1305 key clamping timing: verify clamp operation is branch-free across all r values. [High]
-[x] SC-005  ChaCha20 branch-free: confirm no data-dependent branches in quarter-round via static analysis. [High]
-[x] SC-006  X25519 scalar mult timing: measure latency for low-order vs random scalars; must be constant. [Critical]
-[x] SC-007  Ed25519 signing timing: verify signing time is independent of secret scalar value. [Critical]
-[x] SC-008  ML-KEM-768 decap timing: decapsulation time must not vary between valid and invalid ciphertexts. [Critical]
-[x] SC-009  HMAC compare timing: constantEq must run over max(lenA,lenB) — test with prefix-equal inputs. [Critical]
-[x] SC-010  SHA-256 message schedule: confirm no secret-dependent branching in compression function. [High]
-[x] SC-011  SHA-512 timing variance: profile over empty vs max-length inputs for branch leakage. [High]
-[x] SC-012  SHA-3/Keccak theta/rho timing: confirm permutation is input-length-only dependent. [High]
-[x] SC-013  HKDF expand timing: verify HMAC iterations do not leak output length via timing. [Medium]
-[x] SC-014  BIP39 mnemonic lookup: word-list index lookup must not branch on passphrase content. [High]
-[x] SC-015  VRF prove timing: proof generation time must not vary on input message content. [High]
-[x] SC-016  Double Ratchet chain key derivation timing: HKDF calls must be constant-time on key material. [High]
-[x] SC-017  Noise IK handshake timing: responder must not reveal identity guess via response latency. [Critical]
-[x] SC-018  X3DH initiate timing: DH computation time must not distinguish valid vs invalid peer keys. [High]
-[x] SC-019  PQXDH timing: KEM encap/decap timing must not reveal shared secret bits. [Critical]
-[x] SC-020  Stealth Address scan timing: DKSAP scan must not branch on hit vs miss. [High]
-[x] SC-021  KeyStore load timing: key file read latency must not leak passphrase correctness. [High]
-[x] SC-022  PBKDF2/iterated-HKDF timing: export key derivation timing must not reveal iteration count to attacker. [Medium]
-[x] SC-023  AES-GCM nonce timing: nonce generation must not introduce latency variance correlated to counter value. [Medium]
-[x] SC-024  Ed25519 nonce (k) generation: ephemeral nonce must be deterministic per RFC 8032 — verify no PRNG branch. [Critical]
-[x] SC-025  Constant-time byte comparison: inject equal-prefix, differing-suffix; confirm no early exit. [Critical]
-[x] SC-026  Memory zeroing timing: secure key erasure must complete before GC; test via allocation trace. [High]
-[x] SC-027  GHASH accumulator: test that carry-less multiply does not short-circuit on zero blocks. [High]
-[x] SC-028  ML-KEM compress/decompress: coefficient operations must not branch on polynomial coefficients. [High]
-[x] SC-029  ChaCha20 counter increment: 32-bit overflow carry must not cause detectable timing spike. [Medium]
-[x] SC-030  SOCKS5 proxy response timing: error code path must not reveal internal state via latency. [Low]
-
---------------------------------------------------------------------------------
-CAT-2: PROTOCOL-LEVEL ATTACKS (replay, reflection, downgrade, KCI, UKS)
---------------------------------------------------------------------------------
-[x] PL-001  Handshake replay: replay captured Noise IK msg1 after session established; must be rejected. [Critical]
-[x] PL-002  Cross-session replay: replay msg1 from session A into session B; must be rejected via session binding. [Critical]
-[x] PL-003  Reflection attack: send responder's own msg2 back as a new msg1; must fail MAC check. [Critical]
-[x] PL-004  Downgrade: negotiate Noise IK but strip PQ layer; responder must reject non-PQXDH sessions. [Critical]
-[x] PL-005  KCI (Key Compromise Impersonation): compromise initiator static key; verify attacker cannot impersonate responder. [Critical]
-[x] PL-006  UKS (Unknown Key Share): verify both parties agree on peer identity after X3DH completes. [High]
-[x] PL-007  Double Ratchet message replay: replay ciphertext with same (ratchet-step, counter); must be rejected. [Critical]
-[x] PL-008  Out-of-window replay: replay message with counter 1000 steps behind current; must be rejected by skipped-key eviction. [High]
-[x] PL-009  X3DH one-time prekey reuse: present same OPK twice across two sessions; server must not reuse. [Critical]
-[x] PL-010  PQXDH prekey reuse: present same ML-KEM-768 encapsulation twice; verify session key differs. [Critical]
-[x] PL-011  Noise IK identity mismatch: swap responder static key mid-handshake; verify initiator aborts. [Critical]
-[x] PL-012  Noise handshake truncation: send incomplete msg1; responder must close connection cleanly. [High]
-[x] PL-013  Noise msg2 trailing bytes: append garbage after valid msg2; must be rejected (M8.2.7). [High]
-[x] PL-014  PEX injection: inject crafted peer list with hostile IPs; verify 1-hop rule prevents propagation. [High]
-[x] PL-015  PEX amplification: send PEX request with spoofed source; verify no amplification response. [High]
-[x] PL-016  mDNS spoofing: inject mDNS record with attacker IP for victim name; test TOFU rejection. [High]
-[x] PL-017  Session fixation: attempt to reuse completed handshake state for a new session. [High]
-[x] PL-018  Half-open handshake: send msg1 then drop; responder must release resources after timeout. [High]
-[x] PL-019  Double Ratchet chain reorder: deliver messages out of order; verify correct chain advancement. [High]
-[x] PL-020  Sender Keys replay: replay a group ciphertext to a different group member session. [High]
-[x] PL-021  X3DH identity key substitution: swap IK_B in X3DH bundle; verify HMAC on bundle detects it. [Critical]
-[x] PL-022  PQXDH prekey signature bypass: strip Ed25519 signature from PQ prekey; verify rejection (M10.2.1). [Critical]
-[x] PL-023  Dandelion stem-to-fluff timing: measure stem phase exposure window; must be < configured stem timeout. [Medium]
-[x] PL-024  Gossip message amplification: flood network with unique message IDs; verify rate limiting triggers. [Medium]
-[x] PL-025  Wire frame length overflow: send frame with length field = MAXINT; verify off-by-one guard (M8.2.2). [Critical]
-[x] PL-026  CBOR deserialization bomb: send deeply nested CBOR structure; verify parser terminates. [High]
-[x] PL-027  UDP far-ahead sequence: send seq = current + 10000; verify rejection (M10.2.11). [High]
-[x] PL-028  UDP reordering attack: deliver packets out of order; verify reliability layer reassembles correctly. [Medium]
-[x] PL-029  SOCKS5 downgrade: SOCKS5 proxy responds with auth method 0x00 (no auth); verify client rejects. [High]
-[x] PL-030  Transport hot-reload race: reload provider manifest while in-flight session; verify no key confusion. [Medium]
-
---------------------------------------------------------------------------------
-CAT-3: SYMMETRIC CRYPTO ATTACKS (nonce reuse, related-key, padding oracle, tag forgery)
---------------------------------------------------------------------------------
-[x] SY-001  AES-GCM nonce reuse: encrypt two messages with same (key, nonce); verify key recovery is demonstrable. [Critical]
-[x] SY-002  AES-GCM nonce counter wrap: send 2^32 messages on same ratchet step; must be blocked by counter limit. [Critical]
-[x] SY-003  GCM tag truncation: accept ciphertext with 8-byte tag instead of 16; must be rejected. [Critical]
-[x] SY-004  GCM tag forgery: flip one ciphertext byte and forge tag; must be rejected by GHASH verify. [Critical]
-[x] SY-005  GCM plaintext oracle: confirm no decrypted plaintext is returned on tag failure (fail-closed). [Critical]
-[x] SY-006  GCM associated data bypass: omit AAD on decryption when AAD was present on encryption; must fail. [Critical]
-[x] SY-007  AES-GCM birthday bound: at 2^32 nonces under one key, trigger rekeying — verify ratchet advances. [High]
-[x] SY-008  ChaCha20 nonce reuse: reuse (key, nonce, counter=0) across two plaintexts; demonstrate keystream XOR. [Critical]
-[x] SY-009  ChaCha20 counter rollover: increment counter past 2^32 without key rotation; must be caught. [High]
-[x] SY-010  ChaCha20-Poly1305 tag forgery: mutate ciphertext; Poly1305 tag must not verify. [Critical]
-[x] SY-011  Poly1305 key clamping bypass: submit r value with unclamped bits set; verify clamping is enforced. [Critical]
-[x] SY-012  Poly1305 all-zero r: r=0 makes all tags identical — verify r is never zero. [Critical]
-[x] SY-013  Poly1305 all-zero s: s=0 leaks poly accumulator — verify s is never zero. [High]
-[x] SY-014  HMAC length extension: SHA-256 HMAC must not be vulnerable — verify HMAC construction is H(k||H(k||m)). [High]
-[x] SY-015  HMAC empty key: verify empty key is rejected with error, not silently accepted (M8.3.5). [High]
-[x] SY-016  HMAC key reuse across contexts: same HMAC key used in HKDF and MAC contexts; verify domain separation. [High]
-[x] SY-017  Related-key AES: test known related-key attack pairs (Biryukov-Khovratovich) — ensure no weak key schedule. [Medium]
-[x] SY-018  AES weak keys: test all-zero key, all-one key, repeated-byte key; confirm no short cycles. [Medium]
-[x] SY-019  AES-256 key schedule avalanche: single-bit key flip must change all subkeys; statistical test. [Medium]
-[x] SY-020  HKDF salt=nil: omit salt in HKDF-Extract; verify implementation uses zero-filled salt per RFC 5869. [High]
-[x] SY-021  HKDF output length overflow: request OKM > 255*HashLen; must return error, not wrap. [High]
-[x] SY-022  HKDF info collision: two different info strings that produce the same OKM; verify label domain separation. [Medium]
-[x] SY-023  Storage encryption nonce reuse: save two messages with same nonce; must be prevented by random nonce gen. [Critical]
-[x] SY-024  Ratchet chain key zero: initial chain key all-zeros; verify never derived from zero (M7.2.3). [Critical]
-[x] SY-025  Ratchet message key nonce derive: verify nonce is HKDF-derived from chain key, not msgKey (M10.2.5). [High]
-[x] SY-026  Export PBKDF2 iteration count: verify 100K iterations enforced; test with patched iteration count = 1. [High]
-[x] SY-027  Export key salt uniqueness: verify per-install salt is random and stored; test same-passphrase different-machine produces different key. [High]
-[x] SY-028  Storage ciphertext truncation: truncate stored ciphertext by 1 byte; verify decryption fails cleanly. [High]
-[x] SY-029  Storage tag corruption: flip tag byte in stored ciphertext; verify decrypt returns error not garbage. [High]
-[x] SY-030  AEAD wrong key decryption: decrypt with wrong key; confirm no partial plaintext leaks on failure. [Critical]
-
---------------------------------------------------------------------------------
-CAT-4: ASYMMETRIC CRYPTO ATTACKS (small subgroup, invalid curve, twist, Bleichenbacher)
---------------------------------------------------------------------------------
-[x] AS-001  X25519 low-order point: send one of the 8 low-order points as peer public key; must be rejected. [Critical]
-[x] AS-002  X25519 all-zero output: DH result = 0x00...00; must return Maybe/error not silent acceptance. [Critical]
-[x] AS-003  X25519 non-canonical point: send 2^255 - 19 as public key (reduces to canonical); verify handling. [High]
-[x] AS-004  X25519 twist attack: send point on the twist curve (order 2·cofactor...); verify constant-time rejection. [Critical]
-[x] AS-005  X25519 small subgroup: send point of small order; shared secret collapses — verify rejection. [Critical]
-[x] AS-006  Ed25519 small subgroup signature: use small-order R in signature; verify rejection per ZIP-215 rules. [Critical]
-[x] AS-007  Ed25519 signature malleability: add l·B to S (cofactor malleability); verify signature uniqueness check. [High]
-[x] AS-008  Ed25519 cofactor check: verify 8-cofactor clearing on point decompression; test non-cleared points. [High]
-[x] AS-009  Ed25519 batch verification shortcut: forged signature that passes batch but fails individual; not applicable if batch is not used (verify). [Medium]
-[x] AS-010  ML-KEM-768 invalid ciphertext: send random 1088 bytes as ciphertext; decap must return implicit rejection (IND-CCA2 implicit reject). [Critical]
-[x] AS-011  ML-KEM-768 ciphertext mutation: flip one bit in valid ciphertext; decap must return different (random-looking) shared secret. [Critical]
-[x] AS-012  ML-KEM-768 public key validity: submit malformed public key (coefficient > q); encap must detect or be safe. [High]
-[x] AS-013  ML-KEM-768 zero shared secret: craft ciphertext where decap yields 0x00...00; should be negligible probability — fuzz test. [High]
-[x] AS-014  ECDH reuse across protocols: X25519 key pair used for both X3DH DH and Noise static; verify domain separation prevents confusion. [High]
-[x] AS-015  Ed25519 key reuse for encryption: Ed25519 signing key used as X25519 encryption key via conversion; verify this is blocked or safe. [High]
-[x] AS-016  VRF proof forgery: submit a VRF proof for a message without knowing the secret key; must fail verify. [Critical]
-[x] AS-017  VRF output uniqueness: same (sk, msg) must always produce same output; test determinism. [High]
-[x] AS-018  VRF proof replay across messages: prove(sk, m1) presented as proof for m2; must fail. [High]
-[x] AS-019  Stealth Address point-at-infinity: send point-at-infinity as ephemeral key in DKSAP; must be rejected. [Critical]
-[x] AS-020  Stealth Address scan false positive: craft ephemeral key that matches scan key but not spend key; verify. [High]
-[x] AS-021  BIP39 seed derivation collision: two different mnemonics that produce the same seed; statistical impossibility — verify with test vectors. [Medium]
-[x] AS-022  BIP39 checksum bypass: submit mnemonic with invalid checksum; must be rejected before key derivation. [High]
-[x] AS-023  Ed25519 fault injection simulation: flip a bit in the signing nonce r; verify the signature is invalid (not key-recovering). [High]
-[x] AS-024  X25519 public key all-zero: peer sends 0x00...00 as public key; must be rejected. [Critical]
-[x] AS-025  ML-KEM-768 encap with wrong key length: submit 1168+1 bytes as public key; must error cleanly. [High]
-
---------------------------------------------------------------------------------
-CAT-5: KEY MANAGEMENT ATTACKS (key reuse, weak entropy, key exposure)
---------------------------------------------------------------------------------
-[x] KM-001  Identity key at rest plaintext: verify identity keys are AEAD-encrypted on disk (KeyStore.hs M10.1.2). [Critical]
-[x] KM-002  KeyStore file permissions: verify 0600 permissions on key file after write. [Critical]
-[x] KM-003  Identity key in logs: search all log emission paths for identity key material appearing in plaintext. [Critical]
-[x] KM-004  Key material in core dump: verify key zeroing occurs before long blocking calls; no key in crash dump. [High]
-[x] KM-005  Weak CSPRNG seed: test CSPRNG with low-entropy seed (time-only); verify HKDF-Extract strengthening (M7.3.1). [Critical]
-[x] KM-006  Fork without re-seed: fork process after CSPRNG init; child and parent must not share keystream. [Critical]
-[x] KM-007  CSPRNG PID tracking: verify PID-change detection triggers re-seeding (M7.3.2). [High]
-[x] KM-008  One-time prekey exhaustion: exhaust all OPKs; verify fallback to signed prekey is safe. [High]
-[x] KM-009  Signed prekey rotation: rotate SPK; verify old SPK sessions continue (backward compatibility) and new uses new. [High]
-[x] KM-010  Identity key rotation: replace IK; verify old sessions are not silently migrated. [High]
-[x] KM-011  Key confusion: use ratchet message key as HKDF key for a different purpose; verify label separation prevents this. [High]
-[x] KM-012  Export key plaintext passthrough: verify plaintext passthrough is removed after migration window (M10.3.7). [High]
-[x] KM-013  Per-install salt: verify salt is generated once and persisted; not regenerated on each start (M10.2.9). [High]
-[x] KM-014  Storage key derivation with no salt: omit salt in storage key derivation; verify error or safe default. [High]
-[x] KM-015  BIP39 passphrase leakage in status bar: verify passphrase is not displayed in TUI status (M10.3.12). [Medium]
-[x] KM-016  Ephemeral key reuse across sessions: X3DH ephemeral key EK_A reused in two sessions; must not happen. [Critical]
-[x] KM-017  Skipped message key eviction: fill skipped-key cache to LRU limit; verify oldest is evicted (M7.3.6). [High]
-[x] KM-018  Skipped key timestamp eviction: verify stale skipped keys are evicted by insertion order (M10.3.5). [Medium]
-[x] KM-019  DB file permissions: verify 0600 on SQLite database file after open (M10.3.6). [Medium]
-[x] KM-020  Key zeroing after crypto: call all 10 primitive functions; verify key ByteStrings are zeroed post-op (M7.2.1). [Critical]
-[x] KM-021  PQXDH shared secret in memory: verify KEM shared secret is zeroed after HKDF-Extract consumes it. [Critical]
-[x] KM-022  Session key confirmation HMAC: verify HMAC is checked after handshake before any message processing (M7.3.7). [Critical]
-[x] KM-023  KeyStore corrupted file: corrupt key file; verify graceful error and no partial key use (M10.4.7). [High]
-[x] KM-024  KeyStore non-existent path: open non-existent key file; verify error not panic. [High]
-[x] KM-025  Passphrase brute-force resistance: verify PBKDF2 at 100K iterations takes > 0.1s per attempt. [High]
-
---------------------------------------------------------------------------------
-CAT-6: IMPLEMENTATION BUGS (overflow, off-by-one, type confusion, memory)
---------------------------------------------------------------------------------
-[x] IB-001  Frame length off-by-one: send len = maxFrameSize exactly; verify rejection (>= not > check) (M8.2.2). [Critical]
-[x] IB-002  PEX ipLen=255: send PEX entry with ipLen=255; verify cap at 16 bytes (M8.2.1). [Critical]
-[x] IB-003  PEX payload overflow: send payload > 4096 bytes; verify cap (M10.2.10). [High]
-[x] IB-004  UDP recv buffer cap: overflow UDP recv buffer beyond 256 entries; verify oldest is dropped (M10.2.11). [High]
-[x] IB-005  Ratchet counter >= 0xFFFFFFFE: advance counter to near-max; verify rejection before overflow (M8.1.1). [Critical]
-[x] IB-006  Integer overflow in HKDF length: request output length that overflows Int; verify error. [High]
-[x] IB-007  Integer overflow in SHA-256 message length: hash message > 2^64 bits; verify counter wrap detection. [High]
-[x] IB-008  Keccak rate not multiple of 8: set invalid rate; verify rejection (M8.3.4). [High]
-[x] IB-009  ML-KEM bsSlice out-of-bounds: call bsSlice with offset+len > BS.length; verify Maybe return (M10.3.2). [High]
-[x] IB-010  Curve25519 all-zero DH output: verify return Maybe not error on 0x00 result (M10.3.1). [Critical]
-[x] IB-011  CBOR decoding stack overflow: deeply nested CBOR structure; verify bounded recursion. [High]
-[x] IB-012  Wire decoding zero-length ciphertext: send wire frame with 0-byte ciphertext; verify rejection (M8.3.1). [High]
-[x] IB-013  SQL injection via message content: insert SQL metacharacters in message body; verify safe quoting (M7.1.5). [Critical]
-[x] IB-014  SQL comment injection: insert -- or /* */ in query fields; verify normalized blocking (M10.2.7). [Critical]
-[x] IB-015  SQL semicolon injection: insert semicolon in query; verify detection after normalization. [High]
-[x] IB-016  Path traversal in DB path: supply ../../etc/passwd as DB path; verify rejection (M7.3.8). [Critical]
-[x] IB-017  Path traversal in /file command: supply relative path; verify canonicalizePath + allowlist (M10.2.14). [High]
-[x] IB-018  mDNS NUL injection: embed NUL byte in mDNS service name; verify sanitization (M10.3.8). [High]
-[x] IB-019  mDNS ANSI escape injection: embed escape codes in mDNS name; verify stripping. [High]
-[x] IB-020  mDNS name length: send 200-char mDNS name; verify truncation at 64 chars (M10.3.8). [Medium]
-[x] IB-021  Port parsing trailing chars: parse "80abc" as port; verify strict rejection (M10.3.11). [Medium]
-[x] IB-022  Handshake payload length validation: recv shorter payload than expected; verify bounds check (M8.1.3). [Critical]
-[x] IB-023  HMAC Debug.Trace removal: verify no trace output on empty-key warning in production build (M10.2.4). [Medium]
-[x] IB-024  Head on empty list: all partial function uses of head replaced with pattern matching (M7.3.9). [High]
-[x] IB-025  Accept loop unbounded connections: open 1000 connections; verify connection limit of 64 (M10.1.5). [High]
-[x] IB-026  Per-IP rate limiting: flood from single IP; verify rate limit triggers (M10.1.5). [High]
-[x] IB-027  Socket leak on exception: exception during connect; verify bracket closes socket (M10.2.12). [High]
-[x] IB-028  Thread leak on shutdown: kill acceptLoop; verify forked threads are reaped (M8.2.5). [High]
-[x] IB-029  SOCKS5 status code leakage: verify error codes are mapped to opaque messages (M10.3.10). [Medium]
-[x] IB-030  UTF-8 surrogate passthrough: send raw surrogate bytes through crypto; verify no crash (M9.5.3). [Medium]
-
---------------------------------------------------------------------------------
-CAT-7: POST-QUANTUM SPECIFIC ATTACKS (IND-CCA2, decapsulation oracle, lattice)
---------------------------------------------------------------------------------
-[x] PQ-001  ML-KEM-768 decapsulation oracle: submit 1000 malformed ciphertexts; timing must be indistinguishable. [Critical]
-[x] PQ-002  ML-KEM-768 implicit rejection: confirm decap returns pseudo-random shared secret on invalid ciphertext (not error). [Critical]
-[x] PQ-003  ML-KEM-768 re-encryption check: verify decap re-encrypts and compares (Fujisaki-Okamoto transform). [Critical]
-[x] PQ-004  ML-KEM-768 key generation bias: test 10K generated key pairs; NTT coefficients must be uniform mod q. [High]
-[x] PQ-005  ML-KEM-768 polynomial coefficient overflow: inject coefficient = q in public key; verify reduction. [High]
-[x] PQ-006  ML-KEM-768 ciphertext malleability: confirm no ciphertext is malleable — flip u vector bit, verify reject. [Critical]
-[x] PQ-007  ML-KEM-768 FIPS 203 test vectors: all official KATs must pass (encap + decap). [Critical]
-[x] PQ-008  PQXDH missing PQ ciphertext hash: verify PQ ciphertext hash included in key derivation (M7.4.1). [High]
-[x] PQ-009  PQXDH prekey unsigned: verify Ed25519 signature on ML-KEM-768 prekey is verified before use (M10.2.1). [Critical]
-[x] PQ-010  PQXDH session key confusion: swap PQ shared secret with classical DH output in HKDF; verify HKDF labels separate them. [High]
-[x] PQ-011  ML-KEM-768 NTT correctness: forward and inverse NTT must compose to identity on random polynomials. [High]
-[x] PQ-012  ML-KEM-768 rejection sampling: test key generation with boundary seed values; verify correct rejection sampling. [High]
-[x] PQ-013  PQ downgrade: negotiation path that skips PQ layer entirely; verify not possible without explicit flag. [Critical]
-[x] PQ-014  Hybrid KEM binding: verify classical and PQ shared secrets are bound together in HKDF (not independently usable). [Critical]
-[x] PQ-015  ML-KEM-768 ciphertext length check: submit ciphertext of wrong length (1087 or 1089 bytes); verify error. [High]
-[x] PQ-016  ML-KEM-768 public key length check: submit public key of wrong length; verify error before use. [High]
-[x] PQ-017  ML-KEM-768 randomized encapsulation: same public key, different randomness → different ciphertexts. [High]
-[x] PQ-018  PQXDH prekey expiry: use expired PQ prekey bundle; verify session refuses or warns. [Medium]
-[x] PQ-019  ML-KEM-768 modulus q=3329 check: verify all arithmetic is mod 3329 and not a larger prime. [Medium]
-[x] PQ-020  PQ wrapper FFI null pointer: pass null pointer to C ML-KEM-768 wrapper; verify no segfault via Haskell guard. [High]
-
---------------------------------------------------------------------------------
-CAT-8: HASH ATTACKS (length extension, collision, second preimage, canonicalization)
---------------------------------------------------------------------------------
-[x] HA-001  SHA-256 length extension: attempt to extend HMAC-SHA-256 via Merkle-Damgard extension; HMAC construction must block this. [High]
-[x] HA-002  SHA-512 length extension: same as HA-001 for SHA-512 based constructions. [High]
-[x] HA-003  SHA-3 length extension immunity: confirm Keccak sponge is immune to length extension (structural property). [Medium]
-[x] HA-004  SHA-256 collision resistance: verify NIST CAVP collision-resistance test vectors pass. [High]
-[x] HA-005  SHA-256 second preimage: given H(m1), find m2 ≠ m1 with H(m2) = H(m1); confirm infeasible via brute-force limit test. [High]
-[x] HA-006  SHA-256 padding correctness: test messages of length 55, 56, 64, 65 bytes (padding boundary); compare to RFC vectors. [High]
-[x] HA-007  SHA-512 padding correctness: test padding boundary at 111, 112, 128 bytes; compare to RFC vectors. [High]
-[x] HA-008  Keccak rate boundary: test messages at exactly rate-1, rate, rate+1 bytes; compare to NIST vectors. [High]
-[x] HA-009  SHAKE output length independence: different output lengths must not prefix-match (for security; verify uniqueness). [Medium]
-[x] HA-010  HMAC key padding: keys longer than block size must be hashed before use; test with 65-byte key. [High]
-[x] HA-011  QR safety number collision: verify safety number derivation uses HMAC, not raw SHA (M9.1.1). [Critical]
-[x] HA-012  Safety number key binding: safety number must derive from verified key bytes, not display name (M10.2.15). [Critical]
-[x] HA-013  VRF hash-to-curve: hash-to-curve procedure must be collision-resistant; verify test vectors. [High]
-[x] HA-014  Commitment scheme binding: HKDF-based commitments must be computationally binding; verify domain labels. [Medium]
-[x] HA-015  SHA-256 multi-block: hash a 1 MB message; compare to known-good reference implementation. [Medium]
-[x] HA-016  Keccak f-1600 permutation: run official Keccak-f[1600] test vectors for all 24 rounds. [High]
-[x] HA-017  HMAC-SHA-256 vs raw SHA-256: verify no code path uses raw SHA-256 where HMAC is required. [High]
-[x] HA-018  Hash output truncation: HKDF or VRF output truncated to fewer bytes; verify no collision amplification. [Medium]
-[x] HA-019  SHA-256 endianness: verify getLE32/getBE32 word loading matches RFC 6234 reference. [High]
-[x] HA-020  Keccak lane endianness: verify little-endian lane loading per FIPS 202 spec. [High]
-
---------------------------------------------------------------------------------
-CAT-9: PROTOCOL STATE MACHINE ATTACKS (out-of-order, state confusion, session fixation)
---------------------------------------------------------------------------------
-[x] SM-001  Noise IK msg2 before msg1: send msg2 without prior msg1; verify state machine rejects. [Critical]
-[x] SM-002  Double msg1: send msg1 twice in same session; second must be rejected. [High]
-[x] SM-003  Message after session close: send encrypted message after Noise session torn down; must be rejected. [High]
-[x] SM-004  Double Ratchet ratchet step before first send: advance ratchet before any message; verify state is valid. [High]
-[x] SM-005  Double Ratchet missing ratchet message: skip ratchet step message; verify receiver state remains consistent. [High]
-[x] SM-006  Sender Keys state divergence: one group member misses a chain advance; verify they cannot decrypt future messages. [High]
-[x] SM-007  X3DH state after failed prekey fetch: initiate X3DH, prekey fetch fails; verify clean state rollback. [High]
-[x] SM-008  PQXDH partial completion: complete classical X3DH but fail PQ step; verify session is fully aborted. [Critical]
-[x] SM-009  Session resurrection: complete session teardown then send new message with old session ID; must start fresh. [High]
-[x] SM-010  Concurrent handshake collision: two nodes initiate Noise IK simultaneously (both as initiator); verify deterministic tie-breaking. [High]
-[x] SM-011  Ratchet advance before decrypt: advance ratchet without decrypting current message; verify skipped key is stored correctly. [High]
-[x] SM-012  State confusion after timeout: session times out; new connection reuses same state object; must be isolated. [High]
-[x] SM-013  Gossip deduplication state: same message received twice via different peers; verify processed only once. [Medium]
-[x] SM-014  PEX state after disconnect: peer disconnects mid-PEX exchange; verify partial state is cleaned up. [Medium]
-[x] SM-015  mDNS stale peer: mDNS peer expires; verify eviction via timestamp (M10.3.9). [Medium]
-[x] SM-016  UDP reliability state after reconnect: reconnect over UDP with same session; verify seq numbers reset. [Medium]
-[x] SM-017  Sync checkpoint race: two checkpoint writes race; verify last-write-wins or merge is correct. [Medium]
-[x] SM-018  Dandelion re-entry: message re-enters stem phase after reaching fluff; verify no re-routing loop. [Medium]
-[x] SM-019  IPC transport EOF: remote end closes stdin; IPCTransport must cleanly terminate. [Medium]
-[x] SM-020  Acceptor loop termination: connection flood exhausts accept loop; verify termination condition (M8.2.3). [High]
-
---------------------------------------------------------------------------------
-CAT-10: METADATA AND TRAFFIC ANALYSIS ATTACKS
---------------------------------------------------------------------------------
-[x] MT-001  Message size correlation: verify all wire messages are padded to fixed sizes; no size-based content inference. [High]
-[x] MT-002  Timing correlation: measure send-to-receive latency; verify no per-message timing signal leaks message type. [High]
-[x] MT-003  Traffic fingerprinting: capture pcap; verify payload entropy is uniformly high (analyzeCiphertextEntropy). [High]
-[x] MT-004  Nonce uniqueness in pcap: verify no nonce repetition across captured frames (checkNonceUniqueness). [Critical]
-[x] MT-005  PEX metadata leakage: PEX peer lists must not reveal graph topology beyond 1-hop (M7.3.5). [High]
-[x] MT-006  mDNS identity correlation: mDNS service name must not reveal identity key fingerprint. [High]
-[x] MT-007  Log metadata leakage: verify debug logs do not emit peer IPs, message content, or key material (M7.2.2 area). [High]
-[x] MT-008  Dandelion anonymity: measure stem-phase peer exposure; verify attacker cannot reconstruct origin with < 50% probability. [High]
-[x] MT-009  Gossip graph exposure: gossip propagation must not reveal which peers are directly connected. [Medium]
-[x] MT-010  Connection pattern analysis: verify reconnection timing is randomized; no deterministic retry interval. [Medium]
-[x] MT-011  DB query timing: database reads must not leak message count via query duration. [Medium]
-[x] MT-012  Handshake identity hiding: Noise IK hides responder identity from passive observer; verify no identity in plaintext. [Critical]
-[x] MT-013  Sender key group size leakage: group message headers must not reveal group size. [Medium]
-[x] MT-014  VRF output correlation: VRF outputs for sequential inputs must not be distinguishable from random. [Medium]
-[x] MT-015  Stealth address unlinkability: two stealth addresses for same recipient must be unlinkable by external observer. [High]
-
---------------------------------------------------------------------------------
-CAT-11: FORWARD SECRECY VIOLATIONS
---------------------------------------------------------------------------------
-[x] FS-001  Noise IK static key compromise: compromise responder static key; verify past sessions are not decryptable. [Critical]
-[x] FS-002  Double Ratchet chain key exposure: expose chain key at step N; verify messages at step N+K are still secure. [Critical]
-[x] FS-003  Double Ratchet message key deletion: verify message keys are deleted after use; not held in memory. [Critical]
-[x] FS-004  X3DH ephemeral key erasure: verify EK_A is erased after X3DH session key derivation. [Critical]
-[x] FS-005  PQXDH KEM randomness erasure: verify ML-KEM-768 encapsulation randomness is erased post-session. [Critical]
-[x] FS-006  Ratchet public key exposure: expose DH ratchet public key; verify only future ratchet steps are affected. [High]
-[x] FS-007  Session key persistence: verify session keys are not written to disk or swap. [Critical]
-[x] FS-008  Skipped message key lifetime: verify skipped keys are evicted after N messages or T seconds. [High]
-[x] FS-009  Sender Keys no forward secrecy: document and test that Sender Keys do not provide FS (design limitation). [High]
-[x] FS-010  Export key forward secrecy: exported key file compromise must not decrypt past messages. [High]
-[x] FS-011  OPK forward secrecy: compromise OPK after session; past session must remain confidential. [Critical]
-[x] FS-012  Ratchet step frequency: verify ratchet advances on every received message, not batched. [High]
-[x] FS-013  Chain key non-reversibility: given chain key CK_N, verify CK_{N-1} cannot be derived. [Critical]
-[x] FS-014  Noise ephemeral key forward secrecy: Noise ephemeral keys erased after handshake; verify. [Critical]
-[x] FS-015  Break-in recovery: after chain key compromise, a DH ratchet step must restore security; verify with test. [High]
-
---------------------------------------------------------------------------------
-CAT-12: IDENTITY AND AUTHENTICATION ATTACKS (MITM, impersonation, trust model)
---------------------------------------------------------------------------------
-[x] IA-001  Noise IK MITM: intercept and replace both static keys; verify initiator detects via trust store. [Critical]
-[x] IA-002  MITM ephemeral substitution: replace Noise ephemeral key; MAC over (e, es, ss) must fail. [Critical]
-[x] IA-003  TOFU first-contact MITM: attacker intercepts first handshake; verify TOFU stores attacker key. [High]
-[x] IA-004  Trust store bypass: connect without checking trust store (Selective mode stub); verify implementation is real (M10.2.13). [Critical]
-[x] IA-005  X3DH identity key impersonation: attacker presents victim IK_B; signature verification must detect substitution. [Critical]
-[x] IA-006  PQXDH identity binding: verify both IK_A and IK_B are bound in PQXDH key derivation (M7.1.2). [Critical]
-[x] IA-007  Handshake identity binding asymmetry: verify se leg uses correct key pair (M10.1.1). [Critical]
-[x] IA-008  Noise responder identity leakage: passive observer must not learn responder identity from Noise IK msg1. [Critical]
-[x] IA-009  Ed25519 signature on X3DH prekey bundle: verify SPK signature is checked during X3DH initiation. [Critical]
-[x] IA-010  Trust-on-first-use database manipulation: attacker modifies trust DB before first contact; verify DB integrity. [High]
-[x] IA-011  Safety number verification: verify safety number is cryptographically bound to key, not name (M10.2.15). [Critical]
-[x] IA-012  QR code MITM: attacker generates QR code with own key; verify safety number mismatch is detectable. [High]
-[x] IA-013  Stealth address impersonation: attacker generates stealth address resembling victim; verify scan key uniqueness. [High]
-[x] IA-014  BIP39 seed impersonation: attacker provides seed with similar mnemonic; verify derivation is collision-resistant. [Medium]
-[x] IA-015  VRF identity binding: verify VRF proof is bound to specific identity key; cannot be reused for different identity. [High]
-[x] IA-016  Session confirmation spoofing: attacker injects fake session confirmation HMAC; must be rejected. [Critical]
-[x] IA-017  Contact list poisoning: attacker injects contact record; verify authentication on contact add. [High]
-[x] IA-018  Peer discovery injection: attacker injects hostile peer via mDNS/PEX; TOFU/allowlist must gate connection. [High]
-[x] IA-019  Key rotation MITM: attacker intercepts key rotation message; verify new key is authenticated by old key signature. [High]
-[x] IA-020  Noise IK initiator trust bypass: verify initiator checks responder static key against trust store (M7.4.2). [Critical]
 
 ================================================================================
 MILESTONE M14: PLATFORM EXPANSION — VM RUNNERS + ILLUMOS + BSDs
@@ -1198,15 +136,7 @@ MILESTONE M14: PLATFORM EXPANSION — VM RUNNERS + ILLUMOS + BSDs
   [ ] M14.4.5 Linux arm64 release tarball.
 
 [~] M14.5 Makefile targets
-  [x] M14.5.1 make release-freebsd — FreeBSD source+binary release.
-  [x] M14.5.2 make release-openbsd — OpenBSD source release.
-  [x] M14.5.3 make release-netbsd — NetBSD source release.
-  [x] M14.5.4 make release-illumos — illumos (OmniOS/SmartOS/OpenIndiana) source release.
-  [x] M14.5.5 make release-linux-arm64 — Linux arm64 release.
-  [x] M14.5.6 make vm-smoke-freebsd — FreeBSD VM smoke test.
   [ ] M14.5.7 make vm-smoke-openbsd — OpenBSD VM smoke test.
-  [x] M14.5.8 make vm-smoke-illumos — illumos VM smoke test.
-  [x] M14.5.9 make vm-smoke-arm64 — Linux arm64 VM smoke test (scaffold; requires arm64 image).
 
 [ ] M14.6 WebAssembly target
   [ ] M14.6.1 GHC WASM backend (ghc-wasm) build configuration.
@@ -1239,67 +169,18 @@ MILESTONE M14: PLATFORM EXPANSION — VM RUNNERS + ILLUMOS + BSDs
   [ ] M14.8.7 Test terminal handling differences (terminfo/termcap on BSD/illumos).
 
 ================================================================================
-MILESTONE M17: EPHEMERAL-BY-DEFAULT + PLUGIN ARCHITECTURE
+MILESTONE M15: SPEC COMPLIANCE — REMAINING ITEMS
 ================================================================================
-Note: All persistence disabled by default. Zero disk footprint. Plugins enable storage.
 
-[x] M17.1 Plugin framework extension
-  [x] M17.1.1 Add bpMessage field to BuildPlugin (reason for enable/disable state).
-  [x] M17.1.2 Create Plugin.Types (PluginDef, PluginType: Function/Transaction/Meta).
-  [x] M17.1.3 Create Plugin.Registry (dependency resolution, enable/disable API).
-  [x] M17.1.4 Enforce dependency: key-persistence requires ratchet-persistence (C-1).
-  [x] M17.1.5 Default all persistence plugins to disabled in BuildProfile.
-  [x] M17.1.6 Core function trust anchor (compiled-in, not plugin-resolvable).
+[~] M15.3 Key erasure (partial — IO-boundary wrapping complete, field migration deferred)
+  [~] M15.3.2 Replace ByteString with SecureBytes for secret key fields.
+    Note: IO-boundary wrapping done (KeyStore, Export use withSecureKey). Full IdentityKey field migration deferred — requires 27+ site changes across 14 files, and extracted ByteStrings still live on GC heap. Added zeroIdentityKey helper for session teardown instead.
 
-[x] M17.2 In-memory storage backend
-  [x] M17.2.1 Create Storage.Class (abstract StorageBackend interface).
-  [x] M17.2.2 Create Storage.InMemory (IORef-based maps, all data lost on exit).
-  [x] M17.2.3 Adapt Anthony.hs to implement StorageBackend (plugin-gated).
-  [x] M17.2.4 Startup uses InMemoryDB when sqlite-storage plugin disabled.
+================================================================================
+MILESTONE M16: DO-178C DAL A TESTING — REMAINING ITEMS
+================================================================================
 
-[x] M17.3 Guard all disk writes behind plugins
-  [x] M17.3.1 KeyStore.hs: guard save/load with key-persistence plugin check.
-    Note: saveIdentityKey/saveIdentityKeyAt/saveIdentityKeyWithPassphrase gated by PluginIdentityPersistence.
-  [x] M17.3.2 Anthony.hs: guard all SQL operations with sqlite-storage plugin.
-    Note: Architecture-level guard: cfgAnthonyDB is Nothing in ephemeral mode (set only by restorePersistentStateAtUnsafe). All TUI call sites check for Just db before invoking Anthony functions.
-  [x] M17.3.3 RatchetPersist.hs: guard with ratchet-persistence plugin.
-    Note: withPersistentEncrypt has ephemeral Bool parameter; skips disk I/O when True.
-  [x] M17.3.4 RuntimeLog.hs: guard with runtime-logging plugin.
-    Note: runtimeLoggingEnabled returns False when PluginRuntimeLogging disabled.
-  [x] M17.3.5 Encryption.hs: guard salt file with sqlite-storage plugin.
-    Note: restorePersistentStateAtUnsafe generates in-memory salt when ephemeral=True; PluginPersistentStorage gates the entire persistence path.
-  [x] M17.3.6 Startup.hs: guard .pref file with message-storage plugin.
-    Note: Writes gated by message-storage runtime plugin + ephemeral check.
-  [x] M17.3.7 Remove createDirectoryIfMissing from core startup path.
-    Note: Moved createDirectoryIfMissing in restorePersistentStateAtUnsafe after ephemeral check; only creates dir when persistence is active. Other sites guarded at call sites.
-
-[x] M17.4 CLI flags
-  [x] M17.4.1 --ephemeral flag (disable all persistence, override config).
-  [x] M17.4.2 --no-config flag (ignore config file, hardcoded safe defaults).
-  [x] M17.4.3 --enable-plugin <name> flag (enable specific plugin from CLI).
-    Note: applyEnablePlugin resolves dependencies via resolveEnable and enables in runtime plugin registry.
-
-[x] M17.5 TUI integration
-  [x] M17.5.1 Plugins tab in F4 Prefs (toggle with number keys, deps auto-resolved).
-  [x] M17.5.2 EPHEMERAL/PERSISTENT indicator in status bar.
-  [x] M17.5.3 Display active plugins in startup banner.
-  [x] M17.5.4 Swap encryption warning on Linux (check /proc/swaps).
-    Note: UmbraVox.App.SwapCheck reads /proc/swaps; warns in status bar when ephemeral + swap active.
-
-[x] M17.6 Test migration
-  [x] M17.6.1 Storage tests enable sqlite-storage plugin in setup.
-  [x] M17.6.2 Crypto/protocol tests run plugin-independent (InMemoryDB).
-  [x] M17.6.3 Plugin dependency resolution tests.
-  [x] M17.6.4 Ephemeral mode integration test (verify zero disk writes).
-  [x] M17.6.5 Plugin enable/disable round-trip tests.
-
-[x] M17.7 Security hardening
-  [x] M17.7.1 Session fingerprint displayed prominently in ephemeral mode (H-1).
-    Note: Status bar shows short 4-byte X25519 fingerprint [abcd1234] next to "Ready" when ephemeral and idle. Identity panel shows full fingerprints + ephemeral warning.
-  [x] M17.7.2 CSPRNG salt: XOR with PID + timestamp (M-2).
-  [x] M17.7.3 Document: ephemeral ≠ deniability (peer may log).
-  [x] M17.7.4 Config file hash pinning (optional paranoid mode).
-    Note: verifyConfigHash in ConfigFile.hs computes SHA-256 of config (excluding pin line). Pin via config_hash_pin=<hex>. Warning on stderr if mismatch.
+[ ] M16.2-4 Module-level MC/DC targets — see doc/DO-178C-COVERAGE.md for per-module plan.
 
 ================================================================================
 MILESTONE M19: SIGNAL-COMPATIBLE CHAT BRIDGE + CLEANROOM VM TESTING (v0.2.0)
@@ -1385,12 +266,22 @@ Existing tests preserved unchanged:
   Signal bridge tests are ADDITIVE alongside existing oracle-based tests.
 
 ================================================================================
-OUTSIDE MVP (DEFERRED)
+BLOCKED (EXTERNAL DEPENDENCIES)
 ================================================================================
 
-[!] Provenance signing and attestation (needs policy)
-  [x] M4.2.2 (duplicate, see line 259).
-  [x] M4.2.3 (duplicate, see line 260).
+[!] X1 Platform runner evidence (needs hardware)
+  [ ] X1.2 M3.1.2 Linux arm64 native runner lane (needs arm64 hardware or QEMU emulation).
+    Note: arm64 image stub exists; requires aarch64 builder.
+
+[!] X2 Provenance signing and attestation (needs policy decisions)
+  [ ] M4.2.4 in-toto/SLSA attestation path — deferred (see M4.2).
+
+[!] X3 Deferred implementation
+  [~] M1.1.3 Anthony.hs encryption integration — INDEFINITELY DEFERRED (Anthony to be replaced with direct sqlite).
+
+================================================================================
+OUTSIDE MVP (DEFERRED)
+================================================================================
 
 [!] Persistence integration (needs upstream)
   [~] M1.1.3 Anthony.hs encryption integration — INDEFINITELY DEFERRED (Anthony to be replaced with direct sqlite).
