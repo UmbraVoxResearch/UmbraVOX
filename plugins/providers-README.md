@@ -28,5 +28,6 @@ Manifest contract:
 - `host + entrypoint` reserve either a built-in module target or a future IPC
   executable target
 
-These manifests are intentionally separate from `plugins/` because provider
-adapters are connectivity substrates, not feature modules.
+Provider manifests now live alongside feature manifests under
+`plugins/<id>/manifest.uvx`; the provider catalog only activates manifests
+whose `id` is registered in `ProviderCatalog`.

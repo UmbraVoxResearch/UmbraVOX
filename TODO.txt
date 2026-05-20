@@ -318,6 +318,8 @@ Note: Items from codebase audit (2026-05-20).
     Note: Keep persistent VM build cache and host /output share enabled by default.
     Note: Cache is guest-mounted (`/dev/vdc`); host only sees qcow2 backing file.
   [ ] M20.5.7 Refresh README/QUICKSTART/VM-ISOLATION for vm-first defaults and run-local opt-in
+  [x] M20.5.8 Move remaining legacy provider manifests into plugins/
+    Note: `providers/signal-bridge/manifest.uvx` moved to `plugins/signal-bridge/manifest.uvx`.
 
 [~] M20.7 DRY reduction (build/test infra)
   [~] M20.7.1 Consolidate repeated Makefile suite runner blocks
