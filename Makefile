@@ -24,6 +24,7 @@
 #   make test-deferred - Run preserved deferred blockchain/economics suites
 #   make signal-bridge-build - Build Signal bridge plugin (M19.6.3)
 #   make test-signal-compat - Run Signal wire-compatibility tests (M19.6.3)
+#   make test-signal-bridge-ipc - Run Signal bridge IPC subprocess smoke test
 #   make test-differential - Run differential C vs Haskell tests
 #   make soak         - Run the long soak suite and write an artifact report
 #   make mcdc-report  - Build with HPC coverage and emit per-module expression report
@@ -79,6 +80,7 @@
 #   make sanity       - Check Makefile wiring for release smoke/microVM helpers
 #   make evidence     - Run quality and write a publication evidence bundle
 #   make screenshot-local - Capture 8 TUI screenshots locally (no VM, needs tmux)
+#   make check-isolation - Verify build isolation (no host GHC/cabal leak, VM images)
 #   make clean        - Remove build artifacts, build/, and dist-newstyle
 #   make cleandb      - Remove local database
 #   make cleanall     - Remove everything (build + DB + tools)
@@ -86,7 +88,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-build-only vm-test vm-verify vm-run-gui firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot screenshot-local vm-record vm-visual-regression visual-reference-update differential-vectors test-differential-oracle test-differential-full fuzz-differential fuzz-afl differential differential-evidence-check signal-bridge-build test-signal-compat clean cleandb cleanall help
+.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-build-only vm-test vm-verify vm-run-gui firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot screenshot-local vm-record vm-visual-regression visual-reference-update differential-vectors test-differential-oracle test-differential-full fuzz-differential fuzz-afl differential differential-evidence-check signal-bridge-build test-signal-compat test-signal-bridge-ipc check-isolation clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -100,6 +102,17 @@ FSTAR_DIR := test/evidence/formal-proofs/fstar
 # VM-first development: all commands run in VM by default.
 # Set UMBRAVOX_LOCAL=1 to run locally (requires full toolchain in nix-shell).
 UMBRAVOX_LOCAL ?= 0
+
+# Guard: warn when build/test tools run on host without explicit opt-in.
+# UMBRAVOX_VM is set automatically inside the NixOS guest init script.
+# UMBRAVOX_LOCAL=1 explicitly opts into host-local execution.
+define check_vm_or_local
+	@if [ -z "$$UMBRAVOX_LOCAL" ] || [ "$$UMBRAVOX_LOCAL" = "0" ]; then \
+		if [ -z "$$UMBRAVOX_VM" ]; then \
+			echo -e "$(YELLOW)[WARNING]$(NC) Running on host without VM context. Set UMBRAVOX_LOCAL=1 for host builds or use 'make vm-build' for VM builds."; \
+		fi; \
+	fi
+endef
 
 # Unset LD_LIBRARY_PATH to prevent curl segfaults in nix-shell
 # (nix glibc conflicts with system curl used by cabal)
@@ -169,11 +182,11 @@ help:
 	@echo -e "$(BLUE)  UmbraVOX Build System$(NC)"
 	@echo -e "$(BLUE)  =====================$(NC)"
 	@echo ""
-	@echo "  Build & Run:"
+	@echo "  Build & Run (VM-default: auto-delegates to VM when image exists):"
 	@echo "    make             Build + run the full pipeline (build, test, verify, complexity, lint, license, format-check)"
-	@echo "    make build       Build library + executables only"
-	@echo "    make run         Run UmbraVOX TUI application (always local)"
-	@echo "    make test        Run fast messaging-MVP hardening gate"
+	@echo "    make build       Build library + executables only [VM-default]"
+	@echo "    make run         Run UmbraVOX TUI application [host-only]"
+	@echo "    make test        Run fast messaging-MVP hardening gate [VM-default]"
 	@echo "    make test-core   Run core deterministic messaging suite"
 	@echo "    make test-core-crypto Run deterministic crypto/unit coverage"
 	@echo "    make test-core-network Run deterministic network/discovery coverage"
@@ -191,6 +204,7 @@ help:
 	@echo "    make soak        Run long soak suite and write artifact report"
 	@echo "    make mcdc-report Build with HPC coverage and emit per-module expression report"
 	@echo "    make signal-bridge-build Build Signal bridge plugin (M19.6.3)"
+	@echo "    make test-signal-bridge-ipc Run Signal bridge IPC subprocess smoke test"
 	@echo "    make codegen     Generate Haskell + C + FFI from .spec files"
 	@echo "    make evidence    Run quality and write a publication evidence bundle"
 	@echo "    make release-linux Build portable Linux x86_64 terminal bundle"
@@ -220,7 +234,7 @@ help:
 	@echo "    make release     Build all release artifacts"
 	@echo ""
 	@echo "  Quality Gates:"
-	@echo "    make verify      Run F* formal verification (17 modules)"
+	@echo "    make verify      Run F* formal verification (17 modules) [VM-default]"
 	@echo "    make complexity  Check cyclomatic complexity (<= $(MAX_COMPLEXITY))"
 	@echo "    make lint        Check code formatting and style"
 	@echo "    make license     Check SPDX license headers in source files"
@@ -242,7 +256,7 @@ help:
 	@echo "    make verify-traffic Verify no plaintext in captured traffic"
 	@echo "    make quality     Same as make (lint/format-check are non-blocking)"
 	@echo ""
-	@echo "  VM Development (M13.13 — full toolchain inside VM):"
+	@echo "  VM Development (M13.13 — full toolchain inside VM) [VM-only]:"
 	@echo "    make vm-dev         Interactive dev shell inside NixOS VM"
 	@echo "    make vm-build       Build inside VM (cabal build all)"
 	@echo "    make vm-build-only  Build inside VM, auto-build image first (host needs only QEMU+Nix)"
@@ -250,7 +264,7 @@ help:
 	@echo "    make vm-verify      F* verification inside VM"
 	@echo "    make vm-run-gui     Boot dev VM with graphical QEMU window (TUI on VGA console)"
 	@echo ""
-	@echo "  VM Smoke (isolated build/test):"
+	@echo "  VM Smoke (isolated build/test) [VM-only]:"
 	@echo "    make vm-smoke       Run full pipeline inside isolated QEMU VM"
 	@echo "    make vm-image-build Build and cache the NixOS VM image"
 	@echo "    make vm-image-clean Remove the cached VM image"
@@ -275,6 +289,7 @@ help:
 	@echo "    make vm-screenshot     Capture TUI screenshots inside NixOS VM"
 	@echo ""
 	@echo "  Maintenance:"
+	@echo "    make check-isolation  Verify build isolation (no host GHC/cabal leak, VM images present)"
 	@echo "    make clean       Remove build artifacts + build/ + dist-newstyle"
 	@echo "    make cleandb     Remove local database"
 	@echo "    make cleanall    Remove everything (build + DB + tools)"
@@ -289,6 +304,12 @@ help:
 	@echo "    - All F* specifications verify (auto-discovered)"
 	@echo "    - Cyclomatic complexity <= $(MAX_COMPLEXITY) for all functions"
 	@echo "    - 10 .spec files generate 30 Haskell + C + FFI outputs"
+	@echo ""
+	@echo "  Target Annotations:"
+	@echo "    [VM-default]  Auto-delegates to VM when image exists; falls back to host"
+	@echo "    [VM-only]     Always runs inside a QEMU/Firecracker VM"
+	@echo "    [host-only]   Always runs on the host (e.g. TUI, screenshots)"
+	@echo "    (unmarked)    Runs wherever invoked (host or VM)"
 	@echo ""
 	@echo "  Keyboard Shortcuts (TUI):"
 	@echo "    Tab     Switch focus (contacts <-> chat)"
@@ -316,6 +337,7 @@ build:
 			echo -e "$(YELLOW)[BUILD]$(NC) No VM image found — building locally. Run 'make vm-image-build' for VM builds."; \
 		fi; \
 	fi
+	$(call check_vm_or_local)
 	@echo -e "$(BLUE)[BUILD]$(NC) Building UmbraVOX..."
 	@cabal build all 2>&1 | tail -5
 	@echo -e "$(GREEN)[BUILD]$(NC) Build complete."
@@ -340,6 +362,7 @@ test:
 			echo -e "$(YELLOW)[TEST]$(NC) No VM image found — testing locally. Run 'make vm-image-build' for VM tests."; \
 		fi; \
 	fi
+	$(call check_vm_or_local)
 	@$(MAKE) UMBRAVOX_LOCAL=1 build
 	@echo -e "$(BLUE)[TEST]$(NC) Running fast messaging-MVP hardening gate..."
 	@$(SUITE_LOCK) bash -c 'mkdir -p $(TEST_ARTIFACT_DIR); \
@@ -479,6 +502,7 @@ verify:
 			echo -e "$(YELLOW)[VERIFY]$(NC) No VM image found — verifying locally. Run 'make vm-image-build' for VM verification."; \
 		fi; \
 	fi
+	$(call check_vm_or_local)
 	@echo -e "$(BLUE)[VERIFY]$(NC) Running F* formal verification (all modules)..."
 	@$(SUITE_LOCK) bash -c 'mkdir -p $(TEST_ARTIFACT_DIR); \
 	log_file=$$(mktemp "$(TEST_ARTIFACT_DIR)/verify.XXXXXX.log"); \
@@ -1277,6 +1301,11 @@ test-signal-compat:
 	@chmod +x ./scripts/vm-signal-test.sh
 	@./scripts/vm-signal-test.sh
 
+test-signal-bridge-ipc: signal-bridge-build
+	@echo -e "$(BLUE)[SIGNAL-IPC]$(NC) Running Signal bridge IPC smoke test..."
+	@chmod +x ./scripts/test-signal-bridge-ipc.sh
+	@./scripts/test-signal-bridge-ipc.sh
+
 vm-socks5-test:
 	@echo -e "$(BLUE)[VM-SOCKS5]$(NC) Running SOCKS5 transport test in VM..."
 	@chmod +x ./scripts/vm-dev-run.sh
@@ -1416,6 +1445,98 @@ vm-smoke-dragonfly:
 	@echo -e "$(YELLOW)[VM-DRAGONFLY]$(NC) INFO: exits 0 with a notice if GHC binary package is unavailable."
 	@chmod +x ./scripts/vm-dragonfly-setup.sh
 	@nix-shell nix/vm-dragonfly.nix --run ./scripts/vm-dragonfly-setup.sh
+
+# --------------------------------------------------------------------------
+# Build Isolation Check
+# --------------------------------------------------------------------------
+# Verifies that the host environment is not leaking build tools outside
+# nix-shell, and that VM images exist for the primary build targets.
+
+check-isolation:
+	@echo -e "$(BLUE)[ISOLATION]$(NC) Checking build isolation status..."
+	@pass=0; warn=0; \
+	echo ""; \
+	echo "  Host toolchain check:"; \
+	if [ -n "$$IN_NIX_SHELL" ] || [ -n "$$UMBRAVOX_VM" ]; then \
+		echo -e "    GHC:   $(GREEN)OK$(NC) (inside nix-shell or VM)"; \
+		echo -e "    Cabal: $(GREEN)OK$(NC) (inside nix-shell or VM)"; \
+		pass=$$((pass + 2)); \
+	else \
+		if command -v ghc >/dev/null 2>&1; then \
+			ghc_path=$$(command -v ghc); \
+			if echo "$$ghc_path" | grep -q '/nix/store'; then \
+				echo -e "    GHC:   $(YELLOW)WARN$(NC) — found at $$ghc_path (nix store, but not in nix-shell)"; \
+				warn=$$((warn + 1)); \
+			else \
+				echo -e "    GHC:   $(YELLOW)WARN$(NC) — found at $$ghc_path (system install, not nix-managed)"; \
+				warn=$$((warn + 1)); \
+			fi; \
+		else \
+			echo -e "    GHC:   $(GREEN)OK$(NC) (not on host PATH)"; \
+			pass=$$((pass + 1)); \
+		fi; \
+		if command -v cabal >/dev/null 2>&1; then \
+			cabal_path=$$(command -v cabal); \
+			if echo "$$cabal_path" | grep -q '/nix/store'; then \
+				echo -e "    Cabal: $(YELLOW)WARN$(NC) — found at $$cabal_path (nix store, but not in nix-shell)"; \
+				warn=$$((warn + 1)); \
+			else \
+				echo -e "    Cabal: $(YELLOW)WARN$(NC) — found at $$cabal_path (system install, not nix-managed)"; \
+				warn=$$((warn + 1)); \
+			fi; \
+		else \
+			echo -e "    Cabal: $(GREEN)OK$(NC) (not on host PATH)"; \
+			pass=$$((pass + 1)); \
+		fi; \
+	fi; \
+	\
+	echo ""; \
+	echo "  VM image check:"; \
+	if [ -d build/vm/image ] || [ -L build/vm/image ]; then \
+		echo -e "    Dev VM image:            $(GREEN)OK$(NC) (build/vm/image)"; \
+		pass=$$((pass + 1)); \
+	else \
+		echo -e "    Dev VM image:            $(YELLOW)MISSING$(NC) — run 'make vm-image-build'"; \
+		warn=$$((warn + 1)); \
+	fi; \
+	if [ -d build/vm-signal-server/image ]; then \
+		echo -e "    Signal-Server VM image:  $(GREEN)OK$(NC) (build/vm-signal-server/image)"; \
+		pass=$$((pass + 1)); \
+	else \
+		echo -e "    Signal-Server VM image:  $(YELLOW)MISSING$(NC) — run 'make vm-signal-server-build'"; \
+		warn=$$((warn + 1)); \
+	fi; \
+	if [ -d build/vm-signal-server/build-image ]; then \
+		echo -e "    Signal build VM image:   $(GREEN)OK$(NC) (build/vm-signal-server/build-image)"; \
+		pass=$$((pass + 1)); \
+	else \
+		echo -e "    Signal build VM image:   $(YELLOW)MISSING$(NC) — built on first 'make vm-signal-server-build-jar'"; \
+		warn=$$((warn + 1)); \
+	fi; \
+	\
+	echo ""; \
+	echo "  Environment:"; \
+	echo "    UMBRAVOX_LOCAL = $(UMBRAVOX_LOCAL)"; \
+	if [ -n "$$UMBRAVOX_VM" ]; then \
+		echo "    UMBRAVOX_VM    = $$UMBRAVOX_VM (inside VM)"; \
+	else \
+		echo "    UMBRAVOX_VM    = <unset> (host)"; \
+	fi; \
+	if [ -n "$$IN_NIX_SHELL" ]; then \
+		echo "    IN_NIX_SHELL   = $$IN_NIX_SHELL"; \
+	else \
+		echo "    IN_NIX_SHELL   = <unset>"; \
+	fi; \
+	\
+	echo ""; \
+	echo "========================================"; \
+	echo "  ISOLATION: $$pass OK, $$warn warnings"; \
+	echo "========================================"; \
+	if [ "$$warn" -gt 0 ]; then \
+		echo -e "$(YELLOW)[ISOLATION]$(NC) $$warn warning(s). Use 'make vm-build' or enter nix-shell for isolated builds."; \
+	else \
+		echo -e "$(GREEN)[ISOLATION]$(NC) Build isolation looks good."; \
+	fi
 
 # --------------------------------------------------------------------------
 # Clean
