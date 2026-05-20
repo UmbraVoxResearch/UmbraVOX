@@ -19,16 +19,18 @@ preserved artifacts pending broader wiring.
 ## Common Commands (VM-First)
 
 All `make` targets below run inside the NixOS VM by default when the VM image
-is present.  If no VM image is found, they automatically fall back to local
-execution.  To force local execution, prefix with `UMBRAVOX_LOCAL=1` (requires
-the full `nix-shell` toolchain).  `make run` always runs locally.
+is present.  If no VM image is found, VM-routed targets fail with an explicit
+instruction to run `make vm-image-build` first (or to opt into local mode via
+`UMBRAVOX_LOCAL=1`).  Host compilation is explicit (`run-local` or
+`UMBRAVOX_LOCAL=1`).
 
 ```bash
-nix-shell
+nix-shell shell-minimal.nix
 make vm-image-build    # One-time: build and cache the NixOS VM image
 make build
 make build-haskell
-make run
+make vm-run-gui
+UMBRAVOX_LOCAL=1 make run-local
 make test
 make test-haskell
 make test-core
@@ -206,7 +208,7 @@ git, and make.
 
 | Command | Description |
 |---------|-------------|
-| `nix-shell` | Development shell (commands route to VM automatically) |
+| `nix-shell` | Full local shell (commands still route to VM by default) |
 | `nix-shell shell-minimal.nix` | Orchestration-only shell (QEMU, git, make — no cabal/ghc) |
 | `make build` | Build library + executables (runs in VM) |
 | `make test` | Run `required` test suite (runs in VM) |
@@ -259,7 +261,7 @@ See `doc/VM-DEVELOPMENT.md` for the full VM development guide and troubleshootin
 1. Enter `nix-shell`.
 2. Run `make vm-image-build` (first time only — builds and caches the NixOS VM image).
 3. Run `make build` (builds inside the VM by default).
-4. Launch the app with `make run` or `cabal run umbravox` (runs locally on the host).
+4. Launch the app with `make vm-run-gui` (VM) or `UMBRAVOX_LOCAL=1 make run-local` (explicit host local run).
 5. Open **Contacts** with `F2` and create a new single-peer connection.
 6. Enter the remote `host:port` and let the Noise_IK handshake complete.
 

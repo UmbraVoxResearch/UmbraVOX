@@ -9,6 +9,22 @@ derivations, not GHC, cabal, Maven, etc.
 
 ---
 
+## Status Update (Post-Audit)
+
+This document is an audit snapshot. Some findings below are intentionally
+preserved for historical traceability and may no longer reflect current code.
+Resolved after this snapshot:
+
+- `make run` is now guarded in VM-first mode; explicit host execution uses
+  `UMBRAVOX_LOCAL=1 make run-local`.
+- `test-offline-parity` now routes through `vm_or_local`.
+- `test-core*`, `test-tcp`, `test-fault`, `test-recovery`, `test-tui-sim`,
+  `test-integrity`, `test-mdns`, `test-deferred`, and `test-differential`
+  route through `vm_or_local`.
+- VM image smoke boot now skips when `.vm-init.sh` is present (dev/exec mode).
+- VM source export now uses the current worktree instead of `git archive HEAD`.
+- VM network ALLOW rules now fail closed unless enforcement is implemented.
+
 ## Current Architecture
 
 The project has two nix-shell environments:
@@ -20,8 +36,8 @@ The project has two nix-shell environments:
 
 The Makefile has a `UMBRAVOX_LOCAL` flag (default `0`) that makes `build`,
 `test`, and `verify` prefer the VM path when `build/vm/image` exists.
-When the image is absent **or** when `UMBRAVOX_LOCAL=1`, they fall back to
-running compilers directly on the host.
+When the image is absent, these targets now fail with an explicit
+`make vm-image-build` instruction unless `UMBRAVOX_LOCAL=1` is set.
 
 ---
 
