@@ -129,15 +129,35 @@ let
 
           echo "=== Running Maven build (this takes several minutes) ==="
 
-          # Use the system protoc from nixpkgs instead of letting Maven
-          # download a pre-compiled binary (which won't run on NixOS).
+          # NixOS fix: the protobuf-maven-plugin downloads a pre-compiled
+          # protoc binary to target/protoc-plugins/ which can't run on NixOS
+          # (wrong dynamic linker). Fix: pre-create the expected path with a
+          # symlink to the system protoc BEFORE Maven runs.
           PROTOC_PATH=$(which protoc)
-          echo "  Using system protoc: $PROTOC_PATH ($(protoc --version))"
+          echo "  System protoc: $PROTOC_PATH ($(protoc --version))"
+
+          # Pre-seed protoc symlinks in every module that uses protobuf
+          for mod in websocket-resources service; do
+            mkdir -p /tmp/signal-server/$mod/target/protoc-plugins
+            # The plugin looks for protoc-<version>-linux-<arch>.exe
+            for name in protoc-3.21.7-linux-x86_64.exe protoc-linux-x86_64.exe protoc; do
+              ln -sf "$PROTOC_PATH" "/tmp/signal-server/$mod/target/protoc-plugins/$name"
+            done
+          done
+
+          # Also handle grpc-java plugin if needed
+          GRPC_PLUGIN=$(find /run/current-system/sw -name 'grpc_java_plugin' 2>/dev/null | head -1)
+          if [ -n "$GRPC_PLUGIN" ]; then
+            for mod in websocket-resources service; do
+              for name in grpc-java grpc_java_plugin; do
+                ln -sf "$GRPC_PLUGIN" "/tmp/signal-server/$mod/target/protoc-plugins/$name" 2>/dev/null || true
+              done
+            done
+          fi
 
           ./mvnw -B -ntp -pl service -am package -DskipTests \
             -Dmaven.javadoc.skip=true \
             -Dmaven.source.skip=true \
-            -Dprotoc.path="$PROTOC_PATH" \
             || {
               echo "BUILD_RESULT=FAIL"
               # Even if build fails, copy what we have
