@@ -2,21 +2,17 @@
 # Used for wire-compatibility testing of UmbraVOX's Signal bridge plugin.
 # All services run locally — no external Signal servers contacted.
 #
-# TWO-STAGE BUILD:
-#   Stage 1 (build VM): boots with network, clones Signal-Server, runs Maven,
-#           outputs signal-server.jar to /output via 9p virtfs.
+# TWO-STAGE BUILD (all inside VMs, host nix store untouched):
+#   Stage 1 (build VM): runs nix-build inside the VM to produce the JAR
+#           via FOD (fixed-output derivation). Maven deps hash-locked.
+#           Outputs signal-server.jar to /output via 9p virtfs.
 #   Stage 2 (runtime VM): boots with deny-all network, runs the pre-built JAR
 #           with PostgreSQL, Redis, ZooKeeper, DynamoDB-local.
 #
 # Usage:
-#   # Stage 1: build the JAR (needs network, run once)
-#   make vm-signal-server-build-jar
-#
-#   # Stage 2: build the runtime VM image (offline)
-#   make vm-signal-server-build
-#
-#   # Boot the runtime VM
-#   make vm-signal-server
+#   make vm-signal-server-build-jar   # Stage 1: build JAR in VM
+#   make vm-signal-server-build       # Stage 2: build runtime VM image
+#   make vm-signal-server             # Boot runtime VM
 #
 { pkgs ? import <nixpkgs> { system = "x86_64-linux"; } }:
 
@@ -32,7 +28,7 @@ let
   };
 
   # ---------------------------------------------------------------------------
-  # DynamoDB-local (Amazon's standalone JAR for local development)
+  # DynamoDB-local
   # ---------------------------------------------------------------------------
   dynamodbLocalTarball = pkgs.fetchurl {
     url    = "https://d1ni2b6xgvw0s0.cloudfront.net/v2.x/dynamodb_local_latest.tar.gz";
@@ -44,14 +40,8 @@ let
     version = "latest";
     src     = dynamodbLocalTarball;
     nativeBuildInputs = [ pkgs.gnutar pkgs.gzip ];
-    unpackPhase = ''
-      mkdir -p src
-      tar xzf $src -C src
-    '';
-    installPhase = ''
-      mkdir -p $out
-      cp -r src/* $out/
-    '';
+    unpackPhase = "mkdir -p src && tar xzf $src -C src";
+    installPhase = "mkdir -p $out && cp -r src/* $out/";
   };
 
   # ---------------------------------------------------------------------------
@@ -69,7 +59,7 @@ let
     else null;
 
   # ===========================================================================
-  # STAGE 1: BUILD VM — has network, builds Signal-Server JAR via Maven
+  # STAGE 1: BUILD VM — has network + nix, builds JAR via nix-build inside VM
   # ===========================================================================
   buildVmConfig = { config, lib, modulesPath, pkgs, ... }: {
     imports = [ ./vm-base.nix ];
@@ -82,29 +72,37 @@ let
 
     networking.hostName = lib.mkForce "umbravox-signal-build";
 
+    # Nix daemon for in-VM builds
+    nix.settings = {
+      experimental-features = [ "nix-command" ];
+      # Sandbox disabled — this is a single-purpose build VM, not multi-user.
+      # Avoids needing nixbld users while keeping the build simple.
+      sandbox = false;
+    };
+
     environment.systemPackages = with pkgs; [
+      nix
       jdk21_headless
       maven
       protobuf
-      pkg-config
+      patchelf
+      file
       foundationdb
       git
       curl
-      gnumake
-      gcc
+      zlib
     ];
 
-    # The build service: clone source, run Maven, copy JAR to /output
+    # The build service: run nix-build inside the VM
     systemd.services.signal-server-build = {
-      description = "Build Signal-Server JAR from source";
+      description = "Build Signal-Server JAR via nix-build (in-VM)";
       wantedBy = [ "multi-user.target" ];
-      after = [ "local-fs.target" "network-online.target" ];
+      after = [ "local-fs.target" "network-online.target" "nss-lookup.target" ];
       wants = [ "network-online.target" ];
-      path = with pkgs; [ jdk21_headless maven protobuf git curl gcc gnumake pkg-config foundationdb ];
+      path = with pkgs; [ nix git curl ];
       environment = {
         HOME = "/root";
-        JAVA_HOME = "${pkgs.jdk21_headless}";
-        FDB_LIBRARY_PATH = "${pkgs.foundationdb}/lib";
+        NIX_PATH = "nixpkgs=${pkgs.path}";
       };
       serviceConfig = {
         Type = "oneshot";
@@ -112,8 +110,8 @@ let
           set -euo pipefail
           export PATH=/run/current-system/sw/bin:/run/current-system/sw/sbin:$PATH
 
-          echo "=== Signal-Server Build VM ==="
-          echo "  Source: ${signalServerSrc}"
+          echo "=== Signal-Server Build VM (nix-build inside VM) ==="
+          echo "  Nix: $(nix --version)"
           echo "  Java: $(java -version 2>&1 | head -1)"
           echo ""
 
@@ -121,67 +119,49 @@ let
           mkdir -p /output
           mount -t 9p -o trans=virtio,version=9p2000.L output /output 2>/dev/null || true
 
-          # Copy source to writable location
-          cp -a ${signalServerSrc} /tmp/signal-server
-          chmod -R u+w /tmp/signal-server
+          # Mount source tree (read-only)
+          mkdir -p /mnt/src
+          mount -o ro /dev/vdb /mnt/src 2>/dev/null || true
 
-          cd /tmp/signal-server
+          # Run nix-build on the FOD-based build expression
+          # Phase 1 (FOD): fetches Maven deps with network (hash-locked)
+          # Phase 2: builds JAR offline using cached deps
+          echo "=== Running nix-build (FOD Maven deps + offline JAR build) ==="
+          echo "  This takes several minutes on first run..."
+          echo ""
 
-          echo "=== Running Maven build (this takes several minutes) ==="
-
-          # NixOS fix: the protobuf-maven-plugin downloads a pre-compiled
-          # protoc binary to target/protoc-plugins/ which can't run on NixOS
-          # (wrong dynamic linker). Fix: pre-create the expected path with a
-          # symlink to the system protoc BEFORE Maven runs.
-          PROTOC_PATH=$(which protoc)
-          echo "  System protoc: $PROTOC_PATH ($(protoc --version))"
-
-          # Pre-seed protoc symlinks in every module that uses protobuf
-          for mod in websocket-resources service; do
-            mkdir -p /tmp/signal-server/$mod/target/protoc-plugins
-            # The plugin looks for protoc-<version>-linux-<arch>.exe
-            for name in protoc-3.21.7-linux-x86_64.exe protoc-linux-x86_64.exe protoc; do
-              ln -sf "$PROTOC_PATH" "/tmp/signal-server/$mod/target/protoc-plugins/$name"
-            done
-          done
-
-          # Also handle grpc-java plugin if needed
-          GRPC_PLUGIN=$(find /run/current-system/sw -name 'grpc_java_plugin' 2>/dev/null | head -1)
-          if [ -n "$GRPC_PLUGIN" ]; then
-            for mod in websocket-resources service; do
-              for name in grpc-java grpc_java_plugin; do
-                ln -sf "$GRPC_PLUGIN" "/tmp/signal-server/$mod/target/protoc-plugins/$name" 2>/dev/null || true
-              done
-            done
+          if [ -f /mnt/src/nix/signal-server-build.nix ]; then
+            BUILD_NIX=/mnt/src/nix/signal-server-build.nix
+          else
+            # Fallback: copy from the nix store source
+            BUILD_NIX=${./signal-server-build.nix}
           fi
 
-          ./mvnw -B -ntp -pl service -am package -DskipTests \
-            -Dmaven.javadoc.skip=true \
-            -Dmaven.source.skip=true \
+          nix-build "$BUILD_NIX" -o /tmp/signal-server-result \
             || {
               echo "BUILD_RESULT=FAIL"
-              # Even if build fails, copy what we have
-              ls -la service/target/*.jar 2>/dev/null || echo "No JARs produced"
+              echo "nix-build failed. Check output above."
+              echo ""
+              echo "If the FOD hash is wrong, update outputHash in"
+              echo "nix/signal-server-build.nix with the hash from the error."
               systemctl poweroff
               exit 1
             }
 
           echo "=== Build complete ==="
-          ls -la service/target/TextSecureServer-*.jar
+          ls -la /tmp/signal-server-result/lib/signal-server.jar
 
-          # Copy JAR to output
-          mkdir -p /output
-          cp service/target/TextSecureServer-*.jar /output/signal-server.jar
+          # Copy JAR to output (host picks it up via 9p)
+          cp /tmp/signal-server-result/lib/signal-server.jar /output/signal-server.jar
           echo "BUILD_RESULT=PASS"
           echo "JAR copied to /output/signal-server.jar"
-          ls -la /output/signal-server.jar
+          ls -lh /output/signal-server.jar
 
-          # Shut down
           systemctl poweroff
         '';
         StandardOutput = "journal+console";
         StandardError = "journal+console";
-        TimeoutStartSec = "1800";  # 30 min for Maven build
+        TimeoutStartSec = "1800";
       };
     };
   };
@@ -196,7 +176,7 @@ let
     lib = pkgs.lib;
     config = buildVmNixos.config;
     diskSize = "auto";
-    additionalSpace = "8192M";  # Maven deps are large
+    additionalSpace = "16384M";  # nix store + maven deps + JAR
     format = "raw";
     partitionTableType = "legacy";
     copyChannel = false;
@@ -216,7 +196,6 @@ let
 
     networking.hostName = lib.mkForce "umbravox-signal";
 
-    # ---- PostgreSQL ----
     services.postgresql = {
       enable = true;
       package = pkgs.postgresql_15;
@@ -226,40 +205,26 @@ let
       '';
     };
 
-    # ---- Redis ----
-    services.redis.servers.signal = {
-      enable = true;
-      port = 6379;
-    };
+    services.redis.servers.signal = { enable = true; port = 6379; };
+    services.zookeeper = { enable = true; };
 
-    # ---- ZooKeeper ----
-    services.zookeeper = {
-      enable = true;
-    };
-
-    # ---- System packages ----
     environment.systemPackages = with pkgs; [
-      jdk21_headless
-      curl
-      jq
-      foundationdb
+      jdk21_headless curl jq foundationdb
     ];
 
-    # ---- DynamoDB-local ----
     systemd.services.dynamodb-local = {
       description = "DynamoDB Local";
-      wantedBy    = [ "multi-user.target" ];
-      after       = [ "network.target" ];
+      wantedBy = [ "multi-user.target" ];
+      after = [ "network.target" ];
       serviceConfig = {
-        Type             = "simple";
+        Type = "simple";
         WorkingDirectory = "${dynamodbLocal}";
-        ExecStart        = "${pkgs.jdk21_headless}/bin/java -Djava.library.path=${dynamodbLocal}/DynamoDBLocal_lib -jar ${dynamodbLocal}/DynamoDBLocal.jar -sharedDb -port 8000";
-        Restart          = "on-failure";
-        RestartSec       = "5";
+        ExecStart = "${pkgs.jdk21_headless}/bin/java -Djava.library.path=${dynamodbLocal}/DynamoDBLocal_lib -jar ${dynamodbLocal}/DynamoDBLocal.jar -sharedDb -port 8000";
+        Restart = "on-failure";
+        RestartSec = "5";
       };
     };
 
-    # ---- Deploy config files ----
     system.activationScripts.signalServerConfig = ''
       mkdir -p /etc/signal-server
       cp ${signalServerConfig}  /etc/signal-server/config.yml
@@ -267,68 +232,49 @@ let
       chmod 600 /etc/signal-server/secrets.yml
     '';
 
-    # ---- Pre-built JAR baked into image (from Stage 1) ----
     environment.etc."signal-server/signal-server.jar" = lib.mkIf (signalJarPath != null) {
       source = signalJarPath + "/signal-server.jar";
     };
 
-    # ---- Signal-Server service ----
     systemd.services.signal-server = lib.mkIf (signalJarPath != null) {
       description = "Signal-Server (wire-compat test instance)";
-      wantedBy    = [ "multi-user.target" ];
-      after       = [
-        "postgresql.service" "redis-signal.service"
-        "zookeeper.service" "dynamodb-local.service"
-      ];
-      wants       = [
-        "postgresql.service" "redis-signal.service"
-        "zookeeper.service" "dynamodb-local.service"
-      ];
+      wantedBy = [ "multi-user.target" ];
+      after = [ "postgresql.service" "redis-signal.service" "zookeeper.service" "dynamodb-local.service" ];
+      wants = [ "postgresql.service" "redis-signal.service" "zookeeper.service" "dynamodb-local.service" ];
       environment = {
-        JAVA_HOME       = "${pkgs.jdk21_headless}";
+        JAVA_HOME = "${pkgs.jdk21_headless}";
         LD_LIBRARY_PATH = "${pkgs.foundationdb}/lib";
       };
       serviceConfig = {
         Type = "simple";
         ExecStart = pkgs.writeShellScript "signal-server-start" ''
           set -euo pipefail
-
-          echo "=== Signal-Server: starting ==="
-
-          # Wait for DynamoDB-local
           for i in $(seq 1 30); do
-            if ${pkgs.curl}/bin/curl -sf http://localhost:8000/ >/dev/null 2>&1; then break; fi
-            echo "  Waiting for DynamoDB-local ($i/30)..."
-            sleep 1
+            ${pkgs.curl}/bin/curl -sf http://localhost:8000/ >/dev/null 2>&1 && break
+            echo "Waiting for DynamoDB-local ($i/30)..." && sleep 1
           done
-
-          # Wait for PostgreSQL
           for i in $(seq 1 30); do
-            if ${pkgs.postgresql_15}/bin/pg_isready -q; then break; fi
-            echo "  Waiting for PostgreSQL ($i/30)..."
-            sleep 1
+            ${pkgs.postgresql_15}/bin/pg_isready -q && break
+            echo "Waiting for PostgreSQL ($i/30)..." && sleep 1
           done
-
           exec ${pkgs.jdk21_headless}/bin/java \
             -Dsecrets.bundle.filename=/etc/signal-server/secrets.yml \
             -Xmx512m \
             -jar /etc/signal-server/signal-server.jar \
-            server \
-            /etc/signal-server/config.yml
+            server /etc/signal-server/config.yml
         '';
-        Restart         = "on-failure";
-        RestartSec      = "10";
+        Restart = "on-failure";
+        RestartSec = "10";
         TimeoutStartSec = "120";
-        StandardOutput  = "journal+console";
-        StandardError   = "journal+console";
+        StandardOutput = "journal+console";
+        StandardError = "journal+console";
       };
     };
 
-    # ---- Health check ----
     systemd.services.signal-server-healthcheck = {
       description = "Signal-Server health check";
-      wantedBy    = [ "multi-user.target" ];
-      after       = [ "signal-server.service" "dynamodb-local.service" "postgresql.service" ];
+      wantedBy = [ "multi-user.target" ];
+      after = [ "signal-server.service" "dynamodb-local.service" "postgresql.service" ];
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
@@ -342,7 +288,6 @@ let
           echo "  Java:           $(java -version 2>&1 | head -1)"
           echo ""
           ${lib.optionalString (signalJarPath != null) ''
-            # Probe Dropwizard admin health endpoint
             for i in $(seq 1 60); do
               if ${pkgs.curl}/bin/curl -sf http://localhost:8081/healthcheck >/dev/null 2>&1; then
                 echo "Signal-Server admin endpoint is UP."
@@ -356,15 +301,13 @@ let
           ${lib.optionalString (signalJarPath == null) ''
             echo "Signal-Server JAR not yet built."
             echo "Run: make vm-signal-server-build-jar"
-            echo ""
-            echo "Backing services are ready for integration."
+            echo "Backing services are ready."
           ''}
         '';
         TimeoutStartSec = "180";
       };
     };
 
-    # Deny external network at runtime
     networking.firewall.enable = false;
   };
 
@@ -375,19 +318,16 @@ let
 
   runtimeImage = import (pkgs.path + "/nixos/lib/make-disk-image.nix") {
     inherit pkgs;
-    lib    = pkgs.lib;
+    lib = pkgs.lib;
     config = runtimeNixos.config;
-    diskSize          = "auto";
-    additionalSpace   = "4096M";
-    format            = "raw";
+    diskSize = "auto";
+    additionalSpace = "4096M";
+    format = "raw";
     partitionTableType = "legacy";
-    copyChannel       = false;
+    copyChannel = false;
   };
 
 in {
-  # Stage 1: build VM (produces JAR)
   buildVm = buildVmImage;
-
-  # Stage 2: runtime VM (uses pre-built JAR if available)
   qemu = runtimeImage;
 }
