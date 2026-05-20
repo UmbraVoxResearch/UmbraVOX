@@ -357,6 +357,7 @@ executable umbravox-signal-bridge
   hs-source-dirs:   src/UmbraVox/Bridge/Signal
   build-depends:
     base         >= 4.18  && < 5,
+    bytestring   >= 0.11  && < 0.13,
     UmbraVox
   ghc-options:      -threaded
 
