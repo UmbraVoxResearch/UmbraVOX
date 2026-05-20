@@ -8,8 +8,6 @@ module UmbraVox.Network.Dandelion
 
 import Data.ByteString (ByteString)
 
-{-# WARNING routeMessage "UmbraVox.Network.Dandelion is a stub -- not implemented" #-}
-
 -- | Route a message through the Dandelion++ stem/fluff phases.
 routeMessage :: ByteString -> IO ()
 routeMessage = error "not implemented"

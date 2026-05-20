@@ -6,8 +6,6 @@ module UmbraVox.Network.Sync
   ( syncChain
   ) where
 
-{-# WARNING syncChain "UmbraVox.Network.Sync is a stub -- not implemented" #-}
-
 -- | Synchronize the local chain with a remote peer.
 syncChain :: IO ()
 syncChain = error "not implemented"

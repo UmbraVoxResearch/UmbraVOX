@@ -8,8 +8,6 @@ module UmbraVox.Consensus.Nonce
 
 import Data.ByteString (ByteString)
 
-{-# WARNING evolveNonce "UmbraVox.Consensus.Nonce is a stub -- not implemented" #-}
-
 -- | Evolve the epoch nonce by mixing in the new VRF output.
 evolveNonce :: ByteString -> ByteString -> ByteString
 evolveNonce = error "not implemented"

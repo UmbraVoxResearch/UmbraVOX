@@ -6,8 +6,6 @@ module UmbraVox.Consensus.Protocol
   ( runProtocol
   ) where
 
-{-# WARNING runProtocol "UmbraVox.Consensus.Protocol is a stub -- not implemented" #-}
-
 -- | Run the Ouroboros Praos consensus protocol.
 runProtocol :: IO ()
 runProtocol = error "not implemented"
