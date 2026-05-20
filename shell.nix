@@ -39,6 +39,11 @@ let
   # Formal verification
   coq = pkgs.coq;
   coq-stdlib = pkgs.coqPackages.stdlib;
+  # coqprime and bignums: available in nixpkgs but have OCaml plugin
+  # loading issues with Rocq 9.1.1 (Findlib error: coq-bignums.plugin).
+  # Uncomment when the packaging issue is resolved:
+  # coq-bignums = pkgs.coqPackages.bignums;
+  # coqprime = pkgs.coqPackages.coqprime;
   tlaplus = pkgs.tlaplus;
   tlc = pkgs.tlaplus;
   z3 = pkgs.z3;
@@ -78,6 +83,8 @@ in pkgs.mkShell {
     # Formal verification
     coq
     coq-stdlib
+    # coq-bignums  # blocked: OCaml plugin loading issue with Rocq 9.1.1
+    # coqprime     # blocked: depends on bignums
     tlaplus
     fstar
     z3

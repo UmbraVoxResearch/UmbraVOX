@@ -704,7 +704,7 @@ Note: 221 original assumes → 0 admit() + 30 assume val. 17/24 specs fully prov
   [x] M13.11.2 Ed25519Field.v — field operations, basic properties
     Note: 54 Qed, 0 Admitted, 0 Axiom. Modular add/sub/mul/opp with commutativity, associativity, distributivity, identities, inverses. 6 Fermat witnesses via pow_mod. Reduction identities (2^255→19, 2^256→38). Builds clean.
   [x] M13.11.3 Ed25519Curve.v — curve equation, d non-square, basepoint on-curve
-  [!] M13.11.4 Ed25519GroupLaw.v — associativity via ring/field tactic (DRAFT, in coq/draft/)
+  [!] M13.11.4 Ed25519GroupLaw.v — universal associativity blocked: coqprime has OCaml plugin issue with Rocq 9.1.1. Gröbner basis infeasible (13 vars, degree 16). 64 concrete instances proved. 3 universal properties (identity, commutativity) proved.
   [x] M13.11.5 Ed25519Scalar.v — scalar_mult_add, scalar_mult_compose
   [x] M13.11.6 VRFDLEQ.v — DLEQ correctness
 
