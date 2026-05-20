@@ -249,7 +249,9 @@ library
       UmbraVox.Tools.Provenance
       UmbraVox.Tools.PcapVerify
       -- Bridge plugins
+      UmbraVox.Bridge.Signal.Registration
       UmbraVox.Bridge.Signal.Session
+      UmbraVox.Bridge.Signal.WebSocket
       -- Headless runtime
       UmbraVox.Runtime.Headless
   build-depends:
