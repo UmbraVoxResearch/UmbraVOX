@@ -81,7 +81,7 @@ Note: 221 original assumes → 0 admit() + 30 assume val. 17/24 specs fully prov
   [ ] M13.11.4.h Primality of 2^255-19 via PocklingtonRefl (blocked by bignums plugin).
     Note: Full factorization chain computed (14 levels). All Pocklington conditions
     machine-verified in Ed25519Prime.v. PocklingtonRefl import fails due to findlib.
-  Current totals: 12 Coq files, 427 Qed, 0 Admitted.
+  Current totals: 13 Coq files, 444 Qed, 0 Admitted.
 
 [~] M13.3 Phase 3: Curve arithmetic
   [~] M13.3.2 Ed25519: 10 assume val remaining (algebraic/curve geometry). fadd/fmul/distrib proved; all KAT via assert_norm.
@@ -221,7 +221,7 @@ cleanroom VM. Haskell + C + shell only. Tagged v0.2.0 when 100% complete.
   [x] M19.3.7 Message send: plaintext → Signal ratchet encrypt → protobuf → REST
   [x] M19.3.8 Message recv: WebSocket → protobuf → Signal ratchet decrypt → JSON
 
-[x] M19.4 Real Signal-Server cleanroom VM (~1 day Nix work)
+[~] M19.4 Real Signal-Server cleanroom VM (~1 day Nix work)
   [x] M19.4.1 nix/vm-signal-server.nix — NixOS declarative config
     - services.postgresql, services.redis, services.zookeeper
     - DynamoDB-local + MinIO systemd services
@@ -237,6 +237,9 @@ cleanroom VM. Haskell + C + shell only. Tagged v0.2.0 when 100% complete.
     - Offline delivery (queue + deliver on reconnect)
     - Error cases (invalid auth, malformed envelopes)
     - Ratchet step (multiple messages, DH ratchet advancement)
+  [ ] M19.4.5 Fill FOD hash for Signal-Server Maven deps (first nix-build in VM)
+  [ ] M19.4.6 Complete Signal-Server JAR build end-to-end in VM
+  [ ] M19.4.7 Boot runtime VM with Signal-Server JAR and verify health endpoint
 
 [x] M19.5 TUI integration
   [x] M19.5.1 Bridge provider selection dialog
