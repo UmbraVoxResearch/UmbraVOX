@@ -8,6 +8,69 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 
 (No unreleased changes.)
 
+## [0.1.8] — 2026-05-19
+
+### Changed
+- Version bump and final documentation sweep for release
+- CHANGELOG updated with v0.1.6 and v0.1.7 sections
+- README, PROJECT-CHARTER, VERSION-ASSURANCE updated with current counts
+
+## [0.1.7] — 2026-05-19
+
+### Formal Verification
+- sign_then_verify: PROVED — decomposed into 4 narrow algebraic assumptions (point_add/double_preserves_on_curve_ext, scalar_mult_congruence/preserves_on_curve_ext) with 6 intermediate lemmas
+- encode_decode_round_trip: PROVED — decomposed into 5 lemmas; sqrt_ratio_correct isolated as narrow field arithmetic assumption
+- sqrt_unity proof improved (cleaner modular arithmetic)
+- 9 Coq files total: 350 Qed, 0 Admitted (was 219 Qed in 6 files)
+- Ed25519GroupAssoc.v (68 Qed): 64 concrete associativity instances via vm_compute
+- Ed25519GroupPartial.v (48 Qed): projective equivalence, 39 concrete point checks
+- Ed25519SqrtRatio.v (15 Qed): sqrt-ratio formula verified via vm_compute
+- VRFDLEQ.v (32 Qed): DLEQ algebraic identity in Z/LZ (carried from v0.1.6)
+- 30 assume val (7 irreducible crypto hardness, 6 cross-toolchain, 17 algebraic)
+
+### Differential Testing
+- 36/36 suites PASS (11 primitive, 6 negative, 8 metamorphic, 6 deterministic fuzz, 5 protocol self-consistency)
+- ML-KEM-768 confirmed REAL implementation (not stubs); sampleNTT retry bug fixed
+- 600 deterministic fuzz vectors (100/primitive, XorShift32 seed 42)
+- Protocol self-consistency: X3DH exchange, DoubleRatchet multi-message/bidirectional/out-of-order
+
+### Infrastructure
+- VM image rebuilt with 4096M headroom; nix-store GC freed 58GB
+- VM boot: cabal build passes inside NixOS QEMU guest (VM_DEV_RESULT=PASS)
+- nix/vm-base.nix shared NixOS module extracted
+- AFL++ harnesses: 3 ready (GCM decrypt, Ed25519 verify, X25519)
+- CI overnight job: scripts/ci-overnight-verify.sh (6 gates)
+- Pre-release check: scripts/pre-release-check.sh (8/8 PASS)
+- Release signing and reproducibility check scripts
+- TUI screenshots: 8/8 captured locally
+
+### Added
+- nix/oracle-cli/: Rust CLI scaffolds for primitive + protocol oracles
+- nix/vm-libsignal-protocol-oracle.nix and nix/vm-primitive-oracle-suite.nix
+- F* evaluation harness: scripts/fstar-eval-vectors.sh
+- Linux x86_64 runner evidence generated
+
+### Documentation
+- Protocol divergences: 11 known differences vs libsignal documented
+- ASSUMPTIONS.md: 30 active, 6 discharged, ledger mechanically consistent
+- Stale docs moved to doc/attic/
+
+## [0.1.6] — 2026-05-18
+
+### Formal Verification
+- VRFDLEQ.v (32 Qed): DLEQ algebraic identity (k-cx)+cx=k in Z/LZ
+- 6 Coq files total: 219 Qed, 0 Admitted
+
+### Infrastructure
+- Pre-release check script: 8 gates, all PASS
+- shell-minimal.nix GHC test uses --pure to prevent PATH leakage
+- 67/67 infrastructure tests pass inside nix-shell
+
+### Documentation
+- Stale docs moved to doc/attic/
+- README/AGENTS/ARCHITECTURE updated with current counts
+- Evidence manifest at build/evidence/differential/manifest.json
+
 ## [0.1.5] — 2026-05-18
 
 ### Formal Verification
@@ -323,10 +386,13 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 ### Added
 - Tagged release baseline `v0.0.6` and stabilized active MVP hardening branch state.
 
-[Unreleased]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.8...HEAD
+[0.1.8]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.7...v0.1.8
+[0.1.7]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.5...v0.1.7
+[0.1.6]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.2...v0.1.4
-[0.1.3]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.2...v0.1.4
+[0.1.3]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.0.8...v0.1.0
