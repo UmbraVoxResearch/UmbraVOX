@@ -137,19 +137,19 @@ All issues documented in commit history (`v0.1.1..v0.1.2`).
 
 ## Baseline Counts
 
-| Metric | v0.1.1 | v0.1.2 | v0.1.3 | v0.1.4 | v0.1.8 |
-|--------|--------|--------|--------|--------|--------|
-| F* `admit()` | 0 | 0 | 0 | 0 | 0 |
-| F* `assume val` | 23 | 30 | 28 | 28 | 30 |
-| Coq `Qed` | 5 | 153 | 171 | 171 | 350 |
-| Coq files | 1 | 3 | 4 | 4 | 9 |
-| Coq `Admitted` (verified) | 0 | 0 | 0 | 0 | 0 |
-| Infra tests | 65 | 67 | 67 | 67 | 67 |
-| Assurance checks | -- | -- | 5/5 | 5/5 | 8/8 |
-| Differential suites | -- | -- | -- | 21/21 | 36/36 |
-| TUI screenshots | -- | -- | -- | -- | 8/8 |
-| Proved theorems | -- | -- | -- | -- | sign_then_verify, encode_decode_round_trip |
-| Irreducible (permanent) | 7 | 7 | 7 | 7 | 7 |
+| Metric | v0.1.1 | v0.1.2 | v0.1.3 | v0.1.4 | v0.1.5 | v0.1.6 | v0.1.7 | v0.1.8 |
+|--------|--------|--------|--------|--------|--------|--------|--------|--------|
+| F* `admit()` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| F* `assume val` | 23 | 30 | 28 | 28 | 28 | 28 | 30 | 30 |
+| Coq `Qed` | 5 | 153 | 171 | 171 | 187 | 219 | 350 | 350 |
+| Coq files | 1 | 3 | 4 | 4 | 5 | 6 | 9 | 9 |
+| Coq `Admitted` (verified) | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Infra tests | 65 | 67 | 67 | 67 | 67 | 67 | 67 | 67 |
+| Assurance checks | -- | -- | 5/5 | 5/5 | 5/5 | 8/8 | 8/8 | 8/8 |
+| Differential suites | -- | -- | -- | 21/21 | 22/22 | 22/22 | 36/36 | 36/36 |
+| TUI screenshots | -- | -- | -- | -- | -- | -- | 8/8 | 8/8 |
+| Proved theorems | -- | -- | -- | -- | -- | -- | sign_then_verify, encode_decode_round_trip | -- |
+| Irreducible (permanent) | 7 | 7 | 7 | 7 | 7 | 7 | 7 | 7 |
 
 ---
 

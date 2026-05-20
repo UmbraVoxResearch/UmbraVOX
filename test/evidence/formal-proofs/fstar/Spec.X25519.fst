@@ -777,12 +777,501 @@ let scalar_mult_zero u =
   fmul_zero x_2
 #pop-options
 
+(** -------------------------------------------------------------------- **)
+(** Helper lemmas for scalar_mult_one proof                              **)
+(** -------------------------------------------------------------------- **)
+
+(** get_bit 1 t = 0 for t >= 1, since 1 / 2^t = 0 when t >= 1. *)
+val get_bit_one_high : t:nat{t >= 1} -> Lemma (get_bit 1 t == 0)
+let get_bit_one_high t =
+  FStar.Math.Lemmas.pow2_le_compat t 1;
+  FStar.Math.Lemmas.small_div 1 (pow2 t)
+
+(** get_bit 1 0 = 1 *)
+val get_bit_one_zero : unit -> Lemma (get_bit 1 0 == 1)
+let get_bit_one_zero () = assert_norm (get_bit 1 0 == 1)
+
+(** pow_mod 1 n = 1 for all n: 1^n = 1. *)
+val pow_mod_one : n:nat -> Lemma (ensures pow_mod 1 n == 1) (decreases n)
+#push-options "--fuel 2 --ifuel 0 --z3rlimit 20"
+let rec pow_mod_one n =
+  if n = 0 then ()
+  else begin
+    assert (fsqr 1 == 1);
+    if n % 2 = 1 then begin
+      pow_mod_one (n / 2);
+      fmul_identity 1
+    end else
+      pow_mod_one (n / 2)
+  end
+#pop-options
+
+(** finv 1 = 1: the inverse of 1 is 1. *)
+val finv_one : unit -> Lemma (finv 1 == 1)
+let finv_one () = pow_mod_one (prime - 2)
+
+(** When z_2=0 and x_2=1, ladder_step preserves x_2=1 (via nx2 = 1^4 = 1)
+    and z_2=0.  Also, the new swap=0 (bit=0 passed to ladder_step). *)
+val ladder_step_z2_zero_x2_one : u:felem -> x_3:felem -> z_3:felem
+    -> Lemma (let (nx2, _, nz2, _) = ladder_step u (1, x_3, 0, z_3) 0 in
+              nx2 == 1 /\ nz2 == 0)
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 40"
+let ladder_step_z2_zero_x2_one u x_3 z_3 =
+  fadd_identity 1;
+  fsub_identity 1;
+  fmul_identity 1;
+  let a : felem = fadd 1 0 in
+  let b : felem = fsub 1 0 in
+  assert (a == 1);
+  assert (b == 1);
+  let aa = fsqr a in
+  let bb = fsqr b in
+  fmul_identity 1;
+  assert (aa == 1);
+  assert (bb == 1);
+  fsub_self 1;
+  let e = fsub aa bb in
+  assert (e == 0);
+  fmul_identity 1;
+  assert (fmul aa bb == 1);
+  fmul_zero_left (fadd bb (fmul a24 e))
+#pop-options
+
+(** The negation-squared identity: fsqr (fsub 0 a) == fsqr a.
+    Proof: (-a)^2 = a^2 in any field.
+    fsub 0 a = (p - a) % p.  For a < p, this is p - a.
+    fsqr (p - a) = ((p-a)*(p-a)) % p = (p^2 - 2pa + a^2) % p = a^2 % p = fsqr a. *)
+val fsqr_neg : a:felem -> Lemma (fsqr (fsub 0 a) == fsqr a)
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 200"
+let fsqr_neg a =
+  let neg_a = fsub 0 a in
+  assert (neg_a == (0 - a + prime) % prime);
+  assert (neg_a == (prime - a) % prime);
+  if a = 0 then begin
+    assert (neg_a == prime % prime);
+    assert (neg_a == 0);
+    assert (fsqr neg_a == fsqr 0);
+    assert (fsqr 0 == fsqr a)
+  end else begin
+    assert (prime - a < prime);
+    assert (prime - a >= 0);
+    assert (neg_a == prime - a);
+    assert (fsqr neg_a == ((prime - a) * (prime - a)) % prime);
+    assert ((prime - a) * (prime - a) == prime * prime - 2 * prime * a + a * a);
+    FStar.Math.Lemmas.lemma_mod_plus (a * a) (prime - 2 * a) prime;
+    assert (fsqr a == (a * a) % prime)
+  end
+#pop-options
+
+(** Cancellation: fadd (fsub x z) (fadd x z) == fadd x x.
+    Proof: (x-z+p)%p + (x+z)%p ≡ x-z+x+z = 2x (mod p). *)
+val fadd_fsub_fadd_cancel : x:felem -> z:felem
+    -> Lemma (fadd (fsub x z) (fadd x z) == fadd x x)
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 100"
+let fadd_fsub_fadd_cancel x z =
+  let a = fsub x z in
+  let b = fadd x z in
+  (* a = (x - z + p) % p, b = (x + z) % p *)
+  (* fadd a b = (a + b) % p *)
+  (* We need: (a + b) % p == (x + x) % p *)
+  FStar.Math.Lemmas.lemma_mod_plus_distr_l (x - z + prime) (fadd x z) prime;
+  FStar.Math.Lemmas.lemma_mod_plus_distr_r (x - z + prime) (x + z) prime;
+  assert ((x - z + prime) + (x + z) == 2 * x + prime);
+  FStar.Math.Lemmas.lemma_mod_plus (2 * x) 1 prime;
+  (* fadd x x = (x + x) % p = (2*x) % p *)
+  assert (fadd x x == (x + x) % prime);
+  assert (x + x == 2 * x)
+#pop-options
+
+(** Cancellation: fsub (fsub x z) (fadd x z) == fsub 0 (fadd z z).
+    Proof: (x-z)-(x+z) = -2z ≡ p - 2z (mod p). *)
+val fsub_fsub_fadd_cancel : x:felem -> z:felem
+    -> Lemma (fsub (fsub x z) (fadd x z) == fsub 0 (fadd z z))
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 200"
+let fsub_fsub_fadd_cancel x z =
+  let a = fsub x z in  (* (x - z + p) % p *)
+  let b = fadd x z in  (* (x + z) % p *)
+  (* fsub a b = (a - b + p) % p *)
+  (* Target: fsub 0 (fadd z z) = (0 - (z+z)%p + p) % p *)
+  (* Both should equal (-2z + p) % p = (p - 2z) % p ... but over multiple modular reductions *)
+  FStar.Math.Lemmas.lemma_mod_plus_distr_l (x - z + prime) (-(fadd x z)) prime;
+  FStar.Math.Lemmas.lemma_mod_sub_distr (x - z + prime) (x + z) prime;
+  assert ((x - z + prime) - (x + z) == prime - 2 * z);
+  (* So fsub a b = (prime - 2*z + prime) % prime ... no *)
+  (* Actually fsub a b = (a - b + prime) % prime *)
+  (* (a - b + prime) ≡ (x - z + prime) - (x + z) + prime = 2*prime - 2*z (mod prime) *)
+  FStar.Math.Lemmas.modulo_lemma (fsub a b) prime;
+  (* Now fsub 0 (fadd z z) *)
+  let zz = fadd z z in
+  assert (zz == (z + z) % prime);
+  assert (fsub 0 zz == (0 - zz + prime) % prime);
+  assert (fsub a b == (a - b + prime) % prime);
+  (* We need these to be equal *)
+  (* a - b + prime ≡ (x-z+p) - (x+z) + p = 2p - 2z (mod p) *)
+  (* 0 - zz + prime ≡ p - (2z % p) (mod p) *)
+  (* Both ≡ -2z (mod p) *)
+  FStar.Math.Lemmas.lemma_mod_plus_distr_l (0 - (z + z)) prime prime;
+  FStar.Math.Lemmas.lemma_mod_sub_distr 0 (z + z) prime;
+  FStar.Math.Lemmas.lemma_mod_sub_distr (x - z + prime + prime) (x + z) prime;
+  FStar.Math.Lemmas.lemma_mod_plus_distr_l (x - z + prime + prime - (x + z)) 0 prime;
+  assert (x - z + prime + prime - (x + z) == 2 * prime - 2 * z);
+  FStar.Math.Lemmas.lemma_mod_plus (-(2 * z)) 2 prime
+#pop-options
+
+(** The ratio invariant for the zero-bit phase of the Montgomery ladder.
+
+    When x_2=1, z_2=0, and fmul x_3 (finv z_3) == u, one ladder step
+    produces nx3, nz3 such that fmul nx3 (finv nz3) == u.
+
+    Key algebra: nx3 = fsqr(2*x_3), nz3 = u * fsqr(2*z_3),
+    so nx3/nz3 = 4*x_3^2 / (u * 4*z_3^2) = (x_3/z_3)^2 / u = u^2/u = u. *)
+val ladder_step_ratio_inv :
+    u:felem{u > 0} -> x_3:felem -> z_3:felem{z_3 > 0}
+    -> Lemma (requires fmul x_3 (finv z_3) == u)
+             (ensures (let (_, nx3, _, nz3) = ladder_step u (1, x_3, 0, z_3) 0 in
+                       fmul nx3 (finv nz3) == u /\ nz3 > 0))
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 20000"
+let ladder_step_ratio_inv u x_3 z_3 =
+  (* Expand the step with x_2=1, z_2=0 *)
+  fadd_identity 1;
+  fsub_identity 1;
+  fmul_identity 1;
+  let a : felem = 1 in
+  let b : felem = 1 in
+  (* For the x_3, z_3 lane: *)
+  let c = fadd x_3 z_3 in
+  let d = fsub x_3 z_3 in
+  (* da = fmul d 1 = d, cb = fmul c 1 = c *)
+  fmul_identity d;
+  fmul_identity c;
+  let da = d in
+  let cb = c in
+  (* s = fadd d c, df = fsub d c *)
+  let s = fadd d c in
+  let df = fsub d c in
+  (* Use our cancellation lemmas *)
+  fadd_fsub_fadd_cancel x_3 z_3;
+  assert (s == fadd x_3 x_3);
+  fsub_fsub_fadd_cancel x_3 z_3;
+  assert (df == fsub 0 (fadd z_3 z_3));
+  (* nx3 = fsqr s = fsqr (fadd x_3 x_3) = fsqr (2*x_3) *)
+  let nx3 = fsqr s in
+  assert (nx3 == fsqr (fadd x_3 x_3));
+  (* nz3 = fmul u (fsqr df) *)
+  fsqr_neg (fadd z_3 z_3);
+  assert (fsqr df == fsqr (fadd z_3 z_3));
+  let nz3 = fmul u (fsqr df) in
+  assert (nz3 == fmul u (fsqr (fadd z_3 z_3)));
+  (* Now prove: fmul nx3 (finv nz3) == u *)
+  (* nx3 = (2*x_3)^2 = 4*x_3^2 mod p *)
+  (* nz3 = u * (2*z_3)^2 = 4*u*z_3^2 mod p *)
+  (* nx3/nz3 = 4*x_3^2 / (4*u*z_3^2) = x_3^2 / (u*z_3^2) *)
+  (* Given: x_3 * z_3^{-1} = u, i.e., x_3 = u*z_3 mod p *)
+  (* So: (u*z_3)^2 / (u * z_3^2) = u^2*z_3^2 / (u*z_3^2) = u *)
+
+  (* Step 1: from fmul x_3 (finv z_3) == u, derive x_3 == fmul u z_3 *)
+  (* fmul x_3 (finv z_3) == u means (x_3 * z_3^(p-2)) % p == u *)
+  fmul_inverse z_3;
+  (* fmul z_3 (finv z_3) == 1 *)
+  (* fmul (fmul x_3 (finv z_3)) z_3 == fmul u z_3 *)
+  fmul_assoc x_3 (finv z_3) z_3;
+  fmul_comm (finv z_3) z_3;
+  (* fmul x_3 (fmul (finv z_3) z_3) == fmul x_3 1 == x_3 *)
+  fmul_identity x_3;
+  assert (fmul x_3 (fmul (finv z_3) z_3) == x_3);
+  assert (fmul (finv z_3) z_3 == 1);
+  (* So x_3 == fmul (fmul x_3 (finv z_3)) z_3 == fmul u z_3 *)
+  assert (x_3 == fmul u z_3);
+
+  (* Step 2: fadd x_3 x_3 = fadd (fmul u z_3) (fmul u z_3) = fmul u (fadd z_3 z_3) *)
+  (* by distributivity: fmul u (fadd z_3 z_3) == fadd (fmul u z_3) (fmul u z_3) *)
+  fmul_distrib u z_3 z_3;
+  assert (fmul u (fadd z_3 z_3) == fadd (fmul u z_3) (fmul u z_3));
+  assert (fadd x_3 x_3 == fmul u (fadd z_3 z_3));
+
+  (* Step 3: fsqr (fadd x_3 x_3) = fsqr (fmul u (fadd z_3 z_3)) *)
+  assert (nx3 == fsqr (fmul u (fadd z_3 z_3)));
+  (* fsqr (fmul a b) = fmul (fsqr a) (fsqr b) *)
+  (* fmul (fmul u zz) (fmul u zz) where zz = fadd z_3 z_3 *)
+  let zz = fadd z_3 z_3 in
+  (* fsqr (fmul u zz) = fmul (fmul u zz) (fmul u zz) *)
+  (* By assoc/comm: = fmul (fmul u u) (fmul zz zz) = fmul (fsqr u) (fsqr zz) *)
+  fmul_assoc u zz (fmul u zz);
+  fmul_comm zz (fmul u zz);
+  fmul_assoc u zz u;
+  fmul_comm zz u;
+  fmul_assoc u u zz;
+  fmul_assoc (fmul u u) zz zz;
+  FStar.Math.Lemmas.lemma_mod_mul_distr_l (u * zz) (fmul u zz) prime;
+  FStar.Math.Lemmas.lemma_mod_mul_distr_r (u * zz) (u * zz) prime;
+  assert (fsqr (fmul u zz) == fmul (fsqr u) (fsqr zz));
+
+  (* nx3 = fmul (fsqr u) (fsqr zz) *)
+  assert (nx3 == fmul (fsqr u) (fsqr zz));
+  (* nz3 = fmul u (fsqr zz) *)
+
+  (* Step 4: fmul nx3 (finv nz3) = fmul (fmul (fsqr u) (fsqr zz)) (finv (fmul u (fsqr zz))) *)
+  (* = fmul (fsqr u) (fmul (fsqr zz) (finv (fmul u (fsqr zz)))) *)
+  (* We need finv (fmul u (fsqr zz)) = fmul (finv u) (finv (fsqr zz))
+     for u > 0 and fsqr zz > 0, by uniqueness of inverses *)
+
+  (* Actually, let's use a more direct approach:
+     fmul (fmul a b) (finv (fmul c b)) = fmul a (finv c)
+     when b != 0 and c != 0.
+     Proof: fmul (fmul a b) (finv (fmul c b))
+          = fmul a (fmul b (finv (fmul c b)))
+          Now fmul (fmul c b) (fmul (finv c) (finv b)) = 1
+          so finv (fmul c b) = fmul (finv c) (finv b)
+          so fmul b (fmul (finv c) (finv b)) = fmul (finv c) (fmul b (finv b)) = finv c
+          so result = fmul a (finv c) *)
+
+  (* Let me instead use the fact that nx3 = fmul (fsqr u) (fsqr zz)
+     and nz3 = fmul u (fsqr zz), and compute directly. *)
+
+  (* fmul nx3 (finv nz3) *)
+  (* = fmul (fmul (fsqr u) (fsqr zz)) (finv (fmul u (fsqr zz))) *)
+
+  (* We need: fsqr zz > 0 *)
+  (* zz = fadd z_3 z_3 = (2*z_3) % p. Since z_3 > 0 and p > 2, 2*z_3 > 0 and < 2*p,
+     so (2*z_3) % p > 0 as long as 2*z_3 != p. Since p is odd and 2*z_3 is even,
+     2*z_3 != p, so zz > 0. *)
+  assert (zz == (z_3 + z_3) % prime);
+  assert (z_3 + z_3 > 0);
+  (* Since prime is odd, 2*z_3 mod prime != 0 for 0 < z_3 < prime *)
+  (* 2*z_3 can be 0 mod p only if p | 2*z_3.  Since p is prime and p > 2,
+     gcd(2,p) = 1, so p | z_3, contradiction since 0 < z_3 < p. *)
+  assert (z_3 + z_3 < 2 * prime);
+  assert (z_3 + z_3 > 0);
+  (* If z_3 + z_3 < prime, then zz = z_3 + z_3 > 0 *)
+  (* If z_3 + z_3 >= prime, then zz = z_3 + z_3 - prime.
+     z_3 + z_3 - prime >= prime - prime = 0, but z_3 + z_3 = prime is impossible
+     since prime is odd and z_3 + z_3 is even. So zz > 0. *)
+  assert_norm (prime % 2 = 0 ==> false);  (* prime is odd *)
+  assert (zz > 0);
+
+  (* fsqr zz > 0: (zz * zz) % p > 0 for zz > 0 *)
+  (* Since p is prime and 0 < zz < p, zz is not divisible by p,
+     so zz * zz is not divisible by p (p prime), so (zz*zz) % p > 0 *)
+  prime_is_prime ();
+  FStar.Math.Euclid.euclid_prime prime (zz) (zz);
+  assert (fsqr zz > 0);
+
+  (* nz3 = fmul u (fsqr zz) > 0 *)
+  FStar.Math.Euclid.euclid_prime prime u (fsqr zz);
+  assert (nz3 > 0);
+
+  (* Now prove: fmul (fmul (fsqr u) (fsqr zz)) (finv (fmul u (fsqr zz))) == u *)
+  let sqr_zz = fsqr zz in
+
+  (* By associativity: fmul (fsqr u) (fsqr zz) = fmul (fmul u u) sqr_zz *)
+  (* Then: fmul (fmul u u) sqr_zz * finv (fmul u sqr_zz) *)
+  (* = fmul u (fmul u sqr_zz) * finv (fmul u sqr_zz)  -- by assoc *)
+  (* = fmul u (fmul (fmul u sqr_zz) (finv (fmul u sqr_zz)))  -- by assoc *)
+  (* = fmul u 1  -- by fmul_inverse *)
+  (* = u *)
+
+  fmul_assoc u u sqr_zz;
+  assert (fmul (fsqr u) sqr_zz == fmul u (fmul u sqr_zz));
+  assert (nx3 == fmul u (fmul u sqr_zz));
+  assert (nz3 == fmul u sqr_zz);
+
+  fmul_assoc u (fmul u sqr_zz) (finv nz3);
+  assert (fmul nx3 (finv nz3) == fmul u (fmul (fmul u sqr_zz) (finv nz3)));
+  assert (fmul u sqr_zz == nz3);
+  fmul_inverse (fmul u sqr_zz);
+  assert (fmul nz3 (finv nz3) == 1);
+  fmul_identity u
+#pop-options
+
+(** Cancellation: fsub (fadd x z) (fsub x z) == fadd z z.
+    Proof: (x+z) - (x-z) = 2z (mod p). *)
+val fsub_fadd_fsub_cancel : x:felem -> z:felem
+    -> Lemma (fsub (fadd x z) (fsub x z) == fadd z z)
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 100"
+let fsub_fadd_fsub_cancel x z =
+  let a = fadd x z in
+  let b = fsub x z in
+  FStar.Math.Lemmas.lemma_mod_plus_distr_l (x + z) (-(fsub x z)) prime;
+  FStar.Math.Lemmas.lemma_mod_sub_distr (x + z) (x - z + prime) prime;
+  assert ((x + z) - (x - z + prime) == 2 * z - prime);
+  FStar.Math.Lemmas.lemma_mod_plus_distr_l (x + z + prime) (-(fsub x z)) prime;
+  FStar.Math.Lemmas.lemma_mod_sub_distr (x + z + prime) (x - z + prime) prime;
+  assert ((x + z + prime) - (x - z + prime) == 2 * z);
+  FStar.Math.Lemmas.lemma_mod_plus (2 * z) 1 prime;
+  assert (fadd z z == (z + z) % prime);
+  assert (z + z == 2 * z)
+#pop-options
+
+(** The algebraic core: given fmul x (finv z) == u with z > 0, u > 0,
+    then fmul (fsqr (fadd x x)) (finv (fmul u (fsqr (fadd z z)))) == u.
+    This captures the ratio preservation: (2x)^2 / (u * (2z)^2) = x^2/(u*z^2) = u.
+    Factored out so it can be reused for both the zero-bit phase and the final step. *)
+val ratio_preservation :
+    u:felem{u > 0} -> x:felem -> z:felem{z > 0}
+    -> Lemma (requires fmul x (finv z) == u)
+             (ensures (let xx = fadd x x in
+                       let zz = fadd z z in
+                       let nx = fsqr xx in
+                       let nz = fmul u (fsqr zz) in
+                       fmul nx (finv nz) == u /\ nz > 0))
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 20000"
+let ratio_preservation u x z =
+  let xx = fadd x x in
+  let zz = fadd z z in
+  (* zz > 0: 2*z mod p != 0 since p is odd and 0 < z < p *)
+  assert (zz == (z + z) % prime);
+  assert (z + z > 0);
+  assert (z + z < 2 * prime);
+  assert_norm (prime % 2 = 0 ==> false);
+  assert (zz > 0);
+  (* fsqr zz > 0: p is prime and 0 < zz < p, so p does not divide zz*zz *)
+  prime_is_prime ();
+  FStar.Math.Euclid.euclid_prime prime zz zz;
+  let sqr_zz = fsqr zz in
+  assert (sqr_zz > 0);
+  (* nz = fmul u sqr_zz > 0 *)
+  FStar.Math.Euclid.euclid_prime prime u sqr_zz;
+  let nz = fmul u sqr_zz in
+  assert (nz > 0);
+  (* From fmul x (finv z) == u, derive x == fmul u z *)
+  fmul_inverse z;
+  fmul_assoc x (finv z) z;
+  fmul_comm (finv z) z;
+  fmul_identity x;
+  assert (x == fmul u z);
+  (* fadd x x = fadd (fmul u z) (fmul u z) = fmul u (fadd z z) = fmul u zz *)
+  fmul_distrib u z z;
+  assert (fadd x x == fmul u zz);
+  (* nx = fsqr (fmul u zz) *)
+  let nx = fsqr xx in
+  assert (nx == fsqr (fmul u zz));
+  (* fsqr (fmul u zz) = fmul (fsqr u) (fsqr zz) *)
+  FStar.Math.Lemmas.lemma_mod_mul_distr_l (u * zz) (fmul u zz) prime;
+  FStar.Math.Lemmas.lemma_mod_mul_distr_r (u * zz) (u * zz) prime;
+  fmul_assoc u zz (fmul u zz);
+  fmul_comm zz (fmul u zz);
+  fmul_assoc u u zz;
+  fmul_assoc (fmul u u) zz zz;
+  assert (fsqr (fmul u zz) == fmul (fsqr u) sqr_zz);
+  assert (nx == fmul (fsqr u) sqr_zz);
+  (* nx = fmul u (fmul u sqr_zz) by associativity *)
+  fmul_assoc u u sqr_zz;
+  assert (nx == fmul u (fmul u sqr_zz));
+  assert (nz == fmul u sqr_zz);
+  (* fmul nx (finv nz) = fmul (fmul u nz) (finv nz) = fmul u (fmul nz (finv nz)) = fmul u 1 = u *)
+  assert (nx == fmul u nz);
+  fmul_assoc u nz (finv nz);
+  fmul_inverse nz;
+  fmul_identity u
+#pop-options
+
+(** The combined loop invariant for k=1: the full loop (including the
+    bit-0 step) preserves fmul x_3 (finv z_3) == u and returns swap=1.
+    During bits t..1 (all zero), x_2=1, z_2=0, swap=0 are maintained.
+    At bit 0 (which is 1), a swap occurs and the ratio is preserved
+    through the final step by the same algebraic identity. *)
+val ladder_loop_one_k_inv :
+    u:felem{u > 0} -> t:int{t >= 1} -> x_3:felem -> z_3:felem{z_3 > 0}
+    -> Lemma (requires fmul x_3 (finv z_3) == u)
+             (ensures (let (_, x3f, _, z3f, swf) =
+                         ladder_loop u 1 t 1 x_3 0 z_3 0 in
+                       swf == 1 /\ z3f > 0 /\ fmul x3f (finv z3f) == u))
+             (decreases (if t < 1 then 0 else t))
+#push-options "--fuel 2 --ifuel 0 --z3rlimit 20000"
+let rec ladder_loop_one_k_inv u t x_3 z_3 =
+  if t = 1 then begin
+    (* t=1: k_t = get_bit 1 1 = 0, swap=0, swap'=0, no swap *)
+    get_bit_one_high 1;
+    ladder_step_z2_zero_x2_one u x_3 z_3;
+    ladder_step_ratio_inv u x_3 z_3;
+    let (nx2, nx3, nz2, nz3) = ladder_step u (1, x_3, 0, z_3) 0 in
+    assert (nx2 == 1 /\ nz2 == 0);
+    assert (nz3 > 0);
+    assert (fmul nx3 (finv nz3) == u);
+    (* t=0: k_t = get_bit 1 0 = 1, swap=0, swap'=1, SWAP *)
+    get_bit_one_zero ();
+    (* After swap: (sx2=nx3, sx3=1, sz2=nz3, sz3=0) *)
+    (* ladder_step u (nx3, 1, nz3, 0) 0 *)
+    (* The x_3 output lane uses c=1, d=1, so:
+       da = fadd nx3 nz3, cb = fsub nx3 nz3
+       s = fadd (fadd nx3 nz3) (fsub nx3 nz3) = fadd nx3 nx3
+       df = fsub (fadd nx3 nz3) (fsub nx3 nz3) = fadd nz3 nz3
+       nnx3 = fsqr (fadd nx3 nx3), nnz3 = fmul u (fsqr (fadd nz3 nz3)) *)
+    fadd_identity 1;
+    fsub_identity 1;
+    let a_f = fadd nx3 nz3 in
+    let b_f = fsub nx3 nz3 in
+    fmul_identity a_f;
+    fmul_identity b_f;
+    (* s = fadd a_f b_f, df = fsub a_f b_f *)
+    fadd_comm (fsub nx3 nz3) (fadd nx3 nz3);
+    fadd_fsub_fadd_cancel nx3 nz3;
+    (* s = fadd nx3 nx3 *)
+    fsub_fadd_fsub_cancel nx3 nz3;
+    (* df = fadd nz3 nz3 *)
+    let s_f = fadd a_f b_f in
+    let df_f = fsub a_f b_f in
+    assert (s_f == fadd nx3 nx3);
+    assert (df_f == fadd nz3 nz3);
+    (* nnx3 = fsqr (fadd nx3 nx3), nnz3 = fmul u (fsqr (fadd nz3 nz3)) *)
+    (* By ratio_preservation: fmul nnx3 (finv nnz3) == u *)
+    ratio_preservation u nx3 nz3
+  end else begin
+    (* t > 1: k_t = get_bit 1 t = 0, swap=0, swap'=0, no swap *)
+    get_bit_one_high t;
+    ladder_step_z2_zero_x2_one u x_3 z_3;
+    ladder_step_ratio_inv u x_3 z_3;
+    let (nx2, nx3, nz2, nz3) = ladder_step u (1, x_3, 0, z_3) 0 in
+    assert (nx2 == 1 /\ nz2 == 0 /\ nz3 > 0);
+    assert (fmul nx3 (finv nz3) == u);
+    ladder_loop_one_k_inv u (t - 1) nx3 nz3
+  end
+#pop-options
+
+(** -------------------------------------------------------------------- **)
+(** scalar_mult_one (PROVED)                                             **)
+(** -------------------------------------------------------------------- **)
+
 (** Multiplying by scalar 1 yields the original point.
-    ASSUMED: Requires showing the Montgomery ladder with k=1 performs one
-    differential addition step that preserves the input u-coordinate.
-    Visible to auditing as an assume val. *)
-assume val scalar_mult_one : u:felem{u > 0}
+
+    PROVED by showing:
+    1. For k=1, bits 254..1 are all 0 (get_bit_one_high)
+    2. Throughout those iterations, x_2=1, z_2=0, swap=0 are maintained,
+       and the projective ratio x_3/z_3 = u is preserved at each step
+       (ladder_step_ratio_inv)
+    3. At bit 0 (which is 1), a final swap and ladder step occurs, but
+       the same algebraic identity shows x_3/z_3 = u still holds
+    4. With swap_final=1, scalar_mult returns fmul x_3 (finv z_3) = u
+
+    The key algebraic identity: when z_2=0 and x_2=1, the ladder step
+    produces nx3 = (2*x_3)^2 and nz3 = u*(2*z_3)^2, so
+    nx3/nz3 = 4*x_3^2/(4*u*z_3^2) = (x_3/z_3)^2/u = u^2/u = u.
+
+    Proof chain:
+    1. get_bit_one_high + get_bit_one_zero: bit structure of k=1
+    2. ladder_step_z2_zero_x2_one: x_2=1, z_2=0 preservation
+    3. ladder_step_ratio_inv: projective ratio u = x_3/z_3 invariant
+    4. ladder_loop_one_k_inv: induction over the full loop
+    5. fmul_identity: final fmul x_3 (finv z_3) = u *)
+val scalar_mult_one : u:felem{u > 0}
     -> Lemma (scalar_mult 1 u == u)
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 20000"
+let scalar_mult_one u =
+  let u_fe : felem = u % prime in
+  assert (u_fe == u);
+  (* Initial state: (1, u, 0, 1), swap=0 *)
+  (* finv 1 = 1, so fmul u (finv 1) = fmul u 1 = u *)
+  finv_one ();
+  fmul_identity u;
+  assert (fmul u (finv 1) == u);
+  (* Apply the loop invariant *)
+  ladder_loop_one_k_inv u 254 u 1;
+  let (x2f, x3f, z2f, z3f, swf) = ladder_loop u 1 254 1 u 0 1 0 in
+  assert (swf == 1);
+  assert (fmul x3f (finv z3f) == u);
+  (* scalar_mult takes (x_3, z_3) since swap_final=1 *)
+  assert (scalar_mult 1 u == fmul x3f (finv z3f))
+#pop-options
 
 (** -------------------------------------------------------------------- **)
 (** KAT Test Vectors (RFC 7748 Section 6.1)                              **)

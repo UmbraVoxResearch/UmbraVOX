@@ -54,13 +54,13 @@ documentation of what is and is not proved.
 
 | Layer | What it proves | Tools | Status |
 |-------|---------------|-------|--------|
-| Formal model | Algorithm correctness | F* + Z3 | 24 specs, 0 admit, 28 assume val |
-| External certificates | Computational facts Z3 can't prove | Coq (Rocq 9.1.1) | 4 files, 171 Qed |
-| Assumption registry | Trust boundary is documented | check-assumption-ledger.sh | 28 entries, mechanically checked |
+| Formal model | Algorithm correctness | F* + Z3 | 24 specs, 0 admit, 30 assume val |
+| External certificates | Computational facts Z3 can't prove | Coq (Rocq 9.1.1) | 9 files, 350 Qed |
+| Assumption registry | Trust boundary is documented | check-assumption-ledger.sh | 30 entries, mechanically checked |
 | Proof hygiene | No hidden trust, no misleading names | check-proof-hygiene.sh | 4 checks, 0 issues |
 | Infrastructure tests | Build system, VM pipeline, docs | test-infrastructure.sh | 67 tests |
 | Crypto audit | Per-module assurance grades A-F | audit/ reports | 6 reports |
-| Differential testing | Runtime matches verified model | Multi-oracle cleanroom (v0.1.4) | Planned |
+| Differential testing | Runtime matches verified model | Multi-oracle cleanroom (v0.1.4+) | 36/36 suites PASS |
 | Side-channel | Constant-time behavior | dudect, HACL* (future) | Not yet claimed |
 
 ## Non-Claims
@@ -83,7 +83,11 @@ This project does NOT claim:
 | v0.1.1 | VM infrastructure hardening |
 | v0.1.2 | Full crypto audit, hidden assumes surfaced, false theorems fixed |
 | v0.1.3 | Assurance hardening (reviewer-grade framework, Coq evidence, X25519 reductions) |
-| v0.1.4 | Cleanroom multi-oracle differential testing (planned) |
+| v0.1.4 | Cleanroom multi-oracle differential testing |
+| v0.1.5 | 22 differential suites, 5 Coq files (187 Qed), Ed25519 malleability |
+| v0.1.6 | VRFDLEQ.v, pre-release check, 6 Coq files (219 Qed) |
+| v0.1.7 | sign_then_verify proved, 9 Coq files (350 Qed), ML-KEM confirmed, AFL++ |
+| v0.1.8 | Documentation sweep and release |
 
 ## Team
 

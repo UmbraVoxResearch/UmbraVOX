@@ -6,5 +6,6 @@ Ed25519Curve.v
 Ed25519Scalar.v
 Ed25519GroupPartial.v
 Ed25519GroupAssoc.v
+Ed25519GroupIdentity.v
 Ed25519SqrtRatio.v
 VRFDLEQ.v
