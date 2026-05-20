@@ -154,16 +154,13 @@ if [ -n "$FSTAR_EXE_PATH" ]; then
 fi
 
 # Set COQPATH for Coq packages (stdlib, coqprime, bignums)
-# NixOS doesn't auto-set COQPATH for systemd services.
-# Scan the system profile for user-contrib directories.
-COQPATH_DIRS=""
-for d in /run/current-system/sw/lib/coq/*/user-contrib \
-         /nix/store/*-coq*-*/lib/coq/*/user-contrib \
-         /nix/store/*-rocq*-*/lib/coq/*/user-contrib; do
-    [ -d "$d" ] && COQPATH_DIRS="$COQPATH_DIRS:$d"
-done
-if [ -n "$COQPATH_DIRS" ]; then
-    export COQPATH="${COQPATH_DIRS#:}"
+# Use the system profile which merges all package paths.
+if [ -d /run/current-system/sw/lib/coq ]; then
+    COQPATH_DIRS=""
+    for d in /run/current-system/sw/lib/coq/*/user-contrib; do
+        [ -d "$d" ] && COQPATH_DIRS="$COQPATH_DIRS:$d"
+    done
+    [ -n "$COQPATH_DIRS" ] && export COQPATH="${COQPATH_DIRS#:}"
 fi
 
 INITEOF
