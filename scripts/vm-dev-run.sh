@@ -144,6 +144,7 @@ fi
 
 cd /work/umbravox
 export UMBRAVOX_ROOT=/work/umbravox
+export UMBRAVOX_VM=1
 export PATH="/work/umbravox/scripts:$PATH"
 unset LD_LIBRARY_PATH 2>/dev/null || true
 
