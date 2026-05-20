@@ -24,7 +24,7 @@ module UmbraVox.Network.ProviderRuntime
     ) where
 
 import qualified Data.ByteString as BS
-import Data.Char (digitToInt, intToDigit)
+import Data.Char (digitToInt, intToDigit, isHexDigit)
 import System.IO (Handle, hFlush, hGetLine, hPutStrLn, hClose, hSetBinaryMode, hSetBuffering, BufferMode(..))
 import System.Process (CreateProcess(..), StdStream(..), ProcessHandle, createProcess, proc, terminateProcess, waitForProcess)
 
@@ -134,7 +134,7 @@ instance TransportHandle IPCTransport where
         hFlush (ipcStdin t)
         resp <- hGetLine (ipcStdout t)
         case stripCommandPrefix "DATA " resp of
-            Just hex -> pure (fromHex hex)
+            Just hex -> pure (maybe BS.empty id (fromHex hex))
             Nothing  -> pure BS.empty
 
     thClose t = do
@@ -249,11 +249,13 @@ toHex = concatMap encodeByte . BS.unpack
         , intToDigit (fromIntegral (w `mod` 16))
         ]
 
-fromHex :: String -> BS.ByteString
-fromHex = BS.pack . decodeHexPairs
+fromHex :: String -> Maybe BS.ByteString
+fromHex hex
+    | odd (length hex) = Nothing
+    | not (all isHexDigit hex) = Nothing
+    | otherwise = Just (BS.pack (decodeHexPairs hex))
   where
     decodeHexPairs [] = []
-    decodeHexPairs [_] = []  -- odd trailing nibble is dropped
     decodeHexPairs (hi:lo:rest) =
         (fromIntegral (digitToInt hi) * 16 + fromIntegral (digitToInt lo))
             : decodeHexPairs rest

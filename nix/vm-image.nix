@@ -118,6 +118,11 @@ CABALEOF
           # Mount source disk and delegate to the in-guest script
           mkdir -p /mnt/src
           mount -o ro /dev/vdb /mnt/src
+          # vm-dev/vm-build/vm-test inject .vm-init.sh; skip smoke in that mode.
+          if [ -f /mnt/src/.vm-init.sh ]; then
+            echo "[VM-SMOKE] vm-dev mode detected (.vm-init.sh present); skipping smoke pipeline."
+            exit 0
+          fi
           exec /run/current-system/sw/bin/bash /mnt/src/scripts/vm-smoke-run.sh
         '';
         StandardOutput = "journal+console";

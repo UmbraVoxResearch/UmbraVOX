@@ -4,8 +4,8 @@
 # Called by vm-dev-run.sh before launching QEMU.
 #
 # Default: no network (QEMU launched with -nic none).
-# If ALLOW rules exist, creates a restricted user-mode network with
-# iptables-style filtering via QEMU's built-in firewall.
+# ALLOW rules are currently fail-closed until enforceable translation is
+# implemented.
 #
 # Usage: source scripts/vm-network-policy.sh
 #        QEMU_NET_ARGS contains the result
@@ -33,16 +33,11 @@ generate_network_args() {
         return
     fi
 
-    # If there are ALLOW rules, create restricted user-mode networking
-    # QEMU user-mode (-nic user) provides NAT with optional restrict=on
-    # which blocks all outbound except explicitly forwarded ports.
-    #
-    # For each ALLOW rule, add a hostfwd or guestfwd entry.
-    # Note: QEMU user-mode can't do fine-grained domain filtering,
-    # so we rely on the VM having no DNS resolver configured.
-    # Only IP-based ALLOW rules are enforceable at the QEMU level.
-
-    local net_args="-nic user,model=virtio,restrict=on"
+    # ALLOW rules are currently declarative only. Until each rule is translated
+    # into enforceable QEMU arguments, fail closed instead of silently allowing
+    # broader connectivity than requested.
+    echo "[NET-POLICY] ERROR: ALLOW rules are present but enforcement is not implemented." >&2
+    echo "[NET-POLICY] ERROR: Remove ALLOW rules or implement translation before booting the VM." >&2
 
     while IFS= read -r line; do
         # Skip comments and blank lines
@@ -63,8 +58,10 @@ generate_network_args() {
         fi
     done < "$POLICY_FILE"
 
-    echo "$net_args"
+    return 1
 }
 
 # Export the result
-QEMU_NET_ARGS="$(generate_network_args)"
+if ! QEMU_NET_ARGS="$(generate_network_args)"; then
+    return 1 2>/dev/null || exit 1
+fi

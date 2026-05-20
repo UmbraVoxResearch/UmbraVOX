@@ -61,8 +61,15 @@ create_source_disk() {
     local src_dir
     src_dir="$(mktemp -d /tmp/umbravox-vm-dev-src.XXXXXX)"
 
-    echo -e "${BLUE}[VM-DEV]${NC} Exporting source tree..." >&2
-    (cd "$REPO_ROOT" && git archive HEAD | tar -x -C "$src_dir")
+    echo -e "${BLUE}[VM-DEV]${NC} Exporting source tree (current worktree)..." >&2
+    # Export the live worktree so VM runs include local edits, while excluding
+    # large/generated directories and VCS metadata.
+    tar -C "$REPO_ROOT" \
+        --exclude='.git' \
+        --exclude='dist-newstyle' \
+        --exclude='build' \
+        --exclude='result' \
+        -cf - . | tar -xf - -C "$src_dir"
 
     # Optionally copy dist-newstyle to preserve build cache (can be large)
     if [ -d "$REPO_ROOT/dist-newstyle" ] && [ "${UMBRAVOX_VM_CACHE:-0}" = "1" ]; then

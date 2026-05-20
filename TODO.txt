@@ -294,10 +294,34 @@ Note: Items from codebase audit (2026-05-20).
 [ ] M20.4 Security hardening
   [ ] M20.4.1 Complete M15.3.2 SecureBytes migration for secret key fields
   [ ] M20.4.2 Audit and resolve all M-series TODO comments in source
+  [~] M20.4.3 Harden VM integration agent trust boundary
+    Note: strict AGENT_* validation + safer peer probes + tar path traversal checks added.
+    Remaining: verify signed checksum/attestation before extraction.
+  [~] M20.4.4 Harden provider IPC decode path against malformed input
+    Note: DATA hex decode now rejects invalid/odd payloads without crashing.
+    Remaining: explicit protocol error telemetry + max line length guard.
+  [ ] M20.4.5 Upgrade export KDF from HKDF-iteration to memory-hard KDF (Argon2id/scrypt)
+  [ ] M20.4.6 Make config hash pinning fail closed (verify before apply)
 
 [ ] M20.5 VM isolation completion
-  [ ] M20.5.1 Migrate all Makefile test targets to VM-default
+  [~] M20.5.1 Migrate all Makefile test targets to VM-default
+    Note: test-offline-parity now routed through vm_or_local.
   [ ] M20.5.2 Update flake.nix to not pull GHC into host store
+  [~] M20.5.3 Split smoke vs dev boot behavior in VM image
+    Note: vm-image smoke unit now auto-skips when .vm-init.sh is injected.
+  [~] M20.5.4 VM source export semantics
+    Note: vm-dev-run now exports current worktree (not git archive HEAD) with exclusion filters.
+  [~] M20.5.5 Fail closed on unenforced VM network ALLOW rules
+    Note: vm-network-policy.sh now blocks VM boot when ALLOW rules are present without enforcement.
+  [ ] M20.5.6 Restrict /output and persistent cache to explicit artifact modes only
+  [ ] M20.5.7 Refresh README/QUICKSTART/VM-ISOLATION for vm-first defaults and run-local opt-in
+
+[~] M20.7 DRY reduction (build/test infra)
+  [~] M20.7.1 Consolidate repeated Makefile suite runner blocks
+    Note: run_named_suite macro added and core suite targets migrated.
+  [ ] M20.7.2 Consolidate logged gate wrappers (test/verify) into shared helper
+  [ ] M20.7.3 Extract release packaging shared shell library (release-package*.sh)
+  [ ] M20.7.4 Extract VM SSH/QEMU helper library for *bsd/illumos setup scripts
 
 [~] M20.6 Coq proofs pending
   [~] M20.6.1 ED-008e: Universal completeness — proof structure in Ed25519GroupUniversal.v (62 Qed)
