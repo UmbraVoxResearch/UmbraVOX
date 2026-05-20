@@ -13,7 +13,7 @@ Bridge plugins:
 - Run as separate OS processes (not linked into the main binary)
 - Speak a fixed set of verbs over stdin/stdout
 - Use `api=uvx-provider-v1` and `class=closed-bridge` (or `open-bridge`)
-- Are registered via a `manifest.uvx` file in `providers/<bridge-id>/`
+- Are registered via a `manifest.uvx` file in `plugins/<bridge-id>/`
 
 
 IPC Protocol
@@ -71,7 +71,7 @@ Required fields: `to`, `body`. Optional: `timestamp`, `thread`.
 Manifest Fields for a Bridge
 -----------------------------
 
-Bridge manifests live in `providers/<bridge-id>/manifest.uvx` and must
+Bridge manifests live in `plugins/<bridge-id>/manifest.uvx` and must
 include all 12 standard fields. Key values for bridges:
 
 | Field        | Bridge value                                             |
@@ -83,7 +83,7 @@ include all 12 standard fields. Key values for bridges:
 | entrypoint   | `exec:<bridge-binary-name>`                              |
 | encryption   | `bridge-adapted` (uses UmbraVOX crypto with bridge params) |
 
-See `providers/signal-bridge/manifest.uvx` for a live example.
+See `plugins/signal-bridge/manifest.uvx` for a live example.
 
 
 How to Create a New Bridge
@@ -91,7 +91,7 @@ How to Create a New Bridge
 
 1. **Copy the template:**
 
-       cp -r plugins/template-bridge providers/my-bridge
+       cp -r plugins/template-bridge plugins/my-bridge
 
 2. **Edit `manifest.uvx`** -- set `id`, `name`, `endpoint`, `entrypoint`,
    and `notes` to match your target system.
@@ -113,7 +113,7 @@ How to Create a New Bridge
        echo -e "PING\nSTATUS\nCLOSE" | ./my-bridge-binary
 
 6. **Register** -- the provider catalog auto-discovers manifests at startup
-   from `providers/*/manifest.uvx`.
+   from `plugins/*/manifest.uvx`.
 
 
 Reference Implementation

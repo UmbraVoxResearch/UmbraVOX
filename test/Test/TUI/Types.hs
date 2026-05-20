@@ -348,4 +348,4 @@ testTransportProviderRegistry = do
   where
     isSignalArtifactMissing entry =
         tpId (ctpProvider entry) == ProviderSignal
-            && ctpLoadStatus entry == ProviderLoadMissingArtifact "providers/signal/generated/signal-provider"
+            && ctpLoadStatus entry == ProviderLoadMissingArtifact "plugins/signal/generated/signal-provider"

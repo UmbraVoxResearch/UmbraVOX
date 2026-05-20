@@ -217,7 +217,7 @@ cleanroom VM. Haskell + C + shell only. Tagged v0.2.0 when 100% complete.
   [x] M19.3.3 Bridge/Signal/Session.hs — Signal session management
   [x] M19.3.4 Bridge/Signal/Registration.hs — Linked device provisioning (QR code)
   [x] M19.3.5 Bridge/Signal/WebSocket.hs — Signal WebSocket client
-  [x] M19.3.6 providers/signal-bridge/manifest.uvx — Updated bridge manifest
+  [x] M19.3.6 plugins/signal-bridge/manifest.uvx — Updated bridge manifest
   [x] M19.3.7 Message send: plaintext → Signal ratchet encrypt → protobuf → REST
   [x] M19.3.8 Message recv: WebSocket → protobuf → Signal ratchet decrypt → JSON
 

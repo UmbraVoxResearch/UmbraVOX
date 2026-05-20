@@ -86,7 +86,9 @@
 #   make cleanall     - Remove everything (build + DB + tools)
 #   make help         - Show help
 #
-# Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
+# Prerequisites:
+#   VM mode (default): make vm-image-build (needs qemu + nix)
+#   Local mode: UMBRAVOX_LOCAL=1 + nix-shell (provides GHC, Cabal, F*, Z3)
 
 .PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-build-only vm-test vm-verify vm-run-gui firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot screenshot-local vm-record vm-visual-regression visual-reference-update differential-vectors test-differential-oracle test-differential-full fuzz-differential fuzz-afl differential differential-evidence-check signal-bridge-build test-signal-compat test-signal-bridge-ipc check-isolation clean cleandb cleanall help
 .DEFAULT_GOAL := all
@@ -103,14 +105,21 @@ FSTAR_DIR := test/evidence/formal-proofs/fstar
 # Set UMBRAVOX_LOCAL=1 to run locally (requires full toolchain in nix-shell).
 UMBRAVOX_LOCAL ?= 0
 
-# Guard: warn when build/test tools run on host without explicit opt-in.
-# UMBRAVOX_VM is set automatically inside the NixOS guest init script.
-# UMBRAVOX_LOCAL=1 explicitly opts into host-local execution.
-define check_vm_or_local
-	@if [ -z "$$UMBRAVOX_LOCAL" ] || [ "$$UMBRAVOX_LOCAL" = "0" ]; then \
-		if [ -z "$$UMBRAVOX_VM" ]; then \
-			echo -e "$(YELLOW)[WARNING]$(NC) Running on host without VM context. Set UMBRAVOX_LOCAL=1 for host builds or use 'make vm-build' for VM builds."; \
+# vm_or_local: dispatch a command to the VM (default) or host (UMBRAVOX_LOCAL=1).
+# Usage: $(call vm_or_local,cabal build all --enable-tests 2>&1)
+# When UMBRAVOX_LOCAL=1: runs the command directly (caller must be in nix-shell).
+# Otherwise: delegates to scripts/vm-dev-run.sh exec "<cmd>".
+# Requires the VM image at build/vm/image; errors if missing.
+define vm_or_local
+	@if [ "$(UMBRAVOX_LOCAL)" = "1" ]; then \
+		$(1); \
+	else \
+		if [ ! -d build/vm/image ] && [ ! -L build/vm/image ]; then \
+			echo -e "$(RED)[ERROR]$(NC) No VM image found at build/vm/image."; \
+			echo "  Run 'make vm-image-build' first, or set UMBRAVOX_LOCAL=1 for host execution."; \
+			exit 1; \
 		fi; \
+		./scripts/vm-dev-run.sh exec "$(1)"; \
 	fi
 endef
 
@@ -177,7 +186,7 @@ all: build test verify complexity lint license format-check
 	@echo -e "$(GREEN)  ALL CHECKS PASSED$(NC)"
 	@echo -e "$(GREEN)========================================$(NC)"
 
-help:
+help: # [host-only]
 	@echo ""
 	@echo -e "$(BLUE)  UmbraVOX Build System$(NC)"
 	@echo -e "$(BLUE)  =====================$(NC)"
@@ -306,10 +315,15 @@ help:
 	@echo "    - 10 .spec files generate 30 Haskell + C + FFI outputs"
 	@echo ""
 	@echo "  Target Annotations:"
-	@echo "    [VM-default]  Auto-delegates to VM when image exists; falls back to host"
+	@echo "    [VM-default]  Runs in VM by default; set UMBRAVOX_LOCAL=1 for host execution"
 	@echo "    [VM-only]     Always runs inside a QEMU/Firecracker VM"
-	@echo "    [host-only]   Always runs on the host (e.g. TUI, screenshots)"
+	@echo "    [host-only]   Always runs on the host (e.g. TUI, clean, lint)"
 	@echo "    (unmarked)    Runs wherever invoked (host or VM)"
+	@echo ""
+	@echo "  VM Isolation:"
+	@echo "    All build/test/verify targets default to VM execution."
+	@echo "    Set UMBRAVOX_LOCAL=1 to run locally (requires nix-shell with full toolchain)."
+	@echo "    Run 'make vm-image-build' to create the VM image first."
 	@echo ""
 	@echo "  Keyboard Shortcuts (TUI):"
 	@echo "    Tab     Switch focus (contacts <-> chat)"
@@ -320,7 +334,7 @@ help:
 	@echo "    Ctrl+Q  Quit             ?       Help"
 	@echo ""
 
-run:
+run: # [host-only] interactive TUI needs host terminal
 	@echo -e "$(BLUE)[RUN]$(NC) Building and launching UmbraVOX TUI (local)..."
 	@cabal build umbravox 2>&1 | tail -3
 	@cabal run umbravox; stty sane echo 2>/dev/null; true
@@ -330,25 +344,13 @@ run:
 # --------------------------------------------------------------------------
 
 build:
-	@if [ "$(UMBRAVOX_LOCAL)" != "1" ]; then \
-		if [ -d build/vm/image ] || [ -L build/vm/image ]; then \
-			$(MAKE) vm-build; exit $$?; \
-		else \
-			echo -e "$(YELLOW)[BUILD]$(NC) No VM image found — building locally. Run 'make vm-image-build' for VM builds."; \
-		fi; \
-	fi
-	$(call check_vm_or_local)
 	@echo -e "$(BLUE)[BUILD]$(NC) Building UmbraVOX..."
-	@cabal build all 2>&1 | tail -5
+	$(call vm_or_local,cabal build all 2>&1 | tail -5)
 	@echo -e "$(GREEN)[BUILD]$(NC) Build complete."
 
 build-haskell:
 	@echo -e "$(BLUE)[BUILD-HASKELL]$(NC) Opt-in bridge wrapper: legacy Make build by default; set UMBRAVOX_USE_HASKELL_ORCH=1 to try the Haskell subcommand."
-	@if [ "$(UMBRAVOX_USE_HASKELL_ORCH)" = "1" ]; then \
-		cabal run umbravox -- build --orchestrated; \
-	else \
-		$(MAKE) build; \
-	fi
+	@$(MAKE) build
 
 # --------------------------------------------------------------------------
 # Test
@@ -359,10 +361,10 @@ test:
 		if [ -d build/vm/image ] || [ -L build/vm/image ]; then \
 			$(MAKE) vm-test; exit $$?; \
 		else \
-			echo -e "$(YELLOW)[TEST]$(NC) No VM image found — testing locally. Run 'make vm-image-build' for VM tests."; \
+			echo -e "$(RED)[TEST]$(NC) No VM image found. Run 'make vm-image-build' or set UMBRAVOX_LOCAL=1."; \
+			exit 1; \
 		fi; \
 	fi
-	$(call check_vm_or_local)
 	@$(MAKE) UMBRAVOX_LOCAL=1 build
 	@echo -e "$(BLUE)[TEST]$(NC) Running fast messaging-MVP hardening gate..."
 	@$(SUITE_LOCK) bash -c 'mkdir -p $(TEST_ARTIFACT_DIR); \
@@ -388,73 +390,69 @@ test:
 	fi'
 
 test-haskell:
-	@echo -e "$(BLUE)[TEST-HASKELL]$(NC) Opt-in bridge wrapper: legacy Make test by default; set UMBRAVOX_USE_HASKELL_ORCH=1 to try the Haskell subcommand."
-	@if [ "$(UMBRAVOX_USE_HASKELL_ORCH)" = "1" ]; then \
-		cabal run umbravox -- test --orchestrated; \
-	else \
-		$(MAKE) test; \
-	fi
+	@echo -e "$(BLUE)[TEST-HASKELL]$(NC) Opt-in bridge wrapper: legacy Make test by default."
+	@$(MAKE) test
 
 test-core: build
 	@echo -e "$(BLUE)[TEST-CORE]$(NC) Running core deterministic suite..."
-	@$(SUITE_LOCK) $(call run_test_suite,core)
+	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,core))
 
 test-core-crypto: build
 	@echo -e "$(BLUE)[TEST-CORE-CRYPTO]$(NC) Running core crypto suite..."
-	@$(SUITE_LOCK) $(call run_test_suite,core-crypto)
+	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,core-crypto))
 
 test-core-network: build
 	@echo -e "$(BLUE)[TEST-CORE-NETWORK]$(NC) Running core network suite..."
-	@$(SUITE_LOCK) $(call run_test_suite,core-network)
+	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,core-network))
 
 test-core-chat: build
 	@echo -e "$(BLUE)[TEST-CORE-CHAT]$(NC) Running core chat/protocol suite..."
-	@$(SUITE_LOCK) $(call run_test_suite,core-chat)
+	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,core-chat))
 
 test-core-tui: build
 	@echo -e "$(BLUE)[TEST-CORE-TUI]$(NC) Running core TUI suite..."
-	@$(SUITE_LOCK) $(call run_test_suite,core-tui)
+	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,core-tui))
 
 test-core-tools: build
 	@echo -e "$(BLUE)[TEST-CORE-TOOLS]$(NC) Running core tools/codegen suite..."
-	@$(SUITE_LOCK) $(call run_test_suite,core-tools)
+	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,core-tools))
 
 test-tcp: build
 	@echo -e "$(BLUE)[TEST-TCP]$(NC) Running real TCP suite..."
-	@$(SUITE_LOCK) $(call run_test_suite,tcp)
+	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,tcp))
 
 test-fault: build
 	@echo -e "$(BLUE)[TEST-FAULT]$(NC) Running fault-injection suite..."
-	@$(SUITE_LOCK) $(call run_test_suite,fault)
+	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,fault))
 
 test-recovery: build
 	@echo -e "$(BLUE)[TEST-RECOVERY]$(NC) Running recovery suite..."
-	@$(SUITE_LOCK) $(call run_test_suite,recovery)
+	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,recovery))
 
 test-tui-sim: build
 	@echo -e "$(BLUE)[TEST-TUI-SIM]$(NC) Running TUI simulation suite..."
-	@$(SUITE_LOCK) $(call run_test_suite,tui-sim)
+	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,tui-sim))
 
 test-integrity: build
 	@echo -e "$(BLUE)[TEST-INTEGRITY]$(NC) Running wire/integrity suite..."
-	@$(SUITE_LOCK) $(call run_test_suite,integrity)
+	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,integrity))
 
 test-mdns: build
 	@echo -e "$(BLUE)[TEST-MDNS]$(NC) Running exact mDNS/discovery suite..."
-	@$(SUITE_LOCK) $(call run_test_suite,mdns)
+	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,mdns))
 
 test-deferred: build
 	@echo -e "$(BLUE)[TEST-DEFERRED]$(NC) Running preserved deferred suite..."
-	@$(SUITE_LOCK) $(call run_test_suite,deferred)
+	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,deferred))
 
 test-differential: build
 	@echo -e "$(BLUE)[TEST-DIFF]$(NC) Running differential C vs Haskell tests..."
-	@$(SUITE_LOCK) $(call run_test_suite,differential)
+	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,differential))
 
 soak: build
 	@echo -e "$(BLUE)[SOAK]$(NC) Running soak suite..."
-	@$(SUITE_LOCK) bash -c 'mkdir -p $(TEST_ARTIFACT_DIR); \
-	$(call run_test_suite,soak) 2>&1 | tee $(TEST_ARTIFACT_DIR)/soak-report.txt'
+	$(call vm_or_local,$(SUITE_LOCK) bash -c 'mkdir -p $(TEST_ARTIFACT_DIR); \
+	$(call run_test_suite,soak) 2>&1 | tee $(TEST_ARTIFACT_DIR)/soak-report.txt')
 
 # --------------------------------------------------------------------------
 # MC/DC Coverage (HPC)
@@ -472,23 +470,23 @@ soak: build
 
 mcdc-report:
 	@echo -e "$(BLUE)[COVERAGE]$(NC) Building with HPC coverage (configure + build + test)..."
-	@cabal configure --enable-coverage
-	@cabal build all --enable-coverage 2>&1 | tail -5
-	@echo -e "$(BLUE)[COVERAGE]$(NC) Running required test suite with HPC instrumentation..."
-	@cabal test umbravox-test --enable-coverage --test-options='required' 2>&1 | tail -10
-	@echo -e "$(BLUE)[COVERAGE]$(NC) Generating per-module expression coverage report..."
-	@tix=$$(find dist-newstyle -name '*.tix' -path '*/umbravox-test*' | head -1); \
-	mix_lib=$$(find dist-newstyle -path '*/extra-compilation-artifacts/hpc/vanilla/mix' -not -path '*/umbravox-test*' | head -1); \
-	mix_test=$$(find dist-newstyle -path '*/umbravox-test*/extra-compilation-artifacts/hpc/vanilla/mix' | head -1); \
+	$(call vm_or_local,cabal configure --enable-coverage && \
+	cabal build all --enable-coverage 2>&1 | tail -5 && \
+	echo -e "$(BLUE)[COVERAGE]$(NC) Running required test suite with HPC instrumentation..." && \
+	cabal test umbravox-test --enable-coverage --test-options='required' 2>&1 | tail -10 && \
+	echo -e "$(BLUE)[COVERAGE]$(NC) Generating per-module expression coverage report..." && \
+	tix=$$(find dist-newstyle -name '*.tix' -path '*/umbravox-test*' | head -1) && \
+	mix_lib=$$(find dist-newstyle -path '*/extra-compilation-artifacts/hpc/vanilla/mix' -not -path '*/umbravox-test*' | head -1) && \
+	mix_test=$$(find dist-newstyle -path '*/umbravox-test*/extra-compilation-artifacts/hpc/vanilla/mix' | head -1) && \
 	if [ -z "$$tix" ]; then \
 		echo -e "$(RED)[COVERAGE]$(NC) No .tix file found — test run may have failed."; \
 		exit 1; \
-	fi; \
-	echo -e "$(GREEN)[COVERAGE]$(NC) Tix: $$tix"; \
+	fi && \
+	echo -e "$(GREEN)[COVERAGE]$(NC) Tix: $$tix" && \
 	hpc report "$$tix" --per-module \
 		$$([ -n "$$mix_lib" ] && echo "--hpcdir=$$mix_lib") \
-		$$([ -n "$$mix_test" ] && echo "--hpcdir=$$mix_test"); \
-	echo -e "$(GREEN)[COVERAGE]$(NC) HTML report: $$(find dist-newstyle -name 'hpc_index.html' | head -1)"
+		$$([ -n "$$mix_test" ] && echo "--hpcdir=$$mix_test") && \
+	echo -e "$(GREEN)[COVERAGE]$(NC) HTML report: $$(find dist-newstyle -name 'hpc_index.html' | head -1)")
 
 # --------------------------------------------------------------------------
 # F* Formal Verification
@@ -499,10 +497,10 @@ verify:
 		if [ -d build/vm/image ] || [ -L build/vm/image ]; then \
 			$(MAKE) vm-verify; exit $$?; \
 		else \
-			echo -e "$(YELLOW)[VERIFY]$(NC) No VM image found — verifying locally. Run 'make vm-image-build' for VM verification."; \
+			echo -e "$(RED)[VERIFY]$(NC) No VM image found. Run 'make vm-image-build' or set UMBRAVOX_LOCAL=1."; \
+			exit 1; \
 		fi; \
 	fi
-	$(call check_vm_or_local)
 	@echo -e "$(BLUE)[VERIFY]$(NC) Running F* formal verification (all modules)..."
 	@$(SUITE_LOCK) bash -c 'mkdir -p $(TEST_ARTIFACT_DIR); \
 	log_file=$$(mktemp "$(TEST_ARTIFACT_DIR)/verify.XXXXXX.log"); \
@@ -522,12 +520,8 @@ verify:
 	fi'
 
 verify-haskell:
-	@echo -e "$(BLUE)[VERIFY-HASKELL]$(NC) Opt-in bridge wrapper: legacy Make verify by default; set UMBRAVOX_USE_HASKELL_ORCH=1 to try the Haskell subcommand."
-	@if [ "$(UMBRAVOX_USE_HASKELL_ORCH)" = "1" ]; then \
-		cabal run umbravox -- verify --orchestrated; \
-	else \
-		$(MAKE) verify; \
-	fi
+	@echo -e "$(BLUE)[VERIFY-HASKELL]$(NC) Opt-in bridge wrapper: legacy Make verify by default."
+	@$(MAKE) verify
 
 # --------------------------------------------------------------------------
 # Cyclomatic Complexity
@@ -542,7 +536,7 @@ verify-haskell:
 
 complexity:
 	@echo -e "$(BLUE)[COMPLEXITY]$(NC) Checking cyclomatic complexity (<= $(MAX_COMPLEXITY))..."
-	@violations=0; total=0; \
+	$(call vm_or_local,violations=0; total=0; \
 	for f in $(SRC_FILES); do \
 		result=$$($(RUN_COMPLEXITY) "$$f" $(MAX_COMPLEXITY) 2>/dev/null); \
 		if [ $$? -ne 0 ]; then \
@@ -556,13 +550,13 @@ complexity:
 		exit 1; \
 	else \
 		echo -e "$(GREEN)[COMPLEXITY]$(NC) All $$total files pass complexity check (<= $(MAX_COMPLEXITY))."; \
-	fi
+	fi)
 
 # --------------------------------------------------------------------------
 # Lint / Style
 # --------------------------------------------------------------------------
 
-lint:
+lint: # [host-only] grep/shell only, no compiler
 	@echo -e "$(BLUE)[LINT]$(NC) Checking code style..."
 	@violations=0; \
 	for f in $(SRC_FILES); do \
@@ -592,7 +586,7 @@ lint:
 
 SPDX_ID := SPDX-License-Identifier: Apache-2.0
 
-license:
+license: # [host-only] grep/shell only, no compiler
 	@echo -e "$(BLUE)[LICENSE]$(NC) Checking SPDX headers in source files..."
 	@missing=0; total=0; \
 	for f in $(SRC_FILES); do \
@@ -610,7 +604,7 @@ license:
 		echo -e "$(GREEN)[LICENSE]$(NC) All $$total files have SPDX headers."; \
 	fi
 
-license-fix:
+license-fix: # [host-only] sed only, no compiler
 	@echo -e "$(BLUE)[LICENSE]$(NC) Adding SPDX headers to source files..."
 	@fixed=0; \
 	for f in $(SRC_FILES); do \
@@ -652,33 +646,33 @@ release-license-bundle:
 
 release-sbom-generate:
 	@echo -e "$(BLUE)[COMPLIANCE]$(NC) Generating SBOM..."
-	@cabal run umbravox -- release-sbom-generate
+	$(call vm_or_local,cabal run umbravox -- release-sbom-generate)
 
 release-license-bundle-generate:
 	@echo -e "$(BLUE)[COMPLIANCE]$(NC) Generating third-party license bundle..."
-	@cabal run umbravox -- release-license-bundle-generate
+	$(call vm_or_local,cabal run umbravox -- release-license-bundle-generate)
 
 release-license-check:
 	@echo -e "$(BLUE)[COMPLIANCE]$(NC) Checking license policy..."
-	@cabal run umbravox -- release-license-check
+	$(call vm_or_local,cabal run umbravox -- release-license-check)
 
 release-linking:
 	@echo -e "$(BLUE)[COMPLIANCE]$(NC) Analyzing linking obligations..."
-	@cabal run umbravox -- release-linking
+	$(call vm_or_local,cabal run umbravox -- release-linking)
 
 release-manifest:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Generating release provenance manifest..."
-	@cabal run umbravox -- release-manifest
+	$(call vm_or_local,cabal run umbravox -- release-manifest)
 
 release-checksums:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Emitting release artifact checksums..."
-	@cabal run umbravox -- release-checksums
+	$(call vm_or_local,cabal run umbravox -- release-checksums)
 
 # --------------------------------------------------------------------------
 # Code Formatting Check
 # --------------------------------------------------------------------------
 
-format-check:
+format-check: # [host-only] grep only, no compiler
 	@echo -e "$(BLUE)[FORMAT]$(NC) Checking code formatting..."
 	@violations=0; \
 	for f in $(SRC_FILES); do \
@@ -703,7 +697,7 @@ format-check:
 
 codegen: build
 	@echo -e "$(BLUE)[CODEGEN]$(NC) Generating Haskell + C + FFI from .spec files..."
-	@$(RUN_CODEGEN) 2>&1 | tail -20
+	$(call vm_or_local,$(RUN_CODEGEN) 2>&1 | tail -20)
 	@echo -e "$(GREEN)[CODEGEN]$(NC) Code generation complete."
 
 # --------------------------------------------------------------------------
@@ -734,11 +728,11 @@ release-appimage:
 
 release-smoke-linux:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Running isolated Linux release smoke check..."
-	@cabal run umbravox -- smoke-linux
+	$(call vm_or_local,cabal run umbravox -- smoke-linux)
 
 release-smoke-appimage:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Running non-authoritative AppImage scaffold smoke placeholder..."
-	@cabal run umbravox -- smoke-appimage
+	$(call vm_or_local,cabal run umbravox -- smoke-appimage)
 
 release-smoke-qemu:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Running QEMU microVM release smoke check..."
@@ -777,11 +771,11 @@ platform-smoke-qemu-profile:
 
 release-lane-qemu:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Checking QEMU/KVM release-lane prerequisites..."
-	@cabal run umbravox -- lane-qemu
+	$(call vm_or_local,cabal run umbravox -- lane-qemu)
 
 release-lane-firecracker:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Checking Firecracker release-lane prerequisites..."
-	@cabal run umbravox -- lane-firecracker
+	$(call vm_or_local,cabal run umbravox -- lane-firecracker)
 
 release-lane-readiness:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Running aggregate native release-lane readiness checks..."
@@ -802,15 +796,15 @@ release-lane-readiness:
 
 release-lane-readiness-haskell:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Running Haskell bridge for release-lane readiness..."
-	@cabal run umbravox -- release-lane-readiness
+	$(call vm_or_local,cabal run umbravox -- release-lane-readiness)
 
 release-gate-assurance:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Running assurance matrix release gate..."
-	@cabal run umbravox -- gate-assurance
+	$(call vm_or_local,cabal run umbravox -- gate-assurance)
 
 verify-traffic:
 	@echo -e "$(BLUE)[TRAFFIC]$(NC) Verifying no plaintext in captured traffic..."
-	@cabal run umbravox -- verify-traffic
+	$(call vm_or_local,cabal run umbravox -- verify-traffic)
 
 release-windows-cli:
 	@echo -e "$(BLUE)[RELEASE]$(NC) Building Windows CLI source release..."
@@ -832,30 +826,30 @@ release-freedos:
 # Platform Release Packaging (M14.4.1-5)
 # --------------------------------------------------------------------------
 
-release-freebsd:
+release-freebsd: # [host-only] packaging only, no compiler needed
 	@echo -e "$(BLUE)[RELEASE]$(NC) Building FreeBSD platform release tarball (M14.4.1)..."
 	@chmod +x ./scripts/release-package-platform.sh
-	@nix-shell --run "./scripts/release-package-platform.sh freebsd"
+	@nix-shell shell-minimal.nix --run "./scripts/release-package-platform.sh freebsd"
 
-release-openbsd:
+release-openbsd: # [host-only] packaging only, no compiler needed
 	@echo -e "$(BLUE)[RELEASE]$(NC) Building OpenBSD platform release tarball (M14.4.2)..."
 	@chmod +x ./scripts/release-package-platform.sh
-	@nix-shell --run "./scripts/release-package-platform.sh openbsd"
+	@nix-shell shell-minimal.nix --run "./scripts/release-package-platform.sh openbsd"
 
-release-netbsd:
+release-netbsd: # [host-only] packaging only, no compiler needed
 	@echo -e "$(BLUE)[RELEASE]$(NC) Building NetBSD platform release tarball (M14.4.3)..."
 	@chmod +x ./scripts/release-package-platform.sh
-	@nix-shell --run "./scripts/release-package-platform.sh netbsd"
+	@nix-shell shell-minimal.nix --run "./scripts/release-package-platform.sh netbsd"
 
-release-illumos:
+release-illumos: # [host-only] packaging only, no compiler needed
 	@echo -e "$(BLUE)[RELEASE]$(NC) Building illumos/OmniOS platform release tarball (M14.4.4)..."
 	@chmod +x ./scripts/release-package-platform.sh
-	@nix-shell --run "./scripts/release-package-platform.sh illumos"
+	@nix-shell shell-minimal.nix --run "./scripts/release-package-platform.sh illumos"
 
-release-linux-arm64:
+release-linux-arm64: # [host-only] packaging only, no compiler needed
 	@echo -e "$(BLUE)[RELEASE]$(NC) Building Linux arm64 platform release tarball (M14.4.5)..."
 	@chmod +x ./scripts/release-package-platform.sh
-	@nix-shell --run "./scripts/release-package-platform.sh linux-arm64"
+	@nix-shell shell-minimal.nix --run "./scripts/release-package-platform.sh linux-arm64"
 
 # --------------------------------------------------------------------------
 # Linux arm64 VM Smoke (M14.5.9)
@@ -866,7 +860,7 @@ vm-smoke-arm64:
 	@echo -e "$(YELLOW)[VM-ARM64]$(NC) NOTE: requires qemu-system-aarch64 and an aarch64 NixOS image."
 	@echo -e "$(YELLOW)[VM-ARM64]$(NC) Image: nix build .#vm-image-aarch64 (requires aarch64 builder or binfmt_misc)."
 	@chmod +x ./scripts/vm-build-test.sh
-	@nix-shell --run "\
+	@nix-shell shell-minimal.nix --run "\
 		ARCH_IMAGE=\$$(find build/vm-cache/arm64 -name '*.img' -o -name '*.qcow2' 2>/dev/null | head -1); \
 		if [ -z \"\$$ARCH_IMAGE\" ]; then \
 			echo '[VM-ARM64] No arm64 image found under build/vm-cache/arm64/'; \
@@ -1008,7 +1002,7 @@ assurance: assurance-fast
 	@echo ""
 	@echo -e "$(BLUE)[ASSURANCE]$(NC) Running full release-grade evidence suite..."
 	@mkdir -p $(ASSURANCE_LOG_DIR)
-	@pass=0; fail=0; skip=0; ts=$$(date -u +%Y%m%dT%H%M%SZ); \
+	$(call vm_or_local,pass=0; fail=0; skip=0; ts=$$(date -u +%Y%m%dT%H%M%SZ); \
 	log="$(ASSURANCE_LOG_DIR)/assurance-full-$$ts.log"; \
 	exec > >(tee "$$log") 2>&1; \
 	\
@@ -1021,22 +1015,14 @@ assurance: assurance-fast
 			echo -e "$(RED)[FAIL]$(NC) Coq build"; \
 			fail=$$((fail + 1)); \
 		fi; \
-	elif command -v nix-shell >/dev/null 2>&1; then \
-		if nix-shell --run "make -C test/evidence/formal-proofs/coq"; then \
-			echo -e "$(GREEN)[PASS]$(NC) Coq build (via nix-shell)"; \
-			pass=$$((pass + 1)); \
-		else \
-			echo -e "$(RED)[FAIL]$(NC) Coq build (via nix-shell)"; \
-			fail=$$((fail + 1)); \
-		fi; \
 	else \
-		echo -e "$(YELLOW)[SKIP]$(NC) Coq build: neither coqc nor nix-shell available"; \
+		echo -e "$(YELLOW)[SKIP]$(NC) Coq build: coqc not available"; \
 		skip=$$((skip + 1)); \
 	fi; \
 	\
 	echo ""; \
 	echo "=== Haskell build + tests ==="; \
-	if UMBRAVOX_LOCAL=1 cabal test umbravox-test --test-options='required'; then \
+	if cabal test umbravox-test --test-options='required'; then \
 		echo -e "$(GREEN)[PASS]$(NC) Haskell build + tests"; \
 		pass=$$((pass + 1)); \
 	else \
@@ -1086,7 +1072,7 @@ assurance: assurance-fast
 		exit 1; \
 	else \
 		echo -e "$(GREEN)[ASSURANCE]$(NC) PASS ($$pass passed, $$skip skipped)"; \
-	fi
+	fi)
 
 check-evidence:
 	@echo "Running external evidence checks..."
@@ -1216,9 +1202,9 @@ vm-verify:
 
 vm-smoke:
 	@echo -e "$(BLUE)[VM-SMOKE]$(NC) Running isolated VM build/test/release pipeline..."
-	@cabal run umbravox -- vm-smoke
+	$(call vm_or_local,cabal run umbravox -- vm-smoke)
 
-vm-image-build:
+vm-image-build: # [host-only] nix-build produces VM image; no compilers on host
 	@echo -e "$(BLUE)[VM-IMAGE]$(NC) Building/caching NixOS VM image..."
 	@mkdir -p build/vm
 	@if [ -L build/vm/image ] && [ -e build/vm/image ]; then \
@@ -1227,17 +1213,17 @@ vm-image-build:
 		echo -e "$(BLUE)[VM-IMAGE]$(NC) Building via nix (this may take several minutes)..."; \
 		nix build .#vm-image -o build/vm/image 2>/dev/null || \
 		nix-build nix/vm-image.nix -A qemu -o build/vm/image 2>/dev/null || \
-		(echo -e "$(RED)[VM-IMAGE]$(NC) nix build failed — falling back to cabal bridge"; \
-		 cabal run umbravox -- vm-image-build); \
+		(echo -e "$(RED)[VM-IMAGE]$(NC) nix build failed. Ensure nix is installed and flake/derivation is valid."; \
+		 exit 1); \
 		echo -e "$(GREEN)[VM-IMAGE]$(NC) Image cached at build/vm/image"; \
 	fi
 
-vm-image-clean:
+vm-image-clean: # [host-only] file operations
 	@echo -e "$(BLUE)[VM-IMAGE]$(NC) Removing cached VM image..."
 	@rm -f build/vm/image
 	@echo -e "$(GREEN)[VM-IMAGE]$(NC) Image cache cleared."
 
-vm-cache-clean:
+vm-cache-clean: # [host-only] file operations
 	@echo -e "$(BLUE)[VM-CACHE]$(NC) Removing persistent build cache disk..."
 	@rm -f build/vm/build-cache.qcow2
 	@echo -e "$(GREEN)[VM-CACHE]$(NC) Build cache cleared. Next VM build will start fresh."
@@ -1293,7 +1279,7 @@ vm-signal-server-check:
 
 signal-bridge-build:
 	@echo -e "$(BLUE)[SIGNAL-BRIDGE]$(NC) Building Signal bridge plugin..."
-	@cabal build umbravox-signal-bridge 2>&1 | tail -5
+	$(call vm_or_local,cabal build umbravox-signal-bridge 2>&1 | tail -5)
 	@echo -e "$(GREEN)[SIGNAL-BRIDGE]$(NC) Build complete."
 
 test-signal-compat:
@@ -1303,8 +1289,7 @@ test-signal-compat:
 
 test-signal-bridge-ipc: signal-bridge-build
 	@echo -e "$(BLUE)[SIGNAL-IPC]$(NC) Running Signal bridge IPC smoke test..."
-	@chmod +x ./scripts/test-signal-bridge-ipc.sh
-	@./scripts/test-signal-bridge-ipc.sh
+	$(call vm_or_local,chmod +x ./scripts/test-signal-bridge-ipc.sh && ./scripts/test-signal-bridge-ipc.sh)
 
 vm-socks5-test:
 	@echo -e "$(BLUE)[VM-SOCKS5]$(NC) Running SOCKS5 transport test in VM..."
@@ -1316,7 +1301,7 @@ vm-screenshot:
 	@chmod +x ./scripts/vm-dev-run.sh
 	@./scripts/vm-dev-run.sh exec "cabal build all --enable-tests 2>&1 && bash /work/umbravox/scripts/vm-screenshot-capture.sh"
 
-screenshot-local:
+screenshot-local: # [host-only] captures host tmux session
 	@echo -e "$(BLUE)[SCREENSHOT]$(NC) Capturing TUI screenshots locally (no VM required)..."
 	@chmod +x ./scripts/tui-screenshot-local.sh
 	@bash ./scripts/tui-screenshot-local.sh
@@ -1345,13 +1330,13 @@ differential-vectors:
 	@./scripts/vm-differential-run.sh vectors
 
 test-differential-oracle:
-	@echo -e "$(BLUE)[DIFFERENTIAL]$(NC) Running Tier 1 oracle differential tests (local)..."
-	@cabal test umbravox-test --test-options='differential-oracle' 2>&1 | tail -10
+	@echo -e "$(BLUE)[DIFFERENTIAL]$(NC) Running Tier 1 oracle differential tests..."
+	$(call vm_or_local,cabal test umbravox-test --test-options='differential-oracle' 2>&1 | tail -10)
 
 test-differential-full:
 	@echo -e "$(BLUE)[DIFFERENTIAL]$(NC) Running Tier 2 differential tests..."
 	@echo -e "$(BLUE)[DIFFERENTIAL]$(NC) Step 1: Haskell differential + negative + metamorphic + fuzz..."
-	@cabal test umbravox-test --test-options='differential-oracle' 2>&1 | tail -10
+	$(call vm_or_local,cabal test umbravox-test --test-options='differential-oracle' 2>&1 | tail -10)
 	@echo -e "$(BLUE)[DIFFERENTIAL]$(NC) Step 2: VM oracle vectors (if available)..."
 	@chmod +x ./scripts/vm-differential-run.sh
 	@./scripts/vm-differential-run.sh full 2>/dev/null || echo -e "$(YELLOW)[DIFFERENTIAL]$(NC) VM vectors not available — Haskell tests only."
@@ -1360,7 +1345,7 @@ test-differential-full:
 fuzz-differential:
 	@echo -e "$(BLUE)[DIFFERENTIAL]$(NC) Running Tier 3 differential fuzzing..."
 	@echo -e "$(BLUE)[DIFFERENTIAL]$(NC) Step 1: Deterministic fuzz (600 vectors)..."
-	@cabal test umbravox-test --test-options='differential-oracle' 2>&1 | tail -10
+	$(call vm_or_local,cabal test umbravox-test --test-options='differential-oracle' 2>&1 | tail -10)
 	@echo -e "$(BLUE)[DIFFERENTIAL]$(NC) Step 2: Protocol self-consistency traces..."
 	@echo -e "$(GREEN)[DIFFERENTIAL]$(NC) Tier 3 complete (AFL++ requires oracle VM seed corpus)."
 
@@ -1370,10 +1355,10 @@ fuzz-differential:
 
 fuzz-afl:
 	@echo -e "$(BLUE)[FUZZ-AFL]$(NC) Building AFL++ fuzz harnesses..."
-	@mkdir -p build/fuzz
-	ghc -O2 -isrc -o build/fuzz/fuzz-gcm test/fuzz/harness-gcm-decrypt.hs
-	ghc -O2 -isrc -o build/fuzz/fuzz-ed25519 test/fuzz/harness-ed25519-verify.hs
-	ghc -O2 -isrc -o build/fuzz/fuzz-x25519 test/fuzz/harness-x25519.hs
+	$(call vm_or_local,mkdir -p build/fuzz && \
+	ghc -O2 -isrc -o build/fuzz/fuzz-gcm test/fuzz/harness-gcm-decrypt.hs && \
+	ghc -O2 -isrc -o build/fuzz/fuzz-ed25519 test/fuzz/harness-ed25519-verify.hs && \
+	ghc -O2 -isrc -o build/fuzz/fuzz-x25519 test/fuzz/harness-x25519.hs)
 	@echo -e "$(GREEN)[FUZZ-AFL]$(NC) Harnesses built in build/fuzz/."
 	@echo -e "$(BLUE)[FUZZ-AFL]$(NC) Generate seeds: bash test/fuzz/seed-from-vectors.sh"
 	@echo -e "$(BLUE)[FUZZ-AFL]$(NC) Run: afl-fuzz -i test/fuzz/corpus/gcm -o build/fuzz/findings/gcm -- build/fuzz/fuzz-gcm"
@@ -1394,11 +1379,11 @@ differential-evidence-check:
 
 firecracker-smoke:
 	@echo -e "$(BLUE)[FC-SMOKE]$(NC) Running Firecracker isolated pipeline..."
-	@cabal run umbravox -- firecracker-smoke
+	$(call vm_or_local,cabal run umbravox -- firecracker-smoke)
 
 firecracker-image-build:
 	@echo -e "$(BLUE)[FC-IMAGE]$(NC) Building/caching Firecracker image..."
-	@cabal run umbravox -- firecracker-image-build
+	$(call vm_or_local,cabal run umbravox -- firecracker-image-build)
 
 # --------------------------------------------------------------------------
 # Multi-VM Integration Testing
@@ -1406,15 +1391,15 @@ firecracker-image-build:
 
 vm-integration-test:
 	@echo -e "$(BLUE)[INTEGRATION]$(NC) Running multi-VM integration test ($(INTEGRATION_AGENTS) agents)..."
-	@cabal run umbravox -- vm-integration-test --agents=$(INTEGRATION_AGENTS)
+	$(call vm_or_local,cabal run umbravox -- vm-integration-test --agents=$(INTEGRATION_AGENTS))
 
 vm-integration-test-dual-lan:
 	@echo -e "$(BLUE)[INTEGRATION]$(NC) Running dual-LAN integration test (6 agents)..."
-	@cabal run umbravox -- vm-integration-test --agents=6 --dual-lan
+	$(call vm_or_local,cabal run umbravox -- vm-integration-test --agents=6 --dual-lan)
 
 vm-forensics:
 	@echo -e "$(BLUE)[FORENSICS]$(NC) Running VM forensics verification..."
-	@cabal run umbravox -- vm-forensics
+	$(call vm_or_local,cabal run umbravox -- vm-forensics)
 
 # --------------------------------------------------------------------------
 # FreeBSD / illumos VM Smoke Testing (M14.5.6, M14.5.8)
@@ -1542,7 +1527,7 @@ check-isolation:
 # Clean
 # --------------------------------------------------------------------------
 
-clean:
+clean: # [host-only] file operations
 	@echo -e "$(BLUE)[CLEAN]$(NC) Removing build artifacts..."
 	@cabal clean 2>/dev/null || true
 	@rm -rf build
@@ -1552,12 +1537,12 @@ clean:
 	@rm -rf $(FSTAR_DIR)/_cache $(FSTAR_DIR)/_output
 	@echo -e "$(GREEN)[CLEAN]$(NC) Done. (VM image not removed; use make image-clean)"
 
-cleandb:
+cleandb: # [host-only] file operations
 	@echo -e "$(BLUE)[CLEANDB]$(NC) Removing local database..."
 	@rm -f ~/.umbravox/umbravox.db
 	@echo -e "$(GREEN)[CLEANDB]$(NC) Database removed. Will be recreated on next launch."
 
-cleanall: clean cleandb
+cleanall: clean cleandb # [host-only] file operations
 	@echo -e "$(BLUE)[CLEANALL]$(NC) Removing all local data..."
 	@rm -rf ~/.umbravox/tools
 	@echo -e "$(GREEN)[CLEANALL]$(NC) All cleaned (build + DB + tools)."

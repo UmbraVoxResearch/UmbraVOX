@@ -351,7 +351,7 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - M13.7.1 Per-module z3rlimit in FStarVerify.hs: Keccak.Permutation 50000, Keccak.Sponge 20000, Keccak.SHA3 20000, MLKEM768 50000; heavySpecs includes all four Keccak/MLKEM modules for cache-warm ordering (M13.7.1).
 
 ### Added
-- Added provider hot-reload via `reloadProviders` in `ProviderRuntime.hs` that re-scans `providers/*/manifest.uvx` at runtime without restarting (F4.5).
+- Added provider hot-reload via `reloadProviders` in `ProviderRuntime.hs` that re-scans `plugins/*/manifest.uvx` at runtime without restarting (F4.5).
 - Added IPC transport hosting (`IPCTransport`, `startIPCProvider`) implementing `TransportHandle` over stdin/stdout with a line-based hex-encoded protocol for `ipc-stdio` providers (F4.5).
 - Added IPC provider protocol specification to `doc/transport-providers.md` documenting command/response format, hex encoding, and flush requirements (F4.5).
 - Added boundary/edge case differential tests (empty input, pad boundaries, block boundaries, AES roundtrip) (M6.2.4).
