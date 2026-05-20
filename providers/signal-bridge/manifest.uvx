@@ -1,0 +1,12 @@
+id=signal-bridge
+api=uvx-provider-v1
+name=Signal Bridge
+class=closed-bridge
+status=development
+endpoint=e164-or-username
+inherits=signal-server
+capabilities=connect,bridge
+host=exec-direct
+entrypoint=exec:umbravox-signal-bridge
+encryption=bridge-adapted
+notes=Signal bridge using UmbraVOX crypto with Signal-compatible parameters.
