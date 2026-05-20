@@ -16,6 +16,11 @@ module UmbraVox.Network.ProviderRuntime
     , ipcSendCommand
     , ipcRecvResponse
     , ipcClose
+    -- * Bridge IPC verbs
+    , bridgeAuth
+    , bridgeContacts
+    , bridgeStatus
+    , bridgePing
     ) where
 
 import qualified Data.ByteString as BS
@@ -181,6 +186,56 @@ ipcRecvResponse t = hGetLine (ipcStdout t)
 -- | Shut down an IPC provider process.
 ipcClose :: IPCTransport -> IO ()
 ipcClose = thClose
+
+-- ---------------------------------------------------------------------------
+-- Bridge IPC verbs (for providers declaring ProviderCapBridge)
+-- ---------------------------------------------------------------------------
+
+-- | Send AUTH <fd-number>, expect AUTH_OK or AUTH_FAIL <reason>.
+bridgeAuth :: IPCTransport -> Int -> IO (Either String ())
+bridgeAuth t fd = do
+    ipcSendCommand t ("AUTH " ++ show fd)
+    resp <- ipcRecvResponse t
+    case resp of
+        "AUTH_OK" -> pure (Right ())
+        _         -> case stripCommandPrefix "AUTH_FAIL " resp of
+            Just reason -> pure (Left reason)
+            Nothing     -> case stripCommandPrefix "ERR " resp of
+                Just msg -> pure (Left msg)
+                Nothing  -> pure (Left ("bridge-auth: unexpected response: " ++ resp))
+
+-- | Send CONTACTS, expect CONTACTS <hex-encoded-json-array>.
+bridgeContacts :: IPCTransport -> IO (Either String String)
+bridgeContacts t = do
+    ipcSendCommand t "CONTACTS"
+    resp <- ipcRecvResponse t
+    case stripCommandPrefix "CONTACTS " resp of
+        Just hex -> pure (Right hex)
+        Nothing  -> case stripCommandPrefix "ERR " resp of
+            Just msg -> pure (Left msg)
+            Nothing  -> pure (Left ("bridge-contacts: unexpected response: " ++ resp))
+
+-- | Send STATUS, expect STATUS <hex-encoded-json-object>.
+bridgeStatus :: IPCTransport -> IO (Either String String)
+bridgeStatus t = do
+    ipcSendCommand t "STATUS"
+    resp <- ipcRecvResponse t
+    case stripCommandPrefix "STATUS " resp of
+        Just hex -> pure (Right hex)
+        Nothing  -> case stripCommandPrefix "ERR " resp of
+            Just msg -> pure (Left msg)
+            Nothing  -> pure (Left ("bridge-status: unexpected response: " ++ resp))
+
+-- | Send PING, expect PONG or ERR <reconnecting>.
+bridgePing :: IPCTransport -> IO (Either String ())
+bridgePing t = do
+    ipcSendCommand t "PING"
+    resp <- ipcRecvResponse t
+    case resp of
+        "PONG" -> pure (Right ())
+        _      -> case stripCommandPrefix "ERR " resp of
+            Just msg -> pure (Left msg)
+            Nothing  -> pure (Left ("bridge-ping: unexpected response: " ++ resp))
 
 -- ---------------------------------------------------------------------------
 -- Hex encoding helpers (line-protocol only; not for cryptographic use)
