@@ -6,7 +6,29 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-05-20
+
+### Signal-Compatible Chat Bridge Plugin (M19)
+- Signal.Compat: Signal-compatible crypto layer using UmbraVOX's own primitives
+- Protocol.SignalWire: hand-rolled protobuf for Signal message types
+- SessionCrypto sum type: RatchetCrypto | BridgeCrypto session abstraction
+- Bridge IPC verbs: AUTH, CONTACTS, STATUS, PING added to ProviderRuntime
+- umbravox-signal-bridge: Haskell IPC subprocess with real encrypt/decrypt
+- Signal registration flow, WebSocket client, session management modules
+- TUI: bridge provider selection, auth flow, contact picker dialogs
+- TUI: [B] prefix, [External Encryption] label, Bridge contact status
+- SecureFd: credential fd inheritance via memfd/mkstemp for plugin security
+- Signal-Server VM: NixOS config with PostgreSQL, Redis, ZooKeeper, Java 21
+- Wire-compat test orchestration scaffold
+- Reusable bridge plugin template, authoring guide, JSON envelope schema
+
 ### Formal Verification
+- ED-003 (associativity): PROVED via polynomial certificate (9 Qed, 240 cofactor terms)
+- ED-007 (congruence): PROVED via polynomial certificate (12 Qed)
+- ED-008b (closure): PROVED via polynomial certificate (3 Qed, 30 cofactor terms)
+- ED-008c (doubling closure): PROVED via polynomial certificate (5 Qed)
+- 5 assumptions UNBLOCKED: ED-004, ED-005, ED-008a, ED-006 (partial), VR-001
+- 13 Coq files, 444 Qed, 0 Admitted (was 10 files, 376 Qed in v0.1.8)
 - Ed25519GroupUniversal.v: 39 Qed via coqprime GZnZ field tactic (NEW FILE)
   - GF(2^255-19) ring structure (8 Qed, no primality needed)
   - Universal twisted Edwards commutativity (6 Qed)
@@ -17,11 +39,13 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - coqprime + coq-bignums enabled in shell.nix and vm-image.nix
   - Workaround: -native-compiler no for bignums findlib plugin issue (Rocq 9.1.1)
   - Coq Makefile updated to pass -native-compiler no for coqprime-dependent files
-- ASSUMPTIONS.md: ED-003, ED-007, ED-008b updated to PARTIALLY_UNBLOCKED
 - Closure cofactors computed via sympy Groebner basis (A*C1 + B*C2 = G, verified)
 - Pocklington certificate factorization chain computed (14 levels, all witnesses identified)
-- Total: 11 Coq files, 415 Qed (was 10 files, 376 Qed)
 - F* 100% coverage: 221 admits eliminated, 24/24 specs 0 admit(), 30 assume val classified (M13 phases 1-6)
+
+### Infrastructure
+- Zero unused-package warnings (cleaned cabal dependencies)
+- TODO cleaned: 1400->250 lines, 12 completed milestones moved to CHANGELOG
 
 ### Milestones Completed (moved from TODO)
 
@@ -430,7 +454,8 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 ### Added
 - Tagged release baseline `v0.0.6` and stabilized active MVP hardening branch state.
 
-[Unreleased]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.8...HEAD
+[Unreleased]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.8...v0.2.0
 [0.1.8]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.5...v0.1.7
 [0.1.6]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.5...v0.1.6

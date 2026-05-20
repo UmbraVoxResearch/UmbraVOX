@@ -4,7 +4,7 @@
 
 **Date:** 2026-05-17 (updated 2026-05-20)
 **F* specs:** 24 total, 17 with 0 assume val
-**assume val count:** 29
+**assume val count:** 27
 **admit() count:** 0
 **Status:** ALL PLANS COMPLETE — every assume val has a classification, documented
 justification, external evidence path, and discharge plan (or permanent status).
@@ -24,12 +24,12 @@ justification, external evidence path, and discharge plan (or permanent status).
 | ED-004 | Spec.Ed25519 | `scalar_mult_add` | DERIVED_FROM_ALGEBRA | no | ED-003 (assoc) | Induction on first arg + associativity | Standard group theory | Prove by induction (ED-003 resolved) | UNBLOCKED |
 | ED-005 | Spec.Ed25519 | `scalar_mult_compose` | DERIVED_FROM_ALGEBRA | no | ED-004 | Follows from scalar_mult_add by induction | Standard group theory | Prove after ED-004 (ED-003 chain resolved) | UNBLOCKED |
 | ED-006 | Spec.Ed25519 | `scalar_mod_L_equiv` | DERIVED_FROM_ALGEBRA | no | ED-002, ED-004 | Requires group_order_lemma + scalar_mult_add | Standard group theory | Prove after ED-002 + ED-004 (ED-003 chain resolved; still needs ED-002) | BLOCKED_BY_TOOLING |
-| ED-007 | Spec.Ed25519 | `point_add_congruence_right` | ALGEBRAIC_EXTERNAL | yes | none | Degree-8 projective coordinate identity. coqprime field tactic now available but polynomial ideal membership still needed. | Projective geometry | Coq field tactic (tooling unblocked, proof attempt pending) | PARTIALLY_UNBLOCKED |
+| ~~ED-007~~ | ~~Spec.Ed25519~~ | ~~`point_add_congruence_right`~~ | ~~ALGEBRAIC_EXTERNAL~~ | -- | -- | **PROVED** (2026-05-20) via polynomial certificate in Ed25519GroupUniversal.v. 12 Qed, degree-8 projective coordinate identity verified by Coq ring tactic. | -- | -- | **DISCHARGED** |
 | ~~ED-008~~ | ~~Spec.Ed25519~~ | ~~`sign_then_verify`~~ | ~~DERIVED_FROM_ALGEBRA~~ | -- | -- | **PROVED** (v0.1.8) via 4 narrow algebraic assumptions: point_add/double_preserves_on_curve_ext, scalar_mult_preserves_on_curve_ext, scalar_mult_congruence. | -- | -- | **DISCHARGED** |
 | ED-008a | Spec.Ed25519 | `scalar_mult_congruence` | DERIVED_FROM_ALGEBRA | no | ED-003 | Projective equivalence preserved by scalar_mult. Same complexity as point_add_congruence_right. | Standard projective geometry | Coq or Fiat-Crypto (ED-003 resolved) | UNBLOCKED |
 | ~~ED-008b~~ | ~~Spec.Ed25519~~ | ~~`point_add_preserves_on_curve_ext`~~ | ~~ALGEBRAIC_EXTERNAL~~ | -- | -- | **PROVED** (2026-05-20) via polynomial certificate in Ed25519GroupUniversal.v (te_add_closure_cross). Cofactors A, B (15 terms each) computed via sympy Groebner basis, verified by Coq ring tactic. Cross-multiplied form avoids denominator invertibility. | -- | -- | **DISCHARGED** |
-| ED-008c | Spec.Ed25519 | `point_double_preserves_on_curve_ext` | ALGEBRAIC_EXTERNAL | no | none | EFD doubling preserves projective curve equation. Same class as ED-008b. | fiat-crypto | Coq ring/field | BLOCKED_BY_TOOLING |
-| ED-008d | Spec.Ed25519 | `scalar_mult_preserves_on_curve_ext` | DERIVED_FROM_ALGEBRA | no | ED-008b, ED-008c | Structural consequence of point_add + point_double preserving on_curve. | Induction | Follows from ED-008b + ED-008c | BLOCKED_BY_TOOLING |
+| ~~ED-008c~~ | ~~Spec.Ed25519~~ | ~~`point_double_preserves_on_curve_ext`~~ | ~~ALGEBRAIC_EXTERNAL~~ | -- | -- | **PROVED** (2026-05-20) via polynomial certificate in Ed25519GroupUniversal.v. 5 Qed, doubling closure verified by Coq ring tactic. | -- | -- | **DISCHARGED** |
+| ED-008d | Spec.Ed25519 | `scalar_mult_preserves_on_curve_ext` | DERIVED_FROM_ALGEBRA | no | ED-008b, ED-008c | Structural consequence of point_add + point_double preserving on_curve. | Induction | Follows from ED-008b + ED-008c (both DISCHARGED) | UNBLOCKED |
 | ~~ED-009~~ | ~~Spec.Ed25519~~ | ~~`encode_decode_round_trip`~~ | ~~ALGEBRAIC_EXTERNAL~~ | -- | -- | **PROVED** (2026-05-17) by decomposition into 5 lemmas: encode_y_canonical, decode_y_inverse, sign_bit_consistency, on_curve_implies_quadratic_residue (all proved), plus sqrt_ratio_correct (narrow field-arithmetic assumption, see ED-009a). | -- | -- | **DISCHARGED** |
 | ED-009a | Spec.Ed25519 | `sqrt_ratio_correct` | FIELD_ARITHMETIC | yes | ED-001 (prime) | Narrow: recover_x produces x with v*x^2 = u when u/v is a QR. Requires 2^252 exponentiation (Tonelli-Shanks for p = 5 mod 8). | Coq Ed25519Curve.v vm_compute, Python cryptography library, nacl/libsodium | Coq vm_compute or specialized certificate | BLOCKED_BY_TOOLING |
 | ED-010 | Spec.Ed25519 | `distinct_messages_distinct_sigs` | CRYPTO_HARDNESS | yes | none | SHA-512 collision resistance + discrete log hardness | RFC 8032; DL hardness on Ed25519 | Cannot be proved unconditionally | CRYPTO_HARDNESS |
@@ -61,12 +61,12 @@ justification, external evidence path, and discharge plan (or permanent status).
 | CRYPTO_HARDNESS | 7 | CP-001, DR-001, DR-002, ED-010, SA-001, VR-002, VR-003 |
 | CROSS_TOOLCHAIN_BOUNDARY | 5 | SR-001..005 |
 | REFINEMENT_BOUNDARY | 1 | SR-006 |
-| ALGEBRAIC_EXTERNAL | 3 | ED-001, ED-007, X2-001 (prime_is_prime) |
+| ALGEBRAIC_EXTERNAL | 2 | ED-001, X2-001 (prime_is_prime) |
 | FIELD_ARITHMETIC | 1 | ED-009a (sqrt_ratio_correct) |
 | DERIVED_FROM_ALGEBRA | 7 | ED-004, ED-005, ED-006, ED-008a, ED-008d, VR-001, X2-005 |
-| BLOCKED_BY_TOOLING | 3 | ED-002, ED-008c, X2-006 |
-| **Total (active)** | **27** | |
-| DISCHARGED (proved) | 9 | ED-003, ED-008, ED-008b, ED-009, X2-001 (fmul_inverse), X2-002, X2-003, X2-004, X2-007 |
+| BLOCKED_BY_TOOLING | 2 | ED-002, X2-006 |
+| **Total (active)** | **25** | |
+| DISCHARGED (proved) | 11 | ED-003, ED-007, ED-008, ED-008b, ED-008c, ED-009, X2-001 (fmul_inverse), X2-002, X2-003, X2-004, X2-007 |
 
 ## Permanently Irreducible (cannot be proved in any system): 7
 
@@ -78,7 +78,7 @@ narrow, well-named trust anchors.
 These model the semantic boundary between F* and Haskell. They cannot be proved
 without a shared extraction framework.
 
-## Algebraic / Tooling (provable with better tools): 14
+## Algebraic / Tooling (provable with better tools): 12
 
 These are mathematically sound but require tools beyond Z3:
 - Coq `ring`/`field` tactic for polynomial identity verification
