@@ -12,7 +12,7 @@ Tracks what changed, what did NOT change, and how to verify.
 **What changed since v0.1.4:**
 - sign_then_verify: PROVED (was the broadest assume val in the project)
 - encode_decode_round_trip: PROVED (sqrt_ratio_correct isolated as narrow field-arithmetic fact)
-- 9 Coq files, 350 Qed (up from 171): Ed25519GroupAssoc (64 instances), Ed25519SqrtRatio (3 concrete verifications), Ed25519GroupPartial (projective equivalence)
+- 11 Coq files, 415 Qed (up from 171): Ed25519GroupAssoc (64 instances), Ed25519SqrtRatio (3 concrete verifications), Ed25519GroupPartial (projective equivalence), Ed25519GroupUniversal (universal group-law proofs via GZnZ)
 - ML-KEM-768: confirmed as REAL implementation (not stubs), sampleNTT fix
 - AFL++ fuzzing harnesses: 3 harnesses (GCM, Ed25519, X25519) ready
 - TUI local screenshots: 8/8 captured and validated (R1.4-6 complete)
@@ -30,7 +30,7 @@ Tracks what changed, what did NOT change, and how to verify.
 These can never be proved unconditionally in any proof system.
 
 **What this version does NOT claim:**
-- Does not prove universal Ed25519 group law associativity (64 concrete instances, not universal)
+- Does not prove universal Ed25519 group law associativity for all points (universal proofs cover GZnZ field structure, concrete instances cover 64 test cases)
 - Does not claim constant-time behavior
 - Does not claim protocol-level interop with libsignal
 
@@ -141,8 +141,8 @@ All issues documented in commit history (`v0.1.1..v0.1.2`).
 |--------|--------|--------|--------|--------|--------|--------|--------|--------|
 | F* `admit()` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | F* `assume val` | 23 | 30 | 28 | 28 | 28 | 28 | 30 | 30 |
-| Coq `Qed` | 5 | 153 | 171 | 171 | 187 | 219 | 350 | 350 |
-| Coq files | 1 | 3 | 4 | 4 | 5 | 6 | 9 | 9 |
+| Coq `Qed` | 5 | 153 | 171 | 171 | 187 | 219 | 350 | 415 |
+| Coq files | 1 | 3 | 4 | 4 | 5 | 6 | 9 | 11 |
 | Coq `Admitted` (verified) | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | Infra tests | 65 | 67 | 67 | 67 | 67 | 67 | 67 | 67 |
 | Assurance checks | -- | -- | 5/5 | 5/5 | 5/5 | 8/8 | 8/8 | 8/8 |

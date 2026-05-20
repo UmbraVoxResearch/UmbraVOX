@@ -55,7 +55,7 @@ documentation of what is and is not proved.
 | Layer | What it proves | Tools | Status |
 |-------|---------------|-------|--------|
 | Formal model | Algorithm correctness | F* + Z3 | 24 specs, 0 admit, 30 assume val |
-| External certificates | Computational facts Z3 can't prove | Coq (Rocq 9.1.1) | 9 files, 350 Qed |
+| External certificates | Computational facts Z3 can't prove | Coq (Rocq 9.1.1) | 11 files, 415 Qed |
 | Assumption registry | Trust boundary is documented | check-assumption-ledger.sh | 30 entries, mechanically checked |
 | Proof hygiene | No hidden trust, no misleading names | check-proof-hygiene.sh | 4 checks, 0 issues |
 | Infrastructure tests | Build system, VM pipeline, docs | test-infrastructure.sh | 67 tests |
@@ -69,7 +69,7 @@ This project does NOT claim:
 - Cryptographic hardness is proved unconditionally
 - All Haskell runtime behavior is proved inside F*
 - Coq evidence automatically removes F* assumptions
-- Ed25519 group law is fully machine-proved
+- Ed25519 group law is fully machine-proved (universal GZnZ proofs cover field structure; full curve-point universality remains open)
 - ML-KEM-768 has functional correctness proofs (parameter validation only)
 - Constant-time behavior is proved for Haskell implementations
 - The system is operationally secure in production environments
@@ -86,7 +86,7 @@ This project does NOT claim:
 | v0.1.4 | Cleanroom multi-oracle differential testing |
 | v0.1.5 | 22 differential suites, 5 Coq files (187 Qed), Ed25519 malleability |
 | v0.1.6 | VRFDLEQ.v, pre-release check, 6 Coq files (219 Qed) |
-| v0.1.7 | sign_then_verify proved, 9 Coq files (350 Qed), ML-KEM confirmed, AFL++ |
+| v0.1.7 | sign_then_verify proved, 11 Coq files (415 Qed), ML-KEM confirmed, AFL++ |
 | v0.1.8 | Documentation sweep and release |
 
 ## Team
