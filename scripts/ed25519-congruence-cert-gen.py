@@ -25,17 +25,25 @@ Ideal generators (hypotheses):
   h2: Y1*Z1p - Y1p*Z1 = 0     (proj equiv, Y)
   h3: T1*Z1 - X1*Y1 = 0       (well-formedness P1)
   h4: T1p*Z1p - X1p*Y1p = 0   (well-formedness P1')
+  h5: T1*Z1p - T1p*Z1 = 0     (derived: T proj equiv, from h1-h4 + Z-invertibility)
+  h6: X1*T1p - X1p*T1 = 0     (derived: XT cross-term, from h1-h5 + Z-invertibility)
+  h7: Y1*T1p - Y1p*T1 = 0     (derived: YT cross-term, from h1-h5 + Z-invertibility)
 
 Goals (cross-multiplied projective equivalence of results):
   Goal_X: X3*Z3p - X3p*Z3 = 0
   Goal_Y: Y3*Z3p - Y3p*Z3 = 0
 
 Uses sympy.reduced() to find cofactors, same approach as ED-003 and ED-008b.
+
+Note: h5-h7 are algebraic consequences of h1-h4 when Z1, Z1p are invertible
+(i.e., both points are valid projective points, not the point at infinity in
+homogeneous coordinates). In the Coq proof, these would be derived as lemmas
+using fmul_cancel with the field tactic, before invoking the ring certificate.
 """
 
 import sys
 import time
-from sympy import symbols, expand, reduced, groebner, Poly
+from sympy import symbols, expand, reduced
 
 print("=" * 70)
 print("Ed25519 Congruence Right Certificate Generator (ED-007)")
@@ -96,17 +104,30 @@ h2 = Y1 * Z1p - Y1p * Z1       # proj equiv Y
 h3 = T1 * Z1 - X1 * Y1         # well-formedness P1
 h4 = T1p * Z1p - X1p * Y1p     # well-formedness P1'
 
-# Derived: T1*Z1p^2 = T1p*Z1^2  (from h1*h2*... see derivation below)
-# Proof: T1*Z1*Z1p^2 = X1*Y1*Z1p^2 = (X1*Z1p)*(Y1*Z1p)
-#      = (X1p*Z1)*(Y1p*Z1) = X1p*Y1p*Z1^2 = T1p*Z1p*Z1^2
-# So T1*Z1p^2 - T1p*Z1^2 = 0 (modulo h1,h2,h3,h4, after dividing by Z1*Z1p)
-# We add this as h5 since reduced() is not a full Groebner basis algorithm.
-h5 = T1 * Z1p**2 - T1p * Z1**2
+# Derived: T1*Z1p = T1p*Z1  (projective equiv for T coordinate)
+# Proof: T1*Z1p*Z1*Z1p = (T1*Z1)*(Z1p^2) = (X1*Y1)*(Z1p^2)
+#      = (X1*Z1p)*(Y1*Z1p) = (X1p*Z1)*(Y1p*Z1) = X1p*Y1p*Z1^2
+#      = (T1p*Z1p)*Z1^2 = T1p*Z1*Z1*Z1p
+# Cancel Z1*Z1p (invertible since both Z-coords are nonzero for valid points):
+#      T1*Z1p = T1p*Z1
+# In Coq, this is derived from h1, h2, h3, h4 + invertibility of Z1, Z1p.
+# We add as h5 since reduced() needs it explicit (not a Groebner basis algo).
+h5 = T1 * Z1p - T1p * Z1
 
-generators = [h1, h2, h3, h4, h5]
+# Derived from h1..h5 with Z-invertibility:
+# (X1*T1p - X1p*T1)*Z1p = X1*(T1p*Z1p) - X1p*(T1*Z1p) = X1*X1p*Y1p - X1p*T1p*Z1
+#   = X1p*(X1*Y1p - T1p*Z1)  ... and (X1*Y1p - T1p*Z1)*Z1 = X1*Y1*Z1p - T1p*Z1^2
+#   = T1*Z1*Z1p - T1p*Z1^2 (by h3) = Z1*(T1*Z1p - T1p*Z1) = Z1*h5
+# So (X1*T1p - X1p*T1)*Z1*Z1p = X1p*Z1*h5 => in ideal modulo Z-invertibility.
+h6 = X1 * T1p - X1p * T1
+h7 = Y1 * T1p - Y1p * T1
+
+generators = [h1, h2, h3, h4, h5, h6, h7]
 gen_names = ["h1 (proj_eq X)", "h2 (proj_eq Y)",
              "h3 (wf P1: T1*Z1=X1*Y1)", "h4 (wf P1': T1p*Z1p=X1p*Y1p)",
-             "h5 (T proj: T1*Z1p^2=T1p*Z1^2)"]
+             "h5 (T proj_eq: T1*Z1p=T1p*Z1)",
+             "h6 (XT proj: X1*T1p=X1p*T1)",
+             "h7 (YT proj: Y1*T1p=Y1p*T1)"]
 
 print()
 print("Ideal generators (hypotheses):")
@@ -236,3 +257,36 @@ print(f"Goal_X remainder zero: {remainder_x_expanded == 0}")
 print(f"Goal_Y remainder zero: {remainder_y_expanded == 0}")
 print(f"Goal_X verification:   {check_x == 0}")
 print(f"Goal_Y verification:   {check_y == 0}")
+
+# ==========================================================================
+# OUTPUT (2026-05-20, sympy 1.14.0 on Python 3.13):
+# ==========================================================================
+#
+# HWCD extended coordinate addition, congruence right (ED-007):
+#   If P1 ~ P1' (projectively equivalent) then
+#   point_add(P1, P2) ~ point_add(P1', P2)
+#
+# 7 ideal generators: h1..h5 (proj equiv + well-formedness) + h6, h7 (derived)
+#
+# Goal_X (X3*Z3p - X3p*Z3 = 0), 16 terms expanded:
+#   h1 (proj_eq X): 3 terms
+#   h2 (proj_eq Y): 3 terms
+#   h3 (wf P1): 0 terms
+#   h4 (wf P1'): 0 terms
+#   h5 (T proj_eq): 6 terms
+#   h6 (XT proj): 1 terms
+#   h7 (YT proj): 1 terms
+#   Remainder: 0  VERIFIED
+#
+# Goal_Y (Y3*Z3p - Y3p*Z3 = 0), 16 terms expanded:
+#   h1 (proj_eq X): 3 terms
+#   h2 (proj_eq Y): 3 terms
+#   h3 (wf P1): 0 terms
+#   h4 (wf P1'): 0 terms
+#   h5 (T proj_eq): 6 terms
+#   h6 (XT proj): 1 terms
+#   h7 (YT proj): 1 terms
+#   Remainder: 0  VERIFIED
+#
+# All verifications PASSED (remainder = 0, recomposition verified).
+# ==========================================================================
