@@ -19,6 +19,9 @@ The provider system is defined across three layers:
   provider into listen/connect/accept operations at runtime.
 
 Each provider ships a `manifest.uvx` file under `plugins/<id>/manifest.uvx`.
+The loader scans `plugins/*/manifest.uvx`, but only manifests with `id`
+entries registered in `TransportProviderId` are promoted into the typed
+runtime catalog.
 
 ## Available Providers
 
