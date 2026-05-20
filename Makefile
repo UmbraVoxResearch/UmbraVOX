@@ -6,7 +6,8 @@
 #   make              - Build + run the full pipeline (build, test, verify, complexity, lint, license, format-check)
 #   make build        - Build library + executables only
 #   make build-haskell - Opt-in bridge wrapper for Haskell build orchestration
-#   make run          - Run UmbraVOX TUI application
+#   make run          - Guarded alias; requires UMBRAVOX_LOCAL=1 (otherwise points to vm-run-gui)
+#   make run-local    - Run UmbraVOX TUI application on host (explicit local compile)
 #   make test         - Run the fast messaging-MVP hardening gate
 #   make test-haskell  - Opt-in bridge wrapper for Haskell test orchestration
 #   make test-core    - Run the core deterministic messaging suite
@@ -90,7 +91,7 @@
 #   VM mode (default): make vm-image-build (needs qemu + nix)
 #   Local mode: UMBRAVOX_LOCAL=1 + nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-build-only vm-test vm-verify vm-run-gui firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot screenshot-local vm-record vm-visual-regression visual-reference-update differential-vectors test-differential-oracle test-differential-full fuzz-differential fuzz-afl differential differential-evidence-check signal-bridge-build test-signal-compat test-signal-bridge-ipc check-isolation clean cleandb cleanall help
+.PHONY: all build build-haskell run run-local test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-build-only vm-test vm-verify vm-run-gui firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot screenshot-local vm-record vm-visual-regression visual-reference-update differential-vectors test-differential-oracle test-differential-full fuzz-differential fuzz-afl differential differential-evidence-check signal-bridge-build test-signal-compat test-signal-bridge-ipc check-isolation clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -165,11 +166,16 @@ ifeq ($(UMBRAVOX_OFFLINE),1)
   RUN_COMPLEXITY = $$($(call FIND_EXE,check-complexity))
   RUN_CODEGEN = $$($(call FIND_EXE,codegen))
 else
-  run_test_suite = cabal test umbravox-test --test-options="$(1)"
+  run_test_suite = cabal test umbravox-test --test-options='$(1)'
   RUN_FSTAR = cabal run fstar-verify --
   RUN_COMPLEXITY = cabal run check-complexity --
   RUN_CODEGEN = cabal run codegen --
 endif
+
+define run_named_suite
+	@echo -e "$(BLUE)[$(1)]$(NC) $(2)"
+	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,$(3)))
+endef
 INTEGRATION_AGENTS ?= 3
 QEMU_SMOKE_PROFILE ?= bundle-basic
 FIRECRACKER_SMOKE_KERNEL ?=
@@ -194,7 +200,8 @@ help: # [host-only]
 	@echo "  Build & Run (VM-default: auto-delegates to VM when image exists):"
 	@echo "    make             Build + run the full pipeline (build, test, verify, complexity, lint, license, format-check)"
 	@echo "    make build       Build library + executables only [VM-default]"
-	@echo "    make run         Run UmbraVOX TUI application [host-only]"
+	@echo "    make run         Guarded alias (requires UMBRAVOX_LOCAL=1; otherwise points to vm-run-gui)"
+	@echo "    make run-local   Run UmbraVOX TUI application on host (compiles locally)"
 	@echo "    make test        Run fast messaging-MVP hardening gate [VM-default]"
 	@echo "    make test-core   Run core deterministic messaging suite"
 	@echo "    make test-core-crypto Run deterministic crypto/unit coverage"
@@ -335,6 +342,14 @@ help: # [host-only]
 	@echo ""
 
 run: # [host-only] interactive TUI needs host terminal
+	@if [ "$(UMBRAVOX_LOCAL)" != "1" ]; then \
+		echo -e "$(YELLOW)[RUN]$(NC) Host compile is disabled by default in VM-first mode."; \
+		echo "  Use 'make vm-run-gui' for VM UI, or run 'UMBRAVOX_LOCAL=1 make run-local' explicitly."; \
+		exit 1; \
+	fi
+	@$(MAKE) UMBRAVOX_LOCAL=1 run-local
+
+run-local: # [host-only] explicit local compile+run
 	@echo -e "$(BLUE)[RUN]$(NC) Building and launching UmbraVOX TUI (local)..."
 	@cabal build umbravox 2>&1 | tail -3
 	@cabal run umbravox; stty sane echo 2>/dev/null; true
@@ -394,60 +409,46 @@ test-haskell:
 	@$(MAKE) test
 
 test-core: build
-	@echo -e "$(BLUE)[TEST-CORE]$(NC) Running core deterministic suite..."
-	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,core))
+	$(call run_named_suite,TEST-CORE,Running core deterministic suite...,core)
 
 test-core-crypto: build
-	@echo -e "$(BLUE)[TEST-CORE-CRYPTO]$(NC) Running core crypto suite..."
-	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,core-crypto))
+	$(call run_named_suite,TEST-CORE-CRYPTO,Running core crypto suite...,core-crypto)
 
 test-core-network: build
-	@echo -e "$(BLUE)[TEST-CORE-NETWORK]$(NC) Running core network suite..."
-	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,core-network))
+	$(call run_named_suite,TEST-CORE-NETWORK,Running core network suite...,core-network)
 
 test-core-chat: build
-	@echo -e "$(BLUE)[TEST-CORE-CHAT]$(NC) Running core chat/protocol suite..."
-	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,core-chat))
+	$(call run_named_suite,TEST-CORE-CHAT,Running core chat/protocol suite...,core-chat)
 
 test-core-tui: build
-	@echo -e "$(BLUE)[TEST-CORE-TUI]$(NC) Running core TUI suite..."
-	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,core-tui))
+	$(call run_named_suite,TEST-CORE-TUI,Running core TUI suite...,core-tui)
 
 test-core-tools: build
-	@echo -e "$(BLUE)[TEST-CORE-TOOLS]$(NC) Running core tools/codegen suite..."
-	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,core-tools))
+	$(call run_named_suite,TEST-CORE-TOOLS,Running core tools/codegen suite...,core-tools)
 
 test-tcp: build
-	@echo -e "$(BLUE)[TEST-TCP]$(NC) Running real TCP suite..."
-	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,tcp))
+	$(call run_named_suite,TEST-TCP,Running real TCP suite...,tcp)
 
 test-fault: build
-	@echo -e "$(BLUE)[TEST-FAULT]$(NC) Running fault-injection suite..."
-	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,fault))
+	$(call run_named_suite,TEST-FAULT,Running fault-injection suite...,fault)
 
 test-recovery: build
-	@echo -e "$(BLUE)[TEST-RECOVERY]$(NC) Running recovery suite..."
-	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,recovery))
+	$(call run_named_suite,TEST-RECOVERY,Running recovery suite...,recovery)
 
 test-tui-sim: build
-	@echo -e "$(BLUE)[TEST-TUI-SIM]$(NC) Running TUI simulation suite..."
-	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,tui-sim))
+	$(call run_named_suite,TEST-TUI-SIM,Running TUI simulation suite...,tui-sim)
 
 test-integrity: build
-	@echo -e "$(BLUE)[TEST-INTEGRITY]$(NC) Running wire/integrity suite..."
-	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,integrity))
+	$(call run_named_suite,TEST-INTEGRITY,Running wire/integrity suite...,integrity)
 
 test-mdns: build
-	@echo -e "$(BLUE)[TEST-MDNS]$(NC) Running exact mDNS/discovery suite..."
-	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,mdns))
+	$(call run_named_suite,TEST-MDNS,Running exact mDNS/discovery suite...,mdns)
 
 test-deferred: build
-	@echo -e "$(BLUE)[TEST-DEFERRED]$(NC) Running preserved deferred suite..."
-	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,deferred))
+	$(call run_named_suite,TEST-DEFERRED,Running preserved deferred suite...,deferred)
 
 test-differential: build
-	@echo -e "$(BLUE)[TEST-DIFF]$(NC) Running differential C vs Haskell tests..."
-	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,differential))
+	$(call run_named_suite,TEST-DIFF,Running differential C vs Haskell tests...,differential)
 
 soak: build
 	@echo -e "$(BLUE)[SOAK]$(NC) Running soak suite..."
@@ -1121,24 +1122,7 @@ platform-sanity:
 
 test-offline-parity: build
 	@echo -e "$(BLUE)[PARITY]$(NC) Verifying online/offline test parity..."
-	@mkdir -p $(TEST_ARTIFACT_DIR); \
-	echo -e "$(BLUE)[PARITY]$(NC) Running core-crypto in normal (online) mode..."; \
-	$(call run_test_suite,core-crypto) > $(TEST_ARTIFACT_DIR)/parity-online.log 2>&1; \
-	online_exit=$$?; \
-	echo -e "$(BLUE)[PARITY]$(NC) Running core-crypto in offline mode..."; \
-	UMBRAVOX_OFFLINE=1 $(MAKE) test-core-crypto > $(TEST_ARTIFACT_DIR)/parity-offline.log 2>&1; \
-	offline_exit=$$?; \
-	online_pass=$$(grep -c "PASS:" $(TEST_ARTIFACT_DIR)/parity-online.log 2>/dev/null || echo 0); \
-	offline_pass=$$(grep -c "PASS:" $(TEST_ARTIFACT_DIR)/parity-offline.log 2>/dev/null || echo 0); \
-	if [ "$$online_exit" != "$$offline_exit" ]; then \
-		echo -e "$(RED)[PARITY]$(NC) Exit code mismatch: online=$$online_exit offline=$$offline_exit"; \
-		exit 1; \
-	fi; \
-	if [ "$$online_pass" != "$$offline_pass" ]; then \
-		echo -e "$(RED)[PARITY]$(NC) Pass count mismatch: online=$$online_pass offline=$$offline_pass"; \
-		exit 1; \
-	fi; \
-	echo -e "$(GREEN)[PARITY]$(NC) Both modes: exit=$$online_exit, $$online_pass assertions passed."
+	$(call vm_or_local,bash ./scripts/test-offline-parity.sh $(TEST_ARTIFACT_DIR))
 
 sanity:
 	@echo -e "$(BLUE)[SANITY]$(NC) Checking Makefile release smoke/microVM wiring..."
@@ -1442,10 +1426,18 @@ check-isolation:
 	@pass=0; warn=0; \
 	echo ""; \
 	echo "  Host toolchain check:"; \
-	if [ -n "$$IN_NIX_SHELL" ] || [ -n "$$UMBRAVOX_VM" ]; then \
-		echo -e "    GHC:   $(GREEN)OK$(NC) (inside nix-shell or VM)"; \
-		echo -e "    Cabal: $(GREEN)OK$(NC) (inside nix-shell or VM)"; \
+	if [ -n "$$UMBRAVOX_VM" ]; then \
+		echo -e "    GHC:   $(GREEN)OK$(NC) (inside VM)"; \
+		echo -e "    Cabal: $(GREEN)OK$(NC) (inside VM)"; \
 		pass=$$((pass + 2)); \
+	elif [ -n "$$IN_NIX_SHELL" ] && [ "$${UMBRAVOX_SHELL_KIND:-}" = "minimal" ]; then \
+		echo -e "    GHC:   $(GREEN)OK$(NC) (inside shell-minimal.nix; orchestration shell)"; \
+		echo -e "    Cabal: $(GREEN)OK$(NC) (inside shell-minimal.nix; orchestration shell)"; \
+		pass=$$((pass + 2)); \
+	elif [ -n "$$IN_NIX_SHELL" ] && [ "$${UMBRAVOX_SHELL_KIND:-}" = "full" ]; then \
+		echo -e "    GHC:   $(YELLOW)WARN$(NC) (inside full local shell; host compilers available)"; \
+		echo -e "    Cabal: $(YELLOW)WARN$(NC) (inside full local shell; host compilers available)"; \
+		warn=$$((warn + 2)); \
 	else \
 		if command -v ghc >/dev/null 2>&1; then \
 			ghc_path=$$(command -v ghc); \
@@ -1512,13 +1504,18 @@ check-isolation:
 	else \
 		echo "    IN_NIX_SHELL   = <unset>"; \
 	fi; \
+	if [ -n "$$UMBRAVOX_SHELL_KIND" ]; then \
+		echo "    UMBRAVOX_SHELL_KIND = $$UMBRAVOX_SHELL_KIND"; \
+	else \
+		echo "    UMBRAVOX_SHELL_KIND = <unset>"; \
+	fi; \
 	\
 	echo ""; \
 	echo "========================================"; \
 	echo "  ISOLATION: $$pass OK, $$warn warnings"; \
 	echo "========================================"; \
 	if [ "$$warn" -gt 0 ]; then \
-		echo -e "$(YELLOW)[ISOLATION]$(NC) $$warn warning(s). Use 'make vm-build' or enter nix-shell for isolated builds."; \
+		echo -e "$(YELLOW)[ISOLATION]$(NC) $$warn warning(s). Prefer 'make vm-build' from shell-minimal.nix for strict VM isolation."; \
 	else \
 		echo -e "$(GREEN)[ISOLATION]$(NC) Build isolation looks good."; \
 	fi

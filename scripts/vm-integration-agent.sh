@@ -53,14 +53,6 @@ else
     exit 1
 fi
 
-echo "agent_id:    ${AGENT_ID:-?}"
-echo "agent_ip:    ${AGENT_IP:-?}"
-echo "port:        ${AGENT_PORT:-7853}"
-echo "peers:       ${AGENT_PEERS:-none}"
-echo "scenario:    ${AGENT_SCENARIO:-readiness}"
-echo "timeout:     ${AGENT_TIMEOUT:-60}s"
-echo ""
-
 PASS=0
 FAIL=0
 
@@ -75,6 +67,98 @@ check() {
         FAIL=$((FAIL + 1))
     fi
 }
+
+is_uint() {
+    case "$1" in
+        ''|*[!0-9]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+is_valid_port() {
+    local port="$1"
+    is_uint "$port" || return 1
+    [ "$port" -ge 1 ] && [ "$port" -le 65535 ]
+}
+
+is_valid_ipv4() {
+    local ip="$1" IFS='.' octets
+    read -r -a octets <<< "$ip"
+    [ "${#octets[@]}" -eq 4 ] || return 1
+    for octet in "${octets[@]}"; do
+        is_uint "$octet" || return 1
+        [ "$octet" -ge 0 ] && [ "$octet" -le 255 ] || return 1
+    done
+}
+
+is_valid_peer() {
+    local peer="$1"
+    local peer_ip="${peer%%:*}"
+    local peer_port="${peer##*:}"
+    [ "$peer_ip" != "$peer_port" ] || return 1
+    is_valid_ipv4 "$peer_ip" && is_valid_port "$peer_port"
+}
+
+validate_peer_list() {
+    local peers="$1" peer
+    for peer in $(printf '%s' "$peers" | tr ',' ' '); do
+        is_valid_peer "$peer" || return 1
+    done
+}
+
+tcp_probe() {
+    local host="$1"
+    local port="$2"
+    local timeout_s="${3:-3}"
+    timeout "$timeout_s" bash -c 'exec 3<>/dev/tcp/$1/$2' _ "$host" "$port" >/dev/null 2>&1
+}
+
+is_port_free() {
+    local port="$1"
+    if command -v ss >/dev/null 2>&1; then
+        ! ss -tln 2>/dev/null | grep -q "[.:]$port "
+    else
+        return 0
+    fi
+}
+
+validate_tar_paths() {
+    local bundle="$1"
+    local entry
+    while IFS= read -r entry; do
+        [ -n "$entry" ] || continue
+        case "$entry" in
+            /*|../*|*/../*|*/..|..)
+                echo "AGENT_RESULT=FAIL (unsafe archive path: $entry)"
+                return 1
+                ;;
+        esac
+    done < <(tar tzf "$bundle")
+}
+
+AGENT_PORT="${AGENT_PORT:-7853}"
+if ! is_valid_port "$AGENT_PORT"; then
+    echo "AGENT_RESULT=FAIL (invalid AGENT_PORT: $AGENT_PORT)"
+    exit 1
+fi
+
+if [ -n "${AGENT_IP:-}" ] && ! is_valid_ipv4 "$AGENT_IP"; then
+    echo "AGENT_RESULT=FAIL (invalid AGENT_IP: ${AGENT_IP})"
+    exit 1
+fi
+
+if [ -n "${AGENT_PEERS:-}" ] && ! validate_peer_list "${AGENT_PEERS}"; then
+    echo "AGENT_RESULT=FAIL (invalid AGENT_PEERS: ${AGENT_PEERS})"
+    exit 1
+fi
+
+echo "agent_id:    ${AGENT_ID:-?}"
+echo "agent_ip:    ${AGENT_IP:-?}"
+echo "port:        ${AGENT_PORT}"
+echo "peers:       ${AGENT_PEERS:-none}"
+echo "scenario:    ${AGENT_SCENARIO:-readiness}"
+echo "timeout:     ${AGENT_TIMEOUT:-60}s"
+echo ""
 
 # ── Configure network ──────────────────────────────────────────────
 if [ -n "${AGENT_IP:-}" ]; then
@@ -98,6 +182,7 @@ fi
 
 mkdir -p /work/app
 cd /work/app
+validate_tar_paths "$BUNDLE"
 tar xzf "$BUNDLE" 2>/dev/null
 
 APPDIR=""
@@ -126,12 +211,7 @@ check "checksums" test -f CONTENTS.SHA256
 if [ -n "${AGENT_IP:-}" ]; then
     check "IP assigned" ip addr show eth0 2>/dev/null | grep -q "inet "
 
-    # Can we bind our port?
-    check "port bindable" bash -c "
-        exec 3<>/dev/tcp/0.0.0.0/${AGENT_PORT:-7853} 2>/dev/null && exec 3>&- || true
-        # Fallback: use ss to check port is free
-        ! ss -tlnp 2>/dev/null | grep -q ':${AGENT_PORT:-7853} '
-    "
+    check "port currently free" is_port_free "${AGENT_PORT}"
 fi
 
 # ── Scenario-specific checks ──────────────────────────────────────
@@ -152,9 +232,7 @@ case "${AGENT_SCENARIO:-readiness}" in
                 peer_ip="${peer%%:*}"
                 peer_port="${peer##*:}"
                 # Try TCP connect to peer
-                check "reach peer $peer" bash -c "
-                    timeout 5 bash -c 'echo > /dev/tcp/$peer_ip/$peer_port' 2>/dev/null
-                " || true
+                check "reach peer $peer" tcp_probe "$peer_ip" "$peer_port" 5 || true
             done
         fi
 
@@ -174,7 +252,7 @@ case "${AGENT_SCENARIO:-readiness}" in
                 peer_ip="${peer%%:*}"
                 peer_port="${peer##*:}"
                 # Forward test: can we reach the peer?
-                if timeout 3 bash -c "echo PING > /dev/tcp/$peer_ip/$peer_port" 2>/dev/null; then
+                if tcp_probe "$peer_ip" "$peer_port" 3; then
                     echo "  PASS: forward connectivity to $peer"
                     PASS=$((PASS + 1))
                 else

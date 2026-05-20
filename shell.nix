@@ -123,6 +123,7 @@ in pkgs.mkShell {
   shellHook = ''
     export UMBRAVOX_ROOT="$(pwd)"
     export UMBRAVOX_DATA="$UMBRAVOX_ROOT/.umbravox-data"
+    export UMBRAVOX_SHELL_KIND="full"
     export PATH="$UMBRAVOX_ROOT/scripts:$PATH"
 
     echo ""
@@ -149,7 +150,8 @@ in pkgs.mkShell {
     echo "    make test      Run fast messaging-MVP hardening gate (VM)"
     echo "    make verify    Run F* formal verification (VM)"
     echo "    make quality   Run all quality gates (VM)"
-    echo "    make run       Launch UmbraVOX TUI (local)"
+    echo "    make run       Guarded alias; use UMBRAVOX_LOCAL=1 or vm-run-gui"
+    echo "    make run-local Launch UmbraVOX TUI (explicit local compile)"
     echo "    make help      Show all targets and shortcuts"
     echo ""
     echo -e "  \033[32mVM Development:\033[0m"

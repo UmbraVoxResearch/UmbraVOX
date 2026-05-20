@@ -61,6 +61,7 @@ pkgs.mkShell {
   shellHook = ''
     export UMBRAVOX_ROOT="$(pwd)"
     export UMBRAVOX_DATA="$UMBRAVOX_ROOT/.umbravox-data"
+    export UMBRAVOX_SHELL_KIND="minimal"
     export PATH="$UMBRAVOX_ROOT/scripts:$PATH"
 
     echo ""
