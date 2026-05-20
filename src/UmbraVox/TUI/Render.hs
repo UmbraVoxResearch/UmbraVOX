@@ -36,7 +36,9 @@ import UmbraVox.TUI.Dialog (showOverlay, showWarningOverlay, renderHelpOverlay, 
     verifyOverlayLines, promptOverlayLines, settingsOverlayLines, browseOverlayLines,
     regenKeyOverlayLines, exportWarnOverlayLines, exportKeysOverlayLines,
     insertLinkOverlayLines, renderInsertLinkOverlay,
-    emojiPickerOverlayLines, renderEmojiPickerOverlay)
+    emojiPickerOverlayLines, renderEmojiPickerOverlay,
+    bridgeSelectOverlayLines, renderBridgeSelectOverlay,
+    bridgeAuthOverlayLines, renderBridgeAuthOverlay)
 import UmbraVox.Protocol.QRCode (generateSafetyNumber, renderFingerprint, generateQRCode, renderQRCode)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 import UmbraVox.Version (versionFull)
@@ -711,6 +713,8 @@ render st = do
                 cat  <- readIORef (asEmojiCategory st)
                 page <- readIORef (asEmojiPage st)
                 pure (emojiPickerOverlayLines q cat page)
+            Just DlgBridgeSelect -> pure bridgeSelectOverlayLines
+            Just DlgBridgeAuth -> pure bridgeAuthOverlayLines
             Just (DlgPrompt title _) -> pure (promptOverlayLines title dlgBuf)
             Nothing -> pure []
         let entries = Map.toList sessions
@@ -799,6 +803,8 @@ render st = do
                     showOverlay lay "Export Identity Keys" lns
                 Just DlgInsertLink   -> renderInsertLinkOverlay lay st dlgScroll
                 Just DlgEmojiPicker  -> renderEmojiPickerOverlay lay st dlgScroll
+                Just DlgBridgeSelect -> renderBridgeSelectOverlay lay dlgScroll
+                Just DlgBridgeAuth   -> renderBridgeAuthOverlay lay dlgScroll
                 Just (DlgPrompt title _) ->
                     renderPromptOverlay lay title dlgBuf dlgScroll
                 Nothing -> pure ()

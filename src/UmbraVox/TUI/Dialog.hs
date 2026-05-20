@@ -24,6 +24,10 @@ module UmbraVox.TUI.Dialog
     , emojiPickerOverlayLines
     , renderEmojiPickerOverlay
     , pluginsTabLines
+    , bridgeSelectOverlayLines
+    , renderBridgeSelectOverlay
+    , bridgeAuthOverlayLines
+    , renderBridgeAuthOverlay
     ) where
 
 import Control.Monad (forM_, when)
@@ -1146,6 +1150,43 @@ renderEmojiPickerOverlay lay st scrollOff = do
     page <- readIORef (asEmojiPage st)
     let lns = emojiPickerOverlayLines q cat page
     showOverlayScrolled lay "Emoji Picker" lns scrollOff
+
+-- Bridge dialogs -----------------------------------------------------------
+
+bridgeSelectOverlayLines :: [String]
+bridgeSelectOverlayLines =
+    [ " Select a bridge provider:"
+    , ""
+    , "   1. Signal Bridge"
+    , ""
+    , " Use Up/Down to browse, Enter to select."
+    , ""
+    , "[ Select ]  [ Cancel ]"
+    ]
+
+renderBridgeSelectOverlay :: Layout -> Int -> IO ()
+renderBridgeSelectOverlay lay scrollOff =
+    showOverlayScrolled lay "Bridge Provider" bridgeSelectOverlayLines scrollOff
+
+bridgeAuthOverlayLines :: [String]
+bridgeAuthOverlayLines =
+    [ " Signal Bridge Authentication"
+    , ""
+    , " Linked device registration:"
+    , "   1. Open Signal on your phone"
+    , "   2. Go to Settings > Linked Devices"
+    , "   3. Scan the QR code below"
+    , ""
+    , "   [QR code placeholder - not yet implemented]"
+    , ""
+    , " Press Escape to cancel"
+    , ""
+    , "[ Cancel ]"
+    ]
+
+renderBridgeAuthOverlay :: Layout -> Int -> IO ()
+renderBridgeAuthOverlay lay scrollOff =
+    showOverlayScrolled lay "Bridge Authentication" bridgeAuthOverlayLines scrollOff
 
 -- | Render a dropdown menu below its tab position
 renderDropdown :: Layout -> MenuTab -> Int -> IO ()

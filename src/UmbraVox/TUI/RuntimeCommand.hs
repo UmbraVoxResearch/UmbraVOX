@@ -259,7 +259,7 @@ runRuntimeCommand st cmd =
             writeIORef (asShowIdentity st) newShown
             setStatus st (if newShown then "Key info shown" else "Key info hidden")
         CmdNewBridgeChat       ->
-            setStatus st "Bridge chat: not yet implemented"
+            applyRuntimeEvents st [EventSetDialog (Just DlgBridgeSelect)]
         CmdQuit                -> quitApp st
 
 openFormatPrompt :: AppState -> String -> (String -> IO ()) -> IO ()
