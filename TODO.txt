@@ -314,6 +314,7 @@ Note: Items from codebase audit (2026-05-20).
   [~] M20.5.4 VM source export semantics
     Note: vm-dev-run now exports current worktree (not git archive HEAD) with exclusion filters.
     Note: vm-dev and smoke copy paths now use `.vm-source-ready` marker for idempotent workspace sync.
+    Note: vm-dev exec mode now writes `/output/vm-exec-status`; host runner exits with guest command status.
   [~] M20.5.5 Fail closed on unenforced VM network ALLOW rules
     Note: vm-network-policy.sh now blocks VM boot when ALLOW rules are present without enforcement.
   [x] M20.5.6 VM cache/output policy decision
