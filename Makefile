@@ -1217,17 +1217,24 @@ vm-extract:
 image-clean: vm-image-clean
 
 # --------------------------------------------------------------------------
-# Signal-Server VM (M19.4.1 — wire-compatibility testing scaffold)
+# Signal-Server VM — two-stage build (M19.4)
+# Stage 1: build VM (network, Maven) → signal-server.jar
+# Stage 2: runtime VM (deny-all, pre-built JAR + backing services)
 # --------------------------------------------------------------------------
 
+vm-signal-server-build-jar:
+	@echo -e "$(BLUE)[SIGNAL-VM]$(NC) Stage 1: Building Signal-Server JAR in VM..."
+	@chmod +x ./scripts/vm-signal-server-run.sh
+	@./scripts/vm-signal-server-run.sh build-jar
+
 vm-signal-server-build:
-	@echo -e "$(BLUE)[SIGNAL-VM]$(NC) Building/caching Signal-Server VM image..."
+	@echo -e "$(BLUE)[SIGNAL-VM]$(NC) Stage 2: Building runtime VM image..."
 	@mkdir -p build/vm-signal-server
 	@if [ -d build/vm-signal-server/image ]; then \
 		echo -e "$(GREEN)[SIGNAL-VM]$(NC) Image already cached at build/vm-signal-server/image"; \
 	else \
 		echo -e "$(BLUE)[SIGNAL-VM]$(NC) Building via nix (this may take several minutes)..."; \
-		nix-build nix/vm-signal-server.nix -A qemu -o build/vm-signal-server/image 2>/dev/null || \
+		nix-build nix/vm-signal-server.nix -A qemu -o build/vm-signal-server/image || \
 		(echo -e "$(RED)[SIGNAL-VM]$(NC) nix-build failed"; exit 1); \
 		echo -e "$(GREEN)[SIGNAL-VM]$(NC) Image cached at build/vm-signal-server/image"; \
 	fi
