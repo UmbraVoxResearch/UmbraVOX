@@ -5,7 +5,7 @@ Generated: 2026-05-18 | Version: v0.1.4 | Baseline: v0.1.3
 ## Summary
 
 - **24 F* specs**: 0 admit(), 28 assume val, 18 specs fully proved
-- **4 verified Coq files**: 171 Qed, 0 Admitted, 0 Axiom, 0 Parameter
+- **11 verified Coq files**: 415 Qed, 0 Admitted, 0 Axiom, 0 Parameter
 - **1 draft Coq file**: 16 Qed, 8 Admitted, 15 Axiom (NOT verified evidence)
 - **Runtime differential**: 9/9 primitive suites PASS against RFC/NIST vectors
 - **Negative tests**: 4/4 suites PASS, 18 fail-closed checks
@@ -68,7 +68,7 @@ Generated: 2026-05-18 | Version: v0.1.4 | Baseline: v0.1.3
 | F* specs at 0 assume val | 18 |
 | F* assume val total | 28 |
 | F* admit() total | 0 |
-| Coq verified Qed | 171 |
+| Coq verified Qed | 415 |
 | Coq verified Admitted | 0 |
 | Coq draft Admitted | 8 |
 | Infrastructure tests | 67/67 |

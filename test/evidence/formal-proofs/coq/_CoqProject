@@ -9,3 +9,4 @@ Ed25519GroupAssoc.v
 Ed25519GroupIdentity.v
 Ed25519SqrtRatio.v
 VRFDLEQ.v
+Ed25519GroupUniversal.v

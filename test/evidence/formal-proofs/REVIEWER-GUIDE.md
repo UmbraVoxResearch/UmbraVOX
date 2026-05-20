@@ -4,7 +4,7 @@ This document helps an independent reviewer understand and reproduce the
 formal verification evidence in UmbraVOX.
 
 **Current baseline:** 0 `admit()`, 30 `assume val` across 24 F\* specs,
-153 Coq `Qed` across 3 verified files, 67 infrastructure tests.
+415 Coq `Qed` across 11 verified files, 67 infrastructure tests.
 
 ---
 
@@ -104,7 +104,8 @@ To set correct expectations for an audit:
 - **Does not claim Coq evidence automatically removes F\* assumptions.**
   Each discharge must be reviewed individually for semantic alignment.
 - **Does not claim Ed25519 group law is fully proved.** `Ed25519GroupLaw.v`
-  is a DRAFT; the group-law proof is incomplete.
+  is a DRAFT; `Ed25519GroupUniversal.v` proves universal group-law properties
+  over GZnZ field structure, but full curve-point universality remains open.
 - **Does not claim MLKEM768 functional correctness.** The F\* spec covers
   parameter validation only, not the full encapsulation/decapsulation model.
 - **Does not claim the primality of 2^255 - 19 is formally proved in Coq.**
