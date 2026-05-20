@@ -23,16 +23,17 @@ of thought and expression in the digital age.
 
 ### Build & Run
 
-All `make` targets route through the NixOS VM by default. No local GHC or
-cabal is required for standard operations.
+All standard `make` build/test/verify targets route through the NixOS VM by
+default. No local GHC or cabal is required for standard operations.
 
 ```sh
-nix-shell              # Enter development environment
+nix-shell shell-minimal.nix  # Enter orchestration-only VM-first environment
 make vm-image-build    # First time: build and cache the NixOS VM image
 make build             # Build everything (in VM)
 make test              # Fast messaging-MVP hardening gate (in VM)
 make verify            # F* formal verification (in VM)
-make run               # Launch the TUI (locally)
+make vm-run-gui        # Launch interactive VM UI session
+UMBRAVOX_LOCAL=1 make run-local  # Explicit host compile + run
 make vm-dev            # Interactive dev shell inside the VM
 make test-core-network # Deterministic network/discovery suite (in VM)
 make test-tui-sim      # TUI simulation suite (in VM)
@@ -49,16 +50,16 @@ scripts/nix-flake.sh flake show --no-write-lock-file
 
 ### VM-First Development
 
-All `make` commands run inside an isolated NixOS VM by default. The host
-only needs QEMU and git. No local toolchain required.
+All `make` commands run inside an isolated NixOS VM by default. The host only
+needs QEMU and git. No local toolchain required for standard workflow.
 
 ```sh
-nix-shell              # Enter shell (commands route to VM automatically)
+nix-shell shell-minimal.nix  # Enter VM-first shell
 make build             # Builds inside the VM
 make test              # Runs tests inside the VM
 make verify            # Runs F* verification inside the VM
 make vm-dev            # Interactive dev shell inside the VM
-make run               # Launch TUI locally (the one exception)
+make vm-run-gui        # Launch interactive VM UI session
 ```
 
 To run locally instead of in the VM (requires full toolchain):
@@ -66,6 +67,7 @@ To run locally instead of in the VM (requires full toolchain):
 ```sh
 UMBRAVOX_LOCAL=1 make build    # Build locally
 UMBRAVOX_LOCAL=1 make test     # Test locally
+UMBRAVOX_LOCAL=1 make run-local  # Run TUI locally
 ```
 
 See `doc/VM-DEVELOPMENT.md` for the full migration guide.

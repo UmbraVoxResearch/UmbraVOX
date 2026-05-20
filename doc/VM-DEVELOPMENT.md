@@ -23,8 +23,8 @@ utilities (provided by `shell-minimal.nix`).
 ## Quick Start
 
 ```bash
-# Enter the development shell (commands route to VM automatically)
-nix-shell
+# Enter the orchestration shell (commands route to VM automatically)
+nix-shell shell-minimal.nix
 
 # Build the VM image (first time only; cached afterwards)
 make vm-image-build
@@ -36,6 +36,7 @@ make verify       # F* formal verification (in VM)
 
 # Interactive development inside the VM
 make vm-dev
+make vm-run-gui
 
 # Bypass the VM for local execution (requires full nix-shell toolchain)
 UMBRAVOX_LOCAL=1 make build
@@ -207,6 +208,8 @@ All standard Makefile targets (`make build`, `make test`, `make verify`,
   toolchain.
 - `UMBRAVOX_LOCAL=1` bypasses the VM and runs commands locally using the
   host toolchain.  This requires the full `nix-shell` (not minimal).
+- `make run` is guarded in VM-first mode; use `make vm-run-gui` for VM UI
+  or `UMBRAVOX_LOCAL=1 make run-local` for explicit host compile+run.
 - `make vm-image-build` works without cabal — it uses `nix build` directly.
 - `make vm-dev` provides an interactive development shell inside the VM.
 

@@ -296,7 +296,8 @@ Note: Items from codebase audit (2026-05-20).
   [ ] M20.4.2 Audit and resolve all M-series TODO comments in source
   [~] M20.4.3 Harden VM integration agent trust boundary
     Note: strict AGENT_* validation + safer peer probes + tar path traversal checks added.
-    Remaining: verify signed checksum/attestation before extraction.
+    Note: optional AGENT_BUNDLE_SHA256 pre-extraction checksum verification added.
+    Remaining: signed checksum/attestation path and mandatory verification policy.
   [~] M20.4.4 Harden provider IPC decode path against malformed input
     Note: DATA hex decode now rejects invalid/odd payloads without crashing.
     Remaining: explicit protocol error telemetry + max line length guard.

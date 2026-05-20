@@ -136,6 +136,23 @@ validate_tar_paths() {
     done < <(tar tzf "$bundle")
 }
 
+verify_bundle_sha256() {
+    local bundle="$1"
+    local expected="$2"
+    local actual
+    if ! command -v sha256sum >/dev/null 2>&1; then
+        echo "AGENT_RESULT=FAIL (sha256sum unavailable for bundle verification)"
+        return 1
+    fi
+    actual="$(sha256sum "$bundle" | awk '{print $1}')"
+    if [ "$actual" != "$expected" ]; then
+        echo "AGENT_RESULT=FAIL (bundle checksum mismatch)"
+        echo "  expected: $expected"
+        echo "  actual:   $actual"
+        return 1
+    fi
+}
+
 AGENT_PORT="${AGENT_PORT:-7853}"
 if ! is_valid_port "$AGENT_PORT"; then
     echo "AGENT_RESULT=FAIL (invalid AGENT_PORT: $AGENT_PORT)"
@@ -178,6 +195,14 @@ done
 if [ -z "$BUNDLE" ]; then
     echo "AGENT_RESULT=FAIL (no release bundle found)"
     exit 1
+fi
+
+if [ -n "${AGENT_BUNDLE_SHA256:-}" ]; then
+    if ! [[ "${AGENT_BUNDLE_SHA256}" =~ ^[0-9a-fA-F]{64}$ ]]; then
+        echo "AGENT_RESULT=FAIL (invalid AGENT_BUNDLE_SHA256 format)"
+        exit 1
+    fi
+    verify_bundle_sha256 "$BUNDLE" "${AGENT_BUNDLE_SHA256,,}"
 fi
 
 mkdir -p /work/app
