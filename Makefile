@@ -22,6 +22,8 @@
 #   make test-integrity - Run wire/integrity coverage
 #   make test-mdns    - Run the exact mDNS/discovery suite
 #   make test-deferred - Run preserved deferred blockchain/economics suites
+#   make signal-bridge-build - Build Signal bridge plugin (M19.6.3)
+#   make test-signal-compat - Run Signal wire-compatibility tests (M19.6.3)
 #   make test-differential - Run differential C vs Haskell tests
 #   make soak         - Run the long soak suite and write an artifact report
 #   make mcdc-report  - Build with HPC coverage and emit per-module expression report
@@ -82,7 +84,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-test vm-verify firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot screenshot-local vm-record vm-visual-regression visual-reference-update differential-vectors test-differential-oracle test-differential-full fuzz-differential fuzz-afl differential differential-evidence-check clean cleandb cleanall help
+.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-test vm-verify firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot screenshot-local vm-record vm-visual-regression visual-reference-update differential-vectors test-differential-oracle test-differential-full fuzz-differential fuzz-afl differential differential-evidence-check signal-bridge-build test-signal-compat clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -186,6 +188,7 @@ help:
 	@echo "    make test-differential Run differential C vs Haskell tests"
 	@echo "    make soak        Run long soak suite and write artifact report"
 	@echo "    make mcdc-report Build with HPC coverage and emit per-module expression report"
+	@echo "    make signal-bridge-build Build Signal bridge plugin (M19.6.3)"
 	@echo "    make codegen     Generate Haskell + C + FFI from .spec files"
 	@echo "    make evidence    Run quality and write a publication evidence bundle"
 	@echo "    make release-linux Build portable Linux x86_64 terminal bundle"
@@ -250,6 +253,9 @@ help:
 	@echo "    make image-clean    Alias for vm-image-clean"
 	@echo "    make firecracker-smoke  Run pipeline inside Firecracker VM"
 	@echo "    make firecracker-image-build Build Firecracker image"
+	@echo "    make vm-signal-server-build Build Signal-Server VM image (M19.4.1)"
+	@echo "    make vm-signal-server  Boot Signal-Server VM (PostgreSQL/Redis/ZK/Java)"
+	@echo "    make test-signal-compat Run Signal wire-compatibility tests (M19.6.3)"
 	@echo "    make vm-integration-test Run multi-VM integration test (INTEGRATION_AGENTS=3)"
 	@echo "    make vm-integration-test-dual-lan Run dual-LAN integration test (6 agents)"
 	@echo "    make vm-forensics   Run VM forensics verification (pcap, disk, log)"
@@ -1209,6 +1215,46 @@ vm-extract:
 	fi
 
 image-clean: vm-image-clean
+
+# --------------------------------------------------------------------------
+# Signal-Server VM (M19.4.1 — wire-compatibility testing scaffold)
+# --------------------------------------------------------------------------
+
+vm-signal-server-build:
+	@echo -e "$(BLUE)[SIGNAL-VM]$(NC) Building/caching Signal-Server VM image..."
+	@mkdir -p build/vm-signal-server
+	@if [ -d build/vm-signal-server/image ]; then \
+		echo -e "$(GREEN)[SIGNAL-VM]$(NC) Image already cached at build/vm-signal-server/image"; \
+	else \
+		echo -e "$(BLUE)[SIGNAL-VM]$(NC) Building via nix (this may take several minutes)..."; \
+		nix-build nix/vm-signal-server.nix -A qemu -o build/vm-signal-server/image 2>/dev/null || \
+		(echo -e "$(RED)[SIGNAL-VM]$(NC) nix-build failed"; exit 1); \
+		echo -e "$(GREEN)[SIGNAL-VM]$(NC) Image cached at build/vm-signal-server/image"; \
+	fi
+
+vm-signal-server:
+	@echo -e "$(BLUE)[SIGNAL-VM]$(NC) Booting Signal-Server VM..."
+	@chmod +x ./scripts/vm-signal-server-run.sh
+	@./scripts/vm-signal-server-run.sh interactive
+
+vm-signal-server-check:
+	@echo -e "$(BLUE)[SIGNAL-VM]$(NC) Booting Signal-Server VM (service check)..."
+	@chmod +x ./scripts/vm-signal-server-run.sh
+	@./scripts/vm-signal-server-run.sh check
+
+# --------------------------------------------------------------------------
+# Signal Bridge Plugin (M19.6.3)
+# --------------------------------------------------------------------------
+
+signal-bridge-build:
+	@echo -e "$(BLUE)[SIGNAL-BRIDGE]$(NC) Building Signal bridge plugin..."
+	@cabal build umbravox-signal-bridge 2>&1 | tail -5
+	@echo -e "$(GREEN)[SIGNAL-BRIDGE]$(NC) Build complete."
+
+test-signal-compat:
+	@echo -e "$(BLUE)[SIGNAL-COMPAT]$(NC) Running Signal wire-compatibility tests..."
+	@chmod +x ./scripts/vm-signal-test.sh
+	@./scripts/vm-signal-test.sh
 
 vm-socks5-test:
 	@echo -e "$(BLUE)[VM-SOCKS5]$(NC) Running SOCKS5 transport test in VM..."
