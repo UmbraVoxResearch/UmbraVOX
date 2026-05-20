@@ -1,54 +1,112 @@
-# Agents
+# Agent Development Guide
 
-This file is a reference index only. All authoritative project information lives in the documents listed below.
+Instructions for AI agents working on UmbraVOX. All build, test, and
+verification MUST happen inside NixOS VMs. The host system's nix store
+should never be touched by compilation.
 
-## Project Status
+## VM-First Development
 
-MVP is functional. The fast messaging gate is green. 24 F* formal
-specifications are present (0 admit, 28 assume val), and the current full
-`make verify` run is green. 5 Coq files provide 187 Qed proofs (0 Admitted).
-10 `.spec` files generate 30 Haskell + C + FFI outputs.
+**Rule: Never compile on the host.** Use VMs for all:
+- Haskell builds (`cabal build`, `cabal test`)
+- C compilation (generated crypto code)
+- F* verification (`fstar.exe`)
+- Coq proofs (`coqc`)
+- Signal-Server (Maven/Java)
 
-Current assurance model:
+### Quick Reference
 
-- The active cryptographic protection path is the layered runtime path in
-  `README.md`: Signal Double Ratchet, PQ outer wrapping, and Noise transport.
-- Generated Haskell modules are active as wrappers over the handwritten Haskell
-  crypto implementations.
-- Generated C artifacts are currently link-probe stubs, not active crypto
-  implementations.
-- Generated FFI modules currently call the C link probes and then delegate back
-  to handwritten Haskell crypto; they are not yet an independently assured C
-  execution path.
-- Persistent message content and conversation names are encrypted at the
-  app layer (AES-256-GCM, HKDF-derived keys). Structural metadata remains
-  plaintext; see `doc/persistence-model.md`.
-- The F* specifications are handwritten formal models, not generated from NIST
-  or RFC text. They remain assurance-critical and the current full verifier run
-  is green, but that does not constitute a machine-checked refinement proof
-  from the handwritten models to the active Haskell runtime.
+```bash
+make vm-build-only       # Build in VM (host needs only qemu + nix)
+make vm-dev              # Interactive dev shell in VM (serial)
+make vm-run-gui          # Interactive dev shell (QEMU GTK window)
+make vm-test             # Run tests in VM
+make vm-verify           # F* verification in VM
+make vm-signal-server-build-jar  # Build Signal-Server JAR in VM
+make vm-signal-server    # Boot Signal-Server runtime VM
+make check-isolation     # Verify host nix store is clean
+```
 
-## Source of Truth
+### Local Escape Hatch
 
-### Active Documentation
+```bash
+UMBRAVOX_LOCAL=1 make build    # explicitly opt into host build
+UMBRAVOX_LOCAL=1 make test     # explicitly opt into host test
+```
 
-- [README.md](README.md) — project overview and active workflow
-- [TODO.txt](TODO.txt) — implementation tracking and current priorities
-- [doc/README.md](doc/README.md) — active documentation index
-- [doc/QUICKSTART.md](doc/QUICKSTART.md) — active build, run, and test commands
-- [doc/01-overview.md](doc/01-overview.md) — current MVP scope and verification model
-- [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md) — active runtime and test architecture
-- [doc/mvp-plan.md](doc/mvp-plan.md) — current messaging MVP hardening plan
-- [doc/assurance-roadmap.md](doc/assurance-roadmap.md) — current assurance boundary and stronger target model
-- [doc/assurance-matrix.md](doc/assurance-matrix.md) — current evidence ledger for standards, implementations, tests, and trust gaps
-- [doc/persistence-model.md](doc/persistence-model.md) — persistence encryption model and residual metadata analysis
+Without `UMBRAVOX_LOCAL=1`, targets default to VM and warn on host.
 
-### Legacy Documentation Archive
+## Languages (strict)
 
-- `attic/doc-legacy-2026-04-28/` — preserved prior design, hardening, future-planning, and reference material
+- **Haskell**: all application code, crypto, protocol, TUI, bridge plugins
+- **C**: generated crypto + FFI (csrc/)
+- **Shell**: scripts/, Makefile
+- **Nix**: VM images, environments
+- **F***: formal specs (test/evidence/formal-proofs/fstar/)
+- **Coq**: external proofs (test/evidence/formal-proofs/coq/)
 
-### Legal
+No Rust, Go, or Python in production. Python for cert-gen scripts only.
 
-- [LEGAL-NOTICE.md](LEGAL-NOTICE.md) — Export controls, telecommunications, data retention, token economics
-- [PUBLISHING-NOTE.md](PUBLISHING-NOTE.md) — Expressive and research framing
-- [LICENSE](LICENSE) — Project license
+## Project Structure
+
+```
+src/UmbraVox/Crypto/           Pure crypto (SHA, AES, X25519, Ed25519, ML-KEM)
+src/UmbraVox/Crypto/Signal/    Signal protocol (X3DH, PQXDH, DoubleRatchet)
+src/UmbraVox/Crypto/Signal/Compat.hs  Signal-compat params (WhisperText)
+src/UmbraVox/Protocol/         Wire formats (CBOR, SignalWire, Handshake)
+src/UmbraVox/Network/          Transport (TCP, UDP, SOCKS5, IPC, Providers)
+src/UmbraVox/Bridge/Signal/    Signal bridge plugin (IPC subprocess)
+src/UmbraVox/TUI/              Terminal UI (Render, Input, Menu, Dialog)
+src/UmbraVox/App/              Core app (Config, Types, State, Defaults)
+test/evidence/formal-proofs/coq/   14 Coq files, 460 Qed, 0 Admitted
+test/evidence/formal-proofs/fstar/ 24 F* specs, 0 admit(), 25 assume val
+nix/                           VM images + build configs
+plugins/                       Bridge plugin manifests + templates
+scripts/                       VM orchestration + test scripts
+```
+
+## Building
+
+```bash
+make vm-build-only                    # VM (preferred)
+UMBRAVOX_LOCAL=1 nix-shell --run "cabal build all"  # local (escape hatch)
+```
+
+## Testing
+
+```bash
+make vm-test                          # full suite in VM
+make test-signal-bridge-ipc           # bridge IPC smoke test
+make test-signal-compat               # wire-compat (needs Signal-Server VM)
+```
+
+## Coq Proofs
+
+```bash
+# Build all 14 files:
+nix-shell --run "cd test/evidence/formal-proofs/coq && make"
+
+# Coqprime files need -native-compiler no:
+coqc -native-compiler no -R . UmbraVox Ed25519GroupUniversal.v
+
+# Count Qed:
+grep -ch 'Qed\.' test/evidence/formal-proofs/coq/*.v | paste -sd+ | bc
+```
+
+## Signal Bridge
+
+IPC subprocess protocol:
+```
+Host → Plugin: AUTH, SEND, RECV, CONTACTS, STATUS, PING, CLOSE
+Plugin → Host: AUTH_OK, OK, DATA, CONTACTS, STATUS, PONG, ERR
+```
+
+Uses own crypto with Signal params — no libsignal dependency.
+
+## Conventions
+
+- **Zero warnings**: `cabal build all` clean
+- **Zero Admitted**: all Coq files
+- **No Co-Authored-By**: never add attribution to commits
+- **VM isolation**: never compile on host; `make check-isolation` to verify
+- **Commit prefix**: feat/fix/proof/test/docs/infra/chore
+- **Security fixes**: require Finding/Vulnerability/Fix/Verified documentation
