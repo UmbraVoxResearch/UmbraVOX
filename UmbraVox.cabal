@@ -109,6 +109,7 @@ library
       UmbraVox.Crypto.RatchetPersist
       UmbraVox.Crypto.PQWrapper
       UmbraVox.Crypto.KeyStore
+      UmbraVox.Crypto.SecureFd
       UmbraVox.Crypto.Signal.SenderKeys
       UmbraVox.Crypto.Signal.Session
       -- Active generated coverage spans the preserved Haskell, C, and FFI
@@ -245,6 +246,8 @@ library
       UmbraVox.Tools.Compliance
       UmbraVox.Tools.Provenance
       UmbraVox.Tools.PcapVerify
+      -- Bridge plugins
+      UmbraVox.Bridge.Signal.Session
       -- Headless runtime
       UmbraVox.Runtime.Headless
   build-depends:
@@ -341,6 +344,15 @@ executable fetch-references
   build-depends:
     base         >= 4.18  && < 5,
     directory    >= 1.3   && < 1.4,
+    UmbraVox
+  ghc-options:      -threaded
+
+executable umbravox-signal-bridge
+  import:           warnings, lang
+  main-is:          Main.hs
+  hs-source-dirs:   src/UmbraVox/Bridge/Signal
+  build-depends:
+    base         >= 4.18  && < 5,
     UmbraVox
   ghc-options:      -threaded
 
