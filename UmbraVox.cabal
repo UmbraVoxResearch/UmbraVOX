@@ -112,6 +112,8 @@ library
       UmbraVox.Crypto.SecureFd
       UmbraVox.Crypto.Signal.SenderKeys
       UmbraVox.Crypto.Signal.Session
+      UmbraVox.Crypto.Signal.Compat
+      UmbraVox.Protocol.SignalWire
       -- Active generated coverage spans the preserved Haskell, C, and FFI
       -- namespaces. Generated C and FFI paths are linked through truthful
       -- bridge wrappers plus compile/link probes.

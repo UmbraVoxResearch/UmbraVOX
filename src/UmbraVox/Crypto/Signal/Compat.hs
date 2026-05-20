@@ -33,12 +33,11 @@ module UmbraVox.Crypto.Signal.Compat
     , signalMessageVersion
     ) where
 
-import Data.Bits (shiftR, xor, (.&.))
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-import Data.Word (Word32, Word64)
+import Data.Word (Word32)
 
 import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
 import UmbraVox.Crypto.GCM (gcmDecrypt, gcmEncrypt)
@@ -156,7 +155,7 @@ data SignalRatchetHeader = SignalRatchetHeader
 
 generateDH :: ByteString -> (ByteString, ByteString)
 generateDH secret =
-    case x25519Basepoint secret of
+    case x25519 secret x25519Basepoint of
         Just pub -> (secret, pub)
         Nothing  -> (secret, BS.replicate 32 0)
 
@@ -223,18 +222,16 @@ signalRatchetEncrypt st plaintext
             -- Signal derives 80 bytes: 32 cipher key + 32 mac key + 16 IV
             -- We use the first 32 as AES key, derive a 12-byte nonce for GCM
             !iv       = if BS.length nonce >= 12 then nonce else BS.replicate 12 0
-        case gcmEncrypt encKey iv BS.empty plaintext of
-            Nothing -> pure (Left "encryption failed")
-            Just (ct, tag) ->
-                let !hdr = SignalRatchetHeader
-                        { srhDHPublic   = snd (srsDHSend st)
-                        , srhPrevChainN = srsPrevChainN st
-                        , srhMsgN       = srsSendN st
-                        }
-                    !st' = st { srsSendChain = newChain
-                              , srsSendN     = srsSendN st + 1
-                              }
-                in pure (Right (st', hdr, ct, tag))
+        let !(ct, tag) = gcmEncrypt encKey iv BS.empty plaintext
+            !hdr = SignalRatchetHeader
+                { srhDHPublic   = snd (srsDHSend st)
+                , srhPrevChainN = srsPrevChainN st
+                , srhMsgN       = srsSendN st
+                }
+            !st' = st { srsSendChain = newChain
+                      , srsSendN     = srsSendN st + 1
+                      }
+        pure (Right (st', hdr, ct, tag))
 
 ------------------------------------------------------------------------
 -- Decryption
