@@ -4,6 +4,8 @@ module UmbraVox.TUI.Types
     , ContactStatus(..)
     , statusTag
     , SessionInfo(..)
+    , SessionCrypto(..)
+    , BridgeState(..)
     , Pane(..)
     , ConnectionMode(..)
     , MenuTab(..)
@@ -29,7 +31,7 @@ import UmbraVox.BuildProfile
 -- Re-export domain types from their new neutral namespaces.
 -- Existing imports of UmbraVox.TUI.Types continue to work unchanged.
 import UmbraVox.App.Types
-    ( ContactStatus(..), statusTag, SessionInfo(..) )
+    ( ContactStatus(..), statusTag, SessionInfo(..), SessionCrypto(..), BridgeState(..) )
 import UmbraVox.App.Config
     ( SessionId, ConnectionMode(..), AppConfig(..) )
 import UmbraVox.App.State

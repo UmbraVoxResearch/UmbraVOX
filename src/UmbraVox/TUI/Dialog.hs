@@ -551,25 +551,30 @@ verifyOverlayLines st = do
         case mIk of
             Nothing -> pure
                 ["No identity generated yet.", "", "Press K to generate keys first.", "", "[ Close ]" ]
-            Just ik -> do
-                session <- readIORef (siSession si)
-                let ourKey  = ikX25519Public ik
-                    mPeerKey = rsDHRecv (csRatchet session)
-                case mPeerKey of
-                    Nothing -> pure
-                        ["Peer: " ++ siPeerName si, ""
-                        , "Safety number unavailable: no key exchange yet."
-                        , "(Send or receive a message first.)", ""
-                        , "[ Close ]" ]
-                    Just peerKey -> do
-                        let safetyNum = generateSafetyNumber ourKey peerKey
-                            safetyRows = renderSafetyNumber safetyNum
-                            qrMatrix = generateQRCode safetyNum
-                            qrLines  = renderQRCode qrMatrix
-                        pure $
-                            ["Peer: " ++ siPeerName si, "", "Safety Number:"] ++ safetyRows ++
-                            ["", "QR Code:"] ++ map ("  " ++) qrLines ++
-                            ["", "Compare via a separate channel.", "", "[ Close ]" ]
+            Just ik -> case siCrypto si of
+                BridgeCrypto _bs -> pure
+                    ["Peer: " ++ siPeerName si, ""
+                    , "Safety number unavailable: bridge session."
+                    , "", "[ Close ]" ]
+                RatchetCrypto ref -> do
+                    session <- readIORef ref
+                    let ourKey  = ikX25519Public ik
+                        mPeerKey = rsDHRecv (csRatchet session)
+                    case mPeerKey of
+                        Nothing -> pure
+                            ["Peer: " ++ siPeerName si, ""
+                            , "Safety number unavailable: no key exchange yet."
+                            , "(Send or receive a message first.)", ""
+                            , "[ Close ]" ]
+                        Just peerKey -> do
+                            let safetyNum = generateSafetyNumber ourKey peerKey
+                                safetyRows = renderSafetyNumber safetyNum
+                                qrMatrix = generateQRCode safetyNum
+                                qrLines  = renderQRCode qrMatrix
+                            pure $
+                                ["Peer: " ++ siPeerName si, "", "Safety Number:"] ++ safetyRows ++
+                                ["", "QR Code:"] ++ map ("  " ++) qrLines ++
+                                ["", "Compare via a separate channel.", "", "[ Close ]" ]
     else pure ["No contact selected", "", "[ Close ]" ]
 
 renderVerifyOverlay :: Layout -> AppState -> Int -> IO ()
