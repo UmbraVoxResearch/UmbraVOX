@@ -5,7 +5,8 @@
 #   - Runs a single command and exits (vm-build, vm-test, vm-verify)
 #
 # Usage (called by Makefile, not directly by users):
-#   vm-dev-run.sh interactive          # interactive dev shell
+#   vm-dev-run.sh interactive          # interactive dev shell (serial console)
+#   vm-dev-run.sh gui                  # interactive dev shell (QEMU VGA window)
 #   vm-dev-run.sh exec "cabal build all"  # run command, exit
 #
 # Requires: qemu-system-x86_64, genext2fs, /dev/kvm
@@ -165,8 +166,8 @@ fi
 
 INITEOF
 
-    if [ "$mode" = "interactive" ]; then
-        cat >> "$script_path" << 'INTEREOF'
+    if [ "$mode" = "interactive" ] || [ "$mode" = "gui" ]; then
+        cat >> "$script_path" << 'BANNEREOF'
 echo ""
 echo -e "\033[35m  ╦ ╦╔╦╗╔╗ ╦═╗╔═╗╦  ╦╔═╗═╗ ╦\033[0m"
 echo -e "\033[35m  ║ ║║║║╠╩╗╠╦╝╠═╣╚╗╔╝║ ║╔╩╦╝\033[0m"
@@ -191,10 +192,32 @@ echo ""
 echo "  NOTE: Source is copied to /work/umbravox (writable tmpfs)."
 echo "  Changes inside the VM are NOT synced back to the host."
 echo ""
+BANNEREOF
 
-# Drop into interactive shell
+        if [ "$mode" = "gui" ]; then
+            # GUI mode: write environment to a login profile so the VGA getty
+            # inherits the dev workspace. Do NOT exec bash here — the systemd
+            # service has no TTY in GUI mode; the user interacts via VGA getty.
+            cat >> "$script_path" << 'GUIEOF'
+cat > /etc/profile.d/umbravox-dev.sh << 'PROFILEEOF'
+export HOME=/root
+export UMBRAVOX_ROOT=/work/umbravox
+export PATH="/work/umbravox/scripts:/run/current-system/sw/bin:/run/current-system/sw/sbin:$PATH"
+unset LD_LIBRARY_PATH 2>/dev/null || true
+cd /work/umbravox 2>/dev/null || true
+PROFILEEOF
+
+echo ""
+echo "  GUI mode: log in on the VGA console (root, no password)."
+echo "  The workspace at /work/umbravox is ready."
+echo ""
+GUIEOF
+        else
+            cat >> "$script_path" << 'INTEREOF'
+# Drop into interactive shell (serial console mode)
 exec /bin/bash --login
 INTEREOF
+        fi
     else
         cat >> "$script_path" << EXECEOF
 echo ""
@@ -266,9 +289,6 @@ QEMU_ARGS=(
     -cpu max
     -m "$VM_MEM_MB"
     -smp "$VM_CORES"
-    -nographic
-    -nodefaults
-    -serial stdio
     -drive "if=virtio,format=qcow2,file=$OVERLAY"
     -drive "if=virtio,format=raw,file=$SRC_DISK,readonly=on"
     -drive "if=virtio,format=qcow2,file=$CACHE_DISK"
@@ -276,8 +296,16 @@ QEMU_ARGS=(
     $QEMU_NET_ARGS
 )
 
+# Display mode: gui uses VGA window, all others use serial console
+if [ "$MODE" = "gui" ]; then
+    QEMU_ARGS+=(-display gtk -vga std)
+    echo -e "${BLUE}[VM-DEV]${NC} Display: GUI (QEMU VGA window)" >&2
+else
+    QEMU_ARGS+=(-nographic -nodefaults -serial stdio)
+fi
+
 # For non-interactive mode, add -no-reboot so VM exits after poweroff
-if [ "$MODE" != "interactive" ]; then
+if [ "$MODE" != "interactive" ] && [ "$MODE" != "gui" ]; then
     QEMU_ARGS+=(-no-reboot)
 fi
 
@@ -300,6 +328,6 @@ QEMU_EXIT=$?
 # Cleanup
 rm -f "$OVERLAY" "$SRC_DISK" 2>/dev/null || true
 
-if [ "$MODE" != "interactive" ]; then
+if [ "$MODE" != "interactive" ] && [ "$MODE" != "gui" ]; then
     exit $QEMU_EXIT
 fi

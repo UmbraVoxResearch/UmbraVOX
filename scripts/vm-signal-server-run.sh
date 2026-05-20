@@ -93,8 +93,7 @@ build_jar() {
         -m "$VM_MEM_MB" \
         -smp "$VM_CORES" \
         -nographic \
-        -nodefaults \
-        -serial stdio \
+        -serial mon:stdio \
         -drive "if=virtio,format=qcow2,file=$overlay" \
         -nic user,model=virtio \
         -virtfs "local,path=$JAR_OUTPUT_DIR,mount_tag=output,security_model=mapped-xattr,id=output" \
