@@ -8,8 +8,6 @@ module UmbraVox.Consensus.ForkChoice
 
 import Data.ByteString (ByteString)
 
-{-# WARNING selectChain "UmbraVox.Consensus.ForkChoice is a stub -- not implemented" #-}
-
 -- | Select the preferred chain from candidates using longest-chain + density.
 selectChain :: [ByteString] -> ByteString
 selectChain = error "not implemented"

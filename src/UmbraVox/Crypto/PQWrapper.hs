@@ -9,9 +9,6 @@ module UmbraVox.Crypto.PQWrapper
 
 import Data.ByteString (ByteString)
 
-{-# WARNING pqEncrypt "UmbraVox.Crypto.PQWrapper is a stub -- not implemented" #-}
-{-# WARNING pqDecrypt "UmbraVox.Crypto.PQWrapper is a stub -- not implemented" #-}
-
 -- | Apply the post-quantum outer encryption layer.
 pqEncrypt :: ByteString -> ByteString -> ByteString
 pqEncrypt = error "not implemented"

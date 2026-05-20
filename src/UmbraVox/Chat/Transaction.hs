@@ -8,8 +8,6 @@ module UmbraVox.Chat.Transaction
 
 import Data.ByteString (ByteString)
 
-{-# WARNING messageToTx "UmbraVox.Chat.Transaction is a stub -- not implemented" #-}
-
 -- | Convert a chat message into a blockchain transaction.
 messageToTx :: ByteString -> ByteString
 messageToTx = error "not implemented"

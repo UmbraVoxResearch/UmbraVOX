@@ -8,8 +8,6 @@ module UmbraVox.Network.Gossip
 
 import Data.ByteString (ByteString)
 
-{-# WARNING gossipBlock "UmbraVox.Network.Gossip is a stub -- not implemented" #-}
-
 -- | Gossip a block to connected peers.
 gossipBlock :: ByteString -> IO ()
 gossipBlock = error "not implemented"

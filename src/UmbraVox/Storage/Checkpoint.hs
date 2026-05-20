@@ -9,9 +9,6 @@ module UmbraVox.Storage.Checkpoint
 
 import Data.ByteString (ByteString)
 
-{-# WARNING Checkpoint "UmbraVox.Storage.Checkpoint is a stub -- not implemented" #-}
-{-# WARNING saveCheckpoint "UmbraVox.Storage.Checkpoint is a stub -- not implemented" #-}
-
 -- | A truncation checkpoint snapshot.
 data Checkpoint = Checkpoint
   deriving (Show)
