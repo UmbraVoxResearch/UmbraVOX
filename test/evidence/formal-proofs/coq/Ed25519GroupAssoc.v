@@ -4,6 +4,12 @@
     Verified by the Coq type-checker (Rocq 9.1.1 / ZArith).
     Zero Admitted.  Zero Axiom.  Zero Parameter.
 
+    NOTE: Universal associativity for ALL curve points is now proved in
+    Ed25519AssocUniversal.v.  These 64 concrete instances are retained as
+    regression tests: they exercise the vm_compute path on specific
+    basepoint multiples and guard against regressions in the addition
+    formula, on-curve checks, and projective equality decision procedure.
+
     Purpose:
       Prove associativity of point_add for ALL POINTS REACHABLE FROM THE
       BASEPOINT up to scalar bound 3, i.e., for [a]B, [b]B, [c]B with
@@ -11,11 +17,13 @@
       instances via vm_compute on concrete 255-bit field elements.
 
     Strategy:
-      Instead of proving universal associativity (which requires ring/field
-      tactics from coq-prime, unavailable in our Nix closure), we prove
-      associativity for every triple of basepoint-reachable points up to
-      a small scalar bound.  Each instance is fully discharged by vm_compute
-      over the HWCD extended-coordinate addition formula.
+      Each instance is fully discharged by vm_compute over the HWCD
+      extended-coordinate addition formula.
+
+    Coverage categories (see Section 4 for per-instance labels):
+      - Identity triples  (a=0 or b=0 or c=0):  37 instances
+      - Self-addition      (a=b or b=c, all>0):  15 instances
+      - Full non-trivial   (a!=b, b!=c, all>0):  12 instances
 
     Combined with the 7 instances in Ed25519GroupPartial.v, this gives
     71 total machine-checked associativity instances (with some overlap).
@@ -71,112 +79,139 @@ Ltac assoc_vm :=
     ========================================================================
 
     Naming: assoc_A_B_C proves associativity for ([A]B, [B']B, [C]B).
-    We use Bi definitions to name the points. *)
+    We use Bi definitions to name the points.
 
-(** --- a=0 block (16 instances) --- *)
+    Category legend:
+      [I]  Identity triple   -- at least one operand is [0]B (the identity)
+      [S]  Self-addition     -- a=b or b=c (doubling-like), all operands > 0
+      [F]  Full non-trivial  -- a, b, c all > 0, a<>b, b<>c
+    An instance may carry multiple tags (e.g. [I,S] when a=b=0). *)
 
+(** --- a=0 block (16 instances, all Identity [I]) --- *)
+
+(** [I,S] a=b=c=0 -- pure identity triple *)
 Lemma assoc_0_0_0 :
   proj_eq (ext_point_add (ext_point_add B0 B0) B0)
           (ext_point_add B0 (ext_point_add B0 B0)).
 Proof. assoc_vm. Qed.
 
+(** [I,S] a=b=0 *)
 Lemma assoc_0_0_1 :
   proj_eq (ext_point_add (ext_point_add B0 B0) B1)
           (ext_point_add B0 (ext_point_add B0 B1)).
 Proof. assoc_vm. Qed.
 
+(** [I,S] a=b=0 *)
 Lemma assoc_0_0_2 :
   proj_eq (ext_point_add (ext_point_add B0 B0) B2)
           (ext_point_add B0 (ext_point_add B0 B2)).
 Proof. assoc_vm. Qed.
 
+(** [I,S] a=b=0 *)
 Lemma assoc_0_0_3 :
   proj_eq (ext_point_add (ext_point_add B0 B0) B3)
           (ext_point_add B0 (ext_point_add B0 B3)).
 Proof. assoc_vm. Qed.
 
+(** [I] a=0, c=0 *)
 Lemma assoc_0_1_0 :
   proj_eq (ext_point_add (ext_point_add B0 B1) B0)
           (ext_point_add B0 (ext_point_add B1 B0)).
 Proof. assoc_vm. Qed.
 
+(** [I,S] a=0, b=c=1 *)
 Lemma assoc_0_1_1 :
   proj_eq (ext_point_add (ext_point_add B0 B1) B1)
           (ext_point_add B0 (ext_point_add B1 B1)).
 Proof. assoc_vm. Qed.
 
+(** [I] a=0 *)
 Lemma assoc_0_1_2 :
   proj_eq (ext_point_add (ext_point_add B0 B1) B2)
           (ext_point_add B0 (ext_point_add B1 B2)).
 Proof. assoc_vm. Qed.
 
+(** [I] a=0 *)
 Lemma assoc_0_1_3 :
   proj_eq (ext_point_add (ext_point_add B0 B1) B3)
           (ext_point_add B0 (ext_point_add B1 B3)).
 Proof. assoc_vm. Qed.
 
+(** [I] a=0, c=0 *)
 Lemma assoc_0_2_0 :
   proj_eq (ext_point_add (ext_point_add B0 B2) B0)
           (ext_point_add B0 (ext_point_add B2 B0)).
 Proof. assoc_vm. Qed.
 
+(** [I] a=0 *)
 Lemma assoc_0_2_1 :
   proj_eq (ext_point_add (ext_point_add B0 B2) B1)
           (ext_point_add B0 (ext_point_add B2 B1)).
 Proof. assoc_vm. Qed.
 
+(** [I,S] a=0, b=c=2 *)
 Lemma assoc_0_2_2 :
   proj_eq (ext_point_add (ext_point_add B0 B2) B2)
           (ext_point_add B0 (ext_point_add B2 B2)).
 Proof. assoc_vm. Qed.
 
+(** [I] a=0 *)
 Lemma assoc_0_2_3 :
   proj_eq (ext_point_add (ext_point_add B0 B2) B3)
           (ext_point_add B0 (ext_point_add B2 B3)).
 Proof. assoc_vm. Qed.
 
+(** [I] a=0, c=0 *)
 Lemma assoc_0_3_0 :
   proj_eq (ext_point_add (ext_point_add B0 B3) B0)
           (ext_point_add B0 (ext_point_add B3 B0)).
 Proof. assoc_vm. Qed.
 
+(** [I] a=0 *)
 Lemma assoc_0_3_1 :
   proj_eq (ext_point_add (ext_point_add B0 B3) B1)
           (ext_point_add B0 (ext_point_add B3 B1)).
 Proof. assoc_vm. Qed.
 
+(** [I] a=0 *)
 Lemma assoc_0_3_2 :
   proj_eq (ext_point_add (ext_point_add B0 B3) B2)
           (ext_point_add B0 (ext_point_add B3 B2)).
 Proof. assoc_vm. Qed.
 
+(** [I,S] a=0, b=c=3 *)
 Lemma assoc_0_3_3 :
   proj_eq (ext_point_add (ext_point_add B0 B3) B3)
           (ext_point_add B0 (ext_point_add B3 B3)).
 Proof. assoc_vm. Qed.
 
-(** --- a=1 block (16 instances) --- *)
+(** --- a=1 block (16 instances: 7 Identity, 5 Self-addition, 4 Full) --- *)
 
+(** [I,S] b=c=0 *)
 Lemma assoc_1_0_0 :
   proj_eq (ext_point_add (ext_point_add B1 B0) B0)
           (ext_point_add B1 (ext_point_add B0 B0)).
 Proof. assoc_vm. Qed.
 
+(** [I] b=0 *)
 Lemma assoc_1_0_1 :
   proj_eq (ext_point_add (ext_point_add B1 B0) B1)
           (ext_point_add B1 (ext_point_add B0 B1)).
 Proof. assoc_vm. Qed.
 
+(** [I] b=0 *)
 Lemma assoc_1_0_2 :
   proj_eq (ext_point_add (ext_point_add B1 B0) B2)
           (ext_point_add B1 (ext_point_add B0 B2)).
 Proof. assoc_vm. Qed.
 
+(** [I] b=0 *)
 Lemma assoc_1_0_3 :
   proj_eq (ext_point_add (ext_point_add B1 B0) B3)
           (ext_point_add B1 (ext_point_add B0 B3)).
 Proof. assoc_vm. Qed.
 
+(** [I,S] a=b=1, c=0 *)
 Lemma assoc_1_1_0 :
   proj_eq (ext_point_add (ext_point_add B1 B1) B0)
           (ext_point_add B1 (ext_point_add B1 B0)).
