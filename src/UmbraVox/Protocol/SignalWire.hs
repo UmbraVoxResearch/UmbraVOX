@@ -36,7 +36,7 @@ module UmbraVox.Protocol.SignalWire
     , ProtoField(..)
     ) where
 
-import Data.Bits (Bits, shiftL, shiftR, (.&.), (.|.), testBit)
+import Data.Bits (shiftL, shiftR, (.&.), (.|.), testBit)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Word (Word8, Word32, Word64)
@@ -49,7 +49,7 @@ import Data.Word (Word8, Word32, Word64)
 data WireType
     = WireVarint          -- ^ 0: int32, int64, uint32, uint64, bool, enum
     | WireLengthDelimited -- ^ 2: string, bytes, embedded messages
-    deriving (Eq, Show)
+    deriving stock (Eq, Show)
 
 wireTypeToTag :: WireType -> Word8
 wireTypeToTag WireVarint          = 0
@@ -60,7 +60,7 @@ data ProtoField = ProtoField
     { pfFieldNumber :: !Word32
     , pfWireType    :: !WireType
     , pfValue       :: !ByteString  -- ^ Raw value (varint-encoded or raw bytes)
-    } deriving (Show)
+    } deriving stock (Show)
 
 ------------------------------------------------------------------------
 -- Varint encoding/decoding (protobuf base-128)
@@ -96,10 +96,10 @@ decodeVarint = go 0 0
 -- | Encode a single protobuf field.
 encodeField :: Word32 -> WireType -> ByteString -> ByteString
 encodeField fieldNum wt payload =
-    let !tag = fromIntegral fieldNum `shiftL` 3 .|. fromIntegral (wireTypeToTag wt)
+    let !tag = (fromIntegral fieldNum `shiftL` 3 .|. fromIntegral (wireTypeToTag wt)) :: Word64
     in case wt of
-        WireVarint          -> encodeVarint (fromIntegral tag) <> payload
-        WireLengthDelimited -> encodeVarint (fromIntegral tag)
+        WireVarint          -> encodeVarint tag <> payload
+        WireLengthDelimited -> encodeVarint tag
                             <> encodeVarint (fromIntegral (BS.length payload))
                             <> payload
 
@@ -167,7 +167,7 @@ data SignalMessage = SignalMessage
     , smCounter        :: !Word32
     , smPreviousCounter :: !Word32
     , smCiphertext     :: !ByteString
-    } deriving (Show, Eq)
+    } deriving stock (Show, Eq)
 
 -- | Pre-key Signal message (initial message with identity + prekey info).
 -- Wire: field 1 = registrationId (uint32), field 2 = preKeyId (uint32),
@@ -180,7 +180,7 @@ data PreKeySignalMessage = PreKeySignalMessage
     , pksmBaseKey        :: !ByteString  -- ^ 33 bytes
     , pksmIdentityKey    :: !ByteString  -- ^ 33 bytes
     , pksmMessage        :: !ByteString  -- ^ Serialized SignalMessage
-    } deriving (Show, Eq)
+    } deriving stock (Show, Eq)
 
 -- | Envelope type (subset).
 data EnvelopeType
@@ -190,7 +190,7 @@ data EnvelopeType
     | EnvelopePreKeyBundle     -- ^ 3: PreKey message
     | EnvelopeReceipt          -- ^ 5: Delivery receipt
     | EnvelopeUnidentifiedSender -- ^ 6: Sealed sender (future)
-    deriving (Show, Eq)
+    deriving stock (Show, Eq)
 
 envelopeTypeToWord :: EnvelopeType -> Word32
 envelopeTypeToWord EnvelopeUnknown            = 0
@@ -216,7 +216,7 @@ data SignalEnvelope = SignalEnvelope
     , seSourceDevice :: !Word32
     , seTimestamp    :: !Word64
     , seContent      :: !ByteString  -- ^ Encrypted inner message
-    } deriving (Show, Eq)
+    } deriving stock (Show, Eq)
 
 ------------------------------------------------------------------------
 -- Encoding
