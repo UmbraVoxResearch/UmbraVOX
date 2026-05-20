@@ -598,6 +598,833 @@ Section WithPrime.
     intros. exact (double_wf_identity X1 Y1 Z1 T1).
   Qed.
 
+  (** ======================================================================
+      2.7: Universal completeness — denominators are nonzero (ED-008e)
+
+      Bernstein-Lange 2007 Theorem 3.3: if a is a nonzero square and d is
+      a non-square in GF(p), then for on-curve points the denominators
+      1 +/- d*x1*x2*y1*y2 are never zero.
+
+      Proof strategy:
+        Assume denom = 0 for on-curve points.  From the closure identity
+        (te_add_closure_cross) with denom = 0, derive an algebraic
+        relation.  Case-split on whether the numerator terms vanish;
+        each case yields an explicit square root of d, contradicting
+        d_nonsquare.
+
+      Hypotheses:
+        d_nonsquare — d is not a quadratic residue
+        minus_one_square — a = -1 is a square (true for p = 2^255-19
+                           since p ≡ 5 mod 8 implies p ≡ 1 mod 4)
+      ====================================================================== *)
+
+  Hypothesis d_nonsquare : forall s : znz ed25519_p, mul ed25519_p s s <> d.
+  Hypothesis minus_one_square : exists i : znz ed25519_p,
+    mul ed25519_p i i = opp ed25519_p (one ed25519_p).
+
+  (** Helper: 2 <> 0 in GF(p) for p > 2 *)
+  Lemma two_neq_zero_f :
+    add ed25519_p (one ed25519_p) (one ed25519_p) <> zero ed25519_p.
+  Proof.
+    intro H.
+    assert (Hv : val ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p)) =
+                 val ed25519_p (zero ed25519_p)).
+    { rewrite H. reflexivity. }
+    vm_compute in Hv. discriminate.
+  Qed.
+
+  (** Helper: 4 <> 0 in GF(p) *)
+  Lemma four_neq_zero_f :
+    mul ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p))
+                  (add ed25519_p (one ed25519_p) (one ed25519_p)) <> zero ed25519_p.
+  Proof.
+    intro H.
+    assert (Hv : val ed25519_p
+      (mul ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p))
+                     (add ed25519_p (one ed25519_p) (one ed25519_p))) =
+      val ed25519_p (zero ed25519_p)).
+    { rewrite H. reflexivity. }
+    vm_compute in Hv. discriminate.
+  Qed.
+
+  (** Decidable equality for znz ed25519_p *)
+  Lemma znz_eq_dec : forall a b : znz ed25519_p, {a = b} + {a <> b}.
+  Proof.
+    intros a b.
+    destruct (Z.eq_dec (val ed25519_p a) (val ed25519_p b)) as [Heq | Hneq].
+    - left. destruct a as [va Ha]. destruct b as [vb Hb]. simpl in Heq.
+      subst vb. f_equal. apply Eqdep_dec.eq_proofs_unicity.
+      intros x y. destruct (Z.eq_dec x y); [left | right]; assumption.
+    - right. intro Habs. apply Hneq. rewrite Habs. reflexivity.
+  Defined.
+
+  (** No zero divisors in GF(p): if a*b = 0 then a = 0 or b = 0 *)
+  Lemma mul_integral : forall a b : znz ed25519_p,
+    mul ed25519_p a b = zero ed25519_p ->
+    a = zero ed25519_p \/ b = zero ed25519_p.
+  Proof.
+    intros a b Hab.
+    destruct (znz_eq_dec a (zero ed25519_p)) as [Ha | Ha].
+    - left. exact Ha.
+    - right.
+      assert (b = mul ed25519_p (inv ed25519_p a) (mul ed25519_p a b)).
+      { field. exact Ha. }
+      rewrite H. rewrite Hab. ring.
+  Qed.
+
+  (** Squaring a product: (a*b)^2 = a^2 * b^2 *)
+  Lemma mul_sq : forall a b : znz ed25519_p,
+    mul ed25519_p (mul ed25519_p a b) (mul ed25519_p a b) =
+    mul ed25519_p (mul ed25519_p a a) (mul ed25519_p b b).
+  Proof. intros. ring. Qed.
+
+  (** dp + dm = 2 (ring identity, no hypotheses) *)
+  Lemma dp_dm_sum : forall x1 y1 x2 y2 : znz ed25519_p,
+    add ed25519_p (te_denom_plus x1 y1 x2 y2) (te_denom_minus x1 y1 x2 y2) =
+    add ed25519_p (one ed25519_p) (one ed25519_p).
+  Proof. intros. unfold te_denom_plus, te_denom_minus. ring. Qed.
+
+  (** When dp = 0, dm = 2 *)
+  Lemma dp_zero_dm_two : forall x1 y1 x2 y2 : znz ed25519_p,
+    te_denom_plus x1 y1 x2 y2 = zero ed25519_p ->
+    te_denom_minus x1 y1 x2 y2 =
+      add ed25519_p (one ed25519_p) (one ed25519_p).
+  Proof.
+    intros x1 y1 x2 y2 Hdp.
+    assert (Hsum := dp_dm_sum x1 y1 x2 y2).
+    rewrite Hdp in Hsum.
+    assert (te_denom_minus x1 y1 x2 y2 =
+            add ed25519_p (zero ed25519_p) (te_denom_minus x1 y1 x2 y2)) by ring.
+    rewrite H. rewrite <- Hsum. ring.
+  Qed.
+
+  (** When dm = 0, dp = 2 *)
+  Lemma dm_zero_dp_two : forall x1 y1 x2 y2 : znz ed25519_p,
+    te_denom_minus x1 y1 x2 y2 = zero ed25519_p ->
+    te_denom_plus x1 y1 x2 y2 =
+      add ed25519_p (one ed25519_p) (one ed25519_p).
+  Proof.
+    intros x1 y1 x2 y2 Hdm.
+    assert (Hsum := dp_dm_sum x1 y1 x2 y2).
+    rewrite Hdm in Hsum.
+    assert (te_denom_plus x1 y1 x2 y2 =
+            add ed25519_p (te_denom_plus x1 y1 x2 y2) (zero ed25519_p)) by ring.
+    rewrite H. rewrite <- Hsum. ring.
+  Qed.
+
+  (** Key algebraic consequence of closure + dp = 0:
+      xn^2 * (d * yn^2 + dm^2) = 0  *)
+  Lemma closure_dp_zero_factored :
+    forall x1 y1 x2 y2 : znz ed25519_p,
+    on_curve_f x1 y1 ->
+    on_curve_f x2 y2 ->
+    te_denom_plus x1 y1 x2 y2 = zero ed25519_p ->
+    mul ed25519_p
+      (mul ed25519_p (te_x_num x1 y1 x2 y2) (te_x_num x1 y1 x2 y2))
+      (add ed25519_p
+        (mul ed25519_p d
+          (mul ed25519_p (te_y_num x1 y1 x2 y2) (te_y_num x1 y1 x2 y2)))
+        (mul ed25519_p (te_denom_minus x1 y1 x2 y2)
+                       (te_denom_minus x1 y1 x2 y2))) =
+    zero ed25519_p.
+  Proof.
+    intros x1 y1 x2 y2 H1 H2 Hdp.
+    assert (Hcl := te_add_closure_cross x1 y1 x2 y2 H1 H2).
+    simpl in Hcl.
+    (* Hcl: -xn^2*dm^2 + yn^2*dp^2 = dp^2*dm^2 + d*xn^2*yn^2 *)
+    (* With dp = 0: -xn^2*dm^2 = d*xn^2*yn^2 *)
+    (* i.e. xn^2*(d*yn^2 + dm^2) = 0 *)
+    assert (Hcl0 :
+      add ed25519_p
+        (mul ed25519_p (opp ed25519_p (one ed25519_p))
+          (mul ed25519_p
+            (mul ed25519_p (te_x_num x1 y1 x2 y2) (te_x_num x1 y1 x2 y2))
+            (mul ed25519_p (te_denom_minus x1 y1 x2 y2) (te_denom_minus x1 y1 x2 y2))))
+        (mul ed25519_p
+          (mul ed25519_p (te_y_num x1 y1 x2 y2) (te_y_num x1 y1 x2 y2))
+          (mul ed25519_p (zero ed25519_p) (zero ed25519_p))) =
+      add ed25519_p
+        (mul ed25519_p
+          (mul ed25519_p (zero ed25519_p) (zero ed25519_p))
+          (mul ed25519_p (te_denom_minus x1 y1 x2 y2) (te_denom_minus x1 y1 x2 y2)))
+        (mul ed25519_p d
+          (mul ed25519_p
+            (mul ed25519_p (te_x_num x1 y1 x2 y2) (te_x_num x1 y1 x2 y2))
+            (mul ed25519_p (te_y_num x1 y1 x2 y2) (te_y_num x1 y1 x2 y2))))).
+    { rewrite <- Hdp. exact Hcl. }
+    (* Simplify: zeros cancel *)
+    assert (Hsimp :
+      mul ed25519_p
+        (mul ed25519_p (te_x_num x1 y1 x2 y2) (te_x_num x1 y1 x2 y2))
+        (add ed25519_p
+          (mul ed25519_p d
+            (mul ed25519_p (te_y_num x1 y1 x2 y2) (te_y_num x1 y1 x2 y2)))
+          (mul ed25519_p (te_denom_minus x1 y1 x2 y2)
+                         (te_denom_minus x1 y1 x2 y2))) =
+      zero ed25519_p).
+    {
+      assert (H :
+        sub ed25519_p
+          (mul ed25519_p d
+            (mul ed25519_p
+              (mul ed25519_p (te_x_num x1 y1 x2 y2) (te_x_num x1 y1 x2 y2))
+              (mul ed25519_p (te_y_num x1 y1 x2 y2) (te_y_num x1 y1 x2 y2))))
+          (mul ed25519_p (opp ed25519_p (one ed25519_p))
+            (mul ed25519_p
+              (mul ed25519_p (te_x_num x1 y1 x2 y2) (te_x_num x1 y1 x2 y2))
+              (mul ed25519_p (te_denom_minus x1 y1 x2 y2) (te_denom_minus x1 y1 x2 y2)))) =
+        zero ed25519_p).
+      {
+        assert (Htmp : forall p1 p2 p3 p4 : znz ed25519_p,
+          add ed25519_p
+            (mul ed25519_p (opp ed25519_p (one ed25519_p)) (mul ed25519_p p1 p3))
+            (mul ed25519_p p2 (mul ed25519_p (zero ed25519_p) (zero ed25519_p))) =
+          add ed25519_p
+            (mul ed25519_p (mul ed25519_p (zero ed25519_p) (zero ed25519_p)) p3)
+            (mul ed25519_p p4 (mul ed25519_p p1 p2)) ->
+          sub ed25519_p (mul ed25519_p p4 (mul ed25519_p p1 p2))
+              (mul ed25519_p (opp ed25519_p (one ed25519_p)) (mul ed25519_p p1 p3)) =
+          zero ed25519_p).
+        { intros p1 p2 p3 p4 Hprem.
+          assert (Hrew : sub ed25519_p (mul ed25519_p p4 (mul ed25519_p p1 p2))
+              (mul ed25519_p (opp ed25519_p (one ed25519_p)) (mul ed25519_p p1 p3)) =
+            sub ed25519_p
+              (add ed25519_p
+                (mul ed25519_p (mul ed25519_p (zero ed25519_p) (zero ed25519_p)) p3)
+                (mul ed25519_p p4 (mul ed25519_p p1 p2)))
+              (add ed25519_p
+                (mul ed25519_p (opp ed25519_p (one ed25519_p)) (mul ed25519_p p1 p3))
+                (mul ed25519_p p2 (mul ed25519_p (zero ed25519_p) (zero ed25519_p))))).
+          { ring. }
+          rewrite Hrew. rewrite Hprem. ring.
+        }
+        apply (Htmp
+          (mul ed25519_p (te_x_num x1 y1 x2 y2) (te_x_num x1 y1 x2 y2))
+          (mul ed25519_p (te_y_num x1 y1 x2 y2) (te_y_num x1 y1 x2 y2))
+          (mul ed25519_p (te_denom_minus x1 y1 x2 y2) (te_denom_minus x1 y1 x2 y2))
+          d).
+        exact Hcl0.
+      }
+      (* H: d*xn^2*yn^2 - (-1)*xn^2*dm^2 = 0
+         i.e. d*xn^2*yn^2 + xn^2*dm^2 = 0
+         i.e. xn^2*(d*yn^2 + dm^2) = 0 *)
+      assert (Hfactor :
+        mul ed25519_p
+          (mul ed25519_p (te_x_num x1 y1 x2 y2) (te_x_num x1 y1 x2 y2))
+          (add ed25519_p
+            (mul ed25519_p d
+              (mul ed25519_p (te_y_num x1 y1 x2 y2) (te_y_num x1 y1 x2 y2)))
+            (mul ed25519_p (te_denom_minus x1 y1 x2 y2)
+                           (te_denom_minus x1 y1 x2 y2))) =
+        sub ed25519_p
+          (mul ed25519_p d
+            (mul ed25519_p
+              (mul ed25519_p (te_x_num x1 y1 x2 y2) (te_x_num x1 y1 x2 y2))
+              (mul ed25519_p (te_y_num x1 y1 x2 y2) (te_y_num x1 y1 x2 y2))))
+          (mul ed25519_p (opp ed25519_p (one ed25519_p))
+            (mul ed25519_p
+              (mul ed25519_p (te_x_num x1 y1 x2 y2) (te_x_num x1 y1 x2 y2))
+              (mul ed25519_p (te_denom_minus x1 y1 x2 y2) (te_denom_minus x1 y1 x2 y2))))).
+      { ring. }
+      rewrite Hfactor. exact H.
+    }
+    exact Hsimp.
+  Qed.
+
+  (** Similarly for dm = 0: yn^2 * (dp^2 - d*xn^2) = 0 *)
+  Lemma closure_dm_zero_factored :
+    forall x1 y1 x2 y2 : znz ed25519_p,
+    on_curve_f x1 y1 ->
+    on_curve_f x2 y2 ->
+    te_denom_minus x1 y1 x2 y2 = zero ed25519_p ->
+    mul ed25519_p
+      (mul ed25519_p (te_y_num x1 y1 x2 y2) (te_y_num x1 y1 x2 y2))
+      (sub ed25519_p
+        (mul ed25519_p (te_denom_plus x1 y1 x2 y2)
+                       (te_denom_plus x1 y1 x2 y2))
+        (mul ed25519_p d
+          (mul ed25519_p (te_x_num x1 y1 x2 y2) (te_x_num x1 y1 x2 y2)))) =
+    zero ed25519_p.
+  Proof.
+    intros x1 y1 x2 y2 H1 H2 Hdm.
+    assert (Hcl := te_add_closure_cross x1 y1 x2 y2 H1 H2).
+    simpl in Hcl.
+    (* With dm = 0: yn^2*dp^2 = d*xn^2*yn^2, i.e. yn^2*(dp^2 - d*xn^2) = 0 *)
+    assert (Hcl0 :
+      add ed25519_p
+        (mul ed25519_p (opp ed25519_p (one ed25519_p))
+          (mul ed25519_p
+            (mul ed25519_p (te_x_num x1 y1 x2 y2) (te_x_num x1 y1 x2 y2))
+            (mul ed25519_p (zero ed25519_p) (zero ed25519_p))))
+        (mul ed25519_p
+          (mul ed25519_p (te_y_num x1 y1 x2 y2) (te_y_num x1 y1 x2 y2))
+          (mul ed25519_p (te_denom_plus x1 y1 x2 y2) (te_denom_plus x1 y1 x2 y2))) =
+      add ed25519_p
+        (mul ed25519_p
+          (mul ed25519_p (te_denom_plus x1 y1 x2 y2) (te_denom_plus x1 y1 x2 y2))
+          (mul ed25519_p (zero ed25519_p) (zero ed25519_p)))
+        (mul ed25519_p d
+          (mul ed25519_p
+            (mul ed25519_p (te_x_num x1 y1 x2 y2) (te_x_num x1 y1 x2 y2))
+            (mul ed25519_p (te_y_num x1 y1 x2 y2) (te_y_num x1 y1 x2 y2))))).
+    { rewrite <- Hdm. exact Hcl. }
+    assert (Hfact :
+      mul ed25519_p
+        (mul ed25519_p (te_y_num x1 y1 x2 y2) (te_y_num x1 y1 x2 y2))
+        (sub ed25519_p
+          (mul ed25519_p (te_denom_plus x1 y1 x2 y2)
+                         (te_denom_plus x1 y1 x2 y2))
+          (mul ed25519_p d
+            (mul ed25519_p (te_x_num x1 y1 x2 y2) (te_x_num x1 y1 x2 y2)))) =
+      sub ed25519_p
+        (mul ed25519_p
+          (mul ed25519_p (te_y_num x1 y1 x2 y2) (te_y_num x1 y1 x2 y2))
+          (mul ed25519_p (te_denom_plus x1 y1 x2 y2) (te_denom_plus x1 y1 x2 y2)))
+        (mul ed25519_p d
+          (mul ed25519_p
+            (mul ed25519_p (te_x_num x1 y1 x2 y2) (te_x_num x1 y1 x2 y2))
+            (mul ed25519_p (te_y_num x1 y1 x2 y2) (te_y_num x1 y1 x2 y2))))).
+    { ring. }
+    rewrite Hfact.
+    assert (Htmp :
+      sub ed25519_p
+        (mul ed25519_p
+          (mul ed25519_p (te_y_num x1 y1 x2 y2) (te_y_num x1 y1 x2 y2))
+          (mul ed25519_p (te_denom_plus x1 y1 x2 y2) (te_denom_plus x1 y1 x2 y2)))
+        (mul ed25519_p d
+          (mul ed25519_p
+            (mul ed25519_p (te_x_num x1 y1 x2 y2) (te_x_num x1 y1 x2 y2))
+            (mul ed25519_p (te_y_num x1 y1 x2 y2) (te_y_num x1 y1 x2 y2)))) =
+      sub ed25519_p
+        (add ed25519_p
+          (mul ed25519_p (opp ed25519_p (one ed25519_p))
+            (mul ed25519_p
+              (mul ed25519_p (te_x_num x1 y1 x2 y2) (te_x_num x1 y1 x2 y2))
+              (mul ed25519_p (zero ed25519_p) (zero ed25519_p))))
+          (mul ed25519_p
+            (mul ed25519_p (te_y_num x1 y1 x2 y2) (te_y_num x1 y1 x2 y2))
+            (mul ed25519_p (te_denom_plus x1 y1 x2 y2) (te_denom_plus x1 y1 x2 y2))))
+        (add ed25519_p
+          (mul ed25519_p
+            (mul ed25519_p (te_denom_plus x1 y1 x2 y2) (te_denom_plus x1 y1 x2 y2))
+            (mul ed25519_p (zero ed25519_p) (zero ed25519_p)))
+          (mul ed25519_p d
+            (mul ed25519_p
+              (mul ed25519_p (te_x_num x1 y1 x2 y2) (te_x_num x1 y1 x2 y2))
+              (mul ed25519_p (te_y_num x1 y1 x2 y2) (te_y_num x1 y1 x2 y2)))))).
+    { ring. }
+    rewrite Htmp. rewrite Hcl0. ring.
+  Qed.
+
+  (** Core contradiction: xn = 0 AND dp = 0 implies d is a square.
+      From xn = x1*y2 + y1*x2 = 0 and d*x1*x2*y1*y2 = -1,
+      we derive d = (inv(y1*x2))^2.  *)
+  Lemma xn_zero_dp_zero_d_square :
+    forall x1 y1 x2 y2 : znz ed25519_p,
+    on_curve_f x1 y1 ->
+    on_curve_f x2 y2 ->
+    te_x_num x1 y1 x2 y2 = zero ed25519_p ->
+    te_denom_plus x1 y1 x2 y2 = zero ed25519_p ->
+    exists s : znz ed25519_p, mul ed25519_p s s = d.
+  Proof.
+    intros x1 y1 x2 y2 H1 H2 Hxn Hdp.
+    unfold te_x_num in Hxn. unfold te_denom_plus in Hdp.
+    (* From dp = 0: 1 + d*x1*x2*y1*y2 = 0, so d*x1*x2*y1*y2 = -1 *)
+    assert (Hdt : mul ed25519_p d (mul ed25519_p (mul ed25519_p x1 x2)
+                                                  (mul ed25519_p y1 y2)) =
+                  opp ed25519_p (one ed25519_p)).
+    {
+      assert (add ed25519_p (one ed25519_p)
+                (mul ed25519_p d (mul ed25519_p (mul ed25519_p x1 x2)
+                                                (mul ed25519_p y1 y2))) =
+              zero ed25519_p) by exact Hdp.
+      assert (mul ed25519_p d (mul ed25519_p (mul ed25519_p x1 x2)
+                                              (mul ed25519_p y1 y2)) =
+              sub ed25519_p (zero ed25519_p) (one ed25519_p)).
+      { rewrite <- H. ring. }
+      rewrite H0. ring.
+    }
+    (* From xn = 0: x1*y2 = -(y1*x2) *)
+    assert (Hxy : mul ed25519_p x1 y2 = opp ed25519_p (mul ed25519_p y1 x2)).
+    {
+      assert (add ed25519_p (mul ed25519_p x1 y2) (mul ed25519_p y1 x2) =
+              zero ed25519_p) by exact Hxn.
+      assert (mul ed25519_p x1 y2 =
+              sub ed25519_p (zero ed25519_p) (mul ed25519_p y1 x2)).
+      { rewrite <- H. ring. }
+      rewrite H0. ring.
+    }
+    (* Key: d*(x1*x2)*(y1*y2) = d*(x1*y2)*(x2*y1) [by commutativity]
+       = d*(-(y1*x2))*(x2*y1) = -d*(y1*x2)*(x2*y1) = -d*(y1*x2)^2
+       Wait: d*(x1*x2)*(y1*y2) ≠ d*(x1*y2)*(x2*y1) in general!
+       Actually: x1*x2*y1*y2 = x1*y2 * x2*y1 [just rearranging factors]
+       So d*x1*x2*y1*y2 = d*(x1*y2)*(y1*x2) = -1.
+       And x1*y2 = -(y1*x2), so d*(-(y1*x2))*(y1*x2) = -d*(y1*x2)^2 = -1.
+       Therefore d*(y1*x2)^2 = 1, i.e. d = inv((y1*x2)^2) = (inv(y1*x2))^2. *)
+    assert (Hprod : mul ed25519_p d
+                      (mul ed25519_p (mul ed25519_p y1 x2)
+                                     (mul ed25519_p y1 x2)) =
+                    one ed25519_p).
+    {
+      (* d*(x1*x2)*(y1*y2) = d*(x1*y2)*(y1*x2) *)
+      assert (Hrearr : mul ed25519_p d (mul ed25519_p (mul ed25519_p x1 x2)
+                                                       (mul ed25519_p y1 y2)) =
+                        mul ed25519_p d (mul ed25519_p (mul ed25519_p x1 y2)
+                                                       (mul ed25519_p y1 x2))).
+      { ring. }
+      (* Substitute x1*y2 = -(y1*x2) *)
+      assert (Hsub : mul ed25519_p d (mul ed25519_p (mul ed25519_p x1 y2)
+                                                     (mul ed25519_p y1 x2)) =
+                     mul ed25519_p d (mul ed25519_p (opp ed25519_p (mul ed25519_p y1 x2))
+                                                    (mul ed25519_p y1 x2))).
+      { rewrite Hxy. reflexivity. }
+      (* -(y1*x2)*(y1*x2) = -(y1*x2)^2 *)
+      assert (Hneg : mul ed25519_p d (mul ed25519_p (opp ed25519_p (mul ed25519_p y1 x2))
+                                                     (mul ed25519_p y1 x2)) =
+                     opp ed25519_p (mul ed25519_p d (mul ed25519_p (mul ed25519_p y1 x2)
+                                                                    (mul ed25519_p y1 x2)))).
+      { ring. }
+      (* So d*(x1*x2)*(y1*y2) = -d*(y1*x2)^2 = -1 *)
+      (* Therefore d*(y1*x2)^2 = 1 *)
+      assert (Hchain : opp ed25519_p (mul ed25519_p d
+                          (mul ed25519_p (mul ed25519_p y1 x2)
+                                         (mul ed25519_p y1 x2))) =
+                        opp ed25519_p (one ed25519_p)).
+      { rewrite <- Hneg. rewrite <- Hsub. rewrite <- Hrearr. exact Hdt. }
+      (* -a = -b implies a = b *)
+      assert (mul ed25519_p d
+                (mul ed25519_p (mul ed25519_p y1 x2)
+                               (mul ed25519_p y1 x2)) =
+              one ed25519_p).
+      { assert (Htmp : forall u v : znz ed25519_p,
+                  opp ed25519_p u = opp ed25519_p v -> u = v).
+        { intros u v Huv.
+          assert (u = opp ed25519_p (opp ed25519_p u)) by ring.
+          rewrite H. rewrite Huv. ring. }
+        apply Htmp. exact Hchain.
+      }
+      exact H.
+    }
+    (* y1*x2 <> 0 (since d*(y1*x2)^2 = 1 and 1 <> 0) *)
+    assert (Hyx_nz : mul ed25519_p y1 x2 <> zero ed25519_p).
+    {
+      intro Habs.
+      assert (one ed25519_p = mul ed25519_p d
+                (mul ed25519_p (zero ed25519_p) (zero ed25519_p))).
+      { rewrite <- Habs. rewrite <- Hprod. reflexivity. }
+      assert (one ed25519_p = zero ed25519_p).
+      { rewrite H. ring. }
+      exact (one_neq_zero H0).
+    }
+    (* d = (inv(y1*x2))^2 *)
+    exists (inv ed25519_p (mul ed25519_p y1 x2)).
+    (* d*(y1*x2)^2 = 1 implies d = inv(y1*x2)^2.
+       Strategy: multiply both sides of d*(y1*x2)^2 = 1 by inv(y1*x2)^2.
+       LHS = d*(y1*x2)^2*inv(y1*x2)^2 = d*1 = d.
+       RHS = inv(y1*x2)^2. *)
+    assert (Hmul_both :
+      mul ed25519_p
+        (mul ed25519_p d (mul ed25519_p (mul ed25519_p y1 x2) (mul ed25519_p y1 x2)))
+        (mul ed25519_p (inv ed25519_p (mul ed25519_p y1 x2))
+                       (inv ed25519_p (mul ed25519_p y1 x2))) =
+      mul ed25519_p
+        (one ed25519_p)
+        (mul ed25519_p (inv ed25519_p (mul ed25519_p y1 x2))
+                       (inv ed25519_p (mul ed25519_p y1 x2)))).
+    { rewrite Hprod. reflexivity. }
+    (* Individual nonzero proofs for field tactic *)
+    assert (Hy1_nz : y1 <> zero ed25519_p).
+    { intro Habs. apply Hyx_nz. rewrite Habs. ring. }
+    assert (Hx2_nz : x2 <> zero ed25519_p).
+    { intro Habs. apply Hyx_nz. rewrite Habs. ring. }
+    (* LHS simplifies to d *)
+    assert (Hlhs : mul ed25519_p
+        (mul ed25519_p d (mul ed25519_p (mul ed25519_p y1 x2) (mul ed25519_p y1 x2)))
+        (mul ed25519_p (inv ed25519_p (mul ed25519_p y1 x2))
+                       (inv ed25519_p (mul ed25519_p y1 x2))) = d).
+    { field. split; assumption. }
+    (* RHS simplifies *)
+    assert (Hrhs : mul ed25519_p
+        (one ed25519_p)
+        (mul ed25519_p (inv ed25519_p (mul ed25519_p y1 x2))
+                       (inv ed25519_p (mul ed25519_p y1 x2))) =
+      mul ed25519_p (inv ed25519_p (mul ed25519_p y1 x2))
+                    (inv ed25519_p (mul ed25519_p y1 x2))).
+    { ring. }
+    rewrite <- Hlhs. rewrite <- Hrhs. exact Hmul_both.
+  Qed.
+
+  (** Core contradiction for the d*yn^2 + 4 = 0 case.
+      If d*yn^2 = -4 and -1 = i^2, then d = (2*i*inv(yn))^2. *)
+  Lemma d_yn_sq_neg4_d_square :
+    forall yn : znz ed25519_p,
+    add ed25519_p
+      (mul ed25519_p d (mul ed25519_p yn yn))
+      (mul ed25519_p
+        (add ed25519_p (one ed25519_p) (one ed25519_p))
+        (add ed25519_p (one ed25519_p) (one ed25519_p))) =
+    zero ed25519_p ->
+    exists s : znz ed25519_p, mul ed25519_p s s = d.
+  Proof.
+    intros yn Hsum.
+    destruct minus_one_square as [i Hi].
+    (* d*yn^2 = -4 = -1 * 4 = i^2 * 2^2 = (2*i)^2 *)
+    (* So d = (2*i)^2 / yn^2 = (2*i*inv(yn))^2 *)
+    (* First: yn <> 0, since d*yn^2 = -4 and 4 <> 0 *)
+    assert (Hyn_nz : yn <> zero ed25519_p).
+    {
+      intro Habs. rewrite Habs in Hsum.
+      assert (mul ed25519_p
+                (add ed25519_p (one ed25519_p) (one ed25519_p))
+                (add ed25519_p (one ed25519_p) (one ed25519_p)) =
+              zero ed25519_p).
+      { assert (add ed25519_p (mul ed25519_p d (mul ed25519_p (zero ed25519_p) (zero ed25519_p)))
+                  (mul ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p))
+                                 (add ed25519_p (one ed25519_p) (one ed25519_p))) =
+                zero ed25519_p) by exact Hsum.
+        assert (mul ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p))
+                              (add ed25519_p (one ed25519_p) (one ed25519_p)) =
+                add ed25519_p (mul ed25519_p d (mul ed25519_p (zero ed25519_p) (zero ed25519_p)))
+                  (mul ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p))
+                                 (add ed25519_p (one ed25519_p) (one ed25519_p)))).
+        { ring. }
+        rewrite H0. exact H.
+      }
+      exact (four_neq_zero_f H).
+    }
+    (* d*yn^2 = -4 *)
+    assert (Hdyn : mul ed25519_p d (mul ed25519_p yn yn) =
+                   opp ed25519_p (mul ed25519_p
+                     (add ed25519_p (one ed25519_p) (one ed25519_p))
+                     (add ed25519_p (one ed25519_p) (one ed25519_p)))).
+    {
+      assert (mul ed25519_p d (mul ed25519_p yn yn) =
+              sub ed25519_p (zero ed25519_p)
+                (mul ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p))
+                               (add ed25519_p (one ed25519_p) (one ed25519_p)))).
+      { rewrite <- Hsum. ring. }
+      rewrite H. ring.
+    }
+    (* -4 = i^2 * 2^2 = (2*i)^2 *)
+    assert (H2i_sq :
+      opp ed25519_p (mul ed25519_p
+        (add ed25519_p (one ed25519_p) (one ed25519_p))
+        (add ed25519_p (one ed25519_p) (one ed25519_p))) =
+      mul ed25519_p
+        (mul ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p)) i)
+        (mul ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p)) i)).
+    {
+      assert (mul ed25519_p
+        (mul ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p)) i)
+        (mul ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p)) i) =
+        mul ed25519_p (mul ed25519_p i i)
+          (mul ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p))
+                         (add ed25519_p (one ed25519_p) (one ed25519_p)))).
+      { ring. }
+      rewrite H. rewrite Hi. ring.
+    }
+    (* So d*yn^2 = (2*i)^2 *)
+    assert (Hdyn2 : mul ed25519_p d (mul ed25519_p yn yn) =
+      mul ed25519_p
+        (mul ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p)) i)
+        (mul ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p)) i)).
+    { rewrite Hdyn. exact H2i_sq. }
+    (* d = (2*i)^2 * inv(yn)^2 = (2*i*inv(yn))^2 *)
+    exists (mul ed25519_p
+              (mul ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p)) i)
+              (inv ed25519_p yn)).
+    (* d = (2*i*inv(yn))^2 *)
+    assert (Hyn2_nz : mul ed25519_p yn yn <> zero ed25519_p).
+    { intro Habs. destruct (mul_integral _ _ Habs); contradiction. }
+    assert (d = mul ed25519_p (mul ed25519_p d (mul ed25519_p yn yn))
+                              (inv ed25519_p (mul ed25519_p yn yn))).
+    { field. exact Hyn2_nz. }
+    rewrite H. rewrite Hdyn2.
+    assert (Htmp : forall u : znz ed25519_p,
+      mul ed25519_p yn yn <> zero ed25519_p ->
+      mul ed25519_p (mul ed25519_p u u) (inv ed25519_p (mul ed25519_p yn yn)) =
+      mul ed25519_p (mul ed25519_p u (inv ed25519_p yn))
+                    (mul ed25519_p u (inv ed25519_p yn))).
+    { intros u Hnn. field. exact Hyn_nz. }
+    apply Htmp. exact Hyn2_nz.
+  Qed.
+
+  (** Core contradiction for the yn = 0 AND dm = 0 case.
+      From yn = y1*y2 + x1*x2 = 0 and d*x1*x2*y1*y2 = 1,
+      we get -d*(x1*x2)^2 = 1, hence d = -(inv(x1*x2))^2 = (i*inv(x1*x2))^2. *)
+  Lemma yn_zero_dm_zero_d_square :
+    forall x1 y1 x2 y2 : znz ed25519_p,
+    on_curve_f x1 y1 ->
+    on_curve_f x2 y2 ->
+    te_y_num x1 y1 x2 y2 = zero ed25519_p ->
+    te_denom_minus x1 y1 x2 y2 = zero ed25519_p ->
+    exists s : znz ed25519_p, mul ed25519_p s s = d.
+  Proof.
+    intros x1 y1 x2 y2 H1 H2 Hyn Hdm.
+    unfold te_y_num in Hyn. unfold te_denom_minus in Hdm.
+    (* From dm = 0: 1 - d*x1*x2*y1*y2 = 0, so d*x1*x2*y1*y2 = 1 *)
+    assert (Hdt : mul ed25519_p d (mul ed25519_p (mul ed25519_p x1 x2)
+                                                  (mul ed25519_p y1 y2)) =
+                  one ed25519_p).
+    {
+      assert (sub ed25519_p (one ed25519_p)
+                (mul ed25519_p d (mul ed25519_p (mul ed25519_p x1 x2)
+                                                (mul ed25519_p y1 y2))) =
+              zero ed25519_p) by exact Hdm.
+      assert (mul ed25519_p d (mul ed25519_p (mul ed25519_p x1 x2)
+                                              (mul ed25519_p y1 y2)) =
+              sub ed25519_p (one ed25519_p) (zero ed25519_p)).
+      { rewrite <- H. ring. }
+      rewrite H0. ring.
+    }
+    (* From yn = 0: y1*y2 = -(x1*x2) *)
+    assert (Hyx : mul ed25519_p y1 y2 = opp ed25519_p (mul ed25519_p x1 x2)).
+    {
+      assert (add ed25519_p (mul ed25519_p y1 y2) (mul ed25519_p x1 x2) =
+              zero ed25519_p) by exact Hyn.
+      assert (mul ed25519_p y1 y2 =
+              sub ed25519_p (zero ed25519_p) (mul ed25519_p x1 x2)).
+      { rewrite <- H. ring. }
+      rewrite H0. ring.
+    }
+    (* d*(x1*x2)*(y1*y2) = d*(x1*x2)*(-(x1*x2)) = -d*(x1*x2)^2 = 1 *)
+    assert (Hprod : mul ed25519_p d
+                      (mul ed25519_p (mul ed25519_p x1 x2)
+                                     (mul ed25519_p x1 x2)) =
+                    opp ed25519_p (one ed25519_p)).
+    {
+      assert (Hrearr : mul ed25519_p d (mul ed25519_p (mul ed25519_p x1 x2)
+                                                       (mul ed25519_p y1 y2)) =
+                        mul ed25519_p d (mul ed25519_p (mul ed25519_p x1 x2)
+                                                       (opp ed25519_p (mul ed25519_p x1 x2)))).
+      { rewrite Hyx. reflexivity. }
+      assert (Hneg : mul ed25519_p d (mul ed25519_p (mul ed25519_p x1 x2)
+                                                     (opp ed25519_p (mul ed25519_p x1 x2))) =
+                     opp ed25519_p (mul ed25519_p d (mul ed25519_p (mul ed25519_p x1 x2)
+                                                                    (mul ed25519_p x1 x2)))).
+      { ring. }
+      assert (opp ed25519_p (mul ed25519_p d (mul ed25519_p (mul ed25519_p x1 x2)
+                                                              (mul ed25519_p x1 x2))) =
+              one ed25519_p).
+      { rewrite <- Hneg. rewrite <- Hrearr. exact Hdt. }
+      assert (forall u : znz ed25519_p, opp ed25519_p u = one ed25519_p ->
+              u = opp ed25519_p (one ed25519_p)).
+      { intros u Hu. assert (u = opp ed25519_p (opp ed25519_p u)) by ring.
+        rewrite H0. rewrite Hu. ring. }
+      apply H0. exact H.
+    }
+    (* Now: -d*(x1*x2)^2 = -1, i.e. d*(x1*x2)^2 = -(-1) = ... wait.
+       We have d*(x1*x2)^2 = -1. So -1 = i^2 gives d*(x1*x2)^2 = i^2.
+       And x1*x2 <> 0 (since d*(x1*x2)^2 = -1 and 1 <> 0).
+       So d = i^2 * inv((x1*x2)^2) = (i * inv(x1*x2))^2. *)
+    destruct minus_one_square as [i Hi].
+    assert (Hxx_nz : mul ed25519_p x1 x2 <> zero ed25519_p).
+    {
+      intro Habs. rewrite Habs in Hprod.
+      assert (opp ed25519_p (one ed25519_p) =
+              mul ed25519_p d (mul ed25519_p (zero ed25519_p) (zero ed25519_p))).
+      { rewrite <- Hprod. reflexivity. }
+      assert (opp ed25519_p (one ed25519_p) = zero ed25519_p).
+      { rewrite H. ring. }
+      assert (one ed25519_p = zero ed25519_p).
+      { assert (one ed25519_p = opp ed25519_p (opp ed25519_p (one ed25519_p))) by ring.
+        rewrite H1. rewrite H0. ring. }
+      exact (one_neq_zero H1).
+    }
+    assert (Hxx2_nz : mul ed25519_p (mul ed25519_p x1 x2) (mul ed25519_p x1 x2) <> zero ed25519_p).
+    { intro Habs. destruct (mul_integral _ _ Habs); contradiction. }
+    exists (mul ed25519_p i (inv ed25519_p (mul ed25519_p x1 x2))).
+    assert (d = mul ed25519_p (mul ed25519_p d (mul ed25519_p (mul ed25519_p x1 x2)
+                                                               (mul ed25519_p x1 x2)))
+                              (inv ed25519_p (mul ed25519_p (mul ed25519_p x1 x2)
+                                                             (mul ed25519_p x1 x2)))).
+    { field. exact Hxx2_nz. }
+    rewrite H. rewrite Hprod.
+    (* opp(one) * inv(xx^2) = i^2 * inv(xx)^2 = (i*inv(xx))^2 *)
+    assert (mul ed25519_p (opp ed25519_p (one ed25519_p))
+                          (inv ed25519_p (mul ed25519_p (mul ed25519_p x1 x2)
+                                                         (mul ed25519_p x1 x2))) =
+            mul ed25519_p (mul ed25519_p i (inv ed25519_p (mul ed25519_p x1 x2)))
+                          (mul ed25519_p i (inv ed25519_p (mul ed25519_p x1 x2)))).
+    {
+      rewrite <- Hi. field. exact Hxx_nz.
+    }
+    exact H0.
+  Qed.
+
+  (** For dm = 0: d*xn^2 = dp^2, hence d*xn^2 = 4, hence d = (2/xn)^2.
+      If xn = 0, then dp^2 = 0, so dp = 0, but dp = 2 when dm = 0. *)
+  Lemma xn_nonzero_dm_zero_d_square :
+    forall x1 y1 x2 y2 : znz ed25519_p,
+    on_curve_f x1 y1 ->
+    on_curve_f x2 y2 ->
+    te_denom_minus x1 y1 x2 y2 = zero ed25519_p ->
+    sub ed25519_p
+      (mul ed25519_p (te_denom_plus x1 y1 x2 y2) (te_denom_plus x1 y1 x2 y2))
+      (mul ed25519_p d (mul ed25519_p (te_x_num x1 y1 x2 y2)
+                                       (te_x_num x1 y1 x2 y2))) =
+    zero ed25519_p ->
+    exists s : znz ed25519_p, mul ed25519_p s s = d.
+  Proof.
+    intros x1 y1 x2 y2 H1 H2 Hdm Hfact.
+    (* dp = 2 when dm = 0 *)
+    assert (Hdp2 := dm_zero_dp_two x1 y1 x2 y2 Hdm).
+    (* dp^2 = d*xn^2 *)
+    assert (Hdxn : mul ed25519_p d (mul ed25519_p (te_x_num x1 y1 x2 y2)
+                                                   (te_x_num x1 y1 x2 y2)) =
+                   mul ed25519_p (te_denom_plus x1 y1 x2 y2)
+                                 (te_denom_plus x1 y1 x2 y2)).
+    {
+      assert (mul ed25519_p d (mul ed25519_p (te_x_num x1 y1 x2 y2)
+                                              (te_x_num x1 y1 x2 y2)) =
+              sub ed25519_p (mul ed25519_p (te_denom_plus x1 y1 x2 y2)
+                                           (te_denom_plus x1 y1 x2 y2))
+                            (zero ed25519_p)).
+      { rewrite <- Hfact. ring. }
+      rewrite H. ring.
+    }
+    (* dp^2 = 4 *)
+    assert (Hdp_sq : mul ed25519_p (te_denom_plus x1 y1 x2 y2)
+                                    (te_denom_plus x1 y1 x2 y2) =
+                     mul ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p))
+                                   (add ed25519_p (one ed25519_p) (one ed25519_p))).
+    { rewrite Hdp2. reflexivity. }
+    (* d*xn^2 = 4 *)
+    assert (Hdxn4 : mul ed25519_p d (mul ed25519_p (te_x_num x1 y1 x2 y2)
+                                                    (te_x_num x1 y1 x2 y2)) =
+                    mul ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p))
+                                  (add ed25519_p (one ed25519_p) (one ed25519_p))).
+    { rewrite Hdxn. exact Hdp_sq. }
+    (* xn <> 0 (since d*xn^2 = 4 and 4 <> 0) *)
+    assert (Hxn_nz : te_x_num x1 y1 x2 y2 <> zero ed25519_p).
+    {
+      intro Habs. rewrite Habs in Hdxn4.
+      assert (mul ed25519_p d (mul ed25519_p (zero ed25519_p) (zero ed25519_p)) =
+              mul ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p))
+                            (add ed25519_p (one ed25519_p) (one ed25519_p)))
+        by exact Hdxn4.
+      assert (zero ed25519_p =
+              mul ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p))
+                            (add ed25519_p (one ed25519_p) (one ed25519_p))).
+      { assert (zero ed25519_p =
+                mul ed25519_p d (mul ed25519_p (zero ed25519_p) (zero ed25519_p))) by ring.
+        rewrite H0. exact H. }
+      symmetry in H0. exact (four_neq_zero_f H0).
+    }
+    (* d = 4 * inv(xn^2) = (2*inv(xn))^2 *)
+    assert (Hxn2_nz : mul ed25519_p (te_x_num x1 y1 x2 y2)
+                                     (te_x_num x1 y1 x2 y2) <> zero ed25519_p).
+    { intro Habs. destruct (mul_integral _ _ Habs); contradiction. }
+    exists (mul ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p))
+                          (inv ed25519_p (te_x_num x1 y1 x2 y2))).
+    assert (d = mul ed25519_p (mul ed25519_p d
+                  (mul ed25519_p (te_x_num x1 y1 x2 y2)
+                                 (te_x_num x1 y1 x2 y2)))
+                (inv ed25519_p (mul ed25519_p (te_x_num x1 y1 x2 y2)
+                                              (te_x_num x1 y1 x2 y2)))).
+    { field. exact Hxn2_nz. }
+    rewrite H. rewrite Hdxn4.
+    assert (mul ed25519_p
+              (mul ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p))
+                             (add ed25519_p (one ed25519_p) (one ed25519_p)))
+              (inv ed25519_p (mul ed25519_p (te_x_num x1 y1 x2 y2)
+                                            (te_x_num x1 y1 x2 y2))) =
+            mul ed25519_p
+              (mul ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p))
+                             (inv ed25519_p (te_x_num x1 y1 x2 y2)))
+              (mul ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p))
+                             (inv ed25519_p (te_x_num x1 y1 x2 y2)))).
+    { field. exact Hxn_nz. }
+    exact H0.
+  Qed.
+
+  (** ============================================================
+      Main theorem: te_denom_plus is nonzero for on-curve points
+      ============================================================ *)
+  Theorem te_denom_plus_nonzero :
+    forall x1 y1 x2 y2 : znz ed25519_p,
+    on_curve_f x1 y1 ->
+    on_curve_f x2 y2 ->
+    te_denom_plus x1 y1 x2 y2 <> zero ed25519_p.
+  Proof.
+    intros x1 y1 x2 y2 H1 H2 Hdp.
+    (* From closure identity + dp = 0: xn^2*(d*yn^2 + dm^2) = 0 *)
+    assert (Hfact := closure_dp_zero_factored x1 y1 x2 y2 H1 H2 Hdp).
+    (* dm = 2 when dp = 0 *)
+    assert (Hdm2 := dp_zero_dm_two x1 y1 x2 y2 Hdp).
+    (* xn^2 * (d*yn^2 + 4) = 0 *)
+    assert (Hfact2 :
+      mul ed25519_p
+        (mul ed25519_p (te_x_num x1 y1 x2 y2) (te_x_num x1 y1 x2 y2))
+        (add ed25519_p
+          (mul ed25519_p d
+            (mul ed25519_p (te_y_num x1 y1 x2 y2) (te_y_num x1 y1 x2 y2)))
+          (mul ed25519_p
+            (add ed25519_p (one ed25519_p) (one ed25519_p))
+            (add ed25519_p (one ed25519_p) (one ed25519_p)))) =
+      zero ed25519_p).
+    { rewrite <- Hdm2 in Hfact. exact Hfact. }
+    (* Case split: xn^2 = 0 or (d*yn^2 + 4) = 0 *)
+    destruct (mul_integral _ _ Hfact2) as [Hxn2 | Hinner].
+    - (* Case xn^2 = 0, hence xn = 0 *)
+      destruct (mul_integral _ _ Hxn2) as [Hxn | Hxn].
+      + (* xn = 0 AND dp = 0: d is a square *)
+        destruct (xn_zero_dp_zero_d_square x1 y1 x2 y2 H1 H2 Hxn Hdp) as [s Hs].
+        exact (d_nonsquare s Hs).
+      + destruct (xn_zero_dp_zero_d_square x1 y1 x2 y2 H1 H2 Hxn Hdp) as [s Hs].
+        exact (d_nonsquare s Hs).
+    - (* Case d*yn^2 + 4 = 0: d is a square via minus_one_square *)
+      destruct (d_yn_sq_neg4_d_square (te_y_num x1 y1 x2 y2) Hinner) as [s Hs].
+      exact (d_nonsquare s Hs).
+  Qed.
+
+  (** ============================================================
+      Main theorem: te_denom_minus is nonzero for on-curve points
+      ============================================================ *)
+  Theorem te_denom_minus_nonzero :
+    forall x1 y1 x2 y2 : znz ed25519_p,
+    on_curve_f x1 y1 ->
+    on_curve_f x2 y2 ->
+    te_denom_minus x1 y1 x2 y2 <> zero ed25519_p.
+  Proof.
+    intros x1 y1 x2 y2 H1 H2 Hdm.
+    (* From closure identity + dm = 0: yn^2*(dp^2 - d*xn^2) = 0 *)
+    assert (Hfact := closure_dm_zero_factored x1 y1 x2 y2 H1 H2 Hdm).
+    (* dp = 2 when dm = 0 *)
+    assert (Hdp2 := dm_zero_dp_two x1 y1 x2 y2 Hdm).
+    (* yn^2 * (4 - d*xn^2) = 0 *)
+    assert (Hfact2 :
+      mul ed25519_p
+        (mul ed25519_p (te_y_num x1 y1 x2 y2) (te_y_num x1 y1 x2 y2))
+        (sub ed25519_p
+          (mul ed25519_p
+            (add ed25519_p (one ed25519_p) (one ed25519_p))
+            (add ed25519_p (one ed25519_p) (one ed25519_p)))
+          (mul ed25519_p d
+            (mul ed25519_p (te_x_num x1 y1 x2 y2) (te_x_num x1 y1 x2 y2)))) =
+      zero ed25519_p).
+    { rewrite <- Hdp2 in Hfact. exact Hfact. }
+    (* Case split: yn^2 = 0 or (4 - d*xn^2) = 0 *)
+    destruct (mul_integral _ _ Hfact2) as [Hyn2 | Hinner].
+    - (* Case yn^2 = 0, hence yn = 0 *)
+      destruct (mul_integral _ _ Hyn2) as [Hyn | Hyn].
+      + destruct (yn_zero_dm_zero_d_square x1 y1 x2 y2 H1 H2 Hyn Hdm) as [s Hs].
+        exact (d_nonsquare s Hs).
+      + destruct (yn_zero_dm_zero_d_square x1 y1 x2 y2 H1 H2 Hyn Hdm) as [s Hs].
+        exact (d_nonsquare s Hs).
+    - (* Case dp^2 - d*xn^2 = 0, i.e. d*xn^2 = dp^2 = 4 *)
+      assert (Hsub :
+        sub ed25519_p
+          (mul ed25519_p (te_denom_plus x1 y1 x2 y2)
+                         (te_denom_plus x1 y1 x2 y2))
+          (mul ed25519_p d (mul ed25519_p (te_x_num x1 y1 x2 y2)
+                                          (te_x_num x1 y1 x2 y2))) =
+        zero ed25519_p).
+      { rewrite Hdp2. exact Hinner. }
+      destruct (xn_nonzero_dm_zero_d_square x1 y1 x2 y2 H1 H2 Hdm Hsub) as [s Hs].
+      exact (d_nonsquare s Hs).
+  Qed.
+
 End WithPrime.
 
 (** ========================================================================

@@ -34,6 +34,7 @@ import Data.Map.Strict (Map)
 import System.Directory (doesFileExist, findExecutable, listDirectory)
 import System.Exit (ExitCode(..))
 import System.FilePath ((</>), takeBaseName, takeExtension)
+import System.IO (hSetEncoding, latin1, openFile, IOMode(..), hGetContents, hClose)
 import System.Process (readProcessWithExitCode)
 
 -- | Result of verifying a single F* module.
@@ -210,11 +211,13 @@ countAssumes path = do
     if not exists
         then pure 0
         else do
-            contents <- readFile path
+            h <- openFile path ReadMode
+            hSetEncoding h latin1  -- F* files may contain non-UTF-8 bytes
+            contents <- hGetContents h
             -- Force full evaluation before returning (avoid lazy I/O leaks)
             let ls = lines contents
                 n = length (filter (\l -> containsWord "assume" l || containsWord "admit" l) ls)
-            n `seq` pure n
+            n `seq` (hClose h >> pure n)
 
 -- | Generate a coverage summary table for all .fst files in a directory.
 -- For each file the report lists:
@@ -246,13 +249,15 @@ generateCoverageReport dir = do
     analyseFile d f = do
         let modName = takeBaseName f
             path    = d </> f
-        contents <- readFile path
+        h <- openFile path ReadMode
+        hSetEncoding h latin1  -- F* files may contain non-UTF-8 bytes
+        contents <- hGetContents h
         let ls      = lines contents
             assumes = length (filter (containsWord "assume") ls)
             lemmas  = length (filter isLemmaVal ls)
             proved  = length (filter isProvedLemma ls)
         assumes `seq` lemmas `seq` proved `seq`
-            pure (modName, assumes, lemmas, proved)
+            (hClose h >> pure (modName, assumes, lemmas, proved))
 
     formatRow :: (String, Int, Int, Int) -> String
     formatRow (m, a, l, p) =

@@ -11,9 +11,9 @@ Current scope:
 
 These manifests exist so the feature-plugin registry can point at concrete
 on-disk descriptors for future packaged modules without turning them on in the
-MVP. Transport/provider descriptors live in `providers/` and use a separate
-schema so connectivity substrates do not get conflated with UX/data-plane
-feature modules.
+MVP. Transport/provider descriptors also live in this directory and use the
+`uvx-provider-v1` schema, while feature modules use the `uvx-plugin-v1`
+schema.
 
 Manifest contract:
 - `api=uvx-plugin-v1` declares the expected manifest/runtime contract version

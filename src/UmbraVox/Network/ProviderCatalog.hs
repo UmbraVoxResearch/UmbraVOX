@@ -201,7 +201,7 @@ providerDescriptor pid =
             , tpName = name
             , tpDescription = desc
             , tpClass = providerClass
-            , tpManifestPath = "providers" </> stableId </> "manifest.uvx"
+            , tpManifestPath = "plugins" </> stableId </> "manifest.uvx"
             }
 
 loadTransportProviderManifestFields :: TransportProviderId -> IO [(String, String)]
@@ -252,16 +252,16 @@ loadTransportProviderRuntimeCatalog = do
 
 discoverTransportProviderManifestPaths :: IO [FilePath]
 discoverTransportProviderManifestPaths = do
-    exists <- doesDirectoryExist "providers"
+    exists <- doesDirectoryExist "plugins"
     if not exists
         then pure []
         else do
-            entries <- listDirectory "providers"
+            entries <- listDirectory "plugins"
             collect entries
   where
     collect [] = pure []
     collect (entry:rest) = do
-        let path = "providers" </> entry </> "manifest.uvx"
+        let path = "plugins" </> entry </> "manifest.uvx"
         present <- doesFileExist path
         remaining <- collect rest
         if present

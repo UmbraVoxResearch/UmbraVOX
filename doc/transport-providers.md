@@ -18,7 +18,7 @@ The provider system is defined across three layers:
 - **Runtime** -- `src/UmbraVox/Network/ProviderRuntime.hs` wires the active
   provider into listen/connect/accept operations at runtime.
 
-Each provider ships a `manifest.uvx` file under `providers/<id>/manifest.uvx`.
+Each provider ships a `manifest.uvx` file under `plugins/<id>/manifest.uvx`.
 
 ## Available Providers
 
@@ -95,7 +95,7 @@ instance TransportHandle MyTransport where
 
 ### 2. Create a manifest file
 
-Place a `manifest.uvx` at `providers/<id>/manifest.uvx`. See the Manifest
+Place a `manifest.uvx` at `plugins/<id>/manifest.uvx`. See the Manifest
 Format section below.
 
 ### 3. Register in ProviderCatalog
@@ -175,7 +175,7 @@ unless they are absolute.
 
 ## Provider Lifecycle
 
-1. **Discovery** -- `loadTransportProviderCatalog` scans `providers/*/manifest.uvx`
+1. **Discovery** -- `loadTransportProviderCatalog` scans `plugins/*/manifest.uvx`
    on disk at startup.
 2. **Parsing** -- Each manifest is parsed into a `ProviderManifest` record
    via `loadManifestFile` / `providerManifestFromFields`. All 12 fields must
