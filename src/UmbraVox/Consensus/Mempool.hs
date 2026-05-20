@@ -7,6 +7,9 @@ module UmbraVox.Consensus.Mempool
   , emptyMempool
   ) where
 
+{-# WARNING Mempool "UmbraVox.Consensus.Mempool is a stub -- not implemented" #-}
+{-# WARNING emptyMempool "UmbraVox.Consensus.Mempool is a stub -- not implemented" #-}
+
 -- | A bounded, fee-priority transaction pool.
 data Mempool = Mempool
   deriving (Show)

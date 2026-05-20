@@ -9,6 +9,9 @@ module UmbraVox.Crypto.Signal.Session
 
 import Data.ByteString (ByteString)
 
+{-# WARNING SessionState "UmbraVox.Crypto.Signal.Session is a stub -- not implemented" #-}
+{-# WARNING initSession "UmbraVox.Crypto.Signal.Session is a stub -- not implemented" #-}
+
 -- | Opaque session state for Signal protocol.
 data SessionState = SessionState
   deriving (Show)
