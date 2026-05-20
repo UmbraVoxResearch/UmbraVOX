@@ -190,36 +190,36 @@ Uses UmbraVOX's own crypto with Signal-compatible parameters (no Rust, no
 libsignal-client). Proves wire compatibility against real Signal-Server in
 cleanroom VM. Haskell + C + shell only. Tagged v0.2.0 when 100% complete.
 
-[ ] M19.1 Signal-compatible crypto layer (Haskell, reuses existing primitives)
-  [ ] M19.1.1 UmbraVox.Crypto.Signal.Compat — Signal parameter set
+[~] M19.1 Signal-compatible crypto layer (Haskell, reuses existing primitives)
+  [x] M19.1.1 UmbraVox.Crypto.Signal.Compat — Signal parameter set
     - signalHKDFLabel = "WhisperText" (vs "UmbraVox_Ratchet_v1")
     - signalRatchetLabel = "WhisperRatchet"
     - Thin wrappers around existing kdfRK, kdfCK, ratchetEncrypt, etc.
     - Same X25519, HMAC-SHA256, AES-256-GCM, HKDF-SHA256
-  [ ] M19.1.2 UmbraVox.Protocol.SignalWire — Signal protobuf wire format
+  [x] M19.1.2 UmbraVox.Protocol.SignalWire — Signal protobuf wire format
     - Hand-rolled minimal protobuf (varint + length-delimited, ~5 message types)
     - SignalMessage: version + ratchetKey + counter + prevCounter + ciphertext
     - PreKeySignalMessage: registrationId + preKeyId + signedPreKeyId + baseKey + identityKey + message
     - Envelope: type + sourceDevice + timestamp + content
     - No proto-lens dependency
-  [ ] M19.1.3 Tests: round-trip encode/decode for all Signal message types
+  [x] M19.1.3 Tests: round-trip encode/decode for all Signal message types
   [ ] M19.1.4 Tests: encrypt with Signal params, verify against known test vectors
 
-[ ] M19.2 Core bridge infrastructure (3 changes to existing modules)
-  [ ] M19.2.1 App/Types.hs — Add SessionCrypto sum type (RatchetCrypto | BridgeCrypto)
-  [ ] M19.2.2 TUI/Actions/Session.hs — Branch sendToSession on SessionCrypto
-  [ ] M19.2.3 Network/ProviderRuntime.hs — Add AUTH/CONTACTS/STATUS/PING IPC verbs
-  [ ] M19.2.4 TUI/Render.hs — Mandatory distinct visual indicator for bridge sessions
-  [ ] M19.2.5 TUI/Menu.hs + RuntimeCommand.hs — "New Bridge Chat" menu item
-  [ ] M19.2.6 SecureFd.hs — Credential fd inheritance via memfd_create
+[~] M19.2 Core bridge infrastructure (3 changes to existing modules)
+  [x] M19.2.1 App/Types.hs — Add SessionCrypto sum type (RatchetCrypto | BridgeCrypto)
+  [x] M19.2.2 TUI/Actions/Session.hs — Branch sendToSession on SessionCrypto (done as part of M19.2.1)
+  [x] M19.2.3 Network/ProviderRuntime.hs — Add AUTH/CONTACTS/STATUS/PING IPC verbs
+  [x] M19.2.4 TUI/Render.hs — Mandatory distinct visual indicator for bridge sessions
+  [x] M19.2.5 TUI/Menu.hs + RuntimeCommand.hs — "New Bridge Chat" menu item
+  [x] M19.2.6 SecureFd.hs — Credential fd inheritance via memfd_create
 
-[ ] M19.3 Signal bridge plugin (Haskell IPC subprocess)
-  [ ] M19.3.1 umbravox-signal-bridge executable in UmbraVox.cabal
-  [ ] M19.3.2 Bridge/Signal/Main.hs — IPC subprocess entry point
+[~] M19.3 Signal bridge plugin (Haskell IPC subprocess)
+  [x] M19.3.1 umbravox-signal-bridge executable in UmbraVox.cabal
+  [x] M19.3.2 Bridge/Signal/Main.hs — IPC subprocess entry point
   [ ] M19.3.3 Bridge/Signal/Session.hs — Signal session management
   [ ] M19.3.4 Bridge/Signal/Registration.hs — Linked device provisioning (QR code)
   [ ] M19.3.5 Bridge/Signal/WebSocket.hs — Signal WebSocket client
-  [ ] M19.3.6 providers/signal-bridge/manifest.uvx — Updated bridge manifest
+  [x] M19.3.6 providers/signal-bridge/manifest.uvx — Updated bridge manifest
   [ ] M19.3.7 Message send: plaintext → Signal ratchet encrypt → protobuf → REST
   [ ] M19.3.8 Message recv: WebSocket → protobuf → Signal ratchet decrypt → JSON
 
