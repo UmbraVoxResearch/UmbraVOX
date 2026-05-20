@@ -5,6 +5,36 @@ Tracks what changed, what did NOT change, and how to verify.
 
 ---
 
+## v0.1.9 Assurance Delta
+
+**Theme:** Universal Coq proofs and Signal bridge — ED-003, ED-007, ED-008b, ED-008c all proved
+
+**What changed since v0.1.8:**
+- 13 Coq files, 444 Qed (up from 11 files / 415 Qed)
+- ED-003 point_add_assoc: PROVED (Ed25519AssocUniversal.v)
+- ED-007 point_add_congruence_right: PROVED (Ed25519CongruenceUniversal.v)
+- ED-008b point_add_preserves_on_curve_ext: PROVED (Ed25519GroupUniversal.v)
+- ED-008c point_double_preserves_on_curve_ext: PROVED (Ed25519GroupUniversal.v doubling section)
+- Signal bridge plugin (M19) completed
+- assume val count: 25 (down from 27)
+
+**7 permanently irreducible crypto hardness assumptions:**
+1. tag_forgery_ct_axiom (Poly1305 UF-CMA, Bernstein 2005)
+2. hmac_non_fixpoint (HMAC-SHA256 PRF non-fixpoint, FIPS 198-1)
+3. hmac_collision_resistance (HMAC-SHA256 collision resistance, FIPS 180-4)
+4. distinct_messages_distinct_sigs (Ed25519 SHA-512 CR + DL, RFC 8032)
+5. unlinkability (Stealth address DDH on Curve25519, Bernstein 2006)
+6. vrf_strong_uniqueness (VRF DL hardness, RFC 9381)
+7. vrf_collision_resistance (VRF hash+DL hardness, RFC 9381)
+
+These can never be proved unconditionally in any proof system.
+
+**What this version does NOT claim:**
+- Does not claim constant-time behavior
+- Does not claim protocol-level interop with libsignal (Signal bridge is plugin-level, not protocol-level)
+
+---
+
 ## v0.1.8 Assurance Delta
 
 **Theme:** Formal proof breakthroughs — sign_then_verify and encode_decode_round_trip proved
@@ -137,19 +167,19 @@ All issues documented in commit history (`v0.1.1..v0.1.2`).
 
 ## Baseline Counts
 
-| Metric | v0.1.1 | v0.1.2 | v0.1.3 | v0.1.4 | v0.1.5 | v0.1.6 | v0.1.7 | v0.1.8 |
-|--------|--------|--------|--------|--------|--------|--------|--------|--------|
-| F* `admit()` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| F* `assume val` | 23 | 30 | 28 | 28 | 28 | 28 | 30 | 30 |
-| Coq `Qed` | 5 | 153 | 171 | 171 | 187 | 219 | 350 | 415 |
-| Coq files | 1 | 3 | 4 | 4 | 5 | 6 | 9 | 11 |
-| Coq `Admitted` (verified) | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Infra tests | 65 | 67 | 67 | 67 | 67 | 67 | 67 | 67 |
-| Assurance checks | -- | -- | 5/5 | 5/5 | 5/5 | 8/8 | 8/8 | 8/8 |
-| Differential suites | -- | -- | -- | 21/21 | 22/22 | 22/22 | 36/36 | 36/36 |
-| TUI screenshots | -- | -- | -- | -- | -- | -- | 8/8 | 8/8 |
-| Proved theorems | -- | -- | -- | -- | -- | -- | sign_then_verify, encode_decode_round_trip | -- |
-| Irreducible (permanent) | 7 | 7 | 7 | 7 | 7 | 7 | 7 | 7 |
+| Metric | v0.1.1 | v0.1.2 | v0.1.3 | v0.1.4 | v0.1.5 | v0.1.6 | v0.1.7 | v0.1.8 | v0.1.9 |
+|--------|--------|--------|--------|--------|--------|--------|--------|--------|--------|
+| F* `admit()` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| F* `assume val` | 23 | 30 | 28 | 28 | 28 | 28 | 30 | 30 | 25 |
+| Coq `Qed` | 5 | 153 | 171 | 171 | 187 | 219 | 350 | 415 | 444 |
+| Coq files | 1 | 3 | 4 | 4 | 5 | 6 | 9 | 11 | 13 |
+| Coq `Admitted` (verified) | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Infra tests | 65 | 67 | 67 | 67 | 67 | 67 | 67 | 67 | 67 |
+| Assurance checks | -- | -- | 5/5 | 5/5 | 5/5 | 8/8 | 8/8 | 8/8 | 8/8 |
+| Differential suites | -- | -- | -- | 21/21 | 22/22 | 22/22 | 36/36 | 36/36 | 36/36 |
+| TUI screenshots | -- | -- | -- | -- | -- | -- | 8/8 | 8/8 | 8/8 |
+| Proved theorems | -- | -- | -- | -- | -- | -- | sign_then_verify, encode_decode_round_trip | -- | ED-003, ED-007, ED-008b, ED-008c |
+| Irreducible (permanent) | 7 | 7 | 7 | 7 | 7 | 7 | 7 | 7 | 7 |
 
 ---
 
