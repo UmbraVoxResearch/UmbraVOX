@@ -1051,7 +1051,11 @@ Section WithPrime.
       mul ed25519_p (inv ed25519_p (mul ed25519_p y1 x2))
                     (inv ed25519_p (mul ed25519_p y1 x2))).
     { ring. }
-    rewrite <- Hlhs. rewrite <- Hrhs. exact Hmul_both.
+    (* d = inv(y1*x2)^2 follows from Hmul_both + Hlhs + Hrhs *)
+    assert (Hd : d = mul ed25519_p (inv ed25519_p (mul ed25519_p y1 x2))
+                                    (inv ed25519_p (mul ed25519_p y1 x2))).
+    { rewrite <- Hlhs. rewrite Hmul_both. exact Hrhs. }
+    symmetry. exact Hd.
   Qed.
 
   (** Core contradiction for the d*yn^2 + 4 = 0 case.
@@ -1138,7 +1142,7 @@ Section WithPrime.
     { intro Habs. destruct (mul_integral _ _ Habs); contradiction. }
     assert (d = mul ed25519_p (mul ed25519_p d (mul ed25519_p yn yn))
                               (inv ed25519_p (mul ed25519_p yn yn))).
-    { field. exact Hyn2_nz. }
+    { field. exact Hyn_nz. }
     rewrite H. rewrite Hdyn2.
     assert (Htmp : forall u : znz ed25519_p,
       mul ed25519_p yn yn <> zero ed25519_p ->
@@ -1146,7 +1150,7 @@ Section WithPrime.
       mul ed25519_p (mul ed25519_p u (inv ed25519_p yn))
                     (mul ed25519_p u (inv ed25519_p yn))).
     { intros u Hnn. field. exact Hyn_nz. }
-    apply Htmp. exact Hyn2_nz.
+    symmetry. apply Htmp. exact Hyn2_nz.
   Qed.
 
   (** Core contradiction for the yn = 0 AND dm = 0 case.
@@ -1221,16 +1225,20 @@ Section WithPrime.
     assert (Hxx_nz : mul ed25519_p x1 x2 <> zero ed25519_p).
     {
       intro Habs. rewrite Habs in Hprod.
-      assert (opp ed25519_p (one ed25519_p) =
+      assert (Hopp_eq : opp ed25519_p (one ed25519_p) =
               mul ed25519_p d (mul ed25519_p (zero ed25519_p) (zero ed25519_p))).
       { rewrite <- Hprod. reflexivity. }
-      assert (opp ed25519_p (one ed25519_p) = zero ed25519_p).
-      { rewrite H. ring. }
-      assert (one ed25519_p = zero ed25519_p).
-      { assert (one ed25519_p = opp ed25519_p (opp ed25519_p (one ed25519_p))) by ring.
-        rewrite H1. rewrite H0. ring. }
-      exact (one_neq_zero H1).
+      assert (Hopp_zero : opp ed25519_p (one ed25519_p) = zero ed25519_p).
+      { rewrite Hopp_eq. ring. }
+      assert (Hone_zero : one ed25519_p = zero ed25519_p).
+      { assert (Hddn : one ed25519_p = opp ed25519_p (opp ed25519_p (one ed25519_p))) by ring.
+        rewrite Hddn. rewrite Hopp_zero. ring. }
+      exact (one_neq_zero Hone_zero).
     }
+    assert (Hx1_nz : x1 <> zero ed25519_p).
+    { intro Habs. apply Hxx_nz. rewrite Habs. ring. }
+    assert (Hx2_nz : x2 <> zero ed25519_p).
+    { intro Habs. apply Hxx_nz. rewrite Habs. ring. }
     assert (Hxx2_nz : mul ed25519_p (mul ed25519_p x1 x2) (mul ed25519_p x1 x2) <> zero ed25519_p).
     { intro Habs. destruct (mul_integral _ _ Habs); contradiction. }
     exists (mul ed25519_p i (inv ed25519_p (mul ed25519_p x1 x2))).
@@ -1238,7 +1246,7 @@ Section WithPrime.
                                                                (mul ed25519_p x1 x2)))
                               (inv ed25519_p (mul ed25519_p (mul ed25519_p x1 x2)
                                                              (mul ed25519_p x1 x2)))).
-    { field. exact Hxx2_nz. }
+    { field. split; assumption. }
     rewrite H. rewrite Hprod.
     (* opp(one) * inv(xx^2) = i^2 * inv(xx)^2 = (i*inv(xx))^2 *)
     assert (mul ed25519_p (opp ed25519_p (one ed25519_p))
@@ -1247,9 +1255,9 @@ Section WithPrime.
             mul ed25519_p (mul ed25519_p i (inv ed25519_p (mul ed25519_p x1 x2)))
                           (mul ed25519_p i (inv ed25519_p (mul ed25519_p x1 x2)))).
     {
-      rewrite <- Hi. field. exact Hxx_nz.
+      rewrite <- Hi. field. split; assumption.
     }
-    exact H0.
+    symmetry. exact H0.
   Qed.
 
   (** For dm = 0: d*xn^2 = dp^2, hence d*xn^2 = 4, hence d = (2/xn)^2.
@@ -1322,7 +1330,7 @@ Section WithPrime.
                                  (te_x_num x1 y1 x2 y2)))
                 (inv ed25519_p (mul ed25519_p (te_x_num x1 y1 x2 y2)
                                               (te_x_num x1 y1 x2 y2)))).
-    { field. exact Hxn2_nz. }
+    { field. exact Hxn_nz. }
     rewrite H. rewrite Hdxn4.
     assert (mul ed25519_p
               (mul ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p))
@@ -1335,7 +1343,7 @@ Section WithPrime.
               (mul ed25519_p (add ed25519_p (one ed25519_p) (one ed25519_p))
                              (inv ed25519_p (te_x_num x1 y1 x2 y2)))).
     { field. exact Hxn_nz. }
-    exact H0.
+    symmetry. exact H0.
   Qed.
 
   (** ============================================================
@@ -1363,7 +1371,7 @@ Section WithPrime.
             (add ed25519_p (one ed25519_p) (one ed25519_p))
             (add ed25519_p (one ed25519_p) (one ed25519_p)))) =
       zero ed25519_p).
-    { rewrite <- Hdm2 in Hfact. exact Hfact. }
+    { rewrite Hdm2 in Hfact. exact Hfact. }
     (* Case split: xn^2 = 0 or (d*yn^2 + 4) = 0 *)
     destruct (mul_integral _ _ Hfact2) as [Hxn2 | Hinner].
     - (* Case xn^2 = 0, hence xn = 0 *)
@@ -1403,7 +1411,7 @@ Section WithPrime.
           (mul ed25519_p d
             (mul ed25519_p (te_x_num x1 y1 x2 y2) (te_x_num x1 y1 x2 y2)))) =
       zero ed25519_p).
-    { rewrite <- Hdp2 in Hfact. exact Hfact. }
+    { rewrite Hdp2 in Hfact. exact Hfact. }
     (* Case split: yn^2 = 0 or (4 - d*xn^2) = 0 *)
     destruct (mul_integral _ _ Hfact2) as [Hyn2 | Hinner].
     - (* Case yn^2 = 0, hence yn = 0 *)

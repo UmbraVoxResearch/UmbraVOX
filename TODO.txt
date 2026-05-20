@@ -299,9 +299,10 @@ Note: Items from codebase audit (2026-05-20).
   [ ] M20.5.1 Migrate all Makefile test targets to VM-default
   [ ] M20.5.2 Update flake.nix to not pull GHC into host store
 
-[ ] M20.6 Coq proofs pending
-  [ ] M20.6.1 ED-008e: Universal completeness (denominators nonzero) — proof computed, needs Coq encoding
-  [ ] M20.6.2 Update shell.nix banner: 14 Coq files (not 13)
+[~] M20.6 Coq proofs pending
+  [~] M20.6.1 ED-008e: Universal completeness — proof structure in Ed25519GroupUniversal.v (62 Qed)
+    but line 1054 has a ring/field bug (rewrite with inv terms). Needs focused Coq debugging.
+  [x] M20.6.2 Update shell.nix banner: 14 Coq files (done)
 
 ================================================================================
 BLOCKED (EXTERNAL DEPENDENCIES)
