@@ -44,8 +44,10 @@
 #   make quality      - Run the full pipeline (same as make)
 #   make vm-dev       - Interactive dev shell inside NixOS QEMU VM (M13.13)
 #   make vm-build     - Build inside NixOS VM (cabal build all)
+#   make vm-build-only - Build inside VM with auto image-build (host needs only QEMU+Nix)
 #   make vm-test      - Test inside NixOS VM (cabal test required)
 #   make vm-verify    - F* verification inside NixOS VM
+#   make vm-run-gui   - Boot dev VM with graphical QEMU window (VGA display)
 #   make release-linux - Build a portable Linux x86_64 terminal bundle
 #   make release-appimage - Build an experimental Linux AppImage scaffold
 #   make release-smoke-linux - Run isolated Linux bundle smoke check (podman/docker if available)
@@ -84,7 +86,7 @@
 #
 # Prerequisites: nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-test vm-verify firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot screenshot-local vm-record vm-visual-regression visual-reference-update differential-vectors test-differential-oracle test-differential-full fuzz-differential fuzz-afl differential differential-evidence-check signal-bridge-build test-signal-compat clean cleandb cleanall help
+.PHONY: all build build-haskell run test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-build-only vm-test vm-verify vm-run-gui firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot screenshot-local vm-record vm-visual-regression visual-reference-update differential-vectors test-differential-oracle test-differential-full fuzz-differential fuzz-afl differential differential-evidence-check signal-bridge-build test-signal-compat clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -243,8 +245,10 @@ help:
 	@echo "  VM Development (M13.13 — full toolchain inside VM):"
 	@echo "    make vm-dev         Interactive dev shell inside NixOS VM"
 	@echo "    make vm-build       Build inside VM (cabal build all)"
+	@echo "    make vm-build-only  Build inside VM, auto-build image first (host needs only QEMU+Nix)"
 	@echo "    make vm-test        Test inside VM (cabal test required)"
 	@echo "    make vm-verify      F* verification inside VM"
+	@echo "    make vm-run-gui     Boot dev VM with graphical QEMU window (TUI on VGA console)"
 	@echo ""
 	@echo "  VM Smoke (isolated build/test):"
 	@echo "    make vm-smoke       Run full pipeline inside isolated QEMU VM"
@@ -1166,6 +1170,16 @@ vm-test:
 	@echo -e "$(BLUE)[VM-TEST]$(NC) Testing inside NixOS VM..."
 	@chmod +x ./scripts/vm-dev-run.sh
 	@./scripts/vm-dev-run.sh exec "cabal build all --enable-tests 2>&1 && cabal test umbravox-test --test-options='required' 2>&1"
+
+vm-build-only: vm-image-build
+	@echo -e "$(BLUE)[VM-BUILD-ONLY]$(NC) Building inside NixOS VM (no host toolchain needed)..."
+	@chmod +x ./scripts/vm-dev-run.sh
+	@./scripts/vm-dev-run.sh exec "cabal build all --enable-tests 2>&1"
+
+vm-run-gui:
+	@echo -e "$(BLUE)[VM-GUI]$(NC) Booting NixOS VM with graphical QEMU window..."
+	@chmod +x ./scripts/vm-dev-run.sh
+	@./scripts/vm-dev-run.sh gui
 
 vm-verify:
 	@echo -e "$(BLUE)[VM-VERIFY]$(NC) Running F* verification inside NixOS VM..."

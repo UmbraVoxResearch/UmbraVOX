@@ -124,13 +124,20 @@ let
           # Copy source to writable location
           cp -a ${signalServerSrc} /tmp/signal-server
           chmod -R u+w /tmp/signal-server
+
           cd /tmp/signal-server
 
           echo "=== Running Maven build (this takes several minutes) ==="
-          # Build the fat JAR, skip tests
+
+          # Use the system protoc from nixpkgs instead of letting Maven
+          # download a pre-compiled binary (which won't run on NixOS).
+          PROTOC_PATH=$(which protoc)
+          echo "  Using system protoc: $PROTOC_PATH ($(protoc --version))"
+
           ./mvnw -B -ntp -pl service -am package -DskipTests \
             -Dmaven.javadoc.skip=true \
             -Dmaven.source.skip=true \
+            -Dprotoc.path="$PROTOC_PATH" \
             || {
               echo "BUILD_RESULT=FAIL"
               # Even if build fails, copy what we have
