@@ -33,6 +33,15 @@ let
     else if builtins.hasAttr "coq-stdlib" pkgs.coqPackages then [ pkgs.coqPackages.coq-stdlib ]
     else [];
 
+  # coqprime provides Pocklington primality proofs and field tactics.
+  # bignums is a dependency. Both needed for Ed25519 group law (M13.11.4).
+  coqPrime =
+    if builtins.hasAttr "coqprime" pkgs.coqPackages then [ pkgs.coqPackages.coqprime ]
+    else [];
+  coqBignums =
+    if builtins.hasAttr "bignums" pkgs.coqPackages then [ pkgs.coqPackages.bignums ]
+    else [];
+
   devToolsPkgs = with pkgs; [
     (hp.ghcWithPackages (p: [ p.network ]))
     cabal-install
@@ -40,7 +49,7 @@ let
     gdb
     valgrind
     coq
-  ] ++ coqStdlib ++ (with pkgs; [
+  ] ++ coqStdlib ++ coqPrime ++ coqBignums ++ (with pkgs; [
     tlaplus
     fstar
     z3
