@@ -8,6 +8,8 @@ module UmbraVox.Consensus.Validation
 
 import Data.ByteString (ByteString)
 
+{-# WARNING validateBlock "UmbraVox.Consensus.Validation is a stub -- not implemented" #-}
+
 -- | Validate a serialized block. Returns an error message on failure.
 validateBlock :: ByteString -> Either String ()
 validateBlock = error "not implemented"

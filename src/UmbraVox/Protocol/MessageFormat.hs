@@ -9,6 +9,9 @@ module UmbraVox.Protocol.MessageFormat
 
 import Data.ByteString (ByteString)
 
+{-# WARNING MessageBlock "UmbraVox.Protocol.MessageFormat is a stub -- not implemented" #-}
+{-# WARNING packBlock "UmbraVox.Protocol.MessageFormat is a stub -- not implemented" #-}
+
 -- | A fixed-size 1024-byte message block.
 data MessageBlock = MessageBlock
   deriving (Show)

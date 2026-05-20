@@ -7,6 +7,9 @@ module UmbraVox.Storage.ChainDB
   , openChainDB
   ) where
 
+{-# WARNING ChainDB "UmbraVox.Storage.ChainDB is a stub -- not implemented" #-}
+{-# WARNING openChainDB "UmbraVox.Storage.ChainDB is a stub -- not implemented" #-}
+
 -- | Handle to the append-only chain database.
 data ChainDB = ChainDB
   deriving (Show)

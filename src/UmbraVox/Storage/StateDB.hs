@@ -7,6 +7,9 @@ module UmbraVox.Storage.StateDB
   , openStateDB
   ) where
 
+{-# WARNING StateDB "UmbraVox.Storage.StateDB is a stub -- not implemented" #-}
+{-# WARNING openStateDB "UmbraVox.Storage.StateDB is a stub -- not implemented" #-}
+
 -- | Handle to the account state database.
 data StateDB = StateDB
   deriving (Show)

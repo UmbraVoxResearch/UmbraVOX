@@ -9,6 +9,8 @@ module UmbraVox.Consensus.LeaderElection
 import Data.ByteString (ByteString)
 import Data.Word (Word64)
 
+{-# WARNING isSlotLeader "UmbraVox.Consensus.LeaderElection is a stub -- not implemented" #-}
+
 -- | Check whether the given stake key is elected leader for the slot.
 isSlotLeader :: ByteString -> Word64 -> Bool
 isSlotLeader = error "not implemented"

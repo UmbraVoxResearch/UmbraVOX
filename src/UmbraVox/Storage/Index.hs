@@ -9,6 +9,9 @@ module UmbraVox.Storage.Index
 
 import Data.ByteString (ByteString)
 
+{-# WARNING Index "UmbraVox.Storage.Index is a stub -- not implemented" #-}
+{-# WARNING buildIndex "UmbraVox.Storage.Index is a stub -- not implemented" #-}
+
 -- | An index over blocks and transactions.
 data Index = Index
   deriving (Show)

@@ -7,6 +7,9 @@ module UmbraVox.Network.PeerManager
   , newPeerManager
   ) where
 
+{-# WARNING PeerManager "UmbraVox.Network.PeerManager is a stub -- not implemented" #-}
+{-# WARNING newPeerManager "UmbraVox.Network.PeerManager is a stub -- not implemented" #-}
+
 -- | Manages peer connections, scoring, and banning.
 data PeerManager = PeerManager
   deriving (Show)

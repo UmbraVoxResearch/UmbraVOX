@@ -9,6 +9,9 @@ module UmbraVox.Network.Protocol
 
 import Data.ByteString (ByteString)
 
+{-# WARNING encode "UmbraVox.Network.Protocol is a stub -- not implemented" #-}
+{-# WARNING decode "UmbraVox.Network.Protocol is a stub -- not implemented" #-}
+
 -- | Encode a message for wire transmission.
 encode :: ByteString -> ByteString
 encode = error "not implemented"

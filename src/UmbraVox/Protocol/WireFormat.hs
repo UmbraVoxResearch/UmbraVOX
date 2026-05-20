@@ -10,6 +10,10 @@ module UmbraVox.Protocol.WireFormat
 
 import Data.ByteString (ByteString)
 
+{-# WARNING Envelope "UmbraVox.Protocol.WireFormat is a stub -- not implemented" #-}
+{-# WARNING wrapEnvelope "UmbraVox.Protocol.WireFormat is a stub -- not implemented" #-}
+{-# WARNING unwrapEnvelope "UmbraVox.Protocol.WireFormat is a stub -- not implemented" #-}
+
 -- | A network message envelope with routing metadata.
 data Envelope = Envelope
   deriving (Show)

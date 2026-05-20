@@ -9,6 +9,9 @@ module UmbraVox.Crypto.VRF
 
 import Data.ByteString (ByteString)
 
+{-# WARNING vrfProve "UmbraVox.Crypto.VRF is a stub -- not implemented" #-}
+{-# WARNING vrfVerify "UmbraVox.Crypto.VRF is a stub -- not implemented" #-}
+
 -- | Generate a VRF proof for the given secret key and input.
 vrfProve :: ByteString -> ByteString -> ByteString
 vrfProve = error "not implemented"
