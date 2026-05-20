@@ -448,6 +448,156 @@ Section WithPrime.
     apply Hsub. exact Hgoal.
   Qed.
 
+  (** ======================================================================
+      2.6: Point doubling — ED-008c polynomial certificate
+
+      EFD doubling formula (twisted Edwards a=-1, extended coordinates):
+        A = X1^2, B = Y1^2, C = 2*Z1^2, D = -A,
+        E = (X1+Y1)^2 - A - B, F = D + B, G = F - C, H = D - B
+        X3 = E*G, Y3 = F*H, T3 = E*H, Z3 = F*G
+
+      Expanded:
+        E = 2*X1*Y1
+        F = -X1^2 + Y1^2
+        G = -X1^2 + Y1^2 - 2*Z1^2
+        H = -X1^2 - Y1^2
+
+      Extended-coordinate on-curve residual:
+        -X^2 + Y^2 - Z^2 - d*T^2 = 0
+      Well-formedness:
+        T*Z - X*Y = 0
+      ====================================================================== *)
+
+  (** Doubling output coordinates *)
+  Definition ext_double_X (X1 Y1 Z1 T1 : znz ed25519_p) : znz ed25519_p :=
+    let m := mul ed25519_p in let a := add ed25519_p in let s := sub ed25519_p in
+    let o := one ed25519_p in let two := a o o in
+    let E := m two (m X1 Y1) in
+    let F := a (opp ed25519_p (m X1 X1)) (m Y1 Y1) in
+    let G := s F (m two (m Z1 Z1)) in
+    m E G.
+
+  Definition ext_double_Y (X1 Y1 Z1 T1 : znz ed25519_p) : znz ed25519_p :=
+    let m := mul ed25519_p in let a := add ed25519_p in let s := sub ed25519_p in
+    let o := one ed25519_p in
+    let F := a (opp ed25519_p (m X1 X1)) (m Y1 Y1) in
+    let H := s (opp ed25519_p (m X1 X1)) (m Y1 Y1) in
+    m F H.
+
+  Definition ext_double_Z (X1 Y1 Z1 T1 : znz ed25519_p) : znz ed25519_p :=
+    let m := mul ed25519_p in let a := add ed25519_p in let s := sub ed25519_p in
+    let o := one ed25519_p in let two := a o o in
+    let F := a (opp ed25519_p (m X1 X1)) (m Y1 Y1) in
+    let G := s F (m two (m Z1 Z1)) in
+    m F G.
+
+  Definition ext_double_T (X1 Y1 Z1 T1 : znz ed25519_p) : znz ed25519_p :=
+    let m := mul ed25519_p in let a := add ed25519_p in let s := sub ed25519_p in
+    let o := one ed25519_p in let two := a o o in
+    let E := m two (m X1 Y1) in
+    let H := s (opp ed25519_p (m X1 X1)) (m Y1 Y1) in
+    m E H.
+
+  (** On-curve residual in extended coordinates: -X^2 + Y^2 - Z^2 - d*T^2 *)
+  Definition ext_curve_res (X Y Z T : znz ed25519_p) : znz ed25519_p :=
+    let m := mul ed25519_p in let a := add ed25519_p in let s := sub ed25519_p in
+    let o := one ed25519_p in
+    s (a (opp ed25519_p (m X X)) (m Y Y))
+      (a (m Z Z) (m d (m T T))).
+
+  (** Well-formedness residual: T*Z - X*Y *)
+  Definition ext_wf_res (X Y Z T : znz ed25519_p) : znz ed25519_p :=
+    sub ed25519_p (mul ed25519_p T Z) (mul ed25519_p X Y).
+
+  (** On-curve residual of the doubled point *)
+  Definition double_curve_res (X1 Y1 Z1 T1 : znz ed25519_p) : znz ed25519_p :=
+    ext_curve_res (ext_double_X X1 Y1 Z1 T1) (ext_double_Y X1 Y1 Z1 T1)
+                  (ext_double_Z X1 Y1 Z1 T1) (ext_double_T X1 Y1 Z1 T1).
+
+  (** Well-formedness residual of the doubled point *)
+  Definition double_wf_res (X1 Y1 Z1 T1 : znz ed25519_p) : znz ed25519_p :=
+    ext_wf_res (ext_double_X X1 Y1 Z1 T1) (ext_double_Y X1 Y1 Z1 T1)
+               (ext_double_Z X1 Y1 Z1 T1) (ext_double_T X1 Y1 Z1 T1).
+
+  (** Well-formedness is preserved identically (no hypotheses needed).
+      T3*Z3 = (E*H)*(F*G) = (E*G)*(F*H) = X3*Y3                           *)
+  Lemma double_wf_identity :
+    forall X1 Y1 Z1 T1 : znz ed25519_p,
+    double_wf_res X1 Y1 Z1 T1 = zero ed25519_p.
+  Proof.
+    intros.
+    unfold double_wf_res, ext_wf_res,
+           ext_double_X, ext_double_Y, ext_double_Z, ext_double_T.
+    ring.
+  Qed.
+
+  (** Cofactor c11 = 4*Z1^2*(X1^2 + Y1^2)^2 *)
+  Definition double_curve_cofactor_c11 (X1 Y1 Z1 T1 : znz ed25519_p)
+    : znz ed25519_p :=
+    let m := mul ed25519_p in let a := add ed25519_p in
+    let o := one ed25519_p in let two := a o o in let four := a two two in
+    let sum_sq := a (m X1 X1) (m Y1 Y1) in
+    m four (m (m Z1 Z1) (m sum_sq sum_sq)).
+
+  (** Cofactor c12 = 4*d*(X1^2 + Y1^2)^2*(T1*Z1 + X1*Y1) *)
+  Definition double_curve_cofactor_c12 (X1 Y1 Z1 T1 : znz ed25519_p)
+    : znz ed25519_p :=
+    let m := mul ed25519_p in let a := add ed25519_p in
+    let o := one ed25519_p in let two := a o o in let four := a two two in
+    let sum_sq := a (m X1 X1) (m Y1 Y1) in
+    m four (m d (m (m sum_sq sum_sq)
+                   (a (m T1 Z1) (m X1 Y1)))).
+
+  (** Polynomial identity:
+      double_curve_res = c11 * ext_curve_res(input) + c12 * ext_wf_res(input) *)
+  Lemma double_curve_poly_identity :
+    forall X1 Y1 Z1 T1 : znz ed25519_p,
+    double_curve_res X1 Y1 Z1 T1 =
+    add ed25519_p
+      (mul ed25519_p (double_curve_cofactor_c11 X1 Y1 Z1 T1)
+                     (ext_curve_res X1 Y1 Z1 T1))
+      (mul ed25519_p (double_curve_cofactor_c12 X1 Y1 Z1 T1)
+                     (ext_wf_res X1 Y1 Z1 T1)).
+  Proof.
+    intros.
+    unfold double_curve_res, double_curve_cofactor_c11, double_curve_cofactor_c12,
+           ext_curve_res, ext_wf_res,
+           ext_double_X, ext_double_Y, ext_double_Z, ext_double_T.
+    ring.
+  Qed.
+
+  (** Helper: ext_curve_res = 0 when on-curve *)
+  Lemma ext_on_curve_res_zero :
+    forall X Y Z T : znz ed25519_p,
+    ext_curve_res X Y Z T = zero ed25519_p ->
+    ext_curve_res X Y Z T = zero ed25519_p.
+  Proof. auto. Qed.
+
+  (** Main theorem: doubling preserves on-curve (ED-008c) *)
+  Theorem te_double_on_curve :
+    forall X1 Y1 Z1 T1 : znz ed25519_p,
+    ext_curve_res X1 Y1 Z1 T1 = zero ed25519_p ->
+    ext_wf_res X1 Y1 Z1 T1 = zero ed25519_p ->
+    ext_curve_res (ext_double_X X1 Y1 Z1 T1) (ext_double_Y X1 Y1 Z1 T1)
+                  (ext_double_Z X1 Y1 Z1 T1) (ext_double_T X1 Y1 Z1 T1) =
+    zero ed25519_p.
+  Proof.
+    intros X1 Y1 Z1 T1 Hcurve Hwf.
+    assert (Hgoal : double_curve_res X1 Y1 Z1 T1 = zero ed25519_p).
+    { rewrite double_curve_poly_identity. rewrite Hcurve. rewrite Hwf. ring. }
+    exact Hgoal.
+  Qed.
+
+  (** Well-formedness preservation: doubling output is always well-formed *)
+  Theorem te_double_wf :
+    forall X1 Y1 Z1 T1 : znz ed25519_p,
+    ext_wf_res (ext_double_X X1 Y1 Z1 T1) (ext_double_Y X1 Y1 Z1 T1)
+               (ext_double_Z X1 Y1 Z1 T1) (ext_double_T X1 Y1 Z1 T1) =
+    zero ed25519_p.
+  Proof.
+    intros. exact (double_wf_identity X1 Y1 Z1 T1).
+  Qed.
+
 End WithPrime.
 
 (** ========================================================================
@@ -538,6 +688,11 @@ Proof. vm_compute. reflexivity. Qed.
       on_curve_res_zero, closure_poly_identity,
       te_add_closure_cross
 
+    Point doubling ED-008c (5 Qed):
+      double_wf_identity, double_curve_poly_identity,
+      ext_on_curve_res_zero,
+      te_double_on_curve, te_double_wf
+
     On-curve checks (1 Qed):
       identity_on_curve_f
 
@@ -549,5 +704,5 @@ Proof. vm_compute. reflexivity. Qed.
       add_matches, mul_matches,
       d_cross_check_znz, By_cross_check_znz
 
-    Total: 42 Qed.  Zero Admitted.
+    Total: 47 Qed.  Zero Admitted.
     ======================================================================== *)
