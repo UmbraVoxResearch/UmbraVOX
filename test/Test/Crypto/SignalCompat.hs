@@ -9,6 +9,7 @@
 --   5. Signal KDF: signalKdfRK and signalKdfCK determinism
 --   6. Multi-message ratchet: Alice sends 3, Bob decrypts all 3 in order
 --   7. Cross-ratchet: Alice sends, Bob replies, Alice decrypts (DH ratchet step)
+--   8. Known-answer test vectors: KDF, X3DH, ratchet init vs hardcoded expected outputs
 module Test.Crypto.SignalCompat
     ( signalCompatTests
     ) where
@@ -80,8 +81,18 @@ signalCompatTests = do
         , testRatchetMultiMessage
         , testRatchetCrossRatchet
         ]
+    putStrLn "[SignalCompat] Running known-answer test vector tests..."
+    katResults <- sequence
+        [ testKdfRKKnownVector1
+        , testKdfRKKnownVector2
+        , testKdfCKKnownVector1
+        , testKdfCKKnownVector2
+        , testX3DHKnownVectorNoOPK
+        , testX3DHKnownVectorWithOPK
+        , testRatchetInitAliceKnownVector
+        ]
     let results = protoResults ++ varintResults ++ kdfResults
-                  ++ x3dhResults ++ ratchetResults
+                  ++ x3dhResults ++ ratchetResults ++ katResults
         passed  = length (filter id results)
         total   = length results
     putStrLn $ "[SignalCompat] " ++ show passed ++ "/" ++ show total
@@ -349,6 +360,121 @@ testRatchetMultiMessage = do
                                                         Right (Just (_, pt3)) -> do
                                                             ok3 <- assertEq "Multi-msg A->B msg3" msg3 pt3
                                                             pure (ok1 && ok2 && ok3)
+
+------------------------------------------------------------------------
+-- 8. Known-answer test vectors (M19.1.4)
+--
+-- These tests compare against HARDCODED expected outputs, not just
+-- round-trip consistency.  The expected hex values were computed by
+-- tracing through HKDF-SHA-256 / HMAC-SHA-256 with the Signal domain
+-- separation strings ("WhisperRatchet", "WhisperText", 0x01, 0x02).
+------------------------------------------------------------------------
+
+-- | signalKdfRK: rootKey = 0x00*32, dhOut = 0x01*32
+testKdfRKKnownVector1 :: IO Bool
+testKdfRKKnownVector1 = do
+    let rootKey = BS.replicate 32 0x00
+        dhOut   = BS.replicate 32 0x01
+        (rk, ck) = signalKdfRK rootKey dhOut
+        expectedRK = hexDecode
+            "c03ebf01d4836de65b6a54b7db2db871e40d0ae52ef937f5667f635adbb3c935"
+        expectedCK = hexDecode
+            "c4d1f38c44c173d6883c0715f951b50d7f9b3c91ca039d53a4c46a7eafa9479b"
+    ok1 <- assertEq "KAT: signalKdfRK(00x32,01x32) rootKey" expectedRK rk
+    ok2 <- assertEq "KAT: signalKdfRK(00x32,01x32) chainKey" expectedCK ck
+    pure (ok1 && ok2)
+
+-- | signalKdfRK: rootKey = 0x00..0x1f, dhOut = 0x20..0x3f
+testKdfRKKnownVector2 :: IO Bool
+testKdfRKKnownVector2 = do
+    let rootKey = BS.pack [0x00..0x1f]
+        dhOut   = BS.pack [0x20..0x3f]
+        (rk, ck) = signalKdfRK rootKey dhOut
+        expectedRK = hexDecode
+            "62ffc77945c7aae74572869ac8a9522d96bc75a79cf3863ae7335004186255b3"
+        expectedCK = hexDecode
+            "2de7be8dc5a58c68bcb5db2e71cb88157ed10ab4f7ea97ba5606e49733da2b94"
+    ok1 <- assertEq "KAT: signalKdfRK(00..1f,20..3f) rootKey" expectedRK rk
+    ok2 <- assertEq "KAT: signalKdfRK(00..1f,20..3f) chainKey" expectedCK ck
+    pure (ok1 && ok2)
+
+-- | signalKdfCK: chainKey = 0x00*32
+testKdfCKKnownVector1 :: IO Bool
+testKdfCKKnownVector1 = do
+    let (newCK, msgKey) = signalKdfCK (BS.replicate 32 0x00)
+        expectedCK = hexDecode
+            "4ee7be0c7872360ca67414608081e9bd60fd580a7bbd209701d2a5a0b4316d0d"
+        expectedMK = hexDecode
+            "3d7afb663124ecbf2c953f863d4fc8796eeb2d372b64aad58697ec5264649cdb"
+    ok1 <- assertEq "KAT: signalKdfCK(00x32) newChainKey" expectedCK newCK
+    ok2 <- assertEq "KAT: signalKdfCK(00x32) msgKey" expectedMK msgKey
+    pure (ok1 && ok2)
+
+-- | signalKdfCK: chainKey = 0x01*32
+testKdfCKKnownVector2 :: IO Bool
+testKdfCKKnownVector2 = do
+    let (newCK, msgKey) = signalKdfCK (BS.replicate 32 0x01)
+        expectedCK = hexDecode
+            "c31d79abaf8f2150ee1cfe3dc732eed02a56f79647909bad055a831cb762e9a2"
+        expectedMK = hexDecode
+            "cc6efb872c237f565ee82df42e4cab00098b13710395e3c6d29f2907d69e4f04"
+    ok1 <- assertEq "KAT: signalKdfCK(01x32) newChainKey" expectedCK newCK
+    ok2 <- assertEq "KAT: signalKdfCK(01x32) msgKey" expectedMK msgKey
+    pure (ok1 && ok2)
+
+-- | signalDeriveSecret: dh1=0xAA*32, dh2=0xBB*32, dh3=0xCC*32, no OPK
+testX3DHKnownVectorNoOPK :: IO Bool
+testX3DHKnownVectorNoOPK = do
+    let dh1 = BS.replicate 32 0xAA
+        dh2 = BS.replicate 32 0xBB
+        dh3 = BS.replicate 32 0xCC
+        secret = signalDeriveSecret dh1 dh2 dh3 Nothing
+        expected = hexDecode
+            "80b9add1b2f3738e0aac08affd08d66922496ede22a042f59a9ee8dc40952b4a"
+    assertEq "KAT: signalDeriveSecret(AA,BB,CC,noOPK)" expected secret
+
+-- | signalDeriveSecret: dh1=0xAA*32, dh2=0xBB*32, dh3=0xCC*32, dh4=0xDD*32
+testX3DHKnownVectorWithOPK :: IO Bool
+testX3DHKnownVectorWithOPK = do
+    let dh1 = BS.replicate 32 0xAA
+        dh2 = BS.replicate 32 0xBB
+        dh3 = BS.replicate 32 0xCC
+        dh4 = BS.replicate 32 0xDD
+        secret = signalDeriveSecret dh1 dh2 dh3 (Just dh4)
+        expected = hexDecode
+            "19d0183901f8db6455800867845f3e1badd5939553416b7d42580ef862dd4da9"
+    assertEq "KAT: signalDeriveSecret(AA,BB,CC,DD)" expected secret
+
+-- | signalRatchetInitAlice: ss=0x42*32, spkSecret=0x07*32, aliceDH=0x09*32
+-- Verifies rootKey, sendChain, and DH send public key of the initial state.
+testRatchetInitAliceKnownVector :: IO Bool
+testRatchetInitAliceKnownVector = do
+    let ss        = BS.replicate 32 0x42
+        spkSecret = BS.replicate 32 0x07
+        aliceDH   = BS.replicate 32 0x09
+        spkPub    = case x25519 spkSecret x25519Basepoint of
+                        Just p  -> p
+                        Nothing -> error "testRatchetInitAliceKnownVector: impossible"
+        expectedSPKPub = hexDecode
+            "13be4feaeaf204c7fd3358fc9c00721881d174278128227ec674f37f7fe97b6d"
+        expectedRK = hexDecode
+            "682af4741466be51ee9bb46131f4da10800f97c335c1b01b8c1296130325de86"
+        expectedSC = hexDecode
+            "3fc1e6dc308fc36d343d4ea9012a4eae49b70bea11a8a552a469813b4e2ad768"
+        expectedDHPub = hexDecode
+            "57db4b359f23ae5e146e4e2512056704722506348c150c14753d0c933d04d421"
+    -- First verify the SPK public key derivation
+    ok0 <- assertEq "KAT: x25519(07x32) public key" expectedSPKPub spkPub
+    case signalRatchetInitAlice ss spkPub aliceDH of
+        Nothing -> do
+            putStrLn "  FAIL: KAT signalRatchetInitAlice returned Nothing"
+            pure False
+        Just st -> do
+            ok1 <- assertEq "KAT: ratchetInitAlice rootKey" expectedRK (srsRootKey st)
+            ok2 <- assertEq "KAT: ratchetInitAlice sendChain" expectedSC (srsSendChain st)
+            ok3 <- assertEq "KAT: ratchetInitAlice dhSendPub"
+                       expectedDHPub (snd (srsDHSend st))
+            pure (ok0 && ok1 && ok2 && ok3)
 
 ------------------------------------------------------------------------
 -- 7. Cross-ratchet: A->B then B->A (triggers DH ratchet step)
