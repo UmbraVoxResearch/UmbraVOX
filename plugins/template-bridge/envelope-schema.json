@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "UmbraVOX Bridge Envelope",
+  "type": "object",
+  "required": ["to", "body"],
+  "properties": {
+    "to": {
+      "type": "string",
+      "description": "Recipient identifier on external system"
+    },
+    "body": {
+      "type": "string",
+      "description": "Message text (UTF-8)"
+    },
+    "timestamp": {
+      "type": "integer",
+      "description": "Unix timestamp (seconds)"
+    },
+    "thread": {
+      "type": ["string", "null"],
+      "description": "Thread/conversation ID"
+    }
+  }
+}

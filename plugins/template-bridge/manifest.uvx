@@ -1,0 +1,12 @@
+id=my-bridge
+api=uvx-provider-v1
+name=My Bridge
+class=closed-bridge
+status=development
+endpoint=user@service
+inherits=
+capabilities=connect,bridge
+host=exec-direct
+entrypoint=exec:my-bridge-binary
+encryption=bridge-adapted
+notes=Template bridge plugin. Copy and customize.
