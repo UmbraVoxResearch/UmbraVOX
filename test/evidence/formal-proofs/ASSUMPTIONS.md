@@ -4,7 +4,7 @@
 
 **Date:** 2026-05-17 (updated 2026-05-17)
 **F* specs:** 24 total, 17 with 0 assume val
-**assume val count:** 30
+**assume val count:** 29
 **admit() count:** 0
 **Status:** ALL PLANS COMPLETE — every assume val has a classification, documented
 justification, external evidence path, and discharge plan (or permanent status).
@@ -37,7 +37,7 @@ justification, external evidence path, and discharge plan (or permanent status).
 | ~~X2-001~~ | ~~Spec.X25519~~ | ~~`fmul_inverse`~~ | ~~DERIVED_FROM_ALGEBRA~~ | — | — | **PROVED** in v0.1.3 via Fermat's little theorem (ported from Ed25519 proof). Replaced by X2-001 prime_is_prime root. | — | — | **DISCHARGED** |
 | ~~X2-002~~ | ~~Spec.X25519~~ | ~~`decode_encode_round_trip`~~ | ~~ALGEBRAIC_EXTERNAL~~ | — | — | **PROVED** via byte-level induction on 32-byte sequence. | — | — | **DISCHARGED** |
 | ~~X2-003~~ | ~~Spec.X25519~~ | ~~`scalar_mult_zero`~~ | ~~DERIVED_FROM_ALGEBRA~~ | — | — | **PROVED** via z_2=0 invariant: all bits of k=0 are zero, so no swap occurs and ladder_step preserves z_2=0; finv 0 = 0, so result is fmul x_2 0 = 0. | — | — | **DISCHARGED** |
-| X2-004 | Spec.X25519 | `scalar_mult_one` | DERIVED_FROM_ALGEBRA | no | X2-001 | Montgomery ladder with k=1 preserves input | Curve arithmetic | Ladder analysis | BLOCKED_BY_TOOLING |
+| ~~X2-004~~ | ~~Spec.X25519~~ | ~~`scalar_mult_one`~~ | ~~DERIVED_FROM_ALGEBRA~~ | — | — | **PROVED** (v0.1.8) via Montgomery ladder analysis for k=1: bits 254..1 zero, x_2=1/z_2=0 invariant, ratio_preservation lemma, final swap at bit 0. 12 helper lemmas. | — | — | **DISCHARGED** |
 | X2-005 | Spec.X25519 | `dh_commutativity` | DERIVED_FROM_ALGEBRA | no | X2-003, X2-004 | [a][b]G = [ab]G group homomorphism | Elliptic curve group law | Group law proof | BLOCKED_BY_TOOLING |
 | X2-006 | Spec.X25519 | `dh_commutativity_general` | DERIVED_FROM_ALGEBRA | no | X2-005 | Same as X2-005 for arbitrary base points | Elliptic curve group law | Group law proof | BLOCKED_BY_TOOLING |
 | ~~X2-007~~ | ~~Spec.X25519~~ | ~~`x25519_zero_u`~~ | ~~DERIVED_FROM_ALGEBRA~~ | — | — | **PROVED** via Montgomery ladder invariant: when u=0, after the first step x_3=0, z_2=0, z_3=0; this invariant is preserved by induction; final projection yields fmul xr (finv 0) = 0. | — | — | **DISCHARGED** |
@@ -63,7 +63,7 @@ justification, external evidence path, and discharge plan (or permanent status).
 | REFINEMENT_BOUNDARY | 1 | SR-006 |
 | ALGEBRAIC_EXTERNAL | 4 | ED-001, ED-003, ED-007, X2-001 (prime_is_prime) |
 | FIELD_ARITHMETIC | 1 | ED-009a (sqrt_ratio_correct) |
-| DERIVED_FROM_ALGEBRA | 6 | ED-004, ED-005, ED-006, VR-001, X2-004, X2-005 |
+| DERIVED_FROM_ALGEBRA | 5 | ED-004, ED-005, ED-006, VR-001, X2-005 |
 | BLOCKED_BY_TOOLING | 3 | ED-002, ED-008, X2-006 |
 | **Total (active)** | **27** | |
 | DISCHARGED (proved) | 5 | fmul_inverse, decode_encode_round_trip, scalar_mult_zero, x25519_zero_u, encode_decode_round_trip |
