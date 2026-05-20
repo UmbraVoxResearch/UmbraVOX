@@ -130,7 +130,7 @@ asRunning = csRunning . asCoreState
 data DialogMode = DlgHelp | DlgAbout | DlgSettings | DlgVerify | DlgNewConn
     | DlgKeys | DlgBrowse | DlgRegenKey | DlgExportWarn | DlgExportKeys
     | DlgInsertLink | DlgEmojiPicker
-    | DlgBridgeSelect | DlgBridgeAuth
+    | DlgBridgeSelect | DlgBridgeAuth | DlgBridgeContacts
     | DlgPrompt String (String -> IO ())
 
 instance Eq DialogMode where
@@ -146,8 +146,9 @@ instance Eq DialogMode where
     DlgExportKeys == DlgExportKeys = True
     DlgInsertLink  == DlgInsertLink  = True
     DlgEmojiPicker == DlgEmojiPicker = True
-    DlgBridgeSelect == DlgBridgeSelect = True
-    DlgBridgeAuth   == DlgBridgeAuth   = True
+    DlgBridgeSelect   == DlgBridgeSelect   = True
+    DlgBridgeAuth     == DlgBridgeAuth     = True
+    DlgBridgeContacts == DlgBridgeContacts = True
     DlgPrompt a _ == DlgPrompt b _ = a == b
     _             == _             = False
 
@@ -164,8 +165,9 @@ instance Show DialogMode where
     show DlgExportKeys   = "DlgExportKeys"
     show DlgInsertLink   = "DlgInsertLink"
     show DlgEmojiPicker  = "DlgEmojiPicker"
-    show DlgBridgeSelect = "DlgBridgeSelect"
-    show DlgBridgeAuth   = "DlgBridgeAuth"
+    show DlgBridgeSelect   = "DlgBridgeSelect"
+    show DlgBridgeAuth     = "DlgBridgeAuth"
+    show DlgBridgeContacts = "DlgBridgeContacts"
     show (DlgPrompt s _) = "DlgPrompt " ++ show s ++ " <callback>"
 
 data Layout = Layout
