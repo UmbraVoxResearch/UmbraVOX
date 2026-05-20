@@ -134,9 +134,11 @@ if [ -b /dev/vdc ]; then
     mkdir -p /cache/dist-newstyle /cache/.cabal-store
 fi
 
-# Copy to writable workspace
-if [ ! -d /work/umbravox ]; then
+# Copy to writable workspace (idempotent marker prevents duplicate syncs)
+if [ ! -f /work/umbravox/.vm-source-ready ]; then
+    mkdir -p /work/umbravox
     cp -a /mnt/src/. /work/umbravox/
+    touch /work/umbravox/.vm-source-ready
 fi
 
 # Link build cache if available
