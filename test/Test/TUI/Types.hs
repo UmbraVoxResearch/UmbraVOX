@@ -38,6 +38,7 @@ runTests = do
     p4 <- testStatusTagGroup
     p5 <- testStatusTagLAN
     p6 <- testStatusTagPEX
+    p6b <- testStatusTagBridge
     p7 <- testCalcLayoutDimensions
     p8 <- testCalcLayoutMinSize
     p9 <- testSizeValid
@@ -49,7 +50,7 @@ runTests = do
     p15 <- testDropdownAnchorTracksRightJustifiedTabs
     p16 <- testBuildPluginRegistry
     p17 <- testTransportProviderRegistry
-    pure (p1 && p2 && p3 && p4 && p5 && p6 && p7 && p8 && p9 && p10 && p11 && p12 && p13 && p14 && p15 && p16 && p17)
+    pure (p1 && p2 && p3 && p4 && p5 && p6 && p6b && p7 && p8 && p9 && p10 && p11 && p12 && p13 && p14 && p15 && p16 && p17)
 
 testStatusTagOnline :: IO Bool
 testStatusTagOnline = assertEq "statusTag Online"  " \x25CF"   (statusTag Online)
@@ -68,6 +69,9 @@ testStatusTagLAN = assertEq "statusTag LAN"    " \x1F5A7"   (statusTag LAN)
 
 testStatusTagPEX :: IO Bool
 testStatusTagPEX = assertEq "statusTag PEX"    " \x1F517"   (statusTag PEX)
+
+testStatusTagBridge :: IO Bool
+testStatusTagBridge = assertEq "statusTag Bridge" " \x21C4"  (statusTag Bridge)
 
 -- | calcLayout at 80x24 should produce valid positive dimensions.
 testCalcLayoutDimensions :: IO Bool

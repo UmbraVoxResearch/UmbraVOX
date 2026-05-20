@@ -32,6 +32,7 @@ import UmbraVox.TUI.Dialog
     , regenKeyOverlayLines, exportWarnOverlayLines, exportKeysOverlayLines
     , wrapOverlayLines, insertLinkOverlayLines, emojiPickerOverlayLines
     , bridgeSelectOverlayLines, bridgeAuthOverlayLines
+    , bridgeContactsOverlayLines
     )
 import UmbraVox.TUI.EmojiPicker
     ( emojiCategories, emojiByCategory, searchEmoji
@@ -330,6 +331,7 @@ dialogLineCount st DlgEmojiPicker = do
     pure (length (emojiPickerOverlayLines q cat page))
 dialogLineCount _ DlgBridgeSelect = pure (length bridgeSelectOverlayLines)
 dialogLineCount _ DlgBridgeAuth = pure (length bridgeAuthOverlayLines)
+dialogLineCount _ DlgBridgeContacts = pure (length bridgeContactsOverlayLines)
 dialogLineCount st (DlgPrompt title _) = do
     buf <- readIORef (asDialogBuf st)
     pure (length (promptOverlayLines title buf))
@@ -361,6 +363,7 @@ dialogLines st DlgEmojiPicker = do
     pure (emojiPickerOverlayLines q cat page)
 dialogLines _  DlgBridgeSelect = pure bridgeSelectOverlayLines
 dialogLines _  DlgBridgeAuth = pure bridgeAuthOverlayLines
+dialogLines _  DlgBridgeContacts = pure bridgeContactsOverlayLines
 dialogLines st (DlgPrompt title _) = do
     buf <- readIORef (asDialogBuf st)
     pure (promptOverlayLines title buf)
@@ -516,8 +519,9 @@ handleDialogMouseClick st lay dlg rows rawLines row col = do
                 DlgExportKeys    -> handleDlgCloseOnly st lay DlgExportKeys lineCount rows rawLines row col
                 DlgInsertLink    -> handleDlgInsertLinkClick st lay lineCount rows row col
                 DlgEmojiPicker   -> handleDlgEmojiPickerClick st lay lineCount rows rawLines row col
-                DlgBridgeSelect  -> handleDlgBridgeSelectClick st lay lineCount rows row col
-                DlgBridgeAuth    -> handleDlgCloseOnly st lay DlgBridgeAuth lineCount rows rawLines row col
+                DlgBridgeSelect   -> handleDlgBridgeSelectClick st lay lineCount rows row col
+                DlgBridgeAuth     -> handleDlgCloseOnly st lay DlgBridgeAuth lineCount rows rawLines row col
+                DlgBridgeContacts -> handleDlgCloseOnly st lay DlgBridgeContacts lineCount rows rawLines row col
                 _                -> handleDlgCloseOnly st lay dlg lineCount rows rawLines row col
 
 handleDlgCloseOnly :: AppState -> Layout -> DialogMode -> Int -> [String] -> [String] -> Int -> Int -> IO ()
@@ -537,6 +541,7 @@ closeOnlyLines st DlgRegenKey = do
 closeOnlyLines _  DlgExportWarn = pure (exportWarnOverlayLines False)
 closeOnlyLines st DlgExportKeys = exportKeysOverlayLines st
 closeOnlyLines _  DlgBridgeAuth = pure bridgeAuthOverlayLines
+closeOnlyLines _  DlgBridgeContacts = pure bridgeContactsOverlayLines
 closeOnlyLines _  _          = pure []
 
 handleDlgBrowseClick :: AppState -> Layout -> Int -> [String] -> [String] -> Int -> Int -> IO ()
@@ -1220,8 +1225,9 @@ handleDialog st key = do
         Just DlgExportKeys -> handleScrollableReadOnly st key DlgExportKeys
         Just DlgInsertLink   -> handleInsertLinkDlg st key
         Just DlgEmojiPicker  -> handleEmojiPickerDlg st key
-        Just DlgBridgeSelect -> handleBridgeSelectDlg st key
-        Just DlgBridgeAuth   -> handleScrollableReadOnly st key DlgBridgeAuth
+        Just DlgBridgeSelect   -> handleBridgeSelectDlg st key
+        Just DlgBridgeAuth     -> handleBridgeAuthDlg st key
+        Just DlgBridgeContacts -> handleScrollableReadOnly st key DlgBridgeContacts
         Just (DlgPrompt _ cb) ->
             handleScrollableInteractive st key $ case key of
                 KeyEnter     -> submitPrompt st cb
@@ -1446,6 +1452,12 @@ handleDlgBridgeSelectClick st lay lineCount rows row col = do
                      ] of
         Just action -> action
         Nothing -> pure ()
+
+handleBridgeAuthDlg :: AppState -> InputEvent -> IO ()
+handleBridgeAuthDlg st KeyEnter = do
+    writeIORef (asDialogMode st) (Just DlgBridgeContacts)
+    writeIORef (asDialogScroll st) 0
+handleBridgeAuthDlg st key = handleScrollableReadOnly st key DlgBridgeAuth
 
 handleBridgeSelectDlg :: AppState -> InputEvent -> IO ()
 handleBridgeSelectDlg st KeyEnter = do

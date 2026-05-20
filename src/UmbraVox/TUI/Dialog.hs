@@ -28,6 +28,8 @@ module UmbraVox.TUI.Dialog
     , renderBridgeSelectOverlay
     , bridgeAuthOverlayLines
     , renderBridgeAuthOverlay
+    , bridgeContactsOverlayLines
+    , renderBridgeContactsOverlay
     ) where
 
 import Control.Monad (forM_, when)
@@ -1187,6 +1189,20 @@ bridgeAuthOverlayLines =
 renderBridgeAuthOverlay :: Layout -> Int -> IO ()
 renderBridgeAuthOverlay lay scrollOff =
     showOverlayScrolled lay "Bridge Authentication" bridgeAuthOverlayLines scrollOff
+
+bridgeContactsOverlayLines :: [String]
+bridgeContactsOverlayLines =
+    [ " Signal contacts not yet available"
+    , ""
+    , " Connect to Signal Server first."
+    , " Contacts will appear here after auth."
+    , ""
+    , "[ Close ]"
+    ]
+
+renderBridgeContactsOverlay :: Layout -> Int -> IO ()
+renderBridgeContactsOverlay lay scrollOff =
+    showOverlayScrolled lay "Bridge Contacts" bridgeContactsOverlayLines scrollOff
 
 -- | Render a dropdown menu below its tab position
 renderDropdown :: Layout -> MenuTab -> Int -> IO ()

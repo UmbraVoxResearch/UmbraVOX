@@ -15,7 +15,7 @@ import UmbraVox.Chat.Session (ChatSession)
 import UmbraVox.Network.ProviderCatalog (TransportProviderId)
 import UmbraVox.Network.TransportClass (AnyTransport)
 
-data ContactStatus = Online | Offline | Local | Group | LAN | PEX
+data ContactStatus = Online | Offline | Local | Group | LAN | PEX | Bridge
     deriving stock (Eq)
 
 statusTag :: ContactStatus -> String
@@ -25,6 +25,7 @@ statusTag Local   = " \x1F512"  -- 🔒 lock
 statusTag Group   = " \x1F465"  -- 👥 people
 statusTag LAN     = " \x1F5A7"  -- 🖧 network
 statusTag PEX     = " \x1F517"  -- 🔗 link
+statusTag Bridge  = " \x21C4"   -- ⇄ bridge arrows
 
 -- | Crypto backend for a session: either the local double-ratchet or
 -- an external bridge plugin.
