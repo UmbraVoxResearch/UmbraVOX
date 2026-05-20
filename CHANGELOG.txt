@@ -6,7 +6,21 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 
 ## [Unreleased]
 
-(No unreleased changes.)
+### Formal Verification
+- Ed25519GroupUniversal.v: 39 Qed via coqprime GZnZ field tactic (NEW FILE)
+  - GF(2^255-19) ring structure (8 Qed, no primality needed)
+  - Universal twisted Edwards commutativity (6 Qed)
+  - Universal identity element (0,1) for all points (8 Qed)
+  - Universal additive inverse (-x,y) for all on-curve points (6 Qed)
+  - GZnZ ↔ Ed25519Field.v concrete agreement (6 Qed)
+  - Field-dependent theorems parameterized by (prime ed25519_p), not axiomatized
+- coqprime + coq-bignums enabled in shell.nix and vm-image.nix
+  - Workaround: -native-compiler no for bignums findlib plugin issue (Rocq 9.1.1)
+  - Coq Makefile updated to pass -native-compiler no for coqprime-dependent files
+- ASSUMPTIONS.md: ED-003, ED-007, ED-008b updated to PARTIALLY_UNBLOCKED
+- Closure cofactors computed via sympy Groebner basis (A*C1 + B*C2 = G, verified)
+- Pocklington certificate factorization chain computed (14 levels, all witnesses identified)
+- Total: 11 Coq files, 415 Qed (was 10 files, 376 Qed)
 
 ## [0.1.8] — 2026-05-19
 
