@@ -314,7 +314,9 @@ Note: Items from codebase audit (2026-05-20).
     Note: vm-dev-run now exports current worktree (not git archive HEAD) with exclusion filters.
   [~] M20.5.5 Fail closed on unenforced VM network ALLOW rules
     Note: vm-network-policy.sh now blocks VM boot when ALLOW rules are present without enforcement.
-  [ ] M20.5.6 Restrict /output and persistent cache to explicit artifact modes only
+  [x] M20.5.6 VM cache/output policy decision
+    Note: Keep persistent VM build cache and host /output share enabled by default.
+    Note: Cache is guest-mounted (`/dev/vdc`); host only sees qcow2 backing file.
   [ ] M20.5.7 Refresh README/QUICKSTART/VM-ISOLATION for vm-first defaults and run-local opt-in
 
 [~] M20.7 DRY reduction (build/test infra)

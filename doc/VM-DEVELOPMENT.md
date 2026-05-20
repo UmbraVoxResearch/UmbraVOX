@@ -75,6 +75,8 @@ genext2fs, e2fsprogs               gcc, gdb, valgrind, AFL++
 The build cache disk (`build/vm/build-cache.qcow2`, 4GB) persists across VM
 sessions.  `dist-newstyle` and `.cabal/store` are symlinked to `/cache/` in
 the guest, so subsequent builds reuse compiled artifacts.
+The host does not mount this filesystem directly; it only stores the qcow2
+backing file.
 
 ### VM Resources
 
