@@ -52,6 +52,7 @@ import qualified Test.CryptoIntegrity as CryptoIntegrity
 import qualified Test.Crypto.Signal.DoubleRatchet as DoubleRatchet
 import qualified Test.Crypto.Signal.SenderKeys as SenderKeys
 import qualified Test.Crypto.Signal.Session as Session
+import qualified Test.Crypto.SignalWireCompat as SignalWireCompat
 import qualified Test.Crypto.Signal.X3DH as X3DH
 import qualified Test.Crypto.StealthAddress as StealthAddress
 import qualified Test.Crypto.VRF as VRF
@@ -318,6 +319,7 @@ coreSuites =
     , Suite "pq-wrapper" PQWrapper.runTests
     , Suite "sender-keys" SenderKeys.runTests
     , Suite "signal-session" Session.runTests
+    , Suite "signal-wire-compat" SignalWireCompat.signalWireCompatTests
     , Suite "mdns" MDNS.runTests
     , Suite "network-protocol" Protocol.runTests
     , Suite "chat-message" ChatMessage.runTests
@@ -392,6 +394,7 @@ coreCryptoSuites =
     , Suite "pq-wrapper" PQWrapper.runTests
     , Suite "sender-keys" SenderKeys.runTests
     , Suite "signal-session" Session.runTests
+    , Suite "signal-wire-compat" SignalWireCompat.signalWireCompatTests
     , Suite "security" Security.runTests
     , Suite "differential" Differential.runTests
     , Suite "m11-symmetric" M11Symmetric.runTests
