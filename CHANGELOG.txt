@@ -6,6 +6,27 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-05-22
+
+### Protocol
+- WireFormat v1 rewrite: stealth addressing replaces cleartext source/destination IDs (M23.1.1a)
+- RouteToken module: HKDF session routing tokens with channel + identity binding (M23.1.1b)
+- Envelope AEAD: ChaCha20-Poly1305 for data messages, HMAC for handshake (M23.1.1c)
+- Sender identity moved inside encrypted payload (M23.1.1d)
+- Dandelion++ opaque forwarding: relay swaps token, never decrypts inner envelope (M23.1.1e-f)
+- Handshake integration: route token derivation after PQXDH (M23.1.1e)
+
+### Security
+- DoS mitigations: PoW challenge + rate limiting (M23.1.1h)
+- MitM protections: channel binding, identity binding, key confirmation MAC (M23.1.1j)
+- Hybrid token rotation: counter(100) + wall-clock(600s) (M23.1.1i)
+
+### Testing
+- Comprehensive M23.1.1 tests: RouteToken, AEAD, InnerPayload, DoS, v1 round-trip, stealth scan, relay forwarding, PoW (M23.1.1k)
+
+### Fixed
+- pqwrapper.c codegen syntax error: tuple assignment replaced with separate vars (32b34bb)
+
 ## [0.3.0] — 2026-05-22
 
 ### Crypto
@@ -493,7 +514,8 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 ### Added
 - Tagged release baseline `v0.0.6` and stabilized active MVP hardening branch state.
 
-[Unreleased]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.8...v0.2.0
 [0.1.8]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.7...v0.1.8
