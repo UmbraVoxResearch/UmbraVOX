@@ -182,7 +182,7 @@ testInboundMessagesPersistToAnthony = withDB "umbravox-recovery-inbound.db" $ \d
     bobSession <- takeMVar bobResult
 
     sid <- addSession cfg aliceHandle aliceSession "Bob"
-    sendRes <- sendChatMessage bobSession (BS.replicate 32 0) (BC.pack "persisted inbound")
+    sendRes <- sendChatMessage bobSession (BS.replicate 32 0) (BC.pack "persisted inbound") 0
     let (_, wire) = case sendRes of
                         Right r -> r
                         Left _  -> error "Recovery: sendChatMessage returned Left (unexpected)"
