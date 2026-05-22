@@ -52,6 +52,7 @@ data TransportProviderId
     | ProviderWhatsApp
     | ProviderSignal
     | ProviderSignalServer
+    | ProviderUmbraClaw
     deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 data ProviderClass
@@ -192,6 +193,10 @@ providerDescriptor pid =
         ProviderSignalServer ->
             provider pid "signal-server" "Signal Server"
                 "Planned Signal Server bridge substrate for service-backed messaging."
+                ProviderClosedBridge
+        ProviderUmbraClaw ->
+            provider pid "umbraclaw" "UmbraClaw"
+                "UmbraClaw post-quantum bridge provider for encrypted messaging."
                 ProviderClosedBridge
   where
     provider providerId stableId name desc providerClass =
@@ -446,6 +451,7 @@ providerEndpointSchema providerId =
         ProviderWhatsApp -> "e164-or-handle"
         ProviderSignal -> "e164-or-username"
         ProviderSignalServer -> "server:port/account"
+        ProviderUmbraClaw -> "host:port"
 
 renderProviderEndpoint :: TransportProviderId -> String -> Int -> String
 renderProviderEndpoint providerId host port =
@@ -463,6 +469,7 @@ renderProviderEndpoint providerId host port =
         ProviderWhatsApp -> renderHostPort host port ++ " via whatsapp"
         ProviderSignal -> renderHostPort host port ++ " via signal"
         ProviderSignalServer -> renderHostPort host port ++ " via signal-server"
+        ProviderUmbraClaw -> renderHostPort host port ++ " via umbraclaw"
 
 parseProviderEndpoint :: TransportProviderId -> String -> Maybe String
 parseProviderEndpoint providerId raw =
@@ -479,6 +486,7 @@ providerEndpointParser ProviderAIM          = parseSplitEndpoint '@'
 providerEndpointParser ProviderXMPP         = parseSplitEndpoint '/'
 providerEndpointParser ProviderMastodon     = parseMastodonEndpoint
 providerEndpointParser ProviderSignalServer = parseServerAccountEndpoint
+providerEndpointParser ProviderUmbraClaw    = parseRequiredHostPort
 providerEndpointParser _                    = parseAccount
 
 parseWireGuardEndpoint :: String -> Maybe String

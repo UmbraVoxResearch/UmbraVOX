@@ -161,6 +161,7 @@ import qualified Test.TUI.Sim.Workflows as TUISimWorkflows
 import qualified Test.Tools.Complexity as ToolsComplexity
 import qualified Test.Tools.FStarVerify as ToolsFStarVerify
 import qualified Test.Tools.FetchReferences as ToolsFetchReferences
+import qualified Test.Bridge.UmbraClaw as BridgeUmbraClaw
 
 data Suite = Suite
     { suiteName :: String
@@ -390,6 +391,7 @@ coreSuites =
     , Suite "m11-high-km3" M11HighKM3.runTests
     , Suite "m11-final" M11Final.runTests
     , Suite "mcdc" MCDC.runTests
+    , Suite "bridge-umbraclaw" BridgeUmbraClaw.runTests
     ]
 
 coreCryptoSuites :: [Suite]
