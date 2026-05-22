@@ -15,8 +15,7 @@ This document is an audit snapshot. Some findings below are intentionally
 preserved for historical traceability and may no longer reflect current code.
 Resolved after this snapshot:
 
-- `make run` is now guarded in VM-first mode; explicit host execution uses
-  `UMBRAVOX_LOCAL=1 make run-local`.
+- `make run` now aliases `make vm-run-gui`; host-local compile bypass is disabled.
 - `test-offline-parity` now routes through `vm_or_local`.
 - `test-core*`, `test-tcp`, `test-fault`, `test-recovery`, `test-tui-sim`,
   `test-integrity`, `test-mdns`, `test-deferred`, and `test-differential`
@@ -34,10 +33,9 @@ The project has two nix-shell environments:
 | `shell.nix`         | Full local dev (GHC, F\*, Coq, AFL++)   | **YES** -- violation                 |
 | `shell-minimal.nix` | VM orchestration only (qemu, git, make) | No -- clean                          |
 
-The Makefile has a `UMBRAVOX_LOCAL` flag (default `0`) that makes `build`,
-`test`, and `verify` prefer the VM path when `build/vm/image` exists.
-When the image is absent, these targets now fail with an explicit
-`make vm-image-build` instruction unless `UMBRAVOX_LOCAL=1` is set.
+The Makefile now routes `build`, `test`, and `verify` through the VM path.
+When the image is absent, these targets fail with an explicit
+`make vm-image-build` instruction.
 
 ---
 
@@ -217,7 +215,7 @@ the "host only needs qemu+nix" goal for developer machines.
 
 1. **`build`/`test`/`verify` fallback:** Change the "no VM image" path from
    silently running locally to erroring with a message like
-   `"No VM image. Run 'make vm-image-build' first, or set UMBRAVOX_LOCAL=1."`
+   `"No VM image. Run 'make vm-image-build' first."`
    This prevents accidentally pulling compilers into the host store.
 
 2. **`vm-image-build` cabal fallback:** Remove the
@@ -232,16 +230,13 @@ always run on host.  Add the same VM-dispatch pattern that `build`/`test`/
 
 ```makefile
 test-core:
-    @if [ "$(UMBRAVOX_LOCAL)" != "1" ]; then \
-        if [ -d build/vm/image ] || [ -L build/vm/image ]; then \
-            $(MAKE) _vm-exec VM_CMD="cabal test umbravox-test --test-options='core'"; \
-            exit $$?; \
-        else \
-            echo "No VM image — run 'make vm-image-build' or set UMBRAVOX_LOCAL=1"; \
-            exit 1; \
-        fi; \
+    @if [ -d build/vm/image ] || [ -L build/vm/image ]; then \
+        $(MAKE) _vm-exec VM_CMD="cabal test umbravox-test --test-options='core'"; \
+        exit $$?; \
+    else \
+        echo "No VM image — run 'make vm-image-build'"; \
+        exit 1; \
     fi
-    @$(SUITE_LOCK) $(call run_test_suite,core)
 ```
 
 Affected targets: `test-core`, `test-core-crypto`, `test-core-network`,
@@ -308,9 +303,9 @@ equivalents, with the full shell available as `devShells.full`.
 | Nix-build on host (acceptable) | 2 |
 | Host-compiler violations | ~50 targets |
 
-The `UMBRAVOX_LOCAL` / VM-dispatch pattern in `build`/`test`/`verify` is
-the right architecture.  The main gap is that it has not been applied to
-the ~50 remaining targets that still invoke `cabal` or `ghc` on the host.
+The VM-dispatch pattern in `build`/`test`/`verify` is the right architecture.
+The main gap was applying it to the remaining targets that invoked `cabal`
+or `ghc` on the host.
 The `shell-minimal.nix` file is ready and correct -- developers just need
 to use it instead of `shell.nix`, and the Makefile needs to stop silently
 falling back to host compilation.

@@ -150,13 +150,13 @@ in pkgs.mkShell {
     echo "    make test      Run fast messaging-MVP hardening gate (VM)"
     echo "    make verify    Run F* formal verification (VM)"
     echo "    make quality   Run all quality gates (VM)"
-    echo "    make run       Guarded alias; use UMBRAVOX_LOCAL=1 or vm-run-gui"
-    echo "    make run-local Launch UmbraVOX TUI (explicit local compile)"
+    echo "    make run       Alias for vm-run-gui"
+    echo "    make run-local Guarded target (host-local compile disabled)"
     echo "    make help      Show all targets and shortcuts"
     echo ""
     echo -e "  \033[32mVM Development:\033[0m"
     echo "    make vm-dev    Interactive dev shell in NixOS VM"
-    echo "    UMBRAVOX_LOCAL=1 make build   Run locally (skip VM)"
+    echo "    Host-local compile bypass is disabled"
     echo ""
   '';
 

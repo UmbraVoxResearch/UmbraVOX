@@ -41,8 +41,6 @@ make quality           # Full pipeline: build + test + verify + complexity + lin
 make soak              # Longer soak/stress run with artifact report (in VM)
 make release-linux     # Portable Linux x86_64 terminal bundle (in VM)
 make release           # Build all defined release artifacts (in VM)
-UMBRAVOX_LOCAL=1 make build  # Bypass VM, build locally (requires full nix-shell)
-UMBRAVOX_LOCAL=1 make run-local  # Explicit host compile + run
 scripts/nix-flake.sh flake show --no-write-lock-file
 ```
 
@@ -60,26 +58,21 @@ make vm-run-gui        # Interactive dev with QEMU GUI
 make vm-dev            # Interactive dev shell inside the VM
 ```
 
-### Remote Nix Builder (VM Image Targets)
+### VM-local Nix Config (Image Targets)
 
-`make vm-image-build` and `make vm-signal-server-build` are remote-builder
-only and fail closed (no local fallback).
+`make vm-image-build` and `make vm-signal-server-build` use local `nix` only
+and fail closed (no remote fallback, no host compile fallback).
 
-Defaults are read from `nix/remote-builder.env`. Environment variables override
-file values. If the file is missing, env-only mode is supported.
+Defaults are committed in `nix/vm-build.env`. Environment variables override
+file values. By default, the file is required.
 
-Required variable:
-
-```sh
-UMBRAVOX_NIX_BUILDER="ssh-ng://nixbuilder@builder.example.internal x86_64-linux - 8"
-```
-
-Optional variables:
+Primary variables:
 
 ```sh
-UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES=true
-UMBRAVOX_NIX_REMOTE_REQUIRED=1
-UMBRAVOX_NIX_CONFIG_FILE=/path/to/remote-builder.env
+UMBRAVOX_NIX_BUILD_DIR=build/vm/tmp
+UMBRAVOX_NIX_SANDBOX_BUILD_DIR=/build
+UMBRAVOX_NIX_LOCAL_ONLY=1
+UMBRAVOX_NIX_REQUIRE_CONFIG=1
 ```
 
 Override examples:
@@ -88,24 +81,21 @@ Override examples:
 # use committed defaults
 make vm-image-build
 
-# override builder for this shell/session
-export UMBRAVOX_NIX_BUILDER="ssh-ng://me@my-builder.internal x86_64-linux ~/.ssh/id_ed25519 4"
+# override build scratch directory for this shell/session
+export UMBRAVOX_NIX_BUILD_DIR=build/vm/tmp-custom
 make vm-image-build
 
-# env-only mode (if nix/remote-builder.env is absent)
-UMBRAVOX_NIX_BUILDER="ssh-ng://ci@builder.internal x86_64-linux - 16" make vm-image-build
+# env-only mode (when explicitly allowed)
+UMBRAVOX_NIX_REQUIRE_CONFIG=0 \
+UMBRAVOX_NIX_CONFIG_FILE=/tmp/absent.env \
+UMBRAVOX_NIX_BUILD_DIR=build/vm/tmp-env \
+UMBRAVOX_NIX_SANDBOX_BUILD_DIR=/build \
+UMBRAVOX_NIX_LOCAL_ONLY=1 \
+make vm-image-build
 ```
 
 Debug output is printed at runtime and includes config source (`file`,
-`file+env`, `env-only`) and the effective variables used for the build.
-
-To run locally instead of in the VM (requires full toolchain):
-
-```sh
-UMBRAVOX_LOCAL=1 make build    # Build locally
-UMBRAVOX_LOCAL=1 make test     # Test locally
-UMBRAVOX_LOCAL=1 make run-local  # Run TUI locally
-```
+`file+env`, `env-only`) and the effective variables used for each build.
 
 See `doc/VM-DEVELOPMENT.md` for the full migration guide.
 

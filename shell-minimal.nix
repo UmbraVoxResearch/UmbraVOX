@@ -85,7 +85,7 @@ pkgs.mkShell {
     echo "    make vm-image-clean   Remove the cached VM image"
     echo ""
     echo -e "  \033[33mNOTE:\033[0m For the full local toolchain, use: nix-shell shell.nix"
-    echo "        then: UMBRAVOX_LOCAL=1 make build"
+    echo "        commands still route through VM by default"
     echo ""
   '';
 }

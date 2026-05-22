@@ -68,10 +68,10 @@ trap 'rm -rf "$FAIL_DIR"' EXIT
 
 for target in "${TARGETS[@]}"; do
     failure_log="$FAIL_DIR/$target.log"
-    if env UMBRAVOX_LOCAL=1 timeout 20 make -n "$target" >"$failure_log" 2>&1; then
+    if timeout 20 make -n "$target" >"$failure_log" 2>&1; then
         check "make -n $target" "PASS"
     else
-        check "make -n $target (UMBRAVOX_LOCAL=1)" "FAIL"
+        check "make -n $target" "FAIL"
         echo "    log: $failure_log"
     fi
 done

@@ -86,8 +86,7 @@ release.
 All standard `make` targets (`build`, `test`, `verify`, `quality`, etc.)
 now route through the NixOS VM by default.  The VM is not limited to
 `vm-*` targets — it is the primary execution environment for all
-development commands.  Set `UMBRAVOX_LOCAL=1` to bypass the VM and run
-locally (requires the full `nix-shell` toolchain).
+development commands. Host-local compile bypass is disabled.
 
 `make vm-smoke` runs the full build/test/release pipeline inside an
 isolated NixOS QEMU VM:
