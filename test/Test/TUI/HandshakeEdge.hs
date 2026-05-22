@@ -76,15 +76,16 @@ testDeserialize10Random = do
 
 testDeserializeValidLenGarbage :: IO Bool
 testDeserializeValidLenGarbage = do
-    -- Build a blob of >= 165 bytes with a pqLen field that satisfies length checks.
-    -- pqLen at offset 160..163; set to 1184 (ML-KEM-768 encap key size)
-    -- total needed: 164 + 1184 + 1 = 1349 bytes
+    -- Build a blob with version byte + valid-looking lengths but garbage data.
+    -- Layout: version(1) + header(160) + lenField(4) + pqData(1184) + pqSig(64) + opkFlag(1)
     let pqLen = 1184 :: Int
+        version = BS.singleton 0x01
         header = BS.replicate 160 0xAA
         lenField = putW32BE (fromIntegral pqLen)
         pqData = BS.replicate pqLen 0xBB
+        pqSig  = BS.replicate 64 0xCC
         opkFlag = BS.singleton 0x00
-        blob = BS.concat [header, lenField, pqData, opkFlag]
+        blob = BS.concat [version, header, lenField, pqData, pqSig, opkFlag]
     r <- try (evaluate (deserializeBundle blob)) :: IO (Either SomeException (Maybe PQPreKeyBundle))
     case r of
         Left ex -> do
