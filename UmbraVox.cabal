@@ -42,6 +42,11 @@ flag wasm
   default:     False
   manual:      True
 
+flag stubs
+  description: Include unimplemented stub modules (consensus, economics, etc.)
+  default:     True
+  manual:      True
+
 common warnings
   ghc-options:
     -Wall
@@ -137,24 +142,6 @@ library
       UmbraVox.Crypto.Generated.FFI.SHA256
       UmbraVox.Crypto.Generated.FFI.SHA512
       UmbraVox.Crypto.Generated.FFI.X25519
-      -- Consensus
-      UmbraVox.Consensus.Types
-      UmbraVox.Consensus.Block
-      UmbraVox.Consensus.Ledger
-      UmbraVox.Consensus.Protocol
-      UmbraVox.Consensus.LeaderElection
-      UmbraVox.Consensus.Validation
-      UmbraVox.Consensus.ForkChoice
-      UmbraVox.Consensus.Nonce
-      UmbraVox.Consensus.Truncation
-      UmbraVox.Consensus.Mempool
-      -- Economics
-      UmbraVox.Economics.Token
-      UmbraVox.Economics.Fees
-      UmbraVox.Economics.Rewards
-      UmbraVox.Economics.Penalty
-      UmbraVox.Economics.Cycle
-      UmbraVox.Economics.Onboarding
       -- Network
       UmbraVox.Network.TransportClass
       UmbraVox.Network.Transport
@@ -282,6 +269,27 @@ library
       csrc/generated/sha256.c
       csrc/generated/sha512.c
       csrc/generated/x25519.c
+  if !flag(wasm) && flag(stubs)
+    exposed-modules:
+      -- Consensus (stub / deferred)
+      UmbraVox.Consensus.Types
+      UmbraVox.Consensus.Block
+      UmbraVox.Consensus.Ledger
+      UmbraVox.Consensus.Protocol
+      UmbraVox.Consensus.LeaderElection
+      UmbraVox.Consensus.Validation
+      UmbraVox.Consensus.ForkChoice
+      UmbraVox.Consensus.Nonce
+      UmbraVox.Consensus.Truncation
+      UmbraVox.Consensus.Mempool
+      -- Economics (stub / deferred)
+      UmbraVox.Economics.Token
+      UmbraVox.Economics.Fees
+      UmbraVox.Economics.Rewards
+      UmbraVox.Economics.Penalty
+      UmbraVox.Economics.Cycle
+      UmbraVox.Economics.Onboarding
+    cpp-options: -DSTUBS
   if flag(chastity-build)
     cpp-options: -DCHASTITY_BUILD
   if flag(wasm)
@@ -471,22 +479,6 @@ test-suite umbravox-test
     Test.Tools.Complexity
     Test.Tools.FStarVerify
     Test.Tools.FetchReferences
-    Test.Consensus.Types
-    Test.Consensus.Block
-    Test.Consensus.Ledger
-    Test.Consensus.Mempool
-    Test.Consensus.Validation
-    Test.Consensus.ForkChoice
-    Test.Consensus.Nonce
-    Test.Consensus.LeaderElection
-    Test.Consensus.Protocol
-    Test.Consensus.Truncation
-    Test.Economics.Token
-    Test.Economics.Fees
-    Test.Economics.Rewards
-    Test.Economics.Penalty
-    Test.Economics.Cycle
-    Test.Economics.Onboarding
     Test.Security.Adversarial
     Test.Security.M11KeyMgmt
     Test.Security.M11Protocol
@@ -517,6 +509,25 @@ test-suite umbravox-test
     Test.Security.M11Final
     Test.Security.MCDC
     CryptoGen
+  if flag(stubs)
+    other-modules:
+      Test.Consensus.Types
+      Test.Consensus.Block
+      Test.Consensus.Ledger
+      Test.Consensus.Mempool
+      Test.Consensus.Validation
+      Test.Consensus.ForkChoice
+      Test.Consensus.Nonce
+      Test.Consensus.LeaderElection
+      Test.Consensus.Protocol
+      Test.Consensus.Truncation
+      Test.Economics.Token
+      Test.Economics.Fees
+      Test.Economics.Rewards
+      Test.Economics.Penalty
+      Test.Economics.Cycle
+      Test.Economics.Onboarding
+    cpp-options: -DSTUBS
   build-depends:
     base         >= 4.18  && < 5,
     bytestring   >= 0.11  && < 0.13,
