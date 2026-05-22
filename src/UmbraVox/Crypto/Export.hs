@@ -40,7 +40,7 @@ tagLen = 16
 --   does NOT resist sustained offline brute-force from a well-resourced
 --   adversary.
 --
--- Fix (future — TODO M10.3.3): Replace iterated HKDF with Argon2id via FFI
+-- Fix (future — TODO M20.4.5): Replace iterated HKDF with Argon2id via FFI
 --   to libsodium:
 --     crypto_pwhash( out, 32
 --                  , password, password_len
@@ -57,7 +57,7 @@ tagLen = 16
 --   long-lived or user-chosen low-entropy export passwords.
 -- ────────────────────────────────────────────────────────────────────────────
 
--- TODO(M10.3.3): migrate deriveKey to Argon2id (64 MiB / 3 iters) via
+-- TODO(M20.4.5): migrate deriveKey to Argon2id (64 MiB / 3 iters) via
 -- libsodium FFI once the FFI layer is wired in.
 
 -- | Number of PBKDF2-style iterations for password-based key derivation.

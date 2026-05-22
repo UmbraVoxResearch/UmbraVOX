@@ -875,13 +875,12 @@ testPL021X3DHIdentityKeySubstitution = do
 --              on failure.  Zeroing the signature field produces 64 zero
 --              bytes that do not constitute a valid Ed25519 signature.
 --
--- TODO (M10.2.1): A separate PQ prekey signature (covering the ML-KEM
---              encapsulation key) is not yet implemented.  When M10.2.1
---              lands, add a parallel test that zeroes the PQ prekey sig
---              and verifies rejection.
+-- Note:        M10.2.1 (PQ prekey Ed25519 signature) is now complete.
+--              Separate PQ prekey signature tests live in test/Test/Crypto/PQXDH.hs.
 --
 -- Verified:    (a) A zeroed SPK signature is rejected (pqxdhInitiate returns Nothing).
 --              (b) A valid SPK signature passes (positive control).
+--              (c) PQ prekey signature coverage: see test/Test/Crypto/PQXDH.hs.
 ------------------------------------------------------------------------
 
 testPL022PQXDHSignatureBypass :: IO Bool
