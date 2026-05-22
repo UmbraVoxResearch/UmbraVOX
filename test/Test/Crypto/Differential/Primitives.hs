@@ -3,6 +3,8 @@
 --
 -- This module loads JSON test vectors from test/vectors/rfc/ and
 -- compares UmbraVOX's output against the expected values.
+-- It also cross-checks Haskell reference implementations against
+-- FFI-wrapped C codegen outputs for bit-exact equivalence.
 --
 -- Correspondence scope: bit-exact, encoding-in-scope.
 -- Does NOT test timing, side-channel, or error behavior.
@@ -10,14 +12,15 @@ module Test.Crypto.Differential.Primitives
     ( differentialPrimitiveTests
     ) where
 
+import Control.Monad (forM)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as C8
 import Data.ByteString (ByteString)
-import Data.Word (Word8)
+import Data.Word (Word8, Word32)
 import Data.Char (digitToInt, isHexDigit)
 import Numeric (showHex)
 
--- Import UmbraVOX crypto modules
+-- Import UmbraVOX crypto modules (Haskell reference)
 import qualified UmbraVox.Crypto.SHA256 as SHA256
 import qualified UmbraVox.Crypto.SHA512 as SHA512
 import qualified UmbraVox.Crypto.Curve25519 as X25519
@@ -28,10 +31,23 @@ import qualified UmbraVox.Crypto.GCM as GCM
 import qualified UmbraVox.Crypto.ChaChaPoly as ChaChaPoly
 import qualified UmbraVox.Crypto.Keccak as Keccak
 import qualified UmbraVox.Crypto.Poly1305 as Poly1305
+import qualified UmbraVox.Crypto.Random as ChaCha20
+import qualified UmbraVox.Crypto.AES as AES
 import UmbraVox.Crypto.MLKEM
     ( MLKEMEncapKey(..), MLKEMDecapKey(..), MLKEMCiphertext(..)
     , mlkemKeyGen, mlkemEncaps, mlkemDecaps
     )
+
+-- FFI wrappers (C codegen bridge -- delegates to reference until real C lands)
+import qualified UmbraVox.Crypto.Generated.FFI.SHA256 as FFISHA256
+import qualified UmbraVox.Crypto.Generated.FFI.SHA512 as FFISHA512
+import qualified UmbraVox.Crypto.Generated.FFI.HMAC as FFIHMAC
+import qualified UmbraVox.Crypto.Generated.FFI.HKDF as FFIHKDF
+import qualified UmbraVox.Crypto.Generated.FFI.ChaCha20 as FFIChaCha20
+import qualified UmbraVox.Crypto.Generated.FFI.Poly1305 as FFIPoly1305
+import qualified UmbraVox.Crypto.Generated.FFI.AES256 as FFIAES256
+import qualified UmbraVox.Crypto.Generated.FFI.Keccak as FFIKeccak
+import qualified UmbraVox.Crypto.Generated.FFI.X25519 as FFIX25519
 
 -- | Run all differential primitive tests.
 -- Returns True if all pass, False if any fail.
@@ -51,10 +67,24 @@ differentialPrimitiveTests = do
         , testPoly1305Vectors
         , testMLKEMVectors
         ]
-    let passed = length (filter id results)
-        total = length results
+    putStrLn "[DifferentialPrimitives] Running FFI cross-check tests..."
+    ffiResults <- sequence
+        [ testSHA256FFICross
+        , testSHA512FFICross
+        , testHMACFFICross
+        , testHKDFFFICross
+        , testChaCha20FFICross
+        , testPoly1305FFICross
+        , testAES256FFICross
+        , testKeccakFFICross
+        , testX25519FFICross
+        , testFFIFuzz
+        ]
+    let allResults = results ++ ffiResults
+        passed = length (filter id allResults)
+        total = length allResults
     putStrLn $ "[DifferentialPrimitives] " ++ show passed ++ "/" ++ show total ++ " suites passed."
-    return (and results)
+    return (and allResults)
 
 -- | Hex string to ByteString
 hexToBS :: String -> ByteString
@@ -351,3 +381,230 @@ testMLKEMVectors = do
         else do putStrLn $ "  FAIL: " ++ name ++ " (expected " ++ show expected
                             ++ ", got " ++ show actual ++ ")"
                 return False
+
+-- ════════════════════════════════════════════════════════════════════
+-- FFI cross-check: Haskell reference vs C codegen (via FFI wrappers)
+--
+-- For each primitive, generate random inputs, run both the pure
+-- Haskell reference and the IO-returning FFI wrapper, and verify
+-- bit-exact match.  When the C implementations are stubs that
+-- delegate to the Haskell reference these pass trivially; when
+-- real C lands, these catch any divergence.
+-- ════════════════════════════════════════════════════════════════════
+
+-- | Compare a pure reference result against an IO FFI result.
+checkCross :: String -> String -> ByteString -> IO ByteString -> IO Bool
+checkCross suite vid hsResult ffiAction = do
+    ffiResult <- ffiAction
+    if hsResult == ffiResult
+        then do putStrLn $ "  PASS: " ++ suite ++ "/" ++ vid ++ " (ref==ffi)"
+                return True
+        else do putStrLn $ "  FAIL: " ++ suite ++ "/" ++ vid ++ " DIVERGENCE"
+                putStrLn $ "    ref: " ++ bsToHex hsResult
+                putStrLn $ "    ffi: " ++ bsToHex ffiResult
+                return False
+
+-- ── SHA-256 FFI cross-check ────────────────────────────────────────
+
+testSHA256FFICross :: IO Bool
+testSHA256FFICross = do
+    putStrLn "  [SHA-256 FFI cross] reference vs codegen"
+    let inputs = [ ("empty", BS.empty)
+                 , ("abc", C8.pack "abc")
+                 , ("55-bytes", BS.replicate 55 0x61)
+                 , ("56-bytes", BS.replicate 56 0x61)
+                 , ("64-bytes", BS.replicate 64 0x61)
+                 , ("128-bytes", BS.replicate 128 0x61)
+                 , ("two-block", C8.pack "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")
+                 ]
+    results <- forM inputs $ \(name, input) ->
+        checkCross "SHA-256" name (SHA256.sha256 input) (FFISHA256.sha256 input)
+    return (and results)
+
+-- ── SHA-512 FFI cross-check ────────────────────────────────────────
+
+testSHA512FFICross :: IO Bool
+testSHA512FFICross = do
+    putStrLn "  [SHA-512 FFI cross] reference vs codegen"
+    let inputs = [ ("empty", BS.empty)
+                 , ("abc", C8.pack "abc")
+                 , ("two-block", C8.pack "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu")
+                 ]
+    results <- forM inputs $ \(name, input) ->
+        checkCross "SHA-512" name (SHA512.sha512 input) (FFISHA512.sha512 input)
+    return (and results)
+
+-- ── HMAC FFI cross-check ───────────────────────────────────────────
+
+testHMACFFICross :: IO Bool
+testHMACFFICross = do
+    putStrLn "  [HMAC FFI cross] reference vs codegen"
+    -- RFC 4231 vectors
+    let key1 = BS.replicate 20 0x0b
+        msg1 = C8.pack "Hi There"
+        key2 = C8.pack "Jefe"
+        msg2 = C8.pack "what do ya want for nothing?"
+        key3 = BS.replicate 20 0xaa
+        msg3 = BS.replicate 50 0xdd
+    r256 <- forM [(key1,msg1,"tc1"),(key2,msg2,"tc2"),(key3,msg3,"tc3")] $
+        \(k, m, name) ->
+            checkCross "HMAC-256" name (HMAC.hmacSHA256 k m) (FFIHMAC.hmacSHA256 k m)
+    r512 <- forM [(key1,msg1,"tc1"),(key2,msg2,"tc2"),(key3,msg3,"tc3")] $
+        \(k, m, name) ->
+            checkCross "HMAC-512" name (HMAC.hmacSHA512 k m) (FFIHMAC.hmacSHA512 k m)
+    return (and (r256 ++ r512))
+
+-- ── HKDF FFI cross-check ──────────────────────────────────────────
+
+testHKDFFFICross :: IO Bool
+testHKDFFFICross = do
+    putStrLn "  [HKDF FFI cross] reference vs codegen"
+    -- RFC 5869 Test Case 1
+    let ikm1  = hexToBS "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"
+        salt1 = hexToBS "000102030405060708090a0b0c"
+        info1 = hexToBS "f0f1f2f3f4f5f6f7f8f9"
+    -- RFC 5869 Test Case 3: zero-length salt and info
+    let ikm3  = hexToBS "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"
+        salt3 = BS.empty
+        info3 = BS.empty
+    r1 <- checkCross "HKDF" "tc1-hkdfSHA256"
+        (HKDF.hkdfSHA256 salt1 ikm1 info1 42)
+        (FFIHKDF.hkdfSHA256 salt1 ikm1 info1 42)
+    r2 <- checkCross "HKDF" "tc3-hkdfSHA256"
+        (HKDF.hkdfSHA256 salt3 ikm3 info3 42)
+        (FFIHKDF.hkdfSHA256 salt3 ikm3 info3 42)
+    r3 <- checkCross "HKDF" "tc1-hkdf"
+        (HKDF.hkdf salt1 ikm1 info1 42)
+        (FFIHKDF.hkdf salt1 ikm1 info1 42)
+    return (r1 && r2 && r3)
+
+-- ── ChaCha20 FFI cross-check ──────────────────────────────────────
+
+testChaCha20FFICross :: IO Bool
+testChaCha20FFICross = do
+    putStrLn "  [ChaCha20 FFI cross] reference vs codegen"
+    -- RFC 8439 Section 2.4.2
+    let key   = hexToBS "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+        nonce = hexToBS "000000000000004a00000000"
+        counter = 1 :: Word32
+        pt = C8.pack "Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it."
+    r1 <- checkCross "ChaCha20" "rfc8439-encrypt"
+        (ChaCha20.chacha20Encrypt key nonce counter pt)
+        (FFIChaCha20.chacha20Encrypt key nonce counter pt)
+    -- Also test the block function
+    r2 <- checkCross "ChaCha20" "rfc8439-block"
+        (ChaCha20.chacha20Block key nonce counter)
+        (FFIChaCha20.chacha20Block key nonce counter)
+    return (r1 && r2)
+
+-- ── Poly1305 FFI cross-check ──────────────────────────────────────
+
+testPoly1305FFICross :: IO Bool
+testPoly1305FFICross = do
+    putStrLn "  [Poly1305 FFI cross] reference vs codegen"
+    let key = hexToBS "85d6be7857556d337f4452fe42d506a80103808afb0db2fd4abff6af4149f51b"
+        msg = C8.pack "Cryptographic Forum Research Group"
+    r1 <- checkCross "Poly1305" "rfc8439"
+        (Poly1305.poly1305 key msg)
+        (FFIPoly1305.poly1305 key msg)
+    -- Empty message
+    let key2 = BS.pack [0..31]
+    r2 <- checkCross "Poly1305" "empty-msg"
+        (Poly1305.poly1305 key2 BS.empty)
+        (FFIPoly1305.poly1305 key2 BS.empty)
+    return (r1 && r2)
+
+-- ── AES-256 FFI cross-check ───────────────────────────────────────
+
+testAES256FFICross :: IO Bool
+testAES256FFICross = do
+    putStrLn "  [AES-256 FFI cross] reference vs codegen"
+    -- FIPS 197 Appendix C.3
+    let key   = hexToBS "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+        block = hexToBS "00112233445566778899aabbccddeeff"
+    r1 <- checkCross "AES-256" "encrypt"
+        (AES.aesEncrypt key block)
+        (FFIAES256.aesEncrypt key block)
+    let ct = AES.aesEncrypt key block
+    r2 <- checkCross "AES-256" "decrypt"
+        (AES.aesDecrypt key ct)
+        (FFIAES256.aesDecrypt key ct)
+    -- Roundtrip: encrypt then decrypt must equal plaintext
+    r3 <- checkCross "AES-256" "roundtrip"
+        (AES.aesDecrypt key (AES.aesEncrypt key block))
+        (FFIAES256.aesDecrypt key (AES.aesEncrypt key block))
+    return (r1 && r2 && r3)
+
+-- ── Keccak/SHA-3 FFI cross-check ──────────────────────────────────
+
+testKeccakFFICross :: IO Bool
+testKeccakFFICross = do
+    putStrLn "  [Keccak FFI cross] reference vs codegen"
+    let inputs = [ ("empty", BS.empty)
+                 , ("abc", C8.pack "abc")
+                 , ("448-bit", C8.pack "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")
+                 ]
+    r256 <- forM inputs $ \(name, input) ->
+        checkCross "SHA3-256" name (Keccak.sha3_256 input) (FFIKeccak.sha3_256 input)
+    r512 <- forM inputs $ \(name, input) ->
+        checkCross "SHA3-512" name (Keccak.sha3_512 input) (FFIKeccak.sha3_512 input)
+    return (and (r256 ++ r512))
+
+-- ── X25519 FFI cross-check ────────────────────────────────────────
+
+testX25519FFICross :: IO Bool
+testX25519FFICross = do
+    putStrLn "  [X25519 FFI cross] reference vs codegen"
+    -- RFC 7748 Section 6.1
+    let alice_sk = hexToBS "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a"
+        bob_pk   = hexToBS "de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f"
+    hsResult <- pure $! X25519.x25519 alice_sk bob_pk
+    ffiResult <- FFIX25519.x25519 alice_sk bob_pk
+    case (hsResult, ffiResult) of
+        (Just hs, Just ffi) -> do
+            r <- checkCross "X25519" "rfc7748-alice" hs (pure ffi)
+            -- Second test vector from RFC 7748
+            let bob_sk  = hexToBS "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb"
+                alice_pk = hexToBS "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a"
+            hsResult2 <- pure $! X25519.x25519 bob_sk alice_pk
+            ffiResult2 <- FFIX25519.x25519 bob_sk alice_pk
+            case (hsResult2, ffiResult2) of
+                (Just hs2, Just ffi2) -> do
+                    r2 <- checkCross "X25519" "rfc7748-bob" hs2 (pure ffi2)
+                    return (r && r2)
+                _ -> do
+                    putStrLn "  FAIL: X25519/rfc7748-bob (returned Nothing)"
+                    return False
+        _ -> do
+            putStrLn "  FAIL: X25519/rfc7748-alice (returned Nothing)"
+            return False
+
+-- ── FFI fuzz: random inputs across all hash primitives ────────────
+
+testFFIFuzz :: IO Bool
+testFFIFuzz = do
+    putStrLn "  [FFI fuzz] random-input cross-check (500 iterations)"
+    let go :: Int -> Word32 -> IO Bool
+        go 0 _ = return True
+        go !n !seed = do
+            let len = fromIntegral (seed `mod` 512)
+                input = BS.pack [fromIntegral ((seed + fromIntegral i) `mod` 256) | i <- [0..len-1] :: [Int]]
+            -- SHA-256
+            ffi256 <- FFISHA256.sha256 input
+            let hs256 = SHA256.sha256 input
+            -- SHA-512
+            ffi512 <- FFISHA512.sha512 input
+            let hs512 = SHA512.sha512 input
+            -- SHA3-256
+            ffiK256 <- FFIKeccak.sha3_256 input
+            let hsK256 = Keccak.sha3_256 input
+            if hs256 == ffi256 && hs512 == ffi512 && hsK256 == ffiK256
+                then go (n - 1) (seed * 6364136223846793005 + 1442695040888963407)
+                else do
+                    putStrLn $ "  FAIL: FFI fuzz divergence at seed=" ++ show seed
+                    return False
+    ok <- go 500 42
+    if ok
+        then putStrLn "  PASS: FFI fuzz (500 iterations, SHA-256/SHA-512/SHA3-256)"
+        else return ()
+    return ok
