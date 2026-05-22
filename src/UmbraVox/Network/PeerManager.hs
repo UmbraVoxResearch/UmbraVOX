@@ -23,6 +23,7 @@ import Data.Map.Strict (Map)
 import Data.Word (Word64)
 
 import qualified Data.Map.Strict as Map
+import qualified Data.List as List
 
 -- | Information about a known peer.
 data PeerInfo = PeerInfo
@@ -41,7 +42,7 @@ data PeerSource
   | SourcePEX
   | SourceBootstrap
   | SourceManual
-  deriving stock (Show, Eq)
+  deriving stock (Show, Eq, Ord)
 
 -- | Manages peer connections, scoring, and banning.
 data PeerManager = PeerManager
@@ -61,9 +62,14 @@ newPeerManager = do
     }
 
 -- | Add a peer. If the peer map is at capacity and the peer is new,
--- the peer is silently dropped. If the peer already exists, its
--- last-seen timestamp is refreshed (set to 0 here; callers should
--- follow up with an appropriate timestamp update).
+-- evict the lowest-scored non-banned peer to make room (M23.1.4:
+-- eclipse-attack mitigation). Source diversity is preserved: a peer
+-- is not evicted if its source would drop below 3 representatives.
+-- If no evictable candidate exists, the new peer is dropped.
+--
+-- If the peer already exists, its last-seen timestamp is refreshed
+-- (set to 0 here; callers should follow up with an appropriate
+-- timestamp update).
 addPeer :: PeerManager -> String -> PeerSource -> IO ()
 addPeer pm addr src = atomicModifyIORef' (pmPeers pm) $ \m ->
   case Map.lookup addr m of
@@ -72,18 +78,48 @@ addPeer pm addr src = atomicModifyIORef' (pmPeers pm) $ \m ->
       let updated = existing { piLastSeen = 0 }
       in  (Map.insert addr updated m, ())
     Nothing
-      | Map.size m >= pmMaxPeers pm -> (m, ())  -- at capacity
+      | Map.size m >= pmMaxPeers pm ->
+          case findEvictCandidate m of
+            Just (evictAddr, _) ->
+              let info = mkNewPeer addr src
+              in  (Map.insert addr info (Map.delete evictAddr m), ())
+            Nothing -> (m, ())  -- all banned or source-protected
       | otherwise ->
-          let info = PeerInfo
-                { piAddress   = addr
-                , piPublicKey = Nothing
-                , piScore     = 50  -- neutral starting score
-                , piLastSeen  = 0
-                , piBanned    = False
-                , piBanExpiry = 0
-                , piSource    = src
-                }
-          in  (Map.insert addr info m, ())
+          (Map.insert addr (mkNewPeer addr src) m, ())
+
+-- | Build a fresh PeerInfo with neutral defaults.
+mkNewPeer :: String -> PeerSource -> PeerInfo
+mkNewPeer addr src = PeerInfo
+  { piAddress   = addr
+  , piPublicKey = Nothing
+  , piScore     = 50  -- neutral starting score
+  , piLastSeen  = 0
+  , piBanned    = False
+  , piBanExpiry = 0
+  , piSource    = src
+  }
+
+-- | Find the lowest-scored non-banned peer that can be evicted
+-- without reducing any source below the minimum diversity threshold
+-- of 3 peers.
+findEvictCandidate :: Map String PeerInfo -> Maybe (String, PeerInfo)
+findEvictCandidate m =
+  let -- Count peers per source (non-banned only).
+      sourceCounts :: Map PeerSource Int
+      sourceCounts = Map.foldl' countSrc Map.empty m
+        where
+          countSrc acc info
+            | piBanned info = acc
+            | otherwise     = Map.insertWith (+) (piSource info) 1 acc
+      -- A peer is evictable if it is not banned and its source has
+      -- more than 3 peers remaining.
+      canEvict (_addr, info) =
+        not (piBanned info) &&
+        maybe False (> 3) (Map.lookup (piSource info) sourceCounts)
+      candidates = filter canEvict (Map.toList m)
+  in  case candidates of
+        [] -> Nothing
+        _  -> Just (List.minimumBy (\a b -> compare (piScore (snd a)) (piScore (snd b))) candidates)
 
 -- | Remove a peer entirely.
 removePeer :: PeerManager -> String -> IO ()
