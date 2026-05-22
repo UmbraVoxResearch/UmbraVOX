@@ -102,8 +102,11 @@ generateIdentityKey edSecret xSecret =
 ------------------------------------------------------------------------
 
 -- | Sign a signed prekey's public key with the identity Ed25519 key.
+--
+-- The signed message is @ikEd25519Public || spkPub@, binding the identity
+-- key into the signature to prevent cross-identity SPK reuse (M23.3.1).
 signPreKey :: IdentityKey -> ByteString -> ByteString
-signPreKey ik spkPub = ed25519Sign (ikEd25519Secret ik) spkPub
+signPreKey ik spkPub = ed25519Sign (ikEd25519Secret ik) (ikEd25519Public ik <> spkPub)
 
 ------------------------------------------------------------------------
 -- Protocol info string
@@ -146,8 +149,10 @@ deriveSecret !dh1 !dh2 !dh3 !mDh4 !aliceIKPub !bobIKPub =
 -- Returns the shared secret, ephemeral public key, and used OPK.
 x3dhInitiate :: IdentityKey -> PreKeyBundle -> ByteString -> Maybe X3DHResult
 x3dhInitiate aliceIK bundle ekSecret =
-    -- Step 1: Verify SPK signature
-    if not (ed25519Verify (pkbIdentityEd25519 bundle) (pkbSignedPreKey bundle) (pkbSPKSignature bundle))
+    -- Step 1: Verify SPK signature (M23.3.1: message = ikEd25519 || spkPub)
+    if not (ed25519Verify (pkbIdentityEd25519 bundle)
+                          (pkbIdentityEd25519 bundle <> pkbSignedPreKey bundle)
+                          (pkbSPKSignature bundle))
     then Nothing
     else
         let -- Step 2: Generate ephemeral keypair

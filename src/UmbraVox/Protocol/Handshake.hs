@@ -160,10 +160,11 @@ handshakeResponder t bobIK trustCheck = do
     (pqEK, pqDK) <- genPQPreKey
     anySend t . encodeMessage $ serializeBundle bobIK (kpPublic spk) spkSig pqEK Nothing
     (aliceIKPub, aliceEKPub, pqCt) <- recvInitialMessage t
+    -- M23.3.5: check trust before expensive PQXDH computation
     trusted <- trustCheck aliceIKPub
     unless trusted $ fail "Connection rejected: peer not trusted"
     shared <- case pqxdhRespond bobIK (kpSecret spk) Nothing pqDK
-                               aliceIKPub aliceEKPub pqCt of
+                                aliceIKPub aliceEKPub pqCt of
                   Nothing -> fail "PQXDH: DH returned all-zero (low-order point rejected)"
                   Just s  -> pure s
     initChatSessionBob shared (kpSecret spk)
