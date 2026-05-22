@@ -3,7 +3,7 @@ UmbraVOX Active TODO
 Purpose: active work only. Completed and historical items are tracked in CHANGELOG.txt.
 
 Status: [ ] pending, [~] in progress, [!] blocked
-Last updated: 2026-05-21
+Last updated: 2026-05-22
 
 Rules
 -----
@@ -470,7 +470,7 @@ MILESTONE M23: PROTOCOL SECURITY AUDIT FIXES (v0.3.1)
 Note: Findings from adversarial protocol audit (2026-05-22). 32 findings total.
 See doc/PROTOCOL-AUDIT-v0.3.0.md for full details.
 
-[~] M23.1 Critical + High fixes
+[x] M23.1 Critical + High fixes
   [x] M23.1.1 WireFormat: encrypted envelope (CRITICAL — stealth + session tokens)
     Design: doc/ENCRYPTED-ENVELOPE-DESIGN.md (511 lines, approved)
     [x] M23.1.1a WireFormat v1 rewrite — remove srcId/dstId, add ephemeralR(32) + viewTag(1) + scanTag(2) (7daf40d)
@@ -479,7 +479,7 @@ See doc/PROTOCOL-AUDIT-v0.3.0.md for full details.
     [x] M23.1.1d Sender identity in encrypted payload — senderId(32) prepended before ratchet encrypt (c2f55fa)
     [x] M23.1.1e Handshake integration — derive route tokens after PQXDH, key confirmation MAC (7ff000a)
     [x] M23.1.1f Dandelion opaque forwarding — relay swaps token, never decrypts inner envelope (7ff000a)
-    [ ] M23.1.1g DHT presence (stealth keys, presence only, no message storage)
+    [x] M23.1.1g DHT presence (stealth keys, presence only, no message storage) (617f7eb)
     [x] M23.1.1h DoS mitigations — PoW challenge, rate cap, extended scan tag, DHT STORE sig (dda0853)
     [x] M23.1.1i Token rotation — hybrid counter + wall-clock, no grace period needed (09a1b64)
     [x] M23.1.1j MitM protections — channel binding, identity binding, key confirmation MAC (c031309)
@@ -495,29 +495,29 @@ See doc/PROTOCOL-AUDIT-v0.3.0.md for full details.
   [ ] M23.2.2 X3DH: prekey bundle freshness check (timestamp/serial + HKDF binding)
   [x] M23.2.3 Handshake: version negotiation (cf921c4)
   [x] M23.2.4 Handshake: validate OPK length before extraction (cf921c4)
-  [ ] M23.2.5 Dandelion: adaptive fluff probability based on peer count
-  [ ] M23.2.6 Dandelion: exclude previous stem peer for one epoch
+  [x] M23.2.5 Dandelion: adaptive fluff probability based on peer count (c778702)
+  [x] M23.2.6 Dandelion: exclude previous stem peer for one epoch (c778702)
   [x] M23.2.7 Dandelion: fall back to FluffBroadcast when no stem peer (3afbd53)
-  [ ] M23.2.8 PeerManager: rate-limit score changes + time-based decay
+  [x] M23.2.8 PeerManager: rate-limit score changes + time-based decay (c778702)
   [x] M23.2.9 Chat.API: strict input length/complexity limits (13acd1e)
-  [ ] M23.2.10 Chat.API: validate rpcId as JSON number/string/null (injection)
-  [ ] M23.2.11 Chat.API: connect endpoint allowlist (SSRF prevention)
-  [ ] M23.2.12 WireFormat: per-connection sequence number sliding window
+  [x] M23.2.10 Chat.API: validate rpcId as JSON number/string/null (injection) (13acd1e)
+  [x] M23.2.11 Chat.API: connect endpoint allowlist (SSRF prevention) (c778702)
+  [x] M23.2.12 WireFormat: per-connection sequence number sliding window (c778702)
 
-[ ] M23.3 Low fixes (tracked, not urgent)
-  [ ] M23.3.1 X3DH: bind identity key into SPK signature
-  [ ] M23.3.2 PQXDH: check mlkemDecaps failure indicator
+[~] M23.3 Low fixes (tracked, not urgent)
+  [x] M23.3.1 X3DH: bind identity key into SPK signature (53852fc)
+  [x] M23.3.2 PQXDH: check mlkemDecaps failure indicator (53852fc)
   [ ] M23.3.3 DoubleRatchet: rate-limit ratchet steps + DH key replay check
   [ ] M23.3.4 DoubleRatchet: O(log n) eviction for skipped-key cache
-  [ ] M23.3.5 Handshake: move trust check before PQXDH computation
-  [ ] M23.3.6 Dandelion: rejection sampling for uniformIndex (modular bias)
-  [ ] M23.3.7 PeerManager: enforce ban expiry + set lastSeen on refresh
-  [ ] M23.3.8 MessageFormat: reduce maxPayload to 1019 for guaranteed PKCS7 padding
-  [ ] M23.3.9 WireFormat: reject unknown version before parsing
+  [x] M23.3.5 Handshake: move trust check before PQXDH computation (53852fc)
+  [x] M23.3.6 Dandelion: rejection sampling for uniformIndex (modular bias) (c778702)
+  [x] M23.3.7 PeerManager: enforce ban expiry + set lastSeen on refresh (c778702)
+  [x] M23.3.8 MessageFormat: reduce maxPayload to 1019 for guaranteed PKCS7 padding (53852fc)
+  [x] M23.3.9 WireFormat: reject unknown version before parsing (c778702)
 
-[ ] M23.4 Crypto implementation audit fixes (doc/CRYPTO-AUDIT-v0.3.0.md)
-  [ ] M23.4.1 Ed25519: cofactored verify or small-order rejection (HIGH — signature malleability)
-  [ ] M23.4.2 X25519: constant-time conditional swap (HIGH — timing side-channel on scalar bits)
+[~] M23.4 Crypto implementation audit fixes (doc/CRYPTO-AUDIT-v0.3.0.md)
+  [x] M23.4.1 Ed25519: cofactored verify or small-order rejection (HIGH — signature malleability) (5905269)
+  [x] M23.4.2 X25519: constant-time conditional swap (HIGH — timing side-channel on scalar bits) (746eab5)
   [ ] M23.4.3 VRF: hardcode sqrt(-486664) sign convention (MEDIUM — interoperability risk)
   [ ] M23.4.4 VRF: prime-order subgroup validation on decoded Gamma (MEDIUM)
   [ ] M23.4.5 MLKEM: validate 64-bit Int assumption / add overflow guards (MEDIUM)
@@ -541,14 +541,14 @@ See doc/DHT-NETWORK-PLAN.md for full design.
   [x] M24.1.7 Chaste absorbs Chastity behavior (trusted keys only, no persistence unless plugin)
     Note: Config migration (M24.1.9) not needed — ConnectionMode is runtime-only, not persisted.
 
-[ ] M24.2 Static discovery sources (Phase 2)
-  [ ] M24.2.1 Network.Discovery module scaffold (DiscoverySource, DiscoveryManager)
-  [ ] M24.2.2 Environment variable source: parse UMBRAVOX_PEERS
-  [ ] M24.2.3 DNS SRV/TXT source: _umbravox._tcp.<domain> lookup
-  [ ] M24.2.4 Config file source: ~/.umbravox/peers parser
-  [ ] M24.2.5 Extend PeerSource with SourceDHT, SourceDNS, SourceEnvVar, SourceConfig
-  [ ] M24.2.6 Wire DiscoveryManager into AppConfig and startup sequence
-  [ ] M24.2.7 Unit tests for each static source parser
+[x] M24.2 Static discovery sources (Phase 2) (da1b71c)
+  [x] M24.2.1 Network.Discovery module scaffold (DiscoverySource, DiscoveryManager) (da1b71c)
+  [x] M24.2.2 Environment variable source: parse UMBRAVOX_PEERS (da1b71c)
+  [x] M24.2.3 DNS SRV/TXT source: _umbravox._tcp.<domain> lookup (da1b71c)
+  [x] M24.2.4 Config file source: ~/.umbravox/peers parser (da1b71c)
+  [x] M24.2.5 Extend PeerSource with SourceDHT, SourceDNS, SourceEnvVar, SourceConfig (da1b71c)
+  [x] M24.2.6 Wire DiscoveryManager into AppConfig and startup sequence (da1b71c)
+  [x] M24.2.7 Unit tests for each static source parser (da1b71c)
 
 [ ] M24.3 DHT core (Phase 3)
   [ ] M24.3.1 DHT.Types: NodeId, DHTNode, DHTMessage, DHTConfig
