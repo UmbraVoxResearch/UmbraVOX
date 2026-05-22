@@ -187,11 +187,11 @@ parseConstants = mapMaybe parseConst
             (val, ':':_) -> strip val
             _            -> v
     -- Strip trailing -- comments from constant values
-    stripComment v = strip (takeWhile (/= '-') v ++ go (dropWhile (/= '-') v))
+    stripComment v = strip (go v)
       where
-        go ('-':'-':_) = ""
-        go (c:rest)    = c : go rest
-        go []          = ""
+        go []           = []
+        go ('-':'-':_)  = []
+        go (c:rest)     = c : go rest
 
 parseSteps :: [String] -> [Step]
 parseSteps lns = [Step Nothing (concatMap parseOpLine lns)]
@@ -961,7 +961,10 @@ cConstants = map cConst
     cConst c =
         let val = constValue c
             hexWidth = hexDigitCount val
-        in  if hexWidth > 16
+        in  if isStringLiteral val
+            -- String constant: emit as const char*
+            then "static const char " ++ constName c ++ "[] = " ++ val ++ ";"
+            else if hexWidth > 16
             -- Too wide for C native types (> 64 bits); emit as comment
             then "/* static const uint32_t " ++ constName c ++ " = " ++ val ++ "; -- too wide for C */"
             else let cType = if hexWidth > 8 then "uint64_t" else "uint32_t"
@@ -971,6 +974,9 @@ cConstants = map cConst
     hexDigitCount ('0':'x':rest) = length (filter isHexDigit rest)
     hexDigitCount ('0':'X':rest) = length (filter isHexDigit rest)
     hexDigitCount _ = 0
+    -- Check if a value is a string literal (starts with ")
+    isStringLiteral ('"':_) = True
+    isStringLiteral _       = False
 
 -- | Identify helper definitions dynamically: an assignment is a helper if
 --   its name appears as a function call in any other operation AND its body
