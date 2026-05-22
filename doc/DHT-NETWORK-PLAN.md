@@ -408,12 +408,12 @@ New `AppConfig` fields:
 
 ## 5. Phase Plan
 
-### Phase 1: Security Model Refactor (v0.3.2)
+### Phase 1: Security Model Refactor (v0.3.2) -- COMPLETE
 
-Remove Chastity mode, update Promiscuous/Swing behavior, add
-`cfgPEXAutomatic` flag.  No new discovery sources yet.
-
-Estimated effort: 2-3 days.
+Removed Chastity mode (absorbed into Chaste), updated Promiscuous (PEX
+disabled) and Swing (PEX manual/user-initiated) behavior.  Renamed
+`buildChastityOnly` to `buildChasteOnly`.  No `cfgPEXAutomatic` field
+needed -- PEX starts disabled and mode transitions no longer auto-enable it.
 
 ### Phase 2: Static Discovery Sources (v0.3.3)
 
