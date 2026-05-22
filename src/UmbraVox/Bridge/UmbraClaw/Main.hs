@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: Apache-2.0
--- | UmbraClaw bridge plugin IPC subprocess management (M25.1.2)
+-- | UmbraClaw bridge plugin IPC subprocess management (M25.1.2, M25.2.2)
 --
 -- IPC subprocess that speaks UmbraVOX's line-based bridge protocol.
 -- The host side is implemented in UmbraVox.Network.ProviderRuntime.
@@ -15,6 +15,7 @@
 --
 -- Plugin -> Host:
 --   AUTH_OK            -- authentication succeeded
+--   AUTH_FAIL <msg>    -- authentication failed
 --   DATA <hex-data>    -- message data (response to RECV)
 --   CONTACTS <hex>     -- contact list
 --   STATUS <hex>       -- status payload
@@ -23,6 +24,12 @@
 --   ERR <message>      -- error
 module UmbraVox.Bridge.UmbraClaw.Main
     ( umbraClawBridge
+      -- * Exported for testing (M25.3)
+    , dispatch
+    , bytesToHex
+    , hexToBytes
+    , stringToBytes
+    , bytesToString
     ) where
 
 import Data.ByteString (ByteString)
@@ -43,7 +50,13 @@ import System.IO
 import UmbraVox.Bridge.UmbraClaw.Session
     ( UmbraClawSession(..)
     , SessionError(..)
+    , AuthState(..)
+    , UmbraClawContact(..)
     , initSession
+    , authenticate
+    , syncContacts
+    , enqueueSend
+    , dequeueRecv
     )
 
 -- | Run the UmbraClaw bridge subprocess loop.
@@ -71,7 +84,7 @@ bridgeLoop sessionRef = do
 dispatch :: IORef (Maybe UmbraClawSession) -> String -> IO ()
 dispatch sessionRef line =
     case words line of
-        ("AUTH"     : _rest) -> handleAuth sessionRef
+        ("AUTH"     : rest)  -> handleAuth sessionRef (unwords rest)
         ("SEND"     : rest)  -> handleSend sessionRef (unwords rest)
         ("RECV"     : _rest) -> handleRecv sessionRef
         ("CONTACTS" : _rest) -> handleContacts sessionRef
@@ -81,49 +94,114 @@ dispatch sessionRef line =
         []                   -> pure ()  -- ignore blank lines
         (cmd        : _)     -> respond ("ERR unknown command: " ++ cmd)
 
--- | AUTH: create a stub UmbraClaw session.
--- Real key agreement will be implemented in a later milestone.
-handleAuth :: IORef (Maybe UmbraClawSession) -> IO ()
-handleAuth sessionRef = do
+-- | AUTH [hex-credentials]: create and authenticate an UmbraClaw session.
+--
+-- If hex credentials are provided, they are decoded as "username:token".
+-- Otherwise a default session is created with stub credentials.
+handleAuth :: IORef (Maybe UmbraClawSession) -> String -> IO ()
+handleAuth sessionRef hexCreds = do
     session <- initSession "localhost" 9000
-    writeIORef sessionRef (Just session)
-    respond "AUTH_OK"
+    let (user, tok) = parseCredentials hexCreds
+    authResult <- authenticate session user tok
+    case authResult of
+        AuthComplete -> do
+            writeIORef sessionRef (Just session)
+            respond "AUTH_OK"
+        AuthFailed reason ->
+            respond ("AUTH_FAIL " ++ reason)
+        _ ->
+            respond "ERR unexpected auth state"
 
--- | SEND <hex>: stub -- UmbraClaw transport not yet implemented.
+-- | Parse hex-encoded credentials in "username:token" format.
+-- Returns default stub credentials if input is empty or invalid.
+parseCredentials :: String -> (ByteString, ByteString)
+parseCredentials hexStr =
+    case hexToBytes hexStr of
+        Nothing -> (stringToBytes "umbraclaw", stringToBytes "stub-token")
+        Just bs ->
+            let s = bytesToString bs
+                (u, rest) = break (== ':') s
+            in if null rest
+                then (stringToBytes "umbraclaw", stringToBytes "stub-token")
+                else (stringToBytes u, stringToBytes (drop 1 rest))
+
+-- | SEND <hex>: encode message and enqueue for UmbraClaw transport.
 handleSend :: IORef (Maybe UmbraClawSession) -> String -> IO ()
-handleSend sessionRef _hexData = do
+handleSend sessionRef hexData = do
     mSession <- readIORef sessionRef
     case mSession of
         Nothing -> respond "ERR umbraclaw session not established"
-        Just _  -> respond "ERR send not implemented: UmbraClaw integration pending"
+        Just session -> do
+            case hexToBytes hexData of
+                Nothing -> respond "ERR invalid hex data"
+                Just msgBytes -> do
+                    enqueueSend session msgBytes
+                    respond "OK"
 
--- | RECV: stub -- no pending messages.
+-- | RECV: dequeue next available inbound message.
 handleRecv :: IORef (Maybe UmbraClawSession) -> IO ()
 handleRecv sessionRef = do
     mSession <- readIORef sessionRef
     case mSession of
         Nothing -> respond "ERR umbraclaw session not established"
-        Just _  -> respond "ERR no pending messages"
+        Just session -> do
+            mMsg <- dequeueRecv session
+            case mMsg of
+                Nothing  -> respond "ERR no pending messages"
+                Just msg -> respond ("DATA " ++ bytesToHex msg)
 
--- | CONTACTS: return empty array (stub).
+-- | CONTACTS: synchronize and return the contact list as hex-encoded JSON.
 handleContacts :: IORef (Maybe UmbraClawSession) -> IO ()
 handleContacts sessionRef = do
     mSession <- readIORef sessionRef
     case mSession of
         Nothing -> respond "ERR umbraclaw session not established"
-        Just _  -> respond ("CONTACTS " ++ bytesToHex (stringToBytes "[]"))
+        Just session -> do
+            contacts <- syncContacts session
+            let jsonStr = contactsToJson contacts
+            respond ("CONTACTS " ++ bytesToHex (stringToBytes jsonStr))
 
--- | STATUS: return JSON with connection/session state.
+-- | Serialize contact list to a JSON array string.
+contactsToJson :: [UmbraClawContact] -> String
+contactsToJson [] = "[]"
+contactsToJson cs = "[" ++ go cs ++ "]"
+  where
+    go []     = ""
+    go [c]    = contactToJson c
+    go (c:rest) = contactToJson c ++ "," ++ go rest
+    contactToJson c =
+        "{\"id\":\"" ++ bytesToHex (uccId c)
+        ++ "\",\"name\":\"" ++ escapeJson (uccName c)
+        ++ "\",\"status\":\"" ++ escapeJson (uccStatus c)
+        ++ "\"}"
+    escapeJson = concatMap esc
+    esc '"'  = "\\\""
+    esc '\\' = "\\\\"
+    esc ch   = [ch]
+
+-- | STATUS: return JSON with connection/session/auth state.
 handleStatus :: IORef (Maybe UmbraClawSession) -> IO ()
 handleStatus sessionRef = do
     mSession <- readIORef sessionRef
-    let hasSession = case mSession of
-            Nothing -> False
-            Just _  -> True
-        jsonStr = "{\"connected\":false,\"session\":"
-               ++ (if hasSession then "true" else "false")
-               ++ "}"
-    respond ("STATUS " ++ bytesToHex (stringToBytes jsonStr))
+    case mSession of
+        Nothing -> do
+            let jsonStr = "{\"connected\":false,\"session\":false,\"auth\":\"none\"}"
+            respond ("STATUS " ++ bytesToHex (stringToBytes jsonStr))
+        Just session -> do
+            ready <- readIORef (ucsReady session)
+            authState <- readIORef (ucsAuth session)
+            let authStr = case authState of
+                    AuthNone       -> "none"
+                    AuthPending    -> "pending"
+                    AuthComplete   -> "complete"
+                    AuthFailed msg -> "failed:" ++ msg
+                jsonStr = "{\"connected\":" ++ showBool ready
+                       ++ ",\"session\":true"
+                       ++ ",\"auth\":\"" ++ authStr ++ "\"}"
+            respond ("STATUS " ++ bytesToHex (stringToBytes jsonStr))
+  where
+    showBool True  = "true"
+    showBool False = "false"
 
 handlePing :: IO ()
 handlePing = respond "PONG"
@@ -149,6 +227,7 @@ bytesToHex = concatMap toHex . BS.unpack
 
 -- | Decode a hex string to a ByteString. Returns Nothing on invalid input.
 hexToBytes :: String -> Maybe ByteString
+hexToBytes [] = Just BS.empty
 hexToBytes s
     | odd (length s) = Nothing
     | not (all isHexDigit s) = Nothing
@@ -157,10 +236,6 @@ hexToBytes s
     go []       = []
     go [_]      = []  -- unreachable due to odd check
     go (a:b:cs) = fromIntegral (digitToInt a * 16 + digitToInt b) : go cs
-
--- Suppress unused-import warning for hexToBytes (used in future milestones).
-_suppressUnused :: String -> Maybe ByteString
-_suppressUnused = hexToBytes
 
 ------------------------------------------------------------------------
 -- Minimal string <-> ByteString (UTF-8 ASCII subset)
