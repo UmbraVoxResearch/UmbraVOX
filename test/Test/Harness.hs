@@ -27,7 +27,8 @@ import qualified Data.ByteString as BS
 import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
 
 import UmbraVox.Chat.Session (ChatSession, sendChatMessage, recvChatMessage)
-import UmbraVox.Crypto.Signal.X3DH (IdentityKey)
+import UmbraVox.Crypto.SHA256 (sha256)
+import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 import UmbraVox.Network.Transport.Intercept
     (TrafficEntry(..), wrapWithIntercept)
 import UmbraVox.Network.Transport.Loopback (newLoopbackPair)
@@ -164,14 +165,16 @@ handshakeClients alice bob = do
 
 -- | Send an encrypted message from a client.
 -- Encrypts via the Double Ratchet, then length-prefixes and sends.
+-- The sender's identity hash is prepended inside the encrypted payload (M23.1.1d).
 clientSend :: TestClient -> ByteString -> IO ()
 clientSend client msg = do
+    let !senderId = sha256 (ikEd25519Public (tcIdentity client))
     withMVar (tcSessionLock client) $ \_ -> do
         mSess <- readIORef (tcSession client)
         case mSess of
             Nothing   -> fail $ tcName client ++ ": no active session"
             Just sess -> do
-                sendResult <- sendChatMessage sess msg
+                sendResult <- sendChatMessage sess senderId msg
                 case sendResult of
                     Left _ -> fail $ tcName client ++ ": ratchet counter exhausted"
                     Right (sess', wireBytes) -> do
@@ -197,7 +200,7 @@ clientRecv client = do
                 case result of
                     Left _                 -> pure Nothing
                     Right Nothing          -> pure Nothing
-                    Right (Just (sess', plaintext)) -> do
+                    Right (Just (sess', _senderId, plaintext)) -> do
                         writeIORef (tcSession client) (Just sess')
                         modifyIORef' (tcHistory client) (plaintext :)
                         pure (Just plaintext)

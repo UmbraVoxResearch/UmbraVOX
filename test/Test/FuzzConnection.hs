@@ -44,6 +44,10 @@ import UmbraVox.TUI.Handshake
 timeoutMicros :: Int
 timeoutMicros = 5 * 1000000  -- 5 seconds
 
+-- | Dummy 32-byte sender identity for fuzz tests.
+dummySenderId :: ByteString
+dummySenderId = BS.replicate 32 0
+
 ------------------------------------------------------------------------
 -- Entry point
 ------------------------------------------------------------------------
@@ -254,7 +258,7 @@ testFuzzEncryptedMessageGarbage = do
                 -- After garbage, verify session still works
                 -- Alice sends a real message
                 -- Note: bob's session was not updated by the failed decrypt, so use original
-                sendRes2 <- sendChatMessage aliceSess (BS.pack [0x41, 0x42])
+                sendRes2 <- sendChatMessage aliceSess dummySenderId (BS.pack [0x41, 0x42])
                 let (aliceSess', wire) = case sendRes2 of
                                              Right r -> r
                                              Left _  -> error "fuzzGarbage: sendChatMessage Left"
@@ -269,7 +273,7 @@ testFuzzEncryptedMessageGarbage = do
                     Nothing               -> pure True  -- timeout, acceptable
                     Just (Left _)         -> pure True  -- ratchet desynchronized, still no crash
                     Just (Right Nothing)  -> pure True  -- ratchet may have desynchronized
-                    Just (Right (Just (_, pt))) -> pure (pt == BS.pack [0x41, 0x42])
+                    Just (Right (Just (_, _sid, pt))) -> pure (pt == BS.pack [0x41, 0x42])
                 pure (garbageOk && validOk)
             _ -> pure False  -- session setup failed
 
@@ -429,7 +433,7 @@ testFuzzMessageOrderingAttack = do
     encryptAll :: ChatSession -> [ByteString] -> IO (ChatSession, [ByteString])
     encryptAll sess [] = pure (sess, [])
     encryptAll sess (m:ms) = do
-        sendR <- sendChatMessage sess m
+        sendR <- sendChatMessage sess dummySenderId m
         let (sess', wire) = case sendR of
                                 Right r -> r
                                 Left _  -> error "encryptAll: sendChatMessage returned Left"
@@ -469,7 +473,7 @@ testFuzzMessageOrderingAttack = do
                         -- Garbage rejected, session unchanged
                         (vc, gc, s') <- recvAndClassify t sess (n - 1)
                         pure (vc, gc + 1, s')
-                    Right (Just (sess', _pt)) -> do
+                    Right (Just (sess', _sid, _pt)) -> do
                         (vc, gc, s') <- recvAndClassify t sess' (n - 1)
                         pure (vc + 1, gc, s')
 
@@ -549,7 +553,7 @@ testFuzzBitFlip = do
     case (mAliceSess, mBobSess) of
         (Just aliceSess, Just bobSess) -> do
             let plaintext = BS.pack [0x48, 0x65, 0x6C, 0x6C, 0x6F]  -- "Hello"
-            sendR <- sendChatMessage aliceSess plaintext
+            sendR <- sendChatMessage aliceSess dummySenderId plaintext
             let (aliceSess', wireBytes) = case sendR of
                                               Right r -> r
                                               Left _  -> error "testFuzzBitFlip: sendChatMessage Left"
@@ -565,7 +569,7 @@ testFuzzBitFlip = do
                         case decResult of
                             Left _              -> pure True  -- ratchet error = correctly rejected
                             Right Nothing       -> pure True  -- correctly rejected
-                            Right (Just (_, pt)) ->
+                            Right (Just (_, _sid, pt)) ->
                                 -- Should NOT decrypt to original plaintext
                                 -- (bit flip should cause auth failure)
                                 if pt == plaintext

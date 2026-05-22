@@ -3,14 +3,15 @@
 --
 -- Covers: round-trip encode/decode for each message type (0-3), empty
 -- payload, short input rejection, truncated payload rejection, field-level
--- verification (version, type, sequence, source, dest), property-based
--- round-trips, garbage input resilience, and HMAC authentication.
+-- verification (version, type, sequence, ephemeralR, viewTag, scanTag),
+-- property-based round-trips, garbage input resilience, and HMAC
+-- authentication.
 module Test.Protocol.WireFormat (runTests) where
 
 import Data.Bits (xor)
 import qualified Data.ByteString as BS
 import Data.ByteString (ByteString)
-import Data.Word (Word8, Word32)
+import Data.Word (Word8, Word16, Word32)
 
 import UmbraVox.Protocol.WireFormat
     ( Envelope(..), wrapEnvelope, unwrapEnvelope
@@ -38,14 +39,16 @@ runTests = do
         , testFieldVersion
         , testFieldType
         , testFieldSequence
-        , testFieldSourceId
-        , testFieldDestId
-        , testWrapEnvelopeTruncatesIds
+        , testFieldEphemeralR
+        , testFieldViewTag
+        , testFieldScanTag
+        , testWrapEnvelopeTruncatesEphR
         , testPropertyRoundTrip
         , testPropertyNoCrash
         , testHmacRejectsWrongKey
         , testHmacRejectsTamperedPayload
         , testHmacRejectsTamperedHeader
+        , testRejectsV1
         ]
     let passed = length (filter id results)
         total  = length results
@@ -58,8 +61,8 @@ runTests = do
 testKey :: ByteString
 testKey = BS.replicate 32 0x42
 
-fakeId :: Word8 -> ByteString
-fakeId w = BS.replicate 32 w
+fakeEph :: Word8 -> ByteString
+fakeEph w = BS.replicate 32 w
 
 check :: String -> Bool -> IO Bool
 check label True  = putStrLn ("  PASS: " ++ label) >> pure True
@@ -68,7 +71,7 @@ check label False = putStrLn ("  FAIL: " ++ label) >> pure False
 -- | Build an Envelope with a specific message type for round-trip tests.
 mkEnvelope :: Word8 -> Word32 -> ByteString -> Envelope
 mkEnvelope typ seqN payload =
-    wrapEnvelope typ seqN (fakeId 0xAA) (fakeId 0xBB) payload
+    wrapEnvelope typ seqN (fakeEph 0xAA) 0xBB 0x1234 payload
 
 -- Tests --------------------------------------------------------------------
 
@@ -76,7 +79,7 @@ mkEnvelope typ seqN payload =
 testRoundTrip :: IO Bool
 testRoundTrip = do
     let payload = BS.pack [0x41, 0x42, 0x43]  -- "ABC"
-        env     = wrapEnvelope 0 42 (fakeId 0xAA) (fakeId 0xBB) payload
+        env     = wrapEnvelope 0 42 (fakeEph 0xAA) 0xBB 0x1234 payload
         wire    = encodeEnvelope testKey env
     case decodeEnvelope testKey wire of
         Nothing   -> check "round-trip" False
@@ -85,7 +88,7 @@ testRoundTrip = do
 -- | Round-trip with empty payload.
 testRoundTripEmpty :: IO Bool
 testRoundTripEmpty = do
-    let env  = wrapEnvelope 1 0 (fakeId 0x01) (fakeId 0x02) BS.empty
+    let env  = wrapEnvelope 1 0 (fakeEph 0x01) 0x02 0x0000 BS.empty
         wire = encodeEnvelope testKey env
     case decodeEnvelope testKey wire of
         Nothing   -> check "round-trip empty payload" False
@@ -131,7 +134,7 @@ testRoundTripTypePeer = do
 testUnwrapExtractsPayload :: IO Bool
 testUnwrapExtractsPayload = do
     let payload = BS.pack [1,2,3,4,5]
-        env     = wrapEnvelope 2 99 (fakeId 0xCC) (fakeId 0xDD) payload
+        env     = wrapEnvelope 2 99 (fakeEph 0xCC) 0xDD 0xABCD payload
     check "unwrap extracts payload" (unwrapEnvelope env == payload)
 
 -- | decodeEnvelope returns Nothing for too-short input.
@@ -148,16 +151,16 @@ testDecodeEmpty =
 -- succeed with an empty payload.
 testDecodeExactHeader :: IO Bool
 testDecodeExactHeader = do
-    let env  = wrapEnvelope 0 0 (fakeId 0x00) (fakeId 0x00) BS.empty
+    let env  = wrapEnvelope 0 0 (fakeEph 0x00) 0x00 0x0000 BS.empty
         wire = encodeEnvelope testKey env
-    -- wire should be exactly 74 bytes (header) + 0 payload + 32 hmac = 106
-    check "decode exact header (106 bytes, 0 payload)"
-        (BS.length wire == 106 && decodeEnvelope testKey wire == Just env)
+    -- wire should be exactly 45 bytes (header) + 0 payload + 32 hmac = 77
+    check "decode exact header (77 bytes, 0 payload)"
+        (BS.length wire == 77 && decodeEnvelope testKey wire == Just env)
 
 -- | decodeEnvelope returns Nothing when payload length exceeds available bytes.
 testDecodeTruncatedPayload :: IO Bool
 testDecodeTruncatedPayload = do
-    let env  = wrapEnvelope 0 1 (fakeId 0x11) (fakeId 0x22) (BS.replicate 100 0xFF)
+    let env  = wrapEnvelope 0 1 (fakeEph 0x11) 0x22 0x3344 (BS.replicate 100 0xFF)
         wire = encodeEnvelope testKey env
         -- Chop off the last 50 bytes so payloadLen says 100 but only 50 are present
         truncated = BS.take (BS.length wire - 50) wire
@@ -166,7 +169,7 @@ testDecodeTruncatedPayload = do
 -- | decodeEnvelope returns Nothing when exactly 1 payload byte is missing.
 testDecodeTruncatedByOne :: IO Bool
 testDecodeTruncatedByOne = do
-    let env  = wrapEnvelope 0 1 (fakeId 0x33) (fakeId 0x44) (BS.replicate 10 0xAB)
+    let env  = wrapEnvelope 0 1 (fakeEph 0x33) 0x44 0x5566 (BS.replicate 10 0xAB)
         wire = encodeEnvelope testKey env
         truncated = BS.take (BS.length wire - 1) wire
     check "decode truncated by 1 byte" (decodeEnvelope testKey truncated == Nothing)
@@ -174,32 +177,32 @@ testDecodeTruncatedByOne = do
 -- | Verify individual envelope fields survive encode/decode.
 testEnvelopeFields :: IO Bool
 testEnvelopeFields = do
-    let src = fakeId 0x10
-        dst = fakeId 0x20
-        env = wrapEnvelope 3 0xDEADBEEF src dst (BS.pack [0x99])
+    let ephR = fakeEph 0x10
+        env = wrapEnvelope 3 0xDEADBEEF ephR 0xAB 0xCDEF (BS.pack [0x99])
     case decodeEnvelope testKey (encodeEnvelope testKey env) of
         Nothing   -> check "envelope fields" False
         Just env' -> check "envelope fields" $
-            envVersion env'  == 1 &&
-            envType env'     == 3 &&
-            envSequence env' == 0xDEADBEEF &&
-            envSourceId env' == src &&
-            envDestId env'   == dst &&
-            envPayload env'  == BS.pack [0x99]
+            envVersion env'    == 2 &&
+            envType env'       == 3 &&
+            envSequence env'   == 0xDEADBEEF &&
+            envEphemeralR env' == ephR &&
+            envViewTag env'    == 0xAB &&
+            envScanTag env'    == 0xCDEF &&
+            envPayload env'    == BS.pack [0x99]
 
--- | Version field is always 1 after wrapEnvelope.
+-- | Version field is always 2 after wrapEnvelope.
 testFieldVersion :: IO Bool
 testFieldVersion = do
-    let env = wrapEnvelope 0 0 (fakeId 0x01) (fakeId 0x02) BS.empty
+    let env = wrapEnvelope 0 0 (fakeEph 0x01) 0x02 0x0000 BS.empty
     case decodeEnvelope testKey (encodeEnvelope testKey env) of
-        Nothing   -> check "field: version == 1" False
-        Just env' -> check "field: version == 1" (envVersion env' == 1)
+        Nothing   -> check "field: version == 2" False
+        Just env' -> check "field: version == 2" (envVersion env' == 2)
 
 -- | Type field is preserved through encode/decode.
 testFieldType :: IO Bool
 testFieldType = do
     let results = map (\t ->
-            let env = wrapEnvelope t 0 (fakeId 0x01) (fakeId 0x02) (BS.singleton 0x42)
+            let env = wrapEnvelope t 0 (fakeEph 0x01) 0x02 0x0000 (BS.singleton 0x42)
             in case decodeEnvelope testKey (encodeEnvelope testKey env) of
                 Nothing   -> False
                 Just env' -> envType env' == t
@@ -211,45 +214,62 @@ testFieldSequence :: IO Bool
 testFieldSequence = do
     let seqs = [0, 1, 255, 65535, 0xDEADBEEF, 0xFFFFFFFF :: Word32]
         results = map (\s ->
-            let env = wrapEnvelope 0 s (fakeId 0x01) (fakeId 0x02) (BS.singleton 0x42)
+            let env = wrapEnvelope 0 s (fakeEph 0x01) 0x02 0x0000 (BS.singleton 0x42)
             in case decodeEnvelope testKey (encodeEnvelope testKey env) of
                 Nothing   -> False
                 Just env' -> envSequence env' == s
             ) seqs
     check "field: sequence preserved (boundary values)" (and results)
 
--- | Source ID is preserved exactly (32 bytes).
-testFieldSourceId :: IO Bool
-testFieldSourceId = do
-    let src = BS.pack [0..31]  -- 32 distinct bytes
-        dst = fakeId 0xFF
-        env = wrapEnvelope 0 0 src dst (BS.singleton 0x00)
+-- | EphemeralR is preserved exactly (32 bytes).
+testFieldEphemeralR :: IO Bool
+testFieldEphemeralR = do
+    let ephR = BS.pack [0..31]  -- 32 distinct bytes
+        env = wrapEnvelope 0 0 ephR 0xFF 0x0000 (BS.singleton 0x00)
     case decodeEnvelope testKey (encodeEnvelope testKey env) of
-        Nothing   -> check "field: sourceId preserved" False
-        Just env' -> check "field: sourceId preserved" (envSourceId env' == src)
+        Nothing   -> check "field: ephemeralR preserved" False
+        Just env' -> check "field: ephemeralR preserved" (envEphemeralR env' == ephR)
 
--- | Destination ID is preserved exactly (32 bytes).
-testFieldDestId :: IO Bool
-testFieldDestId = do
-    let src = fakeId 0x00
-        dst = BS.pack (reverse [0..31])  -- 32 distinct bytes
-        env = wrapEnvelope 0 0 src dst (BS.singleton 0x00)
-    case decodeEnvelope testKey (encodeEnvelope testKey env) of
-        Nothing   -> check "field: destId preserved" False
-        Just env' -> check "field: destId preserved" (envDestId env' == dst)
+-- | ViewTag is preserved exactly.
+testFieldViewTag :: IO Bool
+testFieldViewTag = do
+    let results = map (\vt ->
+            let env = wrapEnvelope 0 0 (fakeEph 0x01) vt 0x0000 (BS.singleton 0x42)
+            in case decodeEnvelope testKey (encodeEnvelope testKey env) of
+                Nothing   -> False
+                Just env' -> envViewTag env' == vt
+            ) [0x00, 0x01, 0x7F, 0x80, 0xFE, 0xFF]
+    check "field: viewTag preserved (boundary values)" (and results)
 
--- | wrapEnvelope truncates source and dest IDs to 32 bytes.
-testWrapEnvelopeTruncatesIds :: IO Bool
-testWrapEnvelopeTruncatesIds = do
-    let longSrc = BS.replicate 64 0xAA
-        longDst = BS.replicate 64 0xBB
-        env = wrapEnvelope 0 0 longSrc longDst BS.empty
-    check "wrapEnvelope truncates IDs to 32 bytes"
-        (BS.length (envSourceId env) == 32 && BS.length (envDestId env) == 32)
+-- | ScanTag is preserved exactly.
+testFieldScanTag :: IO Bool
+testFieldScanTag = do
+    let results = map (\st ->
+            let env = wrapEnvelope 0 0 (fakeEph 0x01) 0x00 st (BS.singleton 0x42)
+            in case decodeEnvelope testKey (encodeEnvelope testKey env) of
+                Nothing   -> False
+                Just env' -> envScanTag env' == st
+            ) [0x0000, 0x0001, 0x00FF, 0x0100, 0x7FFF, 0x8000, 0xFFFE, 0xFFFF :: Word16]
+    check "field: scanTag preserved (boundary values)" (and results)
+
+-- | wrapEnvelope truncates ephemeralR to 32 bytes.
+testWrapEnvelopeTruncatesEphR :: IO Bool
+testWrapEnvelopeTruncatesEphR = do
+    let longEph = BS.replicate 64 0xAA
+        env = wrapEnvelope 0 0 longEph 0x00 0x0000 BS.empty
+    check "wrapEnvelope truncates ephemeralR to 32 bytes"
+        (BS.length (envEphemeralR env) == 32)
 
 ------------------------------------------------------------------------
 -- Property-based tests
 ------------------------------------------------------------------------
+
+-- | Derive a Word16 from two consecutive Word8 values via the PRNG.
+nextWord16 :: PRNG -> (Word16, PRNG)
+nextWord16 g0 =
+    let (hi, g1) = nextWord8 g0
+        (lo, g2) = nextWord8 g1
+    in (fromIntegral hi * 256 + fromIntegral lo, g2)
 
 -- | Property: encode/decode round-trip for random envelopes (500 iterations).
 testPropertyRoundTrip :: IO Bool
@@ -257,12 +277,13 @@ testPropertyRoundTrip =
     checkProperty "round-trip property (500 iterations)" 500 $ \g0 ->
         let (typ, g1)    = nextWord8 g0
             (seqN, g2)   = nextWord32 g1
-            (src, g3)    = nextBytes 32 g2
-            (dst, g4)    = nextBytes 32 g3
-            (pLenW, g5)  = nextWord32 g4
+            (ephR, g3)   = nextBytes 32 g2
+            (vTag, g4)   = nextWord8 g3
+            (sTag, g5)   = nextWord16 g4
+            (pLenW, g6)  = nextWord32 g5
             pLen          = fromIntegral (pLenW `mod` 4096) :: Int
-            (payload, _) = nextBytes pLen g5
-            env           = wrapEnvelope typ seqN src dst payload
+            (payload, _) = nextBytes pLen g6
+            env           = wrapEnvelope typ seqN ephR vTag sTag payload
             wire          = encodeEnvelope testKey env
         in case decodeEnvelope testKey wire of
             Nothing   -> False
@@ -296,8 +317,8 @@ testHmacRejectsTamperedPayload :: IO Bool
 testHmacRejectsTamperedPayload = do
     let env  = mkEnvelope 0 1 (BS.pack [1,2,3])
         wire = encodeEnvelope testKey env
-        -- Flip a bit in the payload region (byte 74 is first payload byte)
-        tampered = flipByte 74 wire
+        -- Flip a bit in the payload region (byte 45 is first payload byte)
+        tampered = flipByte 45 wire
     check "HMAC rejects tampered payload" (decodeEnvelope testKey tampered == Nothing)
 
 -- | decodeEnvelope rejects a wire message whose header byte was flipped.
@@ -305,9 +326,17 @@ testHmacRejectsTamperedHeader :: IO Bool
 testHmacRejectsTamperedHeader = do
     let env  = mkEnvelope 0 1 (BS.pack [1,2,3])
         wire = encodeEnvelope testKey env
-        -- Flip the version byte (offset 0)
-        tampered = flipByte 0 wire
+        -- Flip the type byte (offset 1) -- not version byte because version
+        -- mismatch is caught before HMAC check
+        tampered = flipByte 1 wire
     check "HMAC rejects tampered header" (decodeEnvelope testKey tampered == Nothing)
+
+-- | decodeEnvelope rejects v1 envelopes (version byte = 1).
+testRejectsV1 :: IO Bool
+testRejectsV1 = do
+    -- Construct a fake v1 wire blob: version=1 then enough zeros
+    let fakeV1 = BS.singleton 1 <> BS.replicate 200 0x00
+    check "rejects v1 envelope" (decodeEnvelope testKey fakeV1 == Nothing)
 
 -- | Flip a single bit in the byte at the given offset.
 flipByte :: Int -> ByteString -> ByteString
@@ -316,4 +345,3 @@ flipByte idx bs =
         (byte, after)  = BS.splitAt 1 rest
         flipped        = BS.singleton (xor (BS.index byte 0) 0x01)
     in before <> flipped <> after
-

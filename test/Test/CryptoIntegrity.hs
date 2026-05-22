@@ -48,22 +48,28 @@ runTests = do
 -- Helpers
 ------------------------------------------------------------------------
 
+-- | Dummy 32-byte sender identity for tests.
+dummySenderId :: ByteString
+dummySenderId = BS.replicate 32 0
+
 -- | Unwrap sendChatMessage's Either result, failing on ratchet error.
 mustSend :: ChatSession -> ByteString -> IO (ChatSession, ByteString)
 mustSend sess msg = do
-    r <- sendChatMessage sess msg
+    r <- sendChatMessage sess dummySenderId msg
     case r of
         Left _         -> fail "mustSend: ratchet error (counter exhausted?)"
         Right (s', w)  -> pure (s', w)
 
 -- | Unwrap recvChatMessage's Either/Maybe result for test assertions.
 -- Returns Nothing on rejection (auth failure, ratchet error, etc.)
+-- Drops the senderId from the result; callers only need session + plaintext.
 tryRecv :: ChatSession -> ByteString -> IO (Maybe (ChatSession, ByteString))
 tryRecv sess wire = do
     r <- recvChatMessage sess wire
     case r of
         Left _         -> pure Nothing  -- ratchet error treated as rejection
-        Right mResult  -> pure mResult
+        Right Nothing  -> pure Nothing
+        Right (Just (s', _sid, pt)) -> pure (Just (s', pt))
 
 -- | Receive one decrypted message with a timeout, failing on timeout.
 recvOne :: TestClient -> IO ByteString

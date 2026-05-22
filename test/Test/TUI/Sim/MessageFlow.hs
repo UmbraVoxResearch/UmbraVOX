@@ -14,6 +14,7 @@ import UmbraVox.TUI.Types
 import UmbraVox.TUI.Actions.Session (sendCurrentMessage, sendToSession, addLoopbackSession)
 import UmbraVox.Chat.Session (initChatSession)
 import UmbraVox.Crypto.Random (randomBytes)
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BC
 
 runTests :: IO Bool
@@ -252,7 +253,8 @@ testLoopbackSendToSessionEncryptsAndReceives = do
     case Map.lookup sid sessions of
         Just si -> do
             -- Directly call sendToSession on a loopback (no transport) session
-            _ <- sendToSession si (BC.pack "direct loopback")
+            let dummySenderId = BS.replicate 32 0
+            _ <- sendToSession dummySenderId si (BC.pack "direct loopback")
             hist <- readIORef (siHistory si)
             -- Should have one entry with "[saved]" and the message text
             let hasSaved = any (\h -> "[saved]" `isInfixOf` h && "direct loopback" `isInfixOf` h) hist
@@ -285,7 +287,8 @@ testOfflineSessionRejectsSend = do
     stRef <- newIORef Offline
     let si = SessionInfo Nothing (RatchetCrypto ref) lock Nothing "restored-offline" histRef stRef
     writeIORef (cfgSessions cfg) (Map.singleton sid si)
-    result <- sendToSession si (BC.pack "must not loop")
+    let dummySenderId = BS.replicate 32 0
+    result <- sendToSession dummySenderId si (BC.pack "must not loop")
     hist <- readIORef histRef
     r1 <- assertEq "offline session send rejected" "SendUnavailable" (show result)
     r2 <- assertEq "offline session history unchanged" ["Peer: old message"] hist
