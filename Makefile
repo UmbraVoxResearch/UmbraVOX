@@ -282,7 +282,7 @@ help: # [host-only]
 	@echo ""
 	@echo "  VM Smoke (isolated build/test) [VM-only]:"
 	@echo "    make vm-smoke       Run full pipeline inside isolated QEMU VM"
-	@echo "    make vm-image-build Build and cache the NixOS VM image"
+	@echo "    make vm-image-build Build and cache the NixOS VM image (remote-builder required)"
 	@echo "    make vm-image-clean Remove the cached VM image"
 	@echo "    make image-clean    Alias for vm-image-clean"
 	@echo "    make firecracker-smoke  Run pipeline inside Firecracker VM"
@@ -331,6 +331,8 @@ help: # [host-only]
 	@echo "    All build/test/verify targets default to VM execution."
 	@echo "    Set UMBRAVOX_LOCAL=1 to run locally (requires nix-shell with full toolchain)."
 	@echo "    Run 'make vm-image-build' to create the VM image first."
+	@echo "    Configure remote Nix builder in nix/remote-builder.env or env vars."
+	@echo "    Fail-closed policy: vm-image builds never fall back to local host builds."
 	@echo ""
 	@echo "  Keyboard Shortcuts (TUI):"
 	@echo "    Tab     Switch focus (contacts <-> chat)"
@@ -1190,16 +1192,38 @@ vm-smoke:
 
 vm-image-build: # [host-only] nix-build produces VM image; no compilers on host
 	@echo -e "$(BLUE)[VM-IMAGE]$(NC) Building/caching NixOS VM image..."
-	@mkdir -p build/vm
-	@if [ -L build/vm/image ] && [ -e build/vm/image ]; then \
+	@mkdir -p build/vm build/vm/tmp
+	@REMOTE_CFG_SCRIPT="./scripts/nix-remote-builder-config.sh"; \
+	if [ ! -x "$$REMOTE_CFG_SCRIPT" ] && [ -f "$$REMOTE_CFG_SCRIPT" ]; then chmod +x "$$REMOTE_CFG_SCRIPT"; fi; \
+	if [ -z "$$(command -v nix 2>/dev/null)" ] && [ -x /nix/var/nix/profiles/default/bin/nix ]; then \
+		export PATH="/nix/var/nix/profiles/default/bin:$$PATH"; \
+	fi; \
+	if ! command -v nix >/dev/null 2>&1 && ! command -v nix-build >/dev/null 2>&1; then \
+		echo -e "$(RED)[VM-IMAGE]$(NC) Neither 'nix' nor 'nix-build' is available on PATH."; \
+		echo "  Install Nix or add /nix/var/nix/profiles/default/bin to PATH."; \
+		exit 1; \
+	fi; \
+	REMOTE_EXPORTS="$$( "$$REMOTE_CFG_SCRIPT" shell )" || exit 1; \
+	eval "$$REMOTE_EXPORTS"; \
+	echo -e "$(BLUE)[NIX-REMOTE]$(NC) source=$$UMBRAVOX_NIX_CONFIG_SOURCE file=$$UMBRAVOX_NIX_CONFIG_FILE_EFFECTIVE"; \
+	echo -e "$(BLUE)[NIX-REMOTE]$(NC) UMBRAVOX_NIX_BUILDER=$$UMBRAVOX_NIX_BUILDER"; \
+	echo -e "$(BLUE)[NIX-REMOTE]$(NC) UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES=$$UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES"; \
+	NIX_REMOTE_ARGS=( \
+		--builders "$$UMBRAVOX_NIX_BUILDER" \
+		--option builders-use-substitutes "$$UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES" \
+	); \
+	if [ -L build/vm/image ] && [ -e build/vm/image ]; then \
 		echo -e "$(GREEN)[VM-IMAGE]$(NC) Image already cached at build/vm/image"; \
 	else \
+		TMPDIR="$$(pwd)/build/vm/tmp"; export TMPDIR; \
+		echo -e "$(BLUE)[VM-IMAGE]$(NC) Using TMPDIR=$$TMPDIR"; \
 		echo -e "$(BLUE)[VM-IMAGE]$(NC) Building via nix (this may take several minutes)..."; \
 		if ! ( \
-			nix build .#vm-image -o build/vm/image 2>/dev/null || \
-			nix-build nix/vm-image.nix -A qemu -o build/vm/image 2>/dev/null \
+			nix --extra-experimental-features "nix-command flakes" --option build-dir "$$TMPDIR" "$${NIX_REMOTE_ARGS[@]}" build -L .#vm-image -o build/vm/image || \
+			nix-build "$${NIX_REMOTE_ARGS[@]}" --option build-dir "$$TMPDIR" nix/vm-image.nix -A qemu -o build/vm/image \
 		); then \
-			echo -e "$(RED)[VM-IMAGE]$(NC) nix build failed. Ensure nix is installed and flake/derivation is valid."; \
+			echo -e "$(RED)[VM-IMAGE]$(NC) Remote nix build failed."; \
+			echo "  Fail-closed policy is enabled: no local fallback will be attempted."; \
 			exit 1; \
 		fi; \
 		echo -e "$(GREEN)[VM-IMAGE]$(NC) Image cached at build/vm/image"; \
@@ -1208,6 +1232,7 @@ vm-image-build: # [host-only] nix-build produces VM image; no compilers on host
 vm-image-clean: # [host-only] file operations
 	@echo -e "$(BLUE)[VM-IMAGE]$(NC) Removing cached VM image..."
 	@rm -f build/vm/image
+	@rm -rf build/vm/tmp
 	@echo -e "$(GREEN)[VM-IMAGE]$(NC) Image cache cleared."
 
 vm-cache-clean: # [host-only] file operations
@@ -1240,13 +1265,34 @@ vm-signal-server-build-jar:
 
 vm-signal-server-build:
 	@echo -e "$(BLUE)[SIGNAL-VM]$(NC) Stage 2: Building runtime VM image..."
-	@mkdir -p build/vm-signal-server
-	@if [ -d build/vm-signal-server/image ]; then \
+	@mkdir -p build/vm-signal-server build/vm-signal-server/tmp
+	@REMOTE_CFG_SCRIPT="./scripts/nix-remote-builder-config.sh"; \
+	if [ ! -x "$$REMOTE_CFG_SCRIPT" ] && [ -f "$$REMOTE_CFG_SCRIPT" ]; then chmod +x "$$REMOTE_CFG_SCRIPT"; fi; \
+	REMOTE_EXPORTS="$$( "$$REMOTE_CFG_SCRIPT" shell )" || exit 1; \
+	eval "$$REMOTE_EXPORTS"; \
+	echo -e "$(BLUE)[NIX-REMOTE]$(NC) source=$$UMBRAVOX_NIX_CONFIG_SOURCE file=$$UMBRAVOX_NIX_CONFIG_FILE_EFFECTIVE"; \
+	echo -e "$(BLUE)[NIX-REMOTE]$(NC) UMBRAVOX_NIX_BUILDER=$$UMBRAVOX_NIX_BUILDER"; \
+	echo -e "$(BLUE)[NIX-REMOTE]$(NC) UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES=$$UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES"; \
+	NIX_REMOTE_ARGS=( \
+		--builders "$$UMBRAVOX_NIX_BUILDER" \
+		--option builders-use-substitutes "$$UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES" \
+	); \
+	if [ -d build/vm-signal-server/image ]; then \
 		echo -e "$(GREEN)[SIGNAL-VM]$(NC) Image already cached at build/vm-signal-server/image"; \
 	else \
+		if [ -z "$$(command -v nix-build 2>/dev/null)" ] && [ -x /nix/var/nix/profiles/default/bin/nix-build ]; then \
+			export PATH="/nix/var/nix/profiles/default/bin:$$PATH"; \
+		fi; \
+		if ! command -v nix-build >/dev/null 2>&1; then \
+			echo -e "$(RED)[SIGNAL-VM]$(NC) 'nix-build' is not available on PATH."; \
+			echo "  Install Nix or add /nix/var/nix/profiles/default/bin to PATH."; \
+			exit 1; \
+		fi; \
+		TMPDIR="$$(pwd)/build/vm-signal-server/tmp"; export TMPDIR; \
+		echo -e "$(BLUE)[SIGNAL-VM]$(NC) Using TMPDIR=$$TMPDIR"; \
 		echo -e "$(BLUE)[SIGNAL-VM]$(NC) Building via nix (this may take several minutes)..."; \
-		nix-build nix/vm-signal-server.nix -A qemu -o build/vm-signal-server/image || \
-		(echo -e "$(RED)[SIGNAL-VM]$(NC) nix-build failed"; exit 1); \
+		nix-build "$${NIX_REMOTE_ARGS[@]}" --option build-dir "$$TMPDIR" nix/vm-signal-server.nix -A qemu -o build/vm-signal-server/image || \
+		(echo -e "$(RED)[SIGNAL-VM]$(NC) Remote nix-build failed (fail-closed; no local fallback)."; exit 1); \
 		echo -e "$(GREEN)[SIGNAL-VM]$(NC) Image cached at build/vm-signal-server/image"; \
 	fi
 

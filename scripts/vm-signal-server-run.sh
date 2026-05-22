@@ -26,6 +26,10 @@ VM_CACHE_DIR="$REPO_ROOT/build/vm-signal-server"
 VM_IMAGE_PATH="$VM_CACHE_DIR/image"
 BUILD_VM_IMAGE_PATH="$VM_CACHE_DIR/build-image"
 JAR_OUTPUT_DIR="$REPO_ROOT/build/signal-server-jar"
+VM_TMP_DIR="$VM_CACHE_DIR/tmp"
+
+# Keep transient VM artifacts inside the repo build tree to avoid /tmp/rootfs pressure.
+mkdir -p "$VM_TMP_DIR"
 
 # ── Preflight ──────────────────────────────────────────────────────────
 
@@ -63,14 +67,40 @@ build_jar() {
         echo -e "${RED}[SIGNAL-VM]${NC} Build VM image not found at $BUILD_VM_IMAGE_PATH"
         echo -e "${YELLOW}[SIGNAL-VM]${NC} Building it now..."
         mkdir -p "$BUILD_VM_IMAGE_PATH"
-        nix-build "$REPO_ROOT/nix/vm-signal-server.nix" -A buildVm \
+        local nix_tmp
+        nix_tmp="$VM_TMP_DIR"
+        local remote_cfg_script
+        remote_cfg_script="$REPO_ROOT/scripts/nix-remote-builder-config.sh"
+        if [ ! -x "$remote_cfg_script" ] && [ -f "$remote_cfg_script" ]; then
+            chmod +x "$remote_cfg_script"
+        fi
+        eval "$("$remote_cfg_script" shell)"
+        echo -e "${BLUE}[NIX-REMOTE]${NC} source=${UMBRAVOX_NIX_CONFIG_SOURCE} file=${UMBRAVOX_NIX_CONFIG_FILE_EFFECTIVE}"
+        echo -e "${BLUE}[NIX-REMOTE]${NC} UMBRAVOX_NIX_BUILDER=${UMBRAVOX_NIX_BUILDER}"
+        echo -e "${BLUE}[NIX-REMOTE]${NC} UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES=${UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES}"
+        local -a nix_remote_args
+        nix_remote_args=(
+            --builders "$UMBRAVOX_NIX_BUILDER"
+            --option builders-use-substitutes "$UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES"
+        )
+        if [ -z "$(command -v nix-build 2>/dev/null)" ] && [ -x /nix/var/nix/profiles/default/bin/nix-build ]; then
+            export PATH="/nix/var/nix/profiles/default/bin:$PATH"
+        fi
+        if ! command -v nix-build >/dev/null 2>&1; then
+            echo -e "${RED}[SIGNAL-VM]${NC} nix-build not found on PATH"
+            echo -e "${YELLOW}[SIGNAL-VM]${NC} Install Nix or add /nix/var/nix/profiles/default/bin to PATH."
+            exit 1
+        fi
+        export TMPDIR="$nix_tmp"
+        nix-build "${nix_remote_args[@]}" "$REPO_ROOT/nix/vm-signal-server.nix" -A buildVm \
+            --option build-dir "$TMPDIR" \
             -o "$BUILD_VM_IMAGE_PATH" 2>&1
     fi
 
     local disk_img
     disk_img="$(readlink -f "$BUILD_VM_IMAGE_PATH/nixos.img")"
     local overlay
-    overlay="$(mktemp /tmp/umbravox-signal-build-overlay.XXXXXX.qcow2)"
+    overlay="$(mktemp "$VM_TMP_DIR/umbravox-signal-build-overlay.XXXXXX.qcow2")"
 
     echo -e "${BLUE}[SIGNAL-VM]${NC} Creating COW overlay for build VM..." >&2
     qemu-img create -f qcow2 -b "$disk_img" -F raw "$overlay" >/dev/null 2>&1
@@ -131,7 +161,7 @@ run_runtime() {
     local disk_img
     disk_img="$(readlink -f "$VM_IMAGE_PATH/nixos.img")"
     local overlay
-    overlay="$(mktemp /tmp/umbravox-signal-vm-overlay.XXXXXX.qcow2)"
+    overlay="$(mktemp "$VM_TMP_DIR/umbravox-signal-vm-overlay.XXXXXX.qcow2")"
 
     echo -e "${BLUE}[SIGNAL-VM]${NC} Creating COW overlay..." >&2
     qemu-img create -f qcow2 -b "$disk_img" -F raw "$overlay" >/dev/null 2>&1

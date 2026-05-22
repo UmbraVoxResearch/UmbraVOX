@@ -60,6 +60,44 @@ make vm-run-gui        # Interactive dev with QEMU GUI
 make vm-dev            # Interactive dev shell inside the VM
 ```
 
+### Remote Nix Builder (VM Image Targets)
+
+`make vm-image-build` and `make vm-signal-server-build` are remote-builder
+only and fail closed (no local fallback).
+
+Defaults are read from `nix/remote-builder.env`. Environment variables override
+file values. If the file is missing, env-only mode is supported.
+
+Required variable:
+
+```sh
+UMBRAVOX_NIX_BUILDER="ssh-ng://nixbuilder@builder.example.internal x86_64-linux - 8"
+```
+
+Optional variables:
+
+```sh
+UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES=true
+UMBRAVOX_NIX_REMOTE_REQUIRED=1
+```
+
+Override examples:
+
+```sh
+# use committed defaults
+make vm-image-build
+
+# override builder for this shell/session
+export UMBRAVOX_NIX_BUILDER="ssh-ng://me@my-builder.internal x86_64-linux ~/.ssh/id_ed25519 4"
+make vm-image-build
+
+# env-only mode (if nix/remote-builder.env is absent)
+UMBRAVOX_NIX_BUILDER="ssh-ng://ci@builder.internal x86_64-linux - 16" make vm-image-build
+```
+
+Debug output is printed at runtime and includes config source (`file`,
+`file+env`, `env-only`) and the effective variables used for the build.
+
 To run locally instead of in the VM (requires full toolchain):
 
 ```sh
