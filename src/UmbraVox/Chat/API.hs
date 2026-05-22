@@ -9,26 +9,33 @@
 -- See: doc/spec/chat.md
 module UmbraVox.Chat.API
   ( startAPI
+  , startAPIWithToken
   , APIMethod(..)
     -- * Exported for testing
   , parseRequest
   , dispatchIO
   , formatResult
   , formatError
+  , validateAuth
+  , validRpcId
+  , maxRequestSize
   ) where
 
 import Control.Concurrent (forkIO)
 import Control.Exception (SomeException, bracket, catch, finally)
 import Control.Monad (void)
-import Data.IORef (readIORef)
+import Data.IORef (IORef, newIORef, readIORef)
 import Data.List (isPrefixOf)
+import Data.Word (Word8)
 import qualified Data.Map.Strict as Map
 import qualified Network.Socket as NS
 import qualified Network.Socket.ByteString as NSB
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BS8
+import System.IO (hPutStrLn, stderr)
 
 import UmbraVox.App.Config (AppConfig(..), ConnectionMode(..))
+import UmbraVox.Crypto.Random (randomBytes)
 
 -- | Supported JSON-RPC methods.
 data APIMethod
@@ -47,10 +54,43 @@ data RPCRequest = RPCRequest
     , rpcId     :: !String            -- ^ raw JSON value for the id field
     } deriving stock (Show)
 
+-- | Encode a ByteString as a lowercase hex string.
+bytesToHex :: BS.ByteString -> String
+bytesToHex = concatMap toHexPair . BS.unpack
+  where
+    hexDigit :: Word8 -> Char
+    hexDigit n = "0123456789abcdef" !! fromIntegral n
+    toHexPair :: Word8 -> String
+    toHexPair b = [hexDigit (b `div` 16), hexDigit (b `mod` 16)]
+
+-- | Validate the auth token in a parsed request's params.
+-- Returns Nothing if valid, or Just errorResponse if invalid.
+validateAuth :: IORef String -> RPCRequest -> IO (Maybe String)
+validateAuth tokenRef req = do
+    expected <- readIORef tokenRef
+    let provided = paramLookup "auth" (rpcParams req)
+    case provided of
+        Nothing -> pure (Just (formatError (rpcId req) (-32600) "Unauthorized"))
+        Just t
+            | t == expected -> pure Nothing
+            | otherwise     -> pure (Just (formatError (rpcId req) (-32600) "Unauthorized"))
+
 -- | Start the JSON-RPC API server on the given port.
 -- Binds to 127.0.0.1 only (local access).
+-- Generates a random 32-byte bearer token and prints it to stderr.
 startAPI :: AppConfig -> Int -> IO ()
-startAPI cfg port = bracket openSock NS.close (acceptLoop cfg)
+startAPI cfg port = do
+    tokenBytes <- randomBytes 32
+    let token = bytesToHex tokenBytes
+    tokenRef <- newIORef token
+    hPutStrLn stderr ("API_TOKEN=" ++ token)
+    startAPIWithToken cfg tokenRef port
+
+-- | Start the JSON-RPC API server with an externally-provided token ref.
+-- Useful for testing where the caller needs to know the token.
+startAPIWithToken :: AppConfig -> IORef String -> Int -> IO ()
+startAPIWithToken cfg tokenRef port =
+    bracket openSock NS.close (acceptLoop cfg tokenRef)
   where
     openSock :: IO NS.Socket
     openSock = do
@@ -70,29 +110,53 @@ startAPI cfg port = bracket openSock NS.close (acceptLoop cfg)
                 pure sock
 
 -- | Accept connections in a loop, forking a handler for each.
-acceptLoop :: AppConfig -> NS.Socket -> IO ()
-acceptLoop cfg listenSock = go
+acceptLoop :: AppConfig -> IORef String -> NS.Socket -> IO ()
+acceptLoop cfg tokenRef listenSock = go
   where
     go = do
         (conn, _peer) <- NS.accept listenSock
-        void $ forkIO (handleConnection cfg conn)
+        void $ forkIO (handleConnection cfg tokenRef conn)
         go
 
 -- | Handle a single JSON-RPC connection: read request, dispatch, respond, close.
-handleConnection :: AppConfig -> NS.Socket -> IO ()
-handleConnection cfg conn =
+handleConnection :: AppConfig -> IORef String -> NS.Socket -> IO ()
+handleConnection cfg tokenRef conn =
     (do
         raw <- recvLine conn
-        response <- case parseRequest (BS8.unpack raw) of
-            Left err -> pure (formatError "null" (-32700) err)
-            Right req ->
-                case resolveMethod (rpcMethod req) of
-                    Nothing -> pure (formatError (rpcId req) (-32601)
-                                       ("unknown method: " ++ rpcMethod req))
-                    Just method -> dispatchIO cfg method req
+        -- M23.2.9: reject requests larger than 64 KiB
+        response <- if BS.length raw > maxRequestSize
+            then pure (formatError "null" (-32700) "request exceeds 64 KiB limit")
+            else case parseRequest (BS8.unpack raw) of
+                Left err -> pure (formatError "null" (-32700) err)
+                Right req
+                    -- M23.2.10: validate rpcId is number, string, or null
+                    | not (validRpcId (rpcId req)) ->
+                        pure (formatError "null" (-32600)
+                                "invalid id: must be number, string, or null")
+                    | otherwise -> do
+                        authErr <- validateAuth tokenRef req
+                        case authErr of
+                            Just errResp -> pure errResp
+                            Nothing ->
+                                case resolveMethod (rpcMethod req) of
+                                    Nothing -> pure (formatError (rpcId req) (-32601)
+                                                       ("unknown method: " ++ rpcMethod req))
+                                    Just method -> dispatchIO cfg method req
         NSB.sendAll conn (BS8.pack (response ++ "\n"))
     ) `catch` (\(_ :: SomeException) -> pure ())
     `finally` NS.close conn
+
+-- | Maximum request size: 64 KiB (M23.2.9).
+maxRequestSize :: Int
+maxRequestSize = 65536
+
+-- | Validate that a raw JSON id value is a number, a quoted string, or null.
+-- Rejects booleans, arrays, objects, and other invalid id forms (M23.2.10).
+validRpcId :: String -> Bool
+validRpcId "null"  = True
+validRpcId ('"':_) = True          -- JSON string
+validRpcId (c:_)   = c == '-' || (c >= '0' && c <= '9')  -- JSON number
+validRpcId []      = False
 
 -- | Read bytes until a newline or connection close (max 64 KiB).
 recvLine :: NS.Socket -> IO BS.ByteString
