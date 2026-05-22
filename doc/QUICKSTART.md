@@ -26,11 +26,13 @@ instruction to run `make vm-image-build` first (or to opt into local mode via
 
 ```bash
 nix-shell shell-minimal.nix
-make vm-image-build    # One-time: build and cache the NixOS VM image
-make build
+make vm-image-build    # Build the NixOS dev VM (once)
+make vm-build-only     # Build everything in VM
+make vm-test           # Run tests in VM
+make vm-run-gui        # Interactive dev with QEMU GUI
+make build             # Build (routes to VM by default)
 make build-haskell
-make vm-run-gui
-UMBRAVOX_LOCAL=1 make run-local
+UMBRAVOX_LOCAL=1 make run-local  # Escape hatch: host-local run
 make test
 make test-haskell
 make test-core
@@ -208,14 +210,18 @@ git, and make.
 
 | Command | Description |
 |---------|-------------|
-| `nix-shell` | Full local shell (commands still route to VM by default) |
-| `nix-shell shell-minimal.nix` | Orchestration-only shell (QEMU, git, make — no cabal/ghc) |
-| `make build` | Build library + executables (runs in VM) |
-| `make test` | Run `required` test suite (runs in VM) |
-| `make verify` | Run F* formal verification (runs in VM) |
+| `nix-shell shell-minimal.nix` | Orchestration-only shell (QEMU, git, make -- no cabal/ghc) |
+| `make vm-image-build` | Build the NixOS dev VM (once) |
+| `make vm-build-only` | Build everything in VM |
+| `make vm-test` | Run tests in VM |
+| `make vm-run-gui` | Interactive dev with QEMU GUI |
+| `make vm-verify` | F* formal verification in VM |
 | `make vm-dev` | Interactive development shell inside the NixOS VM |
-| `make vm-image-build` | Build/cache the VM image (uses nix build, no cabal needed) |
+| `make build` | Build library + executables (routes to VM by default) |
+| `make test` | Run `required` test suite (routes to VM by default) |
+| `make verify` | Run F* formal verification (routes to VM by default) |
 | `make check-evidence` | Run external evidence checks (Coq, primality, F* inventory) |
+| `nix-shell` | Full local shell (commands still route to VM by default) |
 | `UMBRAVOX_LOCAL=1 make build` | Bypass VM, build locally (requires full nix-shell) |
 
 Inside `make vm-dev`, you have the full toolchain (GHC 9.6, Cabal, F*, Z3,
@@ -258,10 +264,10 @@ See `doc/VM-DEVELOPMENT.md` for the full VM development guide and troubleshootin
 
 ## First Run
 
-1. Enter `nix-shell`.
-2. Run `make vm-image-build` (first time only — builds and caches the NixOS VM image).
-3. Run `make build` (builds inside the VM by default).
-4. Launch the app with `make vm-run-gui` (VM) or `UMBRAVOX_LOCAL=1 make run-local` (explicit host local run).
+1. Enter `nix-shell shell-minimal.nix`.
+2. Run `make vm-image-build` (first time only -- builds and caches the NixOS VM image).
+3. Run `make vm-build-only` (builds everything inside the VM).
+4. Launch the app with `make vm-run-gui` or `UMBRAVOX_LOCAL=1 make run-local` (explicit host-local run).
 5. Open **Contacts** with `F2` and create a new single-peer connection.
 6. Enter the remote `host:port` and let the Noise_IK handshake complete.
 

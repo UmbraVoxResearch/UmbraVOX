@@ -28,23 +28,21 @@ default. No local GHC or cabal is required for standard operations.
 
 ```sh
 nix-shell shell-minimal.nix  # Enter orchestration-only VM-first environment
-make vm-image-build    # First time: build and cache the NixOS VM image
-make build             # Build everything (in VM)
-make test              # Fast messaging-MVP hardening gate (in VM)
-make verify            # F* formal verification (in VM)
-make vm-run-gui        # Launch interactive VM UI session
-UMBRAVOX_LOCAL=1 make run-local  # Explicit host compile + run
+make vm-image-build    # Build the NixOS dev VM (once)
+make vm-build-only     # Build everything in VM
+make vm-test           # Run tests in VM
+make vm-run-gui        # Interactive dev with QEMU GUI
+make vm-verify         # F* formal verification in VM
 make vm-dev            # Interactive dev shell inside the VM
-make test-core-network # Deterministic network/discovery suite (in VM)
-make test-tui-sim      # TUI simulation suite (in VM)
-make test-integrity    # Wire/integrity suite (in VM)
-make test-mdns         # Exact mDNS/discovery suite (in VM)
-make test-deferred     # Preserved deferred blockchain/economics suites (in VM)
+make build             # Build everything (routes to VM by default)
+make test              # Fast messaging-MVP hardening gate (routes to VM)
+make verify            # F* formal verification (routes to VM)
+make quality           # Full pipeline: build + test + verify + complexity + lint + license + format-check (in VM)
 make soak              # Longer soak/stress run with artifact report (in VM)
 make release-linux     # Portable Linux x86_64 terminal bundle (in VM)
 make release           # Build all defined release artifacts (in VM)
-make quality           # Full pipeline: build + test + verify + complexity + lint + license + format-check (in VM)
 UMBRAVOX_LOCAL=1 make build  # Bypass VM, build locally (requires full nix-shell)
+UMBRAVOX_LOCAL=1 make run-local  # Explicit host compile + run
 scripts/nix-flake.sh flake show --no-write-lock-file
 ```
 
@@ -55,11 +53,11 @@ needs QEMU and git. No local toolchain required for standard workflow.
 
 ```sh
 nix-shell shell-minimal.nix  # Enter VM-first shell
-make build             # Builds inside the VM
-make test              # Runs tests inside the VM
-make verify            # Runs F* verification inside the VM
+make vm-image-build    # Build the NixOS dev VM (once)
+make vm-build-only     # Build everything in VM
+make vm-test           # Run tests in VM
+make vm-run-gui        # Interactive dev with QEMU GUI
 make vm-dev            # Interactive dev shell inside the VM
-make vm-run-gui        # Launch interactive VM UI session
 ```
 
 To run locally instead of in the VM (requires full toolchain):
@@ -211,7 +209,7 @@ F2 Prefs -> Settings
 * Default port sequence beginning at 7853
 * Identity persistence across restart for the local node
 * Tiered hardening harness: core, TCP, fault, recovery, deferred, soak
-* 24 F* formal verification specs (0 admit, 30 assume val) + 350 Coq Qed (9 files)
+* 24 F* formal verification specs (0 admit, 25 assume val) + 475 Coq Qed (14 files)
 * Explicit distinction between active MVP code and deferred research code
 
 ## Keyboard
@@ -370,9 +368,9 @@ active assurance claim.
 * The F* layer is handwritten, not generated from NIST or RFC text. Its role
   is to formalize and verify algorithm properties against the intended
   standards.
-* 24 F* specifications are present (0 admit, 30 assume val), and the current
-  full `make verify` run is green under the active toolchain. 9 Coq files
-  provide 350 Qed proofs (0 Admitted) backing Ed25519 curve/field/scalar
+* 24 F* specifications are present (0 admit, 25 assume val), and the current
+  full `make verify` run is green under the active toolchain. 14 Coq files
+  provide 475 Qed proofs (0 Admitted) backing Ed25519 curve/field/scalar
   properties, VRF DLEQ algebra, group associativity instances, and
   sqrt-ratio verification. That means the handwritten formal model suite is internally
   consistent. It does not by itself prove that the active Haskell
