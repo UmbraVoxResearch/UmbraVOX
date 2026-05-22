@@ -123,8 +123,8 @@ handleConnection :: AppConfig -> IORef String -> NS.Socket -> IO ()
 handleConnection cfg tokenRef conn =
     (do
         raw <- recvLine conn
-        -- M23.2.9: reject requests larger than 64 KiB
-        response <- if BS.length raw > maxRequestSize
+        -- M23.2.9: reject requests that hit the 64 KiB receive limit
+        response <- if BS.length raw >= maxRequestSize
             then pure (formatError "null" (-32700) "request exceeds 64 KiB limit")
             else case parseRequest (BS8.unpack raw) of
                 Left err -> pure (formatError "null" (-32700) err)
