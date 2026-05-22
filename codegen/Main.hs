@@ -3,6 +3,8 @@ module Main (main) where
 
 import System.Directory (doesDirectoryExist, listDirectory)
 import System.FilePath ((</>), takeExtension)
+import System.IO (hSetEncoding, stdout, stderr, utf8)
+import qualified GHC.IO.Encoding as Enc
 import qualified CryptoGen
 import qualified CBORGen
 import qualified FSMGen
@@ -16,6 +18,10 @@ import qualified TestGen
 -- TQL-1 qualified artifact (DO-330)
 main :: IO ()
 main = do
+    -- Ensure UTF-8 encoding regardless of system locale (fixes nix-shell --pure)
+    Enc.setLocaleEncoding Enc.utf8
+    hSetEncoding stdout utf8
+    hSetEncoding stderr utf8
     let specsDir = "codegen/Specs"
     exists <- doesDirectoryExist specsDir
     if not exists

@@ -179,13 +179,19 @@ parseConstants = mapMaybe parseConst
   where
     parseConst l =
         case break (== '=') (strip l) of
-            (n, '=':v) -> Just $ Constant (strip n) (stripTypeAnnotation (strip v))
+            (n, '=':v) -> Just $ Constant (strip n) (stripComment (stripTypeAnnotation (strip v)))
             _ -> Nothing
     -- Strip optional type annotation like ": UInt64" from constant values
     stripTypeAnnotation v =
         case break (== ':') v of
             (val, ':':_) -> strip val
             _            -> v
+    -- Strip trailing -- comments from constant values
+    stripComment v = strip (takeWhile (/= '-') v ++ go (dropWhile (/= '-') v))
+      where
+        go ('-':'-':_) = ""
+        go (c:rest)    = c : go rest
+        go []          = ""
 
 parseSteps :: [String] -> [Step]
 parseSteps lns = [Step Nothing (concatMap parseOpLine lns)]
@@ -470,6 +476,7 @@ pArgListInner toks =
             _ -> ([arg], rest)
 
 -- | Process a single .spec file: parse, validate, and generate outputs.
+-- Always regenerates all output files unconditionally.
 processSpec :: FilePath -> IO ()
 processSpec path = do
     content <- readFile path
@@ -480,16 +487,19 @@ processSpec path = do
                 hsDir  = "src" </> "UmbraVox" </> "Crypto" </> "Generated"
                 cDir   = "csrc" </> "generated"
                 ffiDir = "src" </> "UmbraVox" </> "Crypto" </> "Generated" </> "FFI"
+                hsPath  = hsDir  </> (name ++ ".hs")
+                cPath   = cDir   </> (toLowerStr name ++ ".c")
+                ffiPath = ffiDir </> (name ++ ".hs")
             createDirectoryIfMissing True hsDir
             createDirectoryIfMissing True cDir
             createDirectoryIfMissing True ffiDir
-            emitHaskell ast (hsDir </> (name ++ ".hs")) name
-            emitC ast (cDir </> (toLowerStr name ++ ".c")) name
-            emitFFI ast (ffiDir </> (name ++ ".hs")) name
+            emitHaskell ast hsPath name
+            emitC ast cPath name
+            emitFFI ast ffiPath name
             putStrLn $ "  Generated: " ++ name
-            putStrLn $ "    Haskell: " ++ (hsDir </> (name ++ ".hs"))
-            putStrLn $ "    C:       " ++ (cDir </> (toLowerStr name ++ ".c"))
-            putStrLn $ "    FFI:     " ++ (ffiDir </> (name ++ ".hs"))
+            putStrLn $ "    Haskell: " ++ hsPath
+            putStrLn $ "    C:       " ++ cPath
+            putStrLn $ "    FFI:     " ++ ffiPath
 
 toLowerStr :: String -> String
 toLowerStr = map toLower
@@ -596,7 +606,7 @@ hsWrapperSpec "X25519" =
         [ "import Data.ByteString (ByteString)"
         , "import qualified UmbraVox.Crypto.Curve25519 as Reference"
         ]
-        [ "x25519 :: ByteString -> ByteString -> ByteString"
+        [ "x25519 :: ByteString -> ByteString -> Maybe ByteString"
         , "x25519 = Reference.x25519"
         , ""
         , "x25519Basepoint :: ByteString"
@@ -676,6 +686,143 @@ hsWrapperSpec "MLKEM768" =
         , ""
         , "mlkemDecaps :: MLKEMDecapKey -> MLKEMCiphertext -> ByteString"
         , "mlkemDecaps = Reference.mlkemDecaps"
+        ]
+hsWrapperSpec "VRF" =
+    Just $ wrapperModule "VRF"
+        [ "vrfProve", "vrfVerify" ]
+        [ "import Data.ByteString (ByteString)"
+        , "import qualified UmbraVox.Crypto.VRF as Reference"
+        ]
+        [ "vrfProve :: ByteString -> ByteString -> ByteString"
+        , "vrfProve = Reference.vrfProve"
+        , ""
+        , "vrfVerify :: ByteString -> ByteString -> ByteString -> Maybe ByteString"
+        , "vrfVerify = Reference.vrfVerify"
+        ]
+hsWrapperSpec "PQWrapper" =
+    Just $ wrapperModule "PQWrapper"
+        [ "pqEncrypt", "pqDecrypt" ]
+        [ "import Data.ByteString (ByteString)"
+        , "import qualified UmbraVox.Crypto.PQWrapper as Reference"
+        ]
+        [ "pqEncrypt :: ByteString -> ByteString -> ByteString"
+        , "pqEncrypt = Reference.pqEncrypt"
+        , ""
+        , "pqDecrypt :: ByteString -> ByteString -> Maybe ByteString"
+        , "pqDecrypt = Reference.pqDecrypt"
+        ]
+hsWrapperSpec "MessageFormat" =
+    Just $ wrapperModule "MessageFormat"
+        [ "MessageBlock(..)", "blockSize", "packBlock", "unpackBlock" ]
+        [ "import Data.ByteString (ByteString)"
+        , "import UmbraVox.Protocol.MessageFormat"
+        , "    ( MessageBlock(..) )"
+        , "import qualified UmbraVox.Protocol.MessageFormat as Reference"
+        ]
+        [ "blockSize :: Int"
+        , "blockSize = Reference.blockSize"
+        , ""
+        , "packBlock :: ByteString -> Either String MessageBlock"
+        , "packBlock = Reference.packBlock"
+        , ""
+        , "unpackBlock :: MessageBlock -> Either String ByteString"
+        , "unpackBlock = Reference.unpackBlock"
+        ]
+hsWrapperSpec "WireFormat" =
+    Just $ wrapperModule "WireFormat"
+        [ "Envelope(..)", "wrapEnvelope", "encodeEnvelope"
+        , "decodeEnvelope", "unwrapEnvelope"
+        ]
+        [ "import Data.ByteString (ByteString)"
+        , "import Data.Word (Word8, Word32)"
+        , "import UmbraVox.Protocol.WireFormat ( Envelope(..) )"
+        , "import qualified UmbraVox.Protocol.WireFormat as Reference"
+        ]
+        [ "wrapEnvelope :: Word8 -> Word32 -> ByteString -> ByteString -> ByteString -> Envelope"
+        , "wrapEnvelope = Reference.wrapEnvelope"
+        , ""
+        , "encodeEnvelope :: Envelope -> ByteString"
+        , "encodeEnvelope = Reference.encodeEnvelope"
+        , ""
+        , "decodeEnvelope :: ByteString -> Maybe Envelope"
+        , "decodeEnvelope = Reference.decodeEnvelope"
+        , ""
+        , "unwrapEnvelope :: Envelope -> ByteString"
+        , "unwrapEnvelope = Reference.unwrapEnvelope"
+        ]
+hsWrapperSpec "Ed25519Extended" =
+    Just $ wrapperModule "Ed25519Extended"
+        [ "ed25519Sign", "ed25519Verify", "ed25519PublicKey" ]
+        [ "import Data.ByteString (ByteString)"
+        , "import qualified UmbraVox.Crypto.Ed25519 as Reference"
+        ]
+        [ "ed25519Sign :: ByteString -> ByteString -> ByteString"
+        , "ed25519Sign = Reference.ed25519Sign"
+        , ""
+        , "ed25519Verify :: ByteString -> ByteString -> ByteString -> Bool"
+        , "ed25519Verify = Reference.ed25519Verify"
+        , ""
+        , "ed25519PublicKey :: ByteString -> ByteString"
+        , "ed25519PublicKey = Reference.ed25519PublicKey"
+        ]
+hsWrapperSpec "Dandelion" =
+    Just $ wrapperModule "Dandelion"
+        [ "DandelionState(..)", "RouteMode(..)", "RouteDecision(..)"
+        , "newDandelionState", "routeMessage", "rotateStemPeer", "checkEpoch"
+        ]
+        [ "import Data.ByteString (ByteString)"
+        , "import Data.Word (Word64)"
+        , "import UmbraVox.Network.Dandelion"
+        , "    ( DandelionState(..), RouteMode(..), RouteDecision(..) )"
+        , "import qualified UmbraVox.Network.Dandelion as Reference"
+        ]
+        [ "newDandelionState :: IO DandelionState"
+        , "newDandelionState = Reference.newDandelionState"
+        , ""
+        , "routeMessage :: DandelionState -> ByteString -> IO RouteDecision"
+        , "routeMessage = Reference.routeMessage"
+        , ""
+        , "rotateStemPeer :: DandelionState -> [String] -> IO ()"
+        , "rotateStemPeer = Reference.rotateStemPeer"
+        , ""
+        , "checkEpoch :: DandelionState -> Word64 -> IO Bool"
+        , "checkEpoch = Reference.checkEpoch"
+        ]
+hsWrapperSpec "NetworkProtocol" =
+    Just $ wrapperModule "NetworkProtocol"
+        [ "P2PMessage(..)", "HandshakePayload(..)", "DataPayload(..)"
+        , "AckPayload(..)", "PeerPayload(..)"
+        , "encode", "decode"
+        ]
+        [ "import Data.ByteString (ByteString)"
+        , "import UmbraVox.Network.Protocol"
+        , "    ( P2PMessage(..), HandshakePayload(..), DataPayload(..)"
+        , "    , AckPayload(..), PeerPayload(..) )"
+        , "import qualified UmbraVox.Network.Protocol as Reference"
+        ]
+        [ "encode :: P2PMessage -> ByteString"
+        , "encode = Reference.encode"
+        , ""
+        , "decode :: ByteString -> Either String P2PMessage"
+        , "decode = Reference.decode"
+        ]
+hsWrapperSpec "SessionState" =
+    Just $ wrapperModule "SessionState"
+        [ "SessionState(..)", "initSession"
+        , "serializeSession", "deserializeSession"
+        ]
+        [ "import Data.ByteString (ByteString)"
+        , "import UmbraVox.Crypto.Signal.Session ( SessionState(..) )"
+        , "import qualified UmbraVox.Crypto.Signal.Session as Reference"
+        ]
+        [ "initSession :: ByteString -> SessionState"
+        , "initSession = Reference.initSession"
+        , ""
+        , "serializeSession :: SessionState -> ByteString"
+        , "serializeSession = Reference.serializeSession"
+        , ""
+        , "deserializeSession :: ByteString -> Maybe SessionState"
+        , "deserializeSession = Reference.deserializeSession"
         ]
 hsWrapperSpec _ = Nothing
 
@@ -939,6 +1086,17 @@ preprocessingFunctions =
     , "fAdd", "fSub", "fMul", "fInv", "fSquare"
     , "compress", "ntt", "intt", "barrett_reduce"
     , "cbd", "byte_decode", "byte_encode"
+    -- VRF operations (RFC 9381)
+    , "SHA512", "edClamp", "ecvrf_encode_to_curve", "edScalarMul"
+    , "edEncode", "reduceMod", "edBasePoint", "addMod", "mulMod"
+    , "decodeLEmod", "edDecode", "edPointSub", "constantTimeEq"
+    -- PQWrapper operations (ML-KEM + AES-GCM composition)
+    , "random", "MLKEM768_Encaps", "HMAC_SHA512", "HKDF_Expand"
+    , "AES256GCM_Encrypt", "MLKEM768_Decaps", "AES256GCM_Decrypt"
+    -- MessageFormat operations (1024-byte block padding)
+    , "encodeBE", "decodeBE", "constantTimeVerifyPad"
+    -- WireFormat operations (envelope serialization)
+    , "HMAC_SHA256"
     ]
 
 cFunction :: String -> [Param] -> [Step] -> [String]
@@ -1284,10 +1442,10 @@ ffiWrapperSpec "X25519" =
         , "x25519Basepoint :: ByteString"
         , "x25519Basepoint = Reference.x25519Basepoint"
         , ""
-        , "x25519 :: ByteString -> ByteString -> IO ByteString"
+        , "x25519 :: ByteString -> ByteString -> IO (Maybe ByteString)"
         , "x25519 scalar point = do"
         , "    _ <- c_x25519_link_probe"
-        , "    pure (Reference.x25519 scalar point)"
+        , "    pure $! Reference.x25519 scalar point"
         ]
 ffiWrapperSpec "AES256" =
     Just $ ffiBridgeModule "AES256"
@@ -1396,6 +1554,172 @@ ffiWrapperSpec "MLKEM768" =
         , "mlkemDecaps dk ct = do"
         , "    _ <- c_mlkem768_link_probe"
         , "    pure (Reference.mlkemDecaps dk ct)"
+        ]
+ffiWrapperSpec "VRF" =
+    Just $ ffiBridgeModule "VRF"
+        [ "ffiLinked", "vrfProve", "vrfVerify" ]
+        [ "import Data.ByteString (ByteString)"
+        , "import Foreign.C.Types (CInt(..))"
+        , "import qualified UmbraVox.Crypto.VRF as Reference"
+        ]
+        [ "foreign import ccall \"vrf_link_probe\" c_vrf_link_probe :: IO CInt"
+        , ""
+        , "ffiLinked :: IO Bool"
+        , "ffiLinked = (/= 0) <$> c_vrf_link_probe"
+        , ""
+        , "vrfProve :: ByteString -> ByteString -> IO ByteString"
+        , "vrfProve sk alpha = do"
+        , "    _ <- c_vrf_link_probe"
+        , "    pure (Reference.vrfProve sk alpha)"
+        , ""
+        , "vrfVerify :: ByteString -> ByteString -> ByteString -> IO (Maybe ByteString)"
+        , "vrfVerify pk alpha pi = do"
+        , "    _ <- c_vrf_link_probe"
+        , "    pure (Reference.vrfVerify pk alpha pi)"
+        ]
+ffiWrapperSpec "PQWrapper" =
+    Just $ ffiBridgeModule "PQWrapper"
+        [ "ffiLinked", "pqEncrypt", "pqDecrypt" ]
+        [ "import Data.ByteString (ByteString)"
+        , "import Foreign.C.Types (CInt(..))"
+        , "import qualified UmbraVox.Crypto.PQWrapper as Reference"
+        ]
+        [ "foreign import ccall \"pqwrapper_link_probe\" c_pqwrapper_link_probe :: IO CInt"
+        , ""
+        , "ffiLinked :: IO Bool"
+        , "ffiLinked = (/= 0) <$> c_pqwrapper_link_probe"
+        , ""
+        , "pqEncrypt :: ByteString -> ByteString -> IO ByteString"
+        , "pqEncrypt ek pt = do"
+        , "    _ <- c_pqwrapper_link_probe"
+        , "    pure (Reference.pqEncrypt ek pt)"
+        , ""
+        , "pqDecrypt :: ByteString -> ByteString -> IO (Maybe ByteString)"
+        , "pqDecrypt dk ct = do"
+        , "    _ <- c_pqwrapper_link_probe"
+        , "    pure (Reference.pqDecrypt dk ct)"
+        ]
+ffiWrapperSpec "MessageFormat" =
+    Just $ ffiBridgeModule "MessageFormat"
+        [ "ffiLinked", "packBlock", "unpackBlock"
+        , "MessageBlock(..)", "blockSize"
+        ]
+        [ "import Data.ByteString (ByteString)"
+        , "import Foreign.C.Types (CInt(..))"
+        , "import UmbraVox.Protocol.MessageFormat"
+        , "    ( MessageBlock(..) )"
+        , "import qualified UmbraVox.Protocol.MessageFormat as Reference"
+        ]
+        [ "foreign import ccall \"messageformat_link_probe\" c_messageformat_link_probe :: IO CInt"
+        , ""
+        , "ffiLinked :: IO Bool"
+        , "ffiLinked = (/= 0) <$> c_messageformat_link_probe"
+        , ""
+        , "blockSize :: Int"
+        , "blockSize = Reference.blockSize"
+        , ""
+        , "packBlock :: ByteString -> IO (Either String MessageBlock)"
+        , "packBlock payload = do"
+        , "    _ <- c_messageformat_link_probe"
+        , "    pure (Reference.packBlock payload)"
+        , ""
+        , "unpackBlock :: MessageBlock -> IO (Either String ByteString)"
+        , "unpackBlock blk = do"
+        , "    _ <- c_messageformat_link_probe"
+        , "    pure (Reference.unpackBlock blk)"
+        ]
+ffiWrapperSpec "WireFormat" =
+    Just $ ffiBridgeModule "WireFormat"
+        [ "ffiLinked", "Envelope(..)", "wrapEnvelope"
+        , "encodeEnvelope", "decodeEnvelope", "unwrapEnvelope"
+        ]
+        [ "import Data.ByteString (ByteString)"
+        , "import Data.Word (Word8, Word32)"
+        , "import Foreign.C.Types (CInt(..))"
+        , "import UmbraVox.Protocol.WireFormat ( Envelope(..) )"
+        , "import qualified UmbraVox.Protocol.WireFormat as Reference"
+        ]
+        [ "foreign import ccall \"wireformat_link_probe\" c_wireformat_link_probe :: IO CInt"
+        , ""
+        , "ffiLinked :: IO Bool"
+        , "ffiLinked = (/= 0) <$> c_wireformat_link_probe"
+        , ""
+        , "wrapEnvelope :: Word8 -> Word32 -> ByteString -> ByteString -> ByteString -> IO Envelope"
+        , "wrapEnvelope msgType seqNum srcId dstId payload = do"
+        , "    _ <- c_wireformat_link_probe"
+        , "    pure (Reference.wrapEnvelope msgType seqNum srcId dstId payload)"
+        , ""
+        , "encodeEnvelope :: Envelope -> IO ByteString"
+        , "encodeEnvelope env = do"
+        , "    _ <- c_wireformat_link_probe"
+        , "    pure (Reference.encodeEnvelope env)"
+        , ""
+        , "decodeEnvelope :: ByteString -> IO (Maybe Envelope)"
+        , "decodeEnvelope bs = do"
+        , "    _ <- c_wireformat_link_probe"
+        , "    pure (Reference.decodeEnvelope bs)"
+        , ""
+        , "unwrapEnvelope :: Envelope -> IO ByteString"
+        , "unwrapEnvelope env = do"
+        , "    _ <- c_wireformat_link_probe"
+        , "    pure (Reference.unwrapEnvelope env)"
+        ]
+ffiWrapperSpec "Ed25519Extended" =
+    Just $ ffiBridgeModule "Ed25519Extended"
+        [ "ffiLinked", "ed25519Sign", "ed25519Verify", "ed25519PublicKey" ]
+        [ "import Data.ByteString (ByteString)"
+        , "import Foreign.C.Types (CInt(..))"
+        , "import qualified UmbraVox.Crypto.Ed25519 as Reference"
+        ]
+        [ "foreign import ccall \"ed25519extended_link_probe\" c_ed25519extended_link_probe :: IO CInt"
+        , ""
+        , "ffiLinked :: IO Bool"
+        , "ffiLinked = (/= 0) <$> c_ed25519extended_link_probe"
+        , ""
+        , "ed25519Sign :: ByteString -> ByteString -> IO ByteString"
+        , "ed25519Sign sk msg = do"
+        , "    _ <- c_ed25519extended_link_probe"
+        , "    pure (Reference.ed25519Sign sk msg)"
+        , ""
+        , "ed25519Verify :: ByteString -> ByteString -> ByteString -> IO Bool"
+        , "ed25519Verify pk msg sig = do"
+        , "    _ <- c_ed25519extended_link_probe"
+        , "    pure (Reference.ed25519Verify pk msg sig)"
+        , ""
+        , "ed25519PublicKey :: ByteString -> IO ByteString"
+        , "ed25519PublicKey sk = do"
+        , "    _ <- c_ed25519extended_link_probe"
+        , "    pure (Reference.ed25519PublicKey sk)"
+        ]
+ffiWrapperSpec "Dandelion" =
+    Just $ ffiBridgeModule "Dandelion"
+        [ "ffiLinked" ]
+        [ "import Foreign.C.Types (CInt(..))"
+        ]
+        [ "foreign import ccall \"dandelion_link_probe\" c_dandelion_link_probe :: IO CInt"
+        , ""
+        , "ffiLinked :: IO Bool"
+        , "ffiLinked = (/= 0) <$> c_dandelion_link_probe"
+        ]
+ffiWrapperSpec "NetworkProtocol" =
+    Just $ ffiBridgeModule "NetworkProtocol"
+        [ "ffiLinked" ]
+        [ "import Foreign.C.Types (CInt(..))"
+        ]
+        [ "foreign import ccall \"networkprotocol_link_probe\" c_networkprotocol_link_probe :: IO CInt"
+        , ""
+        , "ffiLinked :: IO Bool"
+        , "ffiLinked = (/= 0) <$> c_networkprotocol_link_probe"
+        ]
+ffiWrapperSpec "SessionState" =
+    Just $ ffiBridgeModule "SessionState"
+        [ "ffiLinked" ]
+        [ "import Foreign.C.Types (CInt(..))"
+        ]
+        [ "foreign import ccall \"sessionstate_link_probe\" c_sessionstate_link_probe :: IO CInt"
+        , ""
+        , "ffiLinked :: IO Bool"
+        , "ffiLinked = (/= 0) <$> c_sessionstate_link_probe"
         ]
 ffiWrapperSpec _ = Nothing
 
