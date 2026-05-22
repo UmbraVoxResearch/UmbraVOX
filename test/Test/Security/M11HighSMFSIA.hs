@@ -962,7 +962,7 @@ testIA003TOFUFirstContactMITM = do
 -- IA-010: Trust DB manipulation — cfgTrustedKeys list integrity.
 --
 -- Finding:    cfgTrustedKeys (App.Config.hs) holds the list of pre-approved
---             peer public keys for Chaste/Chastity modes.  If an attacker
+--             peer public keys for Chaste mode.  If an attacker
 --             can inject a key into this list (e.g. via a race condition,
 --             a concurrent write, or a config-file injection), their key
 --             would be accepted in locked-down modes.

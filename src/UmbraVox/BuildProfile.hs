@@ -143,7 +143,7 @@ data PluginManifest = PluginManifest
     } deriving stock (Eq, Show)
 
 buildChasteOnly :: Bool
-#ifdef CHASTITY_BUILD
+#ifdef CHASTE_BUILD
 buildChasteOnly = True
 #else
 buildChasteOnly = False

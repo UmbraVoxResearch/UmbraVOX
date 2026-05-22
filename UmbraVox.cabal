@@ -32,7 +32,7 @@ flag coverage
   default:     False
   manual:      True
 
-flag chastity-build
+flag chaste-build
   description: Compile an ephemeral-only client with persistence/discovery features removed from the runtime surface
   default:     False
   manual:      True
@@ -314,8 +314,8 @@ library
       UmbraVox.Economics.Cycle
       UmbraVox.Economics.Onboarding
     cpp-options: -DSTUBS
-  if flag(chastity-build)
-    cpp-options: -DCHASTITY_BUILD
+  if flag(chaste-build)
+    cpp-options: -DCHASTE_BUILD
   if flag(wasm)
     cpp-options: -DWASM_BUILD
 
