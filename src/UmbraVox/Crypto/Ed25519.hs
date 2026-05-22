@@ -9,6 +9,7 @@ module UmbraVox.Crypto.Ed25519
     ( ed25519Sign
     , ed25519Verify
     , ed25519PublicKey
+    , isSmallOrder
     -- * Low-level point operations (for stealth addresses)
     , ExtPoint
     , basepoint
@@ -253,6 +254,52 @@ decodePoint !bs
                Just !xFinal -> Just (xFinal, y, 1, fMul xFinal y)
 
 ------------------------------------------------------------------------
+-- Small-order point rejection (M23.4.1)
+------------------------------------------------------------------------
+
+-- | Decode a hex string to ByteString (local utility for small-order table).
+hexToBS :: String -> ByteString
+hexToBS [] = BS.empty
+hexToBS (a:b:rest) = BS.cons (fromIntegral (hexNibble a * 16 + hexNibble b)) (hexToBS rest)
+  where
+    hexNibble :: Char -> Int
+    hexNibble c
+        | c >= '0' && c <= '9' = fromEnum c - fromEnum '0'
+        | c >= 'a' && c <= 'f' = fromEnum c - fromEnum 'a' + 10
+        | c >= 'A' && c <= 'F' = fromEnum c - fromEnum 'A' + 10
+        | otherwise             = error "hexToBS: invalid hex"
+hexToBS [_] = error "hexToBS: odd-length hex string"
+
+-- | The 8 small-order points on the Ed25519 curve, in compressed
+-- (32-byte) encoding.  Any public key or signature R value matching
+-- one of these is rejected to prevent signature malleability via the
+-- cofactor-8 subgroup.
+--
+-- Points listed: identity (0,1), (0,-1), and the six order-4/order-8
+-- points.  Encodings are little-endian y with the sign bit of x in
+-- bit 255.
+smallOrderPoints :: [ByteString]
+smallOrderPoints =
+    [ -- (0, 1)  — identity, order 1
+      hexToBS "0100000000000000000000000000000000000000000000000000000000000000"
+      -- (0, -1) — order 2, y = p-1 = 2^255-20
+    , hexToBS "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f"
+      -- order 4 points (x, 0) where x^2 = -1 mod p
+    , hexToBS "0000000000000000000000000000000000000000000000000000000000000000"
+    , hexToBS "0000000000000000000000000000000000000000000000000000000000000080"
+      -- order 8 points: c = sqrt(-1), y = c and y = -c, two sign variants each
+    , hexToBS "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a"
+    , hexToBS "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa"
+    , hexToBS "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05"
+    , hexToBS "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc85"
+    ]
+
+-- | Returns True if the given 32-byte compressed point is one of the
+-- 8 small-order points on Ed25519.
+isSmallOrder :: ByteString -> Bool
+isSmallOrder !pt = pt `elem` smallOrderPoints
+
+------------------------------------------------------------------------
 -- RFC 8032 Section 5.1 — Key generation, signing, verification
 ------------------------------------------------------------------------
 
@@ -293,16 +340,21 @@ ed25519Sign !sk !msg =
     in bigR `BS.append` encodeLEn 32 s
 
 -- | Ed25519 verification per RFC 8032 Section 5.1.7.
+-- Rejects small-order public keys and R values (M23.4.1) to prevent
+-- signature malleability via the cofactor-8 subgroup.
 ed25519Verify :: ByteString -> ByteString -> ByteString -> Bool
 ed25519Verify !pubKeyBS !msg !sig
-    | BS.length sig /= 64    = False
+    | BS.length sig /= 64      = False
     | BS.length pubKeyBS /= 32 = False
+    | isSmallOrder pubKeyBS     = False   -- M23.4.1: reject small-order A
     | otherwise =
-        case decodePoint pubKeyBS of
+        let !rBS = BS.take 32 sig
+        in if isSmallOrder rBS              -- M23.4.1: reject small-order R
+           then False
+           else case decodePoint pubKeyBS of
             Nothing -> False
             Just !pubPoint ->
-                let !rBS = BS.take 32 sig
-                    !sBS = BS.drop 32 sig
+                let !sBS = BS.drop 32 sig
                     !s   = decodeLE sBS
                 in if s >= groupL
                    then False
