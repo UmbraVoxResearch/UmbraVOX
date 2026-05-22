@@ -15,14 +15,20 @@ module UmbraVox.Network.DHT
     , routingPolicy
     , handleMessage
     , maintain
+    , bootstrap
     ) where
 
 import Data.ByteString (ByteString)
+import qualified Data.ByteString as BS
 import Data.Word (Word64)
 
 import UmbraVox.Crypto.SHA256 (sha256)
 import Data.IORef (readIORef)
 
+import UmbraVox.Network.DHT.Lookup
+    ( SendRPC
+    , iterativeFindNode
+    )
 import UmbraVox.Network.DHT.RoutingTable
     ( RoutingTable(..)
     , newRoutingTable
@@ -215,3 +221,38 @@ maintain st now = do
     let staleNodes = concatMap (filter (\n -> dhtLastSeen n < cutoff) . kbEntries) buckets
     mapM_ (removeNode rt . dhtNodeId) staleNodes
     return (expiredCount, length staleNodes)
+
+------------------------------------------------------------------------
+-- Bootstrap (M24.4.6)
+------------------------------------------------------------------------
+
+-- | Bootstrap into the DHT network.
+--
+-- 1. For each bootstrap address, create a temporary 'DHTNode' with a
+--    placeholder 'NodeId' (all zeros) and insert it into the routing
+--    table.
+-- 2. Perform an iterative FIND_NODE for our own 'NodeId' to discover
+--    and populate nearby routing table buckets.
+-- 3. Return the number of nodes discovered during the lookup.
+bootstrap :: DHTState -> [String] -> SendRPC -> IO Int
+bootstrap st addrs sendRPC = do
+    -- Step 1: Insert bootstrap nodes with placeholder IDs.
+    let placeholderId = NodeId (BS.replicate 32 0)
+    mapM_ (\addr -> do
+        let node = DHTNode
+                { dhtNodeId   = placeholderId
+                , dhtAddress  = addr
+                , dhtLastSeen = 0
+                , dhtRTT      = Nothing
+                }
+        _ <- insertNode (dhRoutingTable st) node
+        return ()
+        ) addrs
+    -- Step 2: Iterative FIND_NODE for our own ID.
+    discovered <- iterativeFindNode
+        (dhRoutingTable st)
+        (dhConfig st)
+        sendRPC
+        (dhSelfId st)
+    -- Step 3: Return count of discovered nodes.
+    return (length discovered)
