@@ -45,6 +45,7 @@ import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 import UmbraVox.Version (versionFull)
 import qualified Data.Set as Set
 import qualified UmbraVox.Plugin.Types
+import UmbraVox.Network.ProviderCatalog (TransportProviderId(ProviderUmbraClaw))
 
 clampInt :: Int -> Int -> Int -> Int
 clampInt lo hi x = max lo (min hi x)
@@ -133,12 +134,20 @@ renderUnderlinedLabel label mIx =
 -- | Prefix for bridge sessions in the contact list and chat header.
 sessionPrefix :: SessionCrypto -> String
 sessionPrefix (RatchetCrypto _) = ""
-sessionPrefix (BridgeCrypto _)  = "[B] "
+sessionPrefix (BridgeCrypto bs)
+    | isUmbraClawBridge bs = "[UC] "
+    | otherwise            = "[B] "
 
 -- | Longer label for bridge sessions shown in the chat separator.
 sessionCryptoLabel :: SessionCrypto -> String
 sessionCryptoLabel (RatchetCrypto _) = ""
-sessionCryptoLabel (BridgeCrypto _)  = "[External Encryption]"
+sessionCryptoLabel (BridgeCrypto bs)
+    | isUmbraClawBridge bs = "[UmbraClaw Encryption]"
+    | otherwise            = "[External Encryption]"
+
+-- | Check whether a BridgeState represents an UmbraClaw provider.
+isUmbraClawBridge :: BridgeState -> Bool
+isUmbraClawBridge bs = bsProviderId bs == ProviderUmbraClaw
 
 -- | Render a single contact row (left pane content)
 renderContactCell :: Layout -> [(SessionId, SessionInfo)] -> Int -> Pane -> Int -> Int -> IO ()
