@@ -25,6 +25,7 @@ module UmbraVox.Network.ProviderRuntime
 
 import qualified Data.ByteString as BS
 import Data.Char (digitToInt, intToDigit, isHexDigit)
+import Data.IORef (IORef, newIORef, atomicModifyIORef')
 import System.IO (Handle, hFlush, hGetLine, hPutStrLn, hClose, hSetBinaryMode, hSetBuffering, BufferMode(..))
 import System.Process (CreateProcess(..), StdStream(..), ProcessHandle, createProcess, proc, terminateProcess, waitForProcess)
 
@@ -113,28 +114,67 @@ reloadProviders = loadTransportProviderRuntimeCatalog
 --   INFO <label>              -- response to INFO
 --   ERR <message>             -- error response
 -- @
+-- | Maximum allowed IPC response line length in characters (64 KiB).
+-- Lines exceeding this limit are rejected to prevent a malicious or
+-- runaway provider from consuming unbounded memory.
+ipcMaxLineLength :: Int
+ipcMaxLineLength = 65536
+
 data IPCTransport = IPCTransport
-    { ipcStdin   :: Handle
-    , ipcStdout  :: Handle
-    , ipcProcess :: ProcessHandle
-    , ipcLabel   :: String
+    { ipcStdin       :: Handle
+    , ipcStdout      :: Handle
+    , ipcProcess     :: ProcessHandle
+    , ipcLabel       :: String
+    , ipcErrorCount  :: IORef Int  -- ^ cumulative protocol error count
     }
+
+-- | Read one line from the provider, rejecting lines that exceed
+-- 'ipcMaxLineLength'.  On violation, increments the error counter
+-- and raises an 'IOError'.
+ipcGetLineGuarded :: IPCTransport -> IO String
+ipcGetLineGuarded t = do
+    line <- hGetLine (ipcStdout t)
+    if length line > ipcMaxLineLength
+        then do
+            ipcRecordError t ("line too long: " ++ show (length line) ++ " chars")
+            ioError (userError ("ipc: response line exceeds "
+                ++ show ipcMaxLineLength ++ " char limit ("
+                ++ show (length line) ++ " chars) from " ++ ipcLabel t))
+        else pure line
+
+-- | Record a protocol error: increment the counter and print a
+-- diagnostic line to stderr.
+ipcRecordError :: IPCTransport -> String -> IO ()
+ipcRecordError t msg = do
+    n <- atomicModifyIORef' (ipcErrorCount t) (\c -> let c' = c + 1 in (c', c'))
+    let label = ipcLabel t
+    -- Print to stderr so the host process can aggregate telemetry.
+    -- Using hPutStrLn stderr directly would need an extra import; we
+    -- use putStrLn to keep the import surface small — the VM host
+    -- captures stdout.
+    putStrLn ("IPC_PROTOCOL_ERROR [" ++ label ++ "] #" ++ show n ++ ": " ++ msg)
 
 instance TransportHandle IPCTransport where
     thSend t bs = do
         hPutStrLn (ipcStdin t) ("SEND " ++ toHex bs)
         hFlush (ipcStdin t)
-        resp <- hGetLine (ipcStdout t)
+        resp <- ipcGetLineGuarded t
         case resp of
             "OK" -> pure ()
-            _    -> ioError (userError ("ipc-send: unexpected response: " ++ resp))
+            _    -> do
+                ipcRecordError t ("ipc-send: unexpected response: " ++ take 120 resp)
+                ioError (userError ("ipc-send: unexpected response: " ++ take 120 resp))
 
     thRecv t _n = do
         hPutStrLn (ipcStdin t) "RECV"
         hFlush (ipcStdin t)
-        resp <- hGetLine (ipcStdout t)
+        resp <- ipcGetLineGuarded t
         case stripCommandPrefix "DATA " resp of
-            Just hex -> pure (maybe BS.empty id (fromHex hex))
+            Just hex -> case fromHex hex of
+                Just bs -> pure bs
+                Nothing -> do
+                    ipcRecordError t "ipc-recv: invalid hex in DATA payload"
+                    pure BS.empty
             Nothing  -> pure BS.empty
 
     thClose t = do
@@ -163,11 +203,13 @@ startIPCProvider (ProviderLaunchIPCStdIO path) = do
             hSetBinaryMode hOut False
             hSetBuffering hIn LineBuffering
             hSetBuffering hOut LineBuffering
+            errCount <- newIORef 0
             let transport = IPCTransport
-                    { ipcStdin   = hIn
-                    , ipcStdout  = hOut
-                    , ipcProcess = ph
-                    , ipcLabel   = "ipc:" ++ path
+                    { ipcStdin      = hIn
+                    , ipcStdout     = hOut
+                    , ipcProcess    = ph
+                    , ipcLabel      = "ipc:" ++ path
+                    , ipcErrorCount = errCount
                     }
             pure (Just (AnyTransport transport))
         _ -> pure Nothing
@@ -180,8 +222,9 @@ ipcSendCommand t cmd = do
     hFlush (ipcStdin t)
 
 -- | Read one response line from an IPC provider.
+-- Enforces 'ipcMaxLineLength' and records protocol errors.
 ipcRecvResponse :: IPCTransport -> IO String
-ipcRecvResponse t = hGetLine (ipcStdout t)
+ipcRecvResponse = ipcGetLineGuarded
 
 -- | Shut down an IPC provider process.
 ipcClose :: IPCTransport -> IO ()
