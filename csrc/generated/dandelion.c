@@ -10,23 +10,23 @@ static const uint32_t MODE_FLUFF = 0x01;
 static const uint32_t DECISION_STEM = 0x00;
 static const uint32_t DECISION_FLUFF = 0x01;
 static const uint32_t DEFAULT_EPOCH_LEN = 600;
-static const uint32_t DEFAULT_FLUFF_PROB = 0.1;
+static const double DEFAULT_FLUFF_PROB = 0.1;
 static const uint32_t BYTE_MAX = 256;
 
 __attribute__((noinline))
 uint32_t dandelion(const uint8_t* csprng_byte, const uint8_t* fluff_prob, const uint8_t* current_mode, const uint8_t* epoch_start, const uint8_t* epoch_len, const uint8_t* now) {
-    uint32_t clamped_prob = CLAMP(fluff_prob, 0);
-    uint32_t threshold = FLOOR(clamped_prob);
-    uint32_t fluff_flag = constantTimeLT(csprng_byte, threshold);
+    uint32_t clamped_prob = 0; /* preprocessing: CLAMP(fluff_prob, 0) */
+    uint32_t threshold = 0; /* preprocessing: FLOOR(clamped_prob) */
+    uint32_t fluff_flag = 0; /* preprocessing: constantTimeLT(csprng_byte, threshold) */
     uint32_t already_fluff = 0; /* preprocessing: constantTimeEq(current_mode, MODE_FLUFF) */
     uint32_t decision = 0; /* preprocessing: (already_fluff | fluff_flag) */
     uint32_t new_mode = 0; /* preprocessing: constantTimeSelect(decision, MODE_FLUFF, MODE_STEM) */
-    uint32_t epoch_deadline = epoch_start;
-    uint32_t first_epoch = constantTimeEqZero(epoch_start);
-    uint32_t time_expired = constantTimeGTE(now, epoch_deadline);
-    uint32_t expired = (first_epoch | time_expired);
-    uint32_t new_epoch_start = constantTimeSelect(expired, now, epoch_start);
-    uint32_t post_rotation_mode = constantTimeSelect(expired, MODE_STEM, current_mode);
+    uint32_t epoch_deadline = 0; /* preprocessing: epoch_start */
+    uint32_t first_epoch = 0; /* preprocessing: constantTimeEqZero(epoch_start) */
+    uint32_t time_expired = 0; /* preprocessing: constantTimeGTE(now, epoch_deadline) */
+    uint32_t expired = 0; /* preprocessing: (first_epoch | time_expired) */
+    uint32_t new_epoch_start = 0; /* preprocessing: constantTimeSelect(expired, now, epoch_start) */
+    uint32_t post_rotation_mode = 0; /* preprocessing: constantTimeSelect(expired, MODE_STEM, current_mode) */
     return 0; /* placeholder */
 }
 
