@@ -3,7 +3,7 @@
 --
 -- All data lives in 'IORef'-backed 'Map' values for the lifetime of the
 -- process.  Nothing is written to disk.  Intended for use when the
--- persistent-storage plugin is disabled (e.g. Chastity mode) and for
+-- persistent-storage plugin is disabled (e.g. Chaste mode) and for
 -- unit tests that do not need a real SQLite database.
 module UmbraVox.Storage.InMemory
     ( newInMemoryStorage

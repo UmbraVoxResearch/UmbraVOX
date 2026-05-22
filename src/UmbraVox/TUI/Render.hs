@@ -628,7 +628,7 @@ statusBarConnTag connMode isEphemeral anyPersistPlugin richEnabled nSessions =
         | nSessions > 0 = show nSessions ++ " session" ++ (if nSessions > 1 then "s" else "")
         | otherwise = "No sessions"
     modeTag
-        | connMode == Chastity || isEphemeral || not anyPersistPlugin = " \x25C6 EPHEMERAL"
+        | connMode == Chaste || isEphemeral || not anyPersistPlugin = " \x25C6 EPHEMERAL"
         | otherwise = " \x25C6 PERSISTENT"
     richTag
         | richEnabled = " \x25C6 RICH"

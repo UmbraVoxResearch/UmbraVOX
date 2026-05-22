@@ -210,7 +210,7 @@ cycleConnectionMode st = do
     let cfg = asConfig st
     if not (pluginEnabled PluginConnectionModeSelection)
         then do
-            writeIORef (cfgConnectionMode cfg) Chastity
+            writeIORef (cfgConnectionMode cfg) Chaste
             emitStatus st (pluginUnavailableStatus PluginConnectionModeSelection)
         else do
             current <- readIORef (cfgConnectionMode cfg)
@@ -237,11 +237,10 @@ applyConnectionModeSideEffects st mode = do
             writeIORef (cfgPEXEnabled cfg) pex
             if mdns then restartMDNS st else stopMDNSManager st
     case mode of
-        Swing -> setDiscovery True True
-        Promiscuous -> setDiscovery True True
-        Selective -> setDiscovery True True
-        Chaste -> setDiscovery False False
-        Chastity -> do
+        Swing -> setDiscovery True False       -- mDNS on; PEX manual (user-initiated, not auto)
+        Promiscuous -> setDiscovery True False  -- mDNS on; PEX disabled
+        Selective -> setDiscovery True False    -- mDNS on; PEX off
+        Chaste -> do
             setDiscovery False False
             closeCurrentDB st
             writeIORef (cfgDBEnabled cfg) False

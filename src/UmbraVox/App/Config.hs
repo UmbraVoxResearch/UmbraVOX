@@ -26,12 +26,11 @@ import UmbraVox.Storage.Class (StorageHandle)
 type SessionId = Int
 
 -- | Connection trust modes, ordered most open to most locked down.
--- Swing:       Accept all + auto PEX peer exchange + mDNS on
--- Promiscuous: Accept all connections automatically + mDNS on
+-- Swing:       Accept all + manual PEX (user-initiated) + mDNS on
+-- Promiscuous: Accept all connections automatically + mDNS on + PEX off
 -- Selective:   Accept with fingerprint confirmation + mDNS on
--- Chaste:      Trusted keys only, silent reject, mDNS off
--- Chastity:    Trusted keys only + ephemeral (no DB, no persistence)
-data ConnectionMode = Swing | Promiscuous | Selective | Chaste | Chastity
+-- Chaste:      Trusted keys only, silent reject, mDNS off, no persistence unless plugin loaded
+data ConnectionMode = Swing | Promiscuous | Selective | Chaste
     deriving stock (Eq, Show, Enum, Bounded)
 
 data AppConfig = AppConfig

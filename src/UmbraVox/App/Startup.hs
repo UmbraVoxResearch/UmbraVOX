@@ -87,7 +87,7 @@ newDefaultAppConfig = do
         initialPEX = False
         initialPersistencePref = if pluginEnabled PluginPersistentStorage then Nothing else Just False
         initialAutoSave = pluginEnabled PluginPersistentStorage
-        initialMode = if pluginEnabled PluginConnectionModeSelection then Selective else Chastity
+        initialMode = if pluginEnabled PluginConnectionModeSelection then Selective else Chaste
     initialStorage <- newInMemoryStorage
     AppConfig
         <$> newIORef listenPort

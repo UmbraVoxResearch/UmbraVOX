@@ -12,7 +12,7 @@ module UmbraVox.BuildProfile
     , PackagedPluginRuntime(..)
     , PluginManifest(..)
     , BuildPlugin(..)
-    , buildChastityOnly
+    , buildChasteOnly
     , buildProfileName
     , buildPluginRegistry
     , extensionPluginRegistry
@@ -142,16 +142,16 @@ data PluginManifest = PluginManifest
     , pmNotes :: String
     } deriving stock (Eq, Show)
 
-buildChastityOnly :: Bool
+buildChasteOnly :: Bool
 #ifdef CHASTITY_BUILD
-buildChastityOnly = True
+buildChasteOnly = True
 #else
-buildChastityOnly = False
+buildChasteOnly = False
 #endif
 
 buildProfileName :: String
 buildProfileName
-    | buildChastityOnly = "chastity-only"
+    | buildChasteOnly = "chaste-only"
     | otherwise = "standard"
 
 allPluginIds :: [BuildPluginId]
@@ -194,37 +194,37 @@ pluginDescriptor pid =
             plugin pid Nothing "Identity Persistence"
                 "Persist the local long-term identity across restarts."
                 "Disabled: ephemeral mode"
-                PluginSecurity PluginCore PluginSourceBuiltIn Nothing (not buildChastityOnly)
+                PluginSecurity PluginCore PluginSourceBuiltIn Nothing (not buildChasteOnly)
         PluginPersistentStorage ->
             plugin pid Nothing "Persistent Storage"
                 "Store message history and related local state on disk."
                 "Disabled: ephemeral mode"
-                PluginStorage PluginOptional PluginSourceBuiltIn Nothing (not buildChastityOnly)
+                PluginStorage PluginOptional PluginSourceBuiltIn Nothing (not buildChasteOnly)
         PluginDiscovery ->
             plugin pid Nothing "Discovery"
                 "Enable mDNS/LAN discovery and related browse UI."
                 ""
-                PluginNetworking PluginOptional PluginSourceBuiltIn Nothing (not buildChastityOnly)
+                PluginNetworking PluginOptional PluginSourceBuiltIn Nothing (not buildChasteOnly)
         PluginPeerExchange ->
             plugin pid Nothing "Peer Exchange"
                 "Advertise and consume peer referrals from connected peers."
                 ""
-                PluginNetworking PluginOptional PluginSourceBuiltIn Nothing (not buildChastityOnly)
+                PluginNetworking PluginOptional PluginSourceBuiltIn Nothing (not buildChasteOnly)
         PluginRuntimeLogging ->
             plugin pid Nothing "Runtime Logging"
                 "Write troubleshooting and operational metadata to local log files."
                 "Disabled: ephemeral mode"
-                PluginDiagnostics PluginOptional PluginSourceBuiltIn Nothing (not buildChastityOnly)
+                PluginDiagnostics PluginOptional PluginSourceBuiltIn Nothing (not buildChasteOnly)
         PluginChatTransfer ->
             plugin pid Nothing "Chat Export/Import"
                 "Encrypt chat histories for import and export via local files."
                 ""
-                PluginUX PluginPremiumReady PluginSourceBuiltIn Nothing (not buildChastityOnly)
+                PluginUX PluginPremiumReady PluginSourceBuiltIn Nothing (not buildChasteOnly)
         PluginConnectionModeSelection ->
             plugin pid Nothing "Connection Mode Selection"
-                "Allow switching between Swing/Promiscuous/Selective/Chaste/Chastity at runtime."
+                "Allow switching between Swing/Promiscuous/Selective/Chaste at runtime."
                 ""
-                PluginSecurity PluginOptional PluginSourceBuiltIn Nothing (not buildChastityOnly)
+                PluginSecurity PluginOptional PluginSourceBuiltIn Nothing (not buildChasteOnly)
         PluginGroupChat ->
             plugin pid (Just "group-chat") "Group Chat"
                 "Future packaged module for sealed-sender group messaging."
@@ -607,5 +607,5 @@ buildSupportsConnectionModeSelection = pluginEnabled PluginConnectionModeSelecti
 
 unavailableInBuildStatus :: String -> String
 unavailableInBuildStatus feature
-    | buildChastityOnly = feature ++ " unavailable in chastity build"
+    | buildChasteOnly = feature ++ " unavailable in chaste build"
     | otherwise = feature ++ " unavailable in this build"

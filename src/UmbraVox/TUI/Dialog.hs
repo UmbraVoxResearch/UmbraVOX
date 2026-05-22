@@ -39,7 +39,7 @@ import Data.List (dropWhileEnd, intercalate)
 import System.IO (hFlush, stdout)
 import UmbraVox.BuildProfile
     ( BuildPluginId, PackagedPluginRuntime
-    , bpId, bpName, buildChastityOnly, disabledPlugins
+    , bpId, bpName, buildChasteOnly, disabledPlugins
     , enabledPlugins, pluginLoadStatusLabel
     , pluginName, pmStatusTag, pprLoadStatus, pprManifest, pprPlugin
     )
@@ -180,7 +180,7 @@ tabRowLine labels activeIx =
 
 settingsTabLabels :: [String]
 settingsTabLabels
-    | buildChastityOnly = ["Simple", "Security", "Advanced"]
+    | buildChasteOnly = ["Simple", "Security", "Advanced"]
     | otherwise = ["Simple", "Discovery", "Storage", "Security", "Advanced", "Plugins"]
 
 showOverlay :: Layout -> String -> [String] -> IO ()
@@ -618,8 +618,8 @@ settingsOverlayLines st = do
                 packagedPluginRuntimeCatalog transportProviderRuntimeCatalog richText
                 pluginReg
     tabBody <-
-        if buildChastityOnly
-            then pure (settingsChastityTab ctx tabIx)
+        if buildChasteOnly
+            then pure (settingsChasteTab ctx tabIx)
             else settingsFullTab ctx tabIx
     pure $
         [ tabLine
@@ -650,7 +650,6 @@ settingsConnModeLabel Swing       = "SWING"
 settingsConnModeLabel Promiscuous = "PROMISCUOUS"
 settingsConnModeLabel Selective   = "SELECTIVE"
 settingsConnModeLabel Chaste      = "CHASTE"
-settingsConnModeLabel Chastity    = "CHASTITY"
 
 settingsStorageLines :: AppState -> (Bool -> String) -> Bool -> Bool -> IO [String]
 settingsStorageLines st tf dbEnabled ephemeral =
@@ -674,8 +673,8 @@ settingsStorageLines st tf dbEnabled ephemeral =
                  , "   8. Auto-save msgs: [" ++ tf autoSave ++ "]"
                  , "   9. Clear history..." ]
 
-settingsChastityTab :: SettingsCtx -> Int -> [String]
-settingsChastityTab ctx tabIx =
+settingsChasteTab :: SettingsCtx -> Int -> [String]
+settingsChasteTab ctx tabIx =
     let tf True = "ON"; tf False = "OFF"
     in case tabIx of
         0 ->
@@ -689,7 +688,7 @@ settingsChastityTab ctx tabIx =
             ]
         1 ->
             [ " Security"
-            , "   Build profile:     CHASTITY"
+            , "   Build profile:     CHASTE"
             , "   Connection mode:   [" ++ sctxModeLabel ctx ++ "]"
             , ""
             , " Persistent storage is compile-time locked OFF."
@@ -732,7 +731,7 @@ settingsFullTab ctx tabIx =
             pure
                 [ " Security"
                 , "   c. Connection mode: [" ++ sctxModeLabel ctx ++ "]"
-                , "   (Swing / Promiscuous / Selective / Chaste / Chastity)"
+                , "   (Swing / Promiscuous / Selective / Chaste)"
                 , ""
                 , " Switching mode renegotiates remote sessions."
                 ]

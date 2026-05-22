@@ -158,9 +158,6 @@ acceptLoopCore cs cbs ik port connCount listener = do
                         Chaste      -> do
                             keys <- readIORef (cfgTrustedKeys cfg)
                             pure (any (constantEq peerKey) keys)
-                        Chastity    -> do
-                            keys <- readIORef (cfgTrustedKeys cfg)
-                            pure (any (constantEq peerKey) keys)
             logEvent cfg "transport.accepted.pre_auth"
                 [("port", show port), ("provider", runtimeProviderLabel)]
             void $ forkIO $ flip finally (atomically (modifyTVar' connCount (subtract 1))) $ do

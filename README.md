@@ -214,11 +214,10 @@ UmbraVOX does not currently claim to solve:
 
 | Mode        | Accept       | mDNS |    PEX |  DB | Behavior                                         |
 | ----------- | ------------ | ---: | -----: | --: | ------------------------------------------------ |
-| Swing       | All          |   On |   Auto |  On | Most open. Shares peer lists automatically       |
-| Promiscuous | All          |   On | Manual |  On | Accept anyone silently                           |
+| Swing       | All          |   On | Manual |  On | Most open. PEX user-initiated only               |
+| Promiscuous | All          |   On |    Off |  On | Accept anyone silently. PEX disabled              |
 | Selective   | Confirm      |   On |    Off |  On | Shows fingerprint, user decides. Default mode    |
-| Chaste      | Trusted only |  Off |    Off |  On | Silent reject indistinguishable from MAC failure |
-| Chastity    | Trusted only |  Off |    Off | Off | Chaste plus no persistence. Fully ephemeral      |
+| Chaste      | Trusted only |  Off |    Off | Off | Trusted keys only, no persistence unless plugin  |
 
 Change mode in Preferences:
 
@@ -232,7 +231,7 @@ F2 Prefs -> Settings
 * Signal Double Ratchet with AES-256-GCM
 * Noise_IK transport encryption with key separation
 * Post-quantum outer wrapping for message payloads
-* Five connection trust modes, from Swing to Chastity
+* Four connection trust modes, from Swing to Chaste
 * TUI with F1-F3 dropdown menus (Help, Prefs, Identity) plus Q Quit
 * mDNS LAN peer discovery
 * Default port sequence beginning at 7853
