@@ -6,6 +6,12 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 
 ## [Unreleased]
 
+### Security
+- IPC decode hardening: max line length guard (64 KiB) + protocol error telemetry (M20.4.4)
+- VM agent: mandatory bundle checksum verification (fail-closed) with AGENT_SKIP_CHECKSUM opt-out (M20.4.3)
+- ReleaseBridge: auto-compute and pass AGENT_BUNDLE_SHA256 to integration agent (M20.4.3)
+- M20.2 error handling hardening: all sub-items complete
+
 ## [0.4.0] — 2026-05-22
 
 ### Protocol

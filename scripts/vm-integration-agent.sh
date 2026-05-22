@@ -197,7 +197,24 @@ if [ -z "$BUNDLE" ]; then
     exit 1
 fi
 
-if [ -n "${AGENT_BUNDLE_SHA256:-}" ]; then
+# ── Bundle checksum verification (mandatory by default) ───────────
+# Finding:   Without mandatory checksum verification, a tampered bundle
+#            could be extracted and executed without detection.
+# Vulnerability: supply-chain attack via modified release bundle on
+#            the virtio disk image.
+# Fix:       AGENT_BUNDLE_SHA256 is now required unless the caller
+#            explicitly sets AGENT_SKIP_CHECKSUM=1.  Signed attestation
+#            (GPG / in-toto / SLSA) is tracked under M4.2.4 and will
+#            replace the plain SHA-256 gate once the signing
+#            infrastructure is in place.
+# Verified:  Default behavior is fail-closed: missing checksum causes
+#            agent exit with clear diagnostic.
+if [ "${AGENT_SKIP_CHECKSUM:-0}" = "1" ]; then
+    echo "  WARN: bundle checksum verification skipped (AGENT_SKIP_CHECKSUM=1)"
+elif [ -z "${AGENT_BUNDLE_SHA256:-}" ]; then
+    echo "AGENT_RESULT=FAIL (AGENT_BUNDLE_SHA256 required; set AGENT_SKIP_CHECKSUM=1 to bypass)"
+    exit 1
+else
     if ! [[ "${AGENT_BUNDLE_SHA256}" =~ ^[0-9a-fA-F]{64}$ ]]; then
         echo "AGENT_RESULT=FAIL (invalid AGENT_BUNDLE_SHA256 format)"
         exit 1

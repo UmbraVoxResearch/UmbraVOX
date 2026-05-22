@@ -280,7 +280,7 @@ Note: Items from codebase audit (2026-05-20).
   [x] M20.1.3 Move Bridge/Signal/Main.hs out of library namespace
     Note: Moved to app-signal-bridge/Main.hs, same pattern as app/Main.hs.
 
-[ ] M20.2 Error handling hardening
+[x] M20.2 Error handling hardening
   [x] M20.2.1 Convert crypto error calls to Either/Maybe (AES, GCM, ChaChaPoly, Poly1305, HKDF)
     Note: Added *Safe variants (11 functions). Original functions delegate to safe variants — all callers unchanged.
   [x] M20.2.2 Add stub module documentation (comments, not WARNING pragmas)
@@ -295,17 +295,19 @@ Note: Items from codebase audit (2026-05-20).
     Note: Evidence, SignalCompat, ProtocolLibsignal wired.
   [ ] M20.3.4 Attic docs archival (future, not now)
 
-[ ] M20.4 Security hardening
+[~] M20.4 Security hardening (M20.4.1 + M20.4.5 deferred)
   [ ] M20.4.1 Complete M15.3.2 SecureBytes migration for secret key fields
   [x] M20.4.2 Audit and resolve all M-series TODO comments in source
     Note: 36 TODOs audited. 3 stale refs fixed (M10.3.3→M20.4.5, M10.2.1 completed). 33 valid pending refs left.
-  [~] M20.4.3 Harden VM integration agent trust boundary
+  [x] M20.4.3 Harden VM integration agent trust boundary
     Note: strict AGENT_* validation + safer peer probes + tar path traversal checks added.
-    Note: optional AGENT_BUNDLE_SHA256 pre-extraction checksum verification added.
-    Remaining: signed checksum/attestation path and mandatory verification policy.
-  [~] M20.4.4 Harden provider IPC decode path against malformed input
+    Note: AGENT_BUNDLE_SHA256 now mandatory (fail-closed); AGENT_SKIP_CHECKSUM=1 opt-out.
+    Note: ReleaseBridge.hs computes and passes SHA-256 automatically.
+    Note: Signed attestation (GPG/in-toto/SLSA) deferred to M4.2.4.
+  [x] M20.4.4 Harden provider IPC decode path against malformed input
     Note: DATA hex decode now rejects invalid/odd payloads without crashing.
-    Remaining: explicit protocol error telemetry + max line length guard.
+    Note: Max line length guard (64 KiB) rejects oversized responses.
+    Note: Protocol error counter + IPC_PROTOCOL_ERROR telemetry on all decode failures.
   [ ] M20.4.5 Upgrade export KDF from HKDF-iteration to memory-hard KDF (Argon2id/scrypt)
   [x] M20.4.6 Make config hash pinning fail closed (verify before apply)
     Note: verifyConfigHash returns Either. initCoreRuntime exits on mismatch. --skip-config-verify escape hatch.

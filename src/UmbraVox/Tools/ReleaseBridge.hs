@@ -740,6 +740,8 @@ createAgentDisk bundlePath agentCount agentId = do
                       else "10.0.42.10:7853"
     createDirectoryIfMissing True srcDir
     copyFile bundlePath (srcDir </> takeFileName bundlePath)
+    -- Compute bundle SHA-256 for mandatory verification in the agent.
+    bundleHash <- computeBundleSHA256 bundlePath
     writeFile (srcDir </> "agent.env") $ unlines
         [ "AGENT_ID=" ++ show agentId
         , "AGENT_COUNT=" ++ show agentCount
@@ -748,11 +750,24 @@ createAgentDisk bundlePath agentCount agentId = do
         , "AGENT_PEERS=" ++ peers
         , "AGENT_SCENARIO=exchange"
         , "AGENT_TIMEOUT=60"
+        , "AGENT_BUNDLE_SHA256=" ++ bundleHash
         ]
     copyAgentScript srcDir
     _ <- runScript "genext2fs" ["-b", "262144", "-d", srcDir, diskPath]
     removeDirectoryRecursive srcDir `catch` \(_ :: IOException) -> pure ()
     pure diskPath
+
+-- | Compute SHA-256 of a file using the sha256sum command.
+-- Falls back to an empty string if sha256sum is not available,
+-- which will cause the agent to report a verification failure.
+computeBundleSHA256 :: FilePath -> IO String
+computeBundleSHA256 path = do
+    (ec, out, _err) <- readProcessWithExitCode "sha256sum" [path] ""
+    case ec of
+        ExitSuccess -> pure (takeWhile (/= ' ') out)
+        _           -> do
+            hPutStrLn stderr "WARNING: sha256sum unavailable; bundle hash will be empty"
+            pure ""
 
 -- | Copy the integration agent script into the source dir if it exists.
 copyAgentScript :: FilePath -> IO ()
