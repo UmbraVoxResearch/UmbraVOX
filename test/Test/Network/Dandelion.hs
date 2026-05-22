@@ -44,7 +44,8 @@ testNewStateIsStem = do
     r2 <- assertEq "new state has no stem peer" Nothing peer
     pure (r1 && r2)
 
--- | Test 2: routeMessage in Stem with no peer returns DropMessage.
+-- | Test 2: routeMessage in Stem with no peer falls back to FluffBroadcast
+-- (M23.2.7 — no silent message drops).
 testStemNoPeerDrops :: IO Bool
 testStemNoPeerDrops = do
     ds <- newDandelionState
@@ -54,8 +55,9 @@ testStemNoPeerDrops = do
     -- We need dsFluffProb = 0 so coinFlip always returns False (stay in stem).
     -- DandelionState uses immutable dsFluffProb, so we create a state with 0 prob.
     ds0 <- newDandelionStateWith 0.0
-    result <- routeMessage ds0 (BS.pack [1, 2, 3])
-    assertEq "stem with no peer -> DropMessage" DropMessage result
+    let msg = BS.pack [1, 2, 3]
+    result <- routeMessage ds0 msg
+    assertEq "stem with no peer -> FluffBroadcast" (FluffBroadcast msg) result
 
 -- | Test 3: After rotateStemPeer, routeMessage in Stem returns StemForward.
 testRotateThenStemForward :: IO Bool
