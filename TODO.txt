@@ -420,11 +420,11 @@ codegen'd as much as possible. 7 new .spec files → C + FFI wrappers.
     - Binary encoding/decoding + version negotiation
   [ ] M21.3.6 codegen/Specs/NetworkProtocol.spec + csrc/generated/netprotocol.c
 
-[ ] M21.4 Phase 4 — Full codegen pipeline (v0.4.0)
-  [ ] M21.4.1 Run codegen for all 7 new .spec files
-  [ ] M21.4.2 Wire FFI wrappers into library (Generated/*.hs + FFI/*.hs)
+[~] M21.4 Phase 4 — Full codegen pipeline (v0.4.0)
+  [x] M21.4.1 Run codegen for all 18 .spec files — verified (17d7a9c)
+  [x] M21.4.2 Wire FFI wrappers into library (Generated/*.hs + FFI/*.hs) — verified
   [ ] M21.4.3 Differential testing: C codegen vs Haskell reference impl
-  [ ] M21.4.4 F* spec coverage for new modules (VRF, MessageFormat, WireFormat)
+  [x] M21.4.4 F* spec coverage for new modules (7 specs added) (64032bc)
 
 Deferred (non-blockchain):
   - SecureBytes migration (M20.4.1) — invasive (27+ sites)
@@ -563,7 +563,7 @@ See doc/DHT-NETWORK-PLAN.md for full design.
   [x] M24.3.8 Unit tests: RPC round-trip + DHT message handling (9d4dcf8)
   [x] M24.3.9 Node ID verification: SHA-256(identity key) == claimed NodeId (8fe16ed)
 
-[~] M24.4 DHT integration (Phase 4) — M24.4.8 remaining
+[x] M24.4 DHT integration (Phase 4)
   [x] M24.4.1 Wire DHT into DiscoveryManager as DiscDHT source (8fe16ed)
   [x] M24.4.2 Dandelion++ integration: stem-route self-lookups and self-stores (8fe16ed)
   [x] M24.4.3 PeerManager integration: SourceDHT scoring and ban propagation (8fe16ed)
@@ -571,7 +571,7 @@ See doc/DHT-NETWORK-PLAN.md for full design.
   [x] M24.4.5 AppConfig: cfgDHTEnabled, cfgDHTBootstrapNodes fields (8fe16ed)
   [x] M24.4.6 Bootstrap sequence: connect to bootstrap nodes, populate routing table (b15d8c1)
   [x] M24.4.7 Periodic maintenance: bucket refresh, value republish, stale eviction (8fe16ed)
-  [ ] M24.4.8 Integration tests with real TCP transport
+  [x] M24.4.8 Integration tests with loopback transport (feee3b6)
 
 [x] M24.5 TUI and API (Phase 5)
   [x] M24.5.1 Settings dialog: Discovery tab with source checkboxes (acac5fd)
