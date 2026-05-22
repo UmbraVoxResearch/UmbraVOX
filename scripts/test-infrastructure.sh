@@ -38,7 +38,8 @@ echo -e "${BLUE}[1/8] Makefile structure tests${NC}"
 for target in build test verify quality vm-dev vm-build vm-test vm-verify \
               vm-image-build vm-image-clean vm-cache-clean vm-extract \
               vm-screenshot vm-record vm-visual-regression test-infra \
-              check-evidence test-shells test-vm test-make-options help clean; do
+              check-evidence test-shells test-vm test-make-options \
+              test-remote-builder-config help clean; do
     if make -n "$target" >/dev/null 2>&1; then
         check "Makefile target '$target' exists" "PASS"
     else
@@ -67,6 +68,12 @@ if bash scripts/test-make-options.sh >/dev/null 2>&1; then
     check "scripts/test-make-options.sh passes" "PASS"
 else
     check "scripts/test-make-options.sh passes" "FAIL"
+fi
+
+if bash scripts/test-remote-builder-config.sh >/dev/null 2>&1; then
+    check "scripts/test-remote-builder-config.sh passes" "PASS"
+else
+    check "scripts/test-remote-builder-config.sh passes" "FAIL"
 fi
 
 echo ""
@@ -267,6 +274,7 @@ for script in scripts/vm-dev-run.sh scripts/vm-smoke-run.sh \
               scripts/vm-socks5-test.sh scripts/vm-build-test.sh \
               scripts/nix-remote-builder-config.sh \
               scripts/test-make-options.sh \
+              scripts/test-remote-builder-config.sh \
               scripts/test-shells.sh scripts/test-vm.sh \
               scripts/test-infrastructure.sh; do
     if [ -f "$script" ]; then
