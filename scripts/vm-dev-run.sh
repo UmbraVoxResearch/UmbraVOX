@@ -25,6 +25,10 @@ NC='\033[0m'
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VM_CACHE_DIR="$REPO_ROOT/build/vm"
 VM_IMAGE_PATH="$VM_CACHE_DIR/image"
+VM_TMP_DIR="$VM_CACHE_DIR/tmp"
+
+# Keep transient VM artifacts inside the repo build tree to avoid /tmp/rootfs pressure.
+mkdir -p "$VM_TMP_DIR"
 
 # ── Preflight ──────────────────────────────────────────────────────────
 
@@ -56,10 +60,10 @@ preflight_check() {
 
 create_source_disk() {
     local disk_path
-    disk_path="/tmp/umbravox-vm-dev-source.$$.ext2"
+    disk_path="$(mktemp "$VM_TMP_DIR/umbravox-vm-dev-source.XXXXXX.ext2")"
     rm -f "$disk_path"
     local src_dir
-    src_dir="$(mktemp -d /tmp/umbravox-vm-dev-src.XXXXXX)"
+    src_dir="$(mktemp -d "$VM_TMP_DIR/umbravox-vm-dev-src.XXXXXX")"
 
     echo -e "${BLUE}[VM-DEV]${NC} Exporting source tree (current worktree)..." >&2
     # Export the live worktree so VM runs include local edits, while excluding
@@ -97,7 +101,7 @@ generate_init_script() {
     local mode="$1"
     local cmd="$2"
     local script_path
-    script_path="$(mktemp /tmp/umbravox-vm-dev-init.XXXXXX.sh)"
+    script_path="$(mktemp "$VM_TMP_DIR/umbravox-vm-dev-init.XXXXXX.sh")"
 
     cat > "$script_path" << 'INITEOF'
 #!/usr/bin/env bash
@@ -270,7 +274,7 @@ preflight_check
 
 DISK_IMG="$(readlink -f "$VM_IMAGE_PATH/nixos.img")"
 SRC_DISK="$(create_source_disk)"
-OVERLAY="$(mktemp /tmp/umbravox-vm-dev-overlay.XXXXXX.qcow2)"
+OVERLAY="$(mktemp "$VM_TMP_DIR/umbravox-vm-dev-overlay.XXXXXX.qcow2")"
 
 echo -e "${BLUE}[VM-DEV]${NC} Creating COW overlay..." >&2
 qemu-img create -f qcow2 -b "$DISK_IMG" -F raw "$OVERLAY" >/dev/null 2>&1

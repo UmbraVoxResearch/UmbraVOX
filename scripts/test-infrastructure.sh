@@ -258,6 +258,7 @@ for script in scripts/vm-dev-run.sh scripts/vm-smoke-run.sh \
               scripts/vm-tui-scenario.sh scripts/vm-screenshot-capture.sh \
               scripts/vm-record-session.sh scripts/vm-visual-regression.sh \
               scripts/vm-socks5-test.sh scripts/vm-build-test.sh \
+              scripts/nix-remote-builder-config.sh \
               scripts/test-shells.sh scripts/test-vm.sh \
               scripts/test-infrastructure.sh; do
     if [ -f "$script" ]; then

@@ -26,6 +26,20 @@ make vm-signal-server    # Boot Signal-Server runtime VM
 make check-isolation     # Verify host nix store is clean
 ```
 
+### Remote Builder Config (VM Image Builds)
+
+`make vm-image-build` and `make vm-signal-server-build` require a remote Nix
+builder and fail closed (no host-local fallback). Defaults come from
+`nix/remote-builder.env`; environment variables override file values.
+
+```bash
+UMBRAVOX_NIX_BUILDER="ssh-ng://nixbuilder@builder.example.internal x86_64-linux - 8"
+UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES=true
+UMBRAVOX_NIX_REMOTE_REQUIRED=1
+```
+
+If `nix/remote-builder.env` is missing, env-only mode is supported.
+
 ### Local Escape Hatch
 
 ```bash
