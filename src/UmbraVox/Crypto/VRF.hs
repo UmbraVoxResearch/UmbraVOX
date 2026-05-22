@@ -13,7 +13,7 @@ module UmbraVox.Crypto.VRF
   , vrfVerify
   ) where
 
-import Data.Bits ((.&.), (.|.), shiftR, testBit)
+import Data.Bits ((.&.), shiftR, testBit)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 
@@ -328,18 +328,18 @@ vrfProve !sk !alpha =
 -- alpha, and 80-byte proof. Returns @Just beta@ (64-byte VRF output)
 -- if the proof is valid, @Nothing@ otherwise.
 vrfVerify :: ByteString -> ByteString -> ByteString -> Maybe ByteString
-vrfVerify !pkBytes !alpha !pi
+vrfVerify !pkBytes !alpha !proof
     | BS.length pkBytes /= 32 = Nothing
-    | BS.length pi /= 80      = Nothing
+    | BS.length proof /= 80   = Nothing
     | otherwise =
         -- Step 1: Decode public key
         case decodePoint pkBytes of
             Nothing -> Nothing
             Just !pkPoint ->
                 -- Step 2: Parse proof: Gamma (32) || c (16) || s (32)
-                let !gammaBytes = BS.take 32 pi
-                    !cBytes = BS.take 16 (BS.drop 32 pi)
-                    !sBytes = BS.drop 48 pi
+                let !gammaBytes = BS.take 32 proof
+                    !cBytes = BS.take 16 (BS.drop 32 proof)
+                    !sBytes = BS.drop 48 proof
                     !c = decodeLE cBytes
                     !s = decodeLE sBytes
                 in case decodePoint gammaBytes of
