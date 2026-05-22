@@ -519,6 +519,70 @@ See doc/PROTOCOL-AUDIT-v0.3.0.md for full details.
   [ ] M23.4.7 GCM: add nonce-reuse detection at module level (MEDIUM)
 
 ================================================================================
+MILESTONE M24: DHT NETWORK + UNIFIED DISCOVERY (v0.4.0)
+================================================================================
+Note: Kademlia-style DHT, unified discovery manager, security model refactor.
+See doc/DHT-NETWORK-PLAN.md for full design.
+
+[ ] M24.1 Security model refactor (Phase 1)
+  [ ] M24.1.1 Remove Chastity from ConnectionMode enum and all references
+  [ ] M24.1.2 Rename buildChastityOnly to buildChasteOnly in BuildProfile.hs
+  [ ] M24.1.3 Update default mode: Chastity -> Chaste in App/Startup.hs
+  [ ] M24.1.4 Add cfgPEXAutomatic :: IORef Bool to AppConfig
+  [ ] M24.1.5 Promiscuous: disable PEX in applyConnectionModeSideEffects
+  [ ] M24.1.6 Swing: set cfgPEXAutomatic = False (manual PEX only)
+  [ ] M24.1.7 Guard tryPEXExchange on cfgPEXEnabled && cfgPEXAutomatic
+  [ ] M24.1.8 Update TUI dialog labels and mode descriptions
+  [ ] M24.1.9 Add config migration: "Chastity" -> "Chaste" on load
+
+[ ] M24.2 Static discovery sources (Phase 2)
+  [ ] M24.2.1 Network.Discovery module scaffold (DiscoverySource, DiscoveryManager)
+  [ ] M24.2.2 Environment variable source: parse UMBRAVOX_PEERS
+  [ ] M24.2.3 DNS SRV/TXT source: _umbravox._tcp.<domain> lookup
+  [ ] M24.2.4 Config file source: ~/.umbravox/peers parser
+  [ ] M24.2.5 Extend PeerSource with SourceDHT, SourceDNS, SourceEnvVar, SourceConfig
+  [ ] M24.2.6 Wire DiscoveryManager into AppConfig and startup sequence
+  [ ] M24.2.7 Unit tests for each static source parser
+
+[ ] M24.3 DHT core (Phase 3)
+  [ ] M24.3.1 DHT.Types: NodeId, DHTNode, DHTMessage, DHTConfig
+  [ ] M24.3.2 DHT.RoutingTable: k-bucket insert/find/refresh/evict
+  [ ] M24.3.3 DHT.RPC: binary serialization over AnyTransport
+  [ ] M24.3.4 DHT.Lookup: iterative FIND_NODE with alpha=3 parallelism
+  [ ] M24.3.5 DHT.Store: iterative STORE/FIND_VALUE with TTL expiration
+  [ ] M24.3.6 DHT module: bootstrap, maintain, announcePresence, findPeer
+  [ ] M24.3.7 Unit tests: routing table operations (insert, evict, find closest)
+  [ ] M24.3.8 Unit tests: iterative lookup with mock network
+  [ ] M24.3.9 Node ID verification: SHA-256(identity key) == claimed NodeId
+
+[ ] M24.4 DHT integration (Phase 4)
+  [ ] M24.4.1 Wire DHT into DiscoveryManager as DiscDHT source
+  [ ] M24.4.2 Dandelion++ integration: stem-route self-lookups and self-stores
+  [ ] M24.4.3 PeerManager integration: SourceDHT scoring and ban propagation
+  [ ] M24.4.4 Transport integration: DHT message type prefix in Noise payload
+  [ ] M24.4.5 AppConfig: cfgDHTEnabled, cfgDHTBootstrapNodes fields
+  [ ] M24.4.6 Bootstrap sequence: connect to bootstrap nodes, populate routing table
+  [ ] M24.4.7 Periodic maintenance: bucket refresh, value republish, stale eviction
+  [ ] M24.4.8 Integration tests with real TCP transport
+
+[ ] M24.5 TUI and API (Phase 5)
+  [ ] M24.5.1 Settings dialog: Discovery tab with source checkboxes
+  [ ] M24.5.2 Status bar: active discovery source count indicator
+  [ ] M24.5.3 Peer list: source tag display (mDNS/PEX/DHT/DNS/etc.)
+  [ ] M24.5.4 Manual PEX exchange button for Swing mode
+  [ ] M24.5.5 Chat.API: exchangePeers RPC method
+  [ ] M24.5.6 Chat.API: dhtStatus RPC method (routing table size, stored values)
+
+[ ] M24.6 Security hardening (Phase 6)
+  [ ] M24.6.1 Sybil attack test: many fake node IDs targeting same bucket
+  [ ] M24.6.2 Eclipse attack test: attacker fills routing table with colluding nodes
+  [ ] M24.6.3 Storage spam test: rate limiting STORE operations
+  [ ] M24.6.4 Routing table poisoning test: invalid node ID verification
+  [ ] M24.6.5 DHT message size cap enforcement (4096 bytes max)
+  [ ] M24.6.6 Adaptive DHT parameters based on network size estimate
+  [ ] M24.6.7 F* spec: routing table invariants (bucket size, ordering)
+
+================================================================================
 BLOCKED (EXTERNAL DEPENDENCIES)
 ================================================================================
 
