@@ -27,12 +27,12 @@ static const uint32_t MSG_HEARTBEAT = 0x06;
 __attribute__((noinline))
 uint32_t wireformat(const uint8_t* version, const uint8_t* msg_type, uint32_t sequence, const uint8_t* source, const uint8_t* dest, const uint8_t* payload, const uint8_t* mac_key, const uint8_t* envelope) {
     uint32_t payload_len = 0; /* preprocessing: length(payload) */
-    uint32_t inputs_ok = version;
+    uint32_t inputs_ok = (version != NULL) ? 1 : 0;
     uint32_t w_version = 0; /* preprocessing: encodeBE(version, 1) */
     uint32_t w_msg_type = 0; /* preprocessing: encodeBE(msg_type, 1) */
     uint32_t w_sequence = 0; /* preprocessing: encodeBE(sequence, 4) */
-    uint32_t w_source = source;
-    uint32_t w_dest = dest;
+    uint32_t w_source = (source != NULL) ? 1 : 0;
+    uint32_t w_dest = (dest != NULL) ? 1 : 0;
     uint32_t w_payload_len = 0; /* preprocessing: encodeBE(payload_len, 2) */
     uint32_t header_and_body = 0; /* preprocessing: ((((((w_version | 0) | w_msg_type) | 0) | w_sequence) | 0) | 0) */
     uint32_t mac = 0; /* preprocessing: HMAC_SHA256(mac_key, header_and_body) */
