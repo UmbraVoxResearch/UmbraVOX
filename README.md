@@ -79,6 +79,7 @@ Optional variables:
 ```sh
 UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES=true
 UMBRAVOX_NIX_REMOTE_REQUIRED=1
+UMBRAVOX_NIX_CONFIG_FILE=/path/to/remote-builder.env
 ```
 
 Override examples:
