@@ -6,6 +6,40 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-05-22
+
+### Crypto
+- VRF: ECVRF-ED25519-SHA512 (RFC 9381) — vrfProve + vrfVerify (M21.1.1)
+- PQWrapper: ML-KEM-768 + AES-256-GCM outer encryption layer (M21.1.4)
+- Signal.Session: persistent session state serialization (M21.1.6)
+
+### Protocol
+- MessageFormat: fixed 1024-byte blocks with PKCS7 padding (M21.2.1)
+- WireFormat: network message envelope with routing metadata (M21.2.3)
+
+### Network
+- PeerManager: peer discovery, scoring, and banning (M21.3.2)
+- Dandelion: Dandelion++ stem/fluff privacy routing (M21.3.3)
+- Protocol: P2P wire message types — handshake, data, ack, peer, ping/pong (M21.3.5)
+
+### Chat
+- API: JSON-RPC 2.0 server for headless/programmatic access (M21.3.1)
+
+### Codegen
+- VRF .spec file (M21.1.2)
+- PQWrapper .spec file (M21.1.5)
+- MessageFormat .spec file (M21.2.2)
+- WireFormat .spec file (M21.2.4)
+
+### Infrastructure
+- Go tools scaffold: tools/go.mod with qemu, disk, ninep, netpol packages (M22.1)
+- VM exec failure propagation to host
+- VM init and smoke source sync serialization
+- Remaining provider manifest moved into plugins
+- VM cache/output defaults documented with policy
+- VM-first docs aligned, bundle checksum gate added
+- M21/M22 roadmap added to TODO
+
 ## [0.2.0] — 2026-05-20
 
 ### Signal-Compatible Chat Bridge Plugin (M19)
@@ -459,7 +493,8 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 ### Added
 - Tagged release baseline `v0.0.6` and stabilized active MVP hardening branch state.
 
-[Unreleased]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.8...v0.2.0
 [0.1.8]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.5...v0.1.7
