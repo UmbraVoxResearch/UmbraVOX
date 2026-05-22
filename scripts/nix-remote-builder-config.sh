@@ -42,6 +42,33 @@ emit_export() {
     printf 'export %s=%q\n' "$key" "$value"
 }
 
+validate_builder() {
+    local builder="$1"
+    local -a parts
+    read -r -a parts <<< "$builder"
+
+    if [ "${#parts[@]}" -lt 4 ]; then
+        echo "[NIX-REMOTE] Invalid UMBRAVOX_NIX_BUILDER format." >&2
+        echo "[NIX-REMOTE] Expected at least: '<uri> <system> <ssh-key-or-> <max-jobs>'." >&2
+        exit 1
+    fi
+
+    if [[ "${parts[0]}" != *"://"* ]]; then
+        echo "[NIX-REMOTE] Invalid builder URI '${parts[0]}' (expected scheme://...)." >&2
+        exit 1
+    fi
+
+    if [ -z "${parts[1]}" ]; then
+        echo "[NIX-REMOTE] Invalid builder system field (empty)." >&2
+        exit 1
+    fi
+
+    if ! [[ "${parts[3]}" =~ ^[0-9]+$ ]] || [ "${parts[3]}" -lt 1 ]; then
+        echo "[NIX-REMOTE] Invalid builder max-jobs '${parts[3]}' (expected integer >= 1)." >&2
+        exit 1
+    fi
+}
+
 COMMAND="${1:-shell}"
 if [ "$COMMAND" != "shell" ]; then
     usage >&2
@@ -108,6 +135,7 @@ if [ -z "${UMBRAVOX_NIX_BUILDER-}" ]; then
     fi
     exit 1
 fi
+validate_builder "$UMBRAVOX_NIX_BUILDER"
 
 emit_export "UMBRAVOX_NIX_BUILDER" "$UMBRAVOX_NIX_BUILDER"
 emit_export "UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES" "$UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES"
