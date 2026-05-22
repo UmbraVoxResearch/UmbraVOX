@@ -550,13 +550,13 @@ See doc/DHT-NETWORK-PLAN.md for full design.
   [x] M24.2.6 Wire DiscoveryManager into AppConfig and startup sequence (da1b71c)
   [x] M24.2.7 Unit tests for each static source parser (da1b71c)
 
-[ ] M24.3 DHT core (Phase 3)
-  [ ] M24.3.1 DHT.Types: NodeId, DHTNode, DHTMessage, DHTConfig
-  [ ] M24.3.2 DHT.RoutingTable: k-bucket insert/find/refresh/evict
-  [ ] M24.3.3 DHT.RPC: binary serialization over AnyTransport
-  [ ] M24.3.4 DHT.Lookup: iterative FIND_NODE with alpha=3 parallelism
-  [ ] M24.3.5 DHT.Store: iterative STORE/FIND_VALUE with TTL expiration
-  [ ] M24.3.6 DHT module: bootstrap, maintain, announcePresence, findPeer
+[~] M24.3 DHT core (Phase 3)
+  [x] M24.3.1 DHT.Types: NodeId, DHTNode, DHTMessage, DHTConfig (08a0a8b)
+  [x] M24.3.2 DHT.RoutingTable: k-bucket insert/find/refresh/evict (08a0a8b)
+  [x] M24.3.3 DHT.RPC: binary serialization over AnyTransport (11e807d)
+  [x] M24.3.4 DHT.Lookup: iterative FIND_NODE with alpha=3 parallelism (11e807d)
+  [x] M24.3.5 DHT.Store: iterative STORE/FIND_VALUE with TTL expiration (11e807d)
+  [x] M24.3.6 DHT module: bootstrap, maintain, announcePresence, findPeer (11e807d)
   [ ] M24.3.7 Unit tests: routing table operations (insert, evict, find closest)
   [ ] M24.3.8 Unit tests: iterative lookup with mock network
   [ ] M24.3.9 Node ID verification: SHA-256(identity key) == claimed NodeId
