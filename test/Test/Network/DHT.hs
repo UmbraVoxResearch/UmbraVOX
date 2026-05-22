@@ -1,6 +1,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 -- | Unit tests for DHT routing table, RPC serialization, message
--- handling, and node ID verification (M24.3.7, M24.3.8, M24.3.9).
+-- handling, node ID verification, and security hardening
+-- (M24.3.7, M24.3.8, M24.3.9, M24.6.1–M24.6.5).
 module Test.Network.DHT (runTests) where
 
 import Data.IORef
@@ -13,6 +14,13 @@ import UmbraVox.Network.DHT
     ( DHTState(..)
     , newDHTState
     , handleMessage
+    )
+import UmbraVox.Network.DHT.Store
+    ( ValueStore(..)
+    , newValueStore
+    , localStore
+    , localLookup
+    , expireEntries
     )
 import UmbraVox.Network.DHT.RoutingTable
     ( RoutingTable(..)
@@ -75,6 +83,18 @@ runTests = do
         -- M24.3.9: Node ID verification
         , testVerifyNodeIdValid
         , testVerifyNodeIdInvalid
+        -- M24.6.1: Sybil attack resistance
+        , testSybilBucketOverflow
+        -- M24.6.2: Eclipse attack resistance
+        , testEclipseAttackResistance
+        -- M24.6.3: Storage spam resistance
+        , testStorageSpamSizeLimit
+        , testStorageSpamExpiration
+        -- M24.6.4: Routing table poisoning resistance
+        , testRoutingTablePoisoning
+        -- M24.6.5: DHT message size cap enforcement
+        , testMessageSizeCapOversized
+        , testMessageSizeCapAtLimit
         ]
     let passed = length (filter id results)
         total  = length results
@@ -413,3 +433,227 @@ testVerifyNodeIdInvalid = do
         wrongKey = strToBS "different-key"
         nid = deriveNodeId pubKey
     assertEq "verifyNodeId invalid" False (verifyNodeId nid wrongKey)
+
+------------------------------------------------------------------------
+-- M24.6.1: Sybil attack resistance
+------------------------------------------------------------------------
+
+-- | Finding: Sybil attacks flood a single k-bucket with many fake nodes
+-- to displace legitimate entries.
+-- Vulnerability: Without bucket size enforcement, an attacker could fill
+-- the routing table with colluding nodes.
+-- Fix: K-bucket capacity is enforced; excess nodes go to replacement cache.
+-- Verified: Insert 20 nodes targeting the same bucket with k=3; bucket
+-- holds at most 3 active entries and excess goes to replacement cache.
+testSybilBucketOverflow :: IO Bool
+testSybilBucketOverflow = do
+    let k = 3
+    rt <- newRoutingTable selfId k
+    -- Create 20 nodes that all fall into bucket 0 (byte 0 has high bit set)
+    let mkSybilNode i = mkNode (mkNodeId (BS.pack [0x80, i] <> BS.replicate 30 0))
+        sybilNodes = map mkSybilNode [1..20]
+    results <- mapM (insertNode rt) sybilNodes
+    let insertedCount = length (filter (== Inserted) results)
+        bucketFullCount = length (filter (== BucketFull) results)
+    r1 <- assertEq "sybil: only k nodes inserted" k insertedCount
+    r2 <- assertEq "sybil: rest got BucketFull" (20 - k) bucketFullCount
+    -- Verify actual bucket contents
+    buckets <- readIORef (rtBuckets rt)
+    let bucket0 = buckets !! 0
+    r3 <- assertEq "sybil: bucket active <= k" True
+              (length (kbEntries bucket0) <= k)
+    r4 <- assertEq "sybil: replacement cache non-empty" True
+              (not (null (kbReplacement bucket0)))
+    r5 <- assertEq "sybil: replacement cache <= k" True
+              (length (kbReplacement bucket0) <= k)
+    pure (r1 && r2 && r3 && r4 && r5)
+
+------------------------------------------------------------------------
+-- M24.6.2: Eclipse attack resistance
+------------------------------------------------------------------------
+
+-- | Finding: Eclipse attacks attempt to surround a target node by
+-- inserting attacker-controlled nodes that displace legitimate entries.
+-- Vulnerability: If new nodes could displace existing active nodes,
+-- an attacker could isolate a victim from the real network.
+-- Fix: Kademlia bucket semantics never evict a live active node for a
+-- new one; new arrivals go to the replacement cache when the bucket is full.
+-- Verified: Fill a bucket, then attempt to insert attacker nodes;
+-- findClosest still returns original nodes, not attacker nodes.
+testEclipseAttackResistance :: IO Bool
+testEclipseAttackResistance = do
+    let k = 3
+    rt <- newRoutingTable selfId k
+    -- Fill bucket 0 with legitimate nodes
+    let mkLegitNode i = mkNode (mkNodeId (BS.pack [0x80, i] <> BS.replicate 30 0))
+        legitNodes = map mkLegitNode [1..3]
+    mapM_ (insertNode rt) legitNodes
+    -- Attempt to insert 10 attacker nodes into the same bucket
+    let mkAttackerNode i = mkNode (mkNodeId (BS.pack [0x80, 0x10 + i] <> BS.replicate 30 0))
+        attackerNodes = map mkAttackerNode [1..10]
+    attackResults <- mapM (insertNode rt) attackerNodes
+    -- All attacker inserts should be BucketFull
+    r1 <- assertEq "eclipse: all attacker inserts BucketFull" True
+              (all (== BucketFull) attackResults)
+    -- findClosest should return only legitimate nodes from bucket 0
+    let target = mkNodeId (BS.pack [0x80] <> BS.replicate 31 0)
+    closest <- findClosest rt target k
+    let closestIds = map dhtNodeId closest
+        legitIds = map (\n -> dhtNodeId n) legitNodes
+        attackerIds = map (\n -> dhtNodeId n) attackerNodes
+    r2 <- assertEq "eclipse: all closest are legit" True
+              (all (`elem` legitIds) closestIds)
+    r3 <- assertEq "eclipse: no attacker in closest" True
+              (all (`notElem` attackerIds) closestIds)
+    pure (r1 && r2 && r3)
+
+------------------------------------------------------------------------
+-- M24.6.3: Storage spam resistance
+------------------------------------------------------------------------
+
+-- | Finding: Storage spam attacks flood the DHT value store with
+-- oversized or numerous entries to exhaust resources.
+-- Vulnerability: Without size limits, a single attacker could consume
+-- unbounded storage on target nodes.
+-- Fix: ValueStore enforces maxValueSize at insertion and expireEntries
+-- prunes stale data.
+-- Verified: Oversized values are rejected, valid values are accepted,
+-- and expired entries are cleaned up.
+testStorageSpamSizeLimit :: IO Bool
+testStorageSpamSizeLimit = do
+    vs <- newValueStore 100
+    -- Oversized value (200 bytes) should be rejected
+    let bigValue = BS.replicate 200 0x41
+    r1Stored <- localStore vs (strToBS "key1") bigValue 99999
+    r1 <- assertEq "spam: reject oversized value" False r1Stored
+    -- Valid value (50 bytes) should be accepted
+    let smallValue = BS.replicate 50 0x42
+    r2Stored <- localStore vs (strToBS "key2") smallValue 99999
+    r2 <- assertEq "spam: accept valid value" True r2Stored
+    -- Verify the valid value is retrievable
+    mVal <- localLookup vs (strToBS "key2") 1000
+    r3 <- assertEq "spam: valid value retrievable" (Just smallValue) mVal
+    -- Verify the rejected value is not stored
+    mBig <- localLookup vs (strToBS "key1") 1000
+    r4 <- assertEq "spam: oversized value not stored" Nothing mBig
+    pure (r1 && r2 && r3 && r4)
+
+-- | Finding: Without expiration, stored values accumulate indefinitely.
+-- Vulnerability: An attacker can fill the store by inserting many
+-- small values that never expire.
+-- Fix: expireEntries removes entries whose TTL has elapsed.
+-- Verified: Store multiple values with short TTLs, advance time past
+-- expiry, and confirm they are cleaned up.
+testStorageSpamExpiration :: IO Bool
+testStorageSpamExpiration = do
+    vs <- newValueStore 100
+    -- Store 5 values with expiry at time 500
+    let storeOne i = localStore vs
+            (strToBS ("key-" ++ show i))
+            (BS.replicate 10 (fromIntegral i))
+            500  -- expires at t=500
+    mapM_ storeOne [1..5 :: Int]
+    -- At time 400, all should still be alive
+    expired400 <- expireEntries vs 400
+    r1 <- assertEq "spam: no expiry before TTL" 0 expired400
+    -- At time 500, all should be expired (now >= expiry)
+    expired500 <- expireEntries vs 500
+    r2 <- assertEq "spam: all expired at TTL" 5 expired500
+    -- Verify store is empty by trying to expire again
+    expired501 <- expireEntries vs 501
+    r3 <- assertEq "spam: store empty after expiry" 0 expired501
+    pure (r1 && r2 && r3)
+
+------------------------------------------------------------------------
+-- M24.6.4: Routing table poisoning resistance
+------------------------------------------------------------------------
+
+-- | Finding: An attacker can claim arbitrary NodeIds that do not
+-- correspond to their actual public key.
+-- Vulnerability: Without verification, poisoned NodeIds corrupt the
+-- routing table and misdirect lookups.
+-- Fix: verifyNodeId checks that the claimed NodeId equals SHA-256 of
+-- the node's identity public key.
+-- Verified: A forged NodeId is rejected; a legitimate one is accepted.
+testRoutingTablePoisoning :: IO Bool
+testRoutingTablePoisoning = do
+    let realPubKey = strToBS "legitimate-node-public-key"
+        realNodeId = deriveNodeId realPubKey
+    -- Forge a NodeId that doesn't match any key
+    let forgedNodeId = mkNodeId (BS.replicate 32 0xFF)
+    r1 <- assertEq "poison: forged NodeId rejected"
+              False (verifyNodeId forgedNodeId realPubKey)
+    -- Verify the real NodeId passes
+    r2 <- assertEq "poison: legitimate NodeId accepted"
+              True (verifyNodeId realNodeId realPubKey)
+    -- Also verify with a completely different public key
+    let otherPubKey = strToBS "other-node-public-key"
+    r3 <- assertEq "poison: wrong key rejected"
+              False (verifyNodeId realNodeId otherPubKey)
+    pure (r1 && r2 && r3)
+
+------------------------------------------------------------------------
+-- M24.6.5: DHT message size cap enforcement
+------------------------------------------------------------------------
+
+-- | Finding: Oversized DHT messages can cause excessive memory
+-- allocation or buffer overflows in the decoder.
+-- Vulnerability: Without a size cap, an attacker can send arbitrarily
+-- large messages to exhaust resources.
+-- Fix: decodeDHTMessage rejects messages exceeding maxDHTMessageSize
+-- (4096 bytes).
+-- Verified: A padded message exceeding 4096 bytes returns Nothing;
+-- a message at exactly 4096 bytes is processed (decoded if valid,
+-- but not rejected for size alone).
+testMessageSizeCapOversized :: IO Bool
+testMessageSizeCapOversized = do
+    -- Encode a valid Ping message
+    let sender = deriveNodeId (strToBS "test-sender")
+        validMsg = encodeDHTMessage (Ping sender)
+    -- Pad to exceed 4096 bytes
+    let oversized = validMsg <> BS.replicate (maxDHTMessageSize + 1) 0x00
+    r1 <- assertEq "size-cap: oversized rejected" Nothing
+              (decodeDHTMessage oversized)
+    -- Verify the unpadded message still decodes
+    r2 <- assertEq "size-cap: valid message accepted"
+              (Just (Ping sender)) (decodeDHTMessage validMsg)
+    pure (r1 && r2)
+
+-- | Verified: A message at exactly maxDHTMessageSize is not rejected
+-- for size (it may fail decoding for other reasons, but size alone
+-- does not cause rejection).
+testMessageSizeCapAtLimit :: IO Bool
+testMessageSizeCapAtLimit = do
+    -- Create a message of exactly maxDHTMessageSize bytes.
+    -- Use a Store message with a value sized to hit exactly 4096.
+    -- Ping = 1 (type) + 32 (NodeId) = 33 bytes.  Pad to 4096:
+    -- We can't pad a Ping (it enforces exact size via guardEmpty),
+    -- so we test that a 4096-byte buffer is not rejected for size.
+    -- A buffer of exactly 4096 bytes with type=0x01 (Ping) and 32
+    -- valid NodeId bytes + trailing garbage will fail guardEmpty,
+    -- but that's a format error, not a size error.
+    -- Instead, verify that decodeDHTMessage does not return Nothing
+    -- *due to size* by checking the size guard specifically:
+    let atLimit = BS.replicate maxDHTMessageSize 0x01
+    -- This will fail decoding (Ping with trailing bytes -> guardEmpty),
+    -- but crucially it should NOT be rejected at the size check.
+    -- We verify by checking a message of 4097 bytes IS rejected.
+    let overLimit = BS.replicate (maxDHTMessageSize + 1) 0x01
+    r1 <- assertEq "size-cap: 4097 bytes rejected" Nothing
+              (decodeDHTMessage overLimit)
+    -- For exactly 4096: it won't decode as valid Ping (trailing bytes)
+    -- but it passes the size check — verify it's Nothing from format,
+    -- not from the size guard.  We can't distinguish the two Nothings
+    -- directly, so instead verify a valid message at the boundary:
+    -- Construct a Store message that is exactly 4096 bytes.
+    let sender = deriveNodeId (strToBS "size-test")
+        key = strToBS "k"
+        -- type(1) + NodeId(32) + keyLen(4) + key(1) + valLen(4) + val(?) = 4096
+        -- val size = 4096 - 1 - 32 - 4 - 1 - 4 = 4054
+        val = BS.replicate 4054 0x58
+        storeMsg = encodeDHTMessage (Store sender key val)
+    r2 <- assertEq "size-cap: exact 4096 byte message size"
+              maxDHTMessageSize (BS.length storeMsg)
+    r3 <- assertEq "size-cap: exact 4096 byte message decodes"
+              (Just (Store sender key val)) (decodeDHTMessage storeMsg)
+    pure (r1 && r2 && r3)
