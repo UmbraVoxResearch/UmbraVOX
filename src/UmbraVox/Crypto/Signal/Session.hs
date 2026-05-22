@@ -17,6 +17,7 @@ import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.Map.Strict as Map
+import qualified Data.Sequence as Seq
 import Data.Word (Word32, Word64)
 
 import UmbraVox.Crypto.Signal.DoubleRatchet (RatchetState(..))
@@ -62,6 +63,7 @@ initSession sharedSecret = SessionState
         , rsSkippedKeys = Map.empty
         , rsSkipSeq     = 0
         , rsNonceCounter = 0
+        , rsSeenDHKeys  = Seq.empty
         }
     , ssPeerIdentity = BS.empty
     , ssCreatedAt    = 0
@@ -168,6 +170,7 @@ deserializeSession bs0 = do
             , rsSkippedKeys = skipped
             , rsSkipSeq     = skipSeq
             , rsNonceCounter = nonceCtr
+            , rsSeenDHKeys  = Seq.empty
             }
         , ssPeerIdentity = peerIdent
         , ssCreatedAt    = createdAt

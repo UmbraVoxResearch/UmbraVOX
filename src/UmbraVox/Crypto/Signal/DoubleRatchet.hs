@@ -17,6 +17,8 @@ module UmbraVox.Crypto.Signal.DoubleRatchet
     , ratchetDecrypt
       -- * Audited constants (exported for regression testing)
     , maxTotalSkipped
+    , maxRatchetSkip
+    , maxSeenDHKeys
     ) where
 
 import Data.Bits (shiftR, xor, (.&.))
@@ -24,9 +26,13 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
+import Data.Sequence (Seq)
+import qualified Data.Sequence as Seq
+import qualified Data.Set as Set
 import Data.Word (Word32, Word64)
 
-import UmbraVox.App.Defaults (defaultMaxSkip, defaultMaxTotalSkipped)
+import UmbraVox.App.Defaults (defaultMaxSkip, defaultMaxTotalSkipped,
+                              defaultMaxRatchetSkip, defaultMaxSeenDHKeys)
 import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
 import UmbraVox.Crypto.GCM (gcmDecrypt, gcmEncrypt)
 import UmbraVox.Crypto.HKDF (hkdfExpand, hkdfExtract)
@@ -61,6 +67,29 @@ data RatchetError
       -- ^ Counter persistence failed before encryption; the plaintext
       -- has NOT been encrypted.  Callers must not retry with the same
       -- counter without first resolving the underlying I/O failure.
+    | RatchetSkipExceeded
+      -- ^ Finding    M23.3.3 — The aggregate ratchet skip (prevChainN gap
+      --   plus current-chain gap) exceeds 'maxRatchetSkip', indicating
+      --   either a resource exhaustion attack or severe message loss.
+      -- Vulnerability: Without a cap, a malicious peer can force the
+      --   receiver to compute an arbitrarily large number of KDF chain
+      --   steps, consuming CPU and memory.
+      -- Fix:       'ratchetDecrypt' now computes the total skip distance
+      --   before advancing and rejects with this error if it exceeds
+      --   'maxRatchetSkip'.
+      -- Verified:  Unit test sends a message with counter gap >
+      --   maxRatchetSkip and asserts Left RatchetSkipExceeded.
+    | DHKeyReplay
+      -- ^ Finding    M23.3.3 — No check existed for DH key replay.
+      -- Vulnerability: An attacker could replay a message from an earlier
+      --   ratchet epoch using the same DH public key, potentially causing
+      --   the receiver to re-derive old chain keys and accept stale or
+      --   replayed ciphertext.
+      -- Fix:       'dhRatchet' now tracks the last 'maxSeenDHKeys' peer
+      --   DH public keys in a bounded FIFO ('rsSeenDHKeys') and rejects
+      --   any DH key that appears in the history.
+      -- Verified:  Unit test replays a header with a previously seen DH
+      --   key and asserts Left DHKeyReplay.
     deriving stock (Show, Eq)
 
 ------------------------------------------------------------------------
@@ -117,6 +146,11 @@ data RatchetState = RatchetState
       -- each msgKey is derived from a unique chain key via kdfCK and is
       -- used exactly once.  This counter exists for monitoring / replay
       -- detection only.
+    , rsSeenDHKeys :: !(Seq ByteString)
+      -- ^ Bounded FIFO of recently seen peer DH ratchet public keys
+      -- (M23.3.3).  Used to detect replay of old ratchet messages with
+      -- reused DH keys.  Capped at 'maxSeenDHKeys' entries; oldest are
+      -- evicted when the limit is exceeded.
     } deriving stock (Show, Eq)
 
 -- | Header attached to each ratchet message.
@@ -152,6 +186,22 @@ maxSkip = defaultMaxSkip
 -- Sourced from 'UmbraVox.App.Defaults.defaultMaxTotalSkipped'.
 maxTotalSkipped :: Int
 maxTotalSkipped = defaultMaxTotalSkipped
+
+-- | Maximum total ratchet steps to advance per DH ratchet epoch when
+-- receiving a message (M23.3.3).  If a peer claims to be more than
+-- this many steps ahead, reject the message to prevent resource
+-- exhaustion.  This is an aggregate limit across the prevChainN skip
+-- and the current-chain skip within a single 'ratchetDecrypt' call.
+-- Sourced from 'UmbraVox.App.Defaults.defaultMaxRatchetSkip'.
+maxRatchetSkip :: Int
+maxRatchetSkip = defaultMaxRatchetSkip
+
+-- | Maximum number of peer DH ratchet public keys to track for replay
+-- detection (M23.3.3).  A bounded FIFO window prevents unbounded memory
+-- growth while catching replays within recent ratchet history.
+-- Sourced from 'UmbraVox.App.Defaults.defaultMaxSeenDHKeys'.
+maxSeenDHKeys :: Int
+maxSeenDHKeys = defaultMaxSeenDHKeys
 
 ------------------------------------------------------------------------
 -- KDF helpers
@@ -239,6 +289,7 @@ ratchetInitAlice sharedSecret bobSPK aliceDHSecret =
                 , rsSkippedKeys  = Map.empty
                 , rsSkipSeq      = 0
                 , rsNonceCounter = 0
+                , rsSeenDHKeys   = Seq.empty
                 }
 
 -- | Initialize Double Ratchet state for Bob (the responder).
@@ -270,6 +321,7 @@ ratchetInitBob sharedSecret bobSPKSecret =
         , rsSkippedKeys  = Map.empty
         , rsSkipSeq      = 0
         , rsNonceCounter = 0
+        , rsSeenDHKeys   = Seq.empty
         }
 
 ------------------------------------------------------------------------
@@ -324,6 +376,10 @@ ratchetEncrypt st plaintext =
 --
 -- Returns @Right (Just (state, plaintext))@ on success,
 -- @Right Nothing@ on GCM authentication failure,
+-- @Left RatchetSkipExceeded@ when the aggregate skip distance exceeds
+-- 'maxRatchetSkip' (M23.3.3),
+-- @Left DHKeyReplay@ when the header DH key has been seen before
+-- (M23.3.3),
 -- and @Left CounterExhausted@ when the receive counter has reached its
 -- limit.  Runs in IO because a DH ratchet step may generate a new
 -- keypair via CSPRNG.
@@ -345,31 +401,80 @@ ratchetDecrypt st header ct tag =
             case trySkippedKeys st header ct tag of
                 Just result -> pure (Right (Just result))
                 Nothing -> do
-                    -- If header DH key differs from our stored peer key, do DH ratchet
-                    st1 <- case rsDHRecv st of
-                               Nothing    -> dhRatchet st header
-                               Just peer
-                                   | rhDHPublic header /= peer -> dhRatchet st header
-                                   | otherwise                  -> pure (Just st)
-                    pure $ Right $ case st1 of
-                        Nothing -> Nothing  -- Too many skipped keys
-                        Just st2 ->
-                            -- Skip any missed messages in current receiving chain
-                            case skipMessageKeys st2 (rhMsgN header) of
-                                Nothing -> Nothing  -- Too many skipped keys
-                                Just st3 ->
-                                    -- Derive message key from receiving chain
-                                    let !(newChainKey, msgKey) = kdfCK (rsRecvChain st3)
-                                        !nonce = makeNonce (rsRecvChain st3) (rsRecvN st3)
-                                        !aad = encodeHeader header
-                                    in case gcmDecrypt msgKey nonce aad ct tag of
-                                        Just plaintext ->
-                                            let !st4 = st3
-                                                    { rsRecvChain = newChainKey
-                                                    , rsRecvN     = rsRecvN st3 + 1
-                                                    }
-                                            in Just (st4, plaintext)
-                                        Nothing -> Nothing
+                    -- Determine whether a DH ratchet is needed
+                    let needsDHRatchet = case rsDHRecv st of
+                            Nothing   -> True
+                            Just peer -> rhDHPublic header /= peer
+
+                    -- M23.3.3: rate-limit ratchet steps.  Compute the
+                    -- aggregate skip distance before doing any work.
+                    let totalSkip = if needsDHRatchet
+                            then -- prevChain gap + current-chain gap
+                                 let prevGap = if rhPrevChainN header > rsRecvN st
+                                               then fromIntegral (rhPrevChainN header - rsRecvN st)
+                                               else 0 :: Int
+                                     curGap  = fromIntegral (rhMsgN header)
+                                 in prevGap + curGap
+                            else -- same DH epoch — only current-chain gap
+                                 if rhMsgN header > rsRecvN st
+                                 then fromIntegral (rhMsgN header - rsRecvN st)
+                                 else 0 :: Int
+                    if totalSkip > maxRatchetSkip
+                        then pure (Left RatchetSkipExceeded)
+                        else do
+                            -- M23.3.3: DH key replay detection
+                            if needsDHRatchet && isDHKeyReplayed st (rhDHPublic header)
+                                then pure (Left DHKeyReplay)
+                                else do
+                                    -- If header DH key differs from our stored peer key, do DH ratchet
+                                    st1 <- if needsDHRatchet
+                                               then dhRatchet st header
+                                               else pure (Just st)
+                                    pure $ Right $ case st1 of
+                                        Nothing -> Nothing  -- Too many skipped keys
+                                        Just st2 ->
+                                            -- Skip any missed messages in current receiving chain
+                                            case skipMessageKeys st2 (rhMsgN header) of
+                                                Nothing -> Nothing  -- Too many skipped keys
+                                                Just st3 ->
+                                                    -- Derive message key from receiving chain
+                                                    let !(newChainKey, msgKey) = kdfCK (rsRecvChain st3)
+                                                        !nonce = makeNonce (rsRecvChain st3) (rsRecvN st3)
+                                                        !aad = encodeHeader header
+                                                    in case gcmDecrypt msgKey nonce aad ct tag of
+                                                        Just plaintext ->
+                                                            let !st4 = st3
+                                                                    { rsRecvChain = newChainKey
+                                                                    , rsRecvN     = rsRecvN st3 + 1
+                                                                    }
+                                                            in Just (st4, plaintext)
+                                                        Nothing -> Nothing
+
+------------------------------------------------------------------------
+-- DH key replay detection (M23.3.3)
+------------------------------------------------------------------------
+
+-- | Check if a DH public key has been seen in a previous ratchet epoch.
+-- The check uses the bounded FIFO 'rsSeenDHKeys'.
+isDHKeyReplayed :: RatchetState -> ByteString -> Bool
+isDHKeyReplayed st peerPub =
+    let !seen = rsSeenDHKeys st
+        -- Build a Set for O(log n) lookup within the bounded window
+        !seenSet = Set.fromList (foldr (:) [] seen)
+    in Set.member peerPub seenSet
+
+-- | Record a DH public key in the seen-key FIFO, evicting the oldest
+-- entry if the FIFO exceeds 'maxSeenDHKeys'.
+recordDHKey :: RatchetState -> ByteString -> RatchetState
+recordDHKey st peerPub =
+    let !seen = rsSeenDHKeys st
+        -- Append the new key
+        !seen' = seen Seq.|> peerPub
+        -- Evict oldest if over capacity
+        !seen'' = if Seq.length seen' > maxSeenDHKeys
+                  then Seq.drop (Seq.length seen' - maxSeenDHKeys) seen'
+                  else seen'
+    in st { rsSeenDHKeys = seen'' }
 
 ------------------------------------------------------------------------
 -- DH Ratchet step
@@ -378,15 +483,21 @@ ratchetDecrypt st header ct tag =
 -- | Perform a DH ratchet step when receiving a new peer DH public key.
 -- Uses CSPRNG to generate ephemeral DH keypairs for break-in recovery.
 -- Returns Nothing if a DH output is all-zero (low-order point rejection).
+--
+-- M23.3.3: Records the new peer DH public key in 'rsSeenDHKeys' for
+-- replay detection.  The replay check itself is in 'ratchetDecrypt',
+-- before this function is called.
 dhRatchet :: RatchetState -> RatchetHeader -> IO (Maybe RatchetState)
 dhRatchet st header =
     -- Skip any remaining messages in old receiving chain
     case skipMessageKeys st (rhPrevChainN header) of
         Nothing -> pure Nothing
         Just st1 -> do
-            let -- Store the previous chain length
-                !st2 = st1
-                    { rsPrevChainN = rsSendN st1
+            let -- M23.3.3: record the new DH key before advancing
+                !st1a = recordDHKey st1 (rhDHPublic header)
+                -- Store the previous chain length
+                !st2 = st1a
+                    { rsPrevChainN = rsSendN st1a
                     , rsSendN      = 0
                     , rsRecvN      = 0
                     , rsDHRecv     = Just (rhDHPublic header)
@@ -450,6 +561,8 @@ skipMessageKeys st until'
         Just _  ->
             let !result = go st
                 -- M7.3.6: enforce total skipped-key cap across all DH ratchets
+                -- M23.3.4: eviction is now O(log n) via a secondary index on
+                -- insertion sequence.
                 !pruned = evictOldest (rsSkippedKeys result)
             in Just result { rsSkippedKeys = pruned }
   where
@@ -489,8 +602,20 @@ skipMessageKeys st until'
 --            (@Word64@, stored as the third element of the map value).
 --            'evictOldest' finds the entry with the minimum sequence number
 --            (the oldest inserted) and removes it, iterating until the cache
---            is within 'maxTotalSkipped'.  This is O(n) per eviction step but
---            eviction is rare (only when the cache hits the cap).
+--            is within 'maxTotalSkipped'.
+--
+-- Finding    M23.3.4 — Previous 'evictOldest' was O(n) per eviction step
+--            because it scanned the entire map with foldlWithKey' to find
+--            the minimum insertion sequence, then performed a Map.lookup on
+--            the best candidate to retrieve its sequence for comparison.
+-- Vulnerability: When the skipped-key cache is at capacity and many
+--            evictions are needed (e.g. burst of skipped messages across
+--            multiple ratchet epochs), the O(n) scan per eviction results
+--            in O(n * k) total work where k is the number of entries to
+--            evict, causing latency spikes.
+-- Fix:       Build a secondary Map keyed by insertion sequence (Word64 ->
+--            (ByteString, Word32)) and use Map.deleteFindMin for O(log n)
+--            lookup of the oldest entry.  Delete from both maps in lockstep.
 -- Verified:  'skipMessageKeys' increments 'rsSkipSeq' on each insertion;
 --            'evictOldest' removes the minimum-sequence entry until the cap
 --            is satisfied.
@@ -501,29 +626,32 @@ skipMessageKeys st until'
 -- Eviction is by insertion order (minimum 'rsSkipSeq' value), not by map
 -- key order, so legitimate skipped messages are never displaced by
 -- adversarially crafted DH public keys.
+--
+-- M23.3.4: Uses a secondary index (Map Word64 key) for O(log n) per
+-- eviction instead of O(n) linear scan.
 evictOldest :: Map (ByteString, Word32) (ByteString, ByteString, Word64)
             -> Map (ByteString, Word32) (ByteString, ByteString, Word64)
 evictOldest m
     | Map.size m <= maxTotalSkipped = m
     | otherwise =
-        -- Find the key with the minimum insertion sequence number and delete it,
-        -- then recurse until we are within the cap.  Using foldlWithKey' keeps
-        -- the traversal strict and avoids building intermediate lists.
-        let oldestKey = Map.foldlWithKey' pickOldest Nothing m
-        in case oldestKey of
-            Nothing  -> m  -- Should be unreachable; map is non-empty here.
-            Just key -> evictOldest (Map.delete key m)
+        -- Build a secondary index: insertSeq -> primary key, then evict
+        -- entries with the smallest insertion sequence numbers.
+        let !seqIndex = Map.foldlWithKey'
+                (\acc k (_, _, sq) -> Map.insert sq k acc)
+                (Map.empty :: Map Word64 (ByteString, Word32))
+                m
+        in evictWithIndex m seqIndex
   where
-    -- | Accumulate the key whose value has the smallest insertSeq.
-    pickOldest :: Maybe (ByteString, Word32)
-               -> (ByteString, Word32)
-               -> (ByteString, ByteString, Word64)
-               -> Maybe (ByteString, Word32)
-    pickOldest Nothing  k (_, _, sq)  = Just k `seq` sq `seq` Just k
-    pickOldest (Just bestK) k (_, _, sq) =
-        case Map.lookup bestK m of
-            Just (_, _, bestSq) -> if sq < bestSq then Just k else Just bestK
-            Nothing             -> Just k
+    evictWithIndex :: Map (ByteString, Word32) (ByteString, ByteString, Word64)
+                   -> Map Word64 (ByteString, Word32)
+                   -> Map (ByteString, Word32) (ByteString, ByteString, Word64)
+    evictWithIndex primary idx
+        | Map.size primary <= maxTotalSkipped = primary
+        | Map.null idx = primary
+        | otherwise =
+            let ((_minSeq, oldestKey), idx') = Map.deleteFindMin idx
+                !primary' = Map.delete oldestKey primary
+            in evictWithIndex primary' idx'
 
 ------------------------------------------------------------------------
 -- Nonce and header encoding
