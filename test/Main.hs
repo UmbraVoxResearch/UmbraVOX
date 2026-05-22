@@ -110,9 +110,11 @@ import qualified Test.Hardening.Recovery as HardeningRecovery
 import qualified Test.Hardening.Soak as HardeningSoak
 import qualified Test.Hardening.TCP as HardeningTCP
 import qualified Test.Integration as Integration
+import qualified Test.Network.Dandelion as Dandelion
 import qualified Test.Network.MDNS as MDNS
 import qualified Test.Network.Noise as Noise
 import qualified Test.Network.PeerExchange as PeerExchange
+import qualified Test.Network.PeerManager as PeerManager
 import qualified Test.Network.Protocol as Protocol
 import qualified Test.Network.Transport as Transport
 import qualified Test.Network.Transport.Loopback as Loopback
@@ -332,7 +334,9 @@ coreSuites =
     , Suite "signal-session" Session.runTests
     , Suite "signal-wire-compat" SignalWireCompat.signalWireCompatTests
     , Suite "signal-compat" SignalCompat.signalCompatTests
+    , Suite "dandelion" Dandelion.runTests
     , Suite "mdns" MDNS.runTests
+    , Suite "peer-manager" PeerManager.runTests
     , Suite "network-protocol" Protocol.runTests
     , Suite "chat-message" ChatMessage.runTests
     , Suite "chat-contacts" ChatContacts.runTests
@@ -420,7 +424,9 @@ coreNetworkSuites =
     [ Suite "transport-class" TransportClass.runTests
     , Suite "loopback-transport" Loopback.runTests
     , Suite "noise" Noise.runTests
+    , Suite "dandelion" Dandelion.runTests
     , Suite "peer-exchange" PeerExchange.runTests
+    , Suite "peer-manager" PeerManager.runTests
     , Suite "mdns" MDNS.runTests
     , Suite "network-protocol" Protocol.runTests
     ]
