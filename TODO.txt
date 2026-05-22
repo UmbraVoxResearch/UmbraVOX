@@ -565,9 +565,9 @@ See doc/DHT-NETWORK-PLAN.md for full design.
   [x] M24.4.1 Wire DHT into DiscoveryManager as DiscDHT source (8fe16ed)
   [x] M24.4.2 Dandelion++ integration: stem-route self-lookups and self-stores (8fe16ed)
   [x] M24.4.3 PeerManager integration: SourceDHT scoring and ban propagation (8fe16ed)
-  [ ] M24.4.4 Transport integration: DHT message type prefix in Noise payload
+  [x] M24.4.4 Transport integration: DHT message type prefix in Noise payload (b15d8c1)
   [x] M24.4.5 AppConfig: cfgDHTEnabled, cfgDHTBootstrapNodes fields (8fe16ed)
-  [ ] M24.4.6 Bootstrap sequence: connect to bootstrap nodes, populate routing table
+  [x] M24.4.6 Bootstrap sequence: connect to bootstrap nodes, populate routing table (b15d8c1)
   [x] M24.4.7 Periodic maintenance: bucket refresh, value republish, stale eviction (8fe16ed)
   [ ] M24.4.8 Integration tests with real TCP transport
 
