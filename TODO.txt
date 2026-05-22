@@ -3,7 +3,7 @@ UmbraVOX Active TODO
 Purpose: active work only. Completed and historical items are tracked in CHANGELOG.txt.
 
 Status: [ ] pending, [~] in progress, [!] blocked
-Last updated: 2026-05-20
+Last updated: 2026-05-21
 
 Rules
 -----
@@ -351,57 +351,61 @@ MILESTONE M21: STUB IMPLEMENTATION + CODEGEN EXPANSION (v0.3.0-v0.4.0)
 Note: Comprehensive implementation of non-deferred stub modules. Everything
 codegen'd as much as possible. 7 new .spec files → C + FFI wrappers.
 
-[ ] M21.1 Phase 1 — Crypto stubs (v0.3.0)
-  [ ] M21.1.1 Crypto.VRF — ECVRF-ED25519-SHA512 (RFC 9381)
+[~] M21.1 Phase 1 — Crypto stubs (v0.3.0)
+  [x] M21.1.1 Crypto.VRF — ECVRF-ED25519-SHA512 (RFC 9381) (5c7939f)
     - vrfProve (secret key + message → 80-byte proof)
     - vrfVerify (public key + message + proof → 64-byte output)
     - Uses Ed25519 point ops + SHA-512 + Elligator2 hash-to-curve
     - 5 importers (VRF test + 4 security attack tests)
     - Test vectors: RFC 9381 Section 6
     - F* spec: Spec.VRF.fst (3 assume val)
-  [ ] M21.1.2 codegen/Specs/VRF.spec + csrc/generated/vrf.c + FFI wrapper
+  [~] M21.1.2 codegen/Specs/VRF.spec + csrc/generated/vrf.c + FFI wrapper
+    - .spec file done (932f60b); C generation + FFI wrappers pending
     - Constant-time VRF proof generation
     - Elligator2 hash-to-curve implementation
   [ ] M21.1.3 codegen/Specs/Ed25519Extended.spec — point ops + Elligator2
     - Ed25519 scalar_mult_base, point_add, elligator2_hash
     - Extended beyond current sign/verify codegen
-  [ ] M21.1.4 Crypto.PQWrapper — post-quantum outer encryption
+  [x] M21.1.4 Crypto.PQWrapper — post-quantum outer encryption (c0b4c97)
     - pqEncrypt: ML-KEM-768 encaps + AES-256-GCM encrypt
     - pqDecrypt: ML-KEM-768 decaps + AES-256-GCM decrypt
     - Thin composition over existing MLKEM + GCM
-  [ ] M21.1.5 codegen/Specs/PQWrapper.spec + csrc/generated/pqwrapper.c
+  [~] M21.1.5 codegen/Specs/PQWrapper.spec + csrc/generated/pqwrapper.c
+    - .spec file done (932f60b); C generation + FFI wrappers pending
     - Serialized KEM ciphertext + AEAD ciphertext + tag
-  [ ] M21.1.6 Crypto.Signal.Session — session state management
+  [x] M21.1.6 Crypto.Signal.Session — session state management (baef24c)
     - Merge with Bridge.Signal.Session or implement persistent store
     - Serialize/deserialize RatchetState
   [ ] M21.1.7 codegen/Specs/SessionState.spec — constant-time serialization
 
-[ ] M21.2 Phase 2 — Protocol stubs (v0.3.1)
-  [ ] M21.2.1 Protocol.MessageFormat — fixed 1024-byte message blocks
+[~] M21.2 Phase 2 — Protocol stubs (v0.3.1)
+  [x] M21.2.1 Protocol.MessageFormat — fixed 1024-byte message blocks (cff6c1c)
     - packBlock: pad to 1024 bytes + length header (prevents traffic analysis)
     - unpackBlock: extract payload + verify padding
     - PKCS7-style padding
-  [ ] M21.2.2 codegen/Specs/MessageFormat.spec + csrc/generated/messageformat.c
+  [~] M21.2.2 codegen/Specs/MessageFormat.spec + csrc/generated/messageformat.c
+    - .spec file done (6f3fe1c); C generation + FFI wrappers pending
     - Constant-time padding (prevent padding oracle attacks)
-  [ ] M21.2.3 Protocol.WireFormat — network message envelope with routing
+  [x] M21.2.3 Protocol.WireFormat — network message envelope with routing (d4da86d)
     - Envelope: source ID + dest ID + message type + sequence + payload
     - wrapEnvelope / unwrapEnvelope
-  [ ] M21.2.4 codegen/Specs/WireFormat.spec + csrc/generated/wireformat.c
+  [~] M21.2.4 codegen/Specs/WireFormat.spec + csrc/generated/wireformat.c
+    - .spec file done (6f3fe1c); C generation + FFI wrappers pending
 
-[ ] M21.3 Phase 3 — Chat API + Messaging P2P (v0.3.2)
-  [ ] M21.3.1 Chat.API — JSON-RPC 2.0 API for headless/programmatic access
+[~] M21.3 Phase 3 — Chat API + Messaging P2P (v0.3.2)
+  [x] M21.3.1 Chat.API — JSON-RPC 2.0 API for headless/programmatic access (4d3108b)
     - HTTP server on configurable port (127.0.0.1 only)
     - Methods: sendMessage, getHistory, listContacts, getStatus, connect, disconnect
     - Enables automation, bots, alternative UIs
-  [ ] M21.3.2 Network.PeerManager — peer discovery, scoring, banning
+  [x] M21.3.2 Network.PeerManager — peer discovery, scoring, banning (669d3e4)
     - Known peers, scores, ban list, connection counts
     - Combine mDNS (existing) + PEX (existing) + bootstrap nodes
-  [ ] M21.3.3 Network.Dandelion — Dandelion++ privacy routing
+  [x] M21.3.3 Network.Dandelion — Dandelion++ privacy routing (3d6753f)
     - Stem phase (single relay chain) → fluff phase (broadcast)
     - Prevents linking messages to origin IP
     - Timer-based stem→fluff transition
   [ ] M21.3.4 codegen/Specs/Dandelion.spec — constant-time routing decision
-  [ ] M21.3.5 Network.Protocol — wire message types for P2P
+  [x] M21.3.5 Network.Protocol — wire message types for P2P (6e417e0)
     - Message types: Handshake, Peer, Message, Ack
     - Binary encoding/decoding + version negotiation
   [ ] M21.3.6 codegen/Specs/NetworkProtocol.spec + csrc/generated/netprotocol.c
@@ -427,13 +431,13 @@ MILESTONE M22: SHELL → GO MIGRATION (v0.5.0)
 Note: Replace 51 shell scripts with static Go binaries compiled in VM.
 Eliminates shell fragility, quoting bugs, platform differences.
 
-[ ] M22.1 Go project scaffold
-  [ ] M22.1.1 tools/go.mod — Go module definition
-  [ ] M22.1.2 tools/pkg/qemu/ — QEMU argument builder
-  [ ] M22.1.3 tools/pkg/disk/ — COW overlay management
-  [ ] M22.1.4 tools/pkg/ninep/ — 9p virtfs helpers
-  [ ] M22.1.5 tools/pkg/netpol/ — network policy parser
-  [ ] M22.1.6 make tools — build all Go binaries in VM
+[x] M22.1 Go project scaffold (32f05a6)
+  [x] M22.1.1 tools/go.mod — Go module definition
+  [x] M22.1.2 tools/pkg/qemu/ — QEMU argument builder
+  [x] M22.1.3 tools/pkg/disk/ — COW overlay management
+  [x] M22.1.4 tools/pkg/ninep/ — 9p virtfs helpers
+  [x] M22.1.5 tools/pkg/netpol/ — network policy parser
+  [x] M22.1.6 make tools — build all Go binaries in VM
 
 [ ] M22.2 Priority 1 — VM orchestration (8 scripts, most complex)
   [ ] M22.2.1 tools/cmd/vm-dev/ — replace vm-dev-run.sh

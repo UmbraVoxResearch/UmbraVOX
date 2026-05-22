@@ -132,6 +132,14 @@ library
       UmbraVox.Crypto.Generated.SHA256
       UmbraVox.Crypto.Generated.SHA512
       UmbraVox.Crypto.Generated.X25519
+      UmbraVox.Crypto.Generated.VRF
+      UmbraVox.Crypto.Generated.PQWrapper
+      UmbraVox.Crypto.Generated.MessageFormat
+      UmbraVox.Crypto.Generated.WireFormat
+      UmbraVox.Crypto.Generated.Ed25519Extended
+      UmbraVox.Crypto.Generated.Dandelion
+      UmbraVox.Crypto.Generated.NetworkProtocol
+      UmbraVox.Crypto.Generated.SessionState
       UmbraVox.Crypto.Generated.FFI.AES256
       UmbraVox.Crypto.Generated.FFI.ChaCha20
       UmbraVox.Crypto.Generated.FFI.HKDF
@@ -142,6 +150,14 @@ library
       UmbraVox.Crypto.Generated.FFI.SHA256
       UmbraVox.Crypto.Generated.FFI.SHA512
       UmbraVox.Crypto.Generated.FFI.X25519
+      UmbraVox.Crypto.Generated.FFI.VRF
+      UmbraVox.Crypto.Generated.FFI.PQWrapper
+      UmbraVox.Crypto.Generated.FFI.MessageFormat
+      UmbraVox.Crypto.Generated.FFI.WireFormat
+      UmbraVox.Crypto.Generated.FFI.Ed25519Extended
+      UmbraVox.Crypto.Generated.FFI.Dandelion
+      UmbraVox.Crypto.Generated.FFI.NetworkProtocol
+      UmbraVox.Crypto.Generated.FFI.SessionState
       -- Network
       UmbraVox.Network.TransportClass
       UmbraVox.Network.Transport
@@ -269,6 +285,14 @@ library
       csrc/generated/sha256.c
       csrc/generated/sha512.c
       csrc/generated/x25519.c
+      csrc/generated/vrf.c
+      csrc/generated/pqwrapper.c
+      csrc/generated/messageformat.c
+      csrc/generated/wireformat.c
+      csrc/generated/ed25519extended.c
+      csrc/generated/dandelion.c
+      csrc/generated/networkprotocol.c
+      csrc/generated/sessionstate.c
   if !flag(wasm) && flag(stubs)
     exposed-modules:
       -- Consensus (stub / deferred)
