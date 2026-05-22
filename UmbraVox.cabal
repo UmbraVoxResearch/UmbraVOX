@@ -457,12 +457,14 @@ test-suite umbravox-test
     Test.Protocol.QRCode
     Test.Network.Noise
     Test.Chat.Session
+    Test.Chat.Wire
     Test.Chat.WireEdge
     Test.Crypto.StealthAddress
     Test.Network.PeerExchange
     Test.Protocol.SafetyNumber
     Test.Protocol.MessageFormat
     Test.Protocol.WireFormat
+    Test.Protocol.RouteToken
     Test.Crypto.PQXDH
     Test.Crypto.Random
     Test.Crypto.VRF

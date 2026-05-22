@@ -7,10 +7,15 @@ module Test.Chat.Session (runTests) where
 
 import Test.Util
 import qualified Data.ByteString as BS
+import Data.Word (Word64)
 import UmbraVox.Chat.Session
     ( ChatSession(..), initChatSession, sendChatMessage, recvChatMessage )
 import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
 import UmbraVox.Crypto.Signal.DoubleRatchet (RatchetState, ratchetInitBob)
+
+-- | Wall-clock stub for tests (no real time needed).
+testWallClock :: Word64
+testWallClock = 1000
 
 runTests :: IO Bool
 runTests = do
@@ -53,13 +58,13 @@ testSendRecvRoundTrip = do
     let g = mkPRNG 100
     (alice, bob) <- mkSessionPair g
     let msg = strToBS "Hello Bob!"
-    sendResult <- sendChatMessage alice testSenderId msg
+    sendResult <- sendChatMessage alice testSenderId msg testWallClock
     case sendResult of
         Left _ -> putStrLn "  FAIL: send/recv round-trip (send error)" >> pure False
         Right (_alice', wire) -> do
             -- Bob decrypts using a ChatSession wrapping his ratchet state
-            let bobSession = ChatSession { csRatchet = bsRatchet bob }
-            recvResult <- recvChatMessage bobSession wire
+            let bobSession = ChatSession { csRatchet = bsRatchet bob, csRouteTokens = Nothing }
+            recvResult <- recvChatMessage bobSession Nothing wire
             case recvResult of
                 Left _  -> putStrLn "  FAIL: send/recv round-trip (recv error)" >> pure False
                 Right Nothing -> do
@@ -75,16 +80,16 @@ testMultipleMessages :: IO Bool
 testMultipleMessages = do
     let g = mkPRNG 200
     (alice0, bob) <- mkSessionPair g
-    let bobSession0 = ChatSession { csRatchet = bsRatchet bob }
+    let bobSession0 = ChatSession { csRatchet = bsRatchet bob, csRouteTokens = Nothing }
         msg1 = strToBS "first"
         msg2 = strToBS "second message here"
         msg3 = strToBS "third"
     -- Message 1
-    send1 <- sendChatMessage alice0 testSenderId msg1
+    send1 <- sendChatMessage alice0 testSenderId msg1 testWallClock
     case send1 of
         Left _ -> putStrLn "  FAIL: multi-message 1 (send error)" >> pure False
         Right (alice1, wire1) -> do
-            r1 <- recvChatMessage bobSession0 wire1
+            r1 <- recvChatMessage bobSession0 Nothing wire1
             case r1 of
                 Left _  -> putStrLn "  FAIL: multi-message 1 (recv error)" >> pure False
                 Right Nothing -> do
@@ -93,11 +98,11 @@ testMultipleMessages = do
                 Right (Just (bobSession1, _, pt1)) -> do
                     ok1 <- assertEq "multi-message 1" msg1 pt1
                     -- Message 2
-                    send2 <- sendChatMessage alice1 testSenderId msg2
+                    send2 <- sendChatMessage alice1 testSenderId msg2 testWallClock
                     case send2 of
                         Left _ -> putStrLn "  FAIL: multi-message 2 (send error)" >> pure False
                         Right (alice2, wire2) -> do
-                            r2 <- recvChatMessage bobSession1 wire2
+                            r2 <- recvChatMessage bobSession1 Nothing wire2
                             case r2 of
                                 Left _  -> putStrLn "  FAIL: multi-message 2 (recv error)" >> pure False
                                 Right Nothing -> do
@@ -106,11 +111,11 @@ testMultipleMessages = do
                                 Right (Just (bobSession2, _, pt2)) -> do
                                     ok2 <- assertEq "multi-message 2" msg2 pt2
                                     -- Message 3
-                                    send3 <- sendChatMessage alice2 testSenderId msg3
+                                    send3 <- sendChatMessage alice2 testSenderId msg3 testWallClock
                                     case send3 of
                                         Left _ -> putStrLn "  FAIL: multi-message 3 (send error)" >> pure False
                                         Right (_, wire3) -> do
-                                            r3 <- recvChatMessage bobSession2 wire3
+                                            r3 <- recvChatMessage bobSession2 Nothing wire3
                                             case r3 of
                                                 Left _  -> putStrLn "  FAIL: multi-message 3 (recv error)" >> pure False
                                                 Right Nothing -> do

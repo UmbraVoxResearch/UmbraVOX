@@ -8,6 +8,9 @@ module UmbraVox.Crypto.Generated.FFI.WireFormat
     , encodeEnvelope
     , decodeEnvelope
     , unwrapEnvelope
+    , deriveEnvelopeKey
+    , encodeEnvelopeAEAD
+    , decodeEnvelopeAEAD
     ) where
 
 import Data.ByteString (ByteString)
@@ -40,3 +43,18 @@ unwrapEnvelope :: Envelope -> IO ByteString
 unwrapEnvelope env = do
     _ <- c_wireformat_link_probe
     pure (Reference.unwrapEnvelope env)
+
+deriveEnvelopeKey :: ByteString -> IO ByteString
+deriveEnvelopeKey transportKey = do
+    _ <- c_wireformat_link_probe
+    pure (Reference.deriveEnvelopeKey transportKey)
+
+encodeEnvelopeAEAD :: ByteString -> Word32 -> Envelope -> IO ByteString
+encodeEnvelopeAEAD key seqNum env = do
+    _ <- c_wireformat_link_probe
+    pure (Reference.encodeEnvelopeAEAD key seqNum env)
+
+decodeEnvelopeAEAD :: ByteString -> Word32 -> ByteString -> IO (Maybe Envelope)
+decodeEnvelopeAEAD key seqNum bs = do
+    _ <- c_wireformat_link_probe
+    pure (Reference.decodeEnvelopeAEAD key seqNum bs)
