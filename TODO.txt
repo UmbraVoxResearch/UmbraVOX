@@ -620,15 +620,15 @@ plugin architecture (ProviderCapBridge + IPC subprocess protocol).
   [x] M25.1.4 app-umbraclaw/Main.hs — executable entry point (2f76bc9)
   [x] M25.1.5 UmbraVox.cabal: umbravox-umbraclaw executable stanza (2f76bc9)
 
-[ ] M25.2 UmbraClaw protocol integration
-  [ ] M25.2.1 UmbraClaw authentication flow
-  [ ] M25.2.2 UmbraClaw message send/receive via bridge IPC
-  [ ] M25.2.3 UmbraClaw contact list sync
-  [ ] M25.2.4 TUI: UmbraClaw chat type indicator + auth dialog
+[x] M25.2 UmbraClaw protocol integration (59a6cc1)
+  [x] M25.2.1 UmbraClaw authentication flow (59a6cc1)
+  [x] M25.2.2 UmbraClaw message send/receive via bridge IPC (59a6cc1)
+  [x] M25.2.3 UmbraClaw contact list sync (59a6cc1)
+  [x] M25.2.4 TUI: UmbraClaw chat type indicator + auth dialog (8f9c345)
 
-[ ] M25.3 Testing
-  [ ] M25.3.1 UmbraClaw IPC smoke test
-  [ ] M25.3.2 UmbraClaw wire-compatibility tests
+[x] M25.3 Testing (75e42d8)
+  [x] M25.3.1 UmbraClaw IPC smoke test (75e42d8)
+  [x] M25.3.2 UmbraClaw wire-compatibility tests (75e42d8)
 
 OUTSIDE MVP (DEFERRED)
 ================================================================================
@@ -674,14 +674,14 @@ MILESTONE M26: DOCUMENTATION OVERHAUL (every release)
 Note: Move stale docs to attic/, maintain doc/ as single source of truth.
 Auto-generate where possible. Update CHANGELOG + TODO with every change.
 
-[ ] M26.1 Documentation audit + attic migration
-  [ ] M26.1.1 Move stale doc/ files to attic/ (01-overview, mvp-plan, persistence-model, assurance-roadmap, etc.)
-  [ ] M26.1.2 Consolidate doc/README.md into top-level README.md (remove dup)
-  [ ] M26.1.3 Update doc/ARCHITECTURE.md for current module structure
-  [ ] M26.1.4 Update doc/QUICKSTART.md for VM-first workflow
+[x] M26.1 Documentation audit + attic migration (fe1ecd5)
+  [x] M26.1.1 Move stale doc/ files to attic/ (fe1ecd5)
+  [x] M26.1.2 Update doc/README.md links + index (fe1ecd5)
+  [x] M26.1.3 Update doc/ARCHITECTURE.md for current module structure (fe1ecd5)
+  [x] M26.1.4 doc/QUICKSTART.md already covers VM-first workflow
 
-[ ] M26.2 Auto-generated documentation
-  [ ] M26.2.1 Haddock generation via make docs (cabal haddock)
+[~] M26.2 Auto-generated documentation
+  [x] M26.2.1 Haddock generation via make docs (cabal haddock) (fe1ecd5)
   [ ] M26.2.2 Module dependency graph via graphmod or standalon
   [ ] M26.2.3 API docs for Chat.API JSON-RPC (auto from source)
   [ ] M26.2.4 Plugin authoring docs auto-extracted from template-bridge/
