@@ -354,7 +354,7 @@ executable fetch-references
 executable umbravox-signal-bridge
   import:           warnings, lang
   main-is:          Main.hs
-  hs-source-dirs:   src/UmbraVox/Bridge/Signal
+  hs-source-dirs:   app-signal-bridge
   build-depends:
     base         >= 4.18  && < 5,
     bytestring   >= 0.11  && < 0.13,
