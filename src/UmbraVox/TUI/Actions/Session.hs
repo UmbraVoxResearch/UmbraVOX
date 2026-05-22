@@ -13,7 +13,7 @@ import qualified Data.ByteString as BS
 import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
 import qualified Data.Map.Strict as Map
 import Data.Time.Clock.POSIX (getPOSIXTime)
-import Data.Word (Word8)
+import Data.Word (Word8, Word64)
 import System.Directory (doesFileExist, canonicalizePath, getHomeDirectory)
 import Data.List (isPrefixOf)
 import UmbraVox.App.RuntimeLog (logEvent)
@@ -94,7 +94,8 @@ sendToSession sId si msg = case siCrypto si of
     RatchetCrypto ref -> do
       withMVar (siSessionLock si) $ \_ -> do
         session <- readIORef ref
-        sendResult <- sendChatMessage session sId msg
+        wallNow <- floor <$> getPOSIXTime :: IO Word64
+        sendResult <- sendChatMessage session sId msg wallNow
         case sendResult of
           Left _ratchetErr -> pure SendUnavailable
           Right (session', wire) -> do
@@ -106,7 +107,7 @@ sendToSession sId si msg = case siCrypto si of
                 case status of
                   Local -> do
                     session2 <- readIORef ref
-                    recvResult <- recvChatMessage session2 wire
+                    recvResult <- recvChatMessage session2 Nothing wire
                     case recvResult of
                         Left _ratchetErr2                    -> pure ()
                         Right (Just (session3, _sid, _pt))   -> writeIORef ref session3
@@ -216,7 +217,7 @@ recvLoopTUI cfg sid peerName t ref lock histRef = go `catch` handler where
                 payload <- anyRecv t len
                 result <- withMVar lock $ \_ -> do
                     session <- readIORef ref
-                    result <- recvChatMessage session payload
+                    result <- recvChatMessage session Nothing payload
                     case result of
                         Left _ratchetErr             -> pure Nothing
                         Right Nothing                -> pure Nothing

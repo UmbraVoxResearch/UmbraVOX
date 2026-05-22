@@ -25,6 +25,8 @@ import Control.Concurrent.MVar (MVar, newEmptyMVar, newMVar, putMVar, takeMVar, 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
+import Data.Time.Clock.POSIX (getPOSIXTime)
+import Data.Word (Word64)
 
 import UmbraVox.Chat.Session (ChatSession, sendChatMessage, recvChatMessage)
 import UmbraVox.Crypto.SHA256 (sha256)
@@ -174,7 +176,8 @@ clientSend client msg = do
         case mSess of
             Nothing   -> fail $ tcName client ++ ": no active session"
             Just sess -> do
-                sendResult <- sendChatMessage sess senderId msg
+                wallNow <- floor <$> getPOSIXTime :: IO Word64
+                sendResult <- sendChatMessage sess senderId msg wallNow
                 case sendResult of
                     Left _ -> fail $ tcName client ++ ": ratchet counter exhausted"
                     Right (sess', wireBytes) -> do
@@ -196,7 +199,7 @@ clientRecv client = do
         case mSess of
             Nothing   -> fail $ tcName client ++ ": no active session"
             Just sess -> do
-                result <- recvChatMessage sess wireBytes
+                result <- recvChatMessage sess Nothing wireBytes
                 case result of
                     Left _                 -> pure Nothing
                     Right Nothing          -> pure Nothing
