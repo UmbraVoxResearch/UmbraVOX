@@ -274,15 +274,15 @@ Note: Items from codebase audit (2026-05-20).
 
 [~] M20.1 Critical architectural fixes
   [~] M20.1.1 Eliminate unsafePerformIO global state (RuntimeLog, Random, Version)
-    Note: Version.hs done (pure constant). RuntimeLog + Random still use unsafePerformIO.
+    Note: Version.hs done (pure constant). RuntimeLog done (cfgLogLock/cfgLogWriterPID in AppConfig). Random still uses unsafePerformIO.
   [x] M20.1.2 Break Network→TUI dependency (Listener.hs imports addSession)
     Note: lcAddSession callback in ListenerCallbacks. TUI wires via RuntimeNetwork.hs.
   [x] M20.1.3 Move Bridge/Signal/Main.hs out of library namespace
     Note: Moved to app-signal-bridge/Main.hs, same pattern as app/Main.hs.
 
 [ ] M20.2 Error handling hardening
-  [ ] M20.2.1 Convert crypto error calls to Either/Maybe (AES, GCM, ChaChaPoly, Poly1305, HKDF)
-    Note: 16 error calls, 5 files, 89+ callers. Needs dedicated pass.
+  [x] M20.2.1 Convert crypto error calls to Either/Maybe (AES, GCM, ChaChaPoly, Poly1305, HKDF)
+    Note: Added *Safe variants (11 functions). Original functions delegate to safe variants — all callers unchanged.
   [x] M20.2.2 Add stub module documentation (comments, not WARNING pragmas)
     Note: 24 stub modules marked with STUB MODULE comment headers.
 
