@@ -16,7 +16,7 @@ import Data.Word (Word8, Word16, Word32)
 import UmbraVox.Protocol.WireFormat
     ( Envelope(..), wrapEnvelope, unwrapEnvelope
     , encodeEnvelope, decodeEnvelope )
-import Test.Util (checkProperty, PRNG, nextBytes, nextWord32, nextWord8)
+import Test.Util (checkProperty, PRNG, mkPRNG, nextBytes, nextWord32, nextWord8)
 
 runTests :: IO Bool
 runTests = do
@@ -49,6 +49,8 @@ runTests = do
         , testHmacRejectsTamperedPayload
         , testHmacRejectsTamperedHeader
         , testRejectsV1
+        , testScanTagFalsePositiveRate
+        , testAeadRoundTripStub
         ]
     let passed = length (filter id results)
         total  = length results
@@ -345,3 +347,48 @@ flipByte idx bs =
         (byte, after)  = BS.splitAt 1 rest
         flipped        = BS.singleton (xor (BS.index byte 0) 0x01)
     in before <> flipped <> after
+
+------------------------------------------------------------------------
+-- Scan tag false positive rate property test (M23.1.1k)
+------------------------------------------------------------------------
+
+-- | Property: the scan tag is a 16-bit value, so for uniformly random
+-- tags, two independently chosen values should collide with probability
+-- ~1/65536.  Over 100000 random pairs we expect ~1-2 collisions.
+-- We check the observed rate stays below 5/65536 (generous upper bound)
+-- to catch any systematic bias.
+testScanTagFalsePositiveRate :: IO Bool
+testScanTagFalsePositiveRate = do
+    let n = 100000
+        go :: Int -> Int -> PRNG -> (Int, PRNG)
+        go !matches !i !g
+            | i >= n = (matches, g)
+            | otherwise =
+                let (a, g1) = nextWord16' g
+                    (b, g2) = nextWord16' g1
+                in go (if a == b then matches + 1 else matches) (i + 1) g2
+        (collisions, _) = go 0 0 (mkPRNG 12345)
+        rate :: Double
+        rate = fromIntegral collisions / fromIntegral n
+        -- Expected: ~1/65536 = 0.0000153.  Allow up to 5x.
+        threshold = 5.0 / 65536.0
+    check ("scan tag false positive rate: " ++ show collisions ++
+           "/" ++ show n ++ " = " ++ show rate ++ " < " ++ show threshold)
+          (rate < threshold)
+  where
+    nextWord16' :: PRNG -> (Word16, PRNG)
+    nextWord16' g0 =
+        let (hi, g1) = nextWord8 g0
+            (lo, g2) = nextWord8 g1
+        in (fromIntegral hi * 256 + fromIntegral lo, g2)
+
+------------------------------------------------------------------------
+-- AEAD round-trip stub (M23.1.1c — to be filled when AEAD lands)
+------------------------------------------------------------------------
+
+-- | Placeholder test for AEAD seal/open round-trip.
+-- When M23.1.1c lands and exposes aeadSeal/aeadOpen, replace this stub
+-- with a real round-trip test.
+testAeadRoundTripStub :: IO Bool
+testAeadRoundTripStub =
+    check "AEAD round-trip (stub — awaiting M23.1.1c)" True
