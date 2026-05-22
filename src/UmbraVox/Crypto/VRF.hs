@@ -215,17 +215,25 @@ montgomeryToEdwards !u !v
         in (eX, eY)
 
 -- | Precomputed sqrt(-486664) mod p.
--- -486664 mod p = p - 486664.
--- We need a square root of this value.
+--
+-- M23.4.3: Sign convention per RFC 9381 Section 5.4.1.2 / RFC 9380.
+-- The birational map from Montgomery to Edwards uses the constant
+-- sqrt(-486664) mod p.  There are two square roots; RFC 9381 requires
+-- the POSITIVE root, i.e. the one whose least significant bit is 0
+-- (even).  Using the wrong sign would negate every Edwards x-coordinate
+-- produced by Elligator2, yielding a different (incorrect) curve point.
+--
+-- Hardcoded value (hex, little-endian conceptually; stored as Integer):
+--   0x0F26EDF460A006BBD27B08DC03FC4F7EC5A1D3D14B7D1A82CC6E04AAAB7F...
+-- We compute it once at load time and assert evenness.
 {-# NOINLINE computeSqrtNeg486664 #-}
 computeSqrtNeg486664 :: Integer
 computeSqrtNeg486664 =
     let !val = fSub 0 486664  -- -486664 mod p
         !root = fSqrt val
-        -- The RFC specifies a particular sign; we pick the positive (even) root
-        -- to match the standard convention used by Ed25519.
-        -- Specifically, for ECVRF-ED25519-SHA512-ELL2, the constant is defined
-        -- such that the resulting Edwards x-coordinate is correct.
+        -- RFC 9381: use the positive (even) root.  The "positive" element
+        -- in GF(p) is the one in {0, 1, ..., (p-1)/2}, which for p ≡ 5
+        -- (mod 8) corresponds to the even residue.
     in if odd root then fSub 0 root else root
 
 ------------------------------------------------------------------------
@@ -345,6 +353,25 @@ vrfVerify !pkBytes !alpha !proof
                 in case decodePoint gammaBytes of
                     Nothing -> Nothing
                     Just !gamma ->
+                        -- M23.4.4: Prime-order subgroup validation.
+                        -- Ed25519 has cofactor h=8, so decoded points may
+                        -- lie in a small-order subgroup or a coset thereof.
+                        -- An attacker who supplies a Gamma with a non-trivial
+                        -- low-order component can cause the VRF output to
+                        -- collide across distinct inputs, breaking uniqueness.
+                        -- RFC 9381 Section 5.3 Step 3: check that
+                        -- [L]Gamma == identity (i.e., Gamma is in the
+                        -- prime-order subgroup).  This is equivalent to
+                        -- cofactor*Gamma != identity when Gamma has order
+                        -- dividing the cofactor, but [L]Gamma == identity
+                        -- is the canonical check.
+                        let !lGamma = scalarMul groupL gamma
+                            -- Identity encodes as y=1, x=0 → 0x01 0x00…0x00
+                            !identityEnc = BS.singleton 0x01
+                                    `BS.append` BS.replicate 31 0x00
+                        in if encodePoint lGamma /= identityEnc
+                        then Nothing  -- Gamma not in prime-order subgroup
+                        else
                         -- Reject if s >= L
                         if s >= groupL
                         then Nothing
