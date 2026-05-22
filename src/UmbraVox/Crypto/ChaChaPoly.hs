@@ -31,6 +31,8 @@
 module UmbraVox.Crypto.ChaChaPoly
     ( chachaPolyEncrypt
     , chachaPolyDecrypt
+    , chachaPolyEncryptSafe
+    , chachaPolyDecryptSafe
     ) where
 
 import Data.Bits (shiftR, (.&.))
@@ -60,16 +62,18 @@ import UmbraVox.Crypto.Random (chacha20Block, chacha20Encrypt)
 -- * @nonce@ — 12 bytes (unique per (key, message) pair)
 -- * @aad@   — arbitrary length (may be empty)
 -- * @plaintext@ — arbitrary length
-chachaPolyEncrypt
+-- | Encrypt (safe variant).
+-- Returns @Left msg@ on invalid input instead of calling 'error'.
+chachaPolyEncryptSafe
     :: ByteString   -- ^ key (32 bytes)
     -> ByteString   -- ^ nonce (12 bytes)
     -> ByteString   -- ^ associated data (aad)
     -> ByteString   -- ^ plaintext
-    -> (ByteString, ByteString)  -- ^ (ciphertext, 16-byte tag)
-chachaPolyEncrypt !key !nonce !aad !plaintext
-    | BS.length key   /= 32 = error "chachaPolyEncrypt: key must be 32 bytes"
-    | BS.length nonce /= 12 = error "chachaPolyEncrypt: nonce must be 12 bytes"
-    | otherwise =
+    -> Either String (ByteString, ByteString)  -- ^ (ciphertext, 16-byte tag)
+chachaPolyEncryptSafe !key !nonce !aad !plaintext
+    | BS.length key   /= 32 = Left "chachaPolyEncrypt: key must be 32 bytes"
+    | BS.length nonce /= 12 = Left "chachaPolyEncrypt: nonce must be 12 bytes"
+    | otherwise = Right $
         let -- Step 1 (RFC 8439 §2.6): Poly1305 one-time key from block 0
             !otk        = BS.take 32 (chacha20Block key nonce 0)
 
@@ -83,6 +87,17 @@ chachaPolyEncrypt !key !nonce !aad !plaintext
             !tag        = poly1305 otk polyMsg
         in (ciphertext, tag)
 
+chachaPolyEncrypt
+    :: ByteString   -- ^ key (32 bytes)
+    -> ByteString   -- ^ nonce (12 bytes)
+    -> ByteString   -- ^ associated data (aad)
+    -> ByteString   -- ^ plaintext
+    -> (ByteString, ByteString)  -- ^ (ciphertext, 16-byte tag)
+chachaPolyEncrypt !key !nonce !aad !plaintext =
+    case chachaPolyEncryptSafe key nonce aad plaintext of
+        Right result -> result
+        Left msg     -> error msg
+
 -- | Decrypt @ciphertext@ and verify @tag@; returns @Just plaintext@ on
 -- success, @Nothing@ on authentication failure.
 --
@@ -90,18 +105,21 @@ chachaPolyEncrypt !key !nonce !aad !plaintext
 -- decryption takes place.
 --
 -- Parameters identical to 'chachaPolyEncrypt'.
-chachaPolyDecrypt
+-- | Decrypt (safe variant).
+-- Returns @Left msg@ on invalid key/nonce, @Right Nothing@ on auth failure,
+-- @Right (Just plaintext)@ on success.
+chachaPolyDecryptSafe
     :: ByteString          -- ^ key (32 bytes)
     -> ByteString          -- ^ nonce (12 bytes)
     -> ByteString          -- ^ associated data (aad)
     -> ByteString          -- ^ ciphertext
     -> ByteString          -- ^ tag (16 bytes)
-    -> Maybe ByteString    -- ^ plaintext, or Nothing on auth failure
-chachaPolyDecrypt !key !nonce !aad !ciphertext !tag
-    | BS.length key      /= 32 = error "chachaPolyDecrypt: key must be 32 bytes"
-    | BS.length nonce    /= 12 = error "chachaPolyDecrypt: nonce must be 12 bytes"
-    | BS.length tag      /= 16 = Nothing
-    | otherwise =
+    -> Either String (Maybe ByteString)
+chachaPolyDecryptSafe !key !nonce !aad !ciphertext !tag
+    | BS.length key      /= 32 = Left "chachaPolyDecrypt: key must be 32 bytes"
+    | BS.length nonce    /= 12 = Left "chachaPolyDecrypt: nonce must be 12 bytes"
+    | BS.length tag      /= 16 = Right Nothing
+    | otherwise = Right $
         let -- Reproduce the one-time key
             !otk         = BS.take 32 (chacha20Block key nonce 0)
 
@@ -113,6 +131,18 @@ chachaPolyDecrypt !key !nonce !aad !ciphertext !tag
         in if constantEq tag expectedTag
            then Just (chacha20Encrypt key nonce 1 ciphertext)
            else Nothing
+
+chachaPolyDecrypt
+    :: ByteString          -- ^ key (32 bytes)
+    -> ByteString          -- ^ nonce (12 bytes)
+    -> ByteString          -- ^ associated data (aad)
+    -> ByteString          -- ^ ciphertext
+    -> ByteString          -- ^ tag (16 bytes)
+    -> Maybe ByteString    -- ^ plaintext, or Nothing on auth failure
+chachaPolyDecrypt !key !nonce !aad !ciphertext !tag =
+    case chachaPolyDecryptSafe key nonce aad ciphertext tag of
+        Right result -> result
+        Left msg     -> error msg
 
 ------------------------------------------------------------------------
 -- RFC 8439 §2.8.1 — Poly1305 input construction

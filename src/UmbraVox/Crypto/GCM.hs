@@ -7,6 +7,8 @@
 module UmbraVox.Crypto.GCM
     ( gcmEncrypt
     , gcmDecrypt
+    , gcmEncryptSafe
+    , gcmDecryptSafe
     ) where
 
 import Data.Bits ((.&.), (.|.), shiftL, shiftR, xor)
@@ -151,16 +153,14 @@ gctrWithKey key icb plaintext = BS.concat (zipWith enc counters blocks)
 -- SP 800-38D Section 7.1 — GCM-AE
 ------------------------------------------------------------------------
 
--- | AES-256-GCM authenticated encryption.
---
--- @gcmEncrypt key nonce aad plaintext@ returns @(ciphertext, tag)@.
--- Key: 32 bytes. Nonce: 12 bytes. Tag: 16 bytes.
-gcmEncrypt :: ByteString -> ByteString -> ByteString -> ByteString
-           -> (ByteString, ByteString)
-gcmEncrypt !key !nonce !aad !plaintext
-    | BS.length key /= 32   = error "AES-256-GCM: key must be 32 bytes"
-    | BS.length nonce /= 12 = error "AES-256-GCM: nonce must be 12 bytes"
-    | otherwise =
+-- | AES-256-GCM authenticated encryption (safe variant).
+-- Returns @Left msg@ on invalid input instead of calling 'error'.
+gcmEncryptSafe :: ByteString -> ByteString -> ByteString -> ByteString
+               -> Either String (ByteString, ByteString)
+gcmEncryptSafe !key !nonce !aad !plaintext
+    | BS.length key /= 32   = Left "AES-256-GCM: key must be 32 bytes"
+    | BS.length nonce /= 12 = Left "AES-256-GCM: nonce must be 12 bytes"
+    | otherwise = Right $
     let !h  = bsToGF (aesEncrypt key (BS.replicate 16 0))
         !j0 = nonce <> BS.pack [0, 0, 0, 1]
         !ct = gctrWithKey key (incr32 j0) plaintext
@@ -171,19 +171,30 @@ gcmEncrypt !key !nonce !aad !plaintext
         !tag = BS.take 16 (xorBS (gfToBS s) (aesEncrypt key j0))
     in (ct, tag)
 
+-- | AES-256-GCM authenticated encryption.
+--
+-- @gcmEncrypt key nonce aad plaintext@ returns @(ciphertext, tag)@.
+-- Key: 32 bytes. Nonce: 12 bytes. Tag: 16 bytes.
+gcmEncrypt :: ByteString -> ByteString -> ByteString -> ByteString
+           -> (ByteString, ByteString)
+gcmEncrypt !key !nonce !aad !plaintext = case gcmEncryptSafe key nonce aad plaintext of
+    Right result -> result
+    Left msg     -> error msg
+
 ------------------------------------------------------------------------
 -- SP 800-38D Section 7.2 — GCM-AD
 ------------------------------------------------------------------------
 
--- | AES-256-GCM authenticated decryption.
--- Returns @Just plaintext@ if tag verifies, @Nothing@ otherwise.
-gcmDecrypt :: ByteString -> ByteString -> ByteString -> ByteString
-           -> ByteString -> Maybe ByteString
-gcmDecrypt !key !nonce !aad !ct !tag
-    | BS.length key /= 32   = error "AES-256-GCM: key must be 32 bytes"
-    | BS.length nonce /= 12 = error "AES-256-GCM: nonce must be 12 bytes"
-    | BS.length tag /= 16   = Nothing
-    | otherwise =
+-- | AES-256-GCM authenticated decryption (safe variant).
+-- Returns @Left msg@ on invalid key/nonce, @Right Nothing@ on auth failure,
+-- @Right (Just plaintext)@ on success.
+gcmDecryptSafe :: ByteString -> ByteString -> ByteString -> ByteString
+               -> ByteString -> Either String (Maybe ByteString)
+gcmDecryptSafe !key !nonce !aad !ct !tag
+    | BS.length key /= 32   = Left "AES-256-GCM: key must be 32 bytes"
+    | BS.length nonce /= 12 = Left "AES-256-GCM: nonce must be 12 bytes"
+    | BS.length tag /= 16   = Right Nothing
+    | otherwise = Right $
     let !h  = bsToGF (aesEncrypt key (BS.replicate 16 0))
         !j0 = nonce <> BS.pack [0, 0, 0, 1]
         !lenA = fromIntegral (BS.length aad) * 8 :: Word64
@@ -194,4 +205,12 @@ gcmDecrypt !key !nonce !aad !ct !tag
     in if constantEq tag computedTag
         then Just (gctrWithKey key (incr32 j0) ct)
         else Nothing
+
+-- | AES-256-GCM authenticated decryption.
+-- Returns @Just plaintext@ if tag verifies, @Nothing@ otherwise.
+gcmDecrypt :: ByteString -> ByteString -> ByteString -> ByteString
+           -> ByteString -> Maybe ByteString
+gcmDecrypt !key !nonce !aad !ct !tag = case gcmDecryptSafe key nonce aad ct tag of
+    Right result -> result
+    Left msg     -> error msg
 

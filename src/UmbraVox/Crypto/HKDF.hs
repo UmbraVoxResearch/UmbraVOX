@@ -7,9 +7,11 @@
 module UmbraVox.Crypto.HKDF
     ( hkdfExtract
     , hkdfExpand
+    , hkdfExpandSafe
     , hkdf
     , hkdfSHA256Extract
     , hkdfSHA256Expand
+    , hkdfSHA256ExpandSafe
     , hkdfSHA256
     ) where
 
@@ -43,16 +45,13 @@ hkdfExtract salt ikm =
 -- where N = ceil(L/HashLen)
 ------------------------------------------------------------------------
 
--- | HKDF-Expand with HMAC-SHA-512.
--- Expands pseudorandom key to the desired output length.
-hkdfExpand :: ByteString  -- ^ Pseudorandom key (from Extract)
-           -> ByteString  -- ^ Context/info string
-           -> Int         -- ^ Output length in bytes (max 255 * 64 = 16320)
-           -> ByteString  -- ^ Output keying material
-hkdfExpand prk info len
-    | len <= 0  = BS.empty
-    | len > 255 * 64 = error "HKDF-Expand: output length exceeds 255*HashLen"
-    | otherwise = BS.take len (BS.concat (go BS.empty 1))
+-- | HKDF-Expand with HMAC-SHA-512 (safe variant).
+-- Returns @Left msg@ on invalid input instead of calling 'error'.
+hkdfExpandSafe :: ByteString -> ByteString -> Int -> Either String ByteString
+hkdfExpandSafe prk info len
+    | len <= 0  = Right BS.empty
+    | len > 255 * 64 = Left "HKDF-Expand: output length exceeds 255*HashLen"
+    | otherwise = Right $ BS.take len (BS.concat (go BS.empty 1))
   where
     go :: ByteString -> Int -> [ByteString]
     go !prev !counter
@@ -61,6 +60,16 @@ hkdfExpand prk info len
             let !t = hmacSHA512 prk (prev <> info <> BS.singleton (fromIntegral counter))
             in t : go t (counter + 1)
     !n = (len + 63) `div` 64
+
+-- | HKDF-Expand with HMAC-SHA-512.
+-- Expands pseudorandom key to the desired output length.
+hkdfExpand :: ByteString  -- ^ Pseudorandom key (from Extract)
+           -> ByteString  -- ^ Context/info string
+           -> Int         -- ^ Output length in bytes (max 255 * 64 = 16320)
+           -> ByteString  -- ^ Output keying material
+hkdfExpand prk info len = case hkdfExpandSafe prk info len of
+    Right result -> result
+    Left msg     -> error msg
 
 -- | Combined HKDF Extract-then-Expand with HMAC-SHA-512.
 hkdf :: ByteString  -- ^ Salt
@@ -82,12 +91,13 @@ hkdfSHA256Extract salt ikm =
     let !salt' = if BS.null salt then BS.replicate 32 0 else salt
     in hmacSHA256 salt' ikm
 
--- | HKDF-Expand with HMAC-SHA-256.
-hkdfSHA256Expand :: ByteString -> ByteString -> Int -> ByteString
-hkdfSHA256Expand prk info len
-    | len <= 0  = BS.empty
-    | len > 255 * 32 = error "HKDF-SHA256-Expand: output length exceeds 255*HashLen"
-    | otherwise = BS.take len (BS.concat (go BS.empty 1))
+-- | HKDF-Expand with HMAC-SHA-256 (safe variant).
+-- Returns @Left msg@ on invalid input instead of calling 'error'.
+hkdfSHA256ExpandSafe :: ByteString -> ByteString -> Int -> Either String ByteString
+hkdfSHA256ExpandSafe prk info len
+    | len <= 0  = Right BS.empty
+    | len > 255 * 32 = Left "HKDF-SHA256-Expand: output length exceeds 255*HashLen"
+    | otherwise = Right $ BS.take len (BS.concat (go BS.empty 1))
   where
     go :: ByteString -> Int -> [ByteString]
     go !prev !counter
@@ -96,6 +106,12 @@ hkdfSHA256Expand prk info len
             let !t = hmacSHA256 prk (prev <> info <> BS.singleton (fromIntegral counter))
             in t : go t (counter + 1)
     !n = (len + 31) `div` 32
+
+-- | HKDF-Expand with HMAC-SHA-256.
+hkdfSHA256Expand :: ByteString -> ByteString -> Int -> ByteString
+hkdfSHA256Expand prk info len = case hkdfSHA256ExpandSafe prk info len of
+    Right result -> result
+    Left msg     -> error msg
 
 -- | Combined HKDF Extract-then-Expand with HMAC-SHA-256.
 hkdfSHA256 :: ByteString -> ByteString -> ByteString -> Int -> ByteString

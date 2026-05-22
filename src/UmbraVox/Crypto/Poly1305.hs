@@ -7,6 +7,7 @@
 -- polynomial arithmetic, and GHASH multiplication.
 module UmbraVox.Crypto.Poly1305
   ( poly1305
+  , poly1305Safe
   ) where
 
 import Data.Bits ((.&.), (.|.), shiftL, shiftR)
@@ -26,6 +27,18 @@ p = (1 `shiftL` 130) - 5
 -- RFC 8439 Section 2.5 -- Poly1305 MAC
 ------------------------------------------------------------------------
 
+-- | Compute a 16-byte Poly1305 tag (safe variant).
+-- Returns @Left msg@ on invalid input instead of calling 'error'.
+poly1305Safe :: ByteString -> ByteString -> Either String ByteString
+poly1305Safe !key !msg
+    | BS.length key /= 32 = Left "poly1305: key must be 32 bytes"
+    | otherwise =
+        let !r = clampR (leToInteger (BS.take 16 key))
+            !s = leToInteger (BS.drop 16 key)
+            !acc = processBlocks r 0 msg
+            !tag = (acc + s) .&. ((1 `shiftL` 128) - 1)
+        in Right (integerToLE 16 tag)
+
 -- | Compute a 16-byte Poly1305 tag.
 --
 -- @poly1305 key message@
@@ -34,14 +47,9 @@ p = (1 `shiftL` 130) - 5
 -- * @message@ -- arbitrary length
 -- * result    -- 16-byte authentication tag
 poly1305 :: ByteString -> ByteString -> ByteString
-poly1305 !key !msg
-    | BS.length key /= 32 = error "poly1305: key must be 32 bytes"
-    | otherwise =
-        let !r = clampR (leToInteger (BS.take 16 key))
-            !s = leToInteger (BS.drop 16 key)
-            !acc = processBlocks r 0 msg
-            !tag = (acc + s) .&. ((1 `shiftL` 128) - 1)
-        in integerToLE 16 tag
+poly1305 !key !msg = case poly1305Safe key msg of
+    Right result -> result
+    Left errMsg  -> error errMsg
 
 ------------------------------------------------------------------------
 -- RFC 8439 Section 2.5.1 -- Clamping

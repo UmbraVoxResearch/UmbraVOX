@@ -9,6 +9,9 @@ module UmbraVox.Crypto.AES
     ( aesEncrypt
     , aesDecrypt
     , aesExpandKey
+    , aesEncryptSafe
+    , aesDecryptSafe
+    , aesExpandKeySafe
     , AESKey
     ) where
 
@@ -33,9 +36,13 @@ newtype AESKey = AESKey (Array Int Word32)
 
 -- | Expand a 32-byte (256-bit) key into the AES-256 key schedule.
 aesExpandKey :: ByteString -> AESKey
-aesExpandKey !key
-    | BS.length key /= 32 = error "AES-256 requires exactly 32-byte key"
-    | otherwise = AESKey w
+aesExpandKey !key = case aesExpandKeySafe key of
+    Right result -> result
+    Left msg     -> error msg
+
+-- | Internal: expand key without length check (precondition: key is 32 bytes).
+aesExpandKeyUnchecked :: ByteString -> AESKey
+aesExpandKeyUnchecked !key = AESKey w
   where
     nk = 8   -- AES-256: 8 words in the key
     nr = 14  -- AES-256: 14 rounds
@@ -283,26 +290,43 @@ getWord32 !bs !i =
     (fromIntegral (BS.index bs (i + 2)) `shiftL` 8) .|.
     fromIntegral (BS.index bs (i + 3))
 
+-- | Expand a 32-byte key into the AES-256 key schedule (safe variant).
+-- Returns @Left msg@ on invalid input instead of calling 'error'.
+aesExpandKeySafe :: ByteString -> Either String AESKey
+aesExpandKeySafe !key
+    | BS.length key /= 32 = Left "AES-256 requires exactly 32-byte key"
+    | otherwise = Right (aesExpandKeyUnchecked key)
+
+-- | AES-256 block encryption (safe variant).
+-- Returns @Left msg@ on invalid input instead of calling 'error'.
+aesEncryptSafe :: ByteString -> ByteString -> Either String ByteString
+aesEncryptSafe !key !plaintext
+    | BS.length key /= 32       = Left "AES-256: key must be 32 bytes"
+    | BS.length plaintext /= 16 = Left "AES-256: plaintext must be 16 bytes"
+    | otherwise = Right (stateToBS (cipher (aesExpandKeyUnchecked key) (stateFromBS plaintext)))
+
+-- | AES-256 block decryption (safe variant).
+-- Returns @Left msg@ on invalid input instead of calling 'error'.
+aesDecryptSafe :: ByteString -> ByteString -> Either String ByteString
+aesDecryptSafe !key !ciphertext
+    | BS.length key /= 32        = Left "AES-256: key must be 32 bytes"
+    | BS.length ciphertext /= 16 = Left "AES-256: ciphertext must be 16 bytes"
+    | otherwise = Right (stateToBS (invCipher (aesExpandKeyUnchecked key) (stateFromBS ciphertext)))
+
 -- | AES-256 block encryption.
 -- Key: 32 bytes. Plaintext: 16 bytes. Returns 16-byte ciphertext.
 aesEncrypt :: ByteString  -- ^ 32-byte key
            -> ByteString  -- ^ 16-byte plaintext block
            -> ByteString  -- ^ 16-byte ciphertext block
-aesEncrypt !key !plaintext
-    | BS.length key /= 32       = error "AES-256: key must be 32 bytes"
-    | BS.length plaintext /= 16 = error "AES-256: plaintext must be 16 bytes"
-    | otherwise = stateToBS (cipher expandedKey (stateFromBS plaintext))
-  where
-    !expandedKey = aesExpandKey key
+aesEncrypt !key !plaintext = case aesEncryptSafe key plaintext of
+    Right result -> result
+    Left msg     -> error msg
 
 -- | AES-256 block decryption.
 -- Key: 32 bytes. Ciphertext: 16 bytes. Returns 16-byte plaintext.
 aesDecrypt :: ByteString  -- ^ 32-byte key
            -> ByteString  -- ^ 16-byte ciphertext block
            -> ByteString  -- ^ 16-byte plaintext block
-aesDecrypt !key !ciphertext
-    | BS.length key /= 32        = error "AES-256: key must be 32 bytes"
-    | BS.length ciphertext /= 16 = error "AES-256: ciphertext must be 16 bytes"
-    | otherwise = stateToBS (invCipher expandedKey (stateFromBS ciphertext))
-  where
-    !expandedKey = aesExpandKey key
+aesDecrypt !key !ciphertext = case aesDecryptSafe key ciphertext of
+    Right result -> result
+    Left msg     -> error msg
