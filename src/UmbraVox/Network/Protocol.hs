@@ -12,6 +12,10 @@ module UmbraVox.Network.Protocol
   , PeerPayload(..)
   , encode
   , decode
+    -- * Application-layer message type prefix (M24.4.4)
+  , AppMessageType(..)
+  , appMessageTypeByte
+  , parseAppMessageType
   ) where
 
 import Data.Bits (shiftL, shiftR, (.&.), (.|.))
@@ -19,6 +23,27 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Char (chr, ord)
 import Data.Word (Word8, Word16, Word32)
+
+-- | Application-layer message type prefix for Noise payloads.
+--
+-- DHT messages need to be distinguishable from chat messages within the
+-- encrypted Noise channel.  The first byte of each decrypted payload
+-- carries this tag so the receiver can dispatch to the correct handler.
+data AppMessageType
+    = AppChat     -- ^ 0x01: Chat/session message
+    | AppDHT      -- ^ 0x02: DHT RPC message
+    deriving stock (Show, Eq)
+
+-- | Encode an 'AppMessageType' as its wire byte.
+appMessageTypeByte :: AppMessageType -> Word8
+appMessageTypeByte AppChat = 0x01
+appMessageTypeByte AppDHT  = 0x02
+
+-- | Parse a wire byte into an 'AppMessageType', if valid.
+parseAppMessageType :: Word8 -> Maybe AppMessageType
+parseAppMessageType 0x01 = Just AppChat
+parseAppMessageType 0x02 = Just AppDHT
+parseAppMessageType _    = Nothing
 
 -- | P2P protocol message types.
 data P2PMessage
