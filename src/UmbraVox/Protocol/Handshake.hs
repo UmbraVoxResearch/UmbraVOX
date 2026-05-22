@@ -9,7 +9,7 @@ module UmbraVox.Protocol.Handshake
 
 import qualified Data.ByteString as BS
 import Data.Bits (shiftL, shiftR, (.&.))
-import Data.Word (Word32)
+import Data.Word (Word8, Word32)
 import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (formatTime, defaultTimeLocale)
 import Control.Monad (unless)
@@ -116,6 +116,13 @@ deserializeBundle bs
                , pqpkbPQKeySignature  = bsSlice pqSigOff 64 bs
                , pqpkbOneTimePreKey   = decOpk rest }
 
+-- Maximum receive sizes (guard against allocation-bomb attacks) -----------
+maxBundleSize :: Int
+maxBundleSize = 2048  -- ML-KEM bundle is ~1200 bytes
+
+maxInitialMessageSize :: Int
+maxInitialMessageSize = 2048
+
 -- PQXDH Handshake ---------------------------------------------------------
 handshakeInitiator :: AnyTransport -> IdentityKey -> IO ChatSession
 handshakeInitiator t aliceIK = do
@@ -154,10 +161,15 @@ recvBundle t = do
     case getW32BESafe lenBs of
         Nothing -> fail "PQXDH: incomplete length header (connection closed)"
         Just len -> do
-            payload <- anyRecv t (fromIntegral len)
-            case deserializeBundle payload of
-                Nothing     -> fail "PQXDH: malformed prekey bundle"
-                Just bundle -> pure bundle
+            let !n = fromIntegral len :: Int
+            if n > maxBundleSize
+                then fail $ "PQXDH: bundle size " ++ show n
+                         ++ " exceeds limit " ++ show maxBundleSize
+                else do
+                    payload <- anyRecv t n
+                    case deserializeBundle payload of
+                        Nothing     -> fail "PQXDH: malformed prekey bundle"
+                        Just bundle -> pure bundle
 
 recvInitialMessage :: AnyTransport -> IO (BS.ByteString, BS.ByteString, MLKEMCiphertext)
 recvInitialMessage t = do
@@ -165,10 +177,15 @@ recvInitialMessage t = do
     case getW32BESafe lenBs of
         Nothing -> fail "PQXDH: incomplete length header (connection closed)"
         Just len -> do
-            payload <- anyRecv t (fromIntegral len)
-            case getW32BESafe (bsSlice 64 4 payload) of
-                Nothing -> fail "PQXDH: incomplete initial message payload"
-                Just ctLen -> do
-                    let !ct = fromIntegral ctLen :: Int
-                    pure (bsSlice 0 32 payload, bsSlice 32 32 payload,
-                          MLKEMCiphertext (bsSlice 68 ct payload))
+            let !n = fromIntegral len :: Int
+            if n > maxInitialMessageSize
+                then fail $ "PQXDH: initial message size " ++ show n
+                         ++ " exceeds limit " ++ show maxInitialMessageSize
+                else do
+                    payload <- anyRecv t n
+                    case getW32BESafe (bsSlice 64 4 payload) of
+                        Nothing -> fail "PQXDH: incomplete initial message payload"
+                        Just ctLen -> do
+                            let !ct = fromIntegral ctLen :: Int
+                            pure (bsSlice 0 32 payload, bsSlice 32 32 payload,
+                                  MLKEMCiphertext (bsSlice 68 ct payload))
