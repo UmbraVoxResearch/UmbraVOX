@@ -185,6 +185,8 @@ library
       UmbraVox.Network.PeerExchange
       UmbraVox.Network.Presence
       UmbraVox.Network.Discovery
+      UmbraVox.Network.DHT.Types
+      UmbraVox.Network.DHT.RoutingTable
       UmbraVox.Network.Listener
       -- App / Config
       UmbraVox.App.Config
