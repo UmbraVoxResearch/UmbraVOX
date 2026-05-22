@@ -105,7 +105,8 @@ routeMessage ds msg
                     else do
                         mPeer <- readIORef (dsStemPeer ds)
                         case mPeer of
-                            Nothing   -> return DropMessage
+                            -- M23.2.7: fall back to fluff instead of dropping
+                            Nothing   -> return (FluffBroadcast msg)
                             Just peer -> return (StemForward peer msg)
 
 ------------------------------------------------------------------------
