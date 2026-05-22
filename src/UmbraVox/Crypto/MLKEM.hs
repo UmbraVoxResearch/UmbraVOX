@@ -34,7 +34,7 @@ import Data.Array.ST (STUArray, newListArray, readArray, writeArray, freeze)
 import Data.Bits ((.&.), (.|.), shiftL, shiftR, testBit)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
-import Data.Int (Int16)
+import Data.Int (Int16, Int64)
 import Data.List (foldl')
 import Data.Word (Word8)
 
@@ -131,6 +131,13 @@ powModInt base' expo m
     | otherwise = (base' * powModInt base' (expo - 1) m) `mod` m
 
 -- | Forward NTT (Algorithm 9 in FIPS 203) using mutable array.
+--
+-- M23.4.5: Overflow analysis — the butterfly computes z * f[j+len]
+-- where z ∈ [0, q-1] and f[j+len] is reduced mod q each layer, so
+-- the maximum intermediate product is (q-1)^2 = 3328^2 ≈ 1.1e7,
+-- well within 32-bit Int range (max ≈ 2.1e9).  The subsequent
+-- addition/subtraction of two mod-q values stays below 2*q < 7000.
+-- No widening is needed here, but each layer reduces before the next.
 ntt :: Poly -> Poly
 ntt (Poly f0) = Poly result
   where
@@ -168,6 +175,10 @@ ntt (Poly f0) = Poly result
             outerLoop arr (k + 1) len (start + 2 * len)
 
 -- | Inverse NTT (Algorithm 10 in FIPS 203) using mutable array.
+--
+-- M23.4.5: Overflow analysis — same as forward NTT; butterfly products
+-- are at most (q-1)^2 ≈ 1.1e7.  The final n^{-1} multiply is also
+-- bounded by (q-1)^2 since nInv < q.  Safe on 32-bit Int.
 invNtt :: Poly -> Poly
 invNtt (Poly f0) = Poly result
   where
@@ -212,6 +223,21 @@ invNtt (Poly f0) = Poly result
 
 -- | Pointwise multiplication in NTT domain.
 -- Pairs of degree-1 polynomial multiplications (base-case multiply).
+--
+-- M23.4.5: Overflow guard — intermediate products a_i * b_j * gamma
+-- can reach up to (q-1)^2 * (q-1) ≈ 3328^3 ≈ 3.7e10, which exceeds
+-- the 32-bit Int range on platforms where Int is 32 bits.  We widen
+-- all coefficient operands to Int64 before multiplying, then reduce
+-- mod q before converting back.  This is safe because
+-- max(Int64) ≈ 9.2e18 >> 3328^3.
+--
+-- M23.4.6: Zeta indexing — FIPS 203 Algorithm 11 (BaseCaseMultiply)
+-- uses zeta_{2*BitRev7(i)+1} for the i-th pair.  Our zetaTable stores
+-- 17^{BitRev7(k)} at index k, so zetaTable[64+i] = 17^{BitRev7(64+i)}.
+-- For i in [0..63], BitRev7(64+i) = 2*BitRev7(i)+1 (the high bit of
+-- the 7-bit index is set), which is exactly the zeta index required
+-- by FIPS 203.  The negated zeta for the second sub-pair is computed
+-- as (q - gamma1) mod q, matching the -zeta in the spec.
 polyBaseMul :: Poly -> Poly -> Poly
 polyBaseMul (Poly a) (Poly b) =
     Poly (listArray (0, _N - 1) (concatMap mulPair [0..63]))
@@ -219,20 +245,23 @@ polyBaseMul (Poly a) (Poly b) =
     mulPair :: Int -> [Int16]
     mulPair i =
         let idx = 4 * i
-            a0 = fromIntegral (a ! idx) :: Int
-            a1 = fromIntegral (a ! (idx + 1)) :: Int
-            b0 = fromIntegral (b ! idx) :: Int
-            b1 = fromIntegral (b ! (idx + 1)) :: Int
-            gamma1 = zetaTable ! (64 + i)
-            c0 = (a0 * b0 + a1 * b1 * gamma1) `mod` _Q
-            c1 = (a0 * b1 + a1 * b0) `mod` _Q
-            a2 = fromIntegral (a ! (idx + 2)) :: Int
-            a3 = fromIntegral (a ! (idx + 3)) :: Int
-            b2 = fromIntegral (b ! (idx + 2)) :: Int
-            b3 = fromIntegral (b ! (idx + 3)) :: Int
-            gamma2 = (_Q - gamma1) `mod` _Q
-            c2 = (a2 * b2 + a3 * b3 * gamma2) `mod` _Q
-            c3 = (a2 * b3 + a3 * b2) `mod` _Q
+            -- M23.4.5: Widen to Int64 before multiplication to prevent
+            -- overflow on 32-bit platforms.
+            a0 = fromIntegral (a ! idx) :: Int64
+            a1 = fromIntegral (a ! (idx + 1)) :: Int64
+            b0 = fromIntegral (b ! idx) :: Int64
+            b1 = fromIntegral (b ! (idx + 1)) :: Int64
+            q  = fromIntegral _Q :: Int64
+            gamma1_64 = fromIntegral (zetaTable ! (64 + i)) :: Int64
+            c0 = fromIntegral ((a0 * b0 + a1 * b1 * gamma1_64) `mod` q) :: Int
+            c1 = fromIntegral ((a0 * b1 + a1 * b0) `mod` q) :: Int
+            a2 = fromIntegral (a ! (idx + 2)) :: Int64
+            a3 = fromIntegral (a ! (idx + 3)) :: Int64
+            b2 = fromIntegral (b ! (idx + 2)) :: Int64
+            b3 = fromIntegral (b ! (idx + 3)) :: Int64
+            gamma2_64 = (q - gamma1_64) `mod` q
+            c2 = fromIntegral ((a2 * b2 + a3 * b3 * gamma2_64) `mod` q) :: Int
+            c3 = fromIntegral ((a2 * b3 + a3 * b2) `mod` q) :: Int
         in [modQ c0, modQ c1, modQ c2, modQ c3]
 
 ------------------------------------------------------------------------
