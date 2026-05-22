@@ -209,12 +209,12 @@ UmbraVOX does not currently claim to solve:
 
 ## Connection Trust Modes
 
-| Mode        | Accept       | mDNS |    PEX |  DB | Behavior                                         |
-| ----------- | ------------ | ---: | -----: | --: | ------------------------------------------------ |
-| Swing       | All          |   On | Manual |  On | Most open. PEX user-initiated only               |
-| Promiscuous | All          |   On |    Off |  On | Accept anyone silently. PEX disabled              |
-| Selective   | Confirm      |   On |    Off |  On | Shows fingerprint, user decides. Default mode    |
-| Chaste      | Trusted only |  Off |    Off | Off | Trusted keys only, no persistence unless plugin  |
+| Mode        | Accept       | mDNS |    PEX |  DB  | Behavior                                                                       |
+| ----------- | ------------ | ---: | -----: | ---: | ------------------------------------------------------------------------------ |
+| Swing       | All          |   On | Manual |  off | Most open. PEX user-initiated only , no persistence unless plugin              |
+| Promiscuous | All          |   On |    Off |  off | Accept anyone silently. PEX disabled, no persistence unless plugin             |
+| Selective   | Confirm      |   On |    Off |  off | Shows fingerprint, user decides. Default mode, no persistence unless plugin    |
+| Chaste      | Trusted only |  Off |    Off |  off | Trusted keys only                                                              |
 
 Change mode in Preferences:
 
