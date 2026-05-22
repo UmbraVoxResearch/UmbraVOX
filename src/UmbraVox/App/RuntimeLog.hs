@@ -15,16 +15,15 @@ module UmbraVox.App.RuntimeLog
     ) where
 
 import Control.Concurrent (threadDelay)
-import Control.Concurrent.MVar (MVar, withMVar, newMVar)
+import Control.Concurrent.MVar (withMVar)
 import Control.Exception (SomeException, catch)
 import Control.Monad (when)
-import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import Data.IORef (readIORef, writeIORef)
 import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (defaultTimeLocale, formatTime)
 import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.Environment (lookupEnv)
 import System.FilePath (takeDirectory)
-import System.IO.Unsafe (unsafePerformIO)
 import System.Posix.Files
     ( ownerReadMode
     , ownerWriteMode
@@ -35,14 +34,6 @@ import System.Posix.Process (getProcessID)
 
 import UmbraVox.BuildProfile (BuildPluginId(..), pluginEnabled)
 import UmbraVox.App.Config (AppConfig(..))
-
-runtimeLogLock :: MVar ()
-runtimeLogLock = unsafePerformIO (newMVar ())
-{-# NOINLINE runtimeLogLock #-}
-
-logWriterPID :: IORef Int
-logWriterPID = unsafePerformIO (newIORef 0)
-{-# NOINLINE logWriterPID #-}
 
 runtimeLoggingEnabled :: AppConfig -> IO Bool
 runtimeLoggingEnabled cfg = do
@@ -71,12 +62,12 @@ logEvent cfg name fields = do
                     unwords $
                         [ts, name] ++
                         map renderField fields
-            withMVar runtimeLogLock $ \_ ->
-                writeLogLine path (rendered ++ "\n")
+            withMVar (cfgLogLock cfg) $ \_ ->
+                writeLogLine cfg path (rendered ++ "\n")
                     `catch` \(_ :: SomeException) -> pure ()
 
-writeLogLine :: FilePath -> String -> IO ()
-writeLogLine path line = do
+writeLogLine :: AppConfig -> FilePath -> String -> IO ()
+writeLogLine cfg path line = do
     createDirectoryIfMissing True (takeDirectory path)
     appendFile path line `catch` \(_ :: SomeException) ->
         -- Retry once after a brief delay (handles transient file locks)
@@ -85,8 +76,8 @@ writeLogLine path line = do
     ensureLogPermissions path
     -- Single-writer PID tracking
     currentPID <- fromIntegral <$> getProcessID
-    previousPID <- readIORef logWriterPID
-    writeIORef logWriterPID currentPID
+    previousPID <- readIORef (cfgLogWriterPID cfg)
+    writeIORef (cfgLogWriterPID cfg) currentPID
     when (previousPID /= 0 && previousPID /= currentPID) $
         appendFile path $ "WARN: multiple log writer PIDs detected ("
             ++ show previousPID ++ " -> " ++ show currentPID ++ ")\n"

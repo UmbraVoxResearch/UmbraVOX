@@ -118,6 +118,8 @@ newDefaultAppConfig = do
         <*> newIORef False  -- cfgEphemeral: off by default
         <*> newIORef initialStorage  -- cfgStorage: starts as in-memory; upgraded to Anthony on DB open
         <*> newIORef defaultPersistencePlugins  -- cfgPluginRegistry: all persistence plugins disabled
+        <*> newMVar ()      -- cfgLogLock: runtime log serialization
+        <*> newIORef 0      -- cfgLogWriterPID: single-writer PID tracking
 
 initializeLocalIdentity :: AppConfig -> IO IdentityKey
 initializeLocalIdentity cfg = do
