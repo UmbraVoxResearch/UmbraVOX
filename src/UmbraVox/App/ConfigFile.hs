@@ -93,29 +93,29 @@ applyConfigFile cfg appCfg = do
 
     normalize = map toLower . dropWhileEnd isSpace . dropWhile isSpace
 
--- | Verify config file integrity against a pinned SHA-256 hash (M17.7.4).
+-- | Verify config file integrity against a pinned SHA-256 hash (M17.7.4,
+-- M20.4.6).
 --
 -- If the config file contains a @config_hash_pin = <hex>@ entry, the file's
 -- SHA-256 hash (computed over all lines excluding the pin line) is compared
 -- against the pinned value.  Returns:
 --
--- * @Nothing@ — no pin present (verification skipped)
--- * @Just True@ — pin present and hash matches
--- * @Just False@ — pin present but hash does NOT match (tampered)
-verifyConfigHash :: IO (Maybe Bool)
+-- * @Right ()@ — no pin present (verification skipped) or pin matches
+-- * @Left msg@ — pin present but hash does NOT match (tampered)
+verifyConfigHash :: IO (Either String ())
 verifyConfigHash = do
     home <- getHomeDirectory
     let path = home ++ "/.umbravox/config"
     exists <- doesFileExist path
     if not exists
-        then pure Nothing
+        then pure (Right ())
         else (do
             contents <- readFile path
             length contents `seq` pure ()
             let allLines = lines contents
                 cfg = Map.fromList [ p | Just p <- map parseLine allLines ]
             case Map.lookup "config_hash_pin" cfg of
-                Nothing  -> pure Nothing
+                Nothing  -> pure (Right ())
                 Just pin -> do
                     -- Hash all lines except the pin line itself.
                     -- Use exact key match via parseLine, not prefix match.
@@ -123,8 +123,13 @@ verifyConfigHash = do
                                            , maybe True ((/= "config_hash_pin") . fst) (parseLine l) ]
                         hashBytes = sha256 (BS8.pack filtered)
                         hashHex = concatMap byteToHex (BS.unpack hashBytes)
-                    pure (Just (map toLower pin == map toLower hashHex))
-            ) `catch` \(_ :: SomeException) -> pure Nothing
+                    if map toLower pin == map toLower hashHex
+                        then pure (Right ())
+                        else pure (Left $ "config hash mismatch: expected "
+                                       ++ map toLower pin ++ " but got "
+                                       ++ map toLower hashHex)
+            ) `catch` \(_ :: SomeException) ->
+                pure (Left "config hash verification failed: could not read config file")
   where
     byteToHex w = [hexC (fromIntegral w `div` 16), hexC (fromIntegral w `mod` 16)]
     hexC n | n < 10    = toEnum (fromEnum '0' + n)
