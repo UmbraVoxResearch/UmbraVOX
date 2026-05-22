@@ -7,8 +7,8 @@
 
 static const uint32_t MODE_STEM = 0x00;
 static const uint32_t MODE_FLUFF = 0x01;
-static const uint32_t DECISION_STEM = 0x00   -- Continue stem forwarding;
-static const uint64_t DECISION_FLUFF = 0x01   -- Transition to fluff broadcastULL;
+static const uint32_t DECISION_STEM = 0x00;
+static const uint32_t DECISION_FLUFF = 0x01;
 static const uint32_t DEFAULT_EPOCH_LEN = 600;
 static const uint32_t DEFAULT_FLUFF_PROB = 0.1;
 static const uint32_t BYTE_MAX = 256;

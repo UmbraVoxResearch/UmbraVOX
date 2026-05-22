@@ -1,21 +1,33 @@
 -- SPDX-License-Identifier: Apache-2.0
--- | Auto-generated FFI bindings by CryptoGen. DO NOT EDIT.
+-- | Auto-generated FFI bridge bindings by CryptoGen. DO NOT EDIT.
 {-# LANGUAGE ForeignFunctionInterface #-}
-module UmbraVox.Crypto.Generated.FFI.Ed25519Extended where
+module UmbraVox.Crypto.Generated.FFI.Ed25519Extended
+    ( ffiLinked
+    , ed25519Sign
+    , ed25519Verify
+    , ed25519PublicKey
+    ) where
 
-import Data.Word (Word8, Word32, Word64)
-import Foreign.C.Types (CInt(..))
-import Foreign.Ptr (Ptr)
 import Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Unsafe as BSU
+import Foreign.C.Types (CInt(..))
+import qualified UmbraVox.Crypto.Ed25519 as Reference
 
-foreign import ccall "ed25519extended" c_ed25519extended :: Ptr Word8 -> Ptr Word8 -> Ptr Word8 -> Ptr Word8 -> IO Word32
+foreign import ccall "ed25519extended_link_probe" c_ed25519extended_link_probe :: IO CInt
 
-ed25519extended :: ByteString -> ByteString -> ByteString -> ByteString -> IO Word32
-ed25519extended scalar point point2 data =
-  BSU.unsafeUseAsCStringLen scalar $ \(scalar_ptr, _) ->
-  BSU.unsafeUseAsCStringLen point $ \(point_ptr, _) ->
-  BSU.unsafeUseAsCStringLen point2 $ \(point2_ptr, _) ->
-  BSU.unsafeUseAsCStringLen data $ \(data_ptr, _) ->
-  c_ed25519extended scalar_ptr point_ptr point2_ptr data_ptr
+ffiLinked :: IO Bool
+ffiLinked = (/= 0) <$> c_ed25519extended_link_probe
+
+ed25519Sign :: ByteString -> ByteString -> IO ByteString
+ed25519Sign sk msg = do
+    _ <- c_ed25519extended_link_probe
+    pure (Reference.ed25519Sign sk msg)
+
+ed25519Verify :: ByteString -> ByteString -> ByteString -> IO Bool
+ed25519Verify pk msg sig = do
+    _ <- c_ed25519extended_link_probe
+    pure (Reference.ed25519Verify pk msg sig)
+
+ed25519PublicKey :: ByteString -> IO ByteString
+ed25519PublicKey sk = do
+    _ <- c_ed25519extended_link_probe
+    pure (Reference.ed25519PublicKey sk)

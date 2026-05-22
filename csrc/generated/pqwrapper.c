@@ -5,12 +5,12 @@
 #define ROTR32(x, n) (((x) >> (n)) | ((x) << (32 - (n))))
 #define ROTL32(x, n) (((x) << (n)) | ((x) >> (32 - (n))))
 
-static const uint32_t KEM_CT_LEN = 1088   -- ML-KEM-768 ciphertext length in bytes;
-static const uint32_t KEM_SS_LEN = 32     -- ML-KEM-768 shared secret length in bytes;
-static const uint32_t AES_KEY_LEN = 32     -- 256-bit key;
-static const uint32_t GCM_IV_LEN = 12     -- 96-bit nonce (recommended);
-static const uint32_t GCM_TAG_LEN = 16     -- 128-bit authentication tag;
-static const uint32_t HKDF_LABEL = "UmbraVOX-PQWrapper-v1";
+static const uint32_t KEM_CT_LEN = 1088;
+static const uint32_t KEM_SS_LEN = 32;
+static const uint32_t AES_KEY_LEN = 32;
+static const uint32_t GCM_IV_LEN = 12;
+static const uint32_t GCM_TAG_LEN = 16;
+static const char HKDF_LABEL[] = "UmbraVOX-PQWrapper-v1";
 
 __attribute__((noinline))
 uint32_t pqwrapper(const uint8_t* ek_recipient, const uint8_t* plaintext, const uint8_t* aad, const uint8_t* dk_recipient, const uint8_t* sealed_msg) {
