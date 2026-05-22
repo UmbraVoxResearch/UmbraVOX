@@ -12,7 +12,7 @@ module UmbraVox.Chat.Session
 
 import Data.ByteString (ByteString)
 
-import UmbraVox.Chat.Wire (decodeWire, encodeWire)
+import UmbraVox.Chat.Wire (decodeWire, encodeWire, encodeInnerPayload, decodeInnerPayload)
 
 import UmbraVox.Crypto.Signal.DoubleRatchet
     ( RatchetError(..)
@@ -53,12 +53,18 @@ initChatSessionBob sharedSecret bobSPKSecret = do
     pure ChatSession { csRatchet = st }
 
 -- | Encrypt and send a chat message.
+-- The sender's 32-byte identity hash is prepended to the plaintext before
+-- encryption so that only the recipient can learn who sent the message.
+-- See: doc/ENCRYPTED-ENVELOPE-DESIGN.md Section 4.2.3.
 -- Returns @Right (updatedSession, wireBytes)@ on success, or
 -- @Left CounterExhausted@ when the ratchet send counter is exhausted.
-sendChatMessage :: ChatSession -> ByteString
+sendChatMessage :: ChatSession
+                -> ByteString  -- ^ 32-byte sender identity hash
+                -> ByteString  -- ^ application plaintext
                 -> IO (Either RatchetError (ChatSession, ByteString))
-sendChatMessage session plaintext = do
-    result <- ratchetEncrypt (csRatchet session) plaintext
+sendChatMessage session senderId plaintext = do
+    let !innerPt = encodeInnerPayload senderId plaintext
+    result <- ratchetEncrypt (csRatchet session) innerPt
     pure $ case result of
         Left err               -> Left err
         Right (st', hdr, ct, tag) ->
@@ -66,11 +72,13 @@ sendChatMessage session plaintext = do
             in Right (session { csRatchet = st' }, wire)
 
 -- | Decrypt a received chat message.
--- Returns @Right (Just (updatedSession, plaintext))@ on success,
--- @Right Nothing@ on authentication failure, or
+-- After decryption the 32-byte sender identity hash is extracted from the
+-- payload prefix and returned alongside the application data.
+-- Returns @Right (Just (updatedSession, senderId, plaintext))@ on success,
+-- @Right Nothing@ on authentication failure or invalid inner payload, or
 -- @Left CounterExhausted@ when the ratchet receive counter is exhausted.
 recvChatMessage :: ChatSession -> ByteString
-                -> IO (Either RatchetError (Maybe (ChatSession, ByteString)))
+                -> IO (Either RatchetError (Maybe (ChatSession, ByteString, ByteString)))
 recvChatMessage session wire =
     case decodeWire wire of
         Nothing -> pure (Right Nothing)
@@ -79,4 +87,7 @@ recvChatMessage session wire =
             pure $ case result of
                 Left err            -> Left err
                 Right Nothing       -> Right Nothing
-                Right (Just (st', pt)) -> Right (Just (session { csRatchet = st' }, pt))
+                Right (Just (st', pt)) ->
+                    case decodeInnerPayload pt of
+                        Nothing              -> Right Nothing
+                        Just (sid, appData)  -> Right (Just (session { csRatchet = st' }, sid, appData))

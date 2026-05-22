@@ -7,6 +7,11 @@ module UmbraVox.Chat.Wire
   ( encodeWire
   , decodeWire
   , encodeHeader
+    -- * Inner payload (M23.1.1d: sender identity in encrypted payload)
+  , InnerPayload(..)
+  , encodeInnerPayload
+  , decodeInnerPayload
+  , senderIdSize
     -- * Constants
   , headerSize
   , tagSize
@@ -65,3 +70,31 @@ encodeHeader hdr =
     rhDHPublic hdr
     <> putWord32BE (rhPrevChainN hdr)
     <> putWord32BE (rhMsgN hdr)
+
+------------------------------------------------------------------------
+-- M23.1.1d: Sender identity inside the encrypted payload
+------------------------------------------------------------------------
+
+-- | Size of the sender identity hash: 32 bytes (SHA-256 of identity key).
+senderIdSize :: Int
+senderIdSize = 32
+
+-- | The inner payload carries the sender identity alongside the application
+-- data.  Only the recipient can see the sender identity after Double Ratchet
+-- decryption.  See: doc/ENCRYPTED-ENVELOPE-DESIGN.md Section 4.2.3.
+data InnerPayload = InnerPayload
+    { ipSenderId :: !ByteString   -- ^ 32 bytes (identity key hash)
+    , ipAppData  :: !ByteString   -- ^ application message
+    }
+
+-- | Encode an inner payload: @senderId <> appData@.
+-- The senderId is always exactly 32 bytes, so no length prefix is needed.
+encodeInnerPayload :: ByteString -> ByteString -> ByteString
+encodeInnerPayload senderId appData = senderId <> appData
+
+-- | Decode an inner payload, extracting the 32-byte senderId prefix.
+-- Returns 'Nothing' if the input is shorter than 32 bytes.
+decodeInnerPayload :: ByteString -> Maybe (ByteString, ByteString)
+decodeInnerPayload bs
+    | BS.length bs < senderIdSize = Nothing
+    | otherwise = Just (BS.take senderIdSize bs, BS.drop senderIdSize bs)
