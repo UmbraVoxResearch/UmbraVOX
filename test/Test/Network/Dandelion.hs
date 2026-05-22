@@ -136,13 +136,17 @@ testCheckEpochFreshNoRotation = do
 -- This works around the immutable dsFluffProb field.
 newDandelionStateWith :: Double -> IO DandelionState
 newDandelionStateWith prob = do
-    modeRef  <- newIORef Stem
-    peerRef  <- newIORef Nothing
-    epochRef <- newIORef 0
+    modeRef     <- newIORef Stem
+    peerRef     <- newIORef Nothing
+    prevPeerRef <- newIORef Nothing
+    epochRef    <- newIORef 0
+    peerCntRef  <- newIORef 0
     return DandelionState
-        { dsMode       = modeRef
-        , dsStemPeer   = peerRef
-        , dsEpochStart = epochRef
-        , dsEpochLen   = 600
-        , dsFluffProb  = prob
+        { dsMode         = modeRef
+        , dsStemPeer     = peerRef
+        , dsPrevStemPeer = prevPeerRef
+        , dsEpochStart   = epochRef
+        , dsEpochLen     = 600
+        , dsFluffProb    = prob
+        , dsPeerCount    = peerCntRef
         }

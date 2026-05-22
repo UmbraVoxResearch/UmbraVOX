@@ -20,6 +20,7 @@ module UmbraVox.Network.Dandelion
   , routeMessage
   , rotateStemPeer
   , checkEpoch
+  , effectiveFluffProb
   ) where
 
 import Data.ByteString (ByteString)
@@ -46,11 +47,13 @@ data RouteDecision
 
 -- | Mutable state for the Dandelion++ router.
 data DandelionState = DandelionState
-    { dsMode       :: !(IORef RouteMode)     -- ^ Current routing mode
-    , dsStemPeer   :: !(IORef (Maybe String)) -- ^ Designated stem relay
-    , dsEpochStart :: !(IORef Word64)        -- ^ Current epoch start (POSIX seconds)
-    , dsEpochLen   :: !Int                   -- ^ Epoch length in seconds (default 600)
-    , dsFluffProb  :: !Double                -- ^ Probability of stem->fluff per hop (default 0.1)
+    { dsMode         :: !(IORef RouteMode)     -- ^ Current routing mode
+    , dsStemPeer     :: !(IORef (Maybe String)) -- ^ Designated stem relay
+    , dsPrevStemPeer :: !(IORef (Maybe String)) -- ^ Previous epoch's stem peer (M23.2.6)
+    , dsEpochStart   :: !(IORef Word64)        -- ^ Current epoch start (POSIX seconds)
+    , dsEpochLen     :: !Int                   -- ^ Epoch length in seconds (default 600)
+    , dsFluffProb    :: !Double                -- ^ Probability of stem->fluff per hop (default 0.1)
+    , dsPeerCount    :: !(IORef Int)           -- ^ Current known peer count (M23.2.5)
     }
 
 ------------------------------------------------------------------------
@@ -64,15 +67,19 @@ data DandelionState = DandelionState
 -- Starts in Stem mode with no stem peer selected.
 newDandelionState :: IO DandelionState
 newDandelionState = do
-    modeRef  <- newIORef Stem
-    peerRef  <- newIORef Nothing
-    epochRef <- newIORef 0
+    modeRef     <- newIORef Stem
+    peerRef     <- newIORef Nothing
+    prevPeerRef <- newIORef Nothing
+    epochRef    <- newIORef 0
+    peerCntRef  <- newIORef 0
     return DandelionState
-        { dsMode       = modeRef
-        , dsStemPeer   = peerRef
-        , dsEpochStart = epochRef
-        , dsEpochLen   = 600
-        , dsFluffProb  = 0.1
+        { dsMode         = modeRef
+        , dsStemPeer     = peerRef
+        , dsPrevStemPeer = prevPeerRef
+        , dsEpochStart   = epochRef
+        , dsEpochLen     = 600
+        , dsFluffProb    = 0.1
+        , dsPeerCount    = peerCntRef
         }
 
 ------------------------------------------------------------------------
@@ -98,7 +105,8 @@ routeMessage ds msg
         case mode of
             Fluff -> return (FluffBroadcast msg)
             Stem  -> do
-                shouldFluff <- coinFlip (dsFluffProb ds)
+                prob <- effectiveFluffProb ds
+                shouldFluff <- coinFlip prob
                 if shouldFluff
                     then do
                         writeIORef (dsMode ds) Fluff
@@ -120,14 +128,26 @@ routeMessage ds msg
 -- Resets routing mode to Stem.  If the peer list is empty, clears the
 -- stem peer (subsequent 'routeMessage' calls will return 'DropMessage').
 rotateStemPeer :: DandelionState -> [String] -> IO ()
-rotateStemPeer ds [] = do
-    writeIORef (dsStemPeer ds) Nothing
-    writeIORef (dsMode ds) Stem
 rotateStemPeer ds peers = do
-    let n = length peers
-    idx <- uniformIndex n
-    writeIORef (dsStemPeer ds) (Just (peers !! idx))
-    writeIORef (dsMode ds) Stem
+    writeIORef (dsPeerCount ds) (length peers)
+    -- M23.2.6: remember current stem peer as previous before replacing.
+    current <- readIORef (dsStemPeer ds)
+    writeIORef (dsPrevStemPeer ds) current
+    -- Filter out the previous stem peer for one epoch.
+    prev <- readIORef (dsPrevStemPeer ds)
+    let candidates = case prev of
+            Nothing -> peers
+            Just p  -> let filtered = filter (/= p) peers
+                       in if null filtered then peers else filtered
+    case candidates of
+        [] -> do
+            writeIORef (dsStemPeer ds) Nothing
+            writeIORef (dsMode ds) Stem
+        _  -> do
+            let n = length candidates
+            idx <- uniformIndex n
+            writeIORef (dsStemPeer ds) (Just (candidates !! idx))
+            writeIORef (dsMode ds) Stem
 
 -- | Check if the current epoch has expired and rotate if needed.
 --
@@ -151,6 +171,18 @@ checkEpoch ds now = do
             return True
         else return False
 
+-- | Compute effective fluff probability scaled by peer count (M23.2.5).
+--
+-- With fewer than 5 peers, stem routing provides negligible privacy
+-- (too few hops to decorrelate origin), so we force fluff (p=1.0).
+-- Otherwise, use the configured 'dsFluffProb'.
+effectiveFluffProb :: DandelionState -> IO Double
+effectiveFluffProb ds = do
+    n <- readIORef (dsPeerCount ds)
+    if n < 5
+        then return 1.0
+        else return (dsFluffProb ds)
+
 ------------------------------------------------------------------------
 -- Internal helpers
 ------------------------------------------------------------------------
@@ -170,22 +202,37 @@ coinFlip p
             !threshold = p * 256.0
         return (val < threshold)
 
--- | Pick a uniform random index in [0, n-1] using CSPRNG.
+-- | Pick a uniform random index in [0, n-1] using CSPRNG with rejection
+-- sampling to eliminate modular bias (M23.3.6).
 --
--- For small n (< 256), draws one byte and uses modular reduction.
--- For larger n, draws two bytes.  Bias is negligible for practical
--- peer list sizes (< 1000).
+-- For n <= 256 we draw one byte; for larger n we draw two bytes.
+-- Values at or above the largest multiple of n that fits in the byte
+-- range are rejected and redrawn.
 uniformIndex :: Int -> IO Int
 uniformIndex n
     | n <= 0    = return 0
     | n == 1    = return 0
-    | n <= 256  = do
-        b <- randomBytes 1
-        let !val = fromIntegral (BS.index b 0) :: Int
-        return (val `mod` n)
-    | otherwise = do
-        bs <- randomBytes 2
-        let !b0 = fromIntegral (BS.index bs 0 :: Word8) :: Int
-            !b1 = fromIntegral (BS.index bs 1 :: Word8) :: Int
-            !val = b0 + b1 * 256
-        return (val `mod` n)
+    | n <= 256  = rejectionSample1 n
+    | otherwise = rejectionSample2 n
+
+-- | Rejection sampling with 1 byte (range 0-255).
+rejectionSample1 :: Int -> IO Int
+rejectionSample1 n = do
+    b <- randomBytes 1
+    let !val  = fromIntegral (BS.index b 0) :: Int
+        !limit = 256 - (256 `mod` n)  -- largest multiple of n <= 256
+    if val >= limit
+        then rejectionSample1 n  -- reject and retry
+        else return (val `mod` n)
+
+-- | Rejection sampling with 2 bytes (range 0-65535).
+rejectionSample2 :: Int -> IO Int
+rejectionSample2 n = do
+    bs <- randomBytes 2
+    let !b0  = fromIntegral (BS.index bs 0 :: Word8) :: Int
+        !b1  = fromIntegral (BS.index bs 1 :: Word8) :: Int
+        !val = b0 + b1 * 256
+        !limit = 65536 - (65536 `mod` n)  -- largest multiple of n <= 65536
+    if val >= limit
+        then rejectionSample2 n  -- reject and retry
+        else return (val `mod` n)
