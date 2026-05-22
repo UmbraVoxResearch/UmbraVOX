@@ -249,7 +249,7 @@ testFuzzEncryptedMessageGarbage = do
                     lenBs <- anyRecv (tcTransport bob) 4
                     let len = fromIntegral (getWord32BE lenBs) :: Int
                     wireBytes <- anyRecv (tcTransport bob) len
-                    recvChatMessage bobSess wireBytes
+                    recvChatMessage bobSess Nothing wireBytes
                 garbageOk <- case recvResult of
                     Nothing               -> pure True  -- timeout ok
                     Just (Left _)         -> pure True  -- ratchet error = rejected
@@ -258,7 +258,7 @@ testFuzzEncryptedMessageGarbage = do
                 -- After garbage, verify session still works
                 -- Alice sends a real message
                 -- Note: bob's session was not updated by the failed decrypt, so use original
-                sendRes2 <- sendChatMessage aliceSess dummySenderId (BS.pack [0x41, 0x42])
+                sendRes2 <- sendChatMessage aliceSess dummySenderId (BS.pack [0x41, 0x42]) 0
                 let (aliceSess', wire) = case sendRes2 of
                                              Right r -> r
                                              Left _  -> error "fuzzGarbage: sendChatMessage Left"
@@ -268,7 +268,7 @@ testFuzzEncryptedMessageGarbage = do
                     lenBs2 <- anyRecv (tcTransport bob) 4
                     let len2 = fromIntegral (getWord32BE lenBs2) :: Int
                     wireBytes2 <- anyRecv (tcTransport bob) len2
-                    recvChatMessage bobSess wireBytes2
+                    recvChatMessage bobSess Nothing wireBytes2
                 validOk <- case validResult of
                     Nothing               -> pure True  -- timeout, acceptable
                     Just (Left _)         -> pure True  -- ratchet desynchronized, still no crash
@@ -433,7 +433,7 @@ testFuzzMessageOrderingAttack = do
     encryptAll :: ChatSession -> [ByteString] -> IO (ChatSession, [ByteString])
     encryptAll sess [] = pure (sess, [])
     encryptAll sess (m:ms) = do
-        sendR <- sendChatMessage sess dummySenderId m
+        sendR <- sendChatMessage sess dummySenderId m 0
         let (sess', wire) = case sendR of
                                 Right r -> r
                                 Left _  -> error "encryptAll: sendChatMessage returned Left"
@@ -463,7 +463,7 @@ testFuzzMessageOrderingAttack = do
         case r of
             Nothing -> pure (0, 0, sess)  -- no more data
             Just wireBytes -> do
-                decResult <- recvChatMessage sess wireBytes
+                decResult <- recvChatMessage sess Nothing wireBytes
                 case decResult of
                     Left _ -> do
                         -- RatchetError (counter exhausted etc) = treated as rejection
@@ -553,7 +553,7 @@ testFuzzBitFlip = do
     case (mAliceSess, mBobSess) of
         (Just aliceSess, Just bobSess) -> do
             let plaintext = BS.pack [0x48, 0x65, 0x6C, 0x6C, 0x6F]  -- "Hello"
-            sendR <- sendChatMessage aliceSess dummySenderId plaintext
+            sendR <- sendChatMessage aliceSess dummySenderId plaintext 0
             let (aliceSess', wireBytes) = case sendR of
                                               Right r -> r
                                               Left _  -> error "testFuzzBitFlip: sendChatMessage Left"
@@ -565,7 +565,7 @@ testFuzzBitFlip = do
                 else do
                     results <- mapM (\pos -> do
                         let flipped = flipBit wireBytes pos
-                        decResult <- recvChatMessage bobSess flipped
+                        decResult <- recvChatMessage bobSess Nothing flipped
                         case decResult of
                             Left _              -> pure True  -- ratchet error = correctly rejected
                             Right Nothing       -> pure True  -- correctly rejected

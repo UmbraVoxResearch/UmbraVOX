@@ -55,7 +55,7 @@ dummySenderId = BS.replicate 32 0
 -- | Unwrap sendChatMessage's Either result, failing on ratchet error.
 mustSend :: ChatSession -> ByteString -> IO (ChatSession, ByteString)
 mustSend sess msg = do
-    r <- sendChatMessage sess dummySenderId msg
+    r <- sendChatMessage sess dummySenderId msg 0
     case r of
         Left _         -> fail "mustSend: ratchet error (counter exhausted?)"
         Right (s', w)  -> pure (s', w)
@@ -65,7 +65,7 @@ mustSend sess msg = do
 -- Drops the senderId from the result; callers only need session + plaintext.
 tryRecv :: ChatSession -> ByteString -> IO (Maybe (ChatSession, ByteString))
 tryRecv sess wire = do
-    r <- recvChatMessage sess wire
+    r <- recvChatMessage sess Nothing wire
     case r of
         Left _         -> pure Nothing  -- ratchet error treated as rejection
         Right Nothing  -> pure Nothing
