@@ -1,4 +1,7 @@
 -- SPDX-License-Identifier: Apache-2.0
+-- STUB MODULE — not yet implemented.
+-- All exported functions raise 'error'. See TODO.txt M20.3.1 for plans
+-- to move stubs to a deferred build target.
 -- | ECVRF-ED25519-SHA512 (RFC 9381)
 --
 -- See: doc/spec/crypto.md

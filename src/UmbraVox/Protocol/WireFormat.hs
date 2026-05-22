@@ -1,4 +1,7 @@
 -- SPDX-License-Identifier: Apache-2.0
+-- STUB MODULE — not yet implemented.
+-- All exported functions raise 'error'. See TODO.txt M20.3.1 for plans
+-- to move stubs to a deferred build target.
 -- | Network message envelope
 --
 -- See: doc/spec/protocol.md
