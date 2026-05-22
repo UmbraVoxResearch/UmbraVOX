@@ -107,6 +107,17 @@ run_case_failure \
     "invalid substitutes boolean fails" \
     "env -i PATH=\"$PATH\" UMBRAVOX_NIX_CONFIG_FILE=\"$CFG_FILE\" UMBRAVOX_NIX_BUILDER='ssh-ng://env-builder x86_64-linux - 4' UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES='maybe' \"$SCRIPT_PATH\" shell"
 
+# 7) Malformed builder strings are rejected.
+run_case_failure \
+    "builder missing required fields fails" \
+    "env -i PATH=\"$PATH\" UMBRAVOX_NIX_CONFIG_FILE=\"$CFG_FILE\" UMBRAVOX_NIX_BUILDER='ssh-ng://broken x86_64-linux' \"$SCRIPT_PATH\" shell"
+run_case_failure \
+    "builder missing URI scheme fails" \
+    "env -i PATH=\"$PATH\" UMBRAVOX_NIX_CONFIG_FILE=\"$CFG_FILE\" UMBRAVOX_NIX_BUILDER='builder-host x86_64-linux - 4' \"$SCRIPT_PATH\" shell"
+run_case_failure \
+    "builder non-numeric max-jobs fails" \
+    "env -i PATH=\"$PATH\" UMBRAVOX_NIX_CONFIG_FILE=\"$CFG_FILE\" UMBRAVOX_NIX_BUILDER='ssh-ng://env-builder x86_64-linux - many' \"$SCRIPT_PATH\" shell"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed, $SKIP skipped"
 if [ "$FAIL" -gt 0 ]; then
