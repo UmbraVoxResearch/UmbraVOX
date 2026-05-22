@@ -219,6 +219,7 @@ library
       UmbraVox.Protocol.UTF8
       UmbraVox.Protocol.MessageFormat
       UmbraVox.Protocol.QRCode
+      UmbraVox.Protocol.RouteToken
       UmbraVox.Protocol.WireFormat
       UmbraVox.Protocol.Handshake
       -- TUI
