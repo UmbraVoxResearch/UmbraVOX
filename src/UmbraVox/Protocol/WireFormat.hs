@@ -1,13 +1,13 @@
 -- SPDX-License-Identifier: Apache-2.0
 -- | Network message envelope
 --
--- Wire format (byte offsets):
---   [version:1][type:1][seq:4][srcId:32][dstId:32][payloadLen:4][payload:N][hmac:32]
+-- Wire format v2 (byte offsets):
+--   [version:1][type:1][seq:4][ephemeralR:32][viewTag:1][scanTag:2][payloadLen:4][payload:N][hmac:32]
 --
 -- The trailing 32-byte HMAC-SHA-256 tag covers the entire preceding content
 -- (version through payload).  Verification uses constant-time comparison.
 --
--- See: doc/spec/protocol.md
+-- See: doc/ENCRYPTED-ENVELOPE-DESIGN.md
 module UmbraVox.Protocol.WireFormat
   ( Envelope(..)
   , wrapEnvelope
@@ -22,46 +22,66 @@ module UmbraVox.Protocol.WireFormat
 
 import qualified Data.ByteString as BS
 import Data.ByteString (ByteString)
+import Data.Bits (shiftL, shiftR, (.&.))
 import Data.IORef
-import Data.Word (Word8, Word32)
+import Data.Word (Word8, Word16, Word32)
 import qualified Data.Set as Set
 
 import UmbraVox.Protocol.Handshake (putW32BE, getW32BE)
 import UmbraVox.Crypto.HMAC (hmacSHA256)
 import UmbraVox.Crypto.ConstantTime (constantEq)
 
--- | A network message envelope with routing metadata.
+-- | A network message envelope with stealth addressing metadata.
+--
+-- The sender identity has been removed from the cleartext header and
+-- moved inside the encrypted payload (see M23.1.1d).  The destination
+-- is replaced by ephemeral stealth addressing fields.
 data Envelope = Envelope
-    { envVersion   :: !Word8          -- ^ protocol version (1)
-    , envType      :: !Word8          -- ^ message type (0=data, 1=ack, 2=handshake, 3=peer)
-    , envSequence  :: !Word32         -- ^ sequence number (BE)
-    , envSourceId  :: !ByteString     -- ^ 32-byte sender identity hash
-    , envDestId    :: !ByteString     -- ^ 32-byte recipient identity hash
-    , envPayload   :: !ByteString     -- ^ encrypted payload
+    { envVersion    :: !Word8          -- ^ protocol version (2)
+    , envType       :: !Word8          -- ^ message type (0=data, 1=ack, 2=handshake, 3=peer)
+    , envSequence   :: !Word32         -- ^ sequence number (BE)
+    , envEphemeralR :: !ByteString     -- ^ 32-byte ephemeral X25519 public key
+    , envViewTag    :: !Word8          -- ^ 1-byte view tag for fast scan
+    , envScanTag    :: !Word16         -- ^ 2-byte extended scan filter (1/65536 false positive)
+    , envPayload    :: !ByteString     -- ^ encrypted payload
     } deriving (Show, Eq)
 
--- | Header size: version(1) + type(1) + seq(4) + srcId(32) + dstId(32) + payloadLen(4) = 74
+-- | Header size: version(1) + type(1) + seq(4) + ephemeralR(32) + viewTag(1) + scanTag(2) + payloadLen(4) = 45
 headerSize :: Int
-headerSize = 74
+headerSize = 45
 
 -- | HMAC-SHA-256 tag size in bytes.
 hmacSize :: Int
 hmacSize = 32
 
+-- | Encode a 'Word16' in big-endian as 2 bytes.
+putW16BE :: Word16 -> ByteString
+putW16BE w = BS.pack
+    [ fromIntegral (w `shiftR` 8 .&. 0xff)
+    , fromIntegral (w            .&. 0xff)
+    ]
+
+-- | Decode a big-endian 'Word16' from a 2-byte 'ByteString'.
+getW16BE :: ByteString -> Word16
+getW16BE bs = (fromIntegral (BS.index bs 0) `shiftL` 8)
+            + fromIntegral (BS.index bs 1)
+
 -- | Wrap a payload in a routing envelope.
 wrapEnvelope :: Word8      -- ^ message type
              -> Word32     -- ^ sequence number
-             -> ByteString -- ^ 32-byte source identity
-             -> ByteString -- ^ 32-byte destination identity
+             -> ByteString -- ^ 32-byte ephemeral X25519 public key R
+             -> Word8      -- ^ 1-byte view tag
+             -> Word16     -- ^ 2-byte scan tag
              -> ByteString -- ^ payload
              -> Envelope
-wrapEnvelope msgType seqNum srcId dstId payload = Envelope
-    { envVersion  = 1
-    , envType     = msgType
-    , envSequence = seqNum
-    , envSourceId = BS.take 32 srcId
-    , envDestId   = BS.take 32 dstId
-    , envPayload  = payload
+wrapEnvelope msgType seqNum ephR vTag sTag payload = Envelope
+    { envVersion    = 2
+    , envType       = msgType
+    , envSequence   = seqNum
+    , envEphemeralR = BS.take 32 ephR
+    , envViewTag    = vTag
+    , envScanTag    = sTag
+    , envPayload    = payload
     }
 
 -- | Serialize envelope to wire bytes with a trailing HMAC-SHA-256 tag.
@@ -74,8 +94,9 @@ encodeEnvelope key env =
             [ BS.singleton (envVersion env)
             , BS.singleton (envType env)
             , putW32BE (envSequence env)
-            , BS.take 32 (envSourceId env)
-            , BS.take 32 (envDestId env)
+            , BS.take 32 (envEphemeralR env)
+            , BS.singleton (envViewTag env)
+            , putW16BE (envScanTag env)
             , putW32BE (fromIntegral (BS.length (envPayload env)))
             , envPayload env
             ]
@@ -90,14 +111,15 @@ encodeEnvelope key env =
 decodeEnvelope :: ByteString -> ByteString -> Maybe Envelope
 decodeEnvelope key bs
     | BS.length bs < headerSize + hmacSize = Nothing
-    | BS.index bs 0 /= 1 = Nothing  -- M23.3.9: reject unknown version early
+    | BS.index bs 0 /= 2 = Nothing  -- reject non-v2 envelopes
     | otherwise =
         let !ver     = BS.index bs 0
             !typ     = BS.index bs 1
             !seqNum  = getW32BE (BS.take 4 (BS.drop 2 bs))
-            !srcId   = BS.take 32 (BS.drop 6 bs)
-            !dstId   = BS.take 32 (BS.drop 38 bs)
-            !pLen    = fromIntegral (getW32BE (BS.take 4 (BS.drop 70 bs))) :: Int
+            !ephR    = BS.take 32 (BS.drop 6 bs)
+            !vTag    = BS.index bs 38
+            !sTag    = getW16BE (BS.take 2 (BS.drop 39 bs))
+            !pLen    = fromIntegral (getW32BE (BS.take 4 (BS.drop 41 bs))) :: Int
             -- body = everything before the 32-byte trailing HMAC
             !bodyLen = headerSize + pLen
             !body    = BS.take bodyLen bs
@@ -108,12 +130,13 @@ decodeEnvelope key bs
            else if not (constantEq tag expected)
                 then Nothing
                 else Just Envelope
-                     { envVersion  = ver
-                     , envType     = typ
-                     , envSequence = seqNum
-                     , envSourceId = srcId
-                     , envDestId   = dstId
-                     , envPayload  = BS.take pLen (BS.drop headerSize bs)
+                     { envVersion    = ver
+                     , envType       = typ
+                     , envSequence   = seqNum
+                     , envEphemeralR = ephR
+                     , envViewTag    = vTag
+                     , envScanTag    = sTag
+                     , envPayload    = BS.take pLen (BS.drop headerSize bs)
                      }
 
 -- | Extract payload from envelope.
