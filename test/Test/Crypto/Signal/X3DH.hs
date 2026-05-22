@@ -4,10 +4,11 @@
 module Test.Crypto.Signal.X3DH (runTests) where
 
 import qualified Data.ByteString as BS
+import Data.Word (Word64)
 
 import Test.Util
 import UmbraVox.Crypto.Signal.X3DH
-import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
+import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)  -- x25519 used in testKeyGenRoundTrip
 
 runTests :: IO Bool
 runTests = do
@@ -29,7 +30,18 @@ runTests = do
     propResults <- sequence
         [ checkProperty "key agreement matches (100 random keypairs)" 100 propKeyAgreementMatches
         ]
+    putStrLn "[X3DH] Running M23.2.1 OPK depletion tests..."
+    depletionResults <- sequence
+        [ testOPKDepletionDetection
+        ]
+    putStrLn "[X3DH] Running M23.2.2 bundle freshness tests..."
+    freshnessResults <- sequence
+        [ testBundleFreshness
+        , testBundleFreshnessBinding
+        , testTimestampAgreement
+        ]
     let results = genResults ++ sigResults ++ agreementResults ++ propResults
+                  ++ depletionResults ++ freshnessResults
         passed = length (filter id results)
         total  = length results
     putStrLn $ "[X3DH] " ++ show passed ++ "/" ++ show total ++ " passed."
@@ -250,3 +262,140 @@ testRejectInvalidSPKSignature = do
             Nothing -> True
             Just _  -> False
     assertEq "reject invalid SPK signature" True rejected
+
+------------------------------------------------------------------------
+-- M23.2.1: OPK depletion detection
+------------------------------------------------------------------------
+
+-- Finding:     M23.2.1 -- OPK pool can be exhausted by an attacker.
+-- Vulnerability: Without monitoring, a malicious peer can silently deplete
+--                all one-time prekeys.
+-- Fix:         checkOPKDepletion flags pools at or below minOPKPoolSize.
+-- Verified:    testOPKDepletionDetection below.
+
+testOPKDepletionDetection :: IO Bool
+testOPKDepletionDetection = do
+    -- Pool at threshold => depleted
+    r1 <- assertEq "OPK pool at threshold is depleted"
+              OPKPoolDepleted (checkOPKDepletion minOPKPoolSize)
+    -- Pool below threshold => depleted
+    r2 <- assertEq "OPK pool below threshold is depleted"
+              OPKPoolDepleted (checkOPKDepletion 0)
+    -- Pool above threshold => healthy
+    r3 <- assertEq "OPK pool above threshold is healthy"
+              OPKPoolHealthy (checkOPKDepletion (minOPKPoolSize + 1))
+    -- Verify the constant itself
+    r4 <- assertEq "minOPKPoolSize is 5" 5 minOPKPoolSize
+    pure (r1 && r2 && r3 && r4)
+
+------------------------------------------------------------------------
+-- M23.2.2: Prekey bundle freshness
+------------------------------------------------------------------------
+
+-- Finding:     M23.2.2 -- Prekey bundles have no expiration.
+-- Vulnerability: Stale bundles can be replayed indefinitely.
+-- Fix:         isBundleFresh rejects bundles older than maxBundleAge;
+--              x3dhInitiateWithTimestamp / x3dhRespondWithTimestamp bind the
+--              timestamp into HKDF info to prevent silent key reuse.
+-- Verified:    testBundleFreshness, testBundleFreshnessBinding,
+--              testTimestampAgreement below.
+
+testBundleFreshness :: IO Bool
+testBundleFreshness = do
+    let now = 1700000000 :: Word64
+    -- Fresh bundle (created 1 day ago)
+    r1 <- assertEq "bundle 1 day old is fresh"
+              True (isBundleFresh now (now - 86400))
+    -- Bundle exactly at the limit (30 days - 1 second)
+    r2 <- assertEq "bundle at 30d-1s is fresh"
+              True (isBundleFresh now (now - maxBundleAge + 1))
+    -- Stale bundle (31 days old)
+    r3 <- assertEq "bundle 31 days old is stale"
+              False (isBundleFresh now (now - maxBundleAge - 86400))
+    -- Bundle at exactly maxBundleAge is stale (strict <)
+    r4 <- assertEq "bundle at exactly maxBundleAge is stale"
+              False (isBundleFresh now (now - maxBundleAge))
+    -- Future timestamp (clock skew) is accepted
+    r5 <- assertEq "future timestamp is accepted"
+              True (isBundleFresh now (now + 60))
+    pure (r1 && r2 && r3 && r4 && r5)
+
+testBundleFreshnessBinding :: IO Bool
+testBundleFreshnessBinding = do
+    -- Two different timestamps should produce different shared secrets
+    -- even with identical key material.
+    let aliceIK = generateIdentityKey
+            (hexDecode "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
+            (hexDecode "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
+    let bobIK = generateIdentityKey
+            (hexDecode "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb")
+            (hexDecode "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb")
+    let spkSecret = hexDecode "b8b4e236805318e93f48bfbb365656ec1d068bf3d8cabb64dd1ba4523cec3a2a"
+        spk = generateKeyPair spkSecret
+        spkSig = signPreKey bobIK (kpPublic spk)
+    let bundle = PreKeyBundle
+            { pkbIdentityKey    = ikX25519Public bobIK
+            , pkbSignedPreKey   = kpPublic spk
+            , pkbSPKSignature   = spkSig
+            , pkbIdentityEd25519 = ikEd25519Public bobIK
+            , pkbOneTimePreKey  = Nothing
+            }
+    let ekSecret = hexDecode "4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d"
+        now = 1700000000 :: Word64
+        ts1 = now - 100
+        ts2 = now - 200
+    case (x3dhInitiateWithTimestamp aliceIK bundle ekSecret now ts1,
+          x3dhInitiateWithTimestamp aliceIK bundle ekSecret now ts2) of
+        (Just r1, Just r2) ->
+            assertEq "different timestamps produce different secrets"
+                True (x3dhSharedSecret r1 /= x3dhSharedSecret r2)
+        _ -> do
+            putStrLn "  FAIL: timestamp-bound initiation failed unexpectedly"
+            pure False
+
+testTimestampAgreement :: IO Bool
+testTimestampAgreement = do
+    -- Verify that initiator and responder derive the same secret
+    -- when using timestamp-aware variants with the same timestamp.
+    let aliceIK = generateIdentityKey
+            (hexDecode "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
+            (hexDecode "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
+    let bobIK = generateIdentityKey
+            (hexDecode "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb")
+            (hexDecode "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb")
+    let spkSecret = hexDecode "b8b4e236805318e93f48bfbb365656ec1d068bf3d8cabb64dd1ba4523cec3a2a"
+        spk = generateKeyPair spkSecret
+        spkSig = signPreKey bobIK (kpPublic spk)
+        opkSecret = hexDecode "a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4"
+        opk = generateKeyPair opkSecret
+    let bundle = PreKeyBundle
+            { pkbIdentityKey    = ikX25519Public bobIK
+            , pkbSignedPreKey   = kpPublic spk
+            , pkbSPKSignature   = spkSig
+            , pkbIdentityEd25519 = ikEd25519Public bobIK
+            , pkbOneTimePreKey  = Just (kpPublic opk)
+            }
+    let ekSecret = hexDecode "4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d"
+        now = 1700000000 :: Word64
+        bundleTs = now - 3600  -- 1 hour ago
+    case x3dhInitiateWithTimestamp aliceIK bundle ekSecret now bundleTs of
+        Nothing -> do
+            putStrLn "  FAIL: timestamp initiation with OPK failed"
+            pure False
+        Just result ->
+            case x3dhRespondWithTimestamp bobIK spkSecret (Just opkSecret)
+                    (ikX25519Public aliceIK) (x3dhEphemeralKey result) bundleTs of
+                Nothing -> do
+                    putStrLn "  FAIL: timestamp response with OPK failed"
+                    pure False
+                Just bobSecret -> do
+                    r1 <- assertEq "timestamp X3DH: secrets match"
+                            (x3dhSharedSecret result) bobSecret
+                    r2 <- assertEq "timestamp X3DH: secret is 32 bytes"
+                            32 (BS.length (x3dhSharedSecret result))
+                    -- Also verify the stale case rejects
+                    let staleTs = now - maxBundleAge - 1
+                    r3 <- assertEq "timestamp X3DH: stale bundle rejected"
+                            Nothing
+                            (x3dhInitiateWithTimestamp aliceIK bundle ekSecret now staleTs)
+                    pure (r1 && r2 && r3)

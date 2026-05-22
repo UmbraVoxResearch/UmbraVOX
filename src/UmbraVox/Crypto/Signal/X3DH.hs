@@ -13,10 +13,21 @@ module UmbraVox.Crypto.Signal.X3DH
     , signPreKey
     , x3dhInitiate
     , x3dhRespond
+    -- * M23.2.1: OPK depletion protection
+    , OPKPoolStatus(..)
+    , minOPKPoolSize
+    , checkOPKDepletion
+    -- * M23.2.2: Prekey bundle freshness
+    , maxBundleAge
+    , isBundleFresh
+    , x3dhInitiateWithTimestamp
+    , x3dhRespondWithTimestamp
     ) where
 
+import Data.Bits (shiftR)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
+import Data.Word (Word64)
 
 import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
 import UmbraVox.Crypto.Ed25519 (ed25519Sign, ed25519Verify, ed25519PublicKey)
@@ -199,3 +210,193 @@ x3dhRespond bobIK spkSecret mOPKSecret aliceIKPub aliceEKPub = do
                  Nothing     -> Just Nothing
                  Just opkSec -> fmap Just (x25519 opkSec aliceEKPub)
     Just (deriveSecret dh1 dh2 dh3 mDh4 aliceIKPub (ikX25519Public bobIK))
+
+------------------------------------------------------------------------
+-- M23.2.1: OPK depletion protection
+------------------------------------------------------------------------
+
+-- | Finding:     M23.2.1 -- OPK pool can be exhausted by an attacker
+--                requesting many sessions in rapid succession.
+-- Vulnerability: Without monitoring, a malicious peer can silently deplete
+--                all one-time prekeys, forcing all subsequent sessions to
+--                fall back to 3-DH (no OPK), which weakens forward secrecy
+--                for the initial message.
+-- Fix:           Added 'minOPKPoolSize' threshold and 'checkOPKDepletion'
+--                to detect when the OPK pool is critically low after
+--                consuming a key.  Callers (server-side OPK management)
+--                should check the returned 'OPKPoolStatus' and replenish
+--                the pool or rate-limit bundle requests when depleted.
+-- Verified:      testOPKDepletionDetection (Test.Crypto.Signal.X3DH):
+--                pool sizes at and below the threshold are flagged;
+--                pool sizes above the threshold are not.
+
+-- | Status of the OPK pool after consuming a one-time prekey.
+data OPKPoolStatus
+    = OPKPoolHealthy   -- ^ Pool size is above 'minOPKPoolSize'
+    | OPKPoolDepleted  -- ^ Pool size is at or below 'minOPKPoolSize'; replenish urgently
+    deriving (Eq, Show)
+
+-- | Minimum acceptable OPK pool size.  When the pool drops to this level
+-- or below after consuming an OPK, 'checkOPKDepletion' returns
+-- 'OPKPoolDepleted' to signal that new OPKs should be generated and
+-- uploaded to the server.
+minOPKPoolSize :: Int
+minOPKPoolSize = 5
+
+-- | Check whether the OPK pool is critically low after consuming one key.
+--
+-- @remainingOPKs@ is the number of OPKs still available in the pool
+-- /after/ the current OPK has been consumed.  Returns 'OPKPoolDepleted'
+-- when the pool is at or below 'minOPKPoolSize'.
+--
+-- Usage (responder side):
+--
+-- @
+-- let status = checkOPKDepletion (length remainingKeys)
+-- case status of
+--     OPKPoolDepleted -> replenishOPKs  -- upload fresh OPKs to server
+--     OPKPoolHealthy  -> pure ()
+-- @
+checkOPKDepletion :: Int -> OPKPoolStatus
+checkOPKDepletion remainingOPKs
+    | remainingOPKs <= minOPKPoolSize = OPKPoolDepleted
+    | otherwise                       = OPKPoolHealthy
+
+------------------------------------------------------------------------
+-- M23.2.2: Prekey bundle freshness check
+------------------------------------------------------------------------
+
+-- | Finding:     M23.2.2 -- Prekey bundles have no expiration.
+-- Vulnerability: An attacker who captures an old prekey bundle can replay
+--                it indefinitely.  Even if the underlying keys have been
+--                rotated server-side, a stale bundle still produces a
+--                valid X3DH handshake, and the responder may not notice
+--                that a long-retired SPK was used.  Replaying old bundles
+--                also undermines forward secrecy guarantees that depend on
+--                regular SPK rotation.
+-- Fix:           Added 'isBundleFresh' to reject bundles older than
+--                'maxBundleAge' (30 days), and 'x3dhInitiateWithTimestamp' /
+--                'x3dhRespondWithTimestamp' which bind the bundle timestamp
+--                into the HKDF info string.  This ensures that even if an
+--                old bundle's keys are somehow still valid, the derived
+--                session keys differ from those of a replayed bundle,
+--                preventing silent key reuse.
+-- Verified:      testBundleFreshness, testBundleFreshnessBinding
+--                (Test.Crypto.Signal.X3DH): fresh bundles are accepted,
+--                stale bundles are rejected, and different timestamps
+--                produce different shared secrets.
+
+-- | Maximum age of a prekey bundle in seconds (30 days).
+maxBundleAge :: Word64
+maxBundleAge = 86400 * 30
+
+-- | Check whether a prekey bundle is fresh enough for use.
+--
+-- Returns 'True' if the bundle timestamp is within 'maxBundleAge' seconds
+-- of the current time.  Both arguments are POSIX timestamps (seconds since
+-- epoch).  Handles clock skew gracefully: if @bundleTs > now@ (bundle
+-- appears to be from the future), the bundle is accepted since it cannot
+-- be stale.
+isBundleFresh :: Word64  -- ^ Current POSIX time (seconds)
+              -> Word64  -- ^ Bundle creation timestamp (seconds)
+              -> Bool
+isBundleFresh now bundleTs
+    | bundleTs > now = True   -- future timestamp => not stale (clock skew)
+    | otherwise      = now - bundleTs < maxBundleAge
+
+-- | Encode a 'Word64' timestamp as an 8-byte big-endian 'ByteString'.
+encodeTimestamp :: Word64 -> ByteString
+encodeTimestamp w = BS.pack
+    [ fromIntegral (w `shiftR` 56)
+    , fromIntegral (w `shiftR` 48)
+    , fromIntegral (w `shiftR` 40)
+    , fromIntegral (w `shiftR` 32)
+    , fromIntegral (w `shiftR` 24)
+    , fromIntegral (w `shiftR` 16)
+    , fromIntegral (w `shiftR`  8)
+    , fromIntegral  w
+    ]
+
+-- | Derive the master secret with a bundle timestamp bound into the HKDF
+-- info string.  This is identical to 'deriveSecret' except the info becomes:
+--
+-- @"UmbraVox_X3DH_v1" || IK_A_pub || IK_B_pub || BE64(bundleTimestamp)@
+--
+-- Binding the timestamp ensures that replayed bundles (even with the same
+-- keys) produce different session keys, preventing silent key reuse.
+deriveSecretWithTimestamp :: ByteString      -- ^ dh1
+                         -> ByteString      -- ^ dh2
+                         -> ByteString      -- ^ dh3
+                         -> Maybe ByteString -- ^ dh4 (optional)
+                         -> ByteString      -- ^ Initiator (Alice) X25519 identity public key
+                         -> ByteString      -- ^ Responder (Bob) X25519 identity public key
+                         -> Word64          -- ^ Bundle creation timestamp
+                         -> ByteString
+deriveSecretWithTimestamp !dh1 !dh2 !dh3 !mDh4 !aliceIKPub !bobIKPub !bundleTs =
+    let !pad = BS.replicate 32 0xff
+        !salt = BS.replicate 32 0x00
+        !ikm = BS.concat $ [pad, dh1, dh2, dh3] ++ maybe [] (:[]) mDh4
+        !info = x3dhInfo <> aliceIKPub <> bobIKPub <> encodeTimestamp bundleTs
+    in hkdf salt ikm info 32
+
+-- | Alice initiates X3DH with bundle freshness validation (M23.2.2).
+--
+-- Like 'x3dhInitiate', but additionally:
+--
+-- 1. Rejects bundles older than 'maxBundleAge' (returns 'Nothing').
+-- 2. Binds the bundle timestamp into the HKDF info string so replayed
+--    bundles produce different keys.
+--
+-- Both sides must use the timestamp-aware variants for the shared secrets
+-- to match.
+x3dhInitiateWithTimestamp :: IdentityKey
+                          -> PreKeyBundle
+                          -> ByteString   -- ^ 32-byte ephemeral secret
+                          -> Word64       -- ^ Current POSIX time (seconds)
+                          -> Word64       -- ^ Bundle creation timestamp (seconds)
+                          -> Maybe X3DHResult
+x3dhInitiateWithTimestamp aliceIK bundle ekSecret now bundleTs
+    -- Step 0: Reject stale bundles
+    | not (isBundleFresh now bundleTs) = Nothing
+    -- Step 1: Verify SPK signature (M23.3.1: message = ikEd25519 || spkPub)
+    | not (ed25519Verify (pkbIdentityEd25519 bundle)
+                         (pkbIdentityEd25519 bundle <> pkbSignedPreKey bundle)
+                         (pkbSPKSignature bundle)) = Nothing
+    | otherwise =
+        let !ek = generateKeyPair ekSecret
+        in do
+            !dh1  <- x25519 (ikX25519Secret aliceIK) (pkbSignedPreKey bundle)
+            !dh2  <- x25519 (kpSecret ek)             (pkbIdentityKey bundle)
+            !dh3  <- x25519 (kpSecret ek)             (pkbSignedPreKey bundle)
+            !mDh4 <- case pkbOneTimePreKey bundle of
+                         Nothing  -> Just Nothing
+                         Just opk -> fmap Just (x25519 (kpSecret ek) opk)
+            let !masterSecret = deriveSecretWithTimestamp dh1 dh2 dh3 mDh4
+                                    (ikX25519Public aliceIK) (pkbIdentityKey bundle)
+                                    bundleTs
+            Just X3DHResult
+                { x3dhSharedSecret = masterSecret
+                , x3dhEphemeralKey = kpPublic ek
+                , x3dhUsedOPK      = pkbOneTimePreKey bundle
+                }
+
+-- | Bob responds to Alice's X3DH initiation with timestamp binding (M23.2.2).
+--
+-- Like 'x3dhRespond', but binds the bundle timestamp into the HKDF info
+-- string.  The @bundleTs@ must match the timestamp Alice used in
+-- 'x3dhInitiateWithTimestamp' for the shared secrets to agree.
+x3dhRespondWithTimestamp :: IdentityKey       -- ^ Bob's identity key
+                         -> ByteString        -- ^ Bob's SPK secret key
+                         -> Maybe ByteString  -- ^ Bob's OPK secret key (if used)
+                         -> ByteString        -- ^ Alice's X25519 identity public key
+                         -> ByteString        -- ^ Alice's ephemeral public key
+                         -> Word64            -- ^ Bundle creation timestamp (seconds)
+                         -> Maybe ByteString  -- ^ Shared secret (32 bytes), or Nothing
+x3dhRespondWithTimestamp bobIK spkSecret mOPKSecret aliceIKPub aliceEKPub bundleTs = do
+    !dh1  <- x25519 spkSecret              aliceIKPub
+    !dh2  <- x25519 (ikX25519Secret bobIK) aliceEKPub
+    !dh3  <- x25519 spkSecret              aliceEKPub
+    !mDh4 <- case mOPKSecret of
+                 Nothing     -> Just Nothing
+                 Just opkSec -> fmap Just (x25519 opkSec aliceEKPub)
+    Just (deriveSecretWithTimestamp dh1 dh2 dh3 mDh4 aliceIKPub (ikX25519Public bobIK) bundleTs)
