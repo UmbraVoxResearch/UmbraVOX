@@ -111,6 +111,7 @@ import qualified Test.Hardening.Recovery as HardeningRecovery
 import qualified Test.Hardening.Soak as HardeningSoak
 import qualified Test.Hardening.TCP as HardeningTCP
 import qualified Test.Integration as Integration
+import qualified Test.Network.DHT as DHT
 import qualified Test.Network.Dandelion as Dandelion
 import qualified Test.Network.DoSMitigation as DoSMitigation
 import qualified Test.Network.MDNS as MDNS
@@ -340,6 +341,7 @@ coreSuites =
     , Suite "signal-wire-compat" SignalWireCompat.signalWireCompatTests
     , Suite "signal-compat" SignalCompat.signalCompatTests
     , Suite "dandelion" Dandelion.runTests
+    , Suite "dht" DHT.runTests
     , Suite "dos-mitigation" DoSMitigation.runTests
     , Suite "mdns" MDNS.runTests
     , Suite "peer-manager" PeerManager.runTests
@@ -431,6 +433,7 @@ coreNetworkSuites =
     , Suite "loopback-transport" Loopback.runTests
     , Suite "noise" Noise.runTests
     , Suite "dandelion" Dandelion.runTests
+    , Suite "dht" DHT.runTests
     , Suite "dos-mitigation" DoSMitigation.runTests
     , Suite "peer-exchange" PeerExchange.runTests
     , Suite "peer-manager" PeerManager.runTests

@@ -488,6 +488,7 @@ test-suite umbravox-test
     Test.Storage.StateDB
     Test.Storage.Index
     Test.Storage.Checkpoint
+    Test.Network.DHT
     Test.Network.MDNS
     Test.Network.Protocol
     Test.CryptoIntegrity
