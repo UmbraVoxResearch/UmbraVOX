@@ -272,7 +272,7 @@ MILESTONE M20: CODEBASE QUALITY + ARCHITECTURAL IMPROVEMENTS (v0.2.1)
 ================================================================================
 Note: Items from codebase audit (2026-05-20).
 
-[~] M20.1 Critical architectural fixes
+[x] M20.1 Critical architectural fixes
   [x] M20.1.1 Eliminate unsafePerformIO global state (RuntimeLog, Random, Version)
     Note: Version.hs (pure constant), RuntimeLog (AppConfig fields), Random (explicit initCSPRNG, empty MVar only). All done.
   [x] M20.1.2 Break Network→TUI dependency (Listener.hs imports addSession)
@@ -286,14 +286,15 @@ Note: Items from codebase audit (2026-05-20).
   [x] M20.2.2 Add stub module documentation (comments, not WARNING pragmas)
     Note: 24 stub modules marked with STUB MODULE comment headers.
 
-[~] M20.3 Module cleanup
+[x] M20.3 Module cleanup
   [x] M20.3.1 Move consensus/economics stubs to deferred build target
     Note: 24 stubs gated behind cabal flag(stubs). Build with -f -stubs to exclude.
   [x] M20.3.2 Consolidate 5 transport stubs into Stubs.hs
     Note: Kept as separate files (plugin architecture). Documented with STUB headers.
   [x] M20.3.3 Verify all test files wired into Main.hs + cabal
     Note: Evidence, SignalCompat, ProtocolLibsignal wired.
-  [ ] M20.3.4 Attic docs archival (future, not now)
+  [x] M20.3.4 Attic docs archival (initial batch)
+    Note: doc/attic/ created with 7 files (01-overview, mvp-plan, persistence-model, assurance-roadmap, assurance-matrix, fstar-assume-reduction, karamel-evaluation). Full doc audit deferred to M26.1.
 
 [~] M20.4 Security hardening (M20.4.1 + M20.4.5 deferred)
   [ ] M20.4.1 Complete M15.3.2 SecureBytes migration for secret key fields
@@ -313,14 +314,15 @@ Note: Items from codebase audit (2026-05-20).
     Note: verifyConfigHash returns Either. initCoreRuntime exits on mismatch. --skip-config-verify escape hatch.
 
 [ ] M20.5 VM isolation completion
-  [~] M20.5.1 Migrate all Makefile test targets to VM-default
-    Note: test-offline-parity now routed through vm_or_local.
+  [x] M20.5.1 Migrate all Makefile test targets to VM-default
+    Note: All build/test/verify/codegen targets use vm_or_local. Host-only targets (lint, license, format-check, assurance-fast, test-infra, test-shells, clean) are grep/shell ops that don't need a compiler. run-local explicitly errors out.
   [x] M20.5.2 Update flake.nix to not pull GHC into host store
     Note: devShells.default is VM-only (qemu, git, make). devShells.full has toolchain.
-  [~] M20.5.3 Split smoke vs dev boot behavior in VM image
+  [x] M20.5.3 Split smoke vs dev boot behavior in VM image
     Note: vm-image smoke unit now auto-skips when .vm-init.sh is injected.
     Note: vm-image now orders `umbravox-dev-init` before `umbravox-smoke` to prevent concurrent source sync races.
     Note: vm-image smoke unit no longer waits on `network.target` (offline pipeline starts after local-fs).
+    Note: Verified in nix/vm-image.nix — two systemd services with correct ordering + conditional skip.
   [~] M20.5.4 VM source export semantics
     Note: vm-dev-run now exports current worktree (not git archive HEAD) with exclusion filters.
     Note: vm-dev and smoke copy paths now use `.vm-source-ready` marker for idempotent workspace sync.
