@@ -32,7 +32,7 @@ import System.Posix.Files (ownerReadMode, ownerWriteMode, setFileMode, unionFile
 import qualified Network.Socket as NS
 
 import UmbraVox.App.RuntimeLog (logEvent)
-import UmbraVox.Network.Discovery (newDiscoveryManager, discoverPeers)
+import UmbraVox.Network.Discovery (newDiscoveryManager)
 import UmbraVox.Network.PeerManager (newPeerManager)
 import UmbraVox.BuildProfile
     ( BuildPlugin, BuildPluginId(..), PackagedPluginRuntime(..), PluginManifest
