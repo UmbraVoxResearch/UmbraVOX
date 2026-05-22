@@ -10,12 +10,15 @@
 module UmbraVox.Network.DHT
     ( DHTState(..)
     , DHTRoutingPolicy(..)
+    , AdaptiveParams(..)
     , newDHTState
     , announceKey
     , routingPolicy
     , handleMessage
     , maintain
     , bootstrap
+    , estimateNetworkSize
+    , suggestParams
     ) where
 
 import Data.ByteString (ByteString)
@@ -221,6 +224,59 @@ maintain st now = do
     let staleNodes = concatMap (filter (\n -> dhtLastSeen n < cutoff) . kbEntries) buckets
     mapM_ (removeNode rt . dhtNodeId) staleNodes
     return (expiredCount, length staleNodes)
+
+------------------------------------------------------------------------
+-- Adaptive parameters (M24.6.6)
+------------------------------------------------------------------------
+
+-- | Suggested DHT parameters adapted to estimated network size.
+-- Larger networks benefit from higher k (bucket size) and alpha
+-- (parallel query) values to maintain lookup efficiency.
+data AdaptiveParams = AdaptiveParams
+    { apK     :: !Int    -- ^ suggested bucket size
+    , apAlpha :: !Int    -- ^ suggested parallel queries
+    } deriving stock (Show, Eq)
+
+-- | Estimate the number of nodes in the network from the routing table.
+--
+-- Uses the density of the closest non-empty bucket to extrapolate.
+-- Bucket @i@ covers a region of @2^i@ addresses in the XOR keyspace;
+-- if it contains @n@ entries then the estimated total population is
+-- @n * 2^(256 - i) / 2^i = n * 2^(256 - 2*i)@.  In practice we use
+-- the simpler approximation @n * 2^i@ where @i@ is the index of the
+-- closest non-empty bucket (higher index = closer = smaller region),
+-- giving the density in the smallest observed neighbourhood.
+--
+-- Returns 0 if the routing table is empty.
+estimateNetworkSize :: RoutingTable -> IO Int
+estimateNetworkSize rt = do
+    buckets <- readIORef (rtBuckets rt)
+    -- Find the highest-index non-empty bucket (closest to self).
+    let indexed = zip [0 :: Int ..] buckets
+        nonEmpty = [(i, length (kbEntries b)) | (i, b) <- indexed
+                                               , not (null (kbEntries b))]
+    case nonEmpty of
+        [] -> return 0
+        _  -> do
+            -- Use the closest (highest index) non-empty bucket.
+            let (closestIdx, count) = last nonEmpty
+            -- The bucket covers 2^(255 - closestIdx) of the keyspace.
+            -- Density = count / 2^(255 - closestIdx); total = density * 2^256.
+            -- Simplifies to: count * 2^(closestIdx + 1).
+            -- Cap the shift to avoid absurd estimates on sparse tables.
+            let shift = min closestIdx 30  -- cap to avoid overflow
+            return (count * (2 ^ shift))
+
+-- | Suggest DHT parameters based on estimated network size.
+--
+-- Small networks use conservative parameters; larger networks increase
+-- bucket size and parallelism to keep lookup latency in O(log n).
+suggestParams :: Int -> AdaptiveParams
+suggestParams networkSize
+    | networkSize < 100   = AdaptiveParams 10 2
+    | networkSize < 1000  = AdaptiveParams 20 3
+    | networkSize < 10000 = AdaptiveParams 20 5
+    | otherwise           = AdaptiveParams 30 7
 
 ------------------------------------------------------------------------
 -- Bootstrap (M24.4.6)
