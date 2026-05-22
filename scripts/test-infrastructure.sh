@@ -62,6 +62,13 @@ else
     check "UMBRAVOX_LOCAL=1 make build runs cabal locally" "FAIL"
 fi
 
+# Run full make-option dry-run coverage
+if bash scripts/test-make-options.sh >/dev/null 2>&1; then
+    check "scripts/test-make-options.sh passes" "PASS"
+else
+    check "scripts/test-make-options.sh passes" "FAIL"
+fi
+
 echo ""
 
 # ── Section 2: Shell environments ─────────────────────────────────────
