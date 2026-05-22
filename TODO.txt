@@ -515,14 +515,14 @@ See doc/PROTOCOL-AUDIT-v0.3.0.md for full details.
   [x] M23.3.8 MessageFormat: reduce maxPayload to 1019 for guaranteed PKCS7 padding (53852fc)
   [x] M23.3.9 WireFormat: reject unknown version before parsing (c778702)
 
-[~] M23.4 Crypto implementation audit fixes (doc/CRYPTO-AUDIT-v0.3.0.md)
+[x] M23.4 Crypto implementation audit fixes (doc/CRYPTO-AUDIT-v0.3.0.md)
   [x] M23.4.1 Ed25519: cofactored verify or small-order rejection (HIGH — signature malleability) (5905269)
   [x] M23.4.2 X25519: constant-time conditional swap (HIGH — timing side-channel on scalar bits) (746eab5)
-  [ ] M23.4.3 VRF: hardcode sqrt(-486664) sign convention (MEDIUM — interoperability risk)
-  [ ] M23.4.4 VRF: prime-order subgroup validation on decoded Gamma (MEDIUM)
-  [ ] M23.4.5 MLKEM: validate 64-bit Int assumption / add overflow guards (MEDIUM)
-  [ ] M23.4.6 MLKEM: validate polyBaseMul zeta indexing vs FIPS 203 KAT (MEDIUM)
-  [ ] M23.4.7 GCM: add nonce-reuse detection at module level (MEDIUM)
+  [x] M23.4.3 VRF: hardcode sqrt(-486664) sign convention (MEDIUM) (04257e2)
+  [x] M23.4.4 VRF: prime-order subgroup validation on decoded Gamma (MEDIUM) (04257e2)
+  [x] M23.4.5 MLKEM: validate 64-bit Int assumption / add overflow guards (MEDIUM) (04257e2)
+  [x] M23.4.6 MLKEM: validate polyBaseMul zeta indexing vs FIPS 203 KAT (MEDIUM) (04257e2)
+  [x] M23.4.7 GCM: add nonce-reuse detection at module level (MEDIUM) (04257e2)
 
 ================================================================================
 MILESTONE M24: DHT NETWORK + UNIFIED DISCOVERY (v0.4.0)
@@ -576,8 +576,8 @@ See doc/DHT-NETWORK-PLAN.md for full design.
   [ ] M24.5.2 Status bar: active discovery source count indicator
   [ ] M24.5.3 Peer list: source tag display (mDNS/PEX/DHT/DNS/etc.)
   [ ] M24.5.4 Manual PEX exchange button for Swing mode
-  [ ] M24.5.5 Chat.API: exchangePeers RPC method
-  [ ] M24.5.6 Chat.API: dhtStatus RPC method (routing table size, stored values)
+  [x] M24.5.5 Chat.API: exchangePeers RPC method (f6d7d7c)
+  [x] M24.5.6 Chat.API: dhtStatus RPC method (routing table size, stored values) (f6d7d7c)
 
 [ ] M24.6 Security hardening (Phase 6)
   [ ] M24.6.1 Sybil attack test: many fake node IDs targeting same bucket
