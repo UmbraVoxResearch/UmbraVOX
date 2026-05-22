@@ -32,6 +32,8 @@ import System.Posix.Files (ownerReadMode, ownerWriteMode, setFileMode, unionFile
 import qualified Network.Socket as NS
 
 import UmbraVox.App.RuntimeLog (logEvent)
+import UmbraVox.Network.Discovery (newDiscoveryManager, discoverPeers)
+import UmbraVox.Network.PeerManager (newPeerManager)
 import UmbraVox.BuildProfile
     ( BuildPlugin, BuildPluginId(..), PackagedPluginRuntime(..), PluginManifest
     , loadPackagedPluginRuntimeCatalog, pluginEnabled
@@ -89,6 +91,8 @@ newDefaultAppConfig = do
         initialAutoSave = pluginEnabled PluginPersistentStorage
         initialMode = if pluginEnabled PluginConnectionModeSelection then Selective else Chaste
     initialStorage <- newInMemoryStorage
+    peerMgr <- newPeerManager
+    discoveryMgr <- newDiscoveryManager peerMgr
     AppConfig
         <$> newIORef listenPort
         <*> newIORef randomName
@@ -120,6 +124,10 @@ newDefaultAppConfig = do
         <*> newIORef defaultPersistencePlugins  -- cfgPluginRegistry: all persistence plugins disabled
         <*> newMVar ()      -- cfgLogLock: runtime log serialization
         <*> newIORef 0      -- cfgLogWriterPID: single-writer PID tracking
+        <*> pure peerMgr               -- cfgPeerManager: M24.2
+        <*> pure discoveryMgr          -- cfgDiscoveryManager: M24.2
+        <*> newIORef Set.empty         -- cfgDiscoverySources: M24.2 (populated by discoverPeers)
+        <*> newIORef Nothing           -- cfgDNSDiscoveryDomain: M24.2
 
 initializeLocalIdentity :: AppConfig -> IO IdentityKey
 initializeLocalIdentity cfg = do
