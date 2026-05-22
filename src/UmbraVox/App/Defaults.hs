@@ -31,6 +31,9 @@ module UmbraVox.App.Defaults
     , mdnsPollIntervalUs
       -- * Discovery (M24.2)
     , discoveryPollIntervalUs
+      -- * DHT (M24.4)
+    , dhtDefaultEnabled
+    , dhtDefaultBootstrapNodes
     ) where
 
 import Data.Word (Word32)
@@ -134,6 +137,18 @@ mdnsPollIntervalUs = 5 * 1000000  -- 5 seconds
 -- Controls how frequently _umbravox._tcp SRV records are re-queried.
 discoveryPollIntervalUs :: Int
 discoveryPollIntervalUs = 30 * 1000000  -- 30 seconds
+
+------------------------------------------------------------------------
+-- DHT (M24.4)
+------------------------------------------------------------------------
+
+-- | Whether the DHT subsystem is enabled by default.
+dhtDefaultEnabled :: Bool
+dhtDefaultEnabled = False
+
+-- | Default bootstrap node addresses (empty — no bootstrap by default).
+dhtDefaultBootstrapNodes :: [String]
+dhtDefaultBootstrapNodes = []
 
 ------------------------------------------------------------------------
 -- HKDF domain separation — reference only

@@ -97,4 +97,7 @@ data AppConfig = AppConfig
     , cfgDiscoveryManager    :: DiscoveryManager
     , cfgDiscoverySources    :: IORef (Set.Set DiscoverySource)
     , cfgDNSDiscoveryDomain  :: IORef (Maybe String)
+    -- M24.4: DHT settings
+    , cfgDHTEnabled          :: IORef Bool
+    , cfgDHTBootstrapNodes   :: IORef [String]
     }

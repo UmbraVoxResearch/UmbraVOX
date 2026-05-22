@@ -17,6 +17,7 @@ module UmbraVox.Network.PeerManager
   , updateScoreAt
   , evictStale
   , processBanExpiry
+  , banForNodeIdMismatch
   ) where
 
 import Data.ByteString (ByteString)
@@ -229,3 +230,12 @@ processBanExpiry pm now = atomicModifyIORef' (pmPeers pm) $ \m ->
       m'           = Map.map (\info -> if expired info then unban info else info) m
       count        = Map.size (Map.filter expired m)
   in  (m', count)
+
+-- | Ban a peer for NodeId mismatch (DHT Sybil prevention).
+--
+-- When a DHT node's claimed NodeId does not match SHA-256 of its
+-- identity public key, it is immediately banned with score 0 and a
+-- 24-hour ban duration (86400 seconds).  This prevents Sybil nodes
+-- from poisoning the routing table.
+banForNodeIdMismatch :: PeerManager -> String -> IO ()
+banForNodeIdMismatch pm addr = banPeer pm addr 86400

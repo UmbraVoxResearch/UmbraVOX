@@ -9,6 +9,7 @@ module UmbraVox.Network.DHT.Types
       NodeId(..)
     , xorDistance
     , deriveNodeId
+    , verifyNodeId
       -- * DHT nodes
     , DHTNode(..)
       -- * K-buckets
@@ -53,6 +54,11 @@ xorDistance (NodeId a) (NodeId b) =
 -- the handshake public key to prevent Sybil attacks.
 deriveNodeId :: ByteString -> NodeId
 deriveNodeId pubKey = NodeId (sha256 pubKey)
+
+-- | Verify that a claimed NodeId matches the SHA-256 hash of the given
+-- identity public key.  Returns True if valid.
+verifyNodeId :: NodeId -> ByteString -> Bool
+verifyNodeId (NodeId claimed) pubKey = claimed == sha256 pubKey
 
 ------------------------------------------------------------------------
 -- DHT nodes
