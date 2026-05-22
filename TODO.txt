@@ -593,27 +593,27 @@ BLOCKED (EXTERNAL DEPENDENCIES)
 
 ================================================================================
 ================================================================================
-MILESTONE M25: OPENCLAW PLUGIN (v0.5.0+)
+MILESTONE M25: UMBRACLAW PLUGIN (v0.5.0+)
 ================================================================================
-Note: OpenClaw integration plugin for UmbraVOX. Uses existing bridge
+Note: UmbraClaw integration plugin for UmbraVOX. Uses existing bridge
 plugin architecture (ProviderCapBridge + IPC subprocess protocol).
 
-[ ] M25.1 OpenClaw plugin scaffold
-  [ ] M25.1.1 plugins/openclaw/manifest.uvx — bridge manifest
-  [ ] M25.1.2 src/UmbraVox/Bridge/OpenClaw/Main.hs — IPC subprocess
-  [ ] M25.1.3 src/UmbraVox/Bridge/OpenClaw/Session.hs — session management
-  [ ] M25.1.4 app-openclaw/Main.hs — executable entry point
-  [ ] M25.1.5 UmbraVox.cabal: umbravox-openclaw executable stanza
+[ ] M25.1 UmbraClaw plugin scaffold
+  [ ] M25.1.1 plugins/umbraclaw/manifest.uvx — bridge manifest
+  [ ] M25.1.2 src/UmbraVox/Bridge/UmbraClaw/Main.hs — IPC subprocess
+  [ ] M25.1.3 src/UmbraVox/Bridge/UmbraClaw/Session.hs — session management
+  [ ] M25.1.4 app-umbraclaw/Main.hs — executable entry point
+  [ ] M25.1.5 UmbraVox.cabal: umbravox-umbraclaw executable stanza
 
-[ ] M25.2 OpenClaw protocol integration
-  [ ] M25.2.1 OpenClaw authentication flow
-  [ ] M25.2.2 OpenClaw message send/receive via bridge IPC
-  [ ] M25.2.3 OpenClaw contact list sync
-  [ ] M25.2.4 TUI: OpenClaw chat type indicator + auth dialog
+[ ] M25.2 UmbraClaw protocol integration
+  [ ] M25.2.1 UmbraClaw authentication flow
+  [ ] M25.2.2 UmbraClaw message send/receive via bridge IPC
+  [ ] M25.2.3 UmbraClaw contact list sync
+  [ ] M25.2.4 TUI: UmbraClaw chat type indicator + auth dialog
 
 [ ] M25.3 Testing
-  [ ] M25.3.1 OpenClaw IPC smoke test
-  [ ] M25.3.2 OpenClaw wire-compatibility tests
+  [ ] M25.3.1 UmbraClaw IPC smoke test
+  [ ] M25.3.2 UmbraClaw wire-compatibility tests
 
 OUTSIDE MVP (DEFERRED)
 ================================================================================
@@ -652,3 +652,30 @@ Bridge/network blockchain modules (3):
 Economics modules (2):
   - Economics.Onboarding — onboarding token economics
   - Economics.Cycle — economic cycle management
+
+================================================================================
+MILESTONE M26: DOCUMENTATION OVERHAUL (every release)
+================================================================================
+Note: Move stale docs to attic/, maintain doc/ as single source of truth.
+Auto-generate where possible. Update CHANGELOG + TODO with every change.
+
+[ ] M26.1 Documentation audit + attic migration
+  [ ] M26.1.1 Move stale doc/ files to attic/ (01-overview, mvp-plan, persistence-model, assurance-roadmap, etc.)
+  [ ] M26.1.2 Consolidate doc/README.md into top-level README.md (remove dup)
+  [ ] M26.1.3 Update doc/ARCHITECTURE.md for current module structure
+  [ ] M26.1.4 Update doc/QUICKSTART.md for VM-first workflow
+
+[ ] M26.2 Auto-generated documentation
+  [ ] M26.2.1 Haddock generation via make docs (cabal haddock)
+  [ ] M26.2.2 Module dependency graph via graphmod or standalon
+  [ ] M26.2.3 API docs for Chat.API JSON-RPC (auto from source)
+  [ ] M26.2.4 Plugin authoring docs auto-extracted from template-bridge/
+  [ ] M26.2.5 Test coverage report generation (make coverage-report)
+
+[ ] M26.3 Per-milestone documentation requirements
+  Note: Every milestone MUST include:
+  - Updated CHANGELOG.txt entry
+  - Updated TODO.txt status
+  - Updated AGENTS.md if architecture changes
+  - Updated doc/ARCHITECTURE.md if module structure changes
+  - Haddock on all new public modules
