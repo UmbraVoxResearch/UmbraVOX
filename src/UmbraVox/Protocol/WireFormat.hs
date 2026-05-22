@@ -14,6 +14,10 @@ module UmbraVox.Protocol.WireFormat
   , encodeEnvelope
   , decodeEnvelope
   , unwrapEnvelope
+    -- * ChaCha20-Poly1305 AEAD envelope encryption (M23.1.1c)
+  , deriveEnvelopeKey
+  , encodeEnvelopeAEAD
+  , decodeEnvelopeAEAD
     -- * Per-connection sequence tracking (M23.2.12)
   , SeqWindow
   , newSeqWindow
@@ -29,6 +33,8 @@ import qualified Data.Set as Set
 
 import UmbraVox.Protocol.Handshake (putW32BE, getW32BE)
 import UmbraVox.Crypto.HMAC (hmacSHA256)
+import UmbraVox.Crypto.HKDF (hkdfSHA256)
+import UmbraVox.Crypto.ChaChaPoly (chachaPolyEncrypt, chachaPolyDecrypt)
 import UmbraVox.Crypto.ConstantTime (constantEq)
 
 -- | A network message envelope with stealth addressing metadata.
@@ -142,6 +148,128 @@ decodeEnvelope key bs
 -- | Extract payload from envelope.
 unwrapEnvelope :: Envelope -> ByteString
 unwrapEnvelope = envPayload
+
+------------------------------------------------------------------------
+-- ChaCha20-Poly1305 AEAD envelope encryption (M23.1.1c)
+------------------------------------------------------------------------
+
+-- | Poly1305 tag size in bytes.
+poly1305TagSize :: Int
+poly1305TagSize = 16
+
+-- | Minimum size of an AEAD-encrypted wire message:
+-- aad(2) + inner header ciphertext(43) + poly1305 tag(16) = 61 bytes.
+-- The inner header is: seq(4) + ephemeralR(32) + viewTag(1) + scanTag(2) + payloadLen(4).
+minAEADSize :: Int
+minAEADSize = 2 + 43 + poly1305TagSize
+
+-- | Derive a 32-byte envelope encryption key from the transport key.
+--
+-- Uses HKDF-SHA-256 with a 32-byte zero salt and the info string
+-- @"UmbraVox_EnvelopeKey_v1"@.
+--
+-- See: doc/ENCRYPTED-ENVELOPE-DESIGN.md Section 4.5
+deriveEnvelopeKey :: ByteString -> ByteString
+deriveEnvelopeKey transportKey =
+    hkdfSHA256 (BS.replicate 32 0) transportKey "UmbraVox_EnvelopeKey_v1" 32
+
+-- | Build a 12-byte nonce from a sequence number.
+--
+-- Layout: @0x00*4 || BE32(sequence) || 0x00*4@ (12 bytes total).
+-- Unique per message within a session since sequence numbers are not reused.
+seqNonce :: Word32 -> ByteString
+seqNonce seqNum =
+    BS.replicate 4 0 <> putW32BE seqNum <> BS.replicate 4 0
+
+-- | Encode an envelope with ChaCha20-Poly1305 AEAD encryption.
+--
+-- For data messages (all types except handshake type 2):
+--   AAD: version byte + type byte (authenticated but not encrypted)
+--   Plaintext: seq(4) + ephemeralR(32) + viewTag(1) + scanTag(2) + payloadLen(4) + payload(N)
+--   Output: [version:1][type:1][aead_ciphertext:N][poly1305_tag:16]
+--
+-- For handshake messages (type 2): delegates to 'encodeEnvelope' (HMAC-SHA-256),
+-- since no session key exists yet during the handshake.
+encodeEnvelopeAEAD :: ByteString  -- ^ 32-byte envelope key (from 'deriveEnvelopeKey')
+                   -> Word32      -- ^ sequence number (used to derive nonce)
+                   -> Envelope    -- ^ envelope to encode
+                   -> ByteString
+encodeEnvelopeAEAD envelopeKey seqNum env
+    | envType env == 2 =
+        -- Handshake messages use HMAC authentication (no session key yet)
+        encodeEnvelope envelopeKey env
+    | otherwise =
+        let -- AAD: version + type (authenticated but not encrypted)
+            !aad = BS.pack [envVersion env, envType env]
+            -- Plaintext: inner fields (seq through payload)
+            !plaintext = BS.concat
+                [ putW32BE (envSequence env)
+                , BS.take 32 (envEphemeralR env)
+                , BS.singleton (envViewTag env)
+                , putW16BE (envScanTag env)
+                , putW32BE (fromIntegral (BS.length (envPayload env)))
+                , envPayload env
+                ]
+            !nonce = seqNonce seqNum
+            (!ciphertext, !tag) = chachaPolyEncrypt envelopeKey nonce aad plaintext
+        in aad <> ciphertext <> tag
+
+-- | Decode an AEAD-encrypted envelope.
+--
+-- The caller must supply the expected sequence number (from the transport
+-- layer's SeqWindow) so that the correct nonce can be reconstructed.
+--
+-- For handshake messages (type byte == 2): delegates to 'decodeEnvelope' (HMAC).
+-- For all other types: verifies the Poly1305 tag, decrypts, and parses inner fields.
+--
+-- Returns 'Nothing' on authentication failure, truncation, or parse error.
+decodeEnvelopeAEAD :: ByteString  -- ^ 32-byte envelope key (from 'deriveEnvelopeKey')
+                   -> Word32      -- ^ expected sequence number (for nonce derivation)
+                   -> ByteString  -- ^ wire bytes
+                   -> Maybe Envelope
+decodeEnvelopeAEAD envelopeKey seqNum bs
+    | BS.length bs < 2 = Nothing
+    | BS.index bs 0 /= 2 = Nothing  -- reject non-v2 envelopes
+    | BS.index bs 1 == 2 =
+        -- Handshake messages use HMAC authentication
+        decodeEnvelope envelopeKey bs
+    | BS.length bs < minAEADSize = Nothing
+    | otherwise =
+        let !aad = BS.take 2 bs
+            -- ciphertext is everything between aad and the trailing 16-byte tag
+            !totalLen = BS.length bs
+            !ciphertextLen = totalLen - 2 - poly1305TagSize
+            !ciphertext = BS.take ciphertextLen (BS.drop 2 bs)
+            !tag = BS.drop (totalLen - poly1305TagSize) bs
+            !nonce = seqNonce seqNum
+        in case chachaPolyDecrypt envelopeKey nonce aad ciphertext tag of
+            Nothing -> Nothing
+            Just plaintext -> parseInnerEnvelope (BS.index bs 0) (BS.index bs 1) plaintext
+
+-- | Parse the decrypted inner plaintext into an 'Envelope'.
+--
+-- Expected layout: seq(4) + ephemeralR(32) + viewTag(1) + scanTag(2) + payloadLen(4) + payload(N)
+-- Minimum plaintext size: 43 bytes (with empty payload).
+parseInnerEnvelope :: Word8 -> Word8 -> ByteString -> Maybe Envelope
+parseInnerEnvelope ver typ plaintext
+    | BS.length plaintext < 43 = Nothing
+    | otherwise =
+        let !seqNum  = getW32BE (BS.take 4 plaintext)
+            !ephR    = BS.take 32 (BS.drop 4 plaintext)
+            !vTag    = BS.index plaintext 36
+            !sTag    = getW16BE (BS.take 2 (BS.drop 37 plaintext))
+            !pLen    = fromIntegral (getW32BE (BS.take 4 (BS.drop 39 plaintext))) :: Int
+        in if pLen < 0 || BS.length plaintext < 43 + pLen
+           then Nothing
+           else Just Envelope
+                { envVersion    = ver
+                , envType       = typ
+                , envSequence   = seqNum
+                , envEphemeralR = ephR
+                , envViewTag    = vTag
+                , envScanTag    = sTag
+                , envPayload    = BS.take pLen (BS.drop 43 plaintext)
+                }
 
 ------------------------------------------------------------------------
 -- Per-connection sequence tracking (M23.2.12)

@@ -6,6 +6,9 @@ module UmbraVox.Crypto.Generated.WireFormat
     , encodeEnvelope
     , decodeEnvelope
     , unwrapEnvelope
+    , deriveEnvelopeKey
+    , encodeEnvelopeAEAD
+    , decodeEnvelopeAEAD
     ) where
 
 import Data.ByteString (ByteString)
@@ -24,3 +27,12 @@ decodeEnvelope = Reference.decodeEnvelope
 
 unwrapEnvelope :: Envelope -> ByteString
 unwrapEnvelope = Reference.unwrapEnvelope
+
+deriveEnvelopeKey :: ByteString -> ByteString
+deriveEnvelopeKey = Reference.deriveEnvelopeKey
+
+encodeEnvelopeAEAD :: ByteString -> Word32 -> Envelope -> ByteString
+encodeEnvelopeAEAD = Reference.encodeEnvelopeAEAD
+
+decodeEnvelopeAEAD :: ByteString -> Word32 -> ByteString -> Maybe Envelope
+decodeEnvelopeAEAD = Reference.decodeEnvelopeAEAD
