@@ -9,15 +9,15 @@ module UmbraVox.Version
     , versionShort
     ) where
 
--- | Version string, e.g. "v0.3.1".
+-- | Version string, e.g. "v0.4.0".
 -- Kept in sync with the @version@ field in @UmbraVox.cabal@.
 version :: String
-version = "v0.3.1"
+version = "v0.4.0"
 
--- | Full version with app name, e.g. "UmbraVOX v0.3.1"
+-- | Full version with app name, e.g. "UmbraVOX v0.4.0"
 versionFull :: String
 versionFull = "UmbraVOX " ++ version
 
--- | Short version for status bar, e.g. "v0.3.1"
+-- | Short version for status bar, e.g. "v0.4.0"
 versionShort :: String
 versionShort = version
