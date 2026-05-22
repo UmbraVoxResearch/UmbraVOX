@@ -471,8 +471,19 @@ Note: Findings from adversarial protocol audit (2026-05-22). 32 findings total.
 See doc/PROTOCOL-AUDIT-v0.3.0.md for full details.
 
 [~] M23.1 Critical + High fixes
-  [ ] M23.1.1 WireFormat: encrypt envelope header (cleartext identity hashes)
-    Note: CRITICAL. envSourceId/envDestId visible to observers. Use ephemeral per-session IDs.
+  [~] M23.1.1 WireFormat: encrypted envelope (CRITICAL — stealth + session tokens)
+    Design: doc/ENCRYPTED-ENVELOPE-DESIGN.md (511 lines, approved)
+    [ ] M23.1.1a WireFormat v1 rewrite — remove srcId/dstId, add ephemeralR(32) + viewTag(1) + scanTag(2)
+    [ ] M23.1.1b RouteToken module — HKDF token derivation with channel + identity binding
+    [ ] M23.1.1c Envelope AEAD — ChaCha20-Poly1305 encryption (HMAC for handshake, AEAD for data)
+    [ ] M23.1.1d Sender identity in encrypted payload — senderId(32) prepended before ratchet encrypt
+    [ ] M23.1.1e Handshake integration — derive route tokens after PQXDH, key confirmation MAC
+    [ ] M23.1.1f Dandelion opaque forwarding — relay swaps token, never decrypts inner envelope
+    [ ] M23.1.1g DHT presence (stealth keys, presence only, no message storage)
+    [ ] M23.1.1h DoS mitigations — PoW challenge, rate cap, extended scan tag, DHT STORE sig
+    [ ] M23.1.1i Token rotation — hybrid counter + wall-clock, no grace period needed
+    [ ] M23.1.1j MitM protections — channel binding, identity binding, key confirmation MAC
+    [ ] M23.1.1k Tests — v1 round-trip, token derivation, stealth scan, relay forwarding, PoW
   [x] M23.1.2 Handshake: cap recvBundle allocation at 2048 bytes (8344347)
   [x] M23.1.3 Handshake: cap recvInitialMessage allocation (8344347)
   [x] M23.1.4 PeerManager: evict lowest-scored at capacity (9f650e2)
