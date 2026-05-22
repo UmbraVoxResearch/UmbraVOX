@@ -47,6 +47,8 @@ data APIMethod
     | GetStatus      -- ^ params: {}
     | Connect        -- ^ params: {host, port}
     | Disconnect     -- ^ params: {sessionId}
+    | ExchangePeers  -- ^ params: {}
+    | DhtStatus      -- ^ params: {}
     deriving stock (Eq, Show)
 
 -- | A parsed JSON-RPC 2.0 request (minimal representation).
@@ -185,6 +187,8 @@ resolveMethod "listContacts"  = Just ListContacts
 resolveMethod "getStatus"     = Just GetStatus
 resolveMethod "connect"       = Just Connect
 resolveMethod "disconnect"    = Just Disconnect
+resolveMethod "exchangePeers" = Just ExchangePeers
+resolveMethod "dhtStatus"     = Just DhtStatus
 resolveMethod _               = Nothing
 
 -- | Dispatch a parsed request to the appropriate handler.
@@ -251,6 +255,24 @@ dispatchIO _cfg Disconnect req =
             pure (formatResult (rpcId req) "{\"status\":\"disconnected\"}")
         Nothing -> pure (formatError (rpcId req) (-32602)
                           "missing required param: sessionId")
+
+dispatchIO cfg ExchangePeers req = do
+    pexOn <- readIORef (cfgPEXEnabled cfg)
+    if not pexOn
+        then pure (formatError (rpcId req) (-32603) "PEX is disabled")
+        else
+            -- Actual exchange logic deferred until PEX transport is wired.
+            pure (formatResult (rpcId req)
+                    "{\"status\":\"ok\",\"exchanged\":0}")
+
+dispatchIO cfg DhtStatus req = do
+    dhtOn <- readIORef (cfgDHTEnabled cfg)
+    if not dhtOn
+        then pure (formatResult (rpcId req) "{\"enabled\":false}")
+        else
+            -- Actual DHT state reading deferred until DiscoveryManager is wired.
+            pure (formatResult (rpcId req)
+                    "{\"enabled\":true,\"routingTableSize\":0,\"storedValues\":0}")
 
 -- --------------------------------------------------------------------------
 -- RFC 1918 / loopback address validation (M23.2.11)
