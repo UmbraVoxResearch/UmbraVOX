@@ -6,6 +6,9 @@ module UmbraVox.Protocol.Handshake
     , recvBundle, recvInitialMessage
     , bundleVersion
     , bsSlice, putW32BE, getW32BE, getW32BESafe, fingerprint, timestamp
+    -- * MitM protection: key confirmation (M23.1.1j)
+    , keyConfirmMAC
+    , verifyKeyConfirmation
     ) where
 
 import qualified Data.ByteString as BS
@@ -15,6 +18,8 @@ import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (formatTime, defaultTimeLocale)
 import Control.Monad (unless)
 import UmbraVox.Chat.Session (ChatSession, initChatSession, initChatSessionBob)
+import UmbraVox.Crypto.HMAC (hmacSHA256)
+import UmbraVox.Crypto.ConstantTime (constantEq)
 import UmbraVox.Crypto.MLKEM (mlkemKeyGen,
     MLKEMEncapKey(..), MLKEMDecapKey(..), MLKEMCiphertext(..))
 import UmbraVox.Crypto.Ed25519 (ed25519Sign)
@@ -203,3 +208,43 @@ recvInitialMessage t = do
                             let !ct = fromIntegral ctLen :: Int
                             pure (bsSlice 0 32 payload, bsSlice 32 32 payload,
                                   MLKEMCiphertext (bsSlice 68 ct payload))
+
+------------------------------------------------------------------------
+-- MitM protection: key confirmation MAC (M23.1.1j)
+------------------------------------------------------------------------
+
+-- | Generate a key confirmation MAC after handshake completes.
+--
+-- Both sides exchange a confirmation MAC derived from the shared token
+-- material, their role ("initiator" or "responder"), and the handshake
+-- transcript hash.  A MitM who relays two independent handshakes will
+-- produce different token material on each leg, so the confirmation
+-- MACs will not match when compared by the legitimate peers.
+--
+-- @
+--   confirmMAC = HMAC-SHA-256(tokenMaterial,
+--       "UmbraVox_TokenConfirm_" <> role <> handshakeHash)
+-- @
+keyConfirmMAC :: BS.ByteString  -- ^ Token material (shared secret from handshake)
+              -> BS.ByteString  -- ^ Role: "initiator" or "responder"
+              -> BS.ByteString  -- ^ Handshake transcript hash
+              -> BS.ByteString  -- ^ 32-byte confirmation MAC
+keyConfirmMAC tokenMaterial role handshakeHash =
+    hmacSHA256 tokenMaterial ("UmbraVox_TokenConfirm_" <> role <> handshakeHash)
+
+-- | Verify the peer's key confirmation MAC.
+--
+-- After sending our own confirmation MAC, we receive the peer's MAC and
+-- recompute what it should be using the peer's role.  The comparison is
+-- constant-time to prevent timing side-channels.
+--
+-- Returns 'True' if the peer's MAC matches (no MitM detected).
+-- Returns 'False' if mismatch (MitM detected -- session must be rejected).
+verifyKeyConfirmation :: BS.ByteString  -- ^ Token material
+                      -> BS.ByteString  -- ^ Peer's role ("initiator" or "responder")
+                      -> BS.ByteString  -- ^ Handshake transcript hash
+                      -> BS.ByteString  -- ^ Received MAC from peer
+                      -> Bool
+verifyKeyConfirmation tokenMaterial peerRole handshakeHash receivedMAC =
+    let !expectedMAC = keyConfirmMAC tokenMaterial peerRole handshakeHash
+    in constantEq expectedMAC receivedMAC
