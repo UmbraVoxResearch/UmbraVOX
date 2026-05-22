@@ -273,8 +273,8 @@ MILESTONE M20: CODEBASE QUALITY + ARCHITECTURAL IMPROVEMENTS (v0.2.1)
 Note: Items from codebase audit (2026-05-20).
 
 [~] M20.1 Critical architectural fixes
-  [~] M20.1.1 Eliminate unsafePerformIO global state (RuntimeLog, Random, Version)
-    Note: Version.hs done (pure constant). RuntimeLog done (cfgLogLock/cfgLogWriterPID in AppConfig). Random still uses unsafePerformIO.
+  [x] M20.1.1 Eliminate unsafePerformIO global state (RuntimeLog, Random, Version)
+    Note: Version.hs (pure constant), RuntimeLog (AppConfig fields), Random (explicit initCSPRNG, empty MVar only). All done.
   [x] M20.1.2 Break Network→TUI dependency (Listener.hs imports addSession)
     Note: lcAddSession callback in ListenerCallbacks. TUI wires via RuntimeNetwork.hs.
   [x] M20.1.3 Move Bridge/Signal/Main.hs out of library namespace
@@ -295,7 +295,8 @@ Note: Items from codebase audit (2026-05-20).
 
 [ ] M20.4 Security hardening
   [ ] M20.4.1 Complete M15.3.2 SecureBytes migration for secret key fields
-  [ ] M20.4.2 Audit and resolve all M-series TODO comments in source
+  [x] M20.4.2 Audit and resolve all M-series TODO comments in source
+    Note: 36 TODOs audited. 3 stale refs fixed (M10.3.3→M20.4.5, M10.2.1 completed). 33 valid pending refs left.
   [~] M20.4.3 Harden VM integration agent trust boundary
     Note: strict AGENT_* validation + safer peer probes + tar path traversal checks added.
     Note: optional AGENT_BUNDLE_SHA256 pre-extraction checksum verification added.
@@ -304,7 +305,8 @@ Note: Items from codebase audit (2026-05-20).
     Note: DATA hex decode now rejects invalid/odd payloads without crashing.
     Remaining: explicit protocol error telemetry + max line length guard.
   [ ] M20.4.5 Upgrade export KDF from HKDF-iteration to memory-hard KDF (Argon2id/scrypt)
-  [ ] M20.4.6 Make config hash pinning fail closed (verify before apply)
+  [x] M20.4.6 Make config hash pinning fail closed (verify before apply)
+    Note: verifyConfigHash returns Either. initCoreRuntime exits on mismatch. --skip-config-verify escape hatch.
 
 [ ] M20.5 VM isolation completion
   [~] M20.5.1 Migrate all Makefile test targets to VM-default
