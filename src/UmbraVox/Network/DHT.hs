@@ -9,19 +9,25 @@
 -- during the integration phase (M24.4).
 module UmbraVox.Network.DHT
     ( DHTState(..)
+    , DHTRoutingPolicy(..)
     , newDHTState
     , announceKey
+    , routingPolicy
     , handleMessage
+    , maintain
     ) where
 
 import Data.ByteString (ByteString)
 import Data.Word (Word64)
 
 import UmbraVox.Crypto.SHA256 (sha256)
+import Data.IORef (readIORef)
+
 import UmbraVox.Network.DHT.RoutingTable
-    ( RoutingTable
+    ( RoutingTable(..)
     , newRoutingTable
     , insertNode
+    , removeNode
     , findClosest
     )
 import UmbraVox.Network.DHT.Store
@@ -29,10 +35,12 @@ import UmbraVox.Network.DHT.Store
     , newValueStore
     , localStore
     , localLookup
+    , expireEntries
     )
 import UmbraVox.Network.DHT.Types
     ( NodeId(..)
     , DHTNode(..)
+    , KBucket(..)
     , DHTConfig(..)
     , DHTMessage(..)
     , deriveNodeId
@@ -66,6 +74,32 @@ newDHTState cfg identityPubKey = do
         , dhStore        = vs
         , dhSelfId       = selfId
         }
+
+------------------------------------------------------------------------
+-- Dandelion++ routing policy (M24.4.2)
+------------------------------------------------------------------------
+
+-- | Routing policy for a DHT operation.
+data DHTRoutingPolicy
+    = DHTStemRoute    -- ^ Route through Dandelion++ stem (self-lookups, self-stores)
+    | DHTDirectRoute  -- ^ Route directly (lookups for other nodes)
+    deriving stock (Show, Eq)
+
+-- | Determine the routing policy for a DHT message.
+-- Self-referencing operations (looking up our own ID, storing our presence)
+-- use stem routing for privacy.
+routingPolicy :: DHTState -> DHTMessage -> DHTRoutingPolicy
+routingPolicy st msg = case msg of
+    FindNode _ target
+        | target == dhSelfId st -> DHTStemRoute
+        | otherwise             -> DHTDirectRoute
+    Store _ key _
+        | key == announceKey (dhSelfId st) -> DHTStemRoute
+        | otherwise                        -> DHTDirectRoute
+    FindValue _ key
+        | NodeId key == dhSelfId st -> DHTStemRoute
+        | otherwise                 -> DHTDirectRoute
+    _ -> DHTDirectRoute
 
 ------------------------------------------------------------------------
 -- Announce key
@@ -156,3 +190,28 @@ messageSender (FindNodeReply nid _) = nid
 messageSender (Store nid _ _)      = nid
 messageSender (FindValue nid _)    = nid
 messageSender (FindValueReply nid _) = nid
+
+------------------------------------------------------------------------
+-- Periodic maintenance
+------------------------------------------------------------------------
+
+-- | Perform periodic maintenance on the DHT state.
+--
+-- 1. Expire stale stored values via 'expireEntries'.
+-- 2. Remove nodes whose 'dhtLastSeen' is older than
+--    'dhtRefreshInterval' seconds ago from the routing table.
+--
+-- Returns @(expiredValues, staleNodes)@ — the number of expired
+-- values and stale nodes removed.
+maintain :: DHTState -> Word64 -> IO (Int, Int)
+maintain st now = do
+    -- Step 1: expire stale stored values.
+    expiredCount <- expireEntries (dhStore st) now
+    -- Step 2: evict stale nodes from routing table buckets.
+    let rt = dhRoutingTable st
+        refreshSecs = fromIntegral (dhtRefreshInterval (dhConfig st))
+        cutoff = if now > refreshSecs then now - refreshSecs else 0
+    buckets <- readIORef (rtBuckets rt)
+    let staleNodes = concatMap (filter (\n -> dhtLastSeen n < cutoff) . kbEntries) buckets
+    mapM_ (removeNode rt . dhtNodeId) staleNodes
+    return (expiredCount, length staleNodes)

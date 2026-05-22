@@ -128,6 +128,8 @@ newDefaultAppConfig = do
         <*> pure discoveryMgr          -- cfgDiscoveryManager: M24.2
         <*> newIORef Set.empty         -- cfgDiscoverySources: M24.2 (populated by discoverPeers)
         <*> newIORef Nothing           -- cfgDNSDiscoveryDomain: M24.2
+        <*> newIORef False             -- cfgDHTEnabled: M24.4 (off by default)
+        <*> newIORef []                -- cfgDHTBootstrapNodes: M24.4 (no bootstrap nodes)
 
 initializeLocalIdentity :: AppConfig -> IO IdentityKey
 initializeLocalIdentity cfg = do
