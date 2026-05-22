@@ -6,6 +6,7 @@
 module Test.Chat.Session (runTests) where
 
 import Test.Util
+import qualified Data.ByteString as BS
 import UmbraVox.Chat.Session
     ( ChatSession(..), initChatSession, sendChatMessage, recvChatMessage )
 import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
@@ -42,13 +43,17 @@ mkSessionPair g0 = do
 -- | Wrapper to hold Bob's ratchet state for use with recvChatMessage.
 newtype BobState = BobState { bsRatchet :: RatchetState }
 
+-- | Dummy 32-byte sender identity hash for tests.
+testSenderId :: BS.ByteString
+testSenderId = BS.replicate 32 0xAA
+
 -- | Send a message from Alice and receive it as Bob.
 testSendRecvRoundTrip :: IO Bool
 testSendRecvRoundTrip = do
     let g = mkPRNG 100
     (alice, bob) <- mkSessionPair g
     let msg = strToBS "Hello Bob!"
-    sendResult <- sendChatMessage alice msg
+    sendResult <- sendChatMessage alice testSenderId msg
     case sendResult of
         Left _ -> putStrLn "  FAIL: send/recv round-trip (send error)" >> pure False
         Right (_alice', wire) -> do
@@ -60,8 +65,10 @@ testSendRecvRoundTrip = do
                 Right Nothing -> do
                     putStrLn "  FAIL: send/recv round-trip (decryption failed)"
                     pure False
-                Right (Just (_, pt)) ->
-                    assertEq "send/recv round-trip" msg pt
+                Right (Just (_, sid, pt)) -> do
+                    ok1 <- assertEq "send/recv round-trip (plaintext)" msg pt
+                    ok2 <- assertEq "send/recv round-trip (senderId)" testSenderId sid
+                    pure (ok1 && ok2)
 
 -- | Multiple messages in sequence.
 testMultipleMessages :: IO Bool
@@ -73,7 +80,7 @@ testMultipleMessages = do
         msg2 = strToBS "second message here"
         msg3 = strToBS "third"
     -- Message 1
-    send1 <- sendChatMessage alice0 msg1
+    send1 <- sendChatMessage alice0 testSenderId msg1
     case send1 of
         Left _ -> putStrLn "  FAIL: multi-message 1 (send error)" >> pure False
         Right (alice1, wire1) -> do
@@ -83,10 +90,10 @@ testMultipleMessages = do
                 Right Nothing -> do
                     putStrLn "  FAIL: multi-message 1 (decryption failed)"
                     pure False
-                Right (Just (bobSession1, pt1)) -> do
+                Right (Just (bobSession1, _, pt1)) -> do
                     ok1 <- assertEq "multi-message 1" msg1 pt1
                     -- Message 2
-                    send2 <- sendChatMessage alice1 msg2
+                    send2 <- sendChatMessage alice1 testSenderId msg2
                     case send2 of
                         Left _ -> putStrLn "  FAIL: multi-message 2 (send error)" >> pure False
                         Right (alice2, wire2) -> do
@@ -96,10 +103,10 @@ testMultipleMessages = do
                                 Right Nothing -> do
                                     putStrLn "  FAIL: multi-message 2 (decryption failed)"
                                     pure False
-                                Right (Just (bobSession2, pt2)) -> do
+                                Right (Just (bobSession2, _, pt2)) -> do
                                     ok2 <- assertEq "multi-message 2" msg2 pt2
                                     -- Message 3
-                                    send3 <- sendChatMessage alice2 msg3
+                                    send3 <- sendChatMessage alice2 testSenderId msg3
                                     case send3 of
                                         Left _ -> putStrLn "  FAIL: multi-message 3 (send error)" >> pure False
                                         Right (_, wire3) -> do
@@ -109,6 +116,6 @@ testMultipleMessages = do
                                                 Right Nothing -> do
                                                     putStrLn "  FAIL: multi-message 3 (decryption failed)"
                                                     pure False
-                                                Right (Just (_, pt3)) -> do
+                                                Right (Just (_, _, pt3)) -> do
                                                     ok3 <- assertEq "multi-message 3" msg3 pt3
                                                     pure (ok1 && ok2 && ok3)
