@@ -1,0 +1,12 @@
+id=umbraclaw
+api=uvx-provider-v1
+name=UmbraClaw Bridge
+class=closed-bridge
+status=development
+endpoint=umbraclaw-id
+inherits=
+capabilities=connect,bridge
+host=exec-direct
+entrypoint=exec:umbravox-umbraclaw
+encryption=bridge-adapted
+notes=UmbraClaw bridge using UmbraVOX crypto with UmbraClaw-compatible parameters.
