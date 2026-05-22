@@ -266,6 +266,8 @@ library
       UmbraVox.Bridge.Signal.Registration
       UmbraVox.Bridge.Signal.Session
       UmbraVox.Bridge.Signal.WebSocket
+      UmbraVox.Bridge.UmbraClaw.Main
+      UmbraVox.Bridge.UmbraClaw.Session
       -- Headless runtime
       UmbraVox.Runtime.Headless
   build-depends:
@@ -401,6 +403,15 @@ executable umbravox-signal-bridge
   build-depends:
     base         >= 4.18  && < 5,
     bytestring   >= 0.11  && < 0.13,
+    UmbraVox
+  ghc-options:      -threaded
+
+executable umbravox-umbraclaw
+  import:           warnings, lang
+  main-is:          Main.hs
+  hs-source-dirs:   app-umbraclaw
+  build-depends:
+    base         >= 4.18  && < 5,
     UmbraVox
   ghc-options:      -threaded
 
