@@ -87,8 +87,9 @@ newDandelionState = do
 --
 -- In fluff mode: always broadcast to all peers.
 --
--- Returns 'DropMessage' if in stem mode but no stem peer is selected
--- (caller should call 'rotateStemPeer' first).
+-- Falls back to 'FluffBroadcast' if in stem mode but no stem peer is
+-- selected (M23.2.7), ensuring messages are never silently dropped.
+-- Returns 'DropMessage' only for empty messages.
 routeMessage :: DandelionState -> ByteString -> IO RouteDecision
 routeMessage ds msg
     | BS.null msg = return DropMessage
