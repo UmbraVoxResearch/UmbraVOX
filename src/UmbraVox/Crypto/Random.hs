@@ -6,6 +6,7 @@
 module UmbraVox.Crypto.Random
   ( chacha20Block
   , chacha20Encrypt
+  , initCSPRNG
   , randomBytes
   , readEntropy
   ) where
@@ -13,7 +14,9 @@ module UmbraVox.Crypto.Random
 import Data.Bits ((.&.), (.|.), rotateL, shiftL, shiftR, xor)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
-import Control.Concurrent.MVar (MVar, newMVar, modifyMVar)
+import Control.Concurrent.MVar
+    (MVar, newEmptyMVar, isEmptyMVar, modifyMVar, tryPutMVar)
+import Control.Monad (when)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Word (Word8, Word32, Word64)
 import System.IO (withBinaryFile, IOMode(..))
@@ -181,10 +184,30 @@ data CSPRNGState = CSPRNGState
 reseedInterval :: Int
 reseedInterval = 1048576
 
--- | Global CSPRNG state, initialised lazily on first call.
+-- | Global CSPRNG state.
+--
+-- M20.1.1: The MVar is allocated empty via unsafePerformIO — a pure
+-- container allocation with no observable side effects (no entropy read,
+-- no file I/O).  The actual seeding happens in 'initCSPRNG' which must
+-- be called from main before any 'randomBytes' use.  For backward
+-- compatibility (tests, one-off scripts), 'randomBytes' auto-seeds on
+-- first call if the MVar is still empty.
 {-# NOINLINE globalCSPRNG #-}
-globalCSPRNG :: MVar (Maybe CSPRNGState)
-globalCSPRNG = unsafePerformIO (newMVar Nothing)
+globalCSPRNG :: MVar CSPRNGState
+globalCSPRNG = unsafePerformIO newEmptyMVar
+
+-- | Eagerly seed the global CSPRNG from OS entropy.
+--
+-- Call once from application startup (e.g. 'initCoreRuntime').  Safe to
+-- call more than once — subsequent calls are no-ops (the MVar is
+-- already full).
+initCSPRNG :: IO ()
+initCSPRNG = do
+    empty <- isEmptyMVar globalCSPRNG
+    when empty $ do
+        st <- seedCSPRNG
+        _ <- tryPutMVar globalCSPRNG st
+        pure ()
 
 -- | Read entropy from @\/dev\/urandom@, retrying until exactly @n@ bytes
 -- are obtained (handles partial reads from the OS).
@@ -283,16 +306,13 @@ reseedCSPRNG old = do
         { csKey = newKey, csCounter = 0, csNonce = freshNonce
         , csBuffer = BS.empty, csOutputs = 0, csPID = pid }
 
--- | Obtain a valid CSPRNG state, seeding or reseeding as needed.
-ensureState :: Maybe CSPRNGState -> IO CSPRNGState
-ensureState mst = do
+-- | Obtain a valid CSPRNG state, reseeding if needed.
+ensureState :: CSPRNGState -> IO CSPRNGState
+ensureState s = do
     pid <- fromIntegral <$> getProcessID
-    case mst of
-        Nothing -> seedCSPRNG
-        Just s
-            | csPID s /= pid          -> seedCSPRNG       -- fork detected
-            | csOutputs s >= reseedInterval -> reseedCSPRNG s  -- reseed limit
-            | otherwise               -> return s
+    if csPID s /= pid then seedCSPRNG                   -- fork detected
+    else if csOutputs s >= reseedInterval then reseedCSPRNG s  -- reseed limit
+    else return s
 
 -- | Draw bytes from the buffer and generate new ChaCha20 blocks as needed.
 generate :: Int -> CSPRNGState -> (ByteString, CSPRNGState)
@@ -331,10 +351,17 @@ generateBlocks needed st = go needed [] st
 -- Backed by a ChaCha20-based CSPRNG seeded from @\/dev\/urandom@.
 -- Thread-safe via global 'MVar'. Fork-safe via PID check.
 -- Reseeds every 2^20 outputs for forward secrecy.
+--
+-- Callers should ensure 'initCSPRNG' has been called (e.g. from main).
+-- For backward compatibility, auto-seeds on first call if not yet
+-- initialised.
 randomBytes :: Int -> IO ByteString
 randomBytes n
     | n <= 0    = return BS.empty
-    | otherwise = modifyMVar globalCSPRNG $ \mst -> do
-        st <- ensureState mst
-        let !(result, st') = generate n st
-        return (Just st', result)
+    | otherwise = do
+        -- Auto-seed if initCSPRNG was not called (backward compat for tests)
+        initCSPRNG
+        modifyMVar globalCSPRNG $ \st -> do
+            st' <- ensureState st
+            let !(result, st'') = generate n st'
+            return (st'', result)
