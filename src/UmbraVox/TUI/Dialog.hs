@@ -30,6 +30,8 @@ module UmbraVox.TUI.Dialog
     , renderBridgeAuthOverlay
     , bridgeContactsOverlayLines
     , renderBridgeContactsOverlay
+    , discoverySourceLabel
+    , peerSourceTag
     ) where
 
 import Control.Monad (forM_, when)
@@ -52,6 +54,9 @@ import UmbraVox.Network.ProviderCatalog
     , renderProviderEndpoint, tpClass, tpName
     )
 import UmbraVox.Network.ProviderRuntime (activeRuntimeProvider)
+import UmbraVox.Network.Discovery (DiscoverySource(..))
+import UmbraVox.Network.PeerManager (PeerInfo(..), PeerSource(..), getActivePeers)
+import qualified Data.Set as Set
 import qualified UmbraVox.Version
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Terminal (goto, setFg, resetSGR, bold, padR, csi)
@@ -616,7 +621,7 @@ settingsOverlayLines st = do
         tabLine = tabRowLine settingsTabLabels tabIx
         ctx = SettingsCtx port name mdns pex debugLog debugPath modeLabel storageLines
                 packagedPluginRuntimeCatalog transportProviderRuntimeCatalog richText
-                pluginReg
+                pluginReg (asConfig st)
     tabBody <-
         if buildChasteOnly
             then pure (settingsChasteTab ctx tabIx)
@@ -643,6 +648,7 @@ data SettingsCtx = SettingsCtx
     , sctxTransportProviders :: [CachedTransportProvider]
     , sctxRichText :: Bool
     , sctxPluginRegistry :: PluginRegistry
+    , sctxAppConfig :: AppConfig
     }
 
 settingsConnModeLabel :: ConnectionMode -> String
@@ -717,14 +723,28 @@ settingsFullTab ctx tabIx =
                 , "   5. Rich text:     [" ++ tf (sctxRichText ctx) ++ "]"
                 , "   c. Connection mode: [" ++ sctxModeLabel ctx ++ "]"
                 ]
-        1 ->
-            pure
-                [ " Discovery"
-                , "   3. mDNS (LAN):    [" ++ tf (sctxMdns ctx) ++ "]"
-                , "   4. Peer Exchange: [" ++ tf (sctxPex ctx) ++ "]"
+        1 -> do
+            discSources <- readIORef (cfgDiscoverySources (sctxAppConfig ctx))
+            connMode <- readIORef (cfgConnectionMode (sctxAppConfig ctx))
+            let srcOn src = Set.member src discSources
+                swingMode = connMode == Swing
+            pure $
+                [ " Discovery Sources"
+                , "   1. mDNS (LAN):    [" ++ tf (srcOn DiscMDNS) ++ "]"
+                , "   2. Peer Exchange: [" ++ tf (srcOn DiscPEX) ++ "]"
+                , "   3. Environment:   [" ++ tf (srcOn DiscEnvVar) ++ "]"
+                , "   4. DNS SRV:       [" ++ tf (srcOn DiscDNS) ++ "]"
+                , "   5. Config file:   [" ++ tf (srcOn DiscConfigFile) ++ "]"
+                , "   6. DHT:           [" ++ tf (srcOn DiscDHT) ++ "]"
                 , ""
-                , " Peer discovery applies immediately."
+                , " Active: " ++ show (Set.size discSources) ++ " of 6 sources"
                 ]
+                ++ (if swingMode
+                    then [ "", "   d. [Exchange Peers]  (manual PEX, Swing mode)" ]
+                    else [])
+                ++ [ ""
+                   , " Peer discovery applies immediately."
+                   ]
         2 ->
             pure ([ " Storage" ] ++ tail (sctxStorageLines ctx))
         3 ->
@@ -943,13 +963,16 @@ browseOverlayLines st = do
     page <- readIORef (asBrowsePage st)
     mdnsOn <- readIORef (cfgMDNSEnabled (asConfig st))
     pexOn  <- readIORef (cfgPEXEnabled (asConfig st))
+    discSources <- readIORef (cfgDiscoverySources (asConfig st))
+    pmPeers <- getActivePeers (cfgPeerManager (asConfig st))
     let filtered = filter (browseMatches query) peers
         pageSlice = slicePage 10 page filtered
         page' = psPage pageSlice
         totalPages = psTotalPages pageSlice
         visible = psItems pageSlice
         runtimeProvider = activeRuntimeProvider
-    let header = [ "Discovered peers on the local network:"
+        discCount = Set.size discSources
+    let header = [ "Discovered peers (D:" ++ show discCount ++ " sources active):"
                  , "  Provider: " ++ providerIdLabel runtimeProvider
                     ++ "  |  Endpoint: " ++ providerEndpointSchema runtimeProvider
                  , "  mDNS: " ++ (if mdnsOn then "ON" else "OFF")
@@ -957,12 +980,16 @@ browseOverlayLines st = do
                  , "  Search: " ++ if null query then "(none)" else query
                  , "  Page: " ++ show (page' + 1) ++ "/" ++ show totalPages
                  , "" ]
-        peerLines = if null filtered
+        peerLines = if null filtered && null pmPeers
             then ["  (no peers discovered yet)"
                  , ""
                  , "  Make sure mDNS is enabled in Preferences,"
                  , "  or adjust the current search filter." ]
             else concatMap fmtPeer visible
+                 ++ (if not (null pmPeers) then
+                        ["", "  Managed peers:"]
+                        ++ concatMap fmtManagedPeer (zip [0 :: Int ..] pmPeers)
+                     else [])
         fmtPeer (i, p) =
             [ "  " ++ show i ++ ". "
                 ++ peerDisplayName p
@@ -970,6 +997,12 @@ browseOverlayLines st = do
                 ++ renderProviderEndpoint runtimeProvider (mdnsIP p) (mdnsPort p)
                 ++ "  "
                 ++ take 16 (pubkeyHex p)
+                ++ "  [mDNS]"
+            ]
+        fmtManagedPeer (_, pi') =
+            [ "    " ++ piAddress pi'
+                ++ "  " ++ peerSourceTag (piSource pi')
+                ++ "  score:" ++ show (piScore pi')
             ]
     pure $
         header ++ peerLines ++
@@ -1202,6 +1235,26 @@ bridgeContactsOverlayLines =
 renderBridgeContactsOverlay :: Layout -> Int -> IO ()
 renderBridgeContactsOverlay lay scrollOff =
     showOverlayScrolled lay "Bridge Contacts" bridgeContactsOverlayLines scrollOff
+
+-- | Short label for a DiscoverySource, used in settings and status displays.
+discoverySourceLabel :: DiscoverySource -> String
+discoverySourceLabel DiscMDNS       = "mDNS"
+discoverySourceLabel DiscPEX        = "PEX"
+discoverySourceLabel DiscEnvVar     = "EnvVar"
+discoverySourceLabel DiscDNS        = "DNS"
+discoverySourceLabel DiscConfigFile = "Config"
+discoverySourceLabel DiscDHT        = "DHT"
+
+-- | Short tag for a PeerSource, shown next to peers in the browse overlay.
+peerSourceTag :: PeerSource -> String
+peerSourceTag SourceMDNS      = "[mDNS]"
+peerSourceTag SourcePEX       = "[PEX]"
+peerSourceTag SourceBootstrap = "[Boot]"
+peerSourceTag SourceManual    = "[Manual]"
+peerSourceTag SourceDHT       = "[DHT]"
+peerSourceTag SourceDNS       = "[DNS]"
+peerSourceTag SourceEnvVar    = "[Env]"
+peerSourceTag SourceConfig    = "[Cfg]"
 
 -- | Render a dropdown menu below its tab position
 renderDropdown :: Layout -> MenuTab -> Int -> IO ()

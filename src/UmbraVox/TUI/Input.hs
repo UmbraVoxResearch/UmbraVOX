@@ -1511,9 +1511,10 @@ handleSettingsDlg st KeyLeft = shiftSettingsTab st (-1)
 handleSettingsDlg st KeyRight = shiftSettingsTab st 1
 handleSettingsDlg st (KeyChar '1') = do
     tabIx <- readIORef (asDialogTab st)
-    if tabIx == 5
-        then runRuntimeCommand st (CmdTogglePlugin "key-persistence")
-        else do
+    case tabIx of
+        1 -> runRuntimeCommand st (CmdToggleDiscoverySource 0)  -- mDNS
+        5 -> runRuntimeCommand st (CmdTogglePlugin "key-persistence")
+        _ -> do
             writeIORef (asDialogBuf st) ""
             writeIORef (asDialogMode st) (Just (DlgPrompt "Set Port" $ \val ->
                 case reads val of
@@ -1522,31 +1523,38 @@ handleSettingsDlg st (KeyChar '1') = do
                     _ -> pure ()))
 handleSettingsDlg st (KeyChar '2') = do
     tabIx <- readIORef (asDialogTab st)
-    if tabIx == 5
-        then runRuntimeCommand st (CmdTogglePlugin "message-storage")
-        else do
+    case tabIx of
+        1 -> runRuntimeCommand st (CmdToggleDiscoverySource 1)  -- PEX
+        5 -> runRuntimeCommand st (CmdTogglePlugin "message-storage")
+        _ -> do
             writeIORef (asDialogBuf st) ""
             writeIORef (asDialogMode st) (Just (DlgPrompt "Set Display Name" $ \val ->
                 unless (null val) $
                     runRuntimeCommand st (CmdSetDisplayName val)))
 handleSettingsDlg st (KeyChar '3') = do
     tabIx <- readIORef (asDialogTab st)
-    if tabIx == 5
-        then runRuntimeCommand st (CmdTogglePlugin "ratchet-persistence")
-        else runRuntimeCommand st CmdToggleMDNS
+    case tabIx of
+        1 -> runRuntimeCommand st (CmdToggleDiscoverySource 2)  -- EnvVar
+        5 -> runRuntimeCommand st (CmdTogglePlugin "ratchet-persistence")
+        _ -> runRuntimeCommand st CmdToggleMDNS
 handleSettingsDlg st (KeyChar '4') = do
     tabIx <- readIORef (asDialogTab st)
-    if tabIx == 5
-        then runRuntimeCommand st (CmdTogglePlugin "runtime-logging")
-        else runRuntimeCommand st CmdTogglePEX
+    case tabIx of
+        1 -> runRuntimeCommand st (CmdToggleDiscoverySource 3)  -- DNS
+        5 -> runRuntimeCommand st (CmdTogglePlugin "runtime-logging")
+        _ -> runRuntimeCommand st CmdTogglePEX
 handleSettingsDlg st (KeyChar '5') = do
     tabIx <- readIORef (asDialogTab st)
     case tabIx of
         0 -> runRuntimeCommand st CmdToggleRichText
+        1 -> runRuntimeCommand st (CmdToggleDiscoverySource 4)  -- ConfigFile
         5 -> runRuntimeCommand st (CmdTogglePlugin "full-persistence")
         _ -> runRuntimeCommand st CmdTogglePersistentStorage
 handleSettingsDlg st (KeyChar '6') = do
-    if not (pluginEnabled PluginPersistentStorage)
+    tabIx <- readIORef (asDialogTab st)
+    if tabIx == 1
+        then runRuntimeCommand st (CmdToggleDiscoverySource 5)  -- DHT
+        else if not (pluginEnabled PluginPersistentStorage)
         then setStatus st (pluginUnavailableStatus PluginPersistentStorage)
         else do
             writeIORef (asDialogBuf st) ""
@@ -1585,6 +1593,10 @@ handleSettingsDlg st (KeyChar 'b') = do
 handleSettingsDlg st (KeyChar 'B') = handleSettingsDlg st (KeyChar 'b')
 handleSettingsDlg st (KeyChar 'c') = runRuntimeCommand st CmdCycleConnectionMode
 handleSettingsDlg st (KeyChar 'C') = handleSettingsDlg st (KeyChar 'c')
+handleSettingsDlg st (KeyChar 'd') = do
+    tabIx <- readIORef (asDialogTab st)
+    when (tabIx == 1) $ runRuntimeCommand st CmdExchangePeers
+handleSettingsDlg st (KeyChar 'D') = handleSettingsDlg st (KeyChar 'd')
 handleSettingsDlg _ _ = pure ()
 
 shiftSettingsTab :: AppState -> Int -> IO ()
