@@ -16,7 +16,12 @@ module UmbraVox.Protocol.RouteToken
     ( RouteTokenState(..)
     , deriveRouteTokens
     , deriveEpochTokens
+    , shouldRotate
     , rotateTokens
+    , checkAndRotate
+    , matchesRecvToken
+    , rotateEveryN
+    , wallClockEpoch
     , lookupSession
     , registerToken
     , registerTokenBounded
@@ -28,6 +33,7 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Word (Word64)
 
+import UmbraVox.Crypto.ConstantTime (constantEq)
 import UmbraVox.Crypto.HKDF (hkdfSHA256)
 import UmbraVox.Protocol.Encoding (putWord64BE)
 
@@ -66,6 +72,12 @@ data RouteTokenState = RouteTokenState
     , rtsPrevRecv     :: !(Maybe ByteString) -- ^ previous epoch's recv token (grace)
     , rtsEpochCounter :: !Word64
     , rtsMsgCounter   :: !Word64           -- ^ for hybrid rotation
+    , rtsLastRotation :: !Word64           -- ^ wall-clock seconds at last rotation
+    -- Handshake material retained for epoch re-derivation
+    , rtsHandshakeHash :: !ByteString      -- ^ Noise transcript hash
+    , rtsTransportKey  :: !ByteString      -- ^ shared transport key
+    , rtsMyIdHash      :: !ByteString      -- ^ our 32-byte identity hash
+    , rtsPeerIdHash    :: !ByteString      -- ^ peer 32-byte identity hash
     } deriving stock (Show, Eq)
 
 ------------------------------------------------------------------------
@@ -81,6 +93,18 @@ data RouteTokenState = RouteTokenState
 -- Channel and identity binding prevents a MitM from injecting tokens that
 -- would be accepted by either peer: the handshake hash commits to the full
 -- Noise transcript, and the identity hashes commit to both endpoints.
+--
+-- __Channel binding (M23.1.1j):__ The @handshakeHash@ parameter is the
+-- Noise transcript hash, which commits to every handshake message
+-- exchanged.  A MitM running two separate handshakes (one with each
+-- peer) will produce different transcript hashes on each leg, causing
+-- the derived tokens to differ and the key confirmation MAC to fail.
+--
+-- __Identity binding (M23.1.1j):__ The HKDF info string includes
+-- @myIdHash || peerIdHash@, binding the derived tokens to both peers'
+-- long-term identity key hashes.  If a MitM substitutes its own
+-- identity key, the token derivation on each leg uses different
+-- identity hashes, producing mismatched tokens.
 deriveRouteTokens :: ByteString  -- ^ Handshake hash (Noise transcript binding)
                   -> ByteString  -- ^ Transport key (shared secret from handshake)
                   -> ByteString  -- ^ My identity hash (32 bytes)
@@ -114,30 +138,57 @@ deriveEpochTokens handshakeHash transportKey myIdHash peerIdHash epoch =
 -- Hybrid rotation
 ------------------------------------------------------------------------
 
--- | Check whether the message counter or wall-clock epoch warrants token
--- rotation, and return an updated 'RouteTokenState' if so.
+-- | Pure predicate: returns 'True' when rotation should trigger.
 --
--- @wallNow@ is the current wall-clock value in seconds (monotonic).
--- @wallBase@ is the wall-clock value at the start of the current epoch.
---
--- Rotation triggers when either:
+-- Rotation is warranted when either:
 --   * @rtsMsgCounter >= rotateEveryN@ (100 messages), or
---   * @wallNow - wallBase >= wallClockEpoch@ (600 seconds).
+--   * @wallNow - rtsLastRotation >= wallClockEpoch@ (600 seconds idle).
+shouldRotate :: RouteTokenState -> Word64 -> Bool
+shouldRotate rts wallNow =
+    rtsMsgCounter rts >= rotateEveryN
+    || wallNow - rtsLastRotation rts >= wallClockEpoch
+
+-- | Execute a rotation: derive fresh epoch tokens, shift the grace
+-- window, bump the epoch counter, and reset the message counter.
 --
--- The caller is responsible for re-deriving tokens (via 'deriveEpochTokens')
--- before calling this function; 'rotateTokens' only bumps counters and
--- shifts the grace window.
+-- Precondition: the caller has determined that rotation is needed
+-- (via 'shouldRotate' or equivalent).
 rotateTokens :: RouteTokenState
              -> Word64  -- ^ Current wall-clock seconds
-             -> Word64  -- ^ Wall-clock base for current epoch
              -> RouteTokenState
-rotateTokens rts wallNow wallBase
-    | rtsMsgCounter rts >= rotateEveryN || wallNow - wallBase >= wallClockEpoch =
-        rts { rtsPrevRecv     = Just (rtsCurrentRecv rts)
-            , rtsEpochCounter = rtsEpochCounter rts + 1
-            , rtsMsgCounter   = 0
-            }
-    | otherwise = rts { rtsMsgCounter = rtsMsgCounter rts + 1 }
+rotateTokens rts wallNow =
+    let !newEpoch = rtsEpochCounter rts + 1
+        (!newSend, !newRecv) =
+            deriveEpochTokens
+                (rtsHandshakeHash rts) (rtsTransportKey rts)
+                (rtsMyIdHash rts)      (rtsPeerIdHash rts)
+                newEpoch
+    in rts { rtsCurrentSend  = newSend
+           , rtsPrevRecv     = Just (rtsCurrentRecv rts)
+           , rtsCurrentRecv  = newRecv
+           , rtsEpochCounter = newEpoch
+           , rtsMsgCounter   = 0
+           , rtsLastRotation = wallNow
+           }
+
+-- | Increment the message counter, then rotate if the hybrid threshold
+-- (counter or wall-clock) has been reached.  Suitable for calling after
+-- each outbound message.
+checkAndRotate :: RouteTokenState
+               -> Word64  -- ^ Current wall-clock seconds
+               -> RouteTokenState
+checkAndRotate rts0 wallNow =
+    let !rts = rts0 { rtsMsgCounter = rtsMsgCounter rts0 + 1 }
+    in if shouldRotate rts wallNow
+       then rotateTokens rts wallNow
+       else rts
+
+-- | Check whether an inbound route token matches the current recv token
+-- or the previous-epoch grace token (constant-time).
+matchesRecvToken :: RouteTokenState -> ByteString -> Bool
+matchesRecvToken rts tok =
+    constantEq tok (rtsCurrentRecv rts)
+    || maybe False (constantEq tok) (rtsPrevRecv rts)
 
 ------------------------------------------------------------------------
 -- Session lookup by token
