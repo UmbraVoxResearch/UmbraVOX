@@ -26,15 +26,15 @@ wrapEnvelope msgType seqNum srcId dstId payload = do
     _ <- c_wireformat_link_probe
     pure (Reference.wrapEnvelope msgType seqNum srcId dstId payload)
 
-encodeEnvelope :: Envelope -> IO ByteString
-encodeEnvelope env = do
+encodeEnvelope :: ByteString -> Envelope -> IO ByteString
+encodeEnvelope key env = do
     _ <- c_wireformat_link_probe
-    pure (Reference.encodeEnvelope env)
+    pure (Reference.encodeEnvelope key env)
 
-decodeEnvelope :: ByteString -> IO (Maybe Envelope)
-decodeEnvelope bs = do
+decodeEnvelope :: ByteString -> ByteString -> IO (Maybe Envelope)
+decodeEnvelope key bs = do
     _ <- c_wireformat_link_probe
-    pure (Reference.decodeEnvelope bs)
+    pure (Reference.decodeEnvelope key bs)
 
 unwrapEnvelope :: Envelope -> IO ByteString
 unwrapEnvelope env = do
