@@ -129,9 +129,9 @@ pqxdhInitiate :: IdentityKey      -- ^ Alice's identity key
               -> ByteString       -- ^ 32-byte ML-KEM randomness
               -> Maybe PQXDHResult
 pqxdhInitiate aliceIK bundle ekSecret mlkemRand =
-    -- Step 1: Verify SPK signature
+    -- Step 1: Verify SPK signature (M23.3.1: message = ikEd25519 || spkPub)
     if not (ed25519Verify (pqpkbIdentityEd25519 bundle)
-                          (pqpkbSignedPreKey bundle)
+                          (pqpkbIdentityEd25519 bundle <> pqpkbSignedPreKey bundle)
                           (pqpkbSPKSignature bundle))
     then Nothing
     -- Step 2: Verify PQ prekey signature (M10.2.1)
@@ -197,4 +197,7 @@ pqxdhRespond bobIK spkSecret mOPKSecret pqDK aliceIKPub aliceEKPub pqCt = do
                  Just opkSec -> fmap Just (x25519 opkSec aliceEKPub)
     let -- ML-KEM decapsulation
         !pqSS = mlkemDecaps pqDK pqCt
-    Just (derivePQSecret dh1 dh2 dh3 mDh4 pqSS pqCt aliceIKPub (ikX25519Public bobIK))
+    -- M23.3.2: reject decapsulation failure (all-zero shared secret)
+    if BS.all (== 0) pqSS
+        then Nothing
+        else Just (derivePQSecret dh1 dh2 dh3 mDh4 pqSS pqCt aliceIKPub (ikX25519Public bobIK))

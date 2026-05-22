@@ -28,15 +28,16 @@ newtype MessageBlock = MessageBlock { unMessageBlock :: ByteString }
 blockSize :: Int
 blockSize = 1024
 
--- | Maximum payload size: block minus the 4-byte length header.
+-- | Maximum payload size: block minus the 4-byte length header, minus 1 to
+-- guarantee at least one PKCS7 padding byte is always present (M23.3.8).
 maxPayload :: Int
-maxPayload = blockSize - 4
+maxPayload = blockSize - 4 - 1
 
 -- | Pack a payload into a 1024-byte block.
 --
 -- Format: @[4-byte BE length][payload][PKCS7 padding to 1024]@
 --
--- Fails if payload exceeds 1020 bytes (block size minus 4-byte header).
+-- Fails if payload exceeds 1019 bytes (M23.3.8: guarantees >= 1 PKCS7 pad byte).
 packBlock :: ByteString -> Either String MessageBlock
 packBlock payload
     | payloadLen > maxPayload =
@@ -52,23 +53,13 @@ packBlock payload
     header = putWord32BE (fromIntegral payloadLen)
 
     -- PKCS7: padCount bytes each equal to padCount.
-    -- When payload fills exactly, padCount would be 0 — but PKCS7
-    -- requires at least 1 byte of padding, which is impossible here
-    -- since 4 + 1020 = 1024.  However the maximum payload is 1020,
-    -- so there is always at least 0 pad bytes... except PKCS7 mandates
-    -- a full extra block when padCount = 0.  In our fixed-size scheme
-    -- there is no room for that, but payloadLen <= 1020 guarantees
-    -- padCount >= 0.  We treat padCount = 0 as a degenerate edge that
-    -- cannot occur because maxPayload = 1020 and blockSize = 1024
-    -- leaves exactly 0 spare bytes only when payloadLen = 1020, giving
-    -- padCount = 0.  We handle this by allowing zero-pad (no PKCS7
-    -- padding byte) for the maximal payload case — the 4-byte length
-    -- header is sufficient to determine the payload boundary.
+    -- maxPayload = 1019 guarantees padCount >= 1, so PKCS7 is always
+    -- well-formed (M23.3.8).
     padCount :: Int
     padCount = blockSize - 4 - payloadLen
 
     padByte :: Word8
-    padByte = if padCount == 0 then 0 else fromIntegral padCount
+    padByte = fromIntegral padCount
 
     padding :: ByteString
     padding = BS.replicate padCount padByte
