@@ -490,9 +490,9 @@ See doc/PROTOCOL-AUDIT-v0.3.0.md for full details.
   [x] M23.1.5 Chat.API: add bearer token authentication (13acd1e)
   [x] M23.1.6 WireFormat: add HMAC/AEAD envelope authentication (0f04292)
 
-[~] M23.2 Medium fixes
-  [ ] M23.2.1 X3DH: OPK depletion protection (log/alert, require OPK for initial sessions)
-  [ ] M23.2.2 X3DH: prekey bundle freshness check (timestamp/serial + HKDF binding)
+[x] M23.2 Medium fixes
+  [x] M23.2.1 X3DH: OPK depletion protection (log/alert, require OPK for initial sessions) (820a469)
+  [x] M23.2.2 X3DH: prekey bundle freshness check (timestamp/serial + HKDF binding) (820a469)
   [x] M23.2.3 Handshake: version negotiation (cf921c4)
   [x] M23.2.4 Handshake: validate OPK length before extraction (cf921c4)
   [x] M23.2.5 Dandelion: adaptive fluff probability based on peer count (c778702)
@@ -561,7 +561,7 @@ See doc/DHT-NETWORK-PLAN.md for full design.
   [x] M24.3.8 Unit tests: RPC round-trip + DHT message handling (9d4dcf8)
   [x] M24.3.9 Node ID verification: SHA-256(identity key) == claimed NodeId (8fe16ed)
 
-[~] M24.4 DHT integration (Phase 4)
+[~] M24.4 DHT integration (Phase 4) — M24.4.8 remaining
   [x] M24.4.1 Wire DHT into DiscoveryManager as DiscDHT source (8fe16ed)
   [x] M24.4.2 Dandelion++ integration: stem-route self-lookups and self-stores (8fe16ed)
   [x] M24.4.3 PeerManager integration: SourceDHT scoring and ban propagation (8fe16ed)
@@ -571,22 +571,22 @@ See doc/DHT-NETWORK-PLAN.md for full design.
   [x] M24.4.7 Periodic maintenance: bucket refresh, value republish, stale eviction (8fe16ed)
   [ ] M24.4.8 Integration tests with real TCP transport
 
-[ ] M24.5 TUI and API (Phase 5)
-  [ ] M24.5.1 Settings dialog: Discovery tab with source checkboxes
-  [ ] M24.5.2 Status bar: active discovery source count indicator
-  [ ] M24.5.3 Peer list: source tag display (mDNS/PEX/DHT/DNS/etc.)
-  [ ] M24.5.4 Manual PEX exchange button for Swing mode
+[x] M24.5 TUI and API (Phase 5)
+  [x] M24.5.1 Settings dialog: Discovery tab with source checkboxes (acac5fd)
+  [x] M24.5.2 Status bar: active discovery source count indicator (acac5fd)
+  [x] M24.5.3 Peer list: source tag display (mDNS/PEX/DHT/DNS/etc.) (acac5fd)
+  [x] M24.5.4 Manual PEX exchange button for Swing mode (acac5fd)
   [x] M24.5.5 Chat.API: exchangePeers RPC method (f6d7d7c)
   [x] M24.5.6 Chat.API: dhtStatus RPC method (routing table size, stored values) (f6d7d7c)
 
-[ ] M24.6 Security hardening (Phase 6)
-  [ ] M24.6.1 Sybil attack test: many fake node IDs targeting same bucket
-  [ ] M24.6.2 Eclipse attack test: attacker fills routing table with colluding nodes
-  [ ] M24.6.3 Storage spam test: rate limiting STORE operations
-  [ ] M24.6.4 Routing table poisoning test: invalid node ID verification
-  [ ] M24.6.5 DHT message size cap enforcement (4096 bytes max)
-  [ ] M24.6.6 Adaptive DHT parameters based on network size estimate
-  [ ] M24.6.7 F* spec: routing table invariants (bucket size, ordering)
+[x] M24.6 Security hardening (Phase 6)
+  [x] M24.6.1 Sybil attack test: many fake node IDs targeting same bucket (65d9292)
+  [x] M24.6.2 Eclipse attack test: attacker fills routing table with colluding nodes (65d9292)
+  [x] M24.6.3 Storage spam test: rate limiting STORE operations (65d9292)
+  [x] M24.6.4 Routing table poisoning test: invalid node ID verification (65d9292)
+  [x] M24.6.5 DHT message size cap enforcement (4096 bytes max) (65d9292)
+  [x] M24.6.6 Adaptive DHT parameters based on network size estimate (3ba3887)
+  [x] M24.6.7 F* spec: routing table invariants (bucket size, ordering) (3ba3887)
 
 ================================================================================
 BLOCKED (EXTERNAL DEPENDENCIES)
