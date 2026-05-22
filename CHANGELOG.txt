@@ -6,11 +6,29 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 
 ## [Unreleased]
 
+### Network
+- M24 DHT network + unified discovery: Kademlia-style DHT with 6 modules (Types, RoutingTable, Store, Lookup, RPC, DHT top-level), static discovery sources (env var, DNS SRV, config file), security model refactor (Chaste/Selective/Promiscuous/Swing), adaptive DHT parameters, F* routing table spec
+- M24.4 DHT integration: transport message type prefix, bootstrap sequence, loopback transport, integration tests
+- M24.5 TUI discovery settings + peer exchange UI, JSON-RPC dhtStatus and exchangePeers methods
+- M24.6 DHT security hardening: Sybil resistance, eclipse protection, adaptive parameters
+
+### Bridge
+- M25.1 UmbraClaw plugin scaffold: manifest, IPC subprocess, session management, executable entry point (M25.1.1-5)
+- M25.2 UmbraClaw protocol integration: authentication flow, message send/receive, contact sync, TUI indicators (M25.2.1-4)
+
+### Codegen
+- M21.4 Full codegen pipeline: all 18 .spec files generate valid C, FFI wrappers wired into library, differential testing (C vs Haskell), 7 F* specs added (M21.4.1-4)
+
 ### Security
 - IPC decode hardening: max line length guard (64 KiB) + protocol error telemetry (M20.4.4)
 - VM agent: mandatory bundle checksum verification (fail-closed) with AGENT_SKIP_CHECKSUM opt-out (M20.4.3)
 - ReleaseBridge: auto-compute and pass AGENT_BUNDLE_SHA256 to integration agent (M20.4.3)
 - M20.2 error handling hardening: all sub-items complete
+- M23.3-4 crypto audit: DoubleRatchet hardening, X3DH OPK depletion protection, prekey freshness
+- M24.6 DHT security hardening tests
+
+### Documentation
+- M26.1-3 documentation overhaul: stale docs moved to attic, architecture updated for DHT/UmbraClaw/codegen, Haddock docs target added
 
 ## [0.4.0] — 2026-05-22
 
