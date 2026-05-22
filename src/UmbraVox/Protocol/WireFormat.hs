@@ -14,11 +14,17 @@ module UmbraVox.Protocol.WireFormat
   , encodeEnvelope
   , decodeEnvelope
   , unwrapEnvelope
+    -- * Per-connection sequence tracking (M23.2.12)
+  , SeqWindow
+  , newSeqWindow
+  , validateSequence
   ) where
 
 import qualified Data.ByteString as BS
 import Data.ByteString (ByteString)
+import Data.IORef
 import Data.Word (Word8, Word32)
+import qualified Data.Set as Set
 
 import UmbraVox.Protocol.Handshake (putW32BE, getW32BE)
 import UmbraVox.Crypto.HMAC (hmacSHA256)
@@ -84,6 +90,7 @@ encodeEnvelope key env =
 decodeEnvelope :: ByteString -> ByteString -> Maybe Envelope
 decodeEnvelope key bs
     | BS.length bs < headerSize + hmacSize = Nothing
+    | BS.index bs 0 /= 1 = Nothing  -- M23.3.9: reject unknown version early
     | otherwise =
         let !ver     = BS.index bs 0
             !typ     = BS.index bs 1
@@ -112,3 +119,33 @@ decodeEnvelope key bs
 -- | Extract payload from envelope.
 unwrapEnvelope :: Envelope -> ByteString
 unwrapEnvelope = envPayload
+
+------------------------------------------------------------------------
+-- Per-connection sequence tracking (M23.2.12)
+------------------------------------------------------------------------
+
+-- | Sliding window of recently-seen sequence numbers.
+-- Tracks a set of at most 'seqWindowSize' entries; rejects duplicates.
+type SeqWindow = IORef (Set.Set Word32)
+
+-- | Size of the sliding window for duplicate detection.
+seqWindowSize :: Int
+seqWindowSize = 64
+
+-- | Create a new empty sequence window.
+newSeqWindow :: IO SeqWindow
+newSeqWindow = newIORef Set.empty
+
+-- | Validate a sequence number against the sliding window.
+-- Returns True if the sequence number is new (accepted) and records it.
+-- Returns False if the sequence number is a duplicate (rejected).
+-- When the window is full, the oldest (smallest) entry is evicted.
+validateSequence :: SeqWindow -> Word32 -> IO Bool
+validateSequence ref seqNum = atomicModifyIORef' ref $ \s ->
+    if Set.member seqNum s
+        then (s, False)  -- duplicate
+        else let s' = Set.insert seqNum s
+                 s'' = if Set.size s' > seqWindowSize
+                       then Set.deleteMin s'
+                       else s'
+             in (s'', True)

@@ -19,6 +19,8 @@ module UmbraVox.Chat.API
   , validateAuth
   , validRpcId
   , maxRequestSize
+    -- * Exported for testing
+  , isPrivateAddress
   ) where
 
 import Control.Concurrent (forkIO)
@@ -231,9 +233,13 @@ dispatchIO _cfg Connect req =
     let host = paramLookup "host" (rpcParams req)
         p    = paramLookup "port" (rpcParams req)
     in case (host, p) of
-        (Just _h, Just _p) ->
-            -- Connection initiation will be wired to transport layer.
-            pure (formatResult (rpcId req) "{\"status\":\"connecting\"}")
+        (Just h, Just _p)
+            | isPrivateAddress h ->
+                pure (formatError (rpcId req) (-32602)
+                        "connection to private/loopback address rejected")
+            | otherwise ->
+                -- Connection initiation will be wired to transport layer.
+                pure (formatResult (rpcId req) "{\"status\":\"connecting\"}")
         _ -> pure (formatError (rpcId req) (-32602)
                      "missing required params: host, port")
 
@@ -245,6 +251,35 @@ dispatchIO _cfg Disconnect req =
             pure (formatResult (rpcId req) "{\"status\":\"disconnected\"}")
         Nothing -> pure (formatError (rpcId req) (-32602)
                           "missing required param: sessionId")
+
+-- --------------------------------------------------------------------------
+-- RFC 1918 / loopback address validation (M23.2.11)
+-- --------------------------------------------------------------------------
+
+-- | Check whether an address string is a private or loopback address.
+-- Rejects: localhost, 127.x.x.x, 10.x.x.x, 172.16-31.x.x, 192.168.x.x,
+-- ::1, and 0.0.0.0.
+isPrivateAddress :: String -> Bool
+isPrivateAddress host
+    | host == "localhost"                         = True
+    | host == "::1"                               = True
+    | host == "0.0.0.0"                           = True
+    | "127." `isPrefixOf` host                    = True
+    | "10."  `isPrefixOf` host                    = True
+    | "192.168." `isPrefixOf` host                = True
+    | "172." `isPrefixOf` host                    = isPrivate172 host
+    | otherwise                                   = False
+  where
+    -- Check 172.16.0.0/12 range: 172.16.x.x through 172.31.x.x
+    isPrivate172 h =
+        case break (== '.') (drop 4 h) of
+            (octStr, _rest)
+                | all isDigitChar octStr ->
+                    let oct = readNat octStr
+                    in oct >= 16 && oct <= 31
+                | otherwise -> False
+    isDigitChar c = c >= '0' && c <= '9'
+    readNat s = foldl (\acc c -> acc * 10 + (fromEnum c - fromEnum '0')) 0 s
 
 -- --------------------------------------------------------------------------
 -- Minimal JSON parser — hand-rolled, no aeson dependency.

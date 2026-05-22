@@ -14,7 +14,9 @@ module UmbraVox.Network.PeerManager
   , getPeers
   , getActivePeers
   , updateScore
+  , updateScoreAt
   , evictStale
+  , processBanExpiry
   ) where
 
 import Data.ByteString (ByteString)
@@ -27,13 +29,14 @@ import qualified Data.List as List
 
 -- | Information about a known peer.
 data PeerInfo = PeerInfo
-  { piAddress   :: !String              -- ^ host:port
-  , piPublicKey :: !(Maybe ByteString)  -- ^ identity key if known
-  , piScore     :: !Int                 -- ^ reputation score (0-100)
-  , piLastSeen  :: !Word64              -- ^ unix timestamp
-  , piBanned    :: !Bool                -- ^ currently banned?
-  , piBanExpiry :: !Word64              -- ^ ban expiry timestamp (0 = not banned)
-  , piSource    :: !PeerSource          -- ^ how we discovered this peer
+  { piAddress         :: !String              -- ^ host:port
+  , piPublicKey       :: !(Maybe ByteString)  -- ^ identity key if known
+  , piScore           :: !Int                 -- ^ reputation score (0-100)
+  , piLastSeen        :: !Word64              -- ^ unix timestamp
+  , piBanned          :: !Bool                -- ^ currently banned?
+  , piBanExpiry       :: !Word64              -- ^ ban expiry timestamp (0 = not banned)
+  , piSource          :: !PeerSource          -- ^ how we discovered this peer
+  , piLastScoreChange :: !Word64              -- ^ unix timestamp of last score change (M23.2.8)
   } deriving stock (Show, Eq)
 
 -- | How a peer was discovered.
@@ -42,6 +45,10 @@ data PeerSource
   | SourcePEX
   | SourceBootstrap
   | SourceManual
+  | SourceDHT          -- ^ discovered via Kademlia DHT (M24.3+)
+  | SourceDNS          -- ^ discovered via DNS SRV/TXT records
+  | SourceEnvVar       -- ^ parsed from UMBRAVOX_PEERS env var
+  | SourceConfig       -- ^ loaded from ~/.umbravox/config peers key
   deriving stock (Show, Eq, Ord)
 
 -- | Manages peer connections, scoring, and banning.
@@ -90,13 +97,14 @@ addPeer pm addr src = atomicModifyIORef' (pmPeers pm) $ \m ->
 -- | Build a fresh PeerInfo with neutral defaults.
 mkNewPeer :: String -> PeerSource -> PeerInfo
 mkNewPeer addr src = PeerInfo
-  { piAddress   = addr
-  , piPublicKey = Nothing
-  , piScore     = 50  -- neutral starting score
-  , piLastSeen  = 0
-  , piBanned    = False
-  , piBanExpiry = 0
-  , piSource    = src
+  { piAddress         = addr
+  , piPublicKey       = Nothing
+  , piScore           = 50  -- neutral starting score
+  , piLastSeen        = 0
+  , piBanned          = False
+  , piBanExpiry       = 0
+  , piSource          = src
+  , piLastScoreChange = 0
   }
 
 -- | Find the lowest-scored non-banned peer that can be evicted
@@ -141,13 +149,14 @@ banPeer pm addr duration = atomicModifyIORef' (pmPeers pm) $ \m ->
         Nothing   ->
           -- Ban an unknown peer: create a record so we remember.
           let info = PeerInfo
-                { piAddress   = addr
-                , piPublicKey = Nothing
-                , piScore     = 0
-                , piLastSeen  = 0
-                , piBanned    = True
-                , piBanExpiry = expiry
-                , piSource    = SourceManual
+                { piAddress         = addr
+                , piPublicKey       = Nothing
+                , piScore           = 0
+                , piLastSeen        = 0
+                , piBanned          = True
+                , piBanExpiry       = expiry
+                , piSource          = SourceManual
+                , piLastScoreChange = 0
                 }
           in  (Map.insert addr info m, ())
 
@@ -168,11 +177,34 @@ getActivePeers pm = filter isActive . Map.elems <$> readIORef (pmPeers pm)
     isActive info = not (piBanned info) && piScore info > 0
 
 -- | Adjust a peer's score by a signed delta, clamping to [0, 100].
+-- This overload does not rate-limit; prefer 'updateScoreAt' in production.
 updateScore :: PeerManager -> String -> Int -> IO ()
 updateScore pm addr delta = atomicModifyIORef' (pmPeers pm) $ \m ->
   let clamp x = max 0 (min 100 x)
       update info = info { piScore = clamp (piScore info + delta) }
   in  (Map.adjust update addr m, ())
+
+-- | Rate-limited score adjustment (M23.2.8).
+--
+-- Rejects score updates within 60 seconds of the last change for the
+-- same peer.  Returns True if the update was applied, False if
+-- rate-limited.  The caller must supply the current unix timestamp.
+scoreRateLimitSec :: Word64
+scoreRateLimitSec = 60
+
+updateScoreAt :: PeerManager -> String -> Int -> Word64 -> IO Bool
+updateScoreAt pm addr delta now = atomicModifyIORef' (pmPeers pm) $ \m ->
+  case Map.lookup addr m of
+    Nothing -> (m, False)
+    Just info
+      | piLastScoreChange info /= 0
+        && now < piLastScoreChange info + scoreRateLimitSec ->
+          (m, False)  -- rate-limited
+      | otherwise ->
+          let clamp x = max 0 (min 100 x)
+              updated = info { piScore = clamp (piScore info + delta)
+                             , piLastScoreChange = now }
+          in  (Map.insert addr updated m, True)
 
 -- | Evict peers whose last-seen timestamp is older than the given
 -- threshold (absolute unix timestamp). Returns the number of peers
@@ -183,3 +215,17 @@ evictStale pm threshold = atomicModifyIORef' (pmPeers pm) $ \m ->
       staleKeys    = Map.keys (Map.filter isStale m)
       m'           = foldr Map.delete m staleKeys
   in  (m', length staleKeys)
+
+-- | Unban peers whose ban has expired (M23.3.7).
+--
+-- Checks every banned peer's 'piBanExpiry' against the given current
+-- unix timestamp. Peers whose expiry is non-zero and less than or equal
+-- to @now@ are unbanned (piBanned set to False, piBanExpiry reset to 0).
+-- Returns the number of peers unbanned.
+processBanExpiry :: PeerManager -> Word64 -> IO Int
+processBanExpiry pm now = atomicModifyIORef' (pmPeers pm) $ \m ->
+  let expired info = piBanned info && piBanExpiry info /= 0 && piBanExpiry info <= now
+      unban info   = info { piBanned = False, piBanExpiry = 0 }
+      m'           = Map.map (\info -> if expired info then unban info else info) m
+      count        = Map.size (Map.filter expired m)
+  in  (m', count)
