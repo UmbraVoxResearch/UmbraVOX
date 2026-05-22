@@ -110,6 +110,8 @@ mkTestConfig = do
         <*> newIORef True        -- cfgEphemeral: tests use ephemeral mode by default
         <*> newIORef initialStorage  -- cfgStorage: in-memory backend
         <*> newIORef defaultPersistencePlugins  -- cfgPluginRegistry
+        <*> newMVar ()      -- cfgLogLock
+        <*> newIORef 0      -- cfgLogWriterPID
 
 -- | Add a loopback session with empty history.
 addTestSession :: AppConfig -> String -> IO SessionId
