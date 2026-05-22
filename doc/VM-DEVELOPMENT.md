@@ -173,6 +173,9 @@ The VM has **no network access by default** (`-nic none`).  Network access
 is controlled by `vm-network-policy.conf` in the repository root, which is
 read by `scripts/vm-network-policy.sh` before QEMU launches.
 
+The default smoke/development boot path is offline-first and does not wait for
+`network.target` before starting UmbraVOX guest init/smoke units.
+
 ```
 # vm-network-policy.conf — deny-all by default
 # Uncomment ALLOW rules to permit specific outbound connections:
