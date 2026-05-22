@@ -38,11 +38,18 @@ if [ ! -f Makefile ]; then
     exit 1
 fi
 
+if ! command -v timeout >/dev/null 2>&1; then
+    check "timeout command available" "FAIL"
+    exit 1
+fi
+
 mapfile -t TARGETS < <(
     awk '
         /^\.PHONY:/ {
             for (i = 2; i <= NF; i++) {
-                print $i
+                if ($i != "\\") {
+                    print $i
+                }
             }
         }
     ' Makefile | sort -u
@@ -56,11 +63,16 @@ fi
 echo "Discovered ${#TARGETS[@]} .PHONY targets"
 echo ""
 
+FAIL_DIR="$(mktemp -d)"
+trap 'rm -rf "$FAIL_DIR"' EXIT
+
 for target in "${TARGETS[@]}"; do
-    if UMBRAVOX_LOCAL=1 make -n "$target" >/dev/null 2>&1; then
+    failure_log="$FAIL_DIR/$target.log"
+    if env UMBRAVOX_LOCAL=1 timeout 20 make -n "$target" >"$failure_log" 2>&1; then
         check "make -n $target" "PASS"
     else
         check "make -n $target (UMBRAVOX_LOCAL=1)" "FAIL"
+        echo "    log: $failure_log"
     fi
 done
 

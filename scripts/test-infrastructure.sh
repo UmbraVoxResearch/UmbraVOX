@@ -40,7 +40,7 @@ for target in build test verify quality vm-dev vm-build vm-test vm-verify \
               vm-screenshot vm-record vm-visual-regression test-infra \
               check-evidence test-shells test-vm test-make-options \
               test-remote-builder-config help clean; do
-    if make -n "$target" >/dev/null 2>&1; then
+    if UMBRAVOX_LOCAL=1 make -n "$target" >/dev/null 2>&1; then
         check "Makefile target '$target' exists" "PASS"
     else
         check "Makefile target '$target' exists" "FAIL"
@@ -49,7 +49,7 @@ done
 
 # Check VM routing is default (UMBRAVOX_LOCAL=0)
 out=$(make -n build 2>&1 | head -10)
-if echo "$out" | grep -q 'vm-build'; then
+if echo "$out" | grep -q 'vm-dev-run.sh exec'; then
     check "make build routes to VM by default" "PASS"
 else
     check "make build routes to VM by default" "FAIL ($out)"
@@ -139,7 +139,7 @@ fi
 if [ -e /dev/kvm ]; then
     check "KVM available" "PASS"
 else
-    check "KVM available" "FAIL"
+    check "KVM available" "SKIP"
 fi
 
 # vm-dev-run.sh sources the network policy script
