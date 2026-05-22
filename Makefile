@@ -6,8 +6,7 @@
 #   make              - Build + run the full pipeline (build, test, verify, complexity, lint, license, format-check)
 #   make build        - Build library + executables only
 #   make build-haskell - Opt-in bridge wrapper for Haskell build orchestration
-#   make run          - Guarded alias; requires UMBRAVOX_LOCAL=1 (otherwise points to vm-run-gui)
-#   make run-local    - Run UmbraVOX TUI application on host (explicit local compile)
+#   make run          - Launch UmbraVOX TUI via vm-run-gui (VM)
 #   make test         - Run the fast messaging-MVP hardening gate
 #   make test-haskell  - Opt-in bridge wrapper for Haskell test orchestration
 #   make test-core    - Run the core deterministic messaging suite
@@ -79,8 +78,7 @@
 #   make test-shells  - Test nix-shell environments (banner + tools)
 #   make test-vm      - Test NixOS development VM (boot + toolchain + source mount)
 #   make test-make-options - Dry-run every declared .PHONY make target
-#   make test-remote-builder-config - Validate remote-builder config resolution/guards
-#   make test-remote-builder-wiring - Validate remote-builder make target wiring
+#   make test-vm-config - Validate VM-local Nix config resolution/guards
 #   make sanity       - Check Makefile wiring for release smoke/microVM helpers
 #   make evidence     - Run quality and write a publication evidence bundle
 #   make screenshot-local - Capture 8 TUI screenshots locally (no VM, needs tmux)
@@ -92,9 +90,8 @@
 #
 # Prerequisites:
 #   VM mode (default): make vm-image-build (needs qemu + nix)
-#   Local mode: UMBRAVOX_LOCAL=1 + nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build build-haskell run run-local test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm test-make-options test-remote-builder-config test-remote-builder-wiring sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-build-only vm-test vm-verify vm-run-gui firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot screenshot-local vm-record vm-visual-regression visual-reference-update differential-vectors test-differential-oracle test-differential-full fuzz-differential fuzz-afl differential differential-evidence-check signal-bridge-build test-signal-compat test-signal-bridge-ipc check-isolation tools clean cleandb cleanall help
+.PHONY: all build build-haskell run run-local test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm test-make-options test-vm-config sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-build-only vm-test vm-verify vm-run-gui firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot screenshot-local vm-record vm-visual-regression visual-reference-update differential-vectors test-differential-oracle test-differential-full fuzz-differential fuzz-afl differential differential-evidence-check signal-bridge-build test-signal-compat test-signal-bridge-ipc check-isolation tools clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -105,26 +102,17 @@ SHELL := /bin/bash
 MAX_COMPLEXITY := 8
 FSTAR_DIR := test/evidence/formal-proofs/fstar
 
-# VM-first development: all commands run in VM by default.
-# Set UMBRAVOX_LOCAL=1 to run locally (requires full toolchain in nix-shell).
-UMBRAVOX_LOCAL ?= 0
-
-# vm_or_local: dispatch a command to the VM (default) or host (UMBRAVOX_LOCAL=1).
+# VM-only execution helper.
 # Usage: $(call vm_or_local,cabal build all --enable-tests 2>&1)
-# When UMBRAVOX_LOCAL=1: runs the command directly (caller must be in nix-shell).
-# Otherwise: delegates to scripts/vm-dev-run.sh exec "<cmd>".
+# Always delegates to scripts/vm-dev-run.sh exec "<cmd>".
 # Requires the VM image at build/vm/image; errors if missing.
 define vm_or_local
-	@if [ "$(UMBRAVOX_LOCAL)" = "1" ]; then \
-		$(1); \
-	else \
-		if [ ! -d build/vm/image ] && [ ! -L build/vm/image ]; then \
-			echo -e "$(RED)[ERROR]$(NC) No VM image found at build/vm/image."; \
-			echo "  Run 'make vm-image-build' first, or set UMBRAVOX_LOCAL=1 for host execution."; \
-			exit 1; \
-		fi; \
-		./scripts/vm-dev-run.sh exec "$(1)"; \
-	fi
+	@if [ ! -d build/vm/image ] && [ ! -L build/vm/image ]; then \
+		echo -e "$(RED)[ERROR]$(NC) No VM image found at build/vm/image."; \
+		echo "  Run 'make vm-image-build' first."; \
+		exit 1; \
+	fi; \
+	./scripts/vm-dev-run.sh exec "$(1)"
 endef
 
 # Unset LD_LIBRARY_PATH to prevent curl segfaults in nix-shell
@@ -203,8 +191,7 @@ help: # [host-only]
 	@echo "  Build & Run (VM-default: auto-delegates to VM when image exists):"
 	@echo "    make             Build + run the full pipeline (build, test, verify, complexity, lint, license, format-check)"
 	@echo "    make build       Build library + executables only [VM-default]"
-	@echo "    make run         Guarded alias (requires UMBRAVOX_LOCAL=1; otherwise points to vm-run-gui)"
-	@echo "    make run-local   Run UmbraVOX TUI application on host (compiles locally)"
+	@echo "    make run         Launch UmbraVOX TUI via vm-run-gui"
 	@echo "    make test        Run fast messaging-MVP hardening gate [VM-default]"
 	@echo "    make test-core   Run core deterministic messaging suite"
 	@echo "    make test-core-crypto Run deterministic crypto/unit coverage"
@@ -285,7 +272,7 @@ help: # [host-only]
 	@echo ""
 	@echo "  VM Smoke (isolated build/test) [VM-only]:"
 	@echo "    make vm-smoke       Run full pipeline inside isolated QEMU VM"
-	@echo "    make vm-image-build Build and cache the NixOS VM image (remote-builder required)"
+	@echo "    make vm-image-build Build and cache the NixOS VM image (local nix build)"
 	@echo "    make vm-image-clean Remove the cached VM image"
 	@echo "    make image-clean    Alias for vm-image-clean"
 	@echo "    make firecracker-smoke  Run pipeline inside Firecracker VM"
@@ -310,8 +297,7 @@ help: # [host-only]
 	@echo "  Maintenance:"
 	@echo "    make check-isolation  Verify build isolation (no host GHC/cabal leak, VM images present)"
 	@echo "    make test-make-options Dry-run every declared .PHONY target"
-	@echo "    make test-remote-builder-config Validate remote-builder config resolution/guards"
-	@echo "    make test-remote-builder-wiring Validate remote-builder make target wiring"
+	@echo "    make test-vm-config Validate VM-local nix config resolution/guards"
 	@echo "    make clean       Remove build artifacts + build/ + dist-newstyle"
 	@echo "    make cleandb     Remove local database"
 	@echo "    make cleanall    Remove everything (build + DB + tools)"
@@ -328,17 +314,15 @@ help: # [host-only]
 	@echo "    - 10 .spec files generate 30 Haskell + C + FFI outputs"
 	@echo ""
 	@echo "  Target Annotations:"
-	@echo "    [VM-default]  Runs in VM by default; set UMBRAVOX_LOCAL=1 for host execution"
+	@echo "    [VM-default]  Runs in VM by default"
 	@echo "    [VM-only]     Always runs inside a QEMU/Firecracker VM"
 	@echo "    [host-only]   Always runs on the host (e.g. TUI, clean, lint)"
 	@echo "    (unmarked)    Runs wherever invoked (host or VM)"
 	@echo ""
 	@echo "  VM Isolation:"
 	@echo "    All build/test/verify targets default to VM execution."
-	@echo "    Set UMBRAVOX_LOCAL=1 to run locally (requires nix-shell with full toolchain)."
 	@echo "    Run 'make vm-image-build' to create the VM image first."
-	@echo "    Configure remote Nix builder in nix/remote-builder.env or env vars."
-	@echo "    Fail-closed policy: vm-image builds never fall back to local host builds."
+	@echo "    VM image builds use fail-closed local nix config from nix/vm-build.env."
 	@echo ""
 	@echo "  Keyboard Shortcuts (TUI):"
 	@echo "    Tab     Switch focus (contacts <-> chat)"
@@ -349,18 +333,13 @@ help: # [host-only]
 	@echo "    Ctrl+Q  Quit             ?       Help"
 	@echo ""
 
-run: # [host-only] interactive TUI needs host terminal
-	@if [ "$(UMBRAVOX_LOCAL)" != "1" ]; then \
-		echo -e "$(YELLOW)[RUN]$(NC) Host compile is disabled by default in VM-first mode."; \
-		echo "  Use 'make vm-run-gui' for VM UI, or run 'UMBRAVOX_LOCAL=1 make run-local' explicitly."; \
-		exit 1; \
-	fi
-	@$(MAKE) UMBRAVOX_LOCAL=1 run-local
+run: # [host-only] orchestration alias
+	@$(MAKE) vm-run-gui
 
-run-local: # [host-only] explicit local compile+run
-	@echo -e "$(BLUE)[RUN]$(NC) Building and launching UmbraVOX TUI (local)..."
-	@cabal build umbravox 2>&1 | tail -3
-	@cabal run umbravox; stty sane echo 2>/dev/null; true
+run-local: # [host-only] compatibility guard
+	@echo -e "$(RED)[RUN]$(NC) Local host compilation is disabled."
+	@echo "  Use 'make vm-run-gui' (or 'make run') for VM-isolated execution."
+	@exit 1
 
 # --------------------------------------------------------------------------
 # Build
@@ -380,17 +359,9 @@ build-haskell:
 # --------------------------------------------------------------------------
 
 test:
-	@if [ "$(UMBRAVOX_LOCAL)" != "1" ]; then \
-		if [ -d build/vm/image ] || [ -L build/vm/image ]; then \
-			$(MAKE) vm-test; exit $$?; \
-		else \
-			echo -e "$(RED)[TEST]$(NC) No VM image found. Run 'make vm-image-build' or set UMBRAVOX_LOCAL=1."; \
-			exit 1; \
-		fi; \
-	fi
-	@$(MAKE) UMBRAVOX_LOCAL=1 build
+	@$(MAKE) build
 	@echo -e "$(BLUE)[TEST]$(NC) Running fast messaging-MVP hardening gate..."
-	@$(SUITE_LOCK) bash -c 'mkdir -p $(TEST_ARTIFACT_DIR); \
+	$(call vm_or_local,$(SUITE_LOCK) bash -c 'mkdir -p $(TEST_ARTIFACT_DIR); \
 	log_file=$$(mktemp "$(TEST_ARTIFACT_DIR)/test-required.XXXXXX.log"); \
 	echo -e "$(BLUE)[TEST]$(NC) Log: $$log_file"; \
 	echo -e "$(BLUE)[TEST]$(NC) Timeout: $(TEST_REQUIRED_TIMEOUT)"; \
@@ -410,7 +381,7 @@ test:
 	else \
 		echo -e "$(RED)[TEST]$(NC) Success marker missing. See $$log_file"; \
 		exit 1; \
-	fi'
+	fi')
 
 test-haskell:
 	@echo -e "$(BLUE)[TEST-HASKELL]$(NC) Opt-in bridge wrapper: legacy Make test by default."
@@ -502,16 +473,8 @@ mcdc-report:
 # --------------------------------------------------------------------------
 
 verify:
-	@if [ "$(UMBRAVOX_LOCAL)" != "1" ]; then \
-		if [ -d build/vm/image ] || [ -L build/vm/image ]; then \
-			$(MAKE) vm-verify; exit $$?; \
-		else \
-			echo -e "$(RED)[VERIFY]$(NC) No VM image found. Run 'make vm-image-build' or set UMBRAVOX_LOCAL=1."; \
-			exit 1; \
-		fi; \
-	fi
 	@echo -e "$(BLUE)[VERIFY]$(NC) Running F* formal verification (all modules)..."
-	@$(SUITE_LOCK) bash -c 'mkdir -p $(TEST_ARTIFACT_DIR); \
+	$(call vm_or_local,$(SUITE_LOCK) bash -c 'mkdir -p $(TEST_ARTIFACT_DIR); \
 	log_file=$$(mktemp "$(TEST_ARTIFACT_DIR)/verify.XXXXXX.log"); \
 	echo -e "$(BLUE)[VERIFY]$(NC) Log: $$log_file"; \
 	set -o pipefail; \
@@ -526,7 +489,7 @@ verify:
 	else \
 		echo -e "$(RED)[VERIFY]$(NC) Success marker missing. See $$log_file"; \
 		exit 1; \
-	fi'
+	fi')
 
 verify-haskell:
 	@echo -e "$(BLUE)[VERIFY-HASKELL]$(NC) Opt-in bridge wrapper: legacy Make verify by default."
@@ -918,13 +881,9 @@ test-make-options:
 	@echo -e "$(BLUE)[TEST-MAKE]$(NC) Dry-running all declared make options..."
 	@bash scripts/test-make-options.sh
 
-test-remote-builder-config:
-	@echo -e "$(BLUE)[TEST-REMOTE]$(NC) Testing remote-builder config resolution..."
-	@bash scripts/test-remote-builder-config.sh
-
-test-remote-builder-wiring:
-	@echo -e "$(BLUE)[TEST-REMOTE]$(NC) Testing remote-builder make target wiring..."
-	@bash scripts/test-remote-builder-wiring.sh
+test-vm-config:
+	@echo -e "$(BLUE)[TEST-VM-CONFIG]$(NC) Testing VM-local nix config resolution..."
+	@bash scripts/test-vm-build-config.sh
 
 # --------------------------------------------------------------------------
 # Quality Gate (all checks)
@@ -1210,9 +1169,9 @@ vm-smoke:
 
 vm-image-build: # [host-only] nix-build produces VM image; no compilers on host
 	@echo -e "$(BLUE)[VM-IMAGE]$(NC) Building/caching NixOS VM image..."
-	@mkdir -p build/vm build/vm/tmp
-	@REMOTE_CFG_SCRIPT="./scripts/nix-remote-builder-config.sh"; \
-	if [ ! -x "$$REMOTE_CFG_SCRIPT" ] && [ -f "$$REMOTE_CFG_SCRIPT" ]; then chmod +x "$$REMOTE_CFG_SCRIPT"; fi; \
+	@mkdir -p build/vm build/vm/tmp build/vm/tmp/sandbox
+	@CFG_SCRIPT="./scripts/nix-vm-build-config.sh"; \
+	if [ ! -x "$$CFG_SCRIPT" ] && [ -f "$$CFG_SCRIPT" ]; then chmod +x "$$CFG_SCRIPT"; fi; \
 	if [ -z "$$(command -v nix 2>/dev/null)" ] && [ -x /nix/var/nix/profiles/default/bin/nix ]; then \
 		export PATH="/nix/var/nix/profiles/default/bin:$$PATH"; \
 	fi; \
@@ -1221,27 +1180,30 @@ vm-image-build: # [host-only] nix-build produces VM image; no compilers on host
 		echo "  Install Nix or add /nix/var/nix/profiles/default/bin to PATH."; \
 		exit 1; \
 	fi; \
-	REMOTE_EXPORTS="$$( "$$REMOTE_CFG_SCRIPT" shell )" || exit 1; \
-	eval "$$REMOTE_EXPORTS"; \
-	echo -e "$(BLUE)[NIX-REMOTE]$(NC) source=$$UMBRAVOX_NIX_CONFIG_SOURCE file=$$UMBRAVOX_NIX_CONFIG_FILE_EFFECTIVE"; \
-	echo -e "$(BLUE)[NIX-REMOTE]$(NC) UMBRAVOX_NIX_BUILDER=$$UMBRAVOX_NIX_BUILDER"; \
-	echo -e "$(BLUE)[NIX-REMOTE]$(NC) UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES=$$UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES"; \
-	NIX_REMOTE_ARGS=( \
-		--builders "$$UMBRAVOX_NIX_BUILDER" \
-		--option builders-use-substitutes "$$UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES" \
-	); \
+	CFG_EXPORTS="$$( "$$CFG_SCRIPT" shell )" || exit 1; \
+	eval "$$CFG_EXPORTS"; \
+	echo -e "$(BLUE)[NIX-VM-CONFIG]$(NC) source=$$UMBRAVOX_NIX_CONFIG_SOURCE file=$$UMBRAVOX_NIX_CONFIG_FILE_EFFECTIVE"; \
+	echo -e "$(BLUE)[NIX-VM-CONFIG]$(NC) UMBRAVOX_NIX_BUILD_DIR=$$UMBRAVOX_NIX_BUILD_DIR"; \
+	echo -e "$(BLUE)[NIX-VM-CONFIG]$(NC) UMBRAVOX_NIX_SANDBOX_BUILD_DIR=$$UMBRAVOX_NIX_SANDBOX_BUILD_DIR"; \
+	echo -e "$(BLUE)[NIX-VM-CONFIG]$(NC) UMBRAVOX_NIX_LOCAL_ONLY=$$UMBRAVOX_NIX_LOCAL_ONLY"; \
 	if [ -L build/vm/image ] && [ -e build/vm/image ]; then \
 		echo -e "$(GREEN)[VM-IMAGE]$(NC) Image already cached at build/vm/image"; \
 	else \
-		TMPDIR="$$(pwd)/build/vm/tmp"; export TMPDIR; \
+		TMPDIR="$$(pwd)/$$UMBRAVOX_NIX_BUILD_DIR"; export TMPDIR; \
+		mkdir -p "$$TMPDIR"; \
 		echo -e "$(BLUE)[VM-IMAGE]$(NC) Using TMPDIR=$$TMPDIR"; \
 		echo -e "$(BLUE)[VM-IMAGE]$(NC) Building via nix (this may take several minutes)..."; \
 		if ! ( \
-			nix --extra-experimental-features "nix-command flakes" --option build-dir "$$TMPDIR" "$${NIX_REMOTE_ARGS[@]}" build -L .#vm-image -o build/vm/image || \
-			nix-build "$${NIX_REMOTE_ARGS[@]}" --option build-dir "$$TMPDIR" nix/vm-image.nix -A qemu -o build/vm/image \
+			nix --extra-experimental-features "nix-command flakes" \
+				--option build-dir "$$TMPDIR" \
+				--option sandbox-build-dir "$$UMBRAVOX_NIX_SANDBOX_BUILD_DIR" \
+				build -L .#vm-image -o build/vm/image || \
+			nix-build --option build-dir "$$TMPDIR" \
+				--option sandbox-build-dir "$$UMBRAVOX_NIX_SANDBOX_BUILD_DIR" \
+				nix/vm-image.nix -A qemu -o build/vm/image \
 		); then \
-			echo -e "$(RED)[VM-IMAGE]$(NC) Remote nix build failed."; \
-			echo "  Fail-closed policy is enabled: no local fallback will be attempted."; \
+			echo -e "$(RED)[VM-IMAGE]$(NC) Local nix build failed (fail-closed)."; \
+			echo "  No alternate builder fallback is attempted."; \
 			exit 1; \
 		fi; \
 		echo -e "$(GREEN)[VM-IMAGE]$(NC) Image cached at build/vm/image"; \
@@ -1283,18 +1245,15 @@ vm-signal-server-build-jar:
 
 vm-signal-server-build:
 	@echo -e "$(BLUE)[SIGNAL-VM]$(NC) Stage 2: Building runtime VM image..."
-	@mkdir -p build/vm-signal-server build/vm-signal-server/tmp
-	@REMOTE_CFG_SCRIPT="./scripts/nix-remote-builder-config.sh"; \
-	if [ ! -x "$$REMOTE_CFG_SCRIPT" ] && [ -f "$$REMOTE_CFG_SCRIPT" ]; then chmod +x "$$REMOTE_CFG_SCRIPT"; fi; \
-	REMOTE_EXPORTS="$$( "$$REMOTE_CFG_SCRIPT" shell )" || exit 1; \
-	eval "$$REMOTE_EXPORTS"; \
-	echo -e "$(BLUE)[NIX-REMOTE]$(NC) source=$$UMBRAVOX_NIX_CONFIG_SOURCE file=$$UMBRAVOX_NIX_CONFIG_FILE_EFFECTIVE"; \
-	echo -e "$(BLUE)[NIX-REMOTE]$(NC) UMBRAVOX_NIX_BUILDER=$$UMBRAVOX_NIX_BUILDER"; \
-	echo -e "$(BLUE)[NIX-REMOTE]$(NC) UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES=$$UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES"; \
-	NIX_REMOTE_ARGS=( \
-		--builders "$$UMBRAVOX_NIX_BUILDER" \
-		--option builders-use-substitutes "$$UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES" \
-	); \
+	@mkdir -p build/vm-signal-server build/vm-signal-server/tmp build/vm-signal-server/tmp/sandbox
+	@CFG_SCRIPT="./scripts/nix-vm-build-config.sh"; \
+	if [ ! -x "$$CFG_SCRIPT" ] && [ -f "$$CFG_SCRIPT" ]; then chmod +x "$$CFG_SCRIPT"; fi; \
+	CFG_EXPORTS="$$( "$$CFG_SCRIPT" shell )" || exit 1; \
+	eval "$$CFG_EXPORTS"; \
+	echo -e "$(BLUE)[NIX-VM-CONFIG]$(NC) source=$$UMBRAVOX_NIX_CONFIG_SOURCE file=$$UMBRAVOX_NIX_CONFIG_FILE_EFFECTIVE"; \
+	echo -e "$(BLUE)[NIX-VM-CONFIG]$(NC) UMBRAVOX_NIX_BUILD_DIR=$$UMBRAVOX_NIX_BUILD_DIR"; \
+	echo -e "$(BLUE)[NIX-VM-CONFIG]$(NC) UMBRAVOX_NIX_SANDBOX_BUILD_DIR=$$UMBRAVOX_NIX_SANDBOX_BUILD_DIR"; \
+	echo -e "$(BLUE)[NIX-VM-CONFIG]$(NC) UMBRAVOX_NIX_LOCAL_ONLY=$$UMBRAVOX_NIX_LOCAL_ONLY"; \
 	if [ -d build/vm-signal-server/image ]; then \
 		echo -e "$(GREEN)[SIGNAL-VM]$(NC) Image already cached at build/vm-signal-server/image"; \
 	else \
@@ -1307,10 +1266,13 @@ vm-signal-server-build:
 			exit 1; \
 		fi; \
 		TMPDIR="$$(pwd)/build/vm-signal-server/tmp"; export TMPDIR; \
+		mkdir -p "$$TMPDIR"; \
 		echo -e "$(BLUE)[SIGNAL-VM]$(NC) Using TMPDIR=$$TMPDIR"; \
 		echo -e "$(BLUE)[SIGNAL-VM]$(NC) Building via nix (this may take several minutes)..."; \
-		nix-build "$${NIX_REMOTE_ARGS[@]}" --option build-dir "$$TMPDIR" nix/vm-signal-server.nix -A qemu -o build/vm-signal-server/image || \
-		(echo -e "$(RED)[SIGNAL-VM]$(NC) Remote nix-build failed (fail-closed; no local fallback)."; exit 1); \
+		nix-build --option build-dir "$$TMPDIR" \
+			--option sandbox-build-dir "$$UMBRAVOX_NIX_SANDBOX_BUILD_DIR" \
+			nix/vm-signal-server.nix -A qemu -o build/vm-signal-server/image || \
+		(echo -e "$(RED)[SIGNAL-VM]$(NC) Local nix-build failed (fail-closed)."; exit 1); \
 		echo -e "$(GREEN)[SIGNAL-VM]$(NC) Image cached at build/vm-signal-server/image"; \
 	fi
 
@@ -1559,29 +1521,30 @@ check-isolation:
 	fi; \
 	\
 	echo ""; \
-	echo "  Remote builder check:"; \
-	REMOTE_CFG_SCRIPT="./scripts/nix-remote-builder-config.sh"; \
-	if [ ! -x "$$REMOTE_CFG_SCRIPT" ] && [ -f "$$REMOTE_CFG_SCRIPT" ]; then chmod +x "$$REMOTE_CFG_SCRIPT"; fi; \
-	if [ -x "$$REMOTE_CFG_SCRIPT" ]; then \
-		if REMOTE_EXPORTS="$$( "$$REMOTE_CFG_SCRIPT" shell 2>/dev/null )"; then \
-			eval "$$REMOTE_EXPORTS"; \
-			echo -e "    Remote builder config:   $(GREEN)OK$(NC) ($$UMBRAVOX_NIX_CONFIG_SOURCE)"; \
+	echo "  VM local nix config check:"; \
+	CFG_SCRIPT="./scripts/nix-vm-build-config.sh"; \
+	if [ ! -x "$$CFG_SCRIPT" ] && [ -f "$$CFG_SCRIPT" ]; then chmod +x "$$CFG_SCRIPT"; fi; \
+	if [ -x "$$CFG_SCRIPT" ]; then \
+		if CFG_EXPORTS="$$( "$$CFG_SCRIPT" shell 2>/dev/null )"; then \
+			eval "$$CFG_EXPORTS"; \
+			echo -e "    VM nix config:           $(GREEN)OK$(NC) ($$UMBRAVOX_NIX_CONFIG_SOURCE)"; \
 			echo "      file=$$UMBRAVOX_NIX_CONFIG_FILE_EFFECTIVE"; \
-			echo "      builder=$$UMBRAVOX_NIX_BUILDER"; \
+			echo "      build_dir=$$UMBRAVOX_NIX_BUILD_DIR"; \
+			echo "      sandbox_build_dir=$$UMBRAVOX_NIX_SANDBOX_BUILD_DIR"; \
+			echo "      local_only=$$UMBRAVOX_NIX_LOCAL_ONLY"; \
 			pass=$$((pass + 1)); \
 		else \
-			cfg_err="$$( "$$REMOTE_CFG_SCRIPT" shell 2>&1 >/dev/null )"; \
-			echo -e "    Remote builder config:   $(YELLOW)WARN$(NC) — $$cfg_err"; \
+			cfg_err="$$( "$$CFG_SCRIPT" shell 2>&1 >/dev/null )"; \
+			echo -e "    VM nix config:           $(YELLOW)WARN$(NC) — $$cfg_err"; \
 			warn=$$((warn + 1)); \
 		fi; \
 	else \
-		echo -e "    Remote builder config:   $(YELLOW)WARN$(NC) — $$REMOTE_CFG_SCRIPT missing or not executable"; \
+		echo -e "    VM nix config:           $(YELLOW)WARN$(NC) — $$CFG_SCRIPT missing or not executable"; \
 		warn=$$((warn + 1)); \
 	fi; \
 	\
 	echo ""; \
 	echo "  Environment:"; \
-	echo "    UMBRAVOX_LOCAL = $(UMBRAVOX_LOCAL)"; \
 	if [ -n "$$UMBRAVOX_VM" ]; then \
 		echo "    UMBRAVOX_VM    = $$UMBRAVOX_VM (inside VM)"; \
 	else \

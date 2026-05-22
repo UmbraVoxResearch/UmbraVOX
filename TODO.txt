@@ -329,9 +329,17 @@ Note: Items from codebase audit (2026-05-20).
     Note: Keep persistent VM build cache and host /output share enabled by default.
     Note: Cache is guest-mounted (`/dev/vdc`); host only sees qcow2 backing file.
   [x] M20.5.7 Refresh README/QUICKSTART/VM-ISOLATION for vm-first defaults and run-local opt-in
-    Note: VM commands promoted as primary. Coq 475 Qed / 14 files. UMBRAVOX_LOCAL=1 escape hatch.
+    Note: VM commands promoted as primary. Coq 475 Qed / 14 files.
   [x] M20.5.8 Move remaining legacy provider manifests into plugins/
     Note: `providers/signal-bridge/manifest.uvx` moved to `plugins/signal-bridge/manifest.uvx`.
+  [ ] M20.5.9 Local-only VM isolation hardening execution checklist (agent-owned)
+    [ ] M20.5.9.a Replace remote-builder config path with local VM nix config (`nix/vm-build.env` + resolver script)
+    [ ] M20.5.9.b Remove host compile/test escape-hatch behavior from default Make targets (run-local guarded fail)
+    [ ] M20.5.9.c Wire vm-image/signal-image builds to print effective config variables at runtime
+    [ ] M20.5.9.d Replace remote-builder regression tests with VM-local config tests
+    [ ] M20.5.9.e Remove stale remote-builder docs/references and verify help output
+    [ ] M20.5.9.f Run `make test-make-options` and `make test-infra`; capture and review failures
+    [ ] M20.5.9.g Remove or archive obsolete remote-builder scripts/config examples once no references remain
 
 [~] M20.7 DRY reduction (build/test infra)
   [~] M20.7.1 Consolidate repeated Makefile suite runner blocks

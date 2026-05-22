@@ -39,16 +39,16 @@ for target in build test verify quality vm-dev vm-build vm-test vm-verify \
               vm-image-build vm-image-clean vm-cache-clean vm-extract \
               vm-screenshot vm-record vm-visual-regression test-infra \
               check-evidence test-shells test-vm test-make-options \
-              test-remote-builder-config test-remote-builder-wiring \
+              test-vm-config \
               help clean; do
-    if UMBRAVOX_LOCAL=1 make -n "$target" >/dev/null 2>&1; then
+    if make -n "$target" >/dev/null 2>&1; then
         check "Makefile target '$target' exists" "PASS"
     else
         check "Makefile target '$target' exists" "FAIL"
     fi
 done
 
-# Check VM routing is default (UMBRAVOX_LOCAL=0)
+# Check VM routing is default
 out=$(make -n build 2>&1 | head -10)
 if echo "$out" | grep -q 'vm-dev-run.sh exec'; then
     check "make build routes to VM by default" "PASS"
@@ -56,12 +56,12 @@ else
     check "make build routes to VM by default" "FAIL ($out)"
 fi
 
-# Check local override works
-out=$(UMBRAVOX_LOCAL=1 make -n build 2>&1 | head -10)
-if echo "$out" | grep -q 'cabal build'; then
-    check "UMBRAVOX_LOCAL=1 make build runs cabal locally" "PASS"
+# Check local-only path is disabled
+out=$(make -n run-local 2>&1 | head -10)
+if echo "$out" | grep -q 'Local host compilation is disabled'; then
+    check "run-local is guarded and disabled" "PASS"
 else
-    check "UMBRAVOX_LOCAL=1 make build runs cabal locally" "FAIL"
+    check "run-local is guarded and disabled" "FAIL"
 fi
 
 # Run full make-option dry-run coverage
@@ -71,16 +71,10 @@ else
     check "scripts/test-make-options.sh passes" "FAIL"
 fi
 
-if bash scripts/test-remote-builder-config.sh >/dev/null 2>&1; then
-    check "scripts/test-remote-builder-config.sh passes" "PASS"
+if bash scripts/test-vm-build-config.sh >/dev/null 2>&1; then
+    check "scripts/test-vm-build-config.sh passes" "PASS"
 else
-    check "scripts/test-remote-builder-config.sh passes" "FAIL"
-fi
-
-if bash scripts/test-remote-builder-wiring.sh >/dev/null 2>&1; then
-    check "scripts/test-remote-builder-wiring.sh passes" "PASS"
-else
-    check "scripts/test-remote-builder-wiring.sh passes" "FAIL"
+    check "scripts/test-vm-build-config.sh passes" "FAIL"
 fi
 
 echo ""
@@ -279,10 +273,9 @@ for script in scripts/vm-dev-run.sh scripts/vm-smoke-run.sh \
               scripts/vm-tui-scenario.sh scripts/vm-screenshot-capture.sh \
               scripts/vm-record-session.sh scripts/vm-visual-regression.sh \
               scripts/vm-socks5-test.sh scripts/vm-build-test.sh \
-              scripts/nix-remote-builder-config.sh \
+              scripts/nix-vm-build-config.sh \
               scripts/test-make-options.sh \
-              scripts/test-remote-builder-config.sh \
-              scripts/test-remote-builder-wiring.sh \
+              scripts/test-vm-build-config.sh \
               scripts/test-shells.sh scripts/test-vm.sh \
               scripts/test-infrastructure.sh; do
     if [ -f "$script" ]; then

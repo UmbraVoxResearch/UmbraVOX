@@ -7,11 +7,11 @@ isolation strength:
 
 ### Class 1: Host Runner (Local Override)
 
-- **Environment**: Developer machine inside `nix-shell` with `UMBRAVOX_LOCAL=1`
+- **Environment**: Developer machine in VM-first shell (`nix-shell shell-minimal.nix`)
 - **Isolation**: Nix provides hermetic inputs; execution trusts the host
 - **Speed**: Fastest (no VM boot overhead)
 - **Use case**: Quick local iteration when VM overhead is undesirable
-- **Command**: `UMBRAVOX_LOCAL=1 make build && UMBRAVOX_LOCAL=1 make test`
+- **Command**: `make build && make test`
 - **Trust level**: Non-authoritative — results depend on host state
 - **Note**: No longer the default.  Standard `make` commands now route
   through the VM (Class 2).  The host runner requires the full `nix-shell`
@@ -54,7 +54,7 @@ isolation strength:
 │  ├── make vm-smoke                         Class 2     │
 │  │   └── Same VM, full release pipeline                │
 │  │                                                     │
-│  ├── UMBRAVOX_LOCAL=1 make build           Class 1     │
+│  ├── make build                            Class 1     │
 │  │   └── Local execution (requires full toolchain)     │
 │  │                                                     │
 │  └── make release-smoke-linux              Class 3     │

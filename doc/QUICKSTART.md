@@ -20,9 +20,8 @@ preserved artifacts pending broader wiring.
 
 All `make` targets below run inside the NixOS VM by default when the VM image
 is present.  If no VM image is found, VM-routed targets fail with an explicit
-instruction to run `make vm-image-build` first (or to opt into local mode via
-`UMBRAVOX_LOCAL=1`).  Host compilation is explicit (`run-local` or
-`UMBRAVOX_LOCAL=1`).
+instruction to run `make vm-image-build` first. Host-local compilation is
+disabled.
 
 ```bash
 nix-shell shell-minimal.nix
@@ -32,7 +31,6 @@ make vm-test           # Run tests in VM
 make vm-run-gui        # Interactive dev with QEMU GUI
 make build             # Build (routes to VM by default)
 make build-haskell
-UMBRAVOX_LOCAL=1 make run-local  # Escape hatch: host-local run
 make test
 make test-haskell
 make test-core
@@ -222,7 +220,6 @@ git, and make.
 | `make verify` | Run F* formal verification (routes to VM by default) |
 | `make check-evidence` | Run external evidence checks (Coq, primality, F* inventory) |
 | `nix-shell` | Full local shell (commands still route to VM by default) |
-| `UMBRAVOX_LOCAL=1 make build` | Bypass VM, build locally (requires full nix-shell) |
 
 Inside `make vm-dev`, you have the full toolchain (GHC 9.6, Cabal, F*, Z3,
 Coq, AFL++, valgrind) and can run any command interactively. The source is
@@ -267,7 +264,7 @@ See `doc/VM-DEVELOPMENT.md` for the full VM development guide and troubleshootin
 1. Enter `nix-shell shell-minimal.nix`.
 2. Run `make vm-image-build` (first time only -- builds and caches the NixOS VM image).
 3. Run `make vm-build-only` (builds everything inside the VM).
-4. Launch the app with `make vm-run-gui` or `UMBRAVOX_LOCAL=1 make run-local` (explicit host-local run).
+4. Launch the app with `make vm-run-gui` (VM-isolated run path).
 5. Open **Contacts** with `F2` and create a new single-peer connection.
 6. Enter the remote `host:port` and let the Noise_IK handshake complete.
 

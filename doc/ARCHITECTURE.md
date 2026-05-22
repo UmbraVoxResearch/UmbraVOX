@@ -46,8 +46,8 @@ orchestration tools (QEMU, git, make) provided by `shell-minimal.nix`.
 The full development toolchain (GHC 9.6, Cabal, F*, Z3, Coq, AFL++, etc.)
 lives inside the VM image built from `nix/vm-image.nix`.
 
-Set `UMBRAVOX_LOCAL=1` to bypass the VM and run locally using the full
-`nix-shell` toolchain.  See `doc/VM-DEVELOPMENT.md` for details.
+Host-local compile bypass is disabled. See `doc/VM-DEVELOPMENT.md` for
+details.
 
 ## Release Orchestration
 

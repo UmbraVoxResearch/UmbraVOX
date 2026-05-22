@@ -26,28 +26,20 @@ make vm-signal-server    # Boot Signal-Server runtime VM
 make check-isolation     # Verify host nix store is clean
 ```
 
-### Remote Builder Config (VM Image Builds)
+### VM-local Nix Config (Image Builds)
 
-`make vm-image-build` and `make vm-signal-server-build` require a remote Nix
-builder and fail closed (no host-local fallback). Defaults come from
-`nix/remote-builder.env`; environment variables override file values.
-
-```bash
-UMBRAVOX_NIX_BUILDER="ssh-ng://nixbuilder@builder.example.internal x86_64-linux - 8"
-UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES=true
-UMBRAVOX_NIX_REMOTE_REQUIRED=1
-```
-
-If `nix/remote-builder.env` is missing, env-only mode is supported.
-
-### Local Escape Hatch
+`make vm-image-build` and `make vm-signal-server-build` use local `nix`
+configuration from `nix/vm-build.env` and fail closed.
+Environment variables override file values.
 
 ```bash
-UMBRAVOX_LOCAL=1 make build    # explicitly opt into host build
-UMBRAVOX_LOCAL=1 make test     # explicitly opt into host test
+UMBRAVOX_NIX_BUILD_DIR=build/vm/tmp
+UMBRAVOX_NIX_SANDBOX_BUILD_DIR=/build
+UMBRAVOX_NIX_LOCAL_ONLY=1
+UMBRAVOX_NIX_REQUIRE_CONFIG=1
 ```
 
-Without `UMBRAVOX_LOCAL=1`, targets default to VM and warn on host.
+Hard guard: remote-builder variables are rejected in local-only mode.
 
 ## Languages (strict)
 
@@ -82,7 +74,6 @@ scripts/                       VM orchestration + test scripts
 
 ```bash
 make vm-build-only                    # VM (preferred)
-UMBRAVOX_LOCAL=1 nix-shell --run "cabal build all"  # local (escape hatch)
 ```
 
 ## Testing

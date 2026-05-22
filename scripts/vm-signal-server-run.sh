@@ -69,20 +69,16 @@ build_jar() {
         mkdir -p "$BUILD_VM_IMAGE_PATH"
         local nix_tmp
         nix_tmp="$VM_TMP_DIR"
-        local remote_cfg_script
-        remote_cfg_script="$REPO_ROOT/scripts/nix-remote-builder-config.sh"
-        if [ ! -x "$remote_cfg_script" ] && [ -f "$remote_cfg_script" ]; then
-            chmod +x "$remote_cfg_script"
+        local cfg_script
+        cfg_script="$REPO_ROOT/scripts/nix-vm-build-config.sh"
+        if [ ! -x "$cfg_script" ] && [ -f "$cfg_script" ]; then
+            chmod +x "$cfg_script"
         fi
-        eval "$("$remote_cfg_script" shell)"
-        echo -e "${BLUE}[NIX-REMOTE]${NC} source=${UMBRAVOX_NIX_CONFIG_SOURCE} file=${UMBRAVOX_NIX_CONFIG_FILE_EFFECTIVE}"
-        echo -e "${BLUE}[NIX-REMOTE]${NC} UMBRAVOX_NIX_BUILDER=${UMBRAVOX_NIX_BUILDER}"
-        echo -e "${BLUE}[NIX-REMOTE]${NC} UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES=${UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES}"
-        local -a nix_remote_args
-        nix_remote_args=(
-            --builders "$UMBRAVOX_NIX_BUILDER"
-            --option builders-use-substitutes "$UMBRAVOX_NIX_BUILDERS_USE_SUBSTITUTES"
-        )
+        eval "$("$cfg_script" shell)"
+        echo -e "${BLUE}[NIX-VM-CONFIG]${NC} source=${UMBRAVOX_NIX_CONFIG_SOURCE} file=${UMBRAVOX_NIX_CONFIG_FILE_EFFECTIVE}"
+        echo -e "${BLUE}[NIX-VM-CONFIG]${NC} UMBRAVOX_NIX_BUILD_DIR=${UMBRAVOX_NIX_BUILD_DIR}"
+        echo -e "${BLUE}[NIX-VM-CONFIG]${NC} UMBRAVOX_NIX_SANDBOX_BUILD_DIR=${UMBRAVOX_NIX_SANDBOX_BUILD_DIR}"
+        echo -e "${BLUE}[NIX-VM-CONFIG]${NC} UMBRAVOX_NIX_LOCAL_ONLY=${UMBRAVOX_NIX_LOCAL_ONLY}"
         if [ -z "$(command -v nix-build 2>/dev/null)" ] && [ -x /nix/var/nix/profiles/default/bin/nix-build ]; then
             export PATH="/nix/var/nix/profiles/default/bin:$PATH"
         fi
@@ -92,8 +88,10 @@ build_jar() {
             exit 1
         fi
         export TMPDIR="$nix_tmp"
-        nix-build "${nix_remote_args[@]}" "$REPO_ROOT/nix/vm-signal-server.nix" -A buildVm \
+        mkdir -p "$TMPDIR"
+        nix-build "$REPO_ROOT/nix/vm-signal-server.nix" -A buildVm \
             --option build-dir "$TMPDIR" \
+            --option sandbox-build-dir "$UMBRAVOX_NIX_SANDBOX_BUILD_DIR" \
             -o "$BUILD_VM_IMAGE_PATH" 2>&1
     fi
 

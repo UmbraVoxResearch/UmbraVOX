@@ -38,9 +38,8 @@ make verify       # F* formal verification (in VM)
 make vm-dev
 make vm-run-gui
 
-# Bypass the VM for local execution (requires full nix-shell toolchain)
-UMBRAVOX_LOCAL=1 make build
-UMBRAVOX_LOCAL=1 make test
+# Host-local compile bypass is disabled
+make run-local   # returns an explicit error; use make vm-run-gui instead
 ```
 
 ## Architecture
@@ -92,8 +91,7 @@ VM resources auto-scale to 50% of the host, with a 25% minimum floor:
 ## Makefile Targets
 
 All standard `make` targets (`build`, `test`, `verify`, `quality`, etc.)
-now route through the VM by default.  Set `UMBRAVOX_LOCAL=1` to bypass the
-VM and run locally (requires the full `nix-shell` toolchain).
+now route through the VM by default. Host-local compile bypass is disabled.
 
 ### `make build` / `make test` / `make verify`
 
@@ -215,10 +213,8 @@ All standard Makefile targets (`make build`, `make test`, `make verify`,
 - `nix-shell shell-minimal.nix` provides an orchestration-only shell
   (QEMU, git, make) for developers who do not need the full local
   toolchain.
-- `UMBRAVOX_LOCAL=1` bypasses the VM and runs commands locally using the
-  host toolchain.  This requires the full `nix-shell` (not minimal).
-- `make run` is guarded in VM-first mode; use `make vm-run-gui` for VM UI
-  or `UMBRAVOX_LOCAL=1 make run-local` for explicit host compile+run.
+- `make run` is an alias for `make vm-run-gui`.
+- `make run-local` is intentionally guarded and exits with an error.
 - `make vm-image-build` works without cabal — it uses `nix build` directly.
 - `make vm-dev` provides an interactive development shell inside the VM.
 
