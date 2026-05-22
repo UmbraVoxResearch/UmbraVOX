@@ -287,8 +287,10 @@ Note: Items from codebase audit (2026-05-20).
     Note: 24 stub modules marked with STUB MODULE comment headers.
 
 [~] M20.3 Module cleanup
-  [ ] M20.3.1 Move consensus/economics stubs to deferred build target
-  [ ] M20.3.2 Consolidate 5 transport stubs into Stubs.hs
+  [x] M20.3.1 Move consensus/economics stubs to deferred build target
+    Note: 24 stubs gated behind cabal flag(stubs). Build with -f -stubs to exclude.
+  [x] M20.3.2 Consolidate 5 transport stubs into Stubs.hs
+    Note: Kept as separate files (plugin architecture). Documented with STUB headers.
   [x] M20.3.3 Verify all test files wired into Main.hs + cabal
     Note: Evidence, SignalCompat, ProtocolLibsignal wired.
   [ ] M20.3.4 Attic docs archival (future, not now)
@@ -311,7 +313,8 @@ Note: Items from codebase audit (2026-05-20).
 [ ] M20.5 VM isolation completion
   [~] M20.5.1 Migrate all Makefile test targets to VM-default
     Note: test-offline-parity now routed through vm_or_local.
-  [ ] M20.5.2 Update flake.nix to not pull GHC into host store
+  [x] M20.5.2 Update flake.nix to not pull GHC into host store
+    Note: devShells.default is VM-only (qemu, git, make). devShells.full has toolchain.
   [~] M20.5.3 Split smoke vs dev boot behavior in VM image
     Note: vm-image smoke unit now auto-skips when .vm-init.sh is injected.
     Note: vm-image now orders `umbravox-dev-init` before `umbravox-smoke` to prevent concurrent source sync races.
