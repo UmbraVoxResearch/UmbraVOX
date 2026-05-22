@@ -16,10 +16,10 @@ import qualified UmbraVox.Protocol.WireFormat as Reference
 wrapEnvelope :: Word8 -> Word32 -> ByteString -> ByteString -> ByteString -> Envelope
 wrapEnvelope = Reference.wrapEnvelope
 
-encodeEnvelope :: Envelope -> ByteString
+encodeEnvelope :: ByteString -> Envelope -> ByteString
 encodeEnvelope = Reference.encodeEnvelope
 
-decodeEnvelope :: ByteString -> Maybe Envelope
+decodeEnvelope :: ByteString -> ByteString -> Maybe Envelope
 decodeEnvelope = Reference.decodeEnvelope
 
 unwrapEnvelope :: Envelope -> ByteString
