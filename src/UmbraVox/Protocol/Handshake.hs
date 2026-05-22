@@ -4,6 +4,7 @@ module UmbraVox.Protocol.Handshake
     , genIdentity, genSignedPreKey, genPQPreKey
     , serializeBundle, deserializeBundle
     , recvBundle, recvInitialMessage
+    , bundleVersion
     , bsSlice, putW32BE, getW32BE, getW32BESafe, fingerprint, timestamp
     ) where
 
@@ -73,47 +74,59 @@ genPQPreKey = do
 
 -- Prekey bundle wire format -----------------------------------------------
 -- Layout (byte offsets):
---   0..31   IK_x25519 pub  (32 bytes)
---  32..63   IK_ed25519 pub (32 bytes)
---  64..95   SPK pub        (32 bytes)
---  96..159  SPK sig        (64 bytes)
--- 160..163  PQ encap key length (Word32 BE)
--- 164..163+pqLen  PQ encap key bytes
--- 164+pqLen..163+pqLen+64  PQ key Ed25519 sig (64 bytes, M10.2.1)
--- 228+pqLen  OPK flag+data
+--   0       Version byte (0x01)                    (1 byte, M23.2.3)
+--   1..32   IK_x25519 pub  (32 bytes)
+--  33..64   IK_ed25519 pub (32 bytes)
+--  65..96   SPK pub        (32 bytes)
+--  97..160  SPK sig        (64 bytes)
+-- 161..164  PQ encap key length (Word32 BE)
+-- 165..164+pqLen  PQ encap key bytes
+-- 165+pqLen..164+pqLen+64  PQ key Ed25519 sig (64 bytes, M10.2.1)
+-- 229+pqLen  OPK flag+data
+
+-- | Current bundle wire-format version (M23.2.3).
+bundleVersion :: Word8
+bundleVersion = 0x01
+
 serializeBundle :: IdentityKey -> BS.ByteString -> BS.ByteString
                 -> MLKEMEncapKey -> Maybe BS.ByteString -> BS.ByteString
 serializeBundle ik spkPub spkSig (MLKEMEncapKey pqpk) mOpk =
     let !pqSig = ed25519Sign (ikEd25519Secret ik) pqpk
     in BS.concat
-        [ ikX25519Public ik, ikEd25519Public ik, spkPub, spkSig
+        [ BS.singleton bundleVersion
+        , ikX25519Public ik, ikEd25519Public ik, spkPub, spkSig
         , putW32BE (fromIntegral (BS.length pqpk)), pqpk
         , pqSig
         , maybe (BS.singleton 0x00) (\k -> BS.singleton 0x01 <> k) mOpk ]
 
 deserializeBundle :: BS.ByteString -> Maybe PQPreKeyBundle
 deserializeBundle bs
-    | BS.length bs < 165 = Nothing
+    | BS.length bs < 166 = Nothing          -- 1 (version) + 165 minimum payload
+    | BS.index bs 0 /= bundleVersion = Nothing  -- reject unknown version (M23.2.3)
     | otherwise =
-        let !pqLen    = fromIntegral (getW32BE (bsSlice 160 4 bs)) :: Int
+        let !body     = BS.drop 1 bs        -- strip version byte
+            !pqLen    = fromIntegral (getW32BE (bsSlice 160 4 body)) :: Int
         -- Validate pqLen before any arithmetic to prevent integer overflow.
         -- Required total: 164 (fixed header) + pqLen (PQ key) + 64 (PQ sig) + 1 (OPK flag)
-        in if pqLen < 0 || pqLen > BS.length bs - 164
-              || BS.length bs < 164 + pqLen + 64 + 1
+        in if pqLen < 0 || pqLen > BS.length body - 164
+              || BS.length body < 164 + pqLen + 64 + 1
            then Nothing
            else let !pqSigOff = 164 + pqLen
                     !opkOff   = pqSigOff + 64
-                    !rest     = BS.drop opkOff bs
+                    !rest     = BS.drop opkOff body
+                    -- M23.2.4: validate OPK length before extraction
                     decOpk r | BS.null r         = Nothing
-                             | BS.index r 0 == 1 = Just (BS.take 32 (BS.drop 1 r))
+                             | BS.index r 0 == 1 = if BS.length r >= 33
+                                                   then Just (BS.take 32 (BS.drop 1 r))
+                                                   else Nothing  -- truncated OPK
                              | otherwise         = Nothing
                 in Just PQPreKeyBundle
-               { pqpkbIdentityKey     = bsSlice 0   32 bs
-               , pqpkbIdentityEd25519 = bsSlice 32  32 bs
-               , pqpkbSignedPreKey    = bsSlice 64  32 bs
-               , pqpkbSPKSignature    = bsSlice 96  64 bs
-               , pqpkbPQPreKey        = MLKEMEncapKey (bsSlice 164 pqLen bs)
-               , pqpkbPQKeySignature  = bsSlice pqSigOff 64 bs
+               { pqpkbIdentityKey     = bsSlice 0   32 body
+               , pqpkbIdentityEd25519 = bsSlice 32  32 body
+               , pqpkbSignedPreKey    = bsSlice 64  32 body
+               , pqpkbSPKSignature    = bsSlice 96  64 body
+               , pqpkbPQPreKey        = MLKEMEncapKey (bsSlice 164 pqLen body)
+               , pqpkbPQKeySignature  = bsSlice pqSigOff 64 body
                , pqpkbOneTimePreKey   = decOpk rest }
 
 -- Maximum receive sizes (guard against allocation-bomb attacks) -----------
