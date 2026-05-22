@@ -509,3 +509,20 @@ interoperate on the wire format.  The version byte in the envelope header
 - [ ] Test: senderId correctly extracted from decrypted payload.
 - [ ] Test: handshake messages use HMAC (not ChaCha20-Poly1305).
 - [ ] Property test: random envelopes survive encode/decode round-trip.
+
+### 7.9 MitM Protections (M23.1.1j)
+
+- [x] Key confirmation MAC: after handshake, both sides exchange
+  `HMAC-SHA-256(tokenMaterial, "UmbraVox_TokenConfirm_" || role || handshakeHash)`
+  where role is "initiator" or "responder".  Verification uses constant-time
+  comparison.  Mismatch rejects the session (MitM detected).
+  Implemented in `UmbraVox.Protocol.Handshake` (`keyConfirmMAC`,
+  `verifyKeyConfirmation`).
+- [x] Channel binding: `deriveRouteTokens` uses `handshakeHash` (Noise
+  transcript hash) as HKDF salt, binding tokens to the full handshake
+  transcript.  Documented in `UmbraVox.Protocol.RouteToken`.
+- [x] Identity binding: `deriveRouteTokens` includes `myIdHash || peerIdHash`
+  in the HKDF info string, binding tokens to both peers' long-term identity
+  key hashes.  Documented in `UmbraVox.Protocol.RouteToken`.
+- [x] Test: MitM with substituted keys produces mismatched confirmation MACs,
+  session rejected.  See `Test.Protocol.RouteToken`.
