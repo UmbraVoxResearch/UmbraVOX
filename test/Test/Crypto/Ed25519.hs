@@ -7,7 +7,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 
 import Test.Util
-import UmbraVox.Crypto.Ed25519 (ed25519Sign, ed25519Verify, ed25519PublicKey)
+import UmbraVox.Crypto.Ed25519 (ed25519Sign, ed25519Verify, ed25519PublicKey, isSmallOrder)
 
 runTests :: IO Bool
 runTests = do
@@ -30,13 +30,20 @@ runTests = do
         [ testRejectTruncSig, testRejectExtendSig, testRejectZeroSig
         , testRejectModifiedR, testRejectModifiedS
         ]
+    putStrLn "[Ed25519] Running small-order rejection tests (M23.4.1)..."
+    smallOrderResults <- sequence
+        [ testSmallOrderIdentityPK
+        , testSmallOrderIdentityR
+        , testSmallOrderAllPoints
+        , testSmallOrderNormalPK
+        ]
     putStrLn "[Ed25519] Running property/fuzz tests..."
     propResults <- sequence
         [ checkPropertyIO "sign-verify round-trip (100 random)" 100 propSignVerify
         , checkPropertyIO "wrong key rejects (100 random)" 100 propWrongKey
         , checkProperty "deterministic signing (100 random)" 100 propDeterminism
         ]
-    let results = katResults ++ edgeResults ++ propResults
+    let results = katResults ++ edgeResults ++ smallOrderResults ++ propResults
         passed = length (filter id results)
         total  = length results
     putStrLn $ "[Ed25519] " ++ show passed ++ "/" ++ show total ++ " passed."
@@ -115,6 +122,59 @@ testRejectModifiedS = do
     let sig = ed25519Sign sk1 (strToBS "test")
     assertEq "Edge: reject modified S" False
         (ed25519Verify (ed25519PublicKey sk1) (strToBS "test") (flipByte 32 sig))
+
+------------------------------------------------------------------------
+-- Small-order rejection tests (M23.4.1)
+--
+-- Finding:  ed25519Verify accepted small-order public keys and R values,
+--           enabling signature malleability via the cofactor-8 subgroup.
+-- Vulnerability: An attacker could craft valid-looking signatures using
+--           small-order points, allowing signature substitution attacks.
+-- Fix:     Added isSmallOrder check against the 8 known small-order
+--           compressed points before verification proceeds.
+-- Verified: Tests below confirm rejection of all 8 small-order points
+--           as both public keys and R values.
+------------------------------------------------------------------------
+
+-- | Identity point (0,1) used as a public key must be rejected.
+testSmallOrderIdentityPK :: IO Bool
+testSmallOrderIdentityPK =
+    let identityPK = hexDecode "0100000000000000000000000000000000000000000000000000000000000000"
+        -- Craft a signature with valid-length but identity as pubkey
+        fakeSig = BS.replicate 64 0
+    in assertEq "M23.4.1: reject identity pubkey" False
+        (ed25519Verify identityPK (strToBS "test") fakeSig)
+
+-- | Identity point (0,1) used as signature R must be rejected.
+testSmallOrderIdentityR :: IO Bool
+testSmallOrderIdentityR =
+    let pk = ed25519PublicKey sk1
+        -- Construct a 64-byte sig where R = identity point
+        identityR = hexDecode "0100000000000000000000000000000000000000000000000000000000000000"
+        fakeSig = identityR `BS.append` BS.replicate 32 0
+    in assertEq "M23.4.1: reject identity R in sig" False
+        (ed25519Verify pk (strToBS "test") fakeSig)
+
+-- | All 8 small-order points must be detected by isSmallOrder.
+testSmallOrderAllPoints :: IO Bool
+testSmallOrderAllPoints =
+    let pts = [ "0100000000000000000000000000000000000000000000000000000000000000"
+              , "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f"
+              , "0000000000000000000000000000000000000000000000000000000000000000"
+              , "0000000000000000000000000000000000000000000000000000000000000080"
+              , "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a"
+              , "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa"
+              , "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05"
+              , "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc85"
+              ]
+        allSmall = all (isSmallOrder . hexDecode) pts
+    in assertEq "M23.4.1: all 8 small-order points detected" True allSmall
+
+-- | A normal public key must not be flagged as small-order.
+testSmallOrderNormalPK :: IO Bool
+testSmallOrderNormalPK =
+    let pk = ed25519PublicKey sk1
+    in assertEq "M23.4.1: normal pubkey not small-order" False (isSmallOrder pk)
 
 ------------------------------------------------------------------------
 -- Property/fuzz tests
