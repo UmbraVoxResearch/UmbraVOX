@@ -36,15 +36,16 @@ import UmbraVox.App.SwapCheck (swapIsActive)
 
 -- | Parsed CLI flags for the UI mode.
 data UiFlags = UiFlags
-    { uiPort           :: Maybe Int
-    , uiMaxConnections :: Maybe Int
-    , uiEphemeral      :: Bool        -- ^ --ephemeral: skip all disk writes
-    , uiNoConfig       :: Bool        -- ^ --no-config: ignore config file
-    , uiEnablePlugins  :: [String]    -- ^ --enable-plugin <name>: enable named plugins
+    { uiPort              :: Maybe Int
+    , uiMaxConnections    :: Maybe Int
+    , uiEphemeral         :: Bool        -- ^ --ephemeral: skip all disk writes
+    , uiNoConfig          :: Bool        -- ^ --no-config: ignore config file
+    , uiSkipConfigVerify  :: Bool        -- ^ --skip-config-verify: skip hash pin check
+    , uiEnablePlugins     :: [String]    -- ^ --enable-plugin <name>: enable named plugins
     }
 
 defaultUiFlags :: UiFlags
-defaultUiFlags = UiFlags Nothing Nothing False False []
+defaultUiFlags = UiFlags Nothing Nothing False False False []
 
 -- | Consume recognised flags from the front of the args list.
 -- Stops as soon as it encounters an unrecognised token.
@@ -59,6 +60,8 @@ parseUiFlags = go defaultUiFlags
         go flags{ uiEphemeral = True } rest
     go flags ("--no-config" : rest) =
         go flags{ uiNoConfig = True } rest
+    go flags ("--skip-config-verify" : rest) =
+        go flags{ uiSkipConfigVerify = True } rest
     go flags ("--enable-plugin" : name : rest) =
         go flags{ uiEnablePlugins = uiEnablePlugins flags ++ [name] } rest
     go flags _ = flags
@@ -181,7 +184,7 @@ runUi flags = do
     (cfg, identity) <-
         if uiNoConfig flags
             then initCoreRuntimeNoConfig Nothing
-            else initCoreRuntime Nothing
+            else initCoreRuntime Nothing (uiSkipConfigVerify flags)
     applyUiFlags flags cfg
     debugLogging <- runtimeLoggingEnabled cfg
     (initRows, initCols) <- getTermSize

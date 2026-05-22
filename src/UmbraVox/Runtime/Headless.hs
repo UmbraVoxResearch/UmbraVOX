@@ -16,12 +16,14 @@ import Control.Concurrent (threadDelay)
 import Control.Monad (forM_, when)
 import Data.IORef (readIORef, writeIORef)
 import qualified Data.Map.Strict as Map
-import System.Exit (ExitCode(..))
+import System.Environment (lookupEnv)
+import System.Exit (ExitCode(..), exitFailure)
 import System.IO (hPutStrLn, stderr)
 
 import UmbraVox.App.Config (AppConfig(..))
 import UmbraVox.App.ConfigFile (loadConfigFile, applyConfigFile, verifyConfigHash)
 import UmbraVox.App.Startup (newDefaultAppConfig, initializeLocalIdentity)
+import UmbraVox.Crypto.Random (initCSPRNG)
 import UmbraVox.App.State (CoreState(..), newCoreState)
 import UmbraVox.App.Types (SessionInfo(..))
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey)
@@ -40,17 +42,25 @@ data HeadlessConfig = HeadlessConfig
 -- Both the TUI and headless runtimes share this init path.
 -- Returns an 'AppConfig' for callers that need direct access, plus the
 -- resolved identity key.
-initCoreRuntime :: Maybe Int -> IO (AppConfig, IdentityKey)
-initCoreRuntime mPort = do
+initCoreRuntime :: Maybe Int -> Bool -> IO (AppConfig, IdentityKey)
+initCoreRuntime mPort skipConfigVerify = do
+    initCSPRNG
     appCfg <- newDefaultAppConfig
     -- Layer 1: apply config file (overrides compile-time defaults)
     fileCfg <- loadConfigFile
     applyConfigFile fileCfg appCfg
-    -- M17.7.4: verify config file hash pin if present (paranoid mode)
+    -- M20.4.6: verify config file hash pin — fail closed on mismatch.
+    -- Escape hatch: --skip-config-verify flag or UMBRAVOX_SKIP_CONFIG_VERIFY=1.
+    envSkip <- lookupEnv "UMBRAVOX_SKIP_CONFIG_VERIFY"
+    let skip = skipConfigVerify || envSkip == Just "1"
     hashResult <- verifyConfigHash
     case hashResult of
-        Just False -> hPutStrLn stderr "WARNING: config file hash does not match pin (possible tampering)"
-        _          -> pure ()
+        Left err | skip -> hPutStrLn stderr ("WARNING: " ++ err ++ " (verification skipped)")
+        Left err -> do
+            hPutStrLn stderr ("FATAL: " ++ err)
+            hPutStrLn stderr "Refusing to load config. Use --skip-config-verify or UMBRAVOX_SKIP_CONFIG_VERIFY=1 to override."
+            exitFailure
+        Right () -> pure ()
     -- Layer 2: apply explicit port override from caller (CLI flags etc.)
     case mPort of
         Just p  -> writeIORef (cfgListenPort appCfg) p
@@ -62,6 +72,7 @@ initCoreRuntime mPort = do
 -- Used when --no-config is passed on the CLI.
 initCoreRuntimeNoConfig :: Maybe Int -> IO (AppConfig, IdentityKey)
 initCoreRuntimeNoConfig mPort = do
+    initCSPRNG
     appCfg <- newDefaultAppConfig
     -- Skip config file; hardcoded defaults from newDefaultAppConfig apply.
     case mPort of
@@ -77,7 +88,7 @@ runHeadlessNode cfg = do
             ++ " starting on port " ++ show (hcPort cfg)
 
     -- 1. Shared core init (config + identity)
-    (appCfg, identity) <- initCoreRuntime (Just (hcPort cfg))
+    (appCfg, identity) <- initCoreRuntime (Just (hcPort cfg)) False
     putStrLn "[HEADLESS] identity initialized"
 
     -- 2. Build CoreState — no TUI fields needed
