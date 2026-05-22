@@ -187,6 +187,10 @@ library
       UmbraVox.Network.Discovery
       UmbraVox.Network.DHT.Types
       UmbraVox.Network.DHT.RoutingTable
+      UmbraVox.Network.DHT.RPC
+      UmbraVox.Network.DHT.Lookup
+      UmbraVox.Network.DHT.Store
+      UmbraVox.Network.DHT
       UmbraVox.Network.Listener
       -- App / Config
       UmbraVox.App.Config
