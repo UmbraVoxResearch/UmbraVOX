@@ -96,6 +96,26 @@ clampScalar !bs =
     in BS.pack (b0 : take 30 (drop 1 bytes) ++ [b31])
 
 ------------------------------------------------------------------------
+-- Constant-time conditional swap (arithmetic masking)
+------------------------------------------------------------------------
+
+-- | Constant-time conditional swap using arithmetic masking.
+-- When @bit@ is 1 the two pairs are swapped; when 0 they are unchanged.
+-- Uses XOR-and-mask to avoid branching on the secret bit.
+--
+-- NOTE: GHC may still compile Integer operations to branching code.
+-- The real constant-time guarantee comes from the C FFI implementation.
+-- This at least removes the OBVIOUS if/then/else branch on secret data.
+cswap :: Int -> Integer -> Integer -> Integer -> Integer
+      -> (Integer, Integer, Integer, Integer)
+cswap !bit !x2 !x3 !z2 !z3 =
+    let !mask = negate (fromIntegral bit :: Integer)  -- 0 or -1 (all bits set)
+        !dx   = (x2 `xor` x3) .&. mask
+        !dz   = (z2 `xor` z3) .&. mask
+    in (x2 `xor` dx, x3 `xor` dx, z2 `xor` dz, z3 `xor` dz)
+{-# INLINE cswap #-}
+
+------------------------------------------------------------------------
 -- RFC 7748, Section 5 — X25519 scalar multiplication
 ------------------------------------------------------------------------
 
@@ -146,8 +166,9 @@ scalarMult !k !u = result
             -- x_1 = u, x_2 = 1, x_3 = u, z_2 = 0, z_3 = 1, swap = 0
             (!x2f, !x3f, !z2f, !z3f, !swpf) =
                 go 254 1 u 0 1 0
-            -- Final conditional swap
-            (!xr, !zr) = if swpf == 1 then (x3f, z3f) else (x2f, z2f)
+            -- Final conditional swap (constant-time)
+            (!fx2, !_fx3, !fz2, !_fz3) = cswap swpf x2f x3f z2f z3f
+            (!xr, !zr) = (fx2, fz2)
         in fMul xr (fInv zr)
 
     -- RFC 7748 pseudocode loop, tracking swap state
@@ -156,14 +177,11 @@ scalarMult !k !u = result
     go !t !x_2 !x_3 !z_2 !z_3 !swap
         | t < 0 = (x_2, x_3, z_2, z_3, swap)
         | otherwise =
-            let !k_t = if testBit k t then 1 else 0
+            let !k_t = fromIntegral ((shiftR k t) .&. 1) :: Int
                 !swap' = swap `xor` k_t
 
-                -- Conditional swap
-                (!sx2, !sx3, !sz2, !sz3) =
-                    if swap' == 1
-                    then (x_3, x_2, z_3, z_2)
-                    else (x_2, x_3, z_2, z_3)
+                -- Conditional swap (constant-time)
+                (!sx2, !sx3, !sz2, !sz3) = cswap swap' x_2 x_3 z_2 z_3
 
                 -- Ladder body (RFC 7748 Section 5)
                 !a'   = fAdd sx2 sz2
