@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 module Main (main) where
 
 import System.Environment (getArgs)
@@ -13,6 +14,7 @@ import qualified Test.Chat.Session as ChatSession
 import qualified Test.Chat.Transaction as ChatTransaction
 import qualified Test.Chat.WireEdge as ChatWireEdge
 import qualified Test.Codegen as Codegen
+#ifdef STUBS
 import qualified Test.Consensus.Block as ConsensusBlock
 import qualified Test.Consensus.ForkChoice as ConsensusForkChoice
 import qualified Test.Consensus.LeaderElection as ConsensusLeaderElection
@@ -23,6 +25,7 @@ import qualified Test.Consensus.Protocol as ConsensusProtocol
 import qualified Test.Consensus.Truncation as ConsensusTruncation
 import qualified Test.Consensus.Types as ConsensusTypes
 import qualified Test.Consensus.Validation as ConsensusValidation
+#endif
 import qualified Test.Crypto.AES as AES
 import qualified Test.Crypto.BIP39 as BIP39
 import qualified Test.Crypto.ChaCha20 as ChaCha20
@@ -61,12 +64,14 @@ import qualified Test.Crypto.StealthAddress as StealthAddress
 import qualified Test.Crypto.VRF as VRF
 import qualified Test.EndToEnd as EndToEnd
 import qualified Test.EndToEnd2 as EndToEnd2
+#ifdef STUBS
 import qualified Test.Economics.Cycle as EconCycle
 import qualified Test.Economics.Fees as EconFees
 import qualified Test.Economics.Onboarding as EconOnboarding
 import qualified Test.Economics.Penalty as EconPenalty
 import qualified Test.Economics.Rewards as EconRewards
 import qualified Test.Economics.Token as EconToken
+#endif
 import qualified Test.Equivalence as Equivalence
 import qualified Test.Fuzz as Fuzz
 import qualified Test.FuzzConnection as FuzzConnection
@@ -514,6 +519,7 @@ deferredSuites =
     , Suite "storage-statedb" StateDB.runTests
     , Suite "storage-index" StorageIndex.runTests
     , Suite "storage-checkpoint" Checkpoint.runTests
+#ifdef STUBS
     , Suite "consensus-types" ConsensusTypes.runTests
     , Suite "consensus-block" ConsensusBlock.runTests
     , Suite "consensus-ledger" ConsensusLedger.runTests
@@ -530,6 +536,7 @@ deferredSuites =
     , Suite "economics-penalty" EconPenalty.runTests
     , Suite "economics-cycle" EconCycle.runTests
     , Suite "economics-onboarding" EconOnboarding.runTests
+#endif
     ]
 
 requiredSuites :: [Suite]
