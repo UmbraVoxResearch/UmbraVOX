@@ -9,11 +9,11 @@ module UmbraVox.Crypto.Generated.WireFormat
     ) where
 
 import Data.ByteString (ByteString)
-import Data.Word (Word8, Word32)
+import Data.Word (Word8, Word16, Word32)
 import UmbraVox.Protocol.WireFormat ( Envelope(..) )
 import qualified UmbraVox.Protocol.WireFormat as Reference
 
-wrapEnvelope :: Word8 -> Word32 -> ByteString -> ByteString -> ByteString -> Envelope
+wrapEnvelope :: Word8 -> Word32 -> ByteString -> Word8 -> Word16 -> ByteString -> Envelope
 wrapEnvelope = Reference.wrapEnvelope
 
 encodeEnvelope :: ByteString -> Envelope -> ByteString

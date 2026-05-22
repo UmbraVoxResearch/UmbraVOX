@@ -11,7 +11,7 @@ module UmbraVox.Crypto.Generated.FFI.WireFormat
     ) where
 
 import Data.ByteString (ByteString)
-import Data.Word (Word8, Word32)
+import Data.Word (Word8, Word16, Word32)
 import Foreign.C.Types (CInt(..))
 import UmbraVox.Protocol.WireFormat ( Envelope(..) )
 import qualified UmbraVox.Protocol.WireFormat as Reference
@@ -21,10 +21,10 @@ foreign import ccall "wireformat_link_probe" c_wireformat_link_probe :: IO CInt
 ffiLinked :: IO Bool
 ffiLinked = (/= 0) <$> c_wireformat_link_probe
 
-wrapEnvelope :: Word8 -> Word32 -> ByteString -> ByteString -> ByteString -> IO Envelope
-wrapEnvelope msgType seqNum srcId dstId payload = do
+wrapEnvelope :: Word8 -> Word32 -> ByteString -> Word8 -> Word16 -> ByteString -> IO Envelope
+wrapEnvelope msgType seqNum ephR vTag sTag payload = do
     _ <- c_wireformat_link_probe
-    pure (Reference.wrapEnvelope msgType seqNum srcId dstId payload)
+    pure (Reference.wrapEnvelope msgType seqNum ephR vTag sTag payload)
 
 encodeEnvelope :: ByteString -> Envelope -> IO ByteString
 encodeEnvelope key env = do
