@@ -22,6 +22,8 @@ import UmbraVox.TUI.Render (isPfx)
 import UmbraVox.Chat.Session
     (ChatSession, initChatSession, sendChatMessage, recvChatMessage)
 import UmbraVox.Crypto.Random (randomBytes)
+import UmbraVox.Crypto.SHA256 (sha256)
+import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 import UmbraVox.Network.TransportClass
     (AnyTransport, anySend, anyRecv)
 import UmbraVox.Protocol.CBOR (encodeMessage)
@@ -84,13 +86,15 @@ addLoopbackSession cfg label = do
     pure sid
 
 -- | Send a bytestring to a session (remote or loopback).
-sendToSession :: SessionInfo -> BS.ByteString -> IO SendResult
-sendToSession si msg = case siCrypto si of
+-- The 32-byte @sId@ (identity key hash) is prepended inside the
+-- encrypted payload per M23.1.1d.
+sendToSession :: BS.ByteString -> SessionInfo -> BS.ByteString -> IO SendResult
+sendToSession sId si msg = case siCrypto si of
     BridgeCrypto _bs -> error "bridge not implemented"
     RatchetCrypto ref -> do
       withMVar (siSessionLock si) $ \_ -> do
         session <- readIORef ref
-        sendResult <- sendChatMessage session msg
+        sendResult <- sendChatMessage session sId msg
         case sendResult of
           Left _ratchetErr -> pure SendUnavailable
           Right (session', wire) -> do
@@ -104,9 +108,9 @@ sendToSession si msg = case siCrypto si of
                     session2 <- readIORef ref
                     recvResult <- recvChatMessage session2 wire
                     case recvResult of
-                        Left _ratchetErr2                -> pure ()
-                        Right (Just (session3, _pt))     -> writeIORef ref session3
-                        Right Nothing                    -> pure ()
+                        Left _ratchetErr2                    -> pure ()
+                        Right (Just (session3, _sid, _pt))   -> writeIORef ref session3
+                        Right Nothing                        -> pure ()
                     ts <- timestamp
                     let savedLine = case payloadHistoryText msg of
                             Right text -> ts ++ " [saved] " ++ text
@@ -115,12 +119,22 @@ sendToSession si msg = case siCrypto si of
                     pure SendStoredLocal
                   _ -> pure SendUnavailable
 
+-- | Derive the 32-byte sender identity hash from the local identity key.
+-- Returns all-zero bytes when no identity is loaded (loopback / test).
+localSenderId :: AppConfig -> IO BS.ByteString
+localSenderId cfg = do
+    mIk <- readIORef (cfgIdentity cfg)
+    pure $ case mIk of
+        Nothing -> BS.replicate 32 0
+        Just ik -> sha256 (ikEd25519Public ik)
+
 -- | Send the current input buffer as a message.
 sendCurrentMessage :: AppState -> IO ()
 sendCurrentMessage st = do
     buf <- readIORef (asInputBuf st)
     unless (null buf) $ do
         let cfg = asConfig st
+        sid' <- localSenderId cfg
         sessions <- readIORef (cfgSessions cfg)
         sel <- readIORef (asSelected st)
         let entries = Map.toList sessions
@@ -139,7 +153,7 @@ sendCurrentMessage st = do
                         then setStatusLocal st "Access denied: file must be under home or working directory"
                         else do
                             contents <- BS.readFile canonPath
-                            result <- sendToSession si (encodeFilePayload canonPath contents)
+                            result <- sendToSession sid' si (encodeFilePayload canonPath contents)
                             case result of
                                 SendUnavailable ->
                                     setStatusLocal st ("Session offline; reconnect required for " ++ siPeerName si)
@@ -159,7 +173,7 @@ sendCurrentMessage st = do
                                     persistMessageIfEnabled cfg sid "You" buf
                 else setStatusLocal st "File not found"
             else do
-                result <- sendToSession si (encodeStringUtf8 buf)
+                result <- sendToSession sid' si (encodeStringUtf8 buf)
                 case result of
                     SendUnavailable ->
                         setStatusLocal st ("Session offline; reconnect required for " ++ siPeerName si)
@@ -206,7 +220,7 @@ recvLoopTUI cfg sid peerName t ref lock histRef = go `catch` handler where
                     case result of
                         Left _ratchetErr             -> pure Nothing
                         Right Nothing                -> pure Nothing
-                        Right (Just (session', plaintext)) -> do
+                        Right (Just (session', _sid, plaintext)) -> do
                             writeIORef ref session'
                             pure (Just plaintext)
                 case result of

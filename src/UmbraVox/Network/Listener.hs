@@ -10,6 +10,10 @@ module UmbraVox.Network.Listener
     , runAcceptLoop
     , ListenerCallbacks(..)
     , noopCallbacks
+      -- * Per-peer rate limiting (M23.1.1h)
+    , SessionRateLimiter
+    , newSessionRateLimiter
+    , checkSessionRate
     ) where
 
 import Control.Concurrent (forkIO)
@@ -25,6 +29,7 @@ import qualified Data.ByteString as BS
 import Data.IORef (modifyIORef', readIORef, writeIORef)
 import qualified Data.Set as Set
 import Data.List (intercalate, stripPrefix)
+import Data.Word (Word64)
 import System.IO.Error (isUserError, ioeGetErrorString)
 
 import UmbraVox.App.Config (AppConfig(..), ConnectionMode(..), SessionId)
@@ -40,6 +45,8 @@ import UmbraVox.Network.ProviderRuntime
     ( ProviderListener, activeRuntimeProvider, acceptWithProvider
     , bindListenerWithProvider, closeProviderListener
     )
+import UmbraVox.Network.RateLimit
+    ( RateLimiter, newRateLimiter, checkRate, defaultMessageCap )
 import UmbraVox.Network.TransportClass (AnyTransport, anyClose, anyInfo)
 import UmbraVox.Chat.Session (ChatSession)
 import UmbraVox.Protocol.Handshake (fingerprint, handshakeResponder)
@@ -260,3 +267,25 @@ runAcceptLoop cs cbs ik port = do
         (bindListenerWithProvider runtimeProvider port)
         closeProviderListener
         (acceptLoopCore cs cbs ik port connCount)
+
+------------------------------------------------------------------------
+-- Per-peer rate limiting (M23.1.1h)
+------------------------------------------------------------------------
+
+-- | A per-session rate limiter.  Create one per accepted peer session
+-- and call 'checkSessionRate' before processing each inbound message.
+-- If the peer exceeds 'defaultMessageCap' messages/sec, subsequent
+-- messages are dropped for the remainder of the one-second window.
+type SessionRateLimiter = RateLimiter
+
+-- | Create a new per-session rate limiter with 'defaultMessageCap'.
+newSessionRateLimiter :: IO SessionRateLimiter
+newSessionRateLimiter = newRateLimiter defaultMessageCap
+
+-- | Check whether an inbound message from this session should be
+-- accepted under the per-peer rate cap.
+--
+-- @checkSessionRate limiter now@ returns 'True' if accepted, 'False'
+-- if the message should be silently dropped.  @now@ is POSIX seconds.
+checkSessionRate :: SessionRateLimiter -> Word64 -> IO Bool
+checkSessionRate = checkRate

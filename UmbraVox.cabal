@@ -178,6 +178,7 @@ library
       UmbraVox.Network.PeerManager
       UmbraVox.Network.Gossip
       UmbraVox.Network.Dandelion
+      UmbraVox.Network.RateLimit
       UmbraVox.Network.Protocol
       UmbraVox.Network.Sync
       UmbraVox.Network.MDNS
@@ -219,6 +220,7 @@ library
       UmbraVox.Protocol.UTF8
       UmbraVox.Protocol.MessageFormat
       UmbraVox.Protocol.QRCode
+      UmbraVox.Protocol.ProofOfWork
       UmbraVox.Protocol.RouteToken
       UmbraVox.Protocol.WireFormat
       UmbraVox.Protocol.Handshake
@@ -448,6 +450,7 @@ test-suite umbravox-test
     Test.Network.TransportEdge
     Test.Network.UDP
     Test.Network.Socks5Live
+    Test.Network.DoSMitigation
     Test.Protocol.CBOR
     Test.Crypto.BIP39
     Test.Crypto.Export
