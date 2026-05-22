@@ -26,7 +26,7 @@ uint32_t ed25519extended(const uint8_t* scalar, const uint8_t* point, const uint
     uint32_t s = 0; /* preprocessing: decodeLE(scalar) */
     uint32_t R_base = 0; /* preprocessing: edScalarMultBase(s) */
     uint32_t P_decoded = 0; /* preprocessing: edDecode(point) */
-    uint32_t P_valid = edValidate(P_decoded);
+    uint32_t P_valid = 0; /* preprocessing: edValidate(P_decoded) */
     uint32_t R_mult = 0; /* preprocessing: edScalarMul(s, P_decoded) */
     uint32_t P1 = 0; /* preprocessing: edDecode(point) */
     uint32_t P2 = 0; /* preprocessing: edDecode(point2) */
@@ -43,10 +43,10 @@ uint32_t ed25519extended(const uint8_t* scalar, const uint8_t* point, const uint
     uint32_t R_add_T = 0; /* preprocessing: fMul(add_E, add_H) */
     uint32_t R_add_Z = 0; /* preprocessing: fMul(add_F, add_G) */
     uint32_t P_neg = 0; /* preprocessing: edDecode(point) */
-    uint32_t R_neg_X = fNeg(P_neg);
+    uint32_t R_neg_X = 0; /* preprocessing: fNeg(P_neg) */
     uint32_t R_neg_Y = P_neg;
     uint32_t R_neg_Z = P_neg;
-    uint32_t R_neg_T = fNeg(P_neg);
+    uint32_t R_neg_T = 0; /* preprocessing: fNeg(P_neg) */
     uint32_t elig_hash = 0; /* preprocessing: SHA512(data) */
     uint32_t r_wide = 0; /* preprocessing: decodeLE(elig_hash) */
     uint32_t r = 0; /* preprocessing: r_wide */
@@ -87,7 +87,7 @@ uint32_t ed25519extended(const uint8_t* scalar, const uint8_t* point, const uint
     uint32_t enc_bytes = 0; /* preprocessing: encodeLE(enc_y, 32) */
     uint32_t enc_sign = 0; /* preprocessing: (enc_x & 1) */
     uint32_t encoded = 0; /* preprocessing: setBit(enc_bytes, 255, enc_sign) */
-    uint32_t dec_sign = bit(point, 255);
+    uint32_t dec_sign = 0; /* preprocessing: bit(point, 255) */
     uint32_t dec_y = 0; /* preprocessing: decodeLE(clearBit(point, 255)) */
     uint32_t dec_y_valid = 0; /* preprocessing: dec_y */
     uint32_t dec_y_sq = 0; /* preprocessing: fMul(dec_y, dec_y) */

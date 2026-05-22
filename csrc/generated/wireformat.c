@@ -27,32 +27,32 @@ static const uint32_t MSG_HEARTBEAT = 0x06;
 __attribute__((noinline))
 uint32_t wireformat(const uint8_t* version, const uint8_t* msg_type, uint32_t sequence, const uint8_t* source, const uint8_t* dest, const uint8_t* payload, const uint8_t* mac_key, const uint8_t* envelope) {
     uint32_t payload_len = 0; /* preprocessing: length(payload) */
-    uint32_t inputs_ok = (version != NULL) ? 1 : 0;
+    uint32_t inputs_ok = 0; /* preprocessing: version */
     uint32_t w_version = 0; /* preprocessing: encodeBE(version, 1) */
     uint32_t w_msg_type = 0; /* preprocessing: encodeBE(msg_type, 1) */
     uint32_t w_sequence = 0; /* preprocessing: encodeBE(sequence, 4) */
-    uint32_t w_source = (source != NULL) ? 1 : 0;
-    uint32_t w_dest = (dest != NULL) ? 1 : 0;
+    uint32_t w_source = 0; /* preprocessing: source */
+    uint32_t w_dest = 0; /* preprocessing: dest */
     uint32_t w_payload_len = 0; /* preprocessing: encodeBE(payload_len, 2) */
     uint32_t header_and_body = 0; /* preprocessing: ((((((w_version | 0) | w_msg_type) | 0) | w_sequence) | 0) | 0) */
     uint32_t mac = 0; /* preprocessing: HMAC_SHA256(mac_key, header_and_body) */
     uint32_t envelope_out = 0; /* preprocessing: ((header_and_body | 0) | mac) */
     uint32_t env_len = 0; /* preprocessing: length(envelope) */
     uint32_t size_ok = 0; /* preprocessing: env_len */
-    uint32_t d_version = envelope[OFF_VERSION];
-    uint32_t d_msg_type = envelope[OFF_MSG_TYPE];
+    uint32_t d_version = 0; /* preprocessing: envelope[OFF_VERSION] */
+    uint32_t d_msg_type = 0; /* preprocessing: envelope[OFF_MSG_TYPE] */
     uint32_t d_sequence = 0; /* preprocessing: decodeBE(envelope[OFF_SEQUENCE]) */
-    uint32_t d_source = envelope[OFF_SOURCE];
-    uint32_t d_dest = envelope[OFF_DEST];
+    uint32_t d_source = 0; /* preprocessing: envelope[OFF_SOURCE] */
+    uint32_t d_dest = 0; /* preprocessing: envelope[OFF_DEST] */
     uint32_t d_payload_len = 0; /* preprocessing: decodeBE(envelope[OFF_PAYLOAD_LEN]) */
     uint32_t expected_len = HEADER_SIZE;
     uint32_t len_ok = expected_len;
-    uint32_t d_payload = envelope[OFF_PAYLOAD];
+    uint32_t d_payload = 0; /* preprocessing: envelope[OFF_PAYLOAD] */
     uint32_t d_mac = 0; /* preprocessing: envelope[env_len] */
-    uint32_t d_header_and_body = envelope[0];
+    uint32_t d_header_and_body = 0; /* preprocessing: envelope[0] */
     uint32_t expected_mac = 0; /* preprocessing: HMAC_SHA256(mac_key, d_header_and_body) */
     uint32_t mac_ok = 0; /* preprocessing: constantTimeEq(d_mac, expected_mac) */
-    uint32_t version_ok = d_version;
+    uint32_t version_ok = 0; /* preprocessing: d_version */
     uint32_t valid = 0; /* preprocessing: (((size_ok & len_ok) & mac_ok) & version_ok) */
     return 0; /* placeholder */
 }

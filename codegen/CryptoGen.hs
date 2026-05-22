@@ -26,7 +26,7 @@ module CryptoGen
     ) where
 
 import Data.Char (isAlphaNum, isSpace, isDigit, isHexDigit, isAlpha, isUpper, toLower)
-import Data.List (isPrefixOf, stripPrefix, intercalate, foldl')
+import Data.List (isPrefixOf, intercalate, foldl')
 import Data.Maybe (mapMaybe)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>), takeDirectory)
@@ -36,6 +36,7 @@ data ParamType
     = TBytes     -- ^ Variable-length byte string
     | TUInt32    -- ^ 32-bit unsigned integer
     | TUInt64    -- ^ 64-bit unsigned integer
+    | TFloat64   -- ^ 64-bit floating point
     | TBool      -- ^ Boolean
     deriving stock (Show, Eq)
 
@@ -168,11 +169,14 @@ parseParams = mapMaybe parseParam
         case break (== ':') (strip l) of
             (n, ':':t) -> Just $ Param (strip n) (parseType (strip t))
             _ -> Nothing
-    parseType "Bytes"  = TBytes
-    parseType "UInt32" = TUInt32
-    parseType "UInt64" = TUInt64
-    parseType "Bool"   = TBool
-    parseType _        = TBytes
+    parseType "Bytes"   = TBytes
+    parseType "UInt32"  = TUInt32
+    parseType "UInt64"  = TUInt64
+    parseType "Bool"    = TBool
+    parseType "Float64" = TFloat64
+    parseType t
+        | "Bytes(" `isPrefixOf` t = TBytes
+        | otherwise               = TBytes
 
 parseConstants :: [String] -> [Constant]
 parseConstants = mapMaybe parseConst
@@ -194,7 +198,31 @@ parseConstants = mapMaybe parseConst
         go (c:rest)     = c : go rest
 
 parseSteps :: [String] -> [Step]
-parseSteps lns = [Step Nothing (concatMap parseOpLine lns)]
+parseSteps lns = [Step Nothing (concatMap parseOpLine (joinMultiLine lns))]
+
+-- | Join multi-line constructs into single logical lines.
+--
+-- A line ending in @:@ (after stripping whitespace) begins a block whose
+-- body consists of all immediately following lines with strictly greater
+-- indentation.  The body is appended to the header line, separated by
+-- spaces, producing a single logical line that the downstream parser
+-- can handle as one operation (typically a preprocessing placeholder).
+--
+-- This covers @FOR_EACH ... :@, @FOR ... IN ... :@ and similar spec
+-- constructs that span multiple lines.
+joinMultiLine :: [String] -> [String]
+joinMultiLine [] = []
+joinMultiLine (l:rest)
+    | endsWithColon (strip l) =
+        let baseIndent = indentLevel l
+            (body, remaining) = span (\x -> indentLevel x > baseIndent) rest
+            joined = strip l ++ " " ++ unwords (map strip body)
+        in  joined : joinMultiLine remaining
+    | otherwise = l : joinMultiLine rest
+  where
+    endsWithColon [] = False
+    endsWithColon s  = last s == ':'
+    indentLevel s = length (takeWhile isSpace s)
 
 -- | Parse a single line from the steps section.  Some spec files use
 --   semicolons to pack multiple assignments on one line (e.g. ChaCha20).
@@ -732,6 +760,7 @@ hsWrapperSpec "WireFormat" =
     Just $ wrapperModule "WireFormat"
         [ "Envelope(..)", "wrapEnvelope", "encodeEnvelope"
         , "decodeEnvelope", "unwrapEnvelope"
+        , "deriveEnvelopeKey", "encodeEnvelopeAEAD", "decodeEnvelopeAEAD"
         ]
         [ "import Data.ByteString (ByteString)"
         , "import Data.Word (Word8, Word16, Word32)"
@@ -749,6 +778,15 @@ hsWrapperSpec "WireFormat" =
         , ""
         , "unwrapEnvelope :: Envelope -> ByteString"
         , "unwrapEnvelope = Reference.unwrapEnvelope"
+        , ""
+        , "deriveEnvelopeKey :: ByteString -> ByteString"
+        , "deriveEnvelopeKey = Reference.deriveEnvelopeKey"
+        , ""
+        , "encodeEnvelopeAEAD :: ByteString -> Word32 -> Envelope -> ByteString"
+        , "encodeEnvelopeAEAD = Reference.encodeEnvelopeAEAD"
+        , ""
+        , "decodeEnvelopeAEAD :: ByteString -> Word32 -> ByteString -> Maybe Envelope"
+        , "decodeEnvelopeAEAD = Reference.decodeEnvelopeAEAD"
         ]
 hsWrapperSpec "Ed25519Extended" =
     Just $ wrapperModule "Ed25519Extended"
@@ -849,7 +887,11 @@ hsImports =
 hsConstants :: [Constant] -> [String]
 hsConstants = map hsConst
   where
-    hsConst c = constName c ++ " :: Word32\n" ++ constName c ++ " = " ++ constValue c
+    hsConst c
+        | '.' `elem` constValue c =
+            constName c ++ " :: Double\n" ++ constName c ++ " = " ++ constValue c
+        | otherwise =
+            constName c ++ " :: Word32\n" ++ constName c ++ " = " ++ constValue c
 
 hsFunction :: String -> [Param] -> [Step] -> [String]
 hsFunction name params steps =
@@ -871,10 +913,11 @@ hsParamType :: Param -> String
 hsParamType p = mapParamTypeHs (paramType p)
 
 mapParamTypeHs :: ParamType -> String
-mapParamTypeHs TUInt32 = "Word32"
-mapParamTypeHs TUInt64 = "Word64"
-mapParamTypeHs TBytes  = "ByteString"
-mapParamTypeHs TBool   = "Bool"
+mapParamTypeHs TUInt32  = "Word32"
+mapParamTypeHs TUInt64  = "Word64"
+mapParamTypeHs TFloat64 = "Double"
+mapParamTypeHs TBytes   = "ByteString"
+mapParamTypeHs TBool    = "Bool"
 
 hsStep :: String -> Step -> [String]
 hsStep indent step = concatMap (hsOp indent) (stepOps step)
@@ -964,6 +1007,9 @@ cConstants = map cConst
         in  if isStringLiteral val
             -- String constant: emit as const char*
             then "static const char " ++ constName c ++ "[] = " ++ val ++ ";"
+            else if isFloatLiteral val
+            -- Float constant: emit as double
+            then "static const double " ++ constName c ++ " = " ++ val ++ ";"
             else if hexWidth > 16
             -- Too wide for C native types (> 64 bits); emit as comment
             then "/* static const uint32_t " ++ constName c ++ " = " ++ val ++ "; -- too wide for C */"
@@ -977,6 +1023,8 @@ cConstants = map cConst
     -- Check if a value is a string literal (starts with ")
     isStringLiteral ('"':_) = True
     isStringLiteral _       = False
+    -- Check if a value is a floating-point literal (contains '.')
+    isFloatLiteral v = '.' `elem` v && not (isStringLiteral v)
 
 -- | Identify helper definitions dynamically: an assignment is a helper if
 --   its name appears as a function call in any other operation AND its body
@@ -1085,17 +1133,24 @@ isPreprocessingOp _ = False
 preprocessingFunctions :: [String]
 preprocessingFunctions =
     [ "pad", "getLE32", "le_bytes", "zeros", "length", "repeat"
-    , "HMAC", "hash_fn", "IF", "clamp", "encode", "decode"
+    , "HMAC", "hash_fn", "IF", "clamp", "CLAMP", "encode", "decode"
     , "decodeLE", "encodeLE", "clampScalar"
-    , "concat", "truncate", "ceil", "mod", "keccak_f"
+    , "concat", "truncate", "ceil", "FLOOR", "mod", "keccak_f"
     , "absorb", "squeeze", "sponge", "xof"
-    , "fAdd", "fSub", "fMul", "fInv", "fSquare"
+    , "fAdd", "fSub", "fMul", "fInv", "fSquare", "fNeg", "fSqrt", "fPow"
     , "compress", "ntt", "intt", "barrett_reduce"
     , "cbd", "byte_decode", "byte_encode"
     -- VRF operations (RFC 9381)
     , "SHA512", "edClamp", "ecvrf_encode_to_curve", "edScalarMul"
     , "edEncode", "reduceMod", "edBasePoint", "addMod", "mulMod"
     , "decodeLEmod", "edDecode", "edPointSub", "constantTimeEq"
+    -- Ed25519 extended operations (point arithmetic / encoding)
+    , "edValidate", "edScalarMultBase", "edFromAffine", "edDouble"
+    , "edAdd", "edPointNegate", "cmov", "legendreSymbol"
+    , "bit", "setBit", "clearBit"
+    -- Constant-time helpers (Dandelion, general)
+    , "constantTimeLT", "constantTimeEqZero", "constantTimeGTE"
+    , "constantTimeSelect"
     -- PQWrapper operations (ML-KEM + AES-GCM composition)
     , "random", "MLKEM768_Encaps", "HMAC_SHA512", "HKDF_Expand"
     , "AES256GCM_Encrypt", "MLKEM768_Decaps", "AES256GCM_Decrypt"
@@ -1103,11 +1158,18 @@ preprocessingFunctions =
     , "encodeBE", "decodeBE", "constantTimeVerifyPad"
     -- WireFormat operations (envelope serialization)
     , "HMAC_SHA256"
+    -- Loop / iteration constructs
+    , "FOR_EACH"
     ]
 
 cFunction :: String -> [Param] -> [Step] -> [String]
 cFunction name params steps =
-    let paramScope = map paramName params
+    -- Only scalar-typed parameters (uint32_t, uint64_t, int) are valid
+    -- in direct C assignments to uint32_t locals.  Pointer-typed params
+    -- (const uint8_t*) are excluded from scope so that assignments from
+    -- them become preprocessing placeholders instead of type errors.
+    let paramScope = [ paramName p | p <- params
+                     , paramType p `elem` [TUInt32, TUInt64, TBool, TFloat64] ]
         allOps = concatMap stepOps steps
     in  [ "__attribute__((noinline))"
         , "uint32_t " ++ toLowerStr name ++ "(" ++ cParamList params ++ ") {"
@@ -1122,10 +1184,11 @@ cParam :: Param -> String
 cParam p = mapParamTypeC (paramType p) ++ " " ++ paramName p
 
 mapParamTypeC :: ParamType -> String
-mapParamTypeC TUInt32 = "uint32_t"
-mapParamTypeC TUInt64 = "uint64_t"
-mapParamTypeC TBytes  = "const uint8_t*"
-mapParamTypeC TBool   = "int"
+mapParamTypeC TUInt32  = "uint32_t"
+mapParamTypeC TUInt64  = "uint64_t"
+mapParamTypeC TFloat64 = "double"
+mapParamTypeC TBytes   = "const uint8_t*"
+mapParamTypeC TBool    = "int"
 
 cStep :: String -> Step -> [String]
 cStep indent step = cOpsWithScope indent [] (stepOps step)
@@ -1136,14 +1199,21 @@ cStep indent step = cOpsWithScope indent [] (stepOps step)
 --   placeholder) is itself emitted as a preprocessing placeholder.
 cOpsWithScope :: String -> [String] -> [Operation] -> [String]
 cOpsWithScope _ _ [] = []
-cOpsWithScope indent scope (op@(Assign lhs expr) : rest) =
-    let (line, newScope) =
-            if isPreprocessingOp op || hasUndefinedVars scope expr
-            then ( indent ++ "uint32_t " ++ lhs ++ " = 0; /* preprocessing: " ++ cExpr expr ++ " */"
-                 , scope )  -- placeholder: don't add to scope
-            else ( indent ++ "uint32_t " ++ lhs ++ " = " ++ cExpr expr ++ ";"
-                 , lhs : scope )
-    in  line : cOpsWithScope indent newScope rest
+cOpsWithScope indent scope (op@(Assign lhs expr) : rest)
+    -- Tuple LHS: (a, b) = expr → split into separate uint32_t declarations,
+    -- each as a preprocessing placeholder since C has no tuple destructuring.
+    | '(' `elem` lhs =
+        let vars = parseTupleLHS lhs
+            lines_ = map (\v -> indent ++ "uint32_t " ++ v ++ " = 0; /* preprocessing: " ++ cExpr expr ++ " */") vars
+        in  lines_ ++ cOpsWithScope indent scope rest
+    | otherwise =
+        let (line, newScope) =
+                if isPreprocessingOp op || hasUndefinedVars scope expr
+                then ( indent ++ "uint32_t " ++ lhs ++ " = 0; /* preprocessing: " ++ cExpr expr ++ " */"
+                     , scope )  -- placeholder: don't add to scope
+                else ( indent ++ "uint32_t " ++ lhs ++ " = " ++ cExpr expr ++ ";"
+                     , lhs : scope )
+        in  line : cOpsWithScope indent newScope rest
 cOpsWithScope indent scope (op@(IfThenElse cond tOps fOps) : rest) =
     let ifLines = cOp indent op
     in  ifLines ++ cOpsWithScope indent scope rest
@@ -1159,7 +1229,9 @@ hasUndefinedVars scope expr =
   where
     notInScope v s = v `notElem` s && not (isConstantName v)
     isConstantName [] = False
-    isConstantName (c:_) = isUpper c
+    isConstantName n@(c:_) = isUpper c && n `notElem` preprocessingKeywords
+    -- Spec-level keywords that look like constants but aren't valid C
+    preprocessingKeywords = ["FOR", "FOR_EACH", "IN"]
 
 -- | Check if an expression contains a function call to a non-macro function.
 --   Macros are identified by checking if the function name is defined as a
@@ -1175,6 +1247,22 @@ hasNonMacroCall s (FunCall name args)
     | name `elem` preprocessingFunctions = True
     -- Otherwise, it's a valid macro call (detected as helper) - check args
     | otherwise = any (hasNonMacroCall s) args
+
+-- | Parse a tuple LHS like "(a, b)" into individual variable names ["a", "b"].
+parseTupleLHS :: String -> [String]
+parseTupleLHS s =
+    let stripped = strip s
+        inner = case stripped of
+            ('(':rest) -> case reverse rest of
+                (')':body) -> reverse body
+                _          -> rest
+            _          -> stripped
+    in  map strip (splitOn ',' inner)
+  where
+    splitOn _ [] = []
+    splitOn c xs = case break (== c) xs of
+        (pre, [])    -> [pre]
+        (pre, _:suf) -> pre : splitOn c suf
 
 -- | Collect all variable names referenced in an expression.
 collectExprVars :: Expr -> [String]
@@ -1638,6 +1726,7 @@ ffiWrapperSpec "WireFormat" =
     Just $ ffiBridgeModule "WireFormat"
         [ "ffiLinked", "Envelope(..)", "wrapEnvelope"
         , "encodeEnvelope", "decodeEnvelope", "unwrapEnvelope"
+        , "deriveEnvelopeKey", "encodeEnvelopeAEAD", "decodeEnvelopeAEAD"
         ]
         [ "import Data.ByteString (ByteString)"
         , "import Data.Word (Word8, Word16, Word32)"
@@ -1669,6 +1758,21 @@ ffiWrapperSpec "WireFormat" =
         , "unwrapEnvelope env = do"
         , "    _ <- c_wireformat_link_probe"
         , "    pure (Reference.unwrapEnvelope env)"
+        , ""
+        , "deriveEnvelopeKey :: ByteString -> IO ByteString"
+        , "deriveEnvelopeKey transportKey = do"
+        , "    _ <- c_wireformat_link_probe"
+        , "    pure (Reference.deriveEnvelopeKey transportKey)"
+        , ""
+        , "encodeEnvelopeAEAD :: ByteString -> Word32 -> Envelope -> IO ByteString"
+        , "encodeEnvelopeAEAD key seqNum env = do"
+        , "    _ <- c_wireformat_link_probe"
+        , "    pure (Reference.encodeEnvelopeAEAD key seqNum env)"
+        , ""
+        , "decodeEnvelopeAEAD :: ByteString -> Word32 -> ByteString -> IO (Maybe Envelope)"
+        , "decodeEnvelopeAEAD key seqNum bs = do"
+        , "    _ <- c_wireformat_link_probe"
+        , "    pure (Reference.decodeEnvelopeAEAD key seqNum bs)"
         ]
 ffiWrapperSpec "Ed25519Extended" =
     Just $ ffiBridgeModule "Ed25519Extended"

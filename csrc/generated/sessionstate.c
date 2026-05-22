@@ -17,30 +17,30 @@ static const uint32_t MIN_BLOB_SIZE = 257;
 
 __attribute__((noinline))
 uint32_t sessionstate(const uint8_t* dh_send_secret, const uint8_t* dh_send_public, const uint8_t* dh_recv_present, const uint8_t* dh_recv_public, const uint8_t* root_key, const uint8_t* send_chain, const uint8_t* recv_chain, const uint8_t* send_n, const uint8_t* recv_n, const uint8_t* prev_chain_n, const uint8_t* skip_seq, const uint8_t* nonce_counter, const uint8_t* skipped_keys, const uint8_t* mac_key, const uint8_t* blob) {
-    uint32_t w_dh_send = ((dh_send_secret | 0) | dh_send_public);
+    uint32_t w_dh_send = 0; /* preprocessing: ((dh_send_secret | 0) | dh_send_public) */
     uint32_t w_dh_recv = 0; /* preprocessing: ((encodeBE(dh_recv_present, PRESENCE_SIZE) | 0) | dh_recv_public) */
-    uint32_t w_keys = ((((root_key | 0) | send_chain) | 0) | recv_chain);
+    uint32_t w_keys = 0; /* preprocessing: ((((root_key | 0) | send_chain) | 0) | recv_chain) */
     uint32_t w_counters = 0; /* preprocessing: ((encodeBE(send_n, COUNTER_SIZE) | 0) | 0) */
     uint32_t w_counters64 = 0; /* preprocessing: ((encodeBE(skip_seq, COUNTER64_SIZE) | 0) | 0) */
     uint32_t skipped_count = 0; /* preprocessing: length(skipped_keys) */
     uint32_t w_skip_count = 0; /* preprocessing: encodeBE(skipped_count, COUNTER_SIZE) */
-    uint32_t w_skip_entries = FOR_EACH;
+    uint32_t w_skip_entries = 0; /* preprocessing: FOR_EACH */
     uint32_t body = 0; /* preprocessing: ((((((((w_dh_send | 0) | w_dh_recv) | 0) | w_keys) | 0) | w_counters) | 0) | 0) */
     uint32_t mac = 0; /* preprocessing: HMAC_SHA256(mac_key, body) */
     uint32_t serialized = 0; /* preprocessing: ((body | 0) | mac) */
     uint32_t blob_len = 0; /* preprocessing: length(blob) */
     uint32_t size_ok = 0; /* preprocessing: blob_len */
-    uint32_t d_body = blob[0];
+    uint32_t d_body = 0; /* preprocessing: blob[0] */
     uint32_t d_mac = 0; /* preprocessing: blob[blob_len] */
     uint32_t expected_mac = 0; /* preprocessing: HMAC_SHA256(mac_key, d_body) */
     uint32_t mac_ok = 0; /* preprocessing: constantTimeEq(d_mac, expected_mac) */
-    uint32_t d_dh_send_secret = d_body[0];
-    uint32_t d_dh_send_public = d_body[32];
-    uint32_t d_dh_recv_present = d_body[64];
-    uint32_t d_dh_recv_public = d_body[65];
-    uint32_t d_root_key = d_body[97];
-    uint32_t d_send_chain = d_body[129];
-    uint32_t d_recv_chain = d_body[161];
+    uint32_t d_dh_send_secret = 0; /* preprocessing: d_body[0] */
+    uint32_t d_dh_send_public = 0; /* preprocessing: d_body[32] */
+    uint32_t d_dh_recv_present = 0; /* preprocessing: d_body[64] */
+    uint32_t d_dh_recv_public = 0; /* preprocessing: d_body[65] */
+    uint32_t d_root_key = 0; /* preprocessing: d_body[97] */
+    uint32_t d_send_chain = 0; /* preprocessing: d_body[129] */
+    uint32_t d_recv_chain = 0; /* preprocessing: d_body[161] */
     uint32_t d_send_n = 0; /* preprocessing: decodeBE(d_body[193]) */
     uint32_t d_recv_n = 0; /* preprocessing: decodeBE(d_body[197]) */
     uint32_t d_prev_chain_n = 0; /* preprocessing: decodeBE(d_body[201]) */
@@ -50,14 +50,8 @@ uint32_t sessionstate(const uint8_t* dh_send_secret, const uint8_t* dh_send_publ
     uint32_t skip_count_ok = 0; /* preprocessing: d_skipped_count */
     uint32_t expected_body_len = FIXED_BODY_SIZE;
     uint32_t body_len_ok = 0; /* preprocessing: length(d_body) */
-    uint32_t d_skipped_keys = FOR;
-    uint32_t offset = FIXED_BODY_SIZE;
-    uint32_t { pubkey = d_body[offset];
-    uint32_t , counter = 0; /* preprocessing: decodeBE(d_body[offset]) */
-    uint32_t , msg_key = d_body[offset];
-    uint32_t , chain_key = d_body[offset];
-    uint32_t , insert_seq = 0; /* preprocessing: decodeBE(d_body[offset]) */
-    uint32_t presence_ok = d_dh_recv_present;
+    uint32_t d_skipped_keys = 0; /* preprocessing: FOR */
+    uint32_t presence_ok = 0; /* preprocessing: d_dh_recv_present */
     uint32_t valid = 0; /* preprocessing: ((((size_ok & mac_ok) & skip_count_ok) & body_len_ok) & presence_ok) */
     return 0; /* placeholder */
 }
