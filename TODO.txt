@@ -311,6 +311,7 @@ Note: Items from codebase audit (2026-05-20).
   [~] M20.5.3 Split smoke vs dev boot behavior in VM image
     Note: vm-image smoke unit now auto-skips when .vm-init.sh is injected.
     Note: vm-image now orders `umbravox-dev-init` before `umbravox-smoke` to prevent concurrent source sync races.
+    Note: vm-image smoke unit no longer waits on `network.target` (offline pipeline starts after local-fs).
   [~] M20.5.4 VM source export semantics
     Note: vm-dev-run now exports current worktree (not git archive HEAD) with exclusion filters.
     Note: vm-dev and smoke copy paths now use `.vm-source-ready` marker for idempotent workspace sync.

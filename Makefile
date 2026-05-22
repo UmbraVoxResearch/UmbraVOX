@@ -1195,10 +1195,13 @@ vm-image-build: # [host-only] nix-build produces VM image; no compilers on host
 		echo -e "$(GREEN)[VM-IMAGE]$(NC) Image already cached at build/vm/image"; \
 	else \
 		echo -e "$(BLUE)[VM-IMAGE]$(NC) Building via nix (this may take several minutes)..."; \
-		nix build .#vm-image -o build/vm/image 2>/dev/null || \
-		nix-build nix/vm-image.nix -A qemu -o build/vm/image 2>/dev/null || \
-		(echo -e "$(RED)[VM-IMAGE]$(NC) nix build failed. Ensure nix is installed and flake/derivation is valid."; \
-		 exit 1); \
+		if ! ( \
+			nix build .#vm-image -o build/vm/image 2>/dev/null || \
+			nix-build nix/vm-image.nix -A qemu -o build/vm/image 2>/dev/null \
+		); then \
+			echo -e "$(RED)[VM-IMAGE]$(NC) nix build failed. Ensure nix is installed and flake/derivation is valid."; \
+			exit 1; \
+		fi; \
 		echo -e "$(GREEN)[VM-IMAGE]$(NC) Image cached at build/vm/image"; \
 	fi
 

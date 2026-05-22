@@ -96,7 +96,7 @@ let
     systemd.services.umbravox-smoke = {
       description = "UmbraVOX isolated build/test/release smoke";
       wantedBy = [ "multi-user.target" ];
-      after = [ "local-fs.target" "network.target" "umbravox-dev-init.service" ];
+      after = [ "local-fs.target" "umbravox-dev-init.service" ];
       path = devToolsPkgs ++ [ pkgs.mount pkgs.util-linux ];
       environment = {
         HOME = "/root";
