@@ -7,6 +7,7 @@ module UmbraVox.App.Config
     ) where
 
 import Control.Concurrent (ThreadId)
+import Control.Concurrent.MVar (MVar)
 import Data.ByteString (ByteString)
 import Data.IORef (IORef)
 import Data.Map.Strict (Map)
@@ -87,4 +88,7 @@ data AppConfig = AppConfig
     , cfgStorage          :: IORef StorageHandle
     -- M17.5: runtime plugin registry (persistence plugins, all disabled by default)
     , cfgPluginRegistry   :: IORef PluginRegistry
+    -- M20.1.1: runtime log lock and PID tracker (replaces unsafePerformIO globals)
+    , cfgLogLock          :: MVar ()
+    , cfgLogWriterPID     :: IORef Int
     }
