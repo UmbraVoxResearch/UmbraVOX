@@ -12,6 +12,7 @@ import qualified Test.Chat.Contacts as ChatContacts
 import qualified Test.Chat.Message as ChatMessage
 import qualified Test.Chat.Session as ChatSession
 import qualified Test.Chat.Transaction as ChatTransaction
+import qualified Test.Chat.Wire as ChatWire
 import qualified Test.Chat.WireEdge as ChatWireEdge
 import qualified Test.Codegen as Codegen
 #ifdef STUBS
@@ -127,6 +128,7 @@ import qualified Test.Protocol.CBOR as CBOR
 import qualified Test.Protocol.MessageFormat as MessageFormat
 import qualified Test.Protocol.QRCode as QRCode
 import qualified Test.Protocol.SafetyNumber as SafetyNumber
+import qualified Test.Protocol.RouteToken as RouteToken
 import qualified Test.Protocol.WireFormat as WireFormat
 import qualified Test.Security as Security
 import qualified Test.App.RuntimeLog as AppRuntimeLog
@@ -327,6 +329,8 @@ coreSuites =
     , Suite "safety-number" SafetyNumber.runTests
     , Suite "message-format" MessageFormat.runTests
     , Suite "wire-format" WireFormat.runTests
+    , Suite "route-token" RouteToken.runTests
+    , Suite "chat-wire" ChatWire.runTests
     , Suite "pqxdh" PQXDH.runTests
     , Suite "random" Random.runTests
     , Suite "vrf" VRF.runTests
@@ -442,6 +446,8 @@ coreChatSuites =
     , Suite "chat-api" ChatAPI.runTests
     , Suite "message-format" MessageFormat.runTests
     , Suite "wire-format" WireFormat.runTests
+    , Suite "route-token" RouteToken.runTests
+    , Suite "chat-wire" ChatWire.runTests
     , Suite "cbor" CBOR.runTests
     , Suite "qrcode" QRCode.runTests
     , Suite "safety-number" SafetyNumber.runTests
