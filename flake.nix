@@ -12,13 +12,23 @@
         pkgs = import nixpkgs { inherit system; };
         hp = pkgs.haskell.packages.ghc96;
 
-        devTools = with pkgs; [
+        # Minimal tools for VM orchestration (default shell)
+        vmTools = with pkgs; [
+          qemu_kvm
+          firecracker
+          git
+          gnumake
+          jq
+          curl
+        ];
+
+        # Full toolchain for host-native development (opt-in via .#full)
+        devTools = vmTools ++ (with pkgs; [
           (hp.ghcWithPackages (p: [ p.network ]))
           cabal-install
           gcc
           gdb
           valgrind
-          curl
           coq
           tlaplus
           fstar
@@ -27,21 +37,14 @@
           sqlite
           aflplusplus
           graphviz
-          jq
           patchelf
           file
           zip
-          gnumake
-          git
           pkg-config
-
-          # VM smoke testing
-          qemu_kvm
-          firecracker
 
           # Image building
           e2fsprogs
-        ];
+        ]);
 
         mkMakeApp = target: pkgs.writeShellApplication {
           name = "umbravox-${target}";
@@ -61,7 +64,20 @@
         '';
       in
       {
+        # Default: minimal VM-orchestration shell (no GHC/cabal on host)
         devShells.default = pkgs.mkShell {
+          name = "umbravox-vm";
+          buildInputs = vmTools;
+          shellHook = ''
+            export UMBRAVOX_ROOT="$(pwd)"
+            export UMBRAVOX_DATA="$UMBRAVOX_ROOT/.umbravox-data"
+            export PATH="$UMBRAVOX_ROOT/scripts:$PATH"
+            echo "UmbraVOX VM shell ready (minimal). For full toolchain: nix develop .#full"
+          '';
+        };
+
+        # Full host-native toolchain (opt-in: nix develop .#full)
+        devShells.full = pkgs.mkShell {
           name = "umbravox-dev";
           buildInputs = devTools;
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [ pkgs.glibc ];
@@ -69,7 +85,7 @@
             export UMBRAVOX_ROOT="$(pwd)"
             export UMBRAVOX_DATA="$UMBRAVOX_ROOT/.umbravox-data"
             export PATH="$UMBRAVOX_ROOT/scripts:$PATH"
-            echo "UmbraVOX flake dev shell ready: use make build/test/verify/release-*"
+            echo "UmbraVOX full dev shell ready: use make build/test/verify/release-*"
           '';
         };
 
