@@ -112,12 +112,9 @@ See `doc/VM-DEVELOPMENT.md` for the full migration guide.
    metadata and are not production-safe telemetry.
 
 See [`doc/QUICKSTART.md`](doc/QUICKSTART.md) for the active command set and
-[`doc/README.md`](doc/README.md) for the fresh documentation index.
+[`doc/README.md`](doc/README.md) for the documentation index.
 See [`doc/RELEASES.md`](doc/RELEASES.md) for the current release-target matrix
 and packaging behavior.
-
-For the current cryptographic assurance boundary and the planned path toward
-a stronger model, see [`doc/assurance-roadmap.md`](doc/assurance-roadmap.md).
 
 ## Release Targets
 
@@ -458,18 +455,20 @@ inspect.
 
 ## Documentation
 
-| Document                                               | Description                                                                      |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| [`doc/README.md`](doc/README.md)                       | Fresh active documentation set                                                   |
-| [`doc/QUICKSTART.md`](doc/QUICKSTART.md)               | Build, run, and test workflow                                                    |
-| [`doc/01-overview.md`](doc/01-overview.md)             | Current MVP scope and verification model                                         |
-| [`doc/ARCHITECTURE.md`](doc/ARCHITECTURE.md)           | Active runtime and test architecture                                             |
-| [`doc/mvp-plan.md`](doc/mvp-plan.md)                   | Current hardening and completion priorities                                      |
-| [`doc/assurance-roadmap.md`](doc/assurance-roadmap.md) | Current assurance boundary and stronger target model                             |
-| [`doc/assurance-matrix.md`](doc/assurance-matrix.md)   | Evidence ledger for standards targets, tests, generated surfaces, and trust gaps |
-| [`LEGAL-NOTICE.md`](LEGAL-NOTICE.md)                   | Legal and compliance notice                                                      |
-| [`PUBLISHING-NOTE.md`](PUBLISHING-NOTE.md)             | Expressive, research, and publication framing                                    |
-| [`TODO.txt`](TODO.txt)                                 | Current development notes                                                        |
+| Document                                                                   | Description                                                  |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| [`doc/README.md`](doc/README.md)                                           | Active documentation index                                   |
+| [`doc/QUICKSTART.md`](doc/QUICKSTART.md)                                   | Build, run, and test workflow                                |
+| [`doc/ARCHITECTURE.md`](doc/ARCHITECTURE.md)                               | Active runtime, module layout, and test architecture         |
+| [`doc/PROJECT-CHARTER.md`](doc/PROJECT-CHARTER.md)                         | Mission, scope, assurance layers, non-claims                 |
+| [`doc/ENCRYPTED-ENVELOPE-DESIGN.md`](doc/ENCRYPTED-ENVELOPE-DESIGN.md)     | Encrypted envelope and stealth addressing design             |
+| [`doc/DHT-NETWORK-PLAN.md`](doc/DHT-NETWORK-PLAN.md)                      | DHT network design and implementation plan                   |
+| [`doc/CRYPTO-AUDIT-v0.3.0.md`](doc/CRYPTO-AUDIT-v0.3.0.md)               | Cryptographic audit report (v0.3.0)                          |
+| [`doc/PROTOCOL-AUDIT-v0.3.0.md`](doc/PROTOCOL-AUDIT-v0.3.0.md)           | Protocol audit report (v0.3.0)                               |
+| [`doc/VM-DEVELOPMENT.md`](doc/VM-DEVELOPMENT.md)                           | VM-first development guide                                   |
+| [`LEGAL-NOTICE.md`](LEGAL-NOTICE.md)                                       | Legal and compliance notice                                  |
+| [`PUBLISHING-NOTE.md`](PUBLISHING-NOTE.md)                                 | Expressive, research, and publication framing                |
+| [`TODO.txt`](TODO.txt)                                                     | Current development notes                                    |
 
 Legacy long-form design, hardening, and future-planning documents are
 preserved under:
