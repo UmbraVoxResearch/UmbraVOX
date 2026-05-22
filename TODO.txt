@@ -504,11 +504,11 @@ See doc/PROTOCOL-AUDIT-v0.3.0.md for full details.
   [x] M23.2.11 Chat.API: connect endpoint allowlist (SSRF prevention) (c778702)
   [x] M23.2.12 WireFormat: per-connection sequence number sliding window (c778702)
 
-[~] M23.3 Low fixes (tracked, not urgent)
+[x] M23.3 Low fixes (tracked, not urgent)
   [x] M23.3.1 X3DH: bind identity key into SPK signature (53852fc)
   [x] M23.3.2 PQXDH: check mlkemDecaps failure indicator (53852fc)
-  [ ] M23.3.3 DoubleRatchet: rate-limit ratchet steps + DH key replay check
-  [ ] M23.3.4 DoubleRatchet: O(log n) eviction for skipped-key cache
+  [x] M23.3.3 DoubleRatchet: rate-limit ratchet steps + DH key replay check (a09a111)
+  [x] M23.3.4 DoubleRatchet: O(log n) eviction for skipped-key cache (a09a111)
   [x] M23.3.5 Handshake: move trust check before PQXDH computation (53852fc)
   [x] M23.3.6 Dandelion: rejection sampling for uniformIndex (modular bias) (c778702)
   [x] M23.3.7 PeerManager: enforce ban expiry + set lastSeen on refresh (c778702)
