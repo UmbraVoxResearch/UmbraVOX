@@ -43,6 +43,7 @@ import UmbraVox.TUI.Dialog (showOverlay, showWarningOverlay, renderHelpOverlay, 
 import UmbraVox.Protocol.QRCode (generateSafetyNumber, renderFingerprint, generateQRCode, renderQRCode)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 import UmbraVox.Version (versionFull)
+import qualified Data.Set as Set
 import qualified UmbraVox.Plugin.Types
 
 clampInt :: Int -> Int -> Int -> Int
@@ -620,9 +621,9 @@ shortFingerprint bs = concatMap hex2 (BS.unpack (BS.take 4 padded))
     hexC n | n < 10    = toEnum (fromEnum '0' + fromIntegral n)
            | otherwise = toEnum (fromEnum 'a' + fromIntegral n - 10)
 
-statusBarConnTag :: ConnectionMode -> Bool -> Bool -> Bool -> Int -> String
-statusBarConnTag connMode isEphemeral anyPersistPlugin richEnabled nSessions =
-    sessionCount ++ modeTag ++ richTag ++ " \x25C6 " ++ versionFull
+statusBarConnTag :: ConnectionMode -> Bool -> Bool -> Bool -> Int -> Int -> String
+statusBarConnTag connMode isEphemeral anyPersistPlugin richEnabled nSessions discCount =
+    sessionCount ++ modeTag ++ discTag ++ richTag ++ " \x25C6 " ++ versionFull
   where
     sessionCount
         | nSessions > 0 = show nSessions ++ " session" ++ (if nSessions > 1 then "s" else "")
@@ -630,6 +631,7 @@ statusBarConnTag connMode isEphemeral anyPersistPlugin richEnabled nSessions =
     modeTag
         | connMode == Chaste || isEphemeral || not anyPersistPlugin = " \x25C6 EPHEMERAL"
         | otherwise = " \x25C6 PERSISTENT"
+    discTag = " \x25C6 D:" ++ show discCount
     richTag
         | richEnabled = " \x25C6 RICH"
         | otherwise   = " \x25C6 PLAIN"
@@ -644,9 +646,11 @@ renderStatusBar lay st status richEnabled nSessions = do
     isEphemeral <- readIORef (cfgEphemeral (asConfig st))
     mIdentity <- readIORef (cfgIdentity (asConfig st))
     pluginReg <- readIORef (cfgPluginRegistry (asConfig st))
+    discSources <- readIORef (cfgDiscoverySources (asConfig st))
     let anyPersistPlugin = any (\pid -> pluginEnabledReg pid pluginReg)
             ["key-persistence", "message-storage", "ratchet-persistence", "runtime-logging", "full-persistence"]
-        connTag = statusBarConnTag connMode isEphemeral anyPersistPlugin richEnabled nSessions
+        discCount = Set.size discSources
+        connTag = statusBarConnTag connMode isEphemeral anyPersistPlugin richEnabled nSessions discCount
         -- M17.7.1: show session fingerprint in ephemeral mode when idle
         fpTag = case (isEphemeral, mIdentity) of
             (True, Just ik) -> " [" ++ shortFingerprint (ikX25519Public ik) ++ "]"

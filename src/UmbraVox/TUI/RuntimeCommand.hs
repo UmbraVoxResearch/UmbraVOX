@@ -16,6 +16,8 @@ import UmbraVox.TUI.Actions
     )
 import Data.IORef (readIORef, writeIORef, modifyIORef')
 import Data.List (nub)
+import qualified Data.Set as Set
+import UmbraVox.Network.Discovery (DiscoverySource(..))
 import UmbraVox.TUI.Handshake (genIdentity)
 import UmbraVox.Plugin.Registry
     ( resolveEnable, enablePlugin, disablePlugin )
@@ -76,6 +78,8 @@ data RuntimeCommand
     | CmdOpenImportKey
     | CmdToggleKeyInfo
     | CmdNewBridgeChat
+    | CmdExchangePeers
+    | CmdToggleDiscoverySource Int
     | CmdQuit
     deriving stock (Eq, Show)
 
@@ -260,6 +264,29 @@ runRuntimeCommand st cmd =
             setStatus st (if newShown then "Key info shown" else "Key info hidden")
         CmdNewBridgeChat       ->
             applyRuntimeEvents st [EventSetDialog (Just DlgBridgeSelect)]
+        CmdExchangePeers       -> do
+            connMode <- readIORef (cfgConnectionMode (asConfig st))
+            if connMode /= Swing
+                then applyRuntimeEvents st [EventSetStatus "Manual PEX exchange requires Swing mode"]
+                else do
+                    pexOn <- readIORef (cfgPEXEnabled (asConfig st))
+                    if not pexOn
+                        then do
+                            writeIORef (cfgPEXEnabled (asConfig st)) True
+                            applyRuntimeEvents st [EventSetStatus "PEX enabled; exchange initiated"]
+                        else applyRuntimeEvents st [EventSetStatus "PEX exchange initiated"]
+        CmdToggleDiscoverySource srcIx -> do
+            let sources = [minBound .. maxBound] :: [DiscoverySource]
+            if srcIx >= 0 && srcIx < length sources
+                then do
+                    let src = sources !! srcIx
+                    modifyIORef' (cfgDiscoverySources (asConfig st)) $ \s ->
+                        if Set.member src s then Set.delete src s else Set.insert src s
+                    newSet <- readIORef (cfgDiscoverySources (asConfig st))
+                    let enabled = Set.member src newSet
+                        label = show src
+                    applyRuntimeEvents st [EventSetStatus (label ++ if enabled then " enabled" else " disabled")]
+                else pure ()
         CmdQuit                -> quitApp st
 
 openFormatPrompt :: AppState -> String -> (String -> IO ()) -> IO ()
