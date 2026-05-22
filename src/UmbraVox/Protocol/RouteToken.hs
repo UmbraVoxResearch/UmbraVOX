@@ -66,7 +66,7 @@ data RouteTokenState = RouteTokenState
     , rtsPrevRecv     :: !(Maybe ByteString) -- ^ previous epoch's recv token (grace)
     , rtsEpochCounter :: !Word64
     , rtsMsgCounter   :: !Word64           -- ^ for hybrid rotation
-    } deriving (Show, Eq)
+    } deriving stock (Show, Eq)
 
 ------------------------------------------------------------------------
 -- Token derivation

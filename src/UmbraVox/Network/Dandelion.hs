@@ -18,6 +18,7 @@ module UmbraVox.Network.Dandelion
   , RouteDecision(..)
   , newDandelionState
   , routeMessage
+  , routeMessageRateLimited
   , rotateStemPeer
   , checkEpoch
   , effectiveFluffProb
@@ -29,6 +30,7 @@ import Data.IORef
 import Data.Word (Word8, Word64)
 
 import UmbraVox.Crypto.Random (randomBytes)
+import UmbraVox.Network.RateLimit (RateLimiter, checkRate)
 
 ------------------------------------------------------------------------
 -- Types
@@ -117,6 +119,20 @@ routeMessage ds msg
                             -- M23.2.7: fall back to fluff instead of dropping
                             Nothing   -> return (FluffBroadcast msg)
                             Just peer -> return (StemForward peer msg)
+
+-- | Route a message through Dandelion++ with per-session relay rate
+-- limiting (M23.1.1h DoS mitigation).
+--
+-- @routeMessageRateLimited ds limiter now msg@ checks the relay rate
+-- limiter before routing.  If the source session has exceeded
+-- 'defaultRelayCap' forwards in the current window, the message is
+-- dropped.  Otherwise it delegates to 'routeMessage'.
+routeMessageRateLimited :: DandelionState -> RateLimiter -> Word64 -> ByteString -> IO RouteDecision
+routeMessageRateLimited ds limiter now msg = do
+    allowed <- checkRate limiter now
+    if allowed
+        then routeMessage ds msg
+        else return DropMessage
 
 ------------------------------------------------------------------------
 -- Epoch management
