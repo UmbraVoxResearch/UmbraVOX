@@ -1,19 +1,28 @@
 -- SPDX-License-Identifier: Apache-2.0
 -- | Unit tests for DHT routing table, RPC serialization, message
--- handling, node ID verification, and security hardening
--- (M24.3.7, M24.3.8, M24.3.9, M24.6.1–M24.6.5).
+-- handling, node ID verification, security hardening, and integration
+-- tests with loopback transport
+-- (M24.3.7, M24.3.8, M24.3.9, M24.6.1–M24.6.5, M24.4.8).
 module Test.Network.DHT (runTests) where
 
 import Data.IORef
 import Data.ByteString (ByteString)
 import Data.Word (Word64)
 import qualified Data.ByteString as BS
+import qualified Data.Map.Strict as Map
 
 import Test.Util (assertEq, strToBS)
 import UmbraVox.Network.DHT
     ( DHTState(..)
     , newDHTState
     , handleMessage
+    , bootstrap
+    , maintain
+    )
+import UmbraVox.Network.DHT.Lookup
+    ( SendRPC
+    , iterativeFindNode
+    , iterativeFindValue
     )
 import UmbraVox.Network.DHT.Store
     ( ValueStore(..)
@@ -40,6 +49,7 @@ import UmbraVox.Network.DHT.Types
     ( NodeId(..)
     , DHTNode(..)
     , DHTMessage(..)
+    , DHTConfig(..)
     , KBucket(..)
     , deriveNodeId
     , verifyNodeId
@@ -95,6 +105,12 @@ runTests = do
         -- M24.6.5: DHT message size cap enforcement
         , testMessageSizeCapOversized
         , testMessageSizeCapAtLimit
+        -- M24.4.8: Integration tests with loopback transport
+        , testTwoNodeBootstrap
+        , testThreeNodeLookup
+        , testStoreAndRetrieve
+        , testMaintenance
+        , testBootstrapEmptyNetwork
         ]
     let passed = length (filter id results)
         total  = length results
@@ -657,3 +673,197 @@ testMessageSizeCapAtLimit = do
     r3 <- assertEq "size-cap: exact 4096 byte message decodes"
               (Just (Store sender key val)) (decodeDHTMessage storeMsg)
     pure (r1 && r2 && r3)
+
+------------------------------------------------------------------------
+-- M24.4.8: Integration tests with loopback transport
+------------------------------------------------------------------------
+
+-- | Build a loopback SendRPC that dispatches messages to the correct
+-- DHTState based on the target DHTNode's NodeId.  The map keys are
+-- raw NodeId bytes; the timestamp used for handleMessage is fixed.
+mkLoopbackRPC :: IORef (Map.Map ByteString DHTState) -> Word64 -> SendRPC
+mkLoopbackRPC nodesRef now = \targetNode msg -> do
+    nodes <- readIORef nodesRef
+    let NodeId targetBytes = dhtNodeId targetNode
+    case Map.lookup targetBytes nodes of
+        Nothing -> return Nothing
+        Just targetState -> handleMessage targetState msg now
+
+-- | Register a DHTState in the loopback network map.
+registerNode :: IORef (Map.Map ByteString DHTState) -> DHTState -> IO ()
+registerNode nodesRef st = do
+    let NodeId selfBytes = dhSelfId st
+    modifyIORef' nodesRef (Map.insert selfBytes st)
+
+-- | Create a DHTState from a key string using small-network config.
+mkTestState :: String -> IO DHTState
+mkTestState keyStr = newDHTState testConfig (strToBS keyStr)
+
+-- | Small-network DHT config for integration tests.
+testConfig :: DHTConfig
+testConfig = defaultDHTConfig
+    { dhtK     = 20
+    , dhtAlpha = 3
+    , dhtRefreshInterval = 100
+    , dhtExpireInterval  = 1000
+    }
+
+-- | Two-node bootstrap test.
+-- Create two DHTStates.  Node A bootstraps from node B's address.
+-- Verify A's routing table contains B and B's contains A after
+-- exchanging messages via handleMessage.
+testTwoNodeBootstrap :: IO Bool
+testTwoNodeBootstrap = do
+    stA <- mkTestState "node-A-key"
+    stB <- mkTestState "node-B-key"
+    nodesRef <- newIORef Map.empty
+    registerNode nodesRef stA
+    registerNode nodesRef stB
+    let sendRPC = mkLoopbackRPC nodesRef 1000
+    -- Insert B into A's routing table so bootstrap can reach it.
+    -- Bootstrap uses addresses to identify peers; in loopback we
+    -- use the node's ID to route, so we give B a stub address and
+    -- insert it with its real NodeId.
+    let nodeB = DHTNode
+            { dhtNodeId   = dhSelfId stB
+            , dhtAddress  = "loopback-B"
+            , dhtLastSeen = 1000
+            , dhtRTT      = Nothing
+            }
+    _ <- insertNode (dhRoutingTable stA) nodeB
+    -- Bootstrap A by doing iterativeFindNode for A's own ID.
+    discovered <- iterativeFindNode
+        (dhRoutingTable stA) (dhConfig stA) sendRPC (dhSelfId stA)
+    -- A should have discovered at least B.
+    let discoveredIds = map dhtNodeId discovered
+    r1 <- assertEq "two-node: A discovered B"
+              True (dhSelfId stB `elem` discoveredIds)
+    -- B's routing table should contain A (from handling A's FindNode).
+    closestToA <- findClosest (dhRoutingTable stB) (dhSelfId stA) 20
+    let bKnowsA = any (\n -> dhtNodeId n == dhSelfId stA) closestToA
+    r2 <- assertEq "two-node: B knows A" True bKnowsA
+    pure (r1 && r2)
+
+-- | Three-node lookup test.
+-- Create three nodes A, B, C.  A knows B, B knows C.  A does
+-- iterativeFindNode for C's NodeId.  Verify A discovers C.
+testThreeNodeLookup :: IO Bool
+testThreeNodeLookup = do
+    stA <- mkTestState "node-A-key"
+    stB <- mkTestState "node-B-key"
+    stC <- mkTestState "node-C-key"
+    nodesRef <- newIORef Map.empty
+    registerNode nodesRef stA
+    registerNode nodesRef stB
+    registerNode nodesRef stC
+    let sendRPC = mkLoopbackRPC nodesRef 1000
+    -- A knows B.
+    let nodeB = DHTNode (dhSelfId stB) "loopback-B" 1000 Nothing
+    _ <- insertNode (dhRoutingTable stA) nodeB
+    -- B knows C.
+    let nodeC = DHTNode (dhSelfId stC) "loopback-C" 1000 Nothing
+    _ <- insertNode (dhRoutingTable stB) nodeC
+    -- A does iterativeFindNode for C's NodeId.
+    discovered <- iterativeFindNode
+        (dhRoutingTable stA) (dhConfig stA) sendRPC (dhSelfId stC)
+    let discoveredIds = map dhtNodeId discovered
+    r1 <- assertEq "three-node: A discovered C"
+              True (dhSelfId stC `elem` discoveredIds)
+    -- A should also still know B.
+    r2 <- assertEq "three-node: A still knows B"
+              True (dhSelfId stB `elem` discoveredIds)
+    pure (r1 && r2)
+
+-- | Store and retrieve test.
+-- Node A stores a value via handleMessage(Store).  Node B does
+-- iterativeFindValue.  Verify the value is returned.
+testStoreAndRetrieve :: IO Bool
+testStoreAndRetrieve = do
+    stA <- mkTestState "node-A-key"
+    stB <- mkTestState "node-B-key"
+    nodesRef <- newIORef Map.empty
+    registerNode nodesRef stA
+    registerNode nodesRef stB
+    let sendRPC = mkLoopbackRPC nodesRef 1000
+    -- Store a value on node A directly.
+    let key   = strToBS "test-store-key"
+        value = strToBS "test-store-value"
+        storeSender = dhSelfId stB
+    _ <- handleMessage stA (Store storeSender key value) 1000
+    -- B knows A so iterativeFindValue can reach it.
+    let nodeA = DHTNode (dhSelfId stA) "loopback-A" 1000 Nothing
+    _ <- insertNode (dhRoutingTable stB) nodeA
+    -- B does iterativeFindValue for the key.
+    result <- iterativeFindValue
+        (dhRoutingTable stB) (dhConfig stB) sendRPC key
+    case result of
+        Right val ->
+            assertEq "store-retrieve: value matches" value val
+        Left _nodes -> do
+            putStrLn "  FAIL: store-retrieve: got nodes instead of value"
+            pure False
+
+-- | Maintenance test.
+-- Create a DHTState, insert some nodes with old timestamps, store
+-- values with short TTLs, advance time past refresh interval, call
+-- maintain.  Verify stale nodes are removed and expired values are
+-- cleaned up.
+testMaintenance :: IO Bool
+testMaintenance = do
+    st <- mkTestState "maint-key"
+    -- Insert nodes with old timestamps (lastSeen = 100).
+    let staleNode1 = DHTNode
+            { dhtNodeId   = deriveNodeId (strToBS "stale-1")
+            , dhtAddress  = "host1:80"
+            , dhtLastSeen = 100
+            , dhtRTT      = Nothing
+            }
+        staleNode2 = DHTNode
+            { dhtNodeId   = deriveNodeId (strToBS "stale-2")
+            , dhtAddress  = "host2:80"
+            , dhtLastSeen = 100
+            , dhtRTT      = Nothing
+            }
+        freshNode = DHTNode
+            { dhtNodeId   = deriveNodeId (strToBS "fresh-1")
+            , dhtAddress  = "host3:80"
+            , dhtLastSeen = 5000
+            , dhtRTT      = Nothing
+            }
+    _ <- insertNode (dhRoutingTable st) staleNode1
+    _ <- insertNode (dhRoutingTable st) staleNode2
+    _ <- insertNode (dhRoutingTable st) freshNode
+    -- Store a value that expires at t=500.
+    _ <- localStore (dhStore st) (strToBS "exp-key") (strToBS "exp-val") 500
+    -- Run maintain at t=5050 (refresh interval = 100, so cutoff = 4950).
+    -- staleNode1 and staleNode2 (lastSeen=100) are stale, freshNode (5000) is not.
+    -- The stored value (expiry=500) is expired at t=5050.
+    (expiredVals, staleNodes) <- maintain st 5050
+    r1 <- assertEq "maint: expired values" 1 expiredVals
+    r2 <- assertEq "maint: stale nodes removed" 2 staleNodes
+    -- Verify fresh node is still in routing table.
+    closest <- findClosest (dhRoutingTable st) (dhtNodeId freshNode) 20
+    let freshPresent = any (\n -> dhtNodeId n == dhtNodeId freshNode) closest
+    r3 <- assertEq "maint: fresh node retained" True freshPresent
+    -- Verify stale nodes are gone.
+    allNodes <- findClosest (dhRoutingTable st) (dhtNodeId staleNode1) 20
+    let stalePresent = any (\n -> dhtNodeId n == dhtNodeId staleNode1
+                                 || dhtNodeId n == dhtNodeId staleNode2) allNodes
+    r4 <- assertEq "maint: stale nodes gone" False stalePresent
+    -- Verify expired value is gone.
+    mVal <- localLookup (dhStore st) (strToBS "exp-key") 5050
+    r5 <- assertEq "maint: expired value gone" Nothing mVal
+    pure (r1 && r2 && r3 && r4 && r5)
+
+-- | Bootstrap with empty network test.
+-- Bootstrap with no peers.  Verify it returns 0 discovered nodes
+-- gracefully without errors.
+testBootstrapEmptyNetwork :: IO Bool
+testBootstrapEmptyNetwork = do
+    st <- mkTestState "lonely-key"
+    nodesRef <- newIORef Map.empty
+    registerNode nodesRef st
+    let sendRPC = mkLoopbackRPC nodesRef 1000
+    -- Bootstrap with no addresses.
+    count <- bootstrap st [] sendRPC
+    assertEq "empty-bootstrap: 0 discovered" 0 count
