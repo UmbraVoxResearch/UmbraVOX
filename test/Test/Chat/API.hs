@@ -8,6 +8,7 @@ module Test.Chat.API (runTests) where
 
 import Control.Concurrent (forkIO, threadDelay, killThread)
 import Control.Exception (bracket, SomeException, try)
+import Data.IORef (newIORef)
 import Data.List (isInfixOf)
 import qualified Data.ByteString.Char8 as BS8
 import qualified Network.Socket as NS
@@ -19,7 +20,8 @@ import UmbraVox.Chat.API
     , dispatchIO
     , formatResult
     , formatError
-    , startAPI
+    , startAPIWithToken
+    , validateAuth
     )
 import UmbraVox.App.Startup (newDefaultAppConfig)
 
@@ -53,7 +55,11 @@ runTests = do
         , testDispatchDisconnect
         , testDispatchDisconnectMissingParam
         , testUnknownMethodError
+        , testAuthMissing
+        , testAuthWrongToken
+        , testAuthValid
         , testLoopbackTCP
+        , testLoopbackTCPNoAuth
         ]
     let passed = length (filter id results)
         total  = length results
@@ -363,21 +369,74 @@ testUnknownMethodError = do
                 else fail' ("unknown method: unexpected error response: " ++ errResp)
 
 ------------------------------------------------------------------------
--- TCP loopback test
+-- Auth validation tests
 ------------------------------------------------------------------------
 
--- | Start the API on a loopback port, connect, send a JSON-RPC request,
--- and verify we get a well-formed response back.
+-- | Missing auth token produces Unauthorized error.
+testAuthMissing :: IO Bool
+testAuthMissing = do
+    tokenRef <- newIORef "deadbeef"
+    let input = "{\"jsonrpc\":\"2.0\",\"method\":\"getStatus\",\"id\":1}"
+    case parseRequest input of
+        Left err -> fail' ("authMissing: parse error: " ++ err)
+        Right req -> do
+            result <- validateAuth tokenRef req
+            case result of
+                Just errResp
+                    | "Unauthorized" `isInfixOf` errResp
+                    , "-32600" `isInfixOf` errResp ->
+                        pass "validateAuth: missing token rejected"
+                _ -> fail' "validateAuth: should reject missing token"
+
+-- | Wrong auth token produces Unauthorized error.
+testAuthWrongToken :: IO Bool
+testAuthWrongToken = do
+    tokenRef <- newIORef "deadbeef"
+    let input = "{\"jsonrpc\":\"2.0\",\"method\":\"getStatus\",\"params\":{\"auth\":\"wrongtoken\"},\"id\":2}"
+    case parseRequest input of
+        Left err -> fail' ("authWrong: parse error: " ++ err)
+        Right req -> do
+            result <- validateAuth tokenRef req
+            case result of
+                Just errResp
+                    | "Unauthorized" `isInfixOf` errResp ->
+                        pass "validateAuth: wrong token rejected"
+                _ -> fail' "validateAuth: should reject wrong token"
+
+-- | Correct auth token passes validation.
+testAuthValid :: IO Bool
+testAuthValid = do
+    tokenRef <- newIORef "deadbeef"
+    let input = "{\"jsonrpc\":\"2.0\",\"method\":\"getStatus\",\"params\":{\"auth\":\"deadbeef\"},\"id\":3}"
+    case parseRequest input of
+        Left err -> fail' ("authValid: parse error: " ++ err)
+        Right req -> do
+            result <- validateAuth tokenRef req
+            case result of
+                Nothing -> pass "validateAuth: correct token accepted"
+                Just _  -> fail' "validateAuth: should accept correct token"
+
+------------------------------------------------------------------------
+-- TCP loopback tests
+------------------------------------------------------------------------
+
+-- | The fixed token used by TCP loopback tests.
+testToken :: String
+testToken = "aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233"
+
+-- | Start the API on a loopback port, connect, send an authenticated
+-- JSON-RPC request, and verify we get a well-formed response back.
 testLoopbackTCP :: IO Bool
 testLoopbackTCP = do
     cfg <- newDefaultAppConfig
+    tokenRef <- newIORef testToken
     -- Pick a high ephemeral port to avoid conflicts.
     let port = 19283
     -- Start server in background thread.
-    tid <- forkIO (startAPI cfg port)
+    tid <- forkIO (startAPIWithToken cfg tokenRef port)
     -- Give the server a moment to bind.
     threadDelay 100000  -- 100ms
-    result <- try (tcpRoundTrip port) :: IO (Either SomeException String)
+    result <- try (tcpRoundTrip port testToken) :: IO (Either SomeException String)
     killThread tid
     case result of
         Left ex -> fail' ("loopback TCP: exception: " ++ show ex)
@@ -387,10 +446,28 @@ testLoopbackTCP = do
                 then pass "loopback TCP: well-formed JSON-RPC response"
                 else fail' ("loopback TCP: unexpected response: " ++ resp)
 
--- | Open a TCP connection to the API port, send a getStatus request,
--- read the response.
-tcpRoundTrip :: Int -> IO String
-tcpRoundTrip port = do
+-- | TCP request without auth token should be rejected with Unauthorized.
+testLoopbackTCPNoAuth :: IO Bool
+testLoopbackTCPNoAuth = do
+    cfg <- newDefaultAppConfig
+    tokenRef <- newIORef testToken
+    let port = 19284
+    tid <- forkIO (startAPIWithToken cfg tokenRef port)
+    threadDelay 100000  -- 100ms
+    result <- try (tcpRoundTripNoAuth port) :: IO (Either SomeException String)
+    killThread tid
+    case result of
+        Left ex -> fail' ("loopback TCP no-auth: exception: " ++ show ex)
+        Right resp ->
+            if "Unauthorized" `isInfixOf` resp
+               && "-32600" `isInfixOf` resp
+                then pass "loopback TCP: unauthenticated request rejected"
+                else fail' ("loopback TCP no-auth: unexpected response: " ++ resp)
+
+-- | Open a TCP connection to the API port, send an authenticated getStatus
+-- request, read the response.
+tcpRoundTrip :: Int -> String -> IO String
+tcpRoundTrip port token = do
     let hints = NS.defaultHints
           { NS.addrSocketType = NS.Stream
           , NS.addrFamily     = NS.AF_INET
@@ -403,9 +480,30 @@ tcpRoundTrip port = do
             NS.close
             (\sock -> do
                 NS.connect sock (NS.addrAddress addr)
-                let req = BS8.pack "{\"jsonrpc\":\"2.0\",\"method\":\"getStatus\",\"id\":1}\n"
+                let req = BS8.pack ("{\"jsonrpc\":\"2.0\",\"method\":\"getStatus\",\"params\":{\"auth\":\"" ++ token ++ "\"},\"id\":1}\n")
                 NSB.sendAll sock req
                 -- Read response (server closes connection after sending)
+                resp <- recvAll sock
+                pure (BS8.unpack resp)
+            )
+
+-- | Send a request without auth token.
+tcpRoundTripNoAuth :: Int -> IO String
+tcpRoundTripNoAuth port = do
+    let hints = NS.defaultHints
+          { NS.addrSocketType = NS.Stream
+          , NS.addrFamily     = NS.AF_INET
+          }
+    addrs <- NS.getAddrInfo (Just hints) (Just "127.0.0.1") (Just (show port))
+    case addrs of
+        [] -> fail "tcpRoundTripNoAuth: unable to resolve 127.0.0.1"
+        (addr:_) -> bracket
+            (NS.openSocket addr)
+            NS.close
+            (\sock -> do
+                NS.connect sock (NS.addrAddress addr)
+                let req = BS8.pack "{\"jsonrpc\":\"2.0\",\"method\":\"getStatus\",\"id\":1}\n"
+                NSB.sendAll sock req
                 resp <- recvAll sock
                 pure (BS8.unpack resp)
             )
