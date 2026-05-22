@@ -630,6 +630,71 @@ plugin architecture (ProviderCapBridge + IPC subprocess protocol).
   [x] M25.3.1 UmbraClaw IPC smoke test (75e42d8)
   [x] M25.3.2 UmbraClaw wire-compatibility tests (75e42d8)
 
+================================================================================
+MILESTONE M27: SECURITY REVIEW v0.4.1 FIXES
+================================================================================
+Note: 72 findings from adversarial review (5 agents: privacy, crypto, security,
+build, supply chain). See doc/SECURITY-REVIEW-v0.4.1.md for full details.
+
+[ ] M27.1 Critical fixes (3 findings)
+  [ ] M27.1.1 mDNS: ephemeral rotating IDs, remove display name (CR-001)
+  [ ] M27.1.2 Default pure-haskell-crypto to False, add compile guard (CR-002)
+  [ ] M27.1.3 Quote VM exec heredoc, pass cmd via file (CR-003)
+
+[ ] M27.2 High privacy fixes (5 findings)
+  [ ] M27.2.1 Message padding to fixed size buckets before encryption (HI-001)
+  [ ] M27.2.2 DHT NodeId: HKDF with per-boot ephemeral salt (HI-002)
+  [ ] M27.2.3 PEX: exchange opaque session tokens not pubkey fingerprints (HI-003)
+  [ ] M27.2.4 PQXDH: wrap initial message inside Noise IK encryption (HI-004)
+  [ ] M27.2.5 Listener: truncated fingerprint with user confirmation (HI-005)
+
+[ ] M27.3 High crypto fixes (4 findings)
+  [ ] M27.3.1 GCM: reject inputs > (2^32-2)*16 bytes per NIST SP 800-38D (HI-006)
+  [ ] M27.3.2 CSPRNG: force reseed near Word32 maxBound or use Word64 (HI-007)
+  [ ] M27.3.3 StealthAddress: prime-order subgroup check on spend key (HI-008)
+  [ ] M27.3.4 WireFormat AEAD: 64-bit sequence counter or re-key guard (HI-009)
+
+[ ] M27.4 High security fixes (4 findings)
+  [ ] M27.4.1 Anthony: migrate to direct-sqlite with prepared statements (HI-010, HI-017)
+  [ ] M27.4.2 Selective TOFU: associate keys with identity, reject changes (HI-011)
+  [ ] M27.4.3 Noise: add nonce overflow check before encrypt/decrypt (HI-012)
+  [ ] M27.4.4 Legacy plaintext pass-through: reject non-UVENC1 rows (ME-021)
+
+[ ] M27.5 High build + supply chain fixes (6 findings)
+  [ ] M27.5.1 Add cc-options hardening flags to cabal (HI-013)
+  [ ] M27.5.2 Enable VM firewall by default (HI-014)
+  [ ] M27.5.3 /work tmpfs mode 0700 (HI-015)
+  [ ] M27.5.4 Pin nixpkgs to stable branch (HI-016)
+  [ ] M27.5.5 VM base images: pin SHA-256 hashes (HI-018)
+  [ ] M27.5.6 Remove curl-pipe-sh, add hash verification (HI-019)
+
+[ ] M27.6 Medium fixes (batch)
+  [ ] M27.6.1 Redact Show instances for secret types (ME-001, LO-001)
+  [ ] M27.6.2 Reduce route token rotation period (ME-002)
+  [ ] M27.6.3 Add timing jitter for Dandelion forwarding (ME-003, ME-007)
+  [ ] M27.6.4 Encrypt message type in AEAD payload (ME-004)
+  [ ] M27.6.5 KeyStore: per-install random salt (ME-006)
+  [ ] M27.6.6 constantEq: implement in C via FFI (ME-008, LO-010)
+  [ ] M27.6.7 Wire key confirmation MAC into handshake flow (ME-009)
+  [ ] M27.6.8 Adaptive PoW difficulty + expiry + connection binding (ME-010, LO-004)
+  [ ] M27.6.9 Time-based expiry for skipped message keys (ME-011)
+  [ ] M27.6.10 HKDF info: add length prefixes (ME-012)
+  [ ] M27.6.11 Sequence window: add high-water mark (ME-016)
+  [ ] M27.6.12 API auth: use constantEq for token comparison (ME-017)
+  [ ] M27.6.13 IPC: chunked reading with incremental length check (ME-018)
+  [ ] M27.6.14 SSRF: block IPv6 private + IPv4-mapped addresses (ME-019)
+  [ ] M27.6.15 DHT store: add max entry count limit (ME-020)
+  [ ] M27.6.16 Codegen: validate output paths against allowlist (ME-022)
+  [ ] M27.6.17 Cabal: generate and commit cabal.project.freeze (ME-026)
+  [ ] M27.6.18 GPG release signing mandatory (ME-028)
+  [ ] M27.6.19 Plugin: restrict directories, require signed manifests (ME-029)
+  [ ] M27.6.20 Test vectors: add SHA-256 integrity verification (ME-030)
+  [ ] M27.6.21 Release manifest: compute verification claims dynamically (ME-031)
+  [ ] M27.6.22 Reproducibility check as mandatory release gate (ME-032)
+  [ ] M27.6.23 isBundleFresh: reject future timestamps > 1 hour (LO-003)
+  [ ] M27.6.24 GCM nonce tracker: bounded or counter-based (LO-005)
+  [ ] M27.6.25 RuntimeLog: switch to denylist redaction (LO-002)
+
 OUTSIDE MVP (DEFERRED)
 ================================================================================
 
