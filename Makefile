@@ -78,6 +78,7 @@
 #   make release-lane-readiness-haskell - Run the Haskell bridge for readiness checks
 #   make test-shells  - Test nix-shell environments (banner + tools)
 #   make test-vm      - Test NixOS development VM (boot + toolchain + source mount)
+#   make test-make-options - Dry-run every declared .PHONY make target
 #   make sanity       - Check Makefile wiring for release smoke/microVM helpers
 #   make evidence     - Run quality and write a publication evidence bundle
 #   make screenshot-local - Capture 8 TUI screenshots locally (no VM, needs tmux)
@@ -91,7 +92,7 @@
 #   VM mode (default): make vm-image-build (needs qemu + nix)
 #   Local mode: UMBRAVOX_LOCAL=1 + nix-shell (provides GHC, Cabal, F*, Z3)
 
-.PHONY: all build build-haskell run run-local test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-build-only vm-test vm-verify vm-run-gui firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot screenshot-local vm-record vm-visual-regression visual-reference-update differential-vectors test-differential-oracle test-differential-full fuzz-differential fuzz-afl differential differential-evidence-check signal-bridge-build test-signal-compat test-signal-bridge-ipc check-isolation tools clean cleandb cleanall help
+.PHONY: all build build-haskell run run-local test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm test-make-options sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-build-only vm-test vm-verify vm-run-gui firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot screenshot-local vm-record vm-visual-regression visual-reference-update differential-vectors test-differential-oracle test-differential-full fuzz-differential fuzz-afl differential differential-evidence-check signal-bridge-build test-signal-compat test-signal-bridge-ipc check-isolation tools clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -306,6 +307,7 @@ help: # [host-only]
 	@echo ""
 	@echo "  Maintenance:"
 	@echo "    make check-isolation  Verify build isolation (no host GHC/cabal leak, VM images present)"
+	@echo "    make test-make-options Dry-run every declared .PHONY target"
 	@echo "    make clean       Remove build artifacts + build/ + dist-newstyle"
 	@echo "    make cleandb     Remove local database"
 	@echo "    make cleanall    Remove everything (build + DB + tools)"
@@ -907,6 +909,10 @@ test-shells:
 test-vm:
 	@echo -e "$(BLUE)[TEST-VM]$(NC) Testing NixOS development VM..."
 	@bash scripts/test-vm.sh
+
+test-make-options:
+	@echo -e "$(BLUE)[TEST-MAKE]$(NC) Dry-running all declared make options..."
+	@bash scripts/test-make-options.sh
 
 # --------------------------------------------------------------------------
 # Quality Gate (all checks)
@@ -1537,6 +1543,27 @@ check-isolation:
 		pass=$$((pass + 1)); \
 	else \
 		echo -e "    Signal build VM image:   $(YELLOW)MISSING$(NC) — built on first 'make vm-signal-server-build-jar'"; \
+		warn=$$((warn + 1)); \
+	fi; \
+	\
+	echo ""; \
+	echo "  Remote builder check:"; \
+	REMOTE_CFG_SCRIPT="./scripts/nix-remote-builder-config.sh"; \
+	if [ ! -x "$$REMOTE_CFG_SCRIPT" ] && [ -f "$$REMOTE_CFG_SCRIPT" ]; then chmod +x "$$REMOTE_CFG_SCRIPT"; fi; \
+	if [ -x "$$REMOTE_CFG_SCRIPT" ]; then \
+		if REMOTE_EXPORTS="$$( "$$REMOTE_CFG_SCRIPT" shell 2>/dev/null )"; then \
+			eval "$$REMOTE_EXPORTS"; \
+			echo -e "    Remote builder config:   $(GREEN)OK$(NC) ($$UMBRAVOX_NIX_CONFIG_SOURCE)"; \
+			echo "      file=$$UMBRAVOX_NIX_CONFIG_FILE_EFFECTIVE"; \
+			echo "      builder=$$UMBRAVOX_NIX_BUILDER"; \
+			pass=$$((pass + 1)); \
+		else \
+			cfg_err="$$( "$$REMOTE_CFG_SCRIPT" shell 2>&1 >/dev/null )"; \
+			echo -e "    Remote builder config:   $(YELLOW)WARN$(NC) — $$cfg_err"; \
+			warn=$$((warn + 1)); \
+		fi; \
+	else \
+		echo -e "    Remote builder config:   $(YELLOW)WARN$(NC) — $$REMOTE_CFG_SCRIPT missing or not executable"; \
 		warn=$$((warn + 1)); \
 	fi; \
 	\
