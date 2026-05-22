@@ -15,11 +15,11 @@ static const char HKDF_LABEL[] = "UmbraVOX-PQWrapper-v1";
 __attribute__((noinline))
 uint32_t pqwrapper(const uint8_t* ek_recipient, const uint8_t* plaintext, const uint8_t* aad, const uint8_t* dk_recipient, const uint8_t* sealed_msg) {
     uint32_t m = 0; /* preprocessing: random(32) */
-    uint32_t (shared_secret, ct_kem) = 0; /* preprocessing: MLKEM768_Encaps(ek_recipient, m) */
+    uint32_t shared_secret = 0; uint32_t ct_kem = 0; /* preprocessing: MLKEM768_Encaps(ek_recipient, m) */
     uint32_t prk = 0; /* preprocessing: HMAC_SHA512(ct_kem, shared_secret) */
     uint32_t aes_key = 0; /* preprocessing: HKDF_Expand(prk, ((HKDF_LABEL | 0) | key), AES_KEY_LEN) */
     uint32_t nonce = 0; /* preprocessing: HKDF_Expand(prk, ((HKDF_LABEL | 0) | nonce), GCM_IV_LEN) */
-    uint32_t (ciphertext, tag) = 0; /* preprocessing: AES256GCM_Encrypt(aes_key, nonce, plaintext, aad) */
+    uint32_t ciphertext = 0; uint32_t tag = 0; /* preprocessing: AES256GCM_Encrypt(aes_key, nonce, plaintext, aad) */
     uint32_t sealed = 0; /* preprocessing: ((((((ct_kem | 0) | nonce) | 0) | ciphertext) | 0) | tag) */
     uint32_t o_ct_kem = sealed_msg[0];
     uint32_t o_nonce = sealed_msg[KEM_CT_LEN];
@@ -30,7 +30,7 @@ uint32_t pqwrapper(const uint8_t* ek_recipient, const uint8_t* plaintext, const 
     uint32_t o_aes_key = 0; /* preprocessing: HKDF_Expand(o_prk, ((HKDF_LABEL | 0) | key), AES_KEY_LEN) */
     uint32_t o_nonce_derived = 0; /* preprocessing: HKDF_Expand(o_prk, ((HKDF_LABEL | 0) | nonce), GCM_IV_LEN) */
     uint32_t nonce_ok = 0; /* preprocessing: constantTimeEq(o_nonce, o_nonce_derived) */
-    uint32_t (o_plaintext, auth_ok) = 0; /* preprocessing: AES256GCM_Decrypt(o_aes_key, o_nonce, o_ct_aead, aad, o_tag) */
+    uint32_t o_plaintext = 0; uint32_t auth_ok = 0; /* preprocessing: AES256GCM_Decrypt(o_aes_key, o_nonce, o_ct_aead, aad, o_tag) */
     uint32_t valid = 0; /* preprocessing: (nonce_ok & auth_ok) */
     return 0; /* placeholder */
 }
