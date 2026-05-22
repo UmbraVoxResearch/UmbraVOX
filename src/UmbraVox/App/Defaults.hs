@@ -22,6 +22,8 @@ module UmbraVox.App.Defaults
       -- * Double Ratchet
     , defaultMaxSkip
     , defaultMaxTotalSkipped
+    , defaultMaxRatchetSkip
+    , defaultMaxSeenDHKeys
       -- * Storage
     , sqliteTimeoutMicros
       -- * mDNS
@@ -96,6 +98,19 @@ defaultMaxSkip = 1000
 -- skips across many ratchet epochs (M7.3.6).
 defaultMaxTotalSkipped :: Int
 defaultMaxTotalSkipped = 5000
+
+-- | Maximum allowed gap between received counter and current counter
+-- before a ratchet step is rejected (M23.3.3).  Prevents an adversary
+-- from forcing the receiver to derive an excessive number of chain keys.
+defaultMaxRatchetSkip :: Int
+defaultMaxRatchetSkip = 1000
+
+-- | Maximum number of distinct peer DH public keys retained for replay
+-- detection (M23.3.3).  Once this limit is reached, the oldest DH key
+-- is forgotten; replays using very old epochs are rejected by the
+-- skipped-key cache eviction rather than the DH replay check.
+defaultMaxSeenDHKeys :: Int
+defaultMaxSeenDHKeys = 10
 
 ------------------------------------------------------------------------
 -- Storage
