@@ -22,8 +22,10 @@ import System.IO (hPutStrLn, stderr)
 
 import UmbraVox.App.Config (AppConfig(..))
 import UmbraVox.App.ConfigFile (loadConfigFile, applyConfigFile, verifyConfigHash)
+import UmbraVox.App.RuntimeLog (logEvent)
 import UmbraVox.App.Startup (newDefaultAppConfig, initializeLocalIdentity)
 import UmbraVox.Crypto.Random (initCSPRNG)
+import UmbraVox.Network.Discovery (discoverPeers)
 import UmbraVox.App.State (CoreState(..), newCoreState)
 import UmbraVox.App.Types (SessionInfo(..))
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey)
@@ -66,6 +68,11 @@ initCoreRuntime mPort skipConfigVerify = do
         Just p  -> writeIORef (cfgListenPort appCfg) p
         Nothing -> pure ()
     identity <- initializeLocalIdentity appCfg
+    -- M24.2: run static discovery sources (env var, config file, DNS)
+    discovered <- discoverPeers (cfgDiscoveryManager appCfg)
+    when (not (null discovered)) $
+        logEvent appCfg "discovery.static"
+            [("peers_found", show (length discovered))]
     pure (appCfg, identity)
 
 -- | Like 'initCoreRuntime' but skips reading the config file.
@@ -79,6 +86,10 @@ initCoreRuntimeNoConfig mPort = do
         Just p  -> writeIORef (cfgListenPort appCfg) p
         Nothing -> pure ()
     identity <- initializeLocalIdentity appCfg
+    -- M24.2: env var discovery still runs (config file source returns nothing
+    -- since --no-config only skips applyConfigFile, not ~/.umbravox/config
+    -- reading by the Discovery module -- but that is harmless)
+    _ <- discoverPeers (cfgDiscoveryManager appCfg)
     pure (appCfg, identity)
 
 -- | Run a headless UmbraVOX node to completion.

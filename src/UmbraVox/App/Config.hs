@@ -18,7 +18,9 @@ import UmbraVox.App.Types (SessionInfo)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey)
 import UmbraVox.Network.ProviderCatalog
     ( CachedTransportProvider, ProviderManifest, TransportProvider )
+import UmbraVox.Network.Discovery (DiscoveryManager, DiscoverySource)
 import UmbraVox.Network.MDNS (MDNSPeer)
+import UmbraVox.Network.PeerManager (PeerManager)
 import UmbraVox.Plugin.Types (PluginRegistry)
 import UmbraVox.Storage.Anthony (AnthonyDB)
 import UmbraVox.Storage.Class (StorageHandle)
@@ -90,4 +92,9 @@ data AppConfig = AppConfig
     -- M20.1.1: runtime log lock and PID tracker (replaces unsafePerformIO globals)
     , cfgLogLock          :: MVar ()
     , cfgLogWriterPID     :: IORef Int
+    -- M24.2: unified peer discovery
+    , cfgPeerManager         :: PeerManager
+    , cfgDiscoveryManager    :: DiscoveryManager
+    , cfgDiscoverySources    :: IORef (Set.Set DiscoverySource)
+    , cfgDNSDiscoveryDomain  :: IORef (Maybe String)
     }

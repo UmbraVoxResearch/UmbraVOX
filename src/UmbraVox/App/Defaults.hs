@@ -29,6 +29,8 @@ module UmbraVox.App.Defaults
     , mdnsPeerEvictionSeconds
       -- * TUI / polling
     , mdnsPollIntervalUs
+      -- * Discovery (M24.2)
+    , discoveryPollIntervalUs
     ) where
 
 import Data.Word (Word32)
@@ -123,6 +125,15 @@ mdnsPeerEvictionSeconds = 3 * (mdnsAnnounceIntervalUs `div` 1000000)  -- 30 seco
 -- Determines how quickly newly discovered peers appear in the TUI peer list.
 mdnsPollIntervalUs :: Int
 mdnsPollIntervalUs = 5 * 1000000  -- 5 seconds
+
+------------------------------------------------------------------------
+-- Discovery (M24.2)
+------------------------------------------------------------------------
+
+-- | Poll interval for DNS-based peer discovery (microseconds).
+-- Controls how frequently _umbravox._tcp SRV records are re-queried.
+discoveryPollIntervalUs :: Int
+discoveryPollIntervalUs = 30 * 1000000  -- 30 seconds
 
 ------------------------------------------------------------------------
 -- HKDF domain separation — reference only
