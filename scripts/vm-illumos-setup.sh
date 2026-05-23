@@ -57,6 +57,16 @@ if [ ! -f "${BASE_IMAGE}" ]; then
         log "Downloading OmniOS CE ${OMNIOS_RELEASE} cloud image..."
         log "URL: ${IMAGE_URL}"
         curl -L --progress-bar -o "${CACHE_DIR}/${IMAGE_FILE}" "${IMAGE_URL}"
+
+        # M27.5.5: Verify downloaded image integrity before use.
+        # TODO: Replace placeholder hash with actual SHA-256 of the release image.
+        OMNIOS_IMAGE_SHA256="TODO_INSERT_ACTUAL_SHA256_FOR_omnios-${OMNIOS_RELEASE}.cloud.vmdk.bz2"
+        echo "${OMNIOS_IMAGE_SHA256}  ${CACHE_DIR}/${IMAGE_FILE}" | sha256sum -c - || {
+            fail "SHA-256 verification failed for ${IMAGE_FILE} — aborting."
+            rm -f "${CACHE_DIR}/${IMAGE_FILE}"
+            exit 1
+        }
+
         log "Decompressing bzip2..."
         bzcat "${CACHE_DIR}/${IMAGE_FILE}" > "${VMDK_FILE}"
         rm -f "${CACHE_DIR}/${IMAGE_FILE}"

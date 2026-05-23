@@ -164,8 +164,13 @@ Recommended native build on Linux aarch64 (Debian/Ubuntu example):
   cabal build all
   cabal test umbravox-test --test-options=required
 
-Alternatively, use ghcup for the latest GHC release:
-  curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | sh
+Alternatively, use ghcup for the latest GHC release (download, verify,
+then execute — never pipe curl directly to sh):
+  curl --proto '=https' --tlsv1.2 -sSf -o /tmp/ghcup-install.sh https://get-ghcup.haskell.org
+  # TODO: Replace with current ghcup installer SHA-256 from https://www.haskell.org/ghcup/
+  echo "TODO_INSERT_ACTUAL_SHA256  /tmp/ghcup-install.sh" | sha256sum -c -
+  sh /tmp/ghcup-install.sh
+  rm /tmp/ghcup-install.sh
 
 The in-guest build+test script is at scripts/vm-build-test.sh.
 EOF

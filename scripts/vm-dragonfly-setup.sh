@@ -128,11 +128,20 @@ mkdir -p "$VM_WORK_DIR"
 if [[ ! -f "$ISO_PATH" ]]; then
   log "downloading DragonFlyBSD ${DRAGONFLY_VERSION} ISO..."
   log "  trying mirror: ${ISO_URL}"
+  # M27.5.5: SHA-256 hash for ISO integrity verification.
+  # TODO: Replace placeholder hash with actual SHA-256 of the release ISO.
+  DRAGONFLY_ISO_SHA256="TODO_INSERT_ACTUAL_SHA256_FOR_${ISO_NAME}"
+
   if ! wget -q --show-progress -O "${ISO_PATH}.tmp" "$ISO_URL" 2>/dev/null; then
     log "  mirror failed, trying avalon (bz2): ${AVALON_URL}"
     if wget -q --show-progress -O "${ISO_PATH}.tmp.bz2" "$AVALON_URL" 2>/dev/null; then
       log "  decompressing bz2 ISO..."
       bunzip2 "${ISO_PATH}.tmp.bz2"
+      echo "${DRAGONFLY_ISO_SHA256}  ${ISO_PATH}.tmp" | sha256sum -c - || {
+        log "WARNING: SHA-256 verification failed for ${ISO_NAME} — aborting."
+        rm -f "${ISO_PATH}.tmp"
+        info_skip
+      }
       mv "${ISO_PATH}.tmp" "$ISO_PATH"
     else
       log "WARNING: could not download DragonFlyBSD ISO from either mirror."
@@ -140,6 +149,11 @@ if [[ ! -f "$ISO_PATH" ]]; then
       info_skip
     fi
   else
+    echo "${DRAGONFLY_ISO_SHA256}  ${ISO_PATH}.tmp" | sha256sum -c - || {
+      log "WARNING: SHA-256 verification failed for ${ISO_NAME} — aborting."
+      rm -f "${ISO_PATH}.tmp"
+      info_skip
+    }
     mv "${ISO_PATH}.tmp" "$ISO_PATH"
   fi
   log "ISO cached: $ISO_PATH ($(du -sh "$ISO_PATH" | cut -f1))"
