@@ -1539,5 +1539,23 @@ Proof. vm_compute. reflexivity. Qed.
       add_matches, mul_matches,
       d_cross_check_znz, By_cross_check_znz
 
-    Total: 47 Qed.  Zero Admitted.
+    Universal completeness ED-008e (16 Qed):
+      two_neq_zero_f, four_neq_zero_f, znz_eq_dec,
+      mul_integral, mul_sq, dp_dm_sum,
+      dp_zero_dm_two, dm_zero_dp_two,
+      closure_dp_zero_factored, closure_dm_zero_factored,
+      xn_zero_dp_zero_d_square, d_yn_sq_neg4_d_square,
+      yn_zero_dm_zero_d_square, xn_nonzero_dm_zero_d_square,
+      te_denom_plus_nonzero, te_denom_minus_nonzero
+
+    The completeness proof follows Bernstein-Lange 2007 Theorem 3.3:
+    for a twisted Edwards curve -x^2 + y^2 = 1 + d*x^2*y^2 where
+    a = -1 is a square and d is a non-square in GF(p), the addition
+    law denominators 1 +/- d*x1*x2*y1*y2 are always nonzero for
+    on-curve points.  The proof assumes toward contradiction that a
+    denominator is zero, uses the closure polynomial identity to
+    derive an algebraic relation, then case-splits to show d must be
+    a square -- contradicting d_nonsquare.
+
+    Total: 63 Qed.  Zero Admitted.
     ======================================================================== *)
