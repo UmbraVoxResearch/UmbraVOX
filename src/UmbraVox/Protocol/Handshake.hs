@@ -24,8 +24,12 @@ import UmbraVox.Crypto.MLKEM (mlkemKeyGen,
     MLKEMEncapKey(..), MLKEMDecapKey(..), MLKEMCiphertext(..))
 import UmbraVox.Crypto.Ed25519 (ed25519Sign)
 import UmbraVox.Crypto.Random (randomBytes)
+import UmbraVox.Crypto.SHA256 (sha256)
 import UmbraVox.Crypto.Signal.PQXDH
     (PQPreKeyBundle(..), PQXDHResult(..), pqxdhInitiate, pqxdhRespond)
+import UmbraVox.Crypto.ChaChaPoly (chachaPolyEncrypt, chachaPolyDecrypt)
+import UmbraVox.Crypto.Curve25519 (x25519)
+import UmbraVox.Crypto.HKDF (hkdfSHA256)
 import UmbraVox.Crypto.Signal.X3DH
     (KeyPair(..), IdentityKey(..), generateIdentityKey, generateKeyPair,
      signPreKey)
@@ -150,9 +154,36 @@ handshakeInitiator t aliceIK = do
         Nothing -> fail "PQXDH: SPK signature verification failed"
         Just r  -> pure r
     let MLKEMCiphertext ctBS = pqxdhPQCiphertext result
-    anySend t . encodeMessage $ BS.concat
-        [ ikX25519Public aliceIK, pqxdhEphemeralKey result
-        , putW32BE (fromIntegral (BS.length ctBS)), ctBS ]
+    -- M27.2.4: Wrap the initiator's identity key using the ephemeral DH
+    -- shared secret so it is not visible in cleartext on the wire.
+    --
+    -- Privacy rationale: Without wrapping, a passive observer can read
+    -- Alice's long-term identity key from the initial PQXDH message and
+    -- correlate her across sessions.  By encrypting IK under DH(ek, SPK),
+    -- only Bob (who holds the SPK secret) can recover Alice's identity.
+    let !ek = generateKeyPair ekRand
+    encIK <- case x25519 (kpSecret ek) (pqpkbSignedPreKey bundle) of
+        Nothing -> fail "PQXDH: ephemeral DH for IK wrapping returned all-zero"
+        Just dhSecret -> do
+            let !wrapKey = deriveIKWrapKey dhSecret
+                !wrapNonce = BS.replicate 12 0  -- single-use key, fixed nonce is safe
+                (!ikCt, !ikTag) = chachaPolyEncrypt wrapKey wrapNonce BS.empty
+                                      (ikX25519Public aliceIK)
+            pure (ikCt <> ikTag)
+    let !initMsg = BS.concat
+            [ encIK, pqxdhEphemeralKey result
+            , putW32BE (fromIntegral (BS.length ctBS)), ctBS ]
+    anySend t . encodeMessage $ initMsg
+    -- M27.6.7: Key confirmation — exchange MACs derived from the shared
+    -- secret to detect MitM relay attacks.
+    let !transcriptHash = sha256 initMsg
+        !ourMAC = keyConfirmMAC (pqxdhSharedSecret result) "initiator" transcriptHash
+    anySend t . encodeMessage $ ourMAC
+    peerMACMsg <- anyRecv t 36  -- 4-byte length + 32-byte MAC
+    let !peerMAC = BS.drop 4 peerMACMsg
+    unless (verifyKeyConfirmation (pqxdhSharedSecret result) "responder"
+                                  transcriptHash peerMAC) $
+        fail "PQXDH: key confirmation failed (possible MitM detected)"
     mSession <- initChatSession (pqxdhSharedSecret result)
                                 (ikX25519Secret aliceIK) (pqpkbSignedPreKey bundle)
     case mSession of
@@ -164,7 +195,21 @@ handshakeResponder t bobIK trustCheck = do
     (spk, spkSig) <- genSignedPreKey bobIK
     (pqEK, pqDK) <- genPQPreKey
     anySend t . encodeMessage $ serializeBundle bobIK (kpPublic spk) spkSig pqEK Nothing
-    (aliceIKPub, aliceEKPub, pqCt) <- recvInitialMessage t
+    (encAliceIK, aliceEKPub, pqCt) <- recvInitialMessage t
+    -- M27.2.4: Unwrap the initiator's encrypted identity key using
+    -- DH(spkSecret, aliceEphemeralPub).  The identity key was encrypted
+    -- by the initiator to prevent passive observers from learning it.
+    aliceIKPub <- case x25519 (kpSecret spk) aliceEKPub of
+        Nothing -> fail "PQXDH: ephemeral DH for IK unwrapping returned all-zero"
+        Just dhSecret -> do
+            let !wrapKey = deriveIKWrapKey dhSecret
+                !wrapNonce = BS.replicate 12 0
+                -- encAliceIK is 32 bytes ciphertext + 16 bytes Poly1305 tag
+                !ikCiphertext = BS.take 32 encAliceIK
+                !ikTag = BS.drop 32 encAliceIK
+            case chachaPolyDecrypt wrapKey wrapNonce BS.empty ikCiphertext ikTag of
+                Nothing -> fail "PQXDH: identity key unwrapping failed (auth failure)"
+                Just ik -> pure ik
     -- M23.3.5: check trust before expensive PQXDH computation
     trusted <- trustCheck aliceIKPub
     unless trusted $ fail "Connection rejected: peer not trusted"
@@ -172,6 +217,22 @@ handshakeResponder t bobIK trustCheck = do
                                 aliceIKPub aliceEKPub pqCt of
                   Nothing -> fail "PQXDH: DH returned all-zero (low-order point rejected)"
                   Just s  -> pure s
+    -- M27.6.7: Key confirmation — reconstruct the transcript from the
+    -- initial message fields and verify the initiator's confirmation MAC,
+    -- then send our own.
+    -- M27.2.4: The transcript uses the encrypted identity key (as sent on
+    -- the wire) so both sides agree on the hash.
+    let !ctBS = let MLKEMCiphertext ct = pqCt in ct
+        !initMsg = BS.concat
+            [ encAliceIK, aliceEKPub
+            , putW32BE (fromIntegral (BS.length ctBS)), ctBS ]
+        !transcriptHash = sha256 initMsg
+    peerMACMsg <- anyRecv t 36  -- 4-byte length + 32-byte MAC
+    let !peerMAC = BS.drop 4 peerMACMsg
+    unless (verifyKeyConfirmation shared "initiator" transcriptHash peerMAC) $
+        fail "PQXDH: key confirmation failed (possible MitM detected)"
+    let !ourMAC = keyConfirmMAC shared "responder" transcriptHash
+    anySend t . encodeMessage $ ourMAC
     initChatSessionBob shared (kpSecret spk)
 
 recvBundle :: AnyTransport -> IO PQPreKeyBundle
@@ -190,6 +251,11 @@ recvBundle t = do
                         Nothing     -> fail "PQXDH: malformed prekey bundle"
                         Just bundle -> pure bundle
 
+-- | Receive the PQXDH initial message from the initiator.
+--
+-- M27.2.4: The identity key is now encrypted (48 bytes: 32 ciphertext +
+-- 16 Poly1305 tag) instead of sent as a 32-byte cleartext public key.
+-- Layout: encIK(48) + ephemeralPub(32) + ctLen(4) + ct(N)
 recvInitialMessage :: AnyTransport -> IO (BS.ByteString, BS.ByteString, MLKEMCiphertext)
 recvInitialMessage t = do
     lenBs <- anyRecv t 4
@@ -202,12 +268,27 @@ recvInitialMessage t = do
                          ++ " exceeds limit " ++ show maxInitialMessageSize
                 else do
                     payload <- anyRecv t n
-                    case getW32BESafe (bsSlice 64 4 payload) of
+                    -- encIK(48) + ephemeralPub(32) = 80 bytes before ctLen
+                    case getW32BESafe (bsSlice 80 4 payload) of
                         Nothing -> fail "PQXDH: incomplete initial message payload"
                         Just ctLen -> do
                             let !ct = fromIntegral ctLen :: Int
-                            pure (bsSlice 0 32 payload, bsSlice 32 32 payload,
-                                  MLKEMCiphertext (bsSlice 68 ct payload))
+                            pure (bsSlice 0 48 payload, bsSlice 48 32 payload,
+                                  MLKEMCiphertext (bsSlice 84 ct payload))
+
+------------------------------------------------------------------------
+-- Identity key wrapping (M27.2.4)
+------------------------------------------------------------------------
+
+-- | Derive a 32-byte wrapping key for encrypting the initiator's identity
+-- key in the PQXDH initial message.
+--
+-- The key is derived via HKDF-SHA-256 from the ephemeral DH shared secret
+-- DH(ephemeralKey, signedPreKey), which is known only to Alice (who holds
+-- the ephemeral secret) and Bob (who holds the SPK secret).
+deriveIKWrapKey :: BS.ByteString -> BS.ByteString
+deriveIKWrapKey dhSecret =
+    hkdfSHA256 (BS.replicate 32 0) dhSecret "UmbraVox_IKWrap_v1" 32
 
 ------------------------------------------------------------------------
 -- MitM protection: key confirmation MAC (M23.1.1j)

@@ -27,6 +27,7 @@ import Control.Monad (forM_, void, when)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.IORef (modifyIORef', readIORef, writeIORef)
+import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Data.List (intercalate, stripPrefix)
 import Data.Word (Word64)
@@ -154,13 +155,30 @@ acceptLoopCore cs cbs ik port connCount listener = do
                         Promiscuous -> pure True
                         Selective   -> do
                             tofoKeys <- readIORef (cfgTofoKeys cfg)
-                            if Set.member peerKey tofoKeys
-                                then do
-                                    lcOnStatus cbs ("Selective: known peer " ++ take 8 (fingerprint peerKey))
-                                    pure True
-                                else do
+                            let peerAddr = anyInfo at
+                            addrKeys <- readIORef (cfgTofoAddrKeys cfg)
+                            case Map.lookup peerAddr addrKeys of
+                                Just knownKey
+                                    | constantEq knownKey peerKey -> do
+                                        lcOnStatus cbs ("Selective: known peer " ++ take 8 (fingerprint peerKey))
+                                        pure True
+                                    | otherwise -> do
+                                        -- M27.4.2: key-change detected — reject
+                                        lcOnStatus cbs ("Selective: REJECTED key change for " ++ peerAddr
+                                                       ++ " (was " ++ take 8 (fingerprint knownKey)
+                                                       ++ ", now " ++ take 8 (fingerprint peerKey) ++ ")")
+                                        logEvent cfg "tofu.key_change_rejected"
+                                            [ ("address", peerAddr)
+                                            , ("old_key", take 16 (fingerprint knownKey))
+                                            , ("new_key", take 16 (fingerprint peerKey))
+                                            ]
+                                        pure False
+                                Nothing -> do
+                                    -- TOFU: first time seeing this address — accept and record
                                     modifyIORef' (cfgTofoKeys cfg) (Set.insert peerKey)
-                                    lcOnStatus cbs ("Selective: new peer trusted " ++ take 8 (fingerprint peerKey))
+                                    modifyIORef' (cfgTofoAddrKeys cfg) (Map.insert peerAddr peerKey)
+                                    lcOnStatus cbs ("Selective: new peer trusted " ++ take 8 (fingerprint peerKey)
+                                                   ++ " at " ++ peerAddr)
                                     pure True
                         Chaste      -> do
                             keys <- readIORef (cfgTrustedKeys cfg)
