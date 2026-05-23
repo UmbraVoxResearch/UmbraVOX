@@ -109,9 +109,20 @@ Shut down with `poweroff` or Ctrl-A then X (QEMU monitor escape).
 
 ### `make vm-image-build`
 
-Builds and caches the NixOS VM image using `nix build` directly.  Does not
-require cabal or any Haskell toolchain on the host.  Only needs QEMU, git,
-make, and nix (all provided by `shell-minimal.nix`).
+Builds and caches the NixOS VM image inside a builder VM (M20.5.8).  The
+builder VM has its own Nix daemon and a 60GB scratch disk for `/nix/store`,
+so the host's `/nix/store` is never touched.  Only needs QEMU, git, make,
+and nix on the host (nix is only used to build the lightweight builder
+image itself, not the full dev-toolchain image).
+
+To build directly on the host instead (legacy approach), use
+`make vm-image-build-host`.  This uses ~30GB of host disk and writes to
+the host `/nix/store`.
+
+### `make vm-image-build-host`
+
+Legacy target that builds the VM image directly on the host via `nix build`.
+Touches the host `/nix/store` and consumes ~30GB.  Prefer `make vm-image-build`.
 
 ### `make vm-cache-clean`
 

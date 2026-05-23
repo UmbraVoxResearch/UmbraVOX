@@ -190,6 +190,10 @@
         #   pkgs = import nixpkgs { system = "aarch64-linux"; };
         # };
 
+        packages.vm-builder-image = import ./nix/vm-builder.nix {
+          pkgs = import nixpkgs { system = "x86_64-linux"; };
+        };
+
         packages.vm-image = (import ./nix/vm-image.nix {
           pkgs = import nixpkgs { system = "x86_64-linux"; };
         }).qemu;
