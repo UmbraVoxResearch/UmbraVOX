@@ -303,6 +303,7 @@ help: # [host-only]
 	@echo "    make firecracker-image-build Build Firecracker image"
 	@echo "    make vm-signal-server-build Build Signal-Server VM image (M19.4.1)"
 	@echo "    make vm-signal-server  Boot Signal-Server VM (PostgreSQL/Redis/ZK/Java)"
+	@echo "    make vm-signal-server-health  Verify Signal-Server health endpoint (M19.4.7)"
 	@echo "    make test-signal-compat Run Signal wire-compatibility tests (M19.6.3)"
 	@echo "    make vm-integration-test Run multi-VM integration test (INTEGRATION_AGENTS=3)"
 	@echo "    make vm-integration-test-dual-lan Run dual-LAN integration test (6 agents)"
@@ -1475,6 +1476,11 @@ vm-signal-server-check:
 	@echo -e "$(BLUE)[SIGNAL-VM]$(NC) Booting Signal-Server VM (service check)..."
 	@chmod +x ./scripts/vm-signal-server-run.sh
 	@./scripts/vm-signal-server-run.sh check
+
+vm-signal-server-health:
+	@echo -e "$(BLUE)[SIGNAL-VM]$(NC) Booting Signal-Server VM (health endpoint verification)..."
+	@chmod +x ./scripts/vm-signal-server-run.sh
+	@./scripts/vm-signal-server-run.sh check-health
 
 # --------------------------------------------------------------------------
 # Signal Bridge Plugin (M19.6.3)

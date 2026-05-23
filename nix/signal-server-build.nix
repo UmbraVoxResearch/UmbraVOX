@@ -1,8 +1,8 @@
 # Pure Nix build of Signal-Server fat JAR.
 #
 # Two-phase FOD (fixed-output derivation) approach:
-#   Phase 1: Maven downloads all dependencies (has network, content-hashed)
-#   Phase 2: Maven builds offline using cached deps (no network, pure)
+#   Phase 1 (mvnDeps): Maven downloads all dependencies (has network, content-hashed)
+#   Phase 2 (signalServerJar): Maven builds offline using cached deps (no network, pure)
 #
 # This file is evaluated INSIDE the build VM where nix is available.
 # The host nix store is never touched.
@@ -10,6 +10,37 @@
 # Usage (inside VM):
 #   nix-build /mnt/src/nix/signal-server-build.nix
 #   # Result: result/lib/signal-server.jar
+#
+# BOOTSTRAP PROCESS (M19.4.6):
+#   The end-to-end JAR build requires a valid FOD hash for the Maven
+#   dependency fetch (Phase 1).  This hash cannot be computed without
+#   network access, so the bootstrap is a two-pass process:
+#
+#   Pass 1 — Obtain the FOD hash:
+#     1. Run: make vm-signal-server-build-jar
+#     2. The build VM boots, runs nix-build, Maven fetches deps.
+#     3. nix-build fails with "hash mismatch" and prints the correct hash.
+#     4. Copy the "got: sha256-..." value from the error output.
+#     5. Paste it into outputHash below (replacing the placeholder).
+#
+#   Pass 2 — Build the JAR:
+#     1. Run: make vm-signal-server-build-jar  (again, with correct hash)
+#     2. Phase 1 succeeds (hash matches), Phase 2 builds the JAR offline.
+#     3. JAR lands in build/signal-server-jar/signal-server.jar.
+#
+#   Pass 3 — Build and boot runtime VM:
+#     1. Run: make vm-signal-server-build  (bakes JAR into runtime image)
+#     2. Run: make vm-signal-server        (boots runtime VM)
+#     3. Run: make vm-signal-server-check  (health-checks services)
+#
+#   WHAT'S NEEDED TO COMPLETE THE BUILD:
+#   - [x] Source pinning (signalServerSrc fetchFromGitHub — done)
+#   - [x] FOD derivation for Maven deps (mvnDeps — scaffolded)
+#   - [x] Offline JAR build derivation (signalServerJar — scaffolded)
+#   - [x] Build VM config (vm-signal-server.nix Stage 1 — done)
+#   - [x] Runtime VM config (vm-signal-server.nix Stage 2 — done)
+#   - [ ] FOD hash: requires running Pass 1 on a machine with KVM
+#   - [ ] Verification: run Pass 2 + Pass 3 after hash is set
 #
 { pkgs ? import <nixpkgs> { system = "x86_64-linux"; } }:
 
@@ -39,9 +70,20 @@ let
     # FOD: Nix allows network for fixed-output derivations
     outputHashAlgo = "sha256";
     outputHashMode = "recursive";
-    # Empty string = Nix will fail and print the correct hash.
-    # Paste the hash from the error message after first run.
-    outputHash = "";
+    # TODO(M19.4.5): Compute FOD hash by running Stage 1 build VM:
+    #   make vm-signal-server-build-jar
+    # The first run will fail with a hash mismatch.  Nix prints:
+    #   error: hash mismatch ...
+    #     specified: sha256-AAAA...
+    #     got:       sha256-XXXX...
+    # Copy the "got:" hash below. Alternatively, from inside the VM:
+    #   nix-build /mnt/src/nix/signal-server-build.nix -A mvnDeps 2>&1 | grep "got:"
+    # Then update this hash with the actual value.
+    #
+    # The hash is empty until the first successful network fetch.
+    # This is intentional: FOD hashes cannot be computed without
+    # actually running Maven with network access (inside the build VM).
+    outputHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
     buildPhase = ''
       export HOME=$TMPDIR

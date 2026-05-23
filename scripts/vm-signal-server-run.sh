@@ -6,9 +6,10 @@
 #   check:       Stage 2 — boot runtime VM, health-check, exit
 #
 # Usage:
-#   vm-signal-server-run.sh build-jar    # Stage 1: build Signal-Server JAR
-#   vm-signal-server-run.sh interactive  # Stage 2: interactive runtime VM
-#   vm-signal-server-run.sh check        # Stage 2: health-check and exit
+#   vm-signal-server-run.sh build-jar      # Stage 1: build Signal-Server JAR
+#   vm-signal-server-run.sh interactive    # Stage 2: interactive runtime VM
+#   vm-signal-server-run.sh check          # Stage 2: in-VM health-check and exit
+#   vm-signal-server-run.sh check-health   # Stage 2: host-side health endpoint verify
 #
 # Requires: qemu-system-x86_64, /dev/kvm
 set -euo pipefail
@@ -145,6 +146,27 @@ build_jar() {
     fi
 }
 
+# ── Health check ────────────────────────────────────────────────────
+
+check_signal_health() {
+    local host="${1:-localhost}"
+    local admin_port="${2:-8081}"
+    local max_retries=30
+    local retry=0
+    echo -e "${BLUE}[SIGNAL]${NC} Checking Signal-Server health at ${host}:${admin_port}..."
+    while [ $retry -lt $max_retries ]; do
+        if curl -sf "http://${host}:${admin_port}/healthcheck" 2>/dev/null; then
+            echo ""
+            echo -e "${GREEN}[SIGNAL]${NC} Health check passed"
+            return 0
+        fi
+        retry=$((retry + 1))
+        sleep 2
+    done
+    echo -e "${RED}[SIGNAL]${NC} Health check failed after $max_retries retries (${host}:${admin_port})"
+    return 1
+}
+
 # ── Stage 2: Runtime VM ──────────────────────────────────────────────
 
 run_runtime() {
@@ -201,6 +223,69 @@ run_runtime() {
     exit $exit_code
 }
 
+# ── Stage 2: Runtime VM with host-side health verification ──────────
+
+run_runtime_with_health() {
+    if [ ! -d "$VM_IMAGE_PATH" ]; then
+        echo -e "${RED}[SIGNAL-VM]${NC} Runtime VM image not found at $VM_IMAGE_PATH"
+        echo -e "${YELLOW}[SIGNAL-VM]${NC} Run 'make vm-signal-server-build' first."
+        exit 1
+    fi
+
+    local disk_img
+    disk_img="$(readlink -f "$VM_IMAGE_PATH/nixos.img")"
+    local overlay
+    overlay="$(mktemp "$VM_TMP_DIR/umbravox-signal-vm-overlay.XXXXXX.qcow2")"
+
+    echo -e "${BLUE}[SIGNAL-VM]${NC} Creating COW overlay..." >&2
+    qemu-img create -f qcow2 -b "$disk_img" -F raw "$overlay" >/dev/null 2>&1
+
+    scale_resources 4
+
+    echo -e "${BLUE}[SIGNAL-VM]${NC} Stage 2: Booting Signal-Server VM (health-check mode)..."
+    echo -e "${BLUE}[SIGNAL-VM]${NC} VM resources: ${VM_CORES} cores, ${VM_MEM_MB}MB RAM"
+    echo -e "${BLUE}[SIGNAL-VM]${NC} Network: user-mode (host port 18081 -> guest 8081)"
+    if [ -f "$JAR_OUTPUT_DIR/signal-server.jar" ]; then
+        echo -e "${GREEN}[SIGNAL-VM]${NC} Signal-Server JAR: present"
+    else
+        echo -e "${YELLOW}[SIGNAL-VM]${NC} Signal-Server JAR: not built (backing services only)"
+    fi
+    echo ""
+
+    # Boot VM in background with user-mode networking for health check
+    qemu-system-x86_64 \
+        -machine "q35,accel=kvm" \
+        -cpu max \
+        -m "$VM_MEM_MB" \
+        -smp "$VM_CORES" \
+        -nographic \
+        -nodefaults \
+        -serial stdio \
+        -drive "if=virtio,format=qcow2,file=$overlay" \
+        -nic "user,model=virtio,hostfwd=tcp::18081-:8081" \
+        -no-reboot &
+    local qemu_pid=$!
+
+    # Wait for VM to boot and run health check from host
+    echo -e "${BLUE}[SIGNAL-VM]${NC} Waiting for VM boot + service startup..."
+    sleep 10  # give VM time to boot
+
+    if check_signal_health "localhost" "18081"; then
+        echo -e "${GREEN}[SIGNAL-VM]${NC} Host-side health verification passed"
+        kill "$qemu_pid" 2>/dev/null || true
+        wait "$qemu_pid" 2>/dev/null || true
+        rm -f "$overlay" 2>/dev/null || true
+        exit 0
+    else
+        echo -e "${YELLOW}[SIGNAL-VM]${NC} Host-side health check did not pass"
+        echo -e "${YELLOW}[SIGNAL-VM]${NC} (This is expected if JAR is not yet built)"
+        kill "$qemu_pid" 2>/dev/null || true
+        wait "$qemu_pid" 2>/dev/null || true
+        rm -f "$overlay" 2>/dev/null || true
+        exit 1
+    fi
+}
+
 # ── Main ──────────────────────────────────────────────────────────────
 
 preflight_check
@@ -209,11 +294,18 @@ case "$MODE" in
     build-jar)
         build_jar
         ;;
-    interactive|check)
-        run_runtime "$MODE"
+    interactive)
+        run_runtime "interactive"
+        ;;
+    check)
+        run_runtime "check"
+        ;;
+    check-health)
+        # Boot VM with port forwarding and verify health from host side
+        run_runtime_with_health
         ;;
     *)
-        echo "Usage: $0 {build-jar|interactive|check}"
+        echo "Usage: $0 {build-jar|interactive|check|check-health}"
         exit 1
         ;;
 esac
