@@ -37,6 +37,7 @@ import qualified Data.ByteString.Char8 as BS8
 import System.IO (hPutStrLn, stderr)
 
 import UmbraVox.App.Config (AppConfig(..), ConnectionMode(..))
+import UmbraVox.Crypto.ConstantTime (constantEq)
 import UmbraVox.Crypto.Random (randomBytes)
 
 -- | Supported JSON-RPC methods.
@@ -76,7 +77,7 @@ validateAuth tokenRef req = do
     case provided of
         Nothing -> pure (Just (formatError (rpcId req) (-32600) "Unauthorized"))
         Just t
-            | t == expected -> pure Nothing
+            | constantEq (BS8.pack t) (BS8.pack expected) -> pure Nothing
             | otherwise     -> pure (Just (formatError (rpcId req) (-32600) "Unauthorized"))
 
 -- | Start the JSON-RPC API server on the given port.

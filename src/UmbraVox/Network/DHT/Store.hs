@@ -35,6 +35,8 @@ data ValueStore = ValueStore
       -- ^ key -> (value, expiry timestamp POSIX seconds)
     , vsMaxValueSize :: !Int
       -- ^ maximum value size in bytes (default 1024)
+    , vsMaxEntries   :: !Int
+      -- ^ maximum number of entries (default 10000); M27.6.15
     }
 
 -- | Create a new empty value store with the given maximum value size.
@@ -44,6 +46,7 @@ newValueStore maxSize = do
     return ValueStore
         { vsEntries      = ref
         , vsMaxValueSize = maxSize
+        , vsMaxEntries   = 10000
         }
 
 ------------------------------------------------------------------------
@@ -59,8 +62,13 @@ localStore :: ValueStore -> ByteString -> ByteString -> Word64 -> IO Bool
 localStore vs key value expiry
     | BS.length value > vsMaxValueSize vs = return False
     | otherwise = do
-        modifyIORef' (vsEntries vs) (Map.insert key (value, expiry))
-        return True
+        entries <- readIORef (vsEntries vs)
+        -- M27.6.15: reject when at capacity (unless key already exists).
+        if Map.size entries >= vsMaxEntries vs && not (Map.member key entries)
+            then return False
+            else do
+                modifyIORef' (vsEntries vs) (Map.insert key (value, expiry))
+                return True
 
 -- | Retrieve a value locally.
 --
