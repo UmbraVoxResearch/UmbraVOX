@@ -17,6 +17,7 @@ import UmbraVox.Network.MDNS
     ( MDNSPeer(..)
     , buildAnnouncement
     , buildAnnouncementWithName
+    , deriveEphemeralId
     , addrToIP
     , getDiscoveredPeers
     , isSelfAnnouncement
@@ -48,6 +49,7 @@ runTests = do
         , testSelfFilterNegative
         , testParseDifferentSourceAddrs
         , testSimulatedPeerDiscoveryFlow
+        , testDeriveEphemeralId
         ]
     pure (and results)
 
@@ -71,6 +73,14 @@ testParseValid = do
             c <- assertEq "parseAnnouncement valid IP" "192.168.1.42" (mdnsIP peer)
             pure (a && b && c)
 
+-- | Finding: buildAnnouncementWithName previously broadcast the display name
+--   in cleartext, enabling passive name harvesting on the LAN.
+-- Vulnerability: Cleartext display names leak user identity to any device
+--   on the local network sniffing mDNS traffic.
+-- Fix: The name parameter is now ignored; announcements no longer include a
+--   name field.  The pubkey field carries an ephemeral HKDF-derived ID
+--   instead of the raw fingerprint (see M27.1.1).
+-- Verified: This test confirms the name is always Nothing after the fix.
 testParseValidWithName :: IO Bool
 testParseValidWithName = do
     let pubkeyBytes = BS.pack [0xAB, 0xCD]
@@ -83,7 +93,8 @@ testParseValidWithName = do
         Just peer -> do
             a <- assertEq "parseAnnouncement valid name port" 9001 (mdnsPort peer)
             b <- assertEq "parseAnnouncement valid name pubkey" pubkeyBytes (mdnsPubkey peer)
-            c <- assertEq "parseAnnouncement valid name" (Just "alice") (mdnsName peer)
+            -- Name is now deliberately omitted from announcements (M27.1.1 privacy fix)
+            c <- assertEq "parseAnnouncement name omitted" Nothing (mdnsName peer)
             pure (a && b && c)
 
 -- | Payload missing the service name prefix should return Nothing.
@@ -293,6 +304,30 @@ testSimulatedPeerDiscoveryFlow = do
             pure (e1 && e2)
         _ -> putStrLn "  FAIL: simulated discovery: expected one peer A entry" >> pure False
     pure (a && b && c && d && e)
+
+-- | Finding: mDNS announcements previously broadcast the raw pubkey
+--   fingerprint, allowing passive LAN observers to correlate peers across
+--   sessions and link them to persistent identities.
+-- Vulnerability: Raw pubkey in cleartext mDNS leaks long-term identity to
+--   any device on the local network.
+-- Fix: Replace the raw pubkey with an ephemeral ID derived via
+--   HKDF(identityKey, per-boot nonce, "UmbraVox_mDNS_v1").  Different
+--   nonces produce different ephemeral IDs, preventing cross-session
+--   correlation.
+-- Verified: deriveEphemeralId produces 32-byte output, is deterministic
+--   for the same inputs, and differs when the nonce changes.
+testDeriveEphemeralId :: IO Bool
+testDeriveEphemeralId = do
+    let identityKey = BS.pack [0x01, 0x02, 0x03, 0x04]
+        nonce1 = BS.replicate 32 0xAA
+        nonce2 = BS.replicate 32 0xBB
+        eid1 = deriveEphemeralId identityKey nonce1
+        eid1b = deriveEphemeralId identityKey nonce1
+        eid2 = deriveEphemeralId identityKey nonce2
+    a <- assertEq "ephemeral ID length" 32 (BS.length eid1)
+    b <- assertEq "ephemeral ID deterministic" eid1 eid1b
+    c <- assertEq "ephemeral ID varies with nonce" True (eid1 /= eid2)
+    pure (a && b && c)
 
 applyDiscoveryStep
     :: MVar [MDNSPeer]

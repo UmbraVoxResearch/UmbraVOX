@@ -87,6 +87,14 @@ create_source_disk() {
     init_script="$(generate_init_script "$MODE" "$VM_CMD")"
     cp "$init_script" "$src_dir/.vm-init.sh"
     chmod +x "$src_dir/.vm-init.sh"
+    # Copy the exec command file if present (written by generate_init_script
+    # for exec mode so $cmd is never expanded on the host).
+    local exec_cmd_file
+    exec_cmd_file="$(dirname "$init_script")/.vm-exec-cmd"
+    if [ -f "$exec_cmd_file" ]; then
+        cp "$exec_cmd_file" "$src_dir/.vm-exec-cmd"
+        rm -f "$exec_cmd_file"
+    fi
     rm -f "$init_script"
 
     echo -e "${BLUE}[VM-DEV]${NC} Creating source disk..." >&2
@@ -233,35 +241,43 @@ exec /bin/bash --login
 INTEREOF
         fi
     else
-        cat >> "$script_path" << EXECEOF
+        # Write the command to a file on the source disk so it is available
+        # inside the guest.  The heredoc is quoted ('EXECEOF') to prevent
+        # any host-side expansion of $cmd — the guest reads the command
+        # from /.vm-exec-cmd at runtime instead.
+        printf '%s\n' "$cmd" > "$(dirname "$script_path")/.vm-exec-cmd"
+        cat >> "$script_path" << 'EXECEOF'
+# Read the command written by the host into /.vm-exec-cmd on the source disk.
+VM_EXEC_CMD="$(cat /mnt/src/.vm-exec-cmd 2>/dev/null || true)"
+
 echo ""
 echo "========================================"
-echo "  UmbraVOX VM: $cmd"
+echo "  UmbraVOX VM: $VM_EXEC_CMD"
 echo "========================================"
 echo ""
 
 # Run the command and preserve its exit status.
 set +e
-$cmd
-STATUS=\$?
+eval "$VM_EXEC_CMD"
+STATUS=$?
 set -e
 
 # Persist command status to host-visible shared output.
 if [ -d /output ]; then
-    printf "%s\n" "\$STATUS" > /output/vm-exec-status 2>/dev/null || true
+    printf "%s\n" "$STATUS" > /output/vm-exec-status 2>/dev/null || true
     sync 2>/dev/null || true
 fi
 
 echo ""
-if [ \$STATUS -eq 0 ]; then
+if [ $STATUS -eq 0 ]; then
     echo "VM_DEV_RESULT=PASS"
 else
-    echo "VM_DEV_RESULT=FAIL (exit \$STATUS)"
+    echo "VM_DEV_RESULT=FAIL (exit $STATUS)"
 fi
 
 # Power off after command completes
 systemctl poweroff || true
-exit \$STATUS
+exit $STATUS
 EXECEOF
     fi
 
