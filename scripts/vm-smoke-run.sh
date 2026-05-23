@@ -169,10 +169,30 @@ else
     FAIL=$((FAIL + 1))
 fi
 
-# Step 5-7: These don't need cabal, they use make + shell tools
-run_step "license"       make license
-run_step "format-check"  make format-check
-run_step "release-linux" make release-linux
+# Step 5-7: Direct shell checks (no build system needed)
+run_step "license" bash -c '
+    missing=0
+    for f in $(find src test -name "*.hs" 2>/dev/null); do
+        if ! head -5 "$f" | grep -q "SPDX-License-Identifier" 2>/dev/null; then
+            missing=$((missing + 1))
+        fi
+    done
+    if [ "$missing" -gt 0 ]; then
+        echo "$missing files missing SPDX header"
+        exit 1
+    fi
+    echo "All files have SPDX headers"
+'
+run_step "format-check" bash -c '
+    bad=$(grep -Prn "\t" --include="*.hs" -r src test 2>/dev/null | wc -l)
+    trail=$(grep -Pn "\\s$" --include="*.hs" -r src test 2>/dev/null | wc -l)
+    if [ "$bad" -gt 0 ] || [ "$trail" -gt 0 ]; then
+        echo "tabs=$bad trailing-ws=$trail"
+        exit 1
+    fi
+    echo "Format OK"
+'
+run_step "release-linux" bash scripts/release-package.sh linux
 
 # ── Verify release artifact ─────────────────────────────────────────
 echo ""
