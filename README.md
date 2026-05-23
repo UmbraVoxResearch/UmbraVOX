@@ -35,6 +35,9 @@ compiles inside NixOS VMs. Nothing is written outside the project directory.
 
 ### Build & Run
 
+First build downloads a ~300MB seed VM image (one-time). After that,
+all builds are fully offline and self-contained inside VMs.
+
 ```sh
 # If nix is installed (provides qemu + make):
 nix-shell shell.nix

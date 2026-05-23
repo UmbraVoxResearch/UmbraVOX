@@ -6,26 +6,21 @@ should never be touched by compilation.
 
 ## Host Prerequisites
 
-The **only** tools needed on the host system to build UmbraVOX are:
-
-- **qemu** (specifically `qemu-system-x86_64` with KVM support)
+The **only** tools needed on the host:
+- **qemu** (`qemu-system-x86_64` with KVM support)
 - **nix** or **make** (either works)
+- **curl** (for downloading the seed VM image on first run)
 
-With **nix**: `nix-shell shell.nix` provides qemu, make, and the VM
-orchestration environment. This is the recommended approach.
-
-With **make only**: install `qemu-system-x86_64` and `make` from your
-system package manager.
-
-No other host-side toolchain (GHC, cabal, GCC, etc.) is required.
-
-All compilation, testing, verification, and image building happens
-inside NixOS VMs. The host filesystem outside the project directory
-is **never** written to by build or test activities.
+No GHC, cabal, GCC, or other toolchain required. Everything compiles
+inside NixOS VMs. Nothing is written outside the project directory.
 
 ## Host Filesystem Isolation
 
 **Rule: Nothing writes outside the project directory.**
+
+Zero writes outside the project directory. No exceptions -- not even
+during bootstrap. The seed VM image is downloaded (not built on host),
+and all nix compilation happens inside VMs.
 
 - Build artifacts: `dist-newstyle/`, `build/`
 - Cabal store: `dist-newstyle/cabal-store/` (NOT `~/.cabal/`)
@@ -36,6 +31,22 @@ is **never** written to by build or test activities.
 
 Set `UMBRAVOX_DATA=.umbravox-data` to keep runtime data project-local.
 The nix shells set this automatically.
+
+## Bootstrap Flow
+
+On first `make vm-image-build`:
+1. Downloads a minimal seed VM image (~300MB) + SHA-256 verification
+2. Boots the seed VM, which builds the full builder VM image inside itself
+3. Caches the builder image at build/vm/builder-image/
+4. All subsequent builds use the cached builder -- no downloads needed
+
+Alternative: users with nix installed can build the seed locally instead
+of downloading (option B at the prompt). This is faster but touches
+/nix/store.
+
+The persistent nix cache disk (build/vm/nix-cache.qcow2) stores
+downloaded packages across builds, enabling fully offline rebuilds
+after the first successful build.
 
 ## VM-First Development
 
