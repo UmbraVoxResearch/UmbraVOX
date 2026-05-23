@@ -59,6 +59,16 @@ if [ ! -f "${BASE_IMAGE}" ]; then
     log "Downloading FreeBSD ${FREEBSD_VERSION} VM image..."
     log "URL: ${IMAGE_URL}"
     curl -L --progress-bar -o "${CACHE_DIR}/${IMAGE_FILE}" "${IMAGE_URL}"
+
+    # M27.5.5: Verify downloaded image integrity before use.
+    # TODO: Replace placeholder hash with actual SHA-256 of the release image.
+    FREEBSD_IMAGE_SHA256="TODO_INSERT_ACTUAL_SHA256_FOR_FreeBSD-${FREEBSD_VERSION}-${FREEBSD_ARCH}.qcow2.xz"
+    echo "${FREEBSD_IMAGE_SHA256}  ${CACHE_DIR}/${IMAGE_FILE}" | sha256sum -c - || {
+        fail "SHA-256 verification failed for ${IMAGE_FILE} — aborting."
+        rm -f "${CACHE_DIR}/${IMAGE_FILE}"
+        exit 1
+    }
+
     log "Decompressing..."
     xz --decompress --keep --stdout "${CACHE_DIR}/${IMAGE_FILE}" > "${BASE_IMAGE}"
     rm -f "${CACHE_DIR}/${IMAGE_FILE}"

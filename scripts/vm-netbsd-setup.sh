@@ -105,6 +105,13 @@ if [[ ! -f "$IMAGE_ORIG" ]]; then
   tmp_gz="${VM_WORK_DIR}/${IMAGE_GZ}"
   wget -q --show-progress -O "$tmp_gz" "$IMAGE_URL" || die "download failed: $IMAGE_URL"
 
+  # M27.5.5: Verify downloaded image integrity before use.
+  # TODO: Replace placeholder hash with actual SHA-256 of the release image.
+  NETBSD_IMAGE_SHA256="TODO_INSERT_ACTUAL_SHA256_FOR_${IMAGE_GZ}"
+  echo "${NETBSD_IMAGE_SHA256}  ${tmp_gz}" | sha256sum -c - || {
+    die "SHA-256 verification failed for ${IMAGE_GZ} — aborting."
+  }
+
   log "decompressing image..."
   tmp_raw="${VM_WORK_DIR}/netbsd-amd64.img"
   gunzip -c "$tmp_gz" > "$tmp_raw"
