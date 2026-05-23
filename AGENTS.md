@@ -101,7 +101,7 @@ Inside the VM:
 For exec mode debugging:
 ```bash
 # Run a specific command in the VM and get its exit code
-scripts/vm-dev-run.sh exec "cabal build all"
+./uv exec -- cabal build all
 echo $?  # exit code from the VM command
 ```
 

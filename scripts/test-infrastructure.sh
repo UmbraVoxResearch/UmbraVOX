@@ -155,11 +155,11 @@ else
     check "KVM available" "SKIP"
 fi
 
-# vm-dev-run.sh sources the network policy script
-if grep -q 'source.*vm-network-policy\.sh' scripts/vm-dev-run.sh 2>/dev/null; then
-    check "vm-dev-run.sh sources vm-network-policy.sh" "PASS"
+# Network policy is handled by the Go tool
+if [ -f tools/pkg/netpol/policy.go ]; then
+    check "tools/pkg/netpol/policy.go exists (network policy)" "PASS"
 else
-    check "vm-dev-run.sh sources vm-network-policy.sh" "FAIL"
+    check "tools/pkg/netpol/policy.go exists (network policy)" "FAIL"
 fi
 
 echo ""
@@ -171,16 +171,6 @@ if [ -f vm-network-policy.conf ]; then
     check "vm-network-policy.conf exists" "PASS"
 else
     check "vm-network-policy.conf exists" "FAIL"
-fi
-
-if [ -f scripts/vm-network-policy.sh ]; then
-    if [ -x scripts/vm-network-policy.sh ]; then
-        check "scripts/vm-network-policy.sh exists and is executable" "PASS"
-    else
-        check "scripts/vm-network-policy.sh exists but NOT executable" "FAIL"
-    fi
-else
-    check "scripts/vm-network-policy.sh exists" "FAIL"
 fi
 
 # Default policy must deny all — no uncommented ALLOW rules
@@ -281,10 +271,9 @@ echo ""
 # ── Section 7: Scripts ────────────────────────────────────────────────
 echo -e "${BLUE}[7/8] Script tests${NC}"
 
-for script in scripts/vm-dev-run.sh scripts/vm-smoke-run.sh \
-              scripts/vm-tui-scenario.sh scripts/vm-screenshot-capture.sh \
+for script in scripts/vm-tui-scenario.sh scripts/vm-screenshot-capture.sh \
               scripts/vm-record-session.sh scripts/vm-visual-regression.sh \
-              scripts/vm-socks5-test.sh scripts/vm-build-test.sh \
+              scripts/vm-socks5-test.sh \
               scripts/nix-vm-build-config.sh \
               scripts/test-vm-build-config.sh \
               scripts/test-shells.sh scripts/test-vm.sh \
@@ -298,6 +287,20 @@ for script in scripts/vm-dev-run.sh scripts/vm-smoke-run.sh \
         fi
     else
         check "$script exists" "SKIP"
+    fi
+done
+
+# Check ./uv bootstrap wrapper and Go tool sources
+for src in ./uv \
+           tools/cmd/umbravox-vm/main.go \
+           tools/pkg/repo/repo.go \
+           tools/pkg/log/log.go \
+           tools/pkg/download/download.go \
+           tools/pkg/disk/source.go; do
+    if [ -f "$src" ]; then
+        check "$src exists" "PASS"
+    else
+        check "$src exists" "FAIL"
     fi
 done
 

@@ -61,7 +61,7 @@ Flags for 'check':
   --endpoint <url>          Health endpoint URL (default: http://localhost:8080/health)
 
 Requires: qemu-system-x86_64, /dev/kvm
-The VM images must be pre-built via the appropriate Makefile targets.
+The VM images must be pre-built via './uv vm signal build-jar'.
 `
 
 func logMsg(color, msg string) {
@@ -130,15 +130,28 @@ func run(args []string) int {
 }
 
 // findRepoRoot walks up from the executable (or cwd) to find the repo root.
+// It looks for the uv bootstrap script alongside tools/, or UmbraVox.cabal.
 func findRepoRoot() string {
+	isRoot := func(dir string) bool {
+		// Primary: uv wrapper + tools/ directory
+		if _, err := os.Stat(filepath.Join(dir, "uv")); err == nil {
+			if _, err := os.Stat(filepath.Join(dir, "tools")); err == nil {
+				return true
+			}
+		}
+		// Fallback: UmbraVox.cabal
+		if _, err := os.Stat(filepath.Join(dir, "UmbraVox.cabal")); err == nil {
+			return true
+		}
+		return false
+	}
+
 	exe, err := os.Executable()
 	if err == nil {
 		dir := filepath.Dir(exe)
 		for i := 0; i < 10; i++ {
-			if _, err := os.Stat(filepath.Join(dir, "Makefile")); err == nil {
-				if _, err := os.Stat(filepath.Join(dir, "scripts", "vm-dev-run.sh")); err == nil {
-					return dir
-				}
+			if isRoot(dir) {
+				return dir
 			}
 			dir = filepath.Dir(dir)
 		}
@@ -150,14 +163,12 @@ func findRepoRoot() string {
 	}
 	dir := cwd
 	for i := 0; i < 10; i++ {
-		if _, err := os.Stat(filepath.Join(dir, "Makefile")); err == nil {
-			if _, err := os.Stat(filepath.Join(dir, "scripts", "vm-dev-run.sh")); err == nil {
-				return dir
-			}
+		if isRoot(dir) {
+			return dir
 		}
 		dir = filepath.Dir(dir)
 	}
-	logMsg(red, "Cannot find repo root (looked for Makefile + scripts/vm-dev-run.sh)")
+	logMsg(red, "Cannot find repo root (looked for uv + tools/ or UmbraVox.cabal)")
 	os.Exit(1)
 	return ""
 }
@@ -383,7 +394,7 @@ func runBuildJar(outputDirFlag string) int {
 		logMsg(green, fmt.Sprintf("Location: %s", jarPath))
 		fmt.Fprintln(os.Stderr)
 		logMsg(blue, "Now rebuild the runtime VM image:")
-		logMsg(blue, "  make vm-signal-server-build")
+		logMsg(blue, "  ./uv vm signal build-jar")
 		return 0
 	}
 
@@ -415,7 +426,7 @@ func runRuntime(mode string) int {
 
 	if fi, err := os.Stat(vmImagePath); err != nil || !fi.IsDir() {
 		logMsg(red, fmt.Sprintf("Runtime VM image not found at %s", vmImagePath))
-		logMsg(yellow, "Run 'make vm-signal-server-build' first.")
+		logMsg(yellow, "Run './uv vm signal build-jar' first.")
 		return 1
 	}
 
