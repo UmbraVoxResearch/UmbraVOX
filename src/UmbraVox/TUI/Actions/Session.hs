@@ -17,6 +17,7 @@ import Data.Word (Word8, Word64)
 import System.Directory (doesFileExist, canonicalizePath, getHomeDirectory)
 import Data.List (isPrefixOf)
 import UmbraVox.App.RuntimeLog (logEvent)
+import UmbraVox.Chat.OutboundQueue (newQueue, maxQueueDepth, maxMessageAge)
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Render (isPfx)
 import UmbraVox.Chat.Session
@@ -41,7 +42,8 @@ addSession cfg t session peerName = do
     ref <- newIORef session; histRef <- newIORef []; stRef <- newIORef Online
     lock <- newMVar ()
     tid <- forkIO (recvLoopTUI cfg sid peerName t ref lock histRef)
-    let si = SessionInfo (Just t) (RatchetCrypto ref) lock (Just tid) peerName histRef stRef
+    oq <- newQueue maxQueueDepth maxMessageAge
+    let si = SessionInfo (Just t) (RatchetCrypto ref) lock (Just tid) peerName histRef stRef oq
     modifyIORef' (cfgSessions cfg) (Map.insert sid si)
     -- Persist conversation to DB (graceful on failure)
     mDb <- readIORef (cfgAnthonyDB cfg)
@@ -69,7 +71,8 @@ addLoopbackSession cfg label = do
                       Nothing -> error "addLoopbackSession: ratchet init with random keys returned Nothing (impossible)"
     ref <- newIORef session; histRef <- newIORef []; stRef <- newIORef Local
     lock <- newMVar ()
-    let si = SessionInfo Nothing (RatchetCrypto ref) lock Nothing label histRef stRef
+    oq <- newQueue maxQueueDepth maxMessageAge
+    let si = SessionInfo Nothing (RatchetCrypto ref) lock Nothing label histRef stRef oq
     modifyIORef' (cfgSessions cfg) (Map.insert sid si)
     -- Persist conversation to DB (graceful on failure)
     mDb <- readIORef (cfgAnthonyDB cfg)

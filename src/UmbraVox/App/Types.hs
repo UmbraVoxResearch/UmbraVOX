@@ -11,6 +11,7 @@ module UmbraVox.App.Types
 import Control.Concurrent (ThreadId)
 import Control.Concurrent.MVar (MVar)
 import Data.IORef (IORef)
+import UmbraVox.Chat.OutboundQueue (OutboundQueue)
 import UmbraVox.Chat.Session (ChatSession)
 import UmbraVox.Network.ProviderCatalog (TransportProviderId)
 import UmbraVox.Network.TransportClass (AnyTransport)
@@ -42,4 +43,5 @@ data SessionInfo = SessionInfo
     { siTransport :: Maybe AnyTransport, siCrypto :: SessionCrypto
     , siSessionLock :: MVar ()
     , siRecvTid :: Maybe ThreadId, siPeerName :: String
-    , siHistory :: IORef [String], siStatus :: IORef ContactStatus }
+    , siHistory :: IORef [String], siStatus :: IORef ContactStatus
+    , siOutboundQueue :: OutboundQueue }

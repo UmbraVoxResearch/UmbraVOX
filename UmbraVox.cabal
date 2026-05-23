@@ -212,6 +212,7 @@ library
       UmbraVox.Chat.Transaction
       UmbraVox.Chat.Contacts
       UmbraVox.Chat.API
+      UmbraVox.Chat.OutboundQueue
       -- Storage
       UmbraVox.Storage.Class
       UmbraVox.Storage.InMemory

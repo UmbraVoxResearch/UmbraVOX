@@ -30,6 +30,7 @@ import UmbraVox.Plugin.Registry (defaultPersistencePlugins)
 import UmbraVox.Storage.InMemory (newInMemoryStorage)
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Layout (calcLayout)
+import UmbraVox.Chat.OutboundQueue (newQueue, maxQueueDepth, maxMessageAge)
 import UmbraVox.Chat.Session (initChatSession)
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Network.MDNS (MDNSPeer(..))
@@ -133,7 +134,8 @@ addTestSessionWithHistory cfg label history = do
     lock <- newMVar ()
     histRef <- newIORef history
     stRef <- newIORef Local
-    let si = SessionInfo Nothing (RatchetCrypto ref) lock Nothing label histRef stRef
+    oq <- newQueue maxQueueDepth maxMessageAge
+    let si = SessionInfo Nothing (RatchetCrypto ref) lock Nothing label histRef stRef oq
     modifyIORef' (cfgSessions cfg) (Map.insert sid si)
     pure sid
   where
