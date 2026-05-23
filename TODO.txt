@@ -455,8 +455,8 @@ activities must write ONLY inside the project directory (or VMs). No touching
 [x] M29.2 Medium — test temp files (528ab0d)
   [x] M29.2.1 getProjectTmpDir helper in Test.Util (528ab0d)
   [x] M29.2.2 All 28 getTemporaryDirectory calls replaced (528ab0d)
-  [ ] M29.2.3 Set TMPDIR=./build/test-tmp in make test recipe
-  [ ] M29.2.4 ReleaseBridge.hs: use build/tmp/ not getTemporaryDirectory
+  [x] M29.2.3 Set TMPDIR=./build/test-tmp in make test recipe (9cbc3c4)
+  [x] M29.2.4 ReleaseBridge.hs: use build/tmp/ not getTemporaryDirectory (9cbc3c4)
 
 [x] M29.3 Medium — runtime UMBRAVOX_DATA support (528ab0d)
   [x] M29.3.1 Startup.hs: UMBRAVOX_DATA for DB/log path (528ab0d)
