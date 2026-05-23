@@ -12,9 +12,10 @@ static const uint32_t DECISION_FLUFF = 0x01;
 static const uint32_t DEFAULT_EPOCH_LEN = 600;
 static const double DEFAULT_FLUFF_PROB = 0.1;
 static const uint32_t BYTE_MAX = 256;
+static const uint32_t MIN_STEM_PEERS = 5;
 
 __attribute__((noinline))
-uint32_t dandelion(const uint8_t* csprng_byte, const uint8_t* fluff_prob, const uint8_t* current_mode, const uint8_t* epoch_start, const uint8_t* epoch_len, const uint8_t* now) {
+uint32_t dandelion(const uint8_t* csprng_byte, const uint8_t* fluff_prob, const uint8_t* current_mode, const uint8_t* epoch_start, const uint8_t* epoch_len, const uint8_t* now, const uint8_t* peer_count, const uint8_t* configured_prob) {
     uint32_t clamped_prob = 0; /* preprocessing: CLAMP(fluff_prob, 0) */
     uint32_t threshold = 0; /* preprocessing: FLOOR(clamped_prob) */
     uint32_t fluff_flag = 0; /* preprocessing: constantTimeLT(csprng_byte, threshold) */
@@ -27,6 +28,8 @@ uint32_t dandelion(const uint8_t* csprng_byte, const uint8_t* fluff_prob, const 
     uint32_t expired = 0; /* preprocessing: (first_epoch | time_expired) */
     uint32_t new_epoch_start = 0; /* preprocessing: constantTimeSelect(expired, now, epoch_start) */
     uint32_t post_rotation_mode = 0; /* preprocessing: constantTimeSelect(expired, MODE_STEM, current_mode) */
+    uint32_t low_peers = 0; /* preprocessing: constantTimeLT(peer_count, MIN_STEM_PEERS) */
+    uint32_t effective_prob = 0; /* preprocessing: constantTimeSelectF(low_peers, 1) */
     return 0; /* placeholder */
 }
 

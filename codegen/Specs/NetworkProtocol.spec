@@ -71,6 +71,13 @@ algorithm NetworkProtocol {
     HOSTLEN_SIZE  = 2
     COUNT_SIZE    = 2
 
+    -- Protocol versioning
+    -- The current protocol version is 1.  Peers exchange versions in
+    -- the handshake message and must reject connections from peers
+    -- whose version falls outside the supported range.
+    PROTOCOL_VERSION_MIN = 1
+    PROTOCOL_VERSION_MAX = 1
+
     -- Fixed payload sizes
     HANDSHAKE_PAYLOAD_SIZE = 35   -- 1 + 32 + 2
     ACK_PAYLOAD_SIZE       = 4    -- 4
@@ -252,7 +259,30 @@ algorithm NetworkProtocol {
     -- Final validation
     -- ------------------------------------------------------------------
 
-    -- Step 22: Combine all validation checks
+    -- ------------------------------------------------------------------
+    -- Version Negotiation (Handshake)
+    -- ------------------------------------------------------------------
+
+    -- Step 22: Validate decoded handshake version against supported range.
+    -- A peer whose version is outside [PROTOCOL_VERSION_MIN, PROTOCOL_VERSION_MAX]
+    -- is incompatible and the handshake must be rejected.
+    --
+    -- Version negotiation is part of the handshake decode path:
+    --   1. Decode the handshake payload (step 15)
+    --   2. Check version bounds (this step)
+    --   3. If rejected, close the connection
+    --
+    -- Future protocol extensions increment PROTOCOL_VERSION_MAX while
+    -- keeping PROTOCOL_VERSION_MIN at the oldest backwards-compatible version.
+    version_above_min = constantTimeGTE(d_hs_version, PROTOCOL_VERSION_MIN)
+    version_below_max = constantTimeGTE(PROTOCOL_VERSION_MAX, d_hs_version)
+    version_ok = version_above_min & version_below_max
+
+    -- ------------------------------------------------------------------
+    -- Final validation
+    -- ------------------------------------------------------------------
+
+    -- Step 23: Combine all validation checks
     -- Type-specific validation is applied based on d_msg_type.
     -- The overall valid flag requires header checks plus the relevant
     -- payload check for the parsed message type.

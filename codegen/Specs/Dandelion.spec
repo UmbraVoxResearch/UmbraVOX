@@ -36,6 +36,10 @@ algorithm Dandelion {
     epoch_start     : UInt64       -- Epoch start time (POSIX seconds)
     epoch_len       : UInt32       -- Epoch length in seconds
     now             : UInt64       -- Current time (POSIX seconds)
+
+    -- effective_fluff_prob inputs
+    peer_count      : UInt32       -- Number of known peers
+    configured_prob : Float64      -- Configured fluff probability
   }
 
   constants {
@@ -55,6 +59,11 @@ algorithm Dandelion {
 
     -- Maximum byte value for threshold comparison
     BYTE_MAX = 256
+
+    -- Minimum peer count for stem routing to provide meaningful privacy.
+    -- Below this threshold, effective fluff probability is forced to 1.0
+    -- (immediate broadcast) because too few hops cannot decorrelate origin.
+    MIN_STEM_PEERS = 5
   }
 
   steps {
@@ -119,5 +128,26 @@ algorithm Dandelion {
     -- On epoch expiry, reset to stem mode for new stem peer selection.
     -- post_rotation_mode = MODE_STEM if expired, else current_mode
     post_rotation_mode = constantTimeSelect(expired, MODE_STEM, current_mode)
+
+    -- ==================================================================
+    -- Effective Fluff Probability — peer-count-scaled transition probability
+    --
+    -- With fewer than MIN_STEM_PEERS peers, stem routing provides
+    -- negligible privacy (too few hops to decorrelate origin from
+    -- the message), so the effective probability is forced to 1.0
+    -- (immediate fluff broadcast).  Otherwise, the configured
+    -- probability is used unchanged.
+    --
+    -- See: effectiveFluffProb in UmbraVox.Network.Dandelion (M23.2.5)
+    -- ==================================================================
+
+    -- Step 10: Check if peer count is below the stem privacy threshold
+    -- low_peers = 1 if peer_count < MIN_STEM_PEERS, else 0
+    low_peers = constantTimeLT(peer_count, MIN_STEM_PEERS)
+
+    -- Step 11: Select effective probability (constant-time)
+    -- If low_peers, force probability to 1.0 (always fluff).
+    -- Otherwise, use the configured probability.
+    effective_prob = constantTimeSelectF(low_peers, 1.0, configured_prob)
   }
 }

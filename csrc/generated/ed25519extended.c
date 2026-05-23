@@ -107,6 +107,20 @@ uint32_t ed25519extended(const uint8_t* scalar, const uint8_t* point, const uint
     uint32_t dec_Y = 0; /* preprocessing: dec_y */
     uint32_t dec_Z = 1;
     uint32_t dec_T = 0; /* preprocessing: fMul(dec_x_final, dec_y) */
+    uint32_t clamp_bytes = 0; /* preprocessing: scalar */
+    uint32_t clamp_b0 = 0; /* preprocessing: (clamp_bytes[0] & 0xF8) */
+    uint32_t clamp_b31 = 0; /* preprocessing: ((clamp_bytes[31] & 0x7F) | 0x40) */
+    uint32_t clamped = 0; /* preprocessing: ((clamp_b0 | 0) | clamp_bytes[1]) */
+    uint32_t clamped_scalar = 0; /* preprocessing: decodeLE(clamped) */
+    uint32_t so_p0 = 0; /* preprocessing: constantTimeEq(point, 0x0100000000000000000000000000000000000000000000000000000000000000) */
+    uint32_t so_p1 = 0; /* preprocessing: constantTimeEq(point, 0xecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f) */
+    uint32_t so_p2 = 0; /* preprocessing: constantTimeEq(point, 0x0000000000000000000000000000000000000000000000000000000000000000) */
+    uint32_t so_p3 = 0; /* preprocessing: constantTimeEq(point, 0x0000000000000000000000000000000000000000000000000000000000000080) */
+    uint32_t so_p4 = 0; /* preprocessing: constantTimeEq(point, 0xc7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a) */
+    uint32_t so_p5 = 0; /* preprocessing: constantTimeEq(point, 0xc7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa) */
+    uint32_t so_p6 = 0; /* preprocessing: constantTimeEq(point, 0x26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05) */
+    uint32_t so_p7 = 0; /* preprocessing: constantTimeEq(point, 0x26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc85) */
+    uint32_t is_small_order = 0; /* preprocessing: (((((((so_p0 | so_p1) | so_p2) | so_p3) | so_p4) | so_p5) | so_p6) | so_p7) */
     return 0; /* placeholder */
 }
 

@@ -21,6 +21,8 @@ static const uint32_t SEQUENCE_SIZE = 4;
 static const uint32_t PORT_SIZE = 2;
 static const uint32_t HOSTLEN_SIZE = 2;
 static const uint32_t COUNT_SIZE = 2;
+static const uint32_t PROTOCOL_VERSION_MIN = 1;
+static const uint32_t PROTOCOL_VERSION_MAX = 1;
 static const uint32_t HANDSHAKE_PAYLOAD_SIZE = 35;
 static const uint32_t ACK_PAYLOAD_SIZE = 4;
 static const uint32_t PING_PAYLOAD_SIZE = 0;
@@ -65,6 +67,9 @@ uint32_t networkprotocol(const uint8_t* msg_type, const uint8_t* hs_version, con
     uint32_t d_peer_list = 0; /* preprocessing: PARSE_LOOP(d_payload, COUNT_SIZE, d_peer_count) */
     uint32_t ping_ok = 0; /* preprocessing: d_payload_len */
     uint32_t pong_ok = 0; /* preprocessing: d_payload_len */
+    uint32_t version_above_min = 0; /* preprocessing: constantTimeGTE(d_hs_version, PROTOCOL_VERSION_MIN) */
+    uint32_t version_below_max = 0; /* preprocessing: constantTimeGTE(PROTOCOL_VERSION_MAX, d_hs_version) */
+    uint32_t version_ok = 0; /* preprocessing: (version_above_min & version_below_max) */
     uint32_t valid = 0; /* preprocessing: ((size_ok & len_ok) & type_ok) */
     return 0; /* placeholder */
 }
