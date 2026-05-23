@@ -191,6 +191,10 @@
         #   pkgs = import nixpkgs { system = "aarch64-linux"; };
         # };
 
+        packages.vm-seed-image = import ./nix/vm-seed.nix {
+          pkgs = import nixpkgs { system = "x86_64-linux"; };
+        };
+
         packages.vm-builder-image = import ./nix/vm-builder.nix {
           pkgs = import nixpkgs { system = "x86_64-linux"; };
         };
