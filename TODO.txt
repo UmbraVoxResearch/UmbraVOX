@@ -37,18 +37,3 @@ ACTIVE WORK
   [ ] M19.4.5 Fill FOD hash for Signal-Server Maven deps
   [ ] M19.4.6 Complete Signal-Server JAR build end-to-end in VM
   [ ] M19.4.7 Boot runtime VM with Signal-Server JAR and verify health endpoint
-
-[~] M22.2 VM orchestration Go tools (5 remaining)
-  [ ] M22.2.2 tools/cmd/vm-signal/ — full implementation
-  [ ] M22.2.3 tools/cmd/vm-smoke/ — full implementation
-  [ ] M22.2.4 tools/cmd/vm-build-test/ — full implementation
-  [ ] M22.2.5 tools/cmd/vm-agent/ — full implementation
-  [ ] M22.2.6 tools/cmd/vm-netsetup/ — full implementation
-
-[~] M28 Offline message delivery (remaining)
-  [ ] M28.1.2 Persist outbound queue to disk (encrypted)
-  [ ] M28.1.3 Auto-drain queue when peer reconnects
-  [ ] M28.1.5 TUI: show pending message count per contact
-  [ ] M28.2.2 Recipient polls relay via DHT presence + stealth scan
-  [ ] M28.2.5 Sender falls back to relay when peer offline > N minutes
-  [ ] M28.3.2 Queue drain on reconnect test
