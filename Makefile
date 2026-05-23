@@ -1305,7 +1305,17 @@ vm-image-build: # [host-only] Build VM image inside a builder VM (M20.5.8)
 	@echo -e "$(BLUE)[VM-IMAGE]$(NC) Building NixOS VM image inside builder VM..."
 	@mkdir -p build/vm build/vm/tmp build/vm/tmp/sandbox
 	@chmod +x ./scripts/vm-image-builder.sh
-	@./scripts/vm-image-builder.sh
+	@if command -v genext2fs >/dev/null 2>&1; then \
+		./scripts/vm-image-builder.sh; \
+	elif command -v nix-shell >/dev/null 2>&1; then \
+		echo -e "$(BLUE)[VM-IMAGE]$(NC) genext2fs not found; entering nix-shell..."; \
+		nix-shell shell.nix --run "./scripts/vm-image-builder.sh"; \
+	else \
+		echo -e "$(RED)[VM-IMAGE]$(NC) genext2fs not found. Run from inside nix-shell:"; \
+		echo "  nix-shell shell.nix"; \
+		echo "  make vm-image-build"; \
+		exit 1; \
+	fi
 
 vm-image-build-host: # [host-only] nix-build produces VM image directly on host
 ifndef I_KNOW_THIS_TOUCHES_HOST

@@ -16,6 +16,7 @@
         vmTools = with pkgs; [
           qemu_kvm
           firecracker
+          genext2fs    # needed by vm-image-builder.sh for source disk
           git
           gnumake
           jq
