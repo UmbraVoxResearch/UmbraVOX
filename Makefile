@@ -28,6 +28,7 @@
 #   make test-differential - Run differential C vs Haskell tests
 #   make soak         - Run the long soak suite and write an artifact report
 #   make mcdc-report  - Build with HPC coverage and emit per-module expression report
+#   make coverage-report - Build with HPC and generate HTML coverage report under build/coverage/
 #   make verify       - Run F* formal verification (17 modules)
 #   make verify-haskell - Opt-in bridge wrapper for Haskell verification orchestration
 #   make complexity   - Check cyclomatic complexity (<= 8 for all functions)
@@ -92,7 +93,7 @@
 # Prerequisites:
 #   VM mode (default): make vm-image-build (needs qemu + nix)
 
-.PHONY: all build build-haskell run run-local test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen docs release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance check-vectors release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm test-make-options test-vm-config sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-build-only vm-test vm-verify vm-run-gui firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot screenshot-local vm-record vm-visual-regression visual-reference-update differential-vectors test-differential-oracle test-differential-full fuzz-differential fuzz-afl differential differential-evidence-check signal-bridge-build test-signal-compat test-signal-bridge-ipc check-isolation tools clean cleandb cleanall help
+.PHONY: all build build-haskell run run-local test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report coverage-report verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen docs release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance check-vectors release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm test-make-options test-vm-config sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-build-only vm-test vm-verify vm-run-gui firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot screenshot-local vm-record vm-visual-regression visual-reference-update differential-vectors test-differential-oracle test-differential-full fuzz-differential fuzz-afl differential differential-evidence-check signal-bridge-build test-signal-compat test-signal-bridge-ipc check-isolation tools clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -164,6 +165,18 @@ else
   RUN_CODEGEN = cabal run codegen --
 endif
 
+# Logged gate wrapper (M20.7.2): run a command with [TAG] echo/pass/fail.
+# Usage: $(call logged_gate,TAG,description,command)
+define logged_gate
+	@echo -e "$(BLUE)[$(1)]$(NC) $(2)"
+	@if $(3); then \
+		echo -e "$(GREEN)[$(1)]$(NC) $(2) — passed."; \
+	else \
+		echo -e "$(RED)[$(1)]$(NC) $(2) — failed."; \
+		exit 1; \
+	fi
+endef
+
 define run_named_suite
 	@echo -e "$(BLUE)[$(1)]$(NC) $(2)"
 	$(call vm_or_local,$(SUITE_LOCK) $(call run_test_suite,$(3)))
@@ -210,6 +223,7 @@ help: # [host-only]
 	@echo "    make test-differential Run differential C vs Haskell tests"
 	@echo "    make soak        Run long soak suite and write artifact report"
 	@echo "    make mcdc-report Build with HPC coverage and emit per-module expression report"
+	@echo "    make coverage-report Build with HPC and generate HTML coverage report under build/coverage/"
 	@echo "    make signal-bridge-build Build Signal bridge plugin (M19.6.3)"
 	@echo "    make test-signal-bridge-ipc Run Signal bridge IPC subprocess smoke test"
 	@echo "    make codegen     Generate Haskell + C + FFI from .spec files"
@@ -468,6 +482,39 @@ mcdc-report:
 		$$([ -n "$$mix_lib" ] && echo "--hpcdir=$$mix_lib") \
 		$$([ -n "$$mix_test" ] && echo "--hpcdir=$$mix_test") && \
 	echo -e "$(GREEN)[COVERAGE]$(NC) HTML report: $$(find dist-newstyle -name 'hpc_index.html' | head -1)")
+
+# --------------------------------------------------------------------------
+# Test Coverage Report (M26.2.5)
+# --------------------------------------------------------------------------
+#
+# Generates an HPC coverage report from cabal test --enable-coverage
+# and writes an HTML report under build/coverage/.
+
+coverage-report:
+	@echo -e "$(BLUE)[COVERAGE]$(NC) Building and running tests with HPC coverage..."
+	$(call vm_or_local,cabal clean 2>/dev/null; \
+	cabal configure --enable-coverage && \
+	cabal build all --enable-coverage 2>&1 | tail -5 && \
+	cabal test umbravox-test --enable-coverage --test-options='required' 2>&1 | tail -10 && \
+	echo -e "$(BLUE)[COVERAGE]$(NC) Locating coverage data..." && \
+	tix=$$(find dist-newstyle -name '*.tix' -path '*/umbravox-test*' | head -1) && \
+	mix_lib=$$(find dist-newstyle -path '*/extra-compilation-artifacts/hpc/vanilla/mix' -not -path '*/umbravox-test*' | head -1) && \
+	mix_test=$$(find dist-newstyle -path '*/umbravox-test*/extra-compilation-artifacts/hpc/vanilla/mix' | head -1) && \
+	if [ -z "$$tix" ]; then \
+		echo -e "$(RED)[COVERAGE]$(NC) No .tix file found — test run may have failed."; \
+		exit 1; \
+	fi && \
+	echo -e "$(GREEN)[COVERAGE]$(NC) Tix: $$tix" && \
+	mkdir -p build/coverage && \
+	hpc report "$$tix" --per-module \
+		$$([ -n "$$mix_lib" ] && echo "--hpcdir=$$mix_lib") \
+		$$([ -n "$$mix_test" ] && echo "--hpcdir=$$mix_test") \
+		> build/coverage/coverage-summary.txt && \
+	hpc markup "$$tix" --destdir=build/coverage \
+		$$([ -n "$$mix_lib" ] && echo "--hpcdir=$$mix_lib") \
+		$$([ -n "$$mix_test" ] && echo "--hpcdir=$$mix_test") && \
+	echo -e "$(GREEN)[COVERAGE]$(NC) Summary: build/coverage/coverage-summary.txt" && \
+	echo -e "$(GREEN)[COVERAGE]$(NC) HTML: build/coverage/hpc_index.html")
 
 # --------------------------------------------------------------------------
 # F* Formal Verification
