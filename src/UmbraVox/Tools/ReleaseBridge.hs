@@ -27,7 +27,7 @@ import Data.List (find, intercalate, isPrefixOf, isSuffixOf, tails)
 import Data.Maybe (isNothing)
 import System.Directory (doesFileExist, doesDirectoryExist, getModificationTime,
                          createDirectoryIfMissing, removeDirectoryRecursive,
-                         removeFile, findExecutable, getTemporaryDirectory,
+                         removeFile, findExecutable,
                          getCurrentDirectory, listDirectory, copyFile)
 import System.Environment (getEnvironment, lookupEnv)
 import System.Exit (ExitCode(..), exitWith)
@@ -41,6 +41,15 @@ import UmbraVox.Tools.Compliance (generateSBOM, generateLicenseBundle, checkLice
 import UmbraVox.Tools.FStarVerify (generateCoverageReport)
 import UmbraVox.Tools.PcapVerify (verifyTrafficEncryption)
 import UmbraVox.Tools.Provenance (generateReleaseManifest, emitReleaseChecksums)
+
+-- | Get a project-local temporary directory for VM operations.
+-- Uses build/tmp/ inside the current working directory.
+getProjectTmpDir :: IO FilePath
+getProjectTmpDir = do
+    cwd <- getCurrentDirectory
+    let dir = cwd </> "build" </> "tmp"
+    createDirectoryIfMissing True dir
+    pure dir
 
 runBridgeCommand :: String -> [String] -> IO ExitCode
 runBridgeCommand "build" args
@@ -171,7 +180,7 @@ runVMSmoke _ = do
     hPutStrLn stderr $ "[VM-SMOKE] disk image: " ++ diskImg
     hPutStrLn stderr $ "[VM-SMOKE] source disk: " ++ srcDisk
     -- Create a COW overlay so we don't need write access to the nix store image
-    tmpDir <- getTemporaryDirectory
+    tmpDir <- getProjectTmpDir
     let overlay = tmpDir </> "umbravox-vm-overlay.qcow2"
     hPutStrLn stderr "[VM-SMOKE] creating COW overlay..."
     ecOv <- runScript "qemu-img" ["create", "-f", "qcow2", "-b", diskImg, "-F", "raw", overlay]
@@ -291,7 +300,7 @@ ensureVMImage = do
 buildFstarCacheInVM :: FilePath -> FilePath -> FilePath -> IO ()
 buildFstarCacheInVM _repoRoot imagePath cacheStage = do
     srcDisk <- createSourceDisk
-    tmpDir <- getTemporaryDirectory
+    tmpDir <- getProjectTmpDir
     let diskImg  = imagePath </> "nixos.img"
         overlay  = tmpDir </> "umbravox-fstar-cache-overlay.qcow2"
         cacheImg = tmpDir </> "umbravox-fstar-cache-output.img"
@@ -349,7 +358,7 @@ buildFstarCacheInVM _repoRoot imagePath cacheStage = do
 createSourceDisk :: IO FilePath
 createSourceDisk = do
     repoRoot <- getCurrentDirectory
-    tmpDir <- getTemporaryDirectory
+    tmpDir <- getProjectTmpDir
     let diskPath = tmpDir </> "umbravox-vm-source.ext2"
         srcDir   = tmpDir </> "umbravox-vm-src"
     hPutStrLn stderr "[VM-SMOKE] exporting clean source tree..."
@@ -477,7 +486,7 @@ ensureFirecrackerImage = do
 -- | Generate a Firecracker JSON config file with paths to kernel, rootfs, and source disk.
 generateFirecrackerConfig :: FilePath -> FilePath -> FilePath -> IO FilePath
 generateFirecrackerConfig kernel rootfs srcDisk = do
-    tmpDir <- getTemporaryDirectory
+    tmpDir <- getProjectTmpDir
     let configPath = tmpDir </> "umbravox-fc-config.json"
     writeFile configPath $ unlines
         [ "{"
@@ -732,7 +741,7 @@ ensureTestVMImage = do
 -- Contains the release bundle, agent config, and optionally the agent script.
 createAgentDisk :: FilePath -> Int -> Int -> IO FilePath
 createAgentDisk bundlePath agentCount agentId = do
-    tmpDir <- getTemporaryDirectory
+    tmpDir <- getProjectTmpDir
     let diskPath = tmpDir </> "umbravox-agent-" ++ show agentId ++ ".ext2"
         srcDir   = tmpDir </> "umbravox-agent-" ++ show agentId ++ "-src"
         peers    = if agentId == 0

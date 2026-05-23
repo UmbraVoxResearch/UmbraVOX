@@ -382,7 +382,7 @@ build-haskell:
 test:
 	@$(MAKE) build
 	@echo -e "$(BLUE)[TEST]$(NC) Running fast messaging-MVP hardening gate..."
-	$(call vm_or_local,$(SUITE_LOCK) bash -c 'mkdir -p $(TEST_ARTIFACT_DIR); \
+	$(call vm_or_local,UMBRAVOX_TEST_TMPDIR=build/test-tmp $(SUITE_LOCK) bash -c 'mkdir -p $(TEST_ARTIFACT_DIR) build/test-tmp; \
 	log_file=$$(mktemp "$(TEST_ARTIFACT_DIR)/test-required.XXXXXX.log"); \
 	echo -e "$(BLUE)[TEST]$(NC) Log: $$log_file"; \
 	echo -e "$(BLUE)[TEST]$(NC) Timeout: $(TEST_REQUIRED_TIMEOUT)"; \
