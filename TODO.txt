@@ -332,6 +332,9 @@ Note: Items from codebase audit (2026-05-20).
   [x] M20.5.6 VM cache/output policy decision
     Note: Keep persistent VM build cache and host /output share enabled by default.
     Note: Cache is guest-mounted (`/dev/vdc`); host only sees qcow2 backing file.
+  [ ] M20.5.7 Ephemeral test VM images — build fresh image per test run, destroy after
+    Note: Test pipeline should not overwrite persistent dev image. Build ephemeral image
+    in a temp path, run tests, discard. Keeps dev image stable while testing on clean state.
   [x] M20.5.7 Refresh README/QUICKSTART/VM-ISOLATION for vm-first defaults and run-local opt-in
     Note: VM commands promoted as primary. Coq 475 Qed / 14 files.
   [x] M20.5.8 Move remaining legacy provider manifests into plugins/
