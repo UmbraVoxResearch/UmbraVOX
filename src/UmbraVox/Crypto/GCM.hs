@@ -20,7 +20,6 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.IORef (IORef, newIORef, atomicModifyIORef')
 import Data.List (foldl')
-import qualified Data.Set as Set
 import Data.Word (Word64)
 
 import UmbraVox.Crypto.AES (aesEncrypt)
@@ -235,33 +234,38 @@ gcmDecrypt !key !nonce !aad !ct !tag = case gcmDecryptSafe key nonce aad ct tag 
 -- M23.4.7: Nonce-reuse detection
 ------------------------------------------------------------------------
 
--- | Tracks (key, nonce) pairs that have been used for encryption.
+-- | Tracks the maximum nonce value used for encryption under a single key.
 -- Nonce reuse under the same key is catastrophic for GCM security:
 -- it enables forgery and plaintext recovery.  This tracker provides
 -- a defence-in-depth guard at the API boundary.
 --
+-- Uses a counter-based approach: tracks the maximum nonce seen and rejects
+-- any nonce at or below that value.  This is bounded O(1) memory and works
+-- correctly for sequential (monotonically increasing) nonces.
+--
 -- Each tracker is scoped to a single key.  Create one per key via
 -- 'newNonceTracker'.
-newtype GCMNonceTracker = GCMNonceTracker (IORef (Set.Set ByteString))
+newtype GCMNonceTracker = GCMNonceTracker (IORef ByteString)
 
 -- | Create a fresh nonce tracker for a single key.
 newNonceTracker :: IO GCMNonceTracker
-newNonceTracker = GCMNonceTracker <$> newIORef Set.empty
+newNonceTracker = GCMNonceTracker <$> newIORef BS.empty
 
 -- | AES-256-GCM encryption with nonce-reuse detection.
 --
--- Returns @Left msg@ if the nonce has already been used with this
--- tracker (i.e., same key), or if key/nonce sizes are invalid.
+-- Returns @Left msg@ if the nonce is not strictly greater than the
+-- previously used nonce (i.e., nonce reuse or regression detected),
+-- or if key/nonce sizes are invalid.
 -- Returns @Right (ciphertext, tag)@ on success.
 gcmEncryptNR :: GCMNonceTracker
              -> ByteString -> ByteString -> ByteString -> ByteString
              -> IO (Either String (ByteString, ByteString))
 gcmEncryptNR (GCMNonceTracker ref) !key !nonce !aad !plaintext = do
-    seen <- atomicModifyIORef' ref $ \s ->
-        if Set.member nonce s
-        then (s, True)
-        else (Set.insert nonce s, False)
-    if seen
+    rejected <- atomicModifyIORef' ref $ \maxNonce ->
+        if BS.null maxNonce || nonce > maxNonce
+        then (nonce, False)
+        else (maxNonce, True)
+    if rejected
         then return (Left "AES-256-GCM: nonce reuse detected — refusing to encrypt")
         else return (gcmEncryptSafe key nonce aad plaintext)
 

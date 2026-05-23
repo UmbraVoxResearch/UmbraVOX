@@ -105,9 +105,26 @@ renderField (key, value) = key ++ "=" ++ quoteValue (sanitizeFieldValue key valu
 
 sanitizeFieldValue :: String -> String -> String
 sanitizeFieldValue key value
-    | key `elem` redactedFieldKeys = "[redacted]"
-    | otherwise = value
+    | key `elem` safeFieldKeys = value
+    | otherwise = "[redacted]"
 
+-- | Fields whose values are safe to show in logs (denylist-by-default).
+-- All field values are redacted unless the key appears in this list.
+safeFieldKeys :: [String]
+safeFieldKeys =
+    [ "count"
+    , "direction"
+    , "level"
+    , "mode"
+    , "result"
+    , "status"
+    , "type"
+    , "version"
+    ]
+
+-- | Legacy alias kept for export compatibility.
+-- Under the denylist model every key NOT in 'safeFieldKeys' is redacted,
+-- so this list is no longer the source of truth for redaction decisions.
 redactedFieldKeys :: [String]
 redactedFieldKeys =
     [ "answer"
