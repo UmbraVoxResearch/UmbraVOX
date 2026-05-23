@@ -22,6 +22,7 @@ messaging MVP.
 - [runner-classes.md](runner-classes.md) — runner classes and isolation model
 - [hacl-evaluation.md](hacl-evaluation.md) — HACL* adoption evaluation
 - [musl-evaluation.md](musl-evaluation.md) — static musl feasibility evaluation
+- [MILESTONE-DOCS.md](MILESTONE-DOCS.md) — per-milestone documentation index (M20-M28)
 
 ## Archived Docs
 
