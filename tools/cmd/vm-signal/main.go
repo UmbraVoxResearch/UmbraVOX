@@ -7,6 +7,7 @@
 //	vm-signal build-jar     Stage 1: boot build VM with network, run Maven, output JAR
 //	vm-signal interactive   Stage 2: boot runtime VM with services
 //	vm-signal check         Stage 2: boot runtime VM, health-check, exit
+//	vm-signal check-health  Stage 2: host-side health endpoint verification
 //
 // Requires: qemu-system-x86_64, /dev/kvm
 package main
@@ -15,12 +16,14 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ANSI color helpers.
@@ -41,11 +44,17 @@ Subcommands:
   build-jar      Stage 1: boot build VM with network, run Maven, output JAR
   interactive    Stage 2: boot runtime VM with services (interactive shell)
   check          Stage 2: boot runtime VM, health-check, exit
+  check-health   Stage 2: host-side health endpoint verification
 
 Flags for 'build-jar':
   --network-policy <path>   Network policy file (default: vm-network-policy.conf)
   --output-dir <path>       JAR output directory (default: build/signal-server-jar)
   --timeout <duration>      Build timeout (default: 30m)
+
+Flags for 'check-health':
+  --host <host>             Health check host (default: localhost)
+  --port <port>             Health check port (default: 8081)
+  --retries <n>             Max retries (default: 30)
 
 Flags for 'check':
   --timeout <duration>      Health-check timeout (default: 120s)
@@ -96,6 +105,18 @@ func run(args []string) int {
 		_ = fs.String("endpoint", "http://localhost:8080/health", "health endpoint URL")
 		fs.Parse(args[1:])
 		return runRuntime("check")
+
+	case "check-health":
+		fs := flag.NewFlagSet("check-health", flag.ExitOnError)
+		host := fs.String("host", "localhost", "health check host")
+		port := fs.Int("port", 8081, "health check port")
+		retries := fs.Int("retries", 30, "max retries")
+		fs.Parse(args[1:])
+		if err := runCheckHealth(*host, *port, *retries); err != nil {
+			logMsg(red, err.Error())
+			return 1
+		}
+		return 0
 
 	case "help", "-h", "--help":
 		flag.Usage()
@@ -241,11 +262,71 @@ func runBuildJar(outputDirFlag string) int {
 		}
 	}
 
-	// Check build VM image exists
+	// Build the VM image via nix-build if it doesn't exist
 	if fi, err := os.Stat(buildImagePath); err != nil || !fi.IsDir() {
-		logMsg(red, fmt.Sprintf("Build VM image not found at %s", buildImagePath))
-		logMsg(yellow, "Build the Signal-Server build VM image first.")
-		return 1
+		logMsg(yellow, "Build VM image not found, building now...")
+
+		// Fix symlink/directory issue: always clean before nix-build
+		os.RemoveAll(buildImagePath)
+
+		// Source nix-vm-build-config.sh for build settings
+		cfgScript := filepath.Join(repoRoot, "scripts", "nix-vm-build-config.sh")
+		if info, err := os.Stat(cfgScript); err == nil && info.Mode()&0o111 == 0 {
+			os.Chmod(cfgScript, 0o755)
+		}
+
+		// Find nix-build
+		nixBuild, err := exec.LookPath("nix-build")
+		if err != nil {
+			nixBuild = "/nix/var/nix/profiles/default/bin/nix-build"
+			if _, err := os.Stat(nixBuild); err != nil {
+				logMsg(red, "nix-build not found on PATH")
+				logMsg(yellow, "Install Nix or add /nix/var/nix/profiles/default/bin to PATH.")
+				return 1
+			}
+		}
+
+		// Read config from nix-vm-build-config.sh
+		cfgCmd := exec.Command(cfgScript, "shell")
+		cfgOut, err := cfgCmd.Output()
+		if err != nil {
+			logMsg(red, fmt.Sprintf("Failed to run nix-vm-build-config.sh: %v", err))
+			return 1
+		}
+		// Parse environment exports
+		sandboxBuildDir := tmpDir + "/sandbox"
+		for _, line := range strings.Split(string(cfgOut), "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "export ") {
+				line = strings.TrimPrefix(line, "export ")
+			}
+			if strings.HasPrefix(line, "UMBRAVOX_NIX_SANDBOX_BUILD_DIR=") {
+				val := strings.TrimPrefix(line, "UMBRAVOX_NIX_SANDBOX_BUILD_DIR=")
+				val = strings.Trim(val, "\"'")
+				if val != "" {
+					sandboxBuildDir = val
+				}
+			}
+		}
+
+		os.MkdirAll(tmpDir, 0o755)
+
+		logMsg(blue, fmt.Sprintf("Using TMPDIR=%s", tmpDir))
+		logMsg(blue, "Building via nix (this may take several minutes)...")
+
+		nixCmd := exec.Command(nixBuild,
+			filepath.Join(repoRoot, "nix", "vm-signal-server.nix"),
+			"-A", "buildVm",
+			"--option", "build-dir", tmpDir,
+			"--option", "sandbox-build-dir", sandboxBuildDir,
+			"-o", buildImagePath)
+		nixCmd.Stdout = os.Stdout
+		nixCmd.Stderr = os.Stderr
+		nixCmd.Env = append(os.Environ(), "TMPDIR="+tmpDir)
+		if err := nixCmd.Run(); err != nil {
+			logMsg(red, fmt.Sprintf("nix-build failed: %v", err))
+			return 1
+		}
 	}
 
 	diskImg, err := filepath.EvalSymlinks(filepath.Join(buildImagePath, "nixos.img"))
@@ -394,4 +475,26 @@ func runRuntime(mode string) int {
 		return 1
 	}
 	return 0
+}
+
+// runCheckHealth performs a host-side HTTP health check against the Signal-Server
+// admin endpoint, retrying until success or max retries exhausted.
+func runCheckHealth(host string, port int, maxRetries int) error {
+	client := &http.Client{Timeout: 5 * time.Second}
+	url := fmt.Sprintf("http://%s:%d/healthcheck", host, port)
+
+	logMsg(blue, fmt.Sprintf("Checking Signal-Server health at %s:%d...", host, port))
+
+	for i := 0; i < maxRetries; i++ {
+		resp, err := client.Get(url)
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				logMsg(green, "Health check passed")
+				return nil
+			}
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return fmt.Errorf("health check failed after %d retries (%s:%d)", maxRetries, host, port)
 }

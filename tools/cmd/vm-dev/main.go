@@ -249,11 +249,17 @@ func parseArgs() (mode, vmCmd string) {
 	case "interactive", "gui":
 		return mode, ""
 	case "exec":
-		if len(args) < 2 {
-			fmt.Fprintf(os.Stderr, "Usage: %s exec \"command\"\n", os.Args[0])
+		rest := args[1:]
+		// Skip optional "--" separator (allows: exec -- cabal build all)
+		if len(rest) > 0 && rest[0] == "--" {
+			rest = rest[1:]
+		}
+		if len(rest) == 0 {
+			fmt.Fprintf(os.Stderr, "Usage: %s exec [--] \"command\" [args...]\n", os.Args[0])
 			os.Exit(2)
 		}
-		return "exec", args[1]
+		// Join all remaining arguments into a single command string
+		return "exec", strings.Join(rest, " ")
 	case "smoke":
 		return "exec", smokeCmd
 	case "help", "-h", "--help":
@@ -284,17 +290,29 @@ The VM image must be pre-built via 'make vm-image-build'.
 
 // findRepoRoot walks up from the executable (or cwd) to find the repo root.
 func findRepoRoot() string {
-	// Prefer the directory containing go.mod's parent (tools/ is a subdir).
-	// In practice we find the repo root by looking for scripts/vm-dev-run.sh.
+	// isRepoRoot checks for Makefile + either scripts/ or tools/ directory.
+	isRepoRoot := func(dir string) bool {
+		if _, err := os.Stat(filepath.Join(dir, "Makefile")); err != nil {
+			return false
+		}
+		// Accept repo root if it has scripts/ or tools/ (supports both
+		// the legacy shell path and the Go-only path).
+		if _, err := os.Stat(filepath.Join(dir, "scripts")); err == nil {
+			return true
+		}
+		if _, err := os.Stat(filepath.Join(dir, "tools", "cmd", "vm-dev")); err == nil {
+			return true
+		}
+		return false
+	}
+
 	exe, err := os.Executable()
 	if err == nil {
 		// Walk up from exe directory
 		dir := filepath.Dir(exe)
 		for i := 0; i < 10; i++ {
-			if _, err := os.Stat(filepath.Join(dir, "Makefile")); err == nil {
-				if _, err := os.Stat(filepath.Join(dir, "scripts", "vm-dev-run.sh")); err == nil {
-					return dir
-				}
+			if isRepoRoot(dir) {
+				return dir
 			}
 			dir = filepath.Dir(dir)
 		}
@@ -308,14 +326,12 @@ func findRepoRoot() string {
 	}
 	dir := cwd
 	for i := 0; i < 10; i++ {
-		if _, err := os.Stat(filepath.Join(dir, "Makefile")); err == nil {
-			if _, err := os.Stat(filepath.Join(dir, "scripts", "vm-dev-run.sh")); err == nil {
-				return dir
-			}
+		if isRepoRoot(dir) {
+			return dir
 		}
 		dir = filepath.Dir(dir)
 	}
-	logMsg(red, "Cannot find repo root (looked for Makefile + scripts/vm-dev-run.sh)")
+	logMsg(red, "Cannot find repo root (looked for Makefile + scripts/ or tools/)")
 	os.Exit(1)
 	return "" // unreachable
 }

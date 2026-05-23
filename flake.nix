@@ -19,6 +19,7 @@
           genext2fs    # needed by vm-image-builder.sh for source disk
           git
           gnumake
+          go           # needed to build tools/cmd/vm-dev
           jq
           curl
         ];
