@@ -22,6 +22,7 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BS8
 import qualified Data.Map.Strict as Map
 import System.Directory (doesFileExist, getHomeDirectory)
+import System.Environment (lookupEnv)
 
 import UmbraVox.App.Config (AppConfig(..))
 import UmbraVox.Crypto.SHA256 (sha256)
@@ -44,8 +45,10 @@ parseLine raw =
 -- Returns an empty map if the file does not exist or cannot be read.
 loadConfigFile :: IO (Map.Map String String)
 loadConfigFile = do
-    home <- getHomeDirectory
-    let path = home ++ "/.umbravox/config"
+    dataDir <- lookupEnv "UMBRAVOX_DATA" >>= \case
+        Just d  -> pure d
+        Nothing -> (++ "/.umbravox") <$> getHomeDirectory
+    let path = dataDir ++ "/config"
     exists <- doesFileExist path
     if not exists
         then pure Map.empty
@@ -104,8 +107,10 @@ applyConfigFile cfg appCfg = do
 -- * @Left msg@ — pin present but hash does NOT match (tampered)
 verifyConfigHash :: IO (Either String ())
 verifyConfigHash = do
-    home <- getHomeDirectory
-    let path = home ++ "/.umbravox/config"
+    dataDir <- lookupEnv "UMBRAVOX_DATA" >>= \case
+        Just d  -> pure d
+        Nothing -> (++ "/.umbravox") <$> getHomeDirectory
+    let path = dataDir ++ "/config"
     exists <- doesFileExist path
     if not exists
         then pure (Right ())

@@ -7,9 +7,9 @@ import Control.Exception (SomeException, catch)
 import Control.Concurrent.MVar (newMVar)
 import Data.IORef (newIORef, readIORef, writeIORef)
 import qualified Data.Map.Strict as Map
-import System.Directory (getTemporaryDirectory, removeFile)
+import System.Directory (removeFile)
 import System.FilePath ((</>))
-import Test.Util (assertEq)
+import Test.Util (assertEq, getProjectTmpDir)
 import Test.TUI.Sim.Util
 import UmbraVox.Chat.OutboundQueue (newQueue, maxQueueDepth, maxMessageAge)
 import UmbraVox.Chat.Session (initChatSession)
@@ -851,7 +851,7 @@ findSubstringPos needle = go 0
 
 withDB :: FilePath -> (FilePath -> IO Bool) -> IO Bool
 withDB name action = do
-    tmp <- getTemporaryDirectory
+    tmp <- getProjectTmpDir
     let path = tmp </> name
     result <- action path `catch` \(e :: SomeException) -> do
         putStrLn $ "  FAIL: dialogs DB exception: " ++ show e

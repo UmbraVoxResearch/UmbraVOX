@@ -2,7 +2,7 @@
 module Test.App.RuntimeLog (runTests) where
 
 import Data.List (sort)
-import System.Directory (removeFile, getTemporaryDirectory)
+import System.Directory (removeFile)
 import System.FilePath ((</>))
 import System.Posix.Files
     ( getFileStatus
@@ -20,7 +20,7 @@ import System.Posix.Files
     , intersectFileModes
     )
 import UmbraVox.App.RuntimeLog (redactedFieldKeys, ensureLogPermissions)
-import Test.Util (assertEq)
+import Test.Util (assertEq, getProjectTmpDir)
 
 runTests :: IO Bool
 runTests = do
@@ -51,7 +51,7 @@ testRedactionListSorted = do
 -- | ensureLogPermissions must set the file to 0600 (owner read/write only).
 testEnsurePermissions :: IO Bool
 testEnsurePermissions = do
-    tmp <- getTemporaryDirectory
+    tmp <- getProjectTmpDir
     let path = tmp </> "umbravox-test-log-perms.log"
     writeFile path "test\n"
     ensureLogPermissions path

@@ -22,12 +22,11 @@ import Data.IORef (writeIORef, readIORef)
 import Data.Maybe (isNothing)
 import System.Directory
     ( createDirectoryIfMissing
-    , getTemporaryDirectory
     , listDirectory
     , removeDirectoryRecursive
     )
 import System.FilePath ((</>))
-import Test.Util (assertEq)
+import Test.Util (assertEq, getProjectTmpDir)
 import Test.TUI.Sim.Util (mkTestConfig)
 import UmbraVox.Plugin.Registry (pluginEnabled)
 import UmbraVox.Storage.Class (StorageHandle(..))
@@ -125,7 +124,7 @@ testEphemeralInMemoryBackendActive = withTempDir $ \tmpDir -> do
 
 withTempDir :: (FilePath -> IO a) -> IO a
 withTempDir action = do
-    base <- getTemporaryDirectory
+    base <- getProjectTmpDir
     let dir = base </> "umbravox-ephemeral-integ-test"
     bracket
         (createDirectoryIfMissing True dir >> pure dir)

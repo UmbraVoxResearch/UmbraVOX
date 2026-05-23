@@ -6,9 +6,9 @@
 module Test.Storage.Anthony (runTests) where
 
 import Control.Exception (SomeException, catch)
-import System.Directory (getTemporaryDirectory, removeFile)
+import System.Directory (removeFile)
 import System.FilePath ((</>))
-import Test.Util (assertEq)
+import Test.Util (assertEq, getProjectTmpDir)
 import UmbraVox.Storage.Anthony
     ( closeDB, openDB
     , savePeer, loadPeers
@@ -28,7 +28,7 @@ runTests = do
 
 runAllTests :: IO Bool
 runAllTests = do
-    tmpDir <- getTemporaryDirectory
+    tmpDir <- getProjectTmpDir
     let dbFile = tmpDir </> "umbravox_test_anthony.db"
     r <- runWithDB dbFile
         `catch` (\(e :: SomeException) -> do
@@ -96,7 +96,7 @@ cleanup path = removeFile path
 
 hasAnthony :: IO (Maybe ())
 hasAnthony = do
-    tmpDir <- getTemporaryDirectory
+    tmpDir <- getProjectTmpDir
     let dbFile = tmpDir </> "umbravox-anthony-probe.db"
     result <- ((do
         db <- openDB dbFile

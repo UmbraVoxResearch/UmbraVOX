@@ -45,10 +45,10 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as C8
 import Data.List (nub)
-import System.Directory (getTemporaryDirectory, removeFile)
+import System.Directory (removeFile)
 import System.FilePath ((</>))
 
-import Test.Util (assertEq, mkPRNG, nextBytes, hexDecode)
+import Test.Util (assertEq, getProjectTmpDir, mkPRNG, nextBytes, hexDecode)
 
 import UmbraVox.Crypto.BIP39 (bip39Words)
 import UmbraVox.Crypto.Ed25519
@@ -752,7 +752,7 @@ testKM012ExportPlaintextPassthrough = do
 
 testKM013PerInstallSaltPersisted :: IO Bool
 testKM013PerInstallSaltPersisted = do
-    tmpBase <- getTemporaryDirectory
+    tmpBase <- getProjectTmpDir
     -- Use a unique name to avoid collisions with parallel test runs
     suffix <- randomBytes 8
     let tmpDir   = tmpBase </> ("km013-" ++ concatMap (\b -> show (fromEnum b)) (BS.unpack suffix))

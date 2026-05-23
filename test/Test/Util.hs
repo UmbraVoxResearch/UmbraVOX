@@ -22,13 +22,18 @@ module Test.Util
     , checkPropertyIO
       -- * Test helpers
     , assertEq
+      -- * Temp directory
+    , getProjectTmpDir
     ) where
 
 import Data.Bits ((.&.), shiftL, shiftR, xor)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Char (digitToInt, intToDigit)
+import Data.Maybe (fromMaybe)
 import Data.Word (Word8, Word32, Word64)
+import System.Directory (createDirectoryIfMissing)
+import System.Environment (lookupEnv)
 
 ------------------------------------------------------------------------
 -- Hex encoding / decoding (consolidated from all test modules)
@@ -148,3 +153,16 @@ assertEq name expected got =
             putStrLn $ "    expected: " ++ show expected
             putStrLn $ "    got:      " ++ show got
             pure False
+
+------------------------------------------------------------------------
+-- Project-local temp directory
+------------------------------------------------------------------------
+
+-- | Get a project-local temporary directory for tests.
+-- Uses UMBRAVOX_TEST_TMPDIR env var if set, otherwise build/test-tmp/.
+getProjectTmpDir :: IO FilePath
+getProjectTmpDir = do
+    mdir <- lookupEnv "UMBRAVOX_TEST_TMPDIR"
+    let dir = fromMaybe "build/test-tmp" mdir
+    createDirectoryIfMissing True dir
+    pure dir

@@ -75,8 +75,10 @@ newDefaultAppConfig :: IO AppConfig
 newDefaultAppConfig = do
     randomName <- generatePassphrase 1
     listenPort <- findAvailablePort defaultPorts
-    home <- getHomeDirectory
-    let logPath = expandHome home "~/.umbravox/umbravox.log"
+    dataDir <- lookupEnv "UMBRAVOX_DATA" >>= \case
+        Just d  -> pure d
+        Nothing -> (++ "/.umbravox") <$> getHomeDirectory
+    let logPath = dataDir ++ "/umbravox.log"
     packagedPluginRuntimeCatalog <- loadPackagedPluginRuntimeCatalog
     let packagedPluginCatalog = map toCatalogEntry packagedPluginRuntimeCatalog
     transportProviderRuntimeCatalog <- loadTransportProviderRuntimeCatalog
@@ -105,7 +107,7 @@ newDefaultAppConfig = do
         <*> newIORef initialMDNS
         <*> newIORef initialPEX
         <*> newIORef False
-        <*> newIORef "~/.umbravox/umbravox.db"
+        <*> newIORef (dataDir ++ "/umbravox.db")
         <*> newIORef initialPersistencePref
         <*> newIORef packagedPluginCatalog
         <*> newIORef packagedPluginRuntimeCatalog

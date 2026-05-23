@@ -20,11 +20,11 @@ module Test.Security.RegressionM7 (runTests) where
 
 import qualified Data.ByteString as BS
 import qualified Data.Map.Strict as Map
-import System.Directory (getTemporaryDirectory, removeFile)
+import System.Directory (removeFile)
 import System.FilePath ((</>))
 import Control.Exception (catch)
 
-import Test.Util (assertEq, strToBS, hexDecode)
+import Test.Util (assertEq, getProjectTmpDir, strToBS, hexDecode)
 
 import UmbraVox.App.Startup (expandHome)
 import UmbraVox.Crypto.Export (encryptExport, decryptExport)
@@ -112,7 +112,7 @@ test_filePermMask = 0o777  -- mask covering all rwxrwxrwx bits
 
 testKeyStoreFilePermissions :: IO Bool
 testKeyStoreFilePermissions = do
-    tmp <- getTemporaryDirectory
+    tmp <- getProjectTmpDir
     let path = tmp </> "umbravox-m7.1.1-perm-test.key"
         -- Deterministic identity key using fixed seed bytes
         ik = generateIdentityKey
