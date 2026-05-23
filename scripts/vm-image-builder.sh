@@ -80,11 +80,9 @@ ensure_builder_image() {
     export TMPDIR="$tmpdir"
 
     if ! (
-        nix --extra-experimental-features "nix-command flakes" \
-            --option build-dir "$tmpdir" \
-            build -L "$REPO_ROOT/nix/vm-builder.nix" -o "$BUILDER_IMAGE_DIR" 2>&1 || \
-        nix-build --option build-dir "$tmpdir" \
-            "$REPO_ROOT/nix/vm-builder.nix" -o "$BUILDER_IMAGE_DIR" 2>&1
+        TMPDIR="$tmpdir" nix-build \
+            "$REPO_ROOT/nix/vm-builder.nix" \
+            -o "$BUILDER_IMAGE_DIR" 2>&1
     ); then
         echo -e "${RED}[VM-BUILDER]${NC} Failed to build builder VM image."
         exit 1
