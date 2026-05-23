@@ -27,6 +27,16 @@ COMPLETED MILESTONES (see CHANGELOG.txt for details)
 [x] M11 Top-500 Cryptographic Attack Tests — see CHANGELOG v0.1.x
 [x] M12 TUI/Headless Decoupling — see CHANGELOG v0.1.x
 [x] M17 Ephemeral-by-Default + Plugin Architecture — see CHANGELOG v0.1.x
+[x] M20.1 Critical architectural fixes — see CHANGELOG Unreleased
+[x] M20.2 Error handling hardening — see CHANGELOG Unreleased
+[x] M20.3 Module cleanup — see CHANGELOG Unreleased
+[x] M20.6 Coq proofs — see CHANGELOG Unreleased
+[x] M21.4 Full codegen pipeline — see CHANGELOG Unreleased
+[x] M22.1 Go project scaffold — see CHANGELOG Unreleased
+[x] M23 Protocol Security Audit — see CHANGELOG Unreleased
+[x] M24 DHT Network + Unified Discovery — see CHANGELOG Unreleased
+[x] M25 UmbraClaw Plugin — see CHANGELOG Unreleased
+[x] M26.1 Documentation audit + attic migration — see CHANGELOG Unreleased
 
 ================================================================================
 MILESTONE M1: MVP ASSURANCE CLOSEOUT (BLOCKS PUBLICATION)
@@ -39,18 +49,15 @@ MILESTONE M1: MVP ASSURANCE CLOSEOUT (BLOCKS PUBLICATION)
 ================================================================================
 MILESTONE M3: NATIVE PER-HOST BUILD SUPPORT + CROSS-TARGET POLICY
 ================================================================================
+(all completed items moved to CHANGELOG.txt)
 
 [~] M3.1 Platform lanes
   [~] M3.1.1 Linux x86_64 native runner lane.
-  [x] M3.1.1.b Linux x86_64 runner evidence generated (build/evidence/runner-linux-x86_64.log).
   [ ] M3.1.2 Linux arm64 native runner lane.
   [~] M3.1.3 macOS native runner lane (hosted/native).
   [ ] M3.1.3.b Add an actual repo-owned native macOS runner lane and smoke evidence.
   [~] M3.1.4 Windows native runner lane (CLI).
   [ ] M3.1.4.b Add an actual repo-owned native Windows CLI runner lane and smoke evidence.
-  [x] M3.1.5 BSD remains source-only until native builders are available; policy documented in doc/RELEASES.md.
-
-[x] M3.2 Cross-compilation policy — COMPLETE (see CHANGELOG)
 
 ================================================================================
 MILESTONE M4: RELEASE COMPLIANCE, LICENSE, AND PROVENANCE GATES
@@ -74,9 +81,6 @@ Note: 221 original assumes → 0 admit() + 30 assume val. 17/24 specs fully prov
 [ ] M13.11 Coq external verification
   [ ] M13.11.4.e Universal completeness: denominators 1±d*x1*x2*y1*y2 ≠ 0 for on-curve points.
     Note: Requires d_nonsquare + field reasoning (Bernstein-Lange 2007 Thm 3.3).
-  [x] M13.11.4.f Universal associativity (ED-003): PROVED via Ed25519AssocUniversal.v.
-    9 Qed, polynomial certificate (sympy Groebner basis → Coq ring), 240 terms.
-    Cross-multiplied form for both x and y coordinates; 6 cofactors (A/B/C per coord).
   [ ] M13.11.4.g Concrete instance reorganization (Ed25519GroupAssoc.v): label coverage categories.
   [ ] M13.11.4.h Primality of 2^255-19 via PocklingtonRefl (blocked by bignums plugin).
     Note: Full factorization chain computed (14 levels). All Pocklington conditions
@@ -103,12 +107,7 @@ MILESTONE M14: PLATFORM EXPANSION — VM RUNNERS + ILLUMOS + BSDs
   [ ] M14.1.8 QEMU VM runner for SmartOS (illumos) x86_64.
   [ ] M14.1.9 QEMU VM runner for OpenIndiana (illumos) x86_64.
 
-[ ] M14.2 Nix VM images per platform
-  [x] M14.2.1 nix/vm-freebsd.nix — FreeBSD QEMU image with GHC + deps.
-  [x] M14.2.2 nix/vm-openbsd.nix — OpenBSD QEMU image with GHC + deps.
-  [x] M14.2.3 nix/vm-netbsd.nix — NetBSD QEMU image with GHC + deps.
-  [x] M14.2.4 nix/vm-dragonfly.nix — DragonFlyBSD QEMU image with GHC + deps. (INFO: GHC pkg availability not guaranteed; exits 0 with notice if missing)
-  [x] M14.2.5 nix/vm-omnios.nix — OmniOS QEMU image with GHC + deps.
+[ ] M14.2 Nix VM images per platform (remaining)
   [ ] M14.2.6 nix/vm-smartos.nix — SmartOS QEMU image with GHC + deps.
   [ ] M14.2.7 nix/vm-openindiana.nix — OpenIndiana QEMU image with GHC + deps.
   [ ] M14.2.8 nix/vm-linux-arm64.nix — Linux aarch64 QEMU image.
@@ -182,53 +181,12 @@ MILESTONE M16: DO-178C DAL A TESTING — REMAINING ITEMS
 ================================================================================
 MILESTONE M19: SIGNAL-COMPATIBLE CHAT BRIDGE + CLEANROOM VM TESTING (v0.2.0)
 ================================================================================
-Note: Reusable chat bridge plugin architecture. Signal is first implementation.
-Uses UmbraVOX's own crypto with Signal-compatible parameters (no Rust, no
-libsignal-client). Proves wire compatibility against real Signal-Server in
-cleanroom VM. Haskell + C + shell only. Tagged v0.2.0 when 100% complete.
+(all completed items moved to CHANGELOG.txt — see CHANGELOG v0.2.0 + Unreleased)
 
-[x] M19.1 Signal-compatible crypto layer (Haskell, reuses existing primitives)
-  [x] M19.1.1 UmbraVox.Crypto.Signal.Compat — Signal parameter set
-    - signalHKDFLabel = "WhisperText" (vs "UmbraVox_Ratchet_v1")
-    - signalRatchetLabel = "WhisperRatchet"
-    - Thin wrappers around existing kdfRK, kdfCK, ratchetEncrypt, etc.
-    - Same X25519, HMAC-SHA256, AES-256-GCM, HKDF-SHA256
-  [x] M19.1.2 UmbraVox.Protocol.SignalWire — Signal protobuf wire format
-    - Hand-rolled minimal protobuf (varint + length-delimited, ~5 message types)
-    - SignalMessage: version + ratchetKey + counter + prevCounter + ciphertext
-    - PreKeySignalMessage: registrationId + preKeyId + signedPreKeyId + baseKey + identityKey + message
-    - Envelope: type + sourceDevice + timestamp + content
-    - No proto-lens dependency
-  [x] M19.1.3 Tests: round-trip encode/decode for all Signal message types
-  [~] M19.1.4 Tests: encrypt with Signal params, verify against known test vectors
-    Note: round-trip tests done, known-vector comparison pending
-
-[x] M19.2 Core bridge infrastructure (3 changes to existing modules)
-  [x] M19.2.1 App/Types.hs — Add SessionCrypto sum type (RatchetCrypto | BridgeCrypto)
-  [x] M19.2.2 TUI/Actions/Session.hs — Branch sendToSession on SessionCrypto (done as part of M19.2.1)
-  [x] M19.2.3 Network/ProviderRuntime.hs — Add AUTH/CONTACTS/STATUS/PING IPC verbs
-  [x] M19.2.4 TUI/Render.hs — Mandatory distinct visual indicator for bridge sessions
-  [x] M19.2.5 TUI/Menu.hs + RuntimeCommand.hs — "New Bridge Chat" menu item
-  [x] M19.2.6 SecureFd.hs — Credential fd inheritance via memfd_create
-
-[x] M19.3 Signal bridge plugin (Haskell IPC subprocess)
-  [x] M19.3.1 umbravox-signal-bridge executable in UmbraVox.cabal
-  [x] M19.3.2 Bridge/Signal/Main.hs — IPC subprocess entry point
-  [x] M19.3.3 Bridge/Signal/Session.hs — Signal session management
-  [x] M19.3.4 Bridge/Signal/Registration.hs — Linked device provisioning (QR code)
-  [x] M19.3.5 Bridge/Signal/WebSocket.hs — Signal WebSocket client
-  [x] M19.3.6 plugins/signal-bridge/manifest.uvx — Updated bridge manifest
-  [x] M19.3.7 Message send: plaintext → Signal ratchet encrypt → protobuf → REST
-  [x] M19.3.8 Message recv: WebSocket → protobuf → Signal ratchet decrypt → JSON
+[~] M19.1.4 Tests: encrypt with Signal params, verify against known test vectors
+  Note: round-trip tests done, known-vector comparison pending
 
 [~] M19.4 Real Signal-Server cleanroom VM (~1 day Nix work)
-  [x] M19.4.1 nix/vm-signal-server.nix — NixOS declarative config
-    - services.postgresql, services.redis, services.zookeeper
-    - DynamoDB-local + MinIO systemd services
-    - Signal-Server JAR via fetchurl (pinned tag + hash)
-    - virtio-net inter-VM, deny-all external
-  [x] M19.4.2 scripts/vm-signal-server-run.sh — Boot + health-check
-  [x] M19.4.3 scripts/vm-signal-test.sh — Wire-compat test orchestration
   [~] M19.4.4 Wire-compat tests:
     Note: scaffold complete, Signal-Server JAR integration in progress
     - Registration + prekey upload (our X3DH → server accepts)
@@ -240,19 +198,6 @@ cleanroom VM. Haskell + C + shell only. Tagged v0.2.0 when 100% complete.
   [ ] M19.4.5 Fill FOD hash for Signal-Server Maven deps (first nix-build in VM)
   [ ] M19.4.6 Complete Signal-Server JAR build end-to-end in VM
   [ ] M19.4.7 Boot runtime VM with Signal-Server JAR and verify health endpoint
-
-[x] M19.5 TUI integration
-  [x] M19.5.1 Bridge provider selection dialog
-  [x] M19.5.2 Auth flow dialog (linked device QR code display)
-  [x] M19.5.3 Contact picker from bridge CONTACTS response
-  [x] M19.5.4 Chat history with bridge indicator ([Signal] prefix + color)
-  [x] M19.5.5 Bridge session status in contact list
-
-[x] M19.6 Reusable bridge framework
-  [x] M19.6.1 Bridge plugin authoring guide (plugins/template-bridge/)
-  [x] M19.6.2 Bridge envelope JSON schema as stable contract
-  [x] M19.6.3 Makefile targets: signal-bridge-build, test-signal-compat
-  [x] M19.6.4 Skeleton Haskell template for new bridges (IRC, Facebook, etc.)
 
 Deferred (future, not M19):
   - Groups (3-5x complexity of 1:1)
@@ -270,68 +215,19 @@ Existing tests preserved unchanged:
 ================================================================================
 MILESTONE M20: CODEBASE QUALITY + ARCHITECTURAL IMPROVEMENTS (v0.2.1)
 ================================================================================
-Note: Items from codebase audit (2026-05-20).
+(all completed items moved to CHANGELOG.txt — see CHANGELOG Unreleased)
 
-[x] M20.1 Critical architectural fixes
-  [x] M20.1.1 Eliminate unsafePerformIO global state (RuntimeLog, Random, Version)
-    Note: Version.hs (pure constant), RuntimeLog (AppConfig fields), Random (explicit initCSPRNG, empty MVar only). All done.
-  [x] M20.1.2 Break Network→TUI dependency (Listener.hs imports addSession)
-    Note: lcAddSession callback in ListenerCallbacks. TUI wires via RuntimeNetwork.hs.
-  [x] M20.1.3 Move Bridge/Signal/Main.hs out of library namespace
-    Note: Moved to app-signal-bridge/Main.hs, same pattern as app/Main.hs.
-
-[x] M20.2 Error handling hardening
-  [x] M20.2.1 Convert crypto error calls to Either/Maybe (AES, GCM, ChaChaPoly, Poly1305, HKDF)
-    Note: Added *Safe variants (11 functions). Original functions delegate to safe variants — all callers unchanged.
-  [x] M20.2.2 Add stub module documentation (comments, not WARNING pragmas)
-    Note: 24 stub modules marked with STUB MODULE comment headers.
-
-[x] M20.3 Module cleanup
-  [x] M20.3.1 Move consensus/economics stubs to deferred build target
-    Note: 24 stubs gated behind cabal flag(stubs). Build with -f -stubs to exclude.
-  [x] M20.3.2 Consolidate 5 transport stubs into Stubs.hs
-    Note: Kept as separate files (plugin architecture). Documented with STUB headers.
-  [x] M20.3.3 Verify all test files wired into Main.hs + cabal
-    Note: Evidence, SignalCompat, ProtocolLibsignal wired.
-  [x] M20.3.4 Attic docs archival (initial batch)
-    Note: doc/attic/ created with 7 files (01-overview, mvp-plan, persistence-model, assurance-roadmap, assurance-matrix, fstar-assume-reduction, karamel-evaluation). Full doc audit deferred to M26.1.
-
-[~] M20.4 Security hardening (M20.4.1 + M20.4.5 deferred)
+[~] M20.4 Security hardening (remaining)
   [ ] M20.4.1 Complete M15.3.2 SecureBytes migration for secret key fields
-  [x] M20.4.2 Audit and resolve all M-series TODO comments in source
-    Note: 36 TODOs audited. 3 stale refs fixed (M10.3.3→M20.4.5, M10.2.1 completed). 33 valid pending refs left.
-  [x] M20.4.3 Harden VM integration agent trust boundary
-    Note: strict AGENT_* validation + safer peer probes + tar path traversal checks added.
-    Note: AGENT_BUNDLE_SHA256 now mandatory (fail-closed); AGENT_SKIP_CHECKSUM=1 opt-out.
-    Note: ReleaseBridge.hs computes and passes SHA-256 automatically.
-    Note: Signed attestation (GPG/in-toto/SLSA) deferred to M4.2.4.
-  [x] M20.4.4 Harden provider IPC decode path against malformed input
-    Note: DATA hex decode now rejects invalid/odd payloads without crashing.
-    Note: Max line length guard (64 KiB) rejects oversized responses.
-    Note: Protocol error counter + IPC_PROTOCOL_ERROR telemetry on all decode failures.
   [ ] M20.4.5 Upgrade export KDF from HKDF-iteration to memory-hard KDF (Argon2id/scrypt)
-  [x] M20.4.6 Make config hash pinning fail closed (verify before apply)
-    Note: verifyConfigHash returns Either. initCoreRuntime exits on mismatch. --skip-config-verify escape hatch.
 
-[ ] M20.5 VM isolation completion
-  [x] M20.5.1 Migrate all Makefile test targets to VM-default
-    Note: All build/test/verify/codegen targets use vm_or_local. Host-only targets (lint, license, format-check, assurance-fast, test-infra, test-shells, clean) are grep/shell ops that don't need a compiler. run-local explicitly errors out.
-  [x] M20.5.2 Update flake.nix to not pull GHC into host store
-    Note: devShells.default is VM-only (qemu, git, make). devShells.full has toolchain.
-  [x] M20.5.3 Split smoke vs dev boot behavior in VM image
-    Note: vm-image smoke unit now auto-skips when .vm-init.sh is injected.
-    Note: vm-image now orders `umbravox-dev-init` before `umbravox-smoke` to prevent concurrent source sync races.
-    Note: vm-image smoke unit no longer waits on `network.target` (offline pipeline starts after local-fs).
-    Note: Verified in nix/vm-image.nix — two systemd services with correct ordering + conditional skip.
+[ ] M20.5 VM isolation completion (remaining)
   [~] M20.5.4 VM source export semantics
     Note: vm-dev-run now exports current worktree (not git archive HEAD) with exclusion filters.
     Note: vm-dev and smoke copy paths now use `.vm-source-ready` marker for idempotent workspace sync.
     Note: vm-dev exec mode now writes `/output/vm-exec-status`; host runner exits with guest command status.
   [~] M20.5.5 Fail closed on unenforced VM network ALLOW rules
     Note: vm-network-policy.sh now blocks VM boot when ALLOW rules are present without enforcement.
-  [x] M20.5.6 VM cache/output policy decision
-    Note: Keep persistent VM build cache and host /output share enabled by default.
-    Note: Cache is guest-mounted (`/dev/vdc`); host only sees qcow2 backing file.
   [ ] M20.5.7 Ephemeral test VM images — build fresh image per test run, destroy after
     Note: Test pipeline should not overwrite persistent dev image. Build ephemeral image
     in a temp path, run tests, discard. Keeps dev image stable while testing on clean state.
@@ -345,10 +241,6 @@ Note: Items from codebase audit (2026-05-20).
     This keeps the host nix store untouched (only qemu + basic nix needed on host).
     Runtime VM image shrinks to ~1-2GB (no GHC/cabal/GCC in image).
     Dev VM (make vm-dev) keeps full toolchain for interactive work.
-  [x] M20.5.7 Refresh README/QUICKSTART/VM-ISOLATION for vm-first defaults and run-local opt-in
-    Note: VM commands promoted as primary. Coq 475 Qed / 14 files.
-  [x] M20.5.8 Move remaining legacy provider manifests into plugins/
-    Note: `providers/signal-bridge/manifest.uvx` moved to `plugins/signal-bridge/manifest.uvx`.
   [ ] M20.5.9 Local-only VM isolation hardening execution checklist (agent-owned)
     [ ] M20.5.9.a Replace remote-builder config path with local VM nix config (`nix/vm-build.env` + resolver script)
     [ ] M20.5.9.b Remove host compile/test escape-hatch behavior from default Make targets (run-local guarded fail)
@@ -359,31 +251,16 @@ Note: Items from codebase audit (2026-05-20).
     [ ] M20.5.9.g Remove or archive obsolete remote-builder scripts/config examples once no references remain
 
 [~] M20.7 DRY reduction (build/test infra)
-  [~] M20.7.1 Consolidate repeated Makefile suite runner blocks
-    Note: run_named_suite macro added and core suite targets migrated.
   [ ] M20.7.2 Consolidate logged gate wrappers (test/verify) into shared helper
   [ ] M20.7.3 Extract release packaging shared shell library (release-package*.sh)
   [ ] M20.7.4 Extract VM SSH/QEMU helper library for *bsd/illumos setup scripts
 
-[x] M20.6 Coq proofs
-  [x] M20.6.1 ED-008e: Universal completeness PROVED — 62 Qed in Ed25519GroupUniversal.v
-    Note: 9 tactic bugs fixed. te_denom_plus_nonzero + te_denom_minus_nonzero proved. 475 Qed total.
-  [x] M20.6.2 Update shell.nix banner: 14 Coq files (done)
-
 ================================================================================
 MILESTONE M21: STUB IMPLEMENTATION + CODEGEN EXPANSION (v0.3.0-v0.4.0)
 ================================================================================
-Note: Comprehensive implementation of non-deferred stub modules. Everything
-codegen'd as much as possible. 7 new .spec files → C + FFI wrappers.
+(all completed items moved to CHANGELOG.txt — see CHANGELOG v0.3.0 + Unreleased)
 
-[~] M21.1 Phase 1 — Crypto stubs (v0.3.0)
-  [x] M21.1.1 Crypto.VRF — ECVRF-ED25519-SHA512 (RFC 9381) (5c7939f)
-    - vrfProve (secret key + message → 80-byte proof)
-    - vrfVerify (public key + message + proof → 64-byte output)
-    - Uses Ed25519 point ops + SHA-512 + Elligator2 hash-to-curve
-    - 5 importers (VRF test + 4 security attack tests)
-    - Test vectors: RFC 9381 Section 6
-    - F* spec: Spec.VRF.fst (3 assume val)
+[~] M21.1 Phase 1 — Crypto stubs (remaining)
   [~] M21.1.2 codegen/Specs/VRF.spec + csrc/generated/vrf.c + FFI wrapper
     - .spec file done (932f60b); C generation + FFI wrappers pending
     - Constant-time VRF proof generation
@@ -391,55 +268,21 @@ codegen'd as much as possible. 7 new .spec files → C + FFI wrappers.
   [ ] M21.1.3 codegen/Specs/Ed25519Extended.spec — point ops + Elligator2
     - Ed25519 scalar_mult_base, point_add, elligator2_hash
     - Extended beyond current sign/verify codegen
-  [x] M21.1.4 Crypto.PQWrapper — post-quantum outer encryption (c0b4c97)
-    - pqEncrypt: ML-KEM-768 encaps + AES-256-GCM encrypt
-    - pqDecrypt: ML-KEM-768 decaps + AES-256-GCM decrypt
-    - Thin composition over existing MLKEM + GCM
   [~] M21.1.5 codegen/Specs/PQWrapper.spec + csrc/generated/pqwrapper.c
     - .spec file done (932f60b); C generation + FFI wrappers pending
     - Serialized KEM ciphertext + AEAD ciphertext + tag
-  [x] M21.1.6 Crypto.Signal.Session — session state management (baef24c)
-    - Merge with Bridge.Signal.Session or implement persistent store
-    - Serialize/deserialize RatchetState
   [ ] M21.1.7 codegen/Specs/SessionState.spec — constant-time serialization
 
-[~] M21.2 Phase 2 — Protocol stubs (v0.3.1)
-  [x] M21.2.1 Protocol.MessageFormat — fixed 1024-byte message blocks (cff6c1c)
-    - packBlock: pad to 1024 bytes + length header (prevents traffic analysis)
-    - unpackBlock: extract payload + verify padding
-    - PKCS7-style padding
+[~] M21.2 Phase 2 — Protocol stubs (remaining)
   [~] M21.2.2 codegen/Specs/MessageFormat.spec + csrc/generated/messageformat.c
     - .spec file done (6f3fe1c); C generation + FFI wrappers pending
     - Constant-time padding (prevent padding oracle attacks)
-  [x] M21.2.3 Protocol.WireFormat — network message envelope with routing (d4da86d)
-    - Envelope: source ID + dest ID + message type + sequence + payload
-    - wrapEnvelope / unwrapEnvelope
   [~] M21.2.4 codegen/Specs/WireFormat.spec + csrc/generated/wireformat.c
     - .spec file done (6f3fe1c); C generation + FFI wrappers pending
 
-[~] M21.3 Phase 3 — Chat API + Messaging P2P (v0.3.2)
-  [x] M21.3.1 Chat.API — JSON-RPC 2.0 API for headless/programmatic access (4d3108b)
-    - HTTP server on configurable port (127.0.0.1 only)
-    - Methods: sendMessage, getHistory, listContacts, getStatus, connect, disconnect
-    - Enables automation, bots, alternative UIs
-  [x] M21.3.2 Network.PeerManager — peer discovery, scoring, banning (669d3e4)
-    - Known peers, scores, ban list, connection counts
-    - Combine mDNS (existing) + PEX (existing) + bootstrap nodes
-  [x] M21.3.3 Network.Dandelion — Dandelion++ privacy routing (3d6753f)
-    - Stem phase (single relay chain) → fluff phase (broadcast)
-    - Prevents linking messages to origin IP
-    - Timer-based stem→fluff transition
+[~] M21.3 Phase 3 — Chat API + Messaging P2P (remaining)
   [ ] M21.3.4 codegen/Specs/Dandelion.spec — constant-time routing decision
-  [x] M21.3.5 Network.Protocol — wire message types for P2P (6e417e0)
-    - Message types: Handshake, Peer, Message, Ack
-    - Binary encoding/decoding + version negotiation
   [ ] M21.3.6 codegen/Specs/NetworkProtocol.spec + csrc/generated/netprotocol.c
-
-[x] M21.4 Phase 4 — Full codegen pipeline (v0.4.0)
-  [x] M21.4.1 Run codegen for all 18 .spec files — verified (17d7a9c)
-  [x] M21.4.2 Wire FFI wrappers into library (Generated/*.hs + FFI/*.hs) — verified
-  [x] M21.4.3 Differential testing: C codegen vs Haskell reference impl (6a67357)
-  [x] M21.4.4 F* spec coverage for new modules (7 specs added) (64032bc)
 
 Deferred (non-blockchain):
   - SecureBytes migration (M20.4.1) — invasive (27+ sites)
@@ -450,14 +293,7 @@ MILESTONE M22: SHELL → GO MIGRATION (v0.5.0)
 ================================================================================
 Note: Replace 51 shell scripts with static Go binaries compiled in VM.
 Eliminates shell fragility, quoting bugs, platform differences.
-
-[x] M22.1 Go project scaffold (32f05a6)
-  [x] M22.1.1 tools/go.mod — Go module definition
-  [x] M22.1.2 tools/pkg/qemu/ — QEMU argument builder
-  [x] M22.1.3 tools/pkg/disk/ — COW overlay management
-  [x] M22.1.4 tools/pkg/ninep/ — 9p virtfs helpers
-  [x] M22.1.5 tools/pkg/netpol/ — network policy parser
-  [x] M22.1.6 make tools — build all Go binaries in VM
+(M22.1 Go project scaffold complete — see CHANGELOG.txt)
 
 [ ] M22.2 Priority 1 — VM orchestration (8 scripts, most complex)
   [ ] M22.2.1 tools/cmd/vm-dev/ — replace vm-dev-run.sh
@@ -482,166 +318,31 @@ Eliminates shell fragility, quoting bugs, platform differences.
 Keep as shell (too simple): nix-flake.sh, with-suite-lock.sh
 
 ================================================================================
-MILESTONE M23: PROTOCOL SECURITY AUDIT FIXES (v0.3.1)
+MILESTONE M26: DOCUMENTATION OVERHAUL (every release)
 ================================================================================
-Note: Findings from adversarial protocol audit (2026-05-22). 32 findings total.
-See doc/PROTOCOL-AUDIT-v0.3.0.md for full details.
+(M26.1 complete — see CHANGELOG.txt)
 
-[x] M23.1 Critical + High fixes
-  [x] M23.1.1 WireFormat: encrypted envelope (CRITICAL — stealth + session tokens)
-    Design: doc/ENCRYPTED-ENVELOPE-DESIGN.md (511 lines, approved)
-    [x] M23.1.1a WireFormat v1 rewrite — remove srcId/dstId, add ephemeralR(32) + viewTag(1) + scanTag(2) (7daf40d)
-    [x] M23.1.1b RouteToken module — HKDF token derivation with channel + identity binding (dba2717)
-    [x] M23.1.1c Envelope AEAD — ChaCha20-Poly1305 encryption (HMAC for handshake, AEAD for data) (06fe917)
-    [x] M23.1.1d Sender identity in encrypted payload — senderId(32) prepended before ratchet encrypt (c2f55fa)
-    [x] M23.1.1e Handshake integration — derive route tokens after PQXDH, key confirmation MAC (7ff000a)
-    [x] M23.1.1f Dandelion opaque forwarding — relay swaps token, never decrypts inner envelope (7ff000a)
-    [x] M23.1.1g DHT presence (stealth keys, presence only, no message storage) (617f7eb)
-    [x] M23.1.1h DoS mitigations — PoW challenge, rate cap, extended scan tag, DHT STORE sig (dda0853)
-    [x] M23.1.1i Token rotation — hybrid counter + wall-clock, no grace period needed (09a1b64)
-    [x] M23.1.1j MitM protections — channel binding, identity binding, key confirmation MAC (c031309)
-    [x] M23.1.1k Tests — v1 round-trip, token derivation, stealth scan, relay forwarding, PoW (47fcc46)
-  [x] M23.1.2 Handshake: cap recvBundle allocation at 2048 bytes (8344347)
-  [x] M23.1.3 Handshake: cap recvInitialMessage allocation (8344347)
-  [x] M23.1.4 PeerManager: evict lowest-scored at capacity (9f650e2)
-  [x] M23.1.5 Chat.API: add bearer token authentication (13acd1e)
-  [x] M23.1.6 WireFormat: add HMAC/AEAD envelope authentication (0f04292)
+[~] M26.2 Auto-generated documentation
+  [ ] M26.2.2 Module dependency graph via graphmod or standalon
+  [ ] M26.2.3 API docs for Chat.API JSON-RPC (auto from source)
+  [ ] M26.2.4 Plugin authoring docs auto-extracted from template-bridge/
+  [ ] M26.2.5 Test coverage report generation (make coverage-report)
 
-[x] M23.2 Medium fixes
-  [x] M23.2.1 X3DH: OPK depletion protection (log/alert, require OPK for initial sessions) (820a469)
-  [x] M23.2.2 X3DH: prekey bundle freshness check (timestamp/serial + HKDF binding) (820a469)
-  [x] M23.2.3 Handshake: version negotiation (cf921c4)
-  [x] M23.2.4 Handshake: validate OPK length before extraction (cf921c4)
-  [x] M23.2.5 Dandelion: adaptive fluff probability based on peer count (c778702)
-  [x] M23.2.6 Dandelion: exclude previous stem peer for one epoch (c778702)
-  [x] M23.2.7 Dandelion: fall back to FluffBroadcast when no stem peer (3afbd53)
-  [x] M23.2.8 PeerManager: rate-limit score changes + time-based decay (c778702)
-  [x] M23.2.9 Chat.API: strict input length/complexity limits (13acd1e)
-  [x] M23.2.10 Chat.API: validate rpcId as JSON number/string/null (injection) (13acd1e)
-  [x] M23.2.11 Chat.API: connect endpoint allowlist (SSRF prevention) (c778702)
-  [x] M23.2.12 WireFormat: per-connection sequence number sliding window (c778702)
-
-[x] M23.3 Low fixes (tracked, not urgent)
-  [x] M23.3.1 X3DH: bind identity key into SPK signature (53852fc)
-  [x] M23.3.2 PQXDH: check mlkemDecaps failure indicator (53852fc)
-  [x] M23.3.3 DoubleRatchet: rate-limit ratchet steps + DH key replay check (a09a111)
-  [x] M23.3.4 DoubleRatchet: O(log n) eviction for skipped-key cache (a09a111)
-  [x] M23.3.5 Handshake: move trust check before PQXDH computation (53852fc)
-  [x] M23.3.6 Dandelion: rejection sampling for uniformIndex (modular bias) (c778702)
-  [x] M23.3.7 PeerManager: enforce ban expiry + set lastSeen on refresh (c778702)
-  [x] M23.3.8 MessageFormat: reduce maxPayload to 1019 for guaranteed PKCS7 padding (53852fc)
-  [x] M23.3.9 WireFormat: reject unknown version before parsing (c778702)
-
-[x] M23.4 Crypto implementation audit fixes (doc/CRYPTO-AUDIT-v0.3.0.md)
-  [x] M23.4.1 Ed25519: cofactored verify or small-order rejection (HIGH — signature malleability) (5905269)
-  [x] M23.4.2 X25519: constant-time conditional swap (HIGH — timing side-channel on scalar bits) (746eab5)
-  [x] M23.4.3 VRF: hardcode sqrt(-486664) sign convention (MEDIUM) (04257e2)
-  [x] M23.4.4 VRF: prime-order subgroup validation on decoded Gamma (MEDIUM) (04257e2)
-  [x] M23.4.5 MLKEM: validate 64-bit Int assumption / add overflow guards (MEDIUM) (04257e2)
-  [x] M23.4.6 MLKEM: validate polyBaseMul zeta indexing vs FIPS 203 KAT (MEDIUM) (04257e2)
-  [x] M23.4.7 GCM: add nonce-reuse detection at module level (MEDIUM) (04257e2)
+[ ] M26.3 Per-milestone documentation requirements
+  Note: Every milestone MUST include:
+  - Updated CHANGELOG.txt entry
+  - Updated TODO.txt status
+  - Updated AGENTS.md if architecture changes
+  - Updated doc/ARCHITECTURE.md if module structure changes
+  - Haddock on all new public modules
 
 ================================================================================
-MILESTONE M24: DHT NETWORK + UNIFIED DISCOVERY (v0.4.0)
+MILESTONE M27: SECURITY REVIEW v0.4.1 FIXES
 ================================================================================
-Note: Kademlia-style DHT, unified discovery manager, security model refactor.
-See doc/DHT-NETWORK-PLAN.md for full design.
+(all completed items moved to CHANGELOG.txt — see CHANGELOG Unreleased)
 
-[x] M24.1 Security model refactor (Phase 1)
-  [x] M24.1.1 Remove Chastity from ConnectionMode enum and all references
-  [x] M24.1.2 Rename buildChastityOnly to buildChasteOnly in BuildProfile.hs
-  [x] M24.1.3 Update default mode: Chastity -> Chaste in App/Startup.hs
-  [x] M24.1.4 Promiscuous: PEX disabled in applyConnectionModeSideEffects
-    Note: cfgPEXAutomatic field not needed — PEX starts False, Swing/Promiscuous no longer auto-enable it.
-  [x] M24.1.5 Swing: PEX manual (user-initiated via toggle, not auto after handshake)
-  [x] M24.1.6 Update TUI dialog labels and mode descriptions
-  [x] M24.1.7 Chaste absorbs Chastity behavior (trusted keys only, no persistence unless plugin)
-    Note: Config migration (M24.1.9) not needed — ConnectionMode is runtime-only, not persisted.
-
-[x] M24.2 Static discovery sources (Phase 2) (da1b71c)
-  [x] M24.2.1 Network.Discovery module scaffold (DiscoverySource, DiscoveryManager) (da1b71c)
-  [x] M24.2.2 Environment variable source: parse UMBRAVOX_PEERS (da1b71c)
-  [x] M24.2.3 DNS SRV/TXT source: _umbravox._tcp.<domain> lookup (da1b71c)
-  [x] M24.2.4 Config file source: ~/.umbravox/peers parser (da1b71c)
-  [x] M24.2.5 Extend PeerSource with SourceDHT, SourceDNS, SourceEnvVar, SourceConfig (da1b71c)
-  [x] M24.2.6 Wire DiscoveryManager into AppConfig and startup sequence (da1b71c)
-  [x] M24.2.7 Unit tests for each static source parser (da1b71c)
-
-[x] M24.3 DHT core (Phase 3)
-  [x] M24.3.1 DHT.Types: NodeId, DHTNode, DHTMessage, DHTConfig (08a0a8b)
-  [x] M24.3.2 DHT.RoutingTable: k-bucket insert/find/refresh/evict (08a0a8b)
-  [x] M24.3.3 DHT.RPC: binary serialization over AnyTransport (11e807d)
-  [x] M24.3.4 DHT.Lookup: iterative FIND_NODE with alpha=3 parallelism (11e807d)
-  [x] M24.3.5 DHT.Store: iterative STORE/FIND_VALUE with TTL expiration (11e807d)
-  [x] M24.3.6 DHT module: bootstrap, maintain, announcePresence, findPeer (11e807d)
-  [x] M24.3.7 Unit tests: routing table operations (insert, evict, find closest) (9d4dcf8)
-  [x] M24.3.8 Unit tests: RPC round-trip + DHT message handling (9d4dcf8)
-  [x] M24.3.9 Node ID verification: SHA-256(identity key) == claimed NodeId (8fe16ed)
-
-[x] M24.4 DHT integration (Phase 4)
-  [x] M24.4.1 Wire DHT into DiscoveryManager as DiscDHT source (8fe16ed)
-  [x] M24.4.2 Dandelion++ integration: stem-route self-lookups and self-stores (8fe16ed)
-  [x] M24.4.3 PeerManager integration: SourceDHT scoring and ban propagation (8fe16ed)
-  [x] M24.4.4 Transport integration: DHT message type prefix in Noise payload (b15d8c1)
-  [x] M24.4.5 AppConfig: cfgDHTEnabled, cfgDHTBootstrapNodes fields (8fe16ed)
-  [x] M24.4.6 Bootstrap sequence: connect to bootstrap nodes, populate routing table (b15d8c1)
-  [x] M24.4.7 Periodic maintenance: bucket refresh, value republish, stale eviction (8fe16ed)
-  [x] M24.4.8 Integration tests with loopback transport (feee3b6)
-
-[x] M24.5 TUI and API (Phase 5)
-  [x] M24.5.1 Settings dialog: Discovery tab with source checkboxes (acac5fd)
-  [x] M24.5.2 Status bar: active discovery source count indicator (acac5fd)
-  [x] M24.5.3 Peer list: source tag display (mDNS/PEX/DHT/DNS/etc.) (acac5fd)
-  [x] M24.5.4 Manual PEX exchange button for Swing mode (acac5fd)
-  [x] M24.5.5 Chat.API: exchangePeers RPC method (f6d7d7c)
-  [x] M24.5.6 Chat.API: dhtStatus RPC method (routing table size, stored values) (f6d7d7c)
-
-[x] M24.6 Security hardening (Phase 6)
-  [x] M24.6.1 Sybil attack test: many fake node IDs targeting same bucket (65d9292)
-  [x] M24.6.2 Eclipse attack test: attacker fills routing table with colluding nodes (65d9292)
-  [x] M24.6.3 Storage spam test: rate limiting STORE operations (65d9292)
-  [x] M24.6.4 Routing table poisoning test: invalid node ID verification (65d9292)
-  [x] M24.6.5 DHT message size cap enforcement (4096 bytes max) (65d9292)
-  [x] M24.6.6 Adaptive DHT parameters based on network size estimate (3ba3887)
-  [x] M24.6.7 F* spec: routing table invariants (bucket size, ordering) (3ba3887)
-
-================================================================================
-BLOCKED (EXTERNAL DEPENDENCIES)
-================================================================================
-
-[!] X1 Platform runner evidence (needs hardware)
-  [ ] X1.2 M3.1.2 Linux arm64 native runner lane (needs arm64 hardware or QEMU emulation).
-    Note: arm64 image stub exists; requires aarch64 builder.
-
-[!] X2 Provenance signing and attestation (needs policy decisions)
-  [ ] M4.2.4 in-toto/SLSA attestation path — deferred (see M4.2).
-
-[!] X3 Deferred implementation
-  [~] M1.1.3 Anthony.hs encryption integration — INDEFINITELY DEFERRED (Anthony to be replaced with direct sqlite).
-
-================================================================================
-================================================================================
-MILESTONE M25: UMBRACLAW PLUGIN (v0.5.0+)
-================================================================================
-Note: UmbraClaw integration plugin for UmbraVOX. Uses existing bridge
-plugin architecture (ProviderCapBridge + IPC subprocess protocol).
-
-[x] M25.1 UmbraClaw plugin scaffold (2f76bc9)
-  [x] M25.1.1 plugins/umbraclaw/manifest.uvx — bridge manifest (2f76bc9)
-  [x] M25.1.2 src/UmbraVox/Bridge/UmbraClaw/Main.hs — IPC subprocess (2f76bc9)
-  [x] M25.1.3 src/UmbraVox/Bridge/UmbraClaw/Session.hs — session management (2f76bc9)
-  [x] M25.1.4 app-umbraclaw/Main.hs — executable entry point (2f76bc9)
-  [x] M25.1.5 UmbraVox.cabal: umbravox-umbraclaw executable stanza (2f76bc9)
-
-[x] M25.2 UmbraClaw protocol integration (59a6cc1)
-  [x] M25.2.1 UmbraClaw authentication flow (59a6cc1)
-  [x] M25.2.2 UmbraClaw message send/receive via bridge IPC (59a6cc1)
-  [x] M25.2.3 UmbraClaw contact list sync (59a6cc1)
-  [x] M25.2.4 TUI: UmbraClaw chat type indicator + auth dialog (8f9c345)
-
-[x] M25.3 Testing (75e42d8)
-  [x] M25.3.1 UmbraClaw IPC smoke test (75e42d8)
-  [x] M25.3.2 UmbraClaw wire-compatibility tests (75e42d8)
+[~] M27.5 High build + supply chain fixes (remaining)
+  [ ] M27.5.4 Pin nixpkgs to stable branch (HI-016) — needs coordinated flake.lock update
 
 ================================================================================
 MILESTONE M28: OFFLINE MESSAGE DELIVERY (future)
@@ -669,74 +370,17 @@ online. DHT does NOT store messages (design decision for privacy).
   [ ] M28.3.3 Queue overflow / stale message eviction test
 
 ================================================================================
-MILESTONE M27: SECURITY REVIEW v0.4.1 FIXES
-================================================================================
-Note: 72 findings from adversarial review (5 agents: privacy, crypto, security,
-build, supply chain). See doc/SECURITY-REVIEW-v0.4.1.md for full details.
-
-[x] M27.1 Critical fixes (3 findings) (51ace78)
-  [x] M27.1.1 mDNS: ephemeral rotating IDs, remove display name (51ace78)
-  [x] M27.1.2 Default pure-haskell-crypto to False, add compile guard (51ace78)
-  [x] M27.1.3 Quote VM exec heredoc, pass cmd via file (51ace78)
-
-[x] M27.2 High privacy fixes (5 findings)
-  [x] M27.2.1 Message padding to fixed size buckets before encryption (2c9eb7c)
-  [x] M27.2.2 DHT NodeId: HKDF with per-boot ephemeral salt (2c9eb7c)
-  [x] M27.2.3 PEX: exchange opaque session tokens not pubkey fingerprints (2c9eb7c)
-  [x] M27.2.4 PQXDH: wrap initial message inside Noise IK encryption (a8f2d9b)
-  [x] M27.2.5 Listener: truncated fingerprint with user confirmation (cd6c918)
-
-[x] M27.3 High crypto fixes (4 findings) (cd6c918)
-  [x] M27.3.1 GCM: reject inputs > (2^32-2)*16 bytes per NIST SP 800-38D (cd6c918)
-  [x] M27.3.2 CSPRNG: force reseed near Word32 maxBound or use Word64 (cd6c918)
-  [x] M27.3.3 StealthAddress: prime-order subgroup check on spend key (cd6c918)
-  [x] M27.3.4 WireFormat AEAD: 64-bit sequence counter or re-key guard (cd6c918)
-
-[~] M27.4 High security fixes (4 findings)
-  [x] M27.4.1 Anthony: hand-rolled SQLite3 FFI + prepared statements (a8d32d3)
-  [x] M27.4.2 Selective TOFU: associate keys with identity, reject changes (a8f2d9b)
-  [x] M27.4.3 Noise: add nonce overflow check before encrypt/decrypt (f6dec89)
-  [x] M27.4.4 Legacy plaintext pass-through: reject non-UVENC1 rows (073d59c)
-
-[~] M27.5 High build + supply chain fixes (6 findings)
-  [x] M27.5.1 Add cc-options hardening flags to cabal (073d59c)
-  [x] M27.5.2 Enable VM firewall by default (b98da5a)
-  [x] M27.5.3 /work tmpfs mode 0700 (b98da5a)
-  [ ] M27.5.4 Pin nixpkgs to stable branch (HI-016) — needs coordinated flake.lock update
-  [x] M27.5.5 VM base images: pin SHA-256 hashes (c70c445)
-  [x] M27.5.6 Remove curl-pipe-sh, add hash verification (c70c445)
-
-[ ] M27.6 Medium fixes (batch)
-  [x] M27.6.1 Redact Show instances for secret types (a819048)
-  [x] M27.6.2 Reduce route token rotation period (a819048)
-  [x] M27.6.3 Add timing jitter for Dandelion forwarding (a819048)
-  [x] M27.6.4 Encrypt message type in AEAD payload (a8f2d9b)
-  [x] M27.6.5 KeyStore: per-install random salt (a819048)
-  [x] M27.6.6 constantEq: implement in C via FFI (073d59c, feadf14)
-  [x] M27.6.7 Wire key confirmation MAC into handshake flow (a8f2d9b)
-  [x] M27.6.8 Adaptive PoW difficulty + expiry + connection binding (a8f2d9b)
-  [x] M27.6.9 Time-based expiry for skipped message keys (45ff19c)
-  [x] M27.6.10 HKDF info: add length prefixes (a8f2d9b)
-  [x] M27.6.11 Sequence window: add high-water mark (a819048)
-  [x] M27.6.12 API auth: use constantEq for token comparison (feadf14)
-  [x] M27.6.13 IPC: chunked reading with incremental length check (2fcc8b4)
-  [x] M27.6.14 SSRF: block IPv6 private + IPv4-mapped addresses (2fcc8b4)
-  [x] M27.6.15 DHT store: add max entry count limit (feadf14)
-  [x] M27.6.16 Codegen: validate output paths against allowlist (6f578e3)
-  [x] M27.6.17 Cabal: generate and commit cabal.project.freeze (de63400)
-  [x] M27.6.18 GPG release signing mandatory (de63400)
-  [x] M27.6.19 Plugin: restrict directories, require signed manifests (de63400)
-  [x] M27.6.20 Test vectors: add SHA-256 integrity verification (6f578e3)
-  [x] M27.6.21 Release manifest: compute verification claims dynamically (de63400)
-  [x] M27.6.22 Reproducibility check as mandatory release gate (6f578e3)
-  [x] M27.6.23 isBundleFresh: reject future timestamps > 1 hour (a819048)
-  [x] M27.6.24 GCM nonce tracker: bounded or counter-based (6f578e3)
-  [x] M27.6.25 RuntimeLog: switch to denylist redaction (6f578e3)
-
-OUTSIDE MVP (DEFERRED)
+BLOCKED (EXTERNAL DEPENDENCIES)
 ================================================================================
 
-[!] Persistence integration (needs upstream)
+[!] X1 Platform runner evidence (needs hardware)
+  [ ] X1.2 M3.1.2 Linux arm64 native runner lane (needs arm64 hardware or QEMU emulation).
+    Note: arm64 image stub exists; requires aarch64 builder.
+
+[!] X2 Provenance signing and attestation (needs policy decisions)
+  [ ] M4.2.4 in-toto/SLSA attestation path — deferred (see M4.2).
+
+[!] X3 Deferred implementation
   [~] M1.1.3 Anthony.hs encryption integration — INDEFINITELY DEFERRED (Anthony to be replaced with direct sqlite).
 
 ================================================================================
@@ -771,29 +415,8 @@ Economics modules (2):
   - Economics.Onboarding — onboarding token economics
   - Economics.Cycle — economic cycle management
 
+OUTSIDE MVP (DEFERRED)
 ================================================================================
-MILESTONE M26: DOCUMENTATION OVERHAUL (every release)
-================================================================================
-Note: Move stale docs to attic/, maintain doc/ as single source of truth.
-Auto-generate where possible. Update CHANGELOG + TODO with every change.
 
-[x] M26.1 Documentation audit + attic migration (fe1ecd5)
-  [x] M26.1.1 Move stale doc/ files to attic/ (fe1ecd5)
-  [x] M26.1.2 Update doc/README.md links + index (fe1ecd5)
-  [x] M26.1.3 Update doc/ARCHITECTURE.md for current module structure (fe1ecd5)
-  [x] M26.1.4 doc/QUICKSTART.md already covers VM-first workflow
-
-[~] M26.2 Auto-generated documentation
-  [x] M26.2.1 Haddock generation via make docs (cabal haddock) (fe1ecd5)
-  [ ] M26.2.2 Module dependency graph via graphmod or standalon
-  [ ] M26.2.3 API docs for Chat.API JSON-RPC (auto from source)
-  [ ] M26.2.4 Plugin authoring docs auto-extracted from template-bridge/
-  [ ] M26.2.5 Test coverage report generation (make coverage-report)
-
-[ ] M26.3 Per-milestone documentation requirements
-  Note: Every milestone MUST include:
-  - Updated CHANGELOG.txt entry
-  - Updated TODO.txt status
-  - Updated AGENTS.md if architecture changes
-  - Updated doc/ARCHITECTURE.md if module structure changes
-  - Haddock on all new public modules
+[!] Persistence integration (needs upstream)
+  [~] M1.1.3 Anthony.hs encryption integration — INDEFINITELY DEFERRED (Anthony to be replaced with direct sqlite).
