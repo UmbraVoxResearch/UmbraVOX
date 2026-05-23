@@ -2,7 +2,7 @@
 set -euo pipefail
 echo "=== UmbraVOX Visual Regression ==="
 
-# When launched via vm-dev-run.sh exec, /work/umbravox already exists
+# When launched via ./uv exec --, /work/umbravox already exists
 # with build cache symlinks intact. Only copy fresh if missing.
 if [ ! -d /work/umbravox ]; then
     mount /dev/vdb /mnt/src 2>/dev/null || mount -o ro /dev/vdb /mnt/src

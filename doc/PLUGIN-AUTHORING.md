@@ -311,4 +311,4 @@ The executable name must match the `entrypoint` value in the manifest
 6. Add descriptor, endpoint schema, render, and parse cases
 7. Add `executable` stanza to `UmbraVox.cabal`
 8. Add IPC smoke test in `scripts/test-<plugin>-bridge-ipc.sh`
-9. Run `make test-make-options` to verify Makefile wiring
+9. Run `./uv help` to verify build system wiring
