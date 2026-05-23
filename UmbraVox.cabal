@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               UmbraVox
-version:            0.4.1
+version:            0.4.2
 synopsis:           Decentralized encrypted communications protocol
 description:
   UmbraVox is a research-oriented encrypted messaging project with
