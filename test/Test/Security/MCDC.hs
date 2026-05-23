@@ -11,20 +11,30 @@
 --   CD = chachaPolyDecrypt, AE = aesEncrypt, AD = aesDecrypt,
 --   EX = decryptExport, DP = Ed25519.decodePoint, KS = KeyStore blob length,
 --   KK = Keccak sponge rate, DW = Noise decryptWithKey.
+--
+-- M16.2-4 gap-fill additions:
+--   GA = GCM auth-tag decision paths, EV = Ed25519 verify decision paths,
+--   CS = Curve25519 cswap/x25519 paths, WF = WireFormat decode paths.
 module Test.Security.MCDC (runTests) where
 
 import Control.Exception (evaluate, try, SomeException)
+import Data.Bits (xor)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 
 import Test.Util (assertEq)
 import UmbraVox.Crypto.AES (aesEncrypt, aesDecrypt)
 import UmbraVox.Crypto.ChaChaPoly (chachaPolyEncrypt, chachaPolyDecrypt)
-import UmbraVox.Crypto.Ed25519 (decodePoint)
+import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
+import UmbraVox.Crypto.Ed25519 (ed25519Sign, ed25519Verify, ed25519PublicKey,
+                                 decodePoint, groupL, encodeLEn)
 import UmbraVox.Crypto.Export (decryptExport)
-import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
+import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt, gcmEncryptSafe, gcmDecryptSafe)
 import UmbraVox.Crypto.Keccak (sha3_256, shake128)
 import UmbraVox.Network.Noise.Handshake (decryptWithKey)
+import UmbraVox.Protocol.WireFormat (Envelope(..), decodeEnvelope, wrapEnvelope,
+                                      encodeEnvelope, decodeEnvelopeAEAD,
+                                      encodeEnvelopeAEAD, deriveEnvelopeKey)
 
 ------------------------------------------------------------------------
 -- Runner
@@ -72,6 +82,37 @@ runTests = do
 
           -- Noise decryptWithKey guard (table 14)
         , testDW1_cipherMacTooShort
+
+          -- M16.2-4: GCM auth-tag decision coverage
+        , testGA1_gcmAuthTagValid
+        , testGA2_gcmAuthTagInvalid
+        , testGA3_gcmEncryptSafeValid
+        , testGA4_gcmDecryptSafeTagMismatch
+
+          -- M16.2-4: Ed25519 verify decision paths
+        , testEV1_validSignature
+        , testEV2_sigWrongLen
+        , testEV3_pubkeyWrongLen
+        , testEV4_smallOrderPubkey
+        , testEV5_smallOrderR
+        , testEV6_sGEGroupL
+        , testEV7_invalidPubkeyDecode
+        , testEV8_invalidRDecode
+
+          -- M16.2-4: X25519/cswap decision paths
+        , testCS1_x25519ValidDH
+        , testCS2_x25519WrongScalarLen
+        , testCS3_x25519WrongPointLen
+        , testCS4_x25519LowOrderPoint
+
+          -- M16.2-4: WireFormat decode decision paths
+        , testWF1_decodeTooShort
+        , testWF2_decodeWrongVersion
+        , testWF3_decodeHmacMismatch
+        , testWF4_decodeRoundTrip
+        , testWF5_decodeAEADTooShort
+        , testWF6_decodeAEADWrongVersion
+        , testWF7_decodeAEADRoundTrip
         ]
     let passed = length (filter id results)
         total  = length results
@@ -306,3 +347,274 @@ testDW1_cipherMacTooShort = do
         shortInput = BS.replicate 16 0x03  -- < 32 bytes (hsHmacLen)
     assertEq "DW1: decryptWithKey cipherMac < 32 bytes returns Nothing"
         Nothing (decryptWithKey k h shortInput)
+
+------------------------------------------------------------------------
+-- M16.2-4: GCM authentication tag decision coverage
+------------------------------------------------------------------------
+-- These tests exercise the constantEq tag-verification branch inside
+-- gcmDecrypt (GCM.hs:221) and the safe variants, covering:
+--   - Tag matches (Just plaintext) — constantEq returns True
+--   - Tag mismatches (Nothing) — constantEq returns False
+
+-- GA1: valid encrypt + decrypt roundtrip — auth tag matches
+testGA1_gcmAuthTagValid :: IO Bool
+testGA1_gcmAuthTagValid = do
+    let (ct, tag) = gcmEncrypt validKey32 validNonce12 BS.empty validPT
+        result    = gcmDecrypt validKey32 validNonce12 BS.empty ct tag
+    assertEq "GA1: gcmDecrypt valid tag returns Just plaintext"
+        (Just validPT) result
+
+-- GA2: decrypt with corrupted tag — auth tag mismatch
+testGA2_gcmAuthTagInvalid :: IO Bool
+testGA2_gcmAuthTagInvalid = do
+    let (ct, tag) = gcmEncrypt validKey32 validNonce12 BS.empty validPT
+        badTag    = BS.map (+ 1) tag  -- corrupt every byte
+        result    = gcmDecrypt validKey32 validNonce12 BS.empty ct badTag
+    assertEq "GA2: gcmDecrypt corrupted tag returns Nothing"
+        Nothing result
+
+-- GA3: gcmEncryptSafe valid inputs — Right path
+testGA3_gcmEncryptSafeValid :: IO Bool
+testGA3_gcmEncryptSafeValid = do
+    let result = gcmEncryptSafe validKey32 validNonce12 BS.empty validPT
+    case result of
+        Right (ct, tag) -> assertEq "GA3: gcmEncryptSafe valid returns Right with 16-byte tag"
+                               True (BS.length tag == 16 && BS.length ct == BS.length validPT)
+        Left msg        -> putStrLn ("  FAIL: GA3: " ++ msg) >> pure False
+
+-- GA4: gcmDecryptSafe tag mismatch — Right Nothing path
+testGA4_gcmDecryptSafeTagMismatch :: IO Bool
+testGA4_gcmDecryptSafeTagMismatch = do
+    let (ct, tag) = gcmEncrypt validKey32 validNonce12 BS.empty validPT
+        badTag    = BS.map (+ 1) tag
+        result    = gcmDecryptSafe validKey32 validNonce12 BS.empty ct badTag
+    assertEq "GA4: gcmDecryptSafe tag mismatch returns Right Nothing"
+        (Right Nothing) result
+
+------------------------------------------------------------------------
+-- M16.2-4: Ed25519 verify decision path coverage
+------------------------------------------------------------------------
+-- ed25519Verify (Ed25519.hs:346-369) has 8 decision branches:
+--   1. sig length /= 64 -> False
+--   2. pubkey length /= 32 -> False
+--   3. isSmallOrder pubkey -> False
+--   4. isSmallOrder R -> False
+--   5. decodePoint pubkey fails -> False
+--   6. s >= groupL -> False
+--   7. decodePoint R fails -> False
+--   8. verification equation matches -> True
+-- Each test independently varies one condition.
+
+-- EV1: all conditions satisfied — valid signature
+testEV1_validSignature :: IO Bool
+testEV1_validSignature = do
+    let sk  = BS.replicate 32 0x42
+        pk  = ed25519PublicKey sk
+        msg = BS.pack [0x48, 0x65, 0x6c, 0x6c, 0x6f]  -- "Hello"
+        sig = ed25519Sign sk msg
+    assertEq "EV1: ed25519Verify valid signature returns True"
+        True (ed25519Verify pk msg sig)
+
+-- EV2: sig wrong length (branch 1: BS.length sig /= 64)
+testEV2_sigWrongLen :: IO Bool
+testEV2_sigWrongLen = do
+    let sk  = BS.replicate 32 0x42
+        pk  = ed25519PublicKey sk
+    assertEq "EV2: ed25519Verify sig len 63 returns False"
+        False (ed25519Verify pk BS.empty (BS.replicate 63 0))
+
+-- EV3: pubkey wrong length (branch 2: BS.length pubKeyBS /= 32)
+testEV3_pubkeyWrongLen :: IO Bool
+testEV3_pubkeyWrongLen =
+    assertEq "EV3: ed25519Verify pubkey len 31 returns False"
+        False (ed25519Verify (BS.replicate 31 0) BS.empty (BS.replicate 64 0))
+
+-- EV4: small-order pubkey (branch 3: isSmallOrder pubKeyBS)
+testEV4_smallOrderPubkey :: IO Bool
+testEV4_smallOrderPubkey = do
+    -- Identity point (0,1)
+    let identityPK = BS.pack (1 : replicate 31 0)
+    assertEq "EV4: ed25519Verify small-order pubkey returns False"
+        False (ed25519Verify identityPK BS.empty (BS.replicate 64 0))
+
+-- EV5: small-order R in signature (branch 4: isSmallOrder rBS)
+testEV5_smallOrderR :: IO Bool
+testEV5_smallOrderR = do
+    let sk  = BS.replicate 32 0x42
+        pk  = ed25519PublicKey sk
+        -- R = identity point (0,1), S = 0
+        identityR = BS.pack (1 : replicate 31 0)
+        sig = identityR `BS.append` BS.replicate 32 0
+    assertEq "EV5: ed25519Verify small-order R returns False"
+        False (ed25519Verify pk BS.empty sig)
+
+-- EV6: s >= groupL (branch 6: s >= groupL)
+testEV6_sGEGroupL :: IO Bool
+testEV6_sGEGroupL = do
+    let sk  = BS.replicate 32 0x42
+        pk  = ed25519PublicKey sk
+        -- R = valid non-small-order point (the pubkey itself)
+        -- S = groupL (>= groupL)
+        bigS = encodeLEn 32 groupL
+        sig  = pk `BS.append` bigS  -- R=pk (valid point), S=groupL
+    assertEq "EV6: ed25519Verify s >= groupL returns False"
+        False (ed25519Verify pk BS.empty sig)
+
+-- EV7: decodePoint pubkey fails (branch 5: y >= p)
+testEV7_invalidPubkeyDecode :: IO Bool
+testEV7_invalidPubkeyDecode = do
+    -- y = all 0xFF -> y > p, decodePoint returns Nothing
+    let badPK = BS.replicate 32 0xFF
+        sig   = BS.replicate 64 0
+    -- Not small-order, correct length, but decodePoint will fail
+    assertEq "EV7: ed25519Verify invalid pubkey decode returns False"
+        False (ed25519Verify badPK BS.empty sig)
+
+-- EV8: decodePoint R fails (branch 7: decodePoint rBS = Nothing)
+testEV8_invalidRDecode :: IO Bool
+testEV8_invalidRDecode = do
+    let sk  = BS.replicate 32 0x42
+        pk  = ed25519PublicKey sk
+        -- R = all 0xFF (y >= p, decodePoint fails), S = 0 (valid, < groupL)
+        badR = BS.replicate 32 0xFF
+        sig  = badR `BS.append` BS.replicate 32 0
+    assertEq "EV8: ed25519Verify invalid R decode returns False"
+        False (ed25519Verify pk BS.empty sig)
+
+------------------------------------------------------------------------
+-- M16.2-4: X25519 / cswap decision path coverage
+------------------------------------------------------------------------
+-- x25519 (Curve25519.hs:141-152) has 4 decision branches:
+--   1. scalar length /= 32 -> Nothing
+--   2. uCoord length /= 32 -> Nothing
+--   3. result == all-zero -> Nothing  (low-order point)
+--   4. otherwise -> Just result
+
+-- CS1: valid DH computation — Just result
+testCS1_x25519ValidDH :: IO Bool
+testCS1_x25519ValidDH = do
+    let sk = BS.pack (0x77 : replicate 31 0)
+    case x25519 sk x25519Basepoint of
+        Just pk -> assertEq "CS1: x25519 valid DH produces 32-byte result"
+                       32 (BS.length pk)
+        Nothing -> putStrLn "  FAIL: CS1: x25519 returned Nothing for valid input"
+                   >> pure False
+
+-- CS2: wrong scalar length — Nothing
+testCS2_x25519WrongScalarLen :: IO Bool
+testCS2_x25519WrongScalarLen =
+    assertEq "CS2: x25519 scalar len 16 returns Nothing"
+        Nothing (x25519 (BS.replicate 16 0x42) x25519Basepoint)
+
+-- CS3: wrong point length — Nothing
+testCS3_x25519WrongPointLen :: IO Bool
+testCS3_x25519WrongPointLen =
+    assertEq "CS3: x25519 point len 16 returns Nothing"
+        Nothing (x25519 (BS.replicate 32 0x42) (BS.replicate 16 0))
+
+-- CS4: low-order point produces all-zero output — Nothing
+testCS4_x25519LowOrderPoint :: IO Bool
+testCS4_x25519LowOrderPoint = do
+    -- The all-zero point is low-order; x25519 should return Nothing
+    let zeroPoint = BS.replicate 32 0
+    assertEq "CS4: x25519 low-order (zero) point returns Nothing"
+        Nothing (x25519 (BS.replicate 32 0x42) zeroPoint)
+
+------------------------------------------------------------------------
+-- M16.2-4: WireFormat decode decision path coverage
+------------------------------------------------------------------------
+-- decodeEnvelope (WireFormat.hs:121-149) has 4 decision branches:
+--   1. too short (< headerSize + hmacSize = 77) -> Nothing
+--   2. version /= 2 -> Nothing
+--   3. HMAC mismatch -> Nothing
+--   4. valid -> Just Envelope
+--
+-- decodeEnvelopeAEAD (WireFormat.hs:299-322) has 5 branches:
+--   1. too short (< 2) -> Nothing
+--   2. version /= 2 -> Nothing
+--   3. type == 2 -> delegates to decodeEnvelope (HMAC)
+--   4. seqNum >= 2^31 -> Nothing
+--   5. AEAD decrypt and parse -> Just Envelope / Nothing
+
+-- WF1: too short for HMAC envelope
+testWF1_decodeTooShort :: IO Bool
+testWF1_decodeTooShort =
+    assertEq "WF1: decodeEnvelope too-short input returns Nothing"
+        Nothing (decodeEnvelope (BS.replicate 32 0) (BS.replicate 10 0))
+
+-- WF2: wrong version byte
+testWF2_decodeWrongVersion :: IO Bool
+testWF2_decodeWrongVersion = do
+    let key = BS.replicate 32 0xAA
+        env = wrapEnvelope 1 0 (BS.replicate 32 0) 0 0 (BS.pack [0x41])
+        wire = encodeEnvelope key env
+        -- Overwrite version byte (first byte) from 2 to 1
+        badWire = BS.cons 1 (BS.drop 1 wire)
+    assertEq "WF2: decodeEnvelope wrong version returns Nothing"
+        Nothing (decodeEnvelope key badWire)
+
+-- WF3: HMAC mismatch (corrupted payload)
+testWF3_decodeHmacMismatch :: IO Bool
+testWF3_decodeHmacMismatch = do
+    let key = BS.replicate 32 0xAA
+        env = wrapEnvelope 1 0 (BS.replicate 32 0) 0 0 (BS.pack [0x41])
+        wire = encodeEnvelope key env
+        -- Flip a byte in the payload area (byte 45 is in the payload)
+        badWire = flipByteAt 45 wire
+    assertEq "WF3: decodeEnvelope HMAC mismatch returns Nothing"
+        Nothing (decodeEnvelope key badWire)
+
+-- WF4: valid encode/decode roundtrip
+testWF4_decodeRoundTrip :: IO Bool
+testWF4_decodeRoundTrip = do
+    let key     = BS.replicate 32 0xBB
+        payload = BS.pack [0x48, 0x65, 0x6c, 0x6c, 0x6f]
+        env     = wrapEnvelope 1 42 (BS.replicate 32 0xCC) 0xDD 0x1234 payload
+        wire    = encodeEnvelope key env
+    case decodeEnvelope key wire of
+        Nothing   -> putStrLn "  FAIL: WF4: decodeEnvelope returned Nothing" >> pure False
+        Just env' -> assertEq "WF4: decodeEnvelope roundtrip preserves payload"
+                         payload (envPayload env')
+
+-- WF5: AEAD too short
+testWF5_decodeAEADTooShort :: IO Bool
+testWF5_decodeAEADTooShort =
+    assertEq "WF5: decodeEnvelopeAEAD too-short returns Nothing"
+        Nothing (decodeEnvelopeAEAD (BS.replicate 32 0) 0 (BS.singleton 2))
+
+-- WF6: AEAD wrong version
+testWF6_decodeAEADWrongVersion :: IO Bool
+testWF6_decodeAEADWrongVersion = do
+    let key = deriveEnvelopeKey (BS.replicate 32 0xDD)
+        env = wrapEnvelope 1 0 (BS.replicate 32 0) 0 0 (BS.pack [0x41])
+        wire = encodeEnvelopeAEAD key 0 env
+        badWire = BS.cons 1 (BS.drop 1 wire)
+    assertEq "WF6: decodeEnvelopeAEAD wrong version returns Nothing"
+        Nothing (decodeEnvelopeAEAD key 0 badWire)
+
+-- WF7: AEAD valid encode/decode roundtrip
+testWF7_decodeAEADRoundTrip :: IO Bool
+testWF7_decodeAEADRoundTrip = do
+    let transportKey = BS.replicate 32 0xEE
+        key     = deriveEnvelopeKey transportKey
+        payload = BS.pack [0x48, 0x69]
+        env     = wrapEnvelope 1 100 (BS.replicate 32 0xFF) 0xAA 0x5678 payload
+        wire    = encodeEnvelopeAEAD key 100 env
+    case decodeEnvelopeAEAD key 100 wire of
+        Nothing   -> putStrLn "  FAIL: WF7: decodeEnvelopeAEAD returned Nothing" >> pure False
+        Just env' -> assertEq "WF7: decodeEnvelopeAEAD roundtrip preserves payload"
+                         payload (envPayload env')
+
+------------------------------------------------------------------------
+-- Additional helpers
+------------------------------------------------------------------------
+
+-- | Flip a single byte at position @i@ in a ByteString.
+flipByteAt :: Int -> ByteString -> ByteString
+flipByteAt i bs
+    | i < 0 || i >= BS.length bs = bs
+    | otherwise =
+        let (before, rest) = BS.splitAt i bs
+            byte = BS.index rest 0
+            after = BS.drop 1 rest
+        in before `BS.append` BS.singleton (xor byte 0xFF) `BS.append` after
