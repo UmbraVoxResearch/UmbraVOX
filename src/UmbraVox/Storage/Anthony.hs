@@ -1,9 +1,26 @@
 -- SPDX-License-Identifier: Apache-2.0
--- | SQLite persistence via the sqlite3 CLI tool
+-- | SQLite persistence via direct FFI prepared statements
 --
--- Provides lightweight key-value and relational storage for peers,
--- settings, and conversations. The module name is preserved for now to
--- avoid wider churn while the MVP uses a temporary sqlite3-backed shim.
+-- Finding: M27.4.1 — The previous implementation used the sqlite3 CLI tool
+-- via 'readProcess', interpolating user-supplied values into SQL strings.
+-- Despite 'quote' and 'containsDangerousSQL' sanitisation, this approach
+-- was structurally vulnerable to SQL injection: every new query site was
+-- one forgotten 'quote' call away from a security hole.
+--
+-- Vulnerability: SQL injection via string interpolation in any function
+-- that accepted user-controlled data (peer names, message content,
+-- settings keys/values, etc.).
+--
+-- Fix: Replaced the sqlite3 CLI subprocess with direct FFI to libsqlite3
+-- using prepared statements with parameter binding ('bindText', 'bindInt').
+-- User data is never interpolated into SQL strings — it is bound via
+-- SQLite's '?' placeholders, eliminating SQL injection by construction.
+-- The 'quote', 'escapeQuotes', 'containsDangerousSQL', 'runSQL', and
+-- 'querySQL' functions have been removed entirely.
+--
+-- Verified: All 15+ exported functions now use 'withStatement' + bind*;
+-- no SQL string interpolation of user data remains.  The exported API
+-- is unchanged — callers do not need modification.
 --
 -- See: doc/spec/storage.md
 module UmbraVox.Storage.Anthony
@@ -31,16 +48,11 @@ module UmbraVox.Storage.Anthony
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as C8
-import Data.List (isInfixOf)
 import Data.Word (Word8)
-import System.Directory (findExecutable)
 import System.Posix.Files (setFileMode, ownerReadMode, ownerWriteMode, unionFileModes)
 import System.Posix.Types ()
-import System.Process (readProcess)
-import System.Timeout (timeout)
 
-import UmbraVox.App.Defaults (sqliteTimeoutMicros)
-import UmbraVox.Protocol.Encoding (splitOn)
+import qualified UmbraVox.Storage.SQLite3 as SQL
 import UmbraVox.Storage.Encryption (StorageKey, encryptField, decryptField, isEncryptedField)
 import UmbraVox.Storage.Schema (schemaStatements)
 
@@ -67,27 +79,28 @@ import UmbraVox.Storage.Schema (schemaStatements)
 -- for backward-compat.  Tests that use 'openDB' continue to see plaintext
 -- round-trips; production callers that supply a key see encrypted storage.
 --
--- | Handle to a sqlite3-managed SQLite database.
+-- | Handle to a SQLite database via direct FFI.
 data AnthonyDB = AnthonyDB
-    { dbPath       :: !FilePath          -- ^ Path to the SQLite database file
-    , dbAnthony    :: !FilePath          -- ^ Path to the sqlite3 binary
-    , dbStorageKey :: !(Maybe StorageKey) -- ^ Optional at-rest encryption key
-    } deriving stock (Show)
+    { dbPath       :: !FilePath            -- ^ Path to the SQLite database file
+    , dbConn       :: !SQL.Database        -- ^ Open FFI database connection
+    , dbStorageKey :: !(Maybe StorageKey)   -- ^ Optional at-rest encryption key
+    }
+
+-- Show instance that does not leak the connection pointer
+instance Show AnthonyDB where
+    show db = "AnthonyDB {dbPath = " ++ show (dbPath db)
+           ++ ", dbStorageKey = " ++ show (dbStorageKey db) ++ "}"
 
 ------------------------------------------------------------------------
 -- Public API
 ------------------------------------------------------------------------
 
--- | Ensure the temporary sqlite3 backend is available.
+-- | Ensure the SQLite3 FFI backend is available.
 --
--- The public name is preserved so the rest of the codebase does not need to
--- change while sqlite3 temporarily replaces anthony.
+-- With direct FFI this always succeeds (libsqlite3 is linked at build time).
+-- Preserved for API compatibility.
 ensureAnthony :: IO FilePath
-ensureAnthony = do
-    found <- findExecutable "sqlite3"
-    case found of
-        Just path -> pure path
-        Nothing   -> ioError (userError "sqlite3 binary not available on PATH")
+ensureAnthony = pure "(ffi:libsqlite3)"
 
 -- | Open (or create) a database at the given path, without field encryption.
 --
@@ -96,9 +109,9 @@ ensureAnthony = do
 -- to enable at-rest encryption for message content.
 openDB :: FilePath -> IO AnthonyDB
 openDB path = do
-    anthonyPath <- ensureAnthony
-    let db = AnthonyDB { dbPath = path, dbAnthony = anthonyPath, dbStorageKey = Nothing }
-    mapM_ (runSQL db) schemaStatements
+    conn <- SQL.open path
+    let db = AnthonyDB { dbPath = path, dbConn = conn, dbStorageKey = Nothing }
+    mapM_ (SQL.exec conn) schemaStatements
     setFileMode path (ownerReadMode `unionFileModes` ownerWriteMode)
     pure db
 
@@ -108,18 +121,15 @@ openDB path = do
 -- that 'saveMessage' encrypts content and 'loadMessages' decrypts it.
 openDBWithKey :: FilePath -> StorageKey -> IO AnthonyDB
 openDBWithKey path key = do
-    anthonyPath <- ensureAnthony
-    let db = AnthonyDB { dbPath = path, dbAnthony = anthonyPath, dbStorageKey = Just key }
-    mapM_ (runSQL db) schemaStatements
+    conn <- SQL.open path
+    let db = AnthonyDB { dbPath = path, dbConn = conn, dbStorageKey = Just key }
+    mapM_ (SQL.exec conn) schemaStatements
     setFileMode path (ownerReadMode `unionFileModes` ownerWriteMode)
     pure db
 
--- | Close the database handle.
---
--- Currently a no-op since sqlite3 uses one-shot CLI invocations,
--- but provided for API completeness and future connection pooling.
+-- | Close the database connection.
 closeDB :: AnthonyDB -> IO ()
-closeDB _ = pure ()
+closeDB db = SQL.close (dbConn db)
 
 -- | Save or update a peer record.
 savePeer :: AnthonyDB
@@ -129,39 +139,57 @@ savePeer :: AnthonyDB
          -> Int         -- ^ Last seen (POSIX timestamp)
          -> String      -- ^ Source (\"mdns\", \"pex\", \"manual\")
          -> IO ()
-savePeer db pubkey ip port lastSeen source = do
-    let sql = "INSERT OR REPLACE INTO peers "
-              <> "(pubkey, ip, port, last_seen, source) VALUES ("
-              <> quote (C8.unpack pubkey) <> ", "
-              <> quote ip <> ", "
-              <> show port <> ", "
-              <> show lastSeen <> ", "
-              <> quote source <> ")"
-    runSQL db sql
+savePeer db pubkey ip port lastSeen source =
+    SQL.withStatement (dbConn db)
+        "INSERT OR REPLACE INTO peers (pubkey, ip, port, last_seen, source) VALUES (?, ?, ?, ?, ?)"
+        $ \stmt -> do
+            SQL.bindText stmt 1 (C8.unpack pubkey)
+            SQL.bindText stmt 2 ip
+            SQL.bindInt  stmt 3 port
+            SQL.bindInt  stmt 4 lastSeen
+            SQL.bindText stmt 5 source
+            _ <- SQL.step stmt
+            pure ()
 
 -- | Load all known peers from the database.
 --
 -- Returns rows as @(pubkey, ip, port, last_seen, source)@ tuples.
 loadPeers :: AnthonyDB -> IO [(String, String, Int, Int, String)]
-loadPeers db = do
-    output <- querySQL db "SELECT pubkey, ip, port, last_seen, source FROM peers"
-    pure (parsePeerRows output)
+loadPeers db =
+    SQL.withStatement (dbConn db)
+        "SELECT pubkey, ip, port, last_seen, source FROM peers"
+        $ \stmt -> collectRows stmt $ \s -> do
+            pk  <- SQL.columnText s 0
+            ip  <- SQL.columnText s 1
+            p   <- SQL.columnInt  s 2
+            ls  <- SQL.columnInt  s 3
+            src <- SQL.columnText s 4
+            pure (pk, ip, p, ls, src)
 
 -- | Save a key-value setting.
 saveSetting :: AnthonyDB -> String -> String -> IO ()
-saveSetting db key value = do
-    let sql = "INSERT OR REPLACE INTO settings (key, value) VALUES ("
-              <> quote key <> ", " <> quote value <> ")"
-    runSQL db sql
+saveSetting db key value =
+    SQL.withStatement (dbConn db)
+        "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)"
+        $ \stmt -> do
+            SQL.bindText stmt 1 key
+            SQL.bindText stmt 2 value
+            _ <- SQL.step stmt
+            pure ()
 
 -- | Load a setting by key. Returns 'Nothing' if not found.
 loadSetting :: AnthonyDB -> String -> IO (Maybe String)
-loadSetting db key = do
-    output <- querySQL db
-        ("SELECT value FROM settings WHERE key = " <> quote key)
-    case lines output of
-        (v : _) | not (null v) -> pure (Just v)
-        _                      -> pure Nothing
+loadSetting db key =
+    SQL.withStatement (dbConn db)
+        "SELECT value FROM settings WHERE key = ?"
+        $ \stmt -> do
+            SQL.bindText stmt 1 key
+            hasRow <- SQL.stepRow stmt
+            if hasRow
+                then do
+                    v <- SQL.columnText stmt 0
+                    pure (if null v then Nothing else Just v)
+                else pure Nothing
 
 -- | Save a message to the database.
 --
@@ -173,13 +201,15 @@ saveMessage db convId sender content timestamp = do
     storedContent <- case dbStorageKey db of
         Just key -> encryptField key content
         Nothing  -> pure content
-    let sql = "INSERT INTO messages "
-              <> "(conversation_id, sender, content, timestamp) VALUES ("
-              <> show convId <> ", "
-              <> quote sender <> ", "
-              <> quote storedContent <> ", "
-              <> show timestamp <> ")"
-    runSQL db sql
+    SQL.withStatement (dbConn db)
+        "INSERT INTO messages (conversation_id, sender, content, timestamp) VALUES (?, ?, ?, ?)"
+        $ \stmt -> do
+            SQL.bindInt  stmt 1 convId
+            SQL.bindText stmt 2 sender
+            SQL.bindText stmt 3 storedContent
+            SQL.bindInt  stmt 4 timestamp
+            _ <- SQL.step stmt
+            pure ()
 
 -- | Load the most recent N messages for a conversation.
 --
@@ -193,14 +223,20 @@ saveMessage db convId sender content timestamp = do
 -- databases written before at-rest encryption was activated.
 loadMessages :: AnthonyDB -> Int -> Int -> IO [(String, String, Int)]
 loadMessages db convId limit = do
-    output <- querySQL db
-        ("SELECT sender, content, timestamp FROM messages "
-         <> "WHERE conversation_id = " <> show convId
-         <> " ORDER BY timestamp DESC LIMIT " <> show limit)
-    let rows = reverse (parseMessageRows output)
+    rows <- SQL.withStatement (dbConn db)
+        "SELECT sender, content, timestamp FROM messages WHERE conversation_id = ? ORDER BY timestamp DESC LIMIT ?"
+        $ \stmt -> do
+            SQL.bindInt stmt 1 convId
+            SQL.bindInt stmt 2 limit
+            collectRows stmt $ \s -> do
+                sender  <- SQL.columnText s 0
+                content <- SQL.columnText s 1
+                ts      <- SQL.columnInt  s 2
+                pure (sender, content, ts)
+    let ordered = reverse rows
     case dbStorageKey db of
-        Nothing  -> pure rows
-        Just key -> pure (concatMap (decryptRow key) rows)
+        Nothing  -> pure ordered
+        Just key -> pure (concatMap (decryptRow key) ordered)
   where
     decryptRow key (sender, content, ts)
         | isEncryptedField content =
@@ -214,25 +250,35 @@ loadMessages db convId limit = do
 
 -- | Delete messages older than N days.
 pruneMessages :: AnthonyDB -> Int -> IO ()
-pruneMessages db days = do
-    let sql = "DELETE FROM messages WHERE timestamp < "
-              <> "(strftime('%s','now') - " <> show (days * 86400) <> ")"
-    runSQL db sql
+pruneMessages db days =
+    SQL.withStatement (dbConn db)
+        "DELETE FROM messages WHERE timestamp < (strftime('%s','now') - ?)"
+        $ \stmt -> do
+            SQL.bindInt stmt 1 (days * 86400)
+            _ <- SQL.step stmt
+            pure ()
 
 -- | Clear all messages for a conversation.
 clearConversation :: AnthonyDB -> Int -> IO ()
-clearConversation db convId = do
-    let sql = "DELETE FROM messages WHERE conversation_id = "
-              <> show convId
-    runSQL db sql
+clearConversation db convId =
+    SQL.withStatement (dbConn db)
+        "DELETE FROM messages WHERE conversation_id = ?"
+        $ \stmt -> do
+            SQL.bindInt stmt 1 convId
+            _ <- SQL.step stmt
+            pure ()
 
 -- | Get the number of messages in a conversation.
 messageCount :: AnthonyDB -> Int -> IO Int
-messageCount db convId = do
-    output <- querySQL db
-        ("SELECT COUNT(*) FROM messages WHERE conversation_id = "
-         <> show convId)
-    pure (readInt (case lines output of { (x:_) -> x; [] -> "0" }))
+messageCount db convId =
+    SQL.withStatement (dbConn db)
+        "SELECT COUNT(*) FROM messages WHERE conversation_id = ?"
+        $ \stmt -> do
+            SQL.bindInt stmt 1 convId
+            hasRow <- SQL.stepRow stmt
+            if hasRow
+                then SQL.columnInt stmt 0
+                else pure 0
 
 -- Finding: M1.1.3 — saveConversation stored the conversation name (peer display
 -- name) as plaintext in the SQLite database.  loadConversations returned it
@@ -268,13 +314,15 @@ saveConversation db convId peerPubkey name created = do
     storedName <- case dbStorageKey db of
         Just key -> encryptField key name
         Nothing  -> pure name
-    let sql = "INSERT OR REPLACE INTO conversations "
-              <> "(id, peer_pubkey, name, created) VALUES ("
-              <> show convId <> ", "
-              <> quote peerPubkey <> ", "
-              <> quote storedName <> ", "
-              <> show created <> ")"
-    runSQL db sql
+    SQL.withStatement (dbConn db)
+        "INSERT OR REPLACE INTO conversations (id, peer_pubkey, name, created) VALUES (?, ?, ?, ?)"
+        $ \stmt -> do
+            SQL.bindInt  stmt 1 convId
+            SQL.bindText stmt 2 peerPubkey
+            SQL.bindText stmt 3 storedName
+            SQL.bindInt  stmt 4 created
+            _ <- SQL.step stmt
+            pure ()
 
 -- | Load all conversations. Returns @(id, peer_pubkey, name, created)@.
 --
@@ -286,8 +334,14 @@ saveConversation db convId peerPubkey name created = do
 -- enabled.
 loadConversations :: AnthonyDB -> IO [(Int, String, String, Int)]
 loadConversations db = do
-    output <- querySQL db "SELECT id, peer_pubkey, name, created FROM conversations ORDER BY id"
-    let rows = parseConversationRows output
+    rows <- SQL.withStatement (dbConn db)
+        "SELECT id, peer_pubkey, name, created FROM conversations ORDER BY id"
+        $ \stmt -> collectRows stmt $ \s -> do
+            cid     <- SQL.columnInt  s 0
+            pubkey  <- SQL.columnText s 1
+            name    <- SQL.columnText s 2
+            created <- SQL.columnInt  s 3
+            pure (cid, pubkey, name, created)
     case dbStorageKey db of
         Nothing  -> pure rows
         Just key -> pure (concatMap (decryptConvName key) rows)
@@ -304,38 +358,55 @@ loadConversations db = do
 
 -- | Save a trusted public key with a human-readable label.
 saveTrustedKey :: AnthonyDB -> ByteString -> String -> IO ()
-saveTrustedKey db pubkey label = do
-    let sql = "INSERT OR REPLACE INTO trusted_keys "
-              <> "(pubkey, label, added) VALUES ("
-              <> quote (C8.unpack (toHex pubkey)) <> ", "
-              <> quote label <> ", "
-              <> "strftime('%s','now'))"
-    runSQL db sql
+saveTrustedKey db pubkey label =
+    SQL.withStatement (dbConn db)
+        "INSERT OR REPLACE INTO trusted_keys (pubkey, label, added) VALUES (?, ?, strftime('%s','now'))"
+        $ \stmt -> do
+            SQL.bindText stmt 1 (C8.unpack (toHex pubkey))
+            SQL.bindText stmt 2 label
+            _ <- SQL.step stmt
+            pure ()
 
 -- | Load all trusted keys. Returns @(pubkey, label)@ pairs.
 loadTrustedKeys :: AnthonyDB -> IO [(ByteString, String)]
-loadTrustedKeys db = do
-    output <- querySQL db "SELECT pubkey, label FROM trusted_keys"
-    pure (parseTrustedRows output)
+loadTrustedKeys db =
+    SQL.withStatement (dbConn db)
+        "SELECT pubkey, label FROM trusted_keys"
+        $ \stmt -> do
+            rows <- collectRows stmt $ \s -> do
+                hexPk <- SQL.columnText s 0
+                lbl   <- SQL.columnText s 1
+                case fromHex (C8.pack hexPk) of
+                    Just pk -> pure (pk, lbl)
+                    Nothing -> pure (BS.empty, lbl)
+            pure (filter (\(pk, _) -> not (BS.null pk)) rows)
 
 -- | Remove a trusted key by its public key.
 removeTrustedKey :: AnthonyDB -> ByteString -> IO ()
-removeTrustedKey db pubkey = do
-    let hexKey = C8.unpack (toHex pubkey)
-    runSQL db ("DELETE FROM trusted_keys WHERE pubkey = " <> quote hexKey)
+removeTrustedKey db pubkey =
+    SQL.withStatement (dbConn db)
+        "DELETE FROM trusted_keys WHERE pubkey = ?"
+        $ \stmt -> do
+            SQL.bindText stmt 1 (C8.unpack (toHex pubkey))
+            _ <- SQL.step stmt
+            pure ()
 
-parseTrustedRows :: String -> [(ByteString, String)]
-parseTrustedRows s = concatMap parseTrustedRow (lines s)
+------------------------------------------------------------------------
+-- Internal — row collection helper
+------------------------------------------------------------------------
+
+-- | Step through all rows returned by a prepared statement, applying a
+-- reader function to each row and collecting results.
+collectRows :: SQL.Statement -> (SQL.Statement -> IO a) -> IO [a]
+collectRows stmt readRow = go []
   where
-    parseTrustedRow line =
-        let fields = splitOn '|' line
-        in case fields of
-            (hexPk:lbl:_) ->
-                case fromHex (C8.pack hexPk) of
-                    Just pk -> [(pk, lbl)]
-                    Nothing -> []  -- M8.3.2: malformed hex in DB row; silently skipped.
-                                   -- If key counts diverge, check DB integrity.
-            _ -> []
+    go acc = do
+        hasRow <- SQL.stepRow stmt
+        if hasRow
+            then do
+                row <- readRow stmt
+                go (acc ++ [row])
+            else pure acc
 
 ------------------------------------------------------------------------
 -- Internal — hex encoding helpers
@@ -365,117 +436,3 @@ fromHex bs
         | w >= 0x41 && w <= 0x46 = w - 0x37
         | w >= 0x61 && w <= 0x66 = w - 0x57
         | otherwise              = 0
-
-parseConversationRows :: String -> [(Int, String, String, Int)]
-parseConversationRows s = concatMap parseConvRow (lines s)
-  where
-    parseConvRow line =
-        let fields = splitOn '|' line
-        in case fields of
-            (idStr:pubkey:name:createdStr:_) ->
-                [(readInt idStr, pubkey, name, readInt createdStr)]
-            _ -> []
-
-------------------------------------------------------------------------
--- Internal — sqlite3 CLI interaction
-------------------------------------------------------------------------
-
--- | Execute a SQL statement (no result expected).
--- Times out after 10 seconds to avoid indefinite hangs.
-runSQL :: AnthonyDB -> String -> IO ()
-runSQL db sql = do
-    result <- timeout sqliteTimeoutMicros $
-        readProcess (dbAnthony db)
-            ["-batch", "-noheader", "-separator", "|", "-cmd", ".timeout 5000", dbPath db, sql] ""
-    case result of
-        Just _  -> pure ()
-        Nothing -> ioError (userError "sqlite3 query timed out")
-
--- | Execute a SQL query and return the raw output.
--- Times out after 10 seconds to avoid indefinite hangs.
-querySQL :: AnthonyDB -> String -> IO String
-querySQL db sql = do
-    result <- timeout sqliteTimeoutMicros $
-        readProcess (dbAnthony db)
-            ["-batch", "-noheader", "-separator", "|", "-cmd", ".timeout 5000", dbPath db, sql] ""
-    case result of
-        Just output -> pure output
-        Nothing     -> ioError (userError "sqlite3 query timed out")
-
-------------------------------------------------------------------------
--- Internal — SQL helpers
-------------------------------------------------------------------------
-
--- | Wrap a string in single quotes, escaping embedded quotes.
--- Rejects strings containing semicolons or dangerous SQL keywords.
-quote :: String -> String
-quote s
-    | containsDangerousSQL s = error "quote: input rejected (dangerous SQL content)"
-    | otherwise = "'" <> escapeQuotes s <> "'"
-
--- | Check if a string contains semicolons or dangerous SQL keywords.
--- Normalizes whitespace characters (\\n, \\r, \\t) to spaces before
--- checking, to prevent bypasses via embedded newlines or tabs.
-containsDangerousSQL :: String -> Bool
-containsDangerousSQL s =
-    let normalized = map (\c -> if c == '\n' || c == '\r' || c == '\t' then ' ' else c) s
-        upper = map toUpperChar normalized
-    in ';' `elem` normalized
-       || "--" `isInfixOf` normalized
-       || "/*" `isInfixOf` normalized
-       || containsWord "DROP " upper
-       || containsWord "DELETE " upper
-       || containsWord "UPDATE " upper
-       || containsWord "INSERT " upper
-       || containsWord "ALTER " upper
-       || containsWord "EXEC " upper
-  where
-    toUpperChar c
-        | c >= 'a' && c <= 'z' = toEnum (fromEnum c - 32)
-        | otherwise             = c
-    containsWord _ [] = False
-    containsWord w str
-        | take (length w) str == w = True
-        | otherwise                = containsWord w (tail str)
-
--- | Escape single quotes by doubling them (SQL standard).
-escapeQuotes :: String -> String
-escapeQuotes [] = []
-escapeQuotes ('\'' : rest) = '\'' : '\'' : escapeQuotes rest
-escapeQuotes (c : rest) = c : escapeQuotes rest
-
--- | Parse pipe-delimited message rows from anthony output.
---
--- Expected format: @sender|content|timestamp@
-parseMessageRows :: String -> [(String, String, Int)]
-parseMessageRows output =
-    [ parseMessageRow row | row <- lines output, not (null row) ]
-
--- | Parse a single pipe-delimited message row.
-parseMessageRow :: String -> (String, String, Int)
-parseMessageRow row =
-    case splitOn '|' row of
-        [s, c, t] -> (s, c, readInt t)
-        _         -> ("", "", 0)
-
--- | Parse pipe-delimited peer rows from anthony output.
---
--- Expected format: @pubkey|ip|port|last_seen|source@
-parsePeerRows :: String -> [(String, String, Int, Int, String)]
-parsePeerRows output =
-    [ parseRow row | row <- lines output, not (null row) ]
-
--- | Parse a single pipe-delimited row.
-parseRow :: String -> (String, String, Int, Int, String)
-parseRow row =
-    case splitOn '|' row of
-        [pk, ip, p, ls, src] ->
-            (pk, ip, readInt p, readInt ls, src)
-        _ -> ("", "", 0, 0, "")
-
-
--- | Safe integer parsing with a fallback of 0.
-readInt :: String -> Int
-readInt s = case reads s of
-    [(n, "")] -> n
-    _         -> 0

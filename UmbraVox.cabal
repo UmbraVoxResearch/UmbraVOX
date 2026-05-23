@@ -222,6 +222,7 @@ library
       UmbraVox.Storage.Checkpoint
       UmbraVox.Storage.Schema
       UmbraVox.Storage.Encryption
+      UmbraVox.Storage.SQLite3
       UmbraVox.Storage.Anthony
       -- Protocol / Serialization (remainder)
       UmbraVox.Protocol.UTF8
@@ -285,9 +286,11 @@ library
       time         >= 1.12  && < 1.15,
       process      >= 1.6   && < 1.7,
       unix         >= 2.8   && < 2.9
+    pkgconfig-depends: sqlite3
     c-sources:
       csrc/secure_zero.c
       csrc/secure_mlock.c
+      csrc/sqlite3_shim.c
       csrc/generated/aes256.c
       csrc/generated/chacha20.c
       csrc/generated/hkdf.c
