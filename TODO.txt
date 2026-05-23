@@ -33,7 +33,6 @@ ACTIVE WORK
   [~] M13.13.6 Verify all F* specs pass in VM (z3rlimit tuning needed)
 
 [~] M19 Signal bridge (remaining)
-  [~] M19.1.4 Signal known-vector comparison tests (round-trip done, vectors pending)
-  [ ] M19.4.5 Fill FOD hash for Signal-Server Maven deps
-  [ ] M19.4.6 Complete Signal-Server JAR build end-to-end in VM
-  [ ] M19.4.7 Boot runtime VM with Signal-Server JAR and verify health endpoint
+  [~] M19.4.5 Fill FOD hash for Signal-Server Maven deps (placeholder + docs; needs KVM run)
+  [~] M19.4.6 Complete Signal-Server JAR build end-to-end in VM (scaffolded; needs FOD hash)
+  [~] M19.4.7 Boot runtime VM with Signal-Server JAR and verify health endpoint (host-side check added)
