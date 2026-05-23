@@ -17,7 +17,13 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - Completed items moved to CHANGELOG.txt
 
 ### v0.4.8 — All active milestones complete, M14 deferred
-- All non-platform milestones complete
+- M16.2-4: MC/DC coverage targets + 23 gap-fill tests + coverage-check script
+- M20.5: VM isolation complete (source export, ephemeral images, builder VM, hardening checklist)
+- M22.2: VM orchestration Go tools (vm-dev full implementation)
+- M26.3: Per-milestone documentation index (doc/MILESTONE-DOCS.md)
+- M28.1: Outbound message queue (OutboundQueue.hs, per-peer FIFO, TUI integration)
+- M28.2: Relay mailbox stubs (Relay.hs, stealth-addressed storage, TTL expiry)
+- M28.3: Outbound queue tests (6 tests)
 - M14 (platform infrastructure) deferred — requires target hardware
 
 ### v0.4.7 — Two-stage seed VM bootstrap, zero host writes
