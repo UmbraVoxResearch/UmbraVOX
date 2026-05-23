@@ -29,13 +29,17 @@
 
   swapDevices = [];
   networking.hostName = "umbravox-vm";
-  networking.firewall.enable = false;
+  # Security: enable the firewall by default so the VM does not expose
+  # services to the host network unless explicitly allowed.
+  networking.firewall.enable = true;
 
   # Writable workspace (tmpfs, sized for build artifacts)
   fileSystems."/work" = {
     device = "tmpfs";
     fsType = "tmpfs";
-    options = [ "size=8G" "mode=1777" ];
+    # Security: mode 0700 restricts /work to root only, preventing
+    # world-writable tmpfs that could allow symlink or hardlink attacks.
+    options = [ "size=8G" "mode=0700" ];
   };
 
   # FHS compatibility for Makefile (SHELL := /bin/bash) and shebangs
@@ -54,6 +58,9 @@
   xdg.mime.enable = false;
   xdg.icons.enable = false;
   nix.enable = false;
+  # Avahi (mDNS) is pulled in by qemu-guest.nix but not needed in the
+  # build VM — disable it to shrink the closure.
+  services.avahi.enable = false;
 
   system.stateVersion = "25.05";
 }

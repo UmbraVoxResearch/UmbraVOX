@@ -193,7 +193,12 @@ CABALEOF
     lib = pkgs.lib;
     config = nixos.config;
     diskSize = "auto";
-    additionalSpace = "8192M";
+    # The full dev-toolchain closure (GHC, F*, Coq, GCC, AFL++, etc.) is
+    # ~14 GB.  16384M gives enough headroom for the rootfs plus logs.
+    # TODO: trim closure — avahi comes from qemu-guest.nix profile,
+    # GCC/valgrind/gdb are only needed for C builds, and coq/tlaplus
+    # could be split into a separate "proof" image layer.
+    additionalSpace = "16384M";
     format = "raw";
     partitionTableType = "legacy";
     copyChannel = false;
