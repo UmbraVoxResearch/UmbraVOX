@@ -244,14 +244,17 @@ MILESTONE M20: CODEBASE QUALITY + ARCHITECTURAL IMPROVEMENTS (v0.2.1)
     at build/vm/image is never touched. vm-dev-run.sh accepts VM_IMAGE_PATH env override.
   [ ] M20.5.8 Nix-native Haskell build inside builder VM
     Note: Current approach runs `nix build` on the host, touching the host nix store.
+    This violates VM-first policy AND consumes host disk space (~30GB for image).
     All Nix evaluation AND compilation must happen inside a VM:
-    1. Spin up a lightweight builder VM with Nix daemon
+    1. Spin up a lightweight builder VM with Nix daemon + large virtio disk
     2. Run callCabal2nix / nix build inside the builder VM
-    3. Extract the resulting binary from the VM
-    4. Build the final runtime VM image using only the compiled binary
+    3. Build the VM disk image inside the builder VM (not on host)
+    4. Extract the final image from the builder VM via 9p/virtio share
     This keeps the host nix store untouched (only qemu + basic nix needed on host).
     Runtime VM image shrinks to ~1-2GB (no GHC/cabal/GCC in image).
     Dev VM (make vm-dev) keeps full toolchain for interactive work.
+    Bonus: eliminates the host disk space constraint entirely — builder VM
+    uses its own virtual disk, not the host's /nix/store.
   [x] M20.5.9 Local-only VM isolation hardening execution checklist (agent-owned)
     [x] M20.5.9.a Replace remote-builder config path with local VM nix config (`nix/vm-build.env` + resolver script)
       Done: nix/vm-build.env + scripts/nix-vm-build-config.sh with fail-closed guards.
