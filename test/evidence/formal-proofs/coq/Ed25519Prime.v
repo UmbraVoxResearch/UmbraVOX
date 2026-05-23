@@ -21,8 +21,8 @@
 
     What this file does NOT prove:
       - Full primality of 2^255-19 via a closed Pocklington theorem
-        (requires coq-prime / Thery library not in our Nix closure;
-        see "PRIMALITY OF 2^255-19" section below for details)
+        (requires multiplicative order theory; see Section 14 for
+        detailed blocker analysis and alternative paths)
       - Field operations or algebraic structure (see Ed25519Field.v)
       - Any curve or group-law properties
 
@@ -31,12 +31,18 @@
     Coq's stdlib provides only trial-division-based prime_dec, which
     requires O(p) steps -- infeasible for a 255-bit number.  A full
     Pocklington proof requires multiplicative-order theory not present
-    in the stdlib (available in coq-prime / Thery, not in our Nix closure).
+    in the stdlib.  The coq-bignums / Coqprime libraries provide
+    PocklingtonRefl, but cannot be loaded due to a findlib plugin
+    issue in the nixpkgs Rocq 9.1.1 closure.
 
     All Pocklington certificate CONDITIONS are machine-verified here
     (factorization, witness checks, size bounds).  The only missing piece
     is the ~200-line formalization of the Pocklington theorem itself,
     which connects those conditions to the prime predicate.
+
+    See Section 14 for detailed status, blocker analysis, import paths
+    tried, alternative approaches considered, and external verification
+    references.
 
     The primality of 2^255-19 is independently verified by SAGE, PARI/GP,
     OpenSSL, Primo (ECPP), and the published literature (Bernstein 2006).
@@ -563,7 +569,83 @@ Proof.
 Qed.
 
 (** ========================================================================
-    Section 14: Summary of verified facts
+    Section 14: Pocklington primality — status and blocker
+    ========================================================================
+
+    GOAL: Prove   prime ed25519_p   (i.e. prime (2^255-19)).
+
+    APPROACH: Pocklington's criterion.  Given n > 1, n-1 = F*R where
+    F >= sqrt(n), if for each prime factor q of F there exists a witness
+    a such that:
+      (1) a^(n-1) = 1 (mod n)
+      (2) gcd(a^((n-1)/q) - 1, n) = 1
+    then n is prime.  (Bernstein 1998; Brillhart-Lehmer-Selfridge 1975.)
+
+    CERTIFICATE (fully machine-verified above):
+      n       = 2^255 - 19
+      F       = q0  (69-digit number, Section 7)
+      R       = 4 * 3 * 65147  (= 782764)
+      n - 1   = F * R  (p_minus_1_factorization)
+      F^2 > n (q0_squared_gt_p)
+      Witness = 2 for all four prime factors {2, 3, 65147, q0}:
+        a^(n-1) = 1 mod n    (fermat_witness_2)
+        gcd checks            (pock_witness_p_2, _3, _65147, _q0)
+      Primality of small factors: prime_3, prime_65147 via check_prime_v2
+
+    WHAT IS MISSING:
+      The Pocklington theorem itself -- the ~200 lines connecting the
+      certificate conditions to the Coq `prime` predicate.  This
+      requires formalizing multiplicative order mod p and proving:
+        - If a^k = 1 mod p (prime), then ord(a) | k
+        - ord(a) | (p-1)  (Fermat's little theorem)
+        - If ord(a) | k but ord(a) does not divide k/q, then q | ord(a)
+      These are available in two external libraries:
+
+      (a) coq-bignums / Coqprime (Thery):
+            Require Import Coqprime.PocklingtonRefl.
+          Status: BLOCKED.  The coq-bignums Nix package loads a native
+          code plugin (bignums_syntax_plugin.cmxs) that requires the
+          findlib OCaml package to be in the coqc load path.  In
+          nixpkgs Rocq 9.1.1, findlib is not propagated to coqc's
+          plugin search path, causing:
+            Error: Cannot load native plugin bignums_syntax_plugin.cmxs
+          The GZnZ module (used in Ed25519GroupUniversal.v) works because
+          it does not load the native plugin.
+
+      (b) coq-prime (standalone):
+            Require Import Coqprime.Pocklington.Pocklington.
+          Status: BLOCKED.  Same underlying issue -- coq-prime depends
+          on coq-bignums for PocklingtonRefl.
+
+      ALTERNATIVE PATHS CONSIDERED:
+        1. Self-contained Pocklington formalization (~200 lines of
+           multiplicative order theory).  Feasible but high effort;
+           deferred until bignums fix is ruled out.
+        2. Lucas primality test (different certificate format).
+           Same order-theory dependency.
+        3. ECPP / AKS.  Much larger formalization; not practical.
+
+      WORKAROUND: primality of 2^255-19 is independently verified by
+      SAGE (is_prime(2^255-19)), PARI/GP (isprime(2^255-19)), OpenSSL
+      (BN_is_prime_ex), Primo (ECPP certificate), and the published
+      literature (Bernstein 2006, "Curve25519: new Diffie-Hellman
+      speed records").  The Coq proof provides all certificate data
+      and condition checks; only the connecting theorem is missing.
+
+      WHEN UNBLOCKED: add to _CoqProject:
+        Require Import Coqprime.PocklingtonRefl.
+      then use the Pocklington reflection tactic on the existing
+      factorization chain.  All conditions are already proved above.
+
+    Primality of q0 (69-digit cofactor):
+      q0 is too large for trial-division check_prime_v2.  Its primality
+      requires a recursive Pocklington certificate (the "14-level chain"
+      referenced in TODO.txt).  The chain is computed but not yet
+      formalized in Coq -- it is blocked by the same bignums issue.
+    ======================================================================== *)
+
+(** ========================================================================
+    Section 15: Summary of verified facts
     ======================================================================== *)
 
 (** Fully machine-checked (zero Admitted, zero Axiom, zero Parameter):
@@ -588,4 +670,10 @@ Qed.
 
     Modular arithmetic:
       - Range, commutativity, associativity, identity, inverse
+
+    Primality of 2^255-19:
+      - BLOCKED: all Pocklington certificate conditions machine-verified
+      - Missing: Pocklington theorem connecting conditions to prime predicate
+      - Blocker: coq-bignums findlib plugin not in Nix coqc load path
+      - See Section 14 for full details and alternative paths
 *)

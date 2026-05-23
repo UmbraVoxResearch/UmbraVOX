@@ -21,9 +21,15 @@
       extended-coordinate addition formula.
 
     Coverage categories (see Section 4 for per-instance labels):
-      - Identity triples  (a=0 or b=0 or c=0):  37 instances
-      - Self-addition      (a=b or b=c, all>0):  15 instances
-      - Full non-trivial   (a!=b, b!=c, all>0):  12 instances
+      - Category A: Base case / identity element  [I]  (a=0 or b=0 or c=0):  37 instances
+      - Category B: Special case / point doubling [S]  (a=b or b=c, all>0):  15 instances
+      - Category C: General case / arbitrary points [F] (a!=b, b!=c, all>0): 12 instances
+
+    Note on inverse points: for this scalar range ({0,1,2,3}), no two
+    multiples are additive inverses (since the group order L >> 6), so
+    inverse-point associativity is not directly tested here.  Universal
+    associativity (including inverse points) is proved algebraically in
+    Ed25519AssocUniversal.v.
 
     Combined with the 7 instances in Ed25519GroupPartial.v, this gives
     71 total machine-checked associativity instances (with some overlap).
@@ -86,6 +92,16 @@ Ltac assoc_vm :=
       [S]  Self-addition     -- a=b or b=c (doubling-like), all operands > 0
       [F]  Full non-trivial  -- a, b, c all > 0, a<>b, b<>c
     An instance may carry multiple tags (e.g. [I,S] when a=b=0). *)
+
+(** ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    Category A: Base case — Identity element triples [I]
+
+    These 37 instances test associativity when at least one operand is
+    the identity element [0]B.  They verify that the identity element
+    participates correctly in left, right, and middle positions.
+
+    Instances: all 16 triples (0,_,_) plus (a,0,_) and (a,_,0) for a>0.
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ *)
 
 (** --- a=0 block (16 instances, all Identity [I]) --- *)
 
@@ -184,6 +200,27 @@ Lemma assoc_0_3_3 :
   proj_eq (ext_point_add (ext_point_add B0 B3) B3)
           (ext_point_add B0 (ext_point_add B3 B3)).
 Proof. assoc_vm. Qed.
+
+(** ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    Category B: Special cases — Point doubling / self-addition [S]
+
+    These 15 instances (spread across blocks a=1,2,3) test associativity
+    when adjacent operands are the same non-identity point (a=b or b=c,
+    all > 0).  This exercises the doubling path of the addition formula,
+    which uses a different code path in HWCD extended coordinates.
+
+    Instances: (k,k,c) and (a,k,k) for k,c,a in {1,2,3}, minus overlaps.
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ *)
+
+(** ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    Category C: General case — Full non-trivial triples [F]
+
+    These 12 instances test genuine 3-point associativity where all
+    operands are distinct non-identity points and no adjacent pair is
+    equal.  This is the general case with no special structure.
+
+    Instances: (a,b,c) with a,b,c > 0, a<>b, b<>c.
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ *)
 
 (** --- a=1 block (16 instances: 7 Identity, 5 Self-addition, 4 Full) --- *)
 
