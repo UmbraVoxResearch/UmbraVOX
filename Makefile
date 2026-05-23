@@ -303,6 +303,7 @@ help: # [host-only]
 	@echo "    make firecracker-image-build Build Firecracker image"
 	@echo "    make vm-signal-server-build Build Signal-Server VM image (M19.4.1)"
 	@echo "    make vm-signal-server  Boot Signal-Server VM (PostgreSQL/Redis/ZK/Java)"
+	@echo "    make vm-signal-server-hash  Extract FOD hash from failed build (M19.4.5)"
 	@echo "    make vm-signal-server-health  Verify Signal-Server health endpoint (M19.4.7)"
 	@echo "    make test-signal-compat Run Signal wire-compatibility tests (M19.6.3)"
 	@echo "    make vm-integration-test Run multi-VM integration test (INTEGRATION_AGENTS=3)"
@@ -1433,6 +1434,32 @@ vm-signal-server-build-jar:
 	@echo -e "$(BLUE)[SIGNAL-VM]$(NC) Stage 1: Building Signal-Server JAR in VM..."
 	@chmod +x ./scripts/vm-signal-server-run.sh
 	@./scripts/vm-signal-server-run.sh build-jar
+
+# Extract FOD hash from a failed vm-signal-server-build-jar run.
+# Usage:
+#   make vm-signal-server-build-jar 2>&1 | tee build/signal-server-build.log
+#   make vm-signal-server-hash BUILD_LOG=build/signal-server-build.log
+# This parses the "got:" line from the nix hash mismatch error and
+# patches nix/signal-server-build.nix with the correct hash.
+BUILD_LOG ?= build/signal-server-build.log
+vm-signal-server-hash:
+	@if [ ! -f "$(BUILD_LOG)" ]; then \
+		echo -e "$(RED)[SIGNAL-VM]$(NC) Build log not found: $(BUILD_LOG)"; \
+		echo -e "$(YELLOW)[SIGNAL-VM]$(NC) Run the build first and capture output:"; \
+		echo "  make vm-signal-server-build-jar 2>&1 | tee $(BUILD_LOG)"; \
+		exit 1; \
+	fi; \
+	GOT_HASH=$$(grep -oP 'got:\s+\Ksha256-[A-Za-z0-9+/=]+' "$(BUILD_LOG)" | tail -1); \
+	if [ -z "$$GOT_HASH" ]; then \
+		echo -e "$(RED)[SIGNAL-VM]$(NC) No 'got: sha256-...' hash found in $(BUILD_LOG)"; \
+		echo -e "$(YELLOW)[SIGNAL-VM]$(NC) The build may not have reached the hash mismatch stage."; \
+		echo -e "$(YELLOW)[SIGNAL-VM]$(NC) Look for 'hash mismatch in fixed-output derivation' in the log."; \
+		exit 1; \
+	fi; \
+	echo -e "$(GREEN)[SIGNAL-VM]$(NC) Extracted FOD hash: $$GOT_HASH"; \
+	sed -i "s|outputHash = \"sha256-[A-Za-z0-9+/=]*\";|outputHash = \"$$GOT_HASH\";|" nix/signal-server-build.nix; \
+	echo -e "$(GREEN)[SIGNAL-VM]$(NC) Updated nix/signal-server-build.nix with FOD hash"; \
+	echo -e "$(BLUE)[SIGNAL-VM]$(NC) Next step: make vm-signal-server-build-jar  (should succeed now)"
 
 vm-signal-server-build:
 	@echo -e "$(BLUE)[SIGNAL-VM]$(NC) Stage 2: Building runtime VM image..."
