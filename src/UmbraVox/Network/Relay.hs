@@ -18,6 +18,8 @@ module UmbraVox.Network.Relay
     , pollRelay
     , newRelayMailbox
     , relayMessageTTL
+      -- * DHT-based relay polling (M28.2.2)
+    , pollRelayViaDHT
     ) where
 
 import Data.ByteString (ByteString)
@@ -26,6 +28,10 @@ import Data.IORef (IORef, newIORef, atomicModifyIORef')
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 import Data.Word (Word64)
+
+import UmbraVox.Crypto.StealthAddress (StealthKeys(..))
+import UmbraVox.Network.DHT (DHTState(..))
+import qualified UmbraVox.Network.DHT.Store as DHTStore
 
 -- | Default message TTL on relay: 7 days in seconds.
 relayMessageTTL :: Word64
@@ -87,3 +93,25 @@ pollRelay mb now =
     atomicModifyIORef' (rmMessages mb) $ \s ->
         let valid = Seq.filter (\(_, expiry) -> expiry > now) s
         in (valid, map fst (foldr (:) [] valid))
+
+------------------------------------------------------------------------
+-- DHT-based relay polling (M28.2.2)
+------------------------------------------------------------------------
+
+-- | Poll for messages addressed to our stealth key via DHT.
+--
+-- Looks up the relay mailbox key derived from our stealth scan public
+-- key in the DHT value store.  Any stored blobs whose expiry has not
+-- passed are returned.  Currently this performs a local-only lookup;
+-- when the DHT transport integration (M24.4) is complete, this will
+-- issue a @FIND_VALUE@ RPC to the network.
+--
+-- The @Word64@ argument is the current POSIX timestamp used for
+-- expiry filtering.
+pollRelayViaDHT :: DHTState -> StealthKeys -> Word64 -> IO [ByteString]
+pollRelayViaDHT dht sk now = do
+    let lookupKey = skScanPublic sk
+    mVal <- DHTStore.localLookup (dhStore dht) lookupKey now
+    case mVal of
+        Nothing  -> pure []
+        Just val -> pure [val]

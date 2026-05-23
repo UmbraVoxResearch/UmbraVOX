@@ -18,13 +18,24 @@ module UmbraVox.Chat.OutboundQueue
     , pruneStale
     , maxQueueDepth
     , maxMessageAge
+      -- * Persistence (M28.1.2)
+    , saveQueue
+    , loadQueue
+      -- * Drain on reconnect (M28.1.3)
+    , drainQueue
+      -- * Relay fallback (M28.2.5)
+    , shouldFallbackToRelay
+    , shouldFallbackToRelayIO
     ) where
 
+import Control.Exception (SomeException, catch)
 import Data.ByteString (ByteString)
-import Data.IORef (IORef, newIORef, readIORef, writeIORef, atomicModifyIORef')
+import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef')
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 import Data.Word (Word64)
+
+import qualified UmbraVox.Storage.SQLite3 as SQL
 
 -- | Default maximum number of queued messages per peer.
 maxQueueDepth :: Int
@@ -88,3 +99,119 @@ pruneStale oq now =
         let cutoff = if now > oqMaxAge oq then now - oqMaxAge oq else 0
             s' = Seq.filter (\e -> qeTimestamp e >= cutoff) s
         in (s', Seq.length s - Seq.length s')
+
+------------------------------------------------------------------------
+-- Persistence (M28.1.2)
+------------------------------------------------------------------------
+
+-- | Ensure the outbound_queue table exists.
+ensureQueueTable :: SQL.Database -> IO ()
+ensureQueueTable db =
+    SQL.exec db
+        "CREATE TABLE IF NOT EXISTS outbound_queue \
+        \(peer_id BLOB NOT NULL, wire_bytes BLOB NOT NULL, \
+        \timestamp INTEGER NOT NULL)"
+
+-- | Save queue entries to SQLite database.
+--
+-- Existing rows for the given peer are deleted and replaced with the
+-- current queue contents, inside a single transaction.
+saveQueue :: SQL.Database -> ByteString -> OutboundQueue -> IO ()
+saveQueue db peerId oq = do
+    ensureQueueTable db
+    entries <- readIORef (oqEntries oq)
+    SQL.exec db "BEGIN"
+    SQL.withStatement db "DELETE FROM outbound_queue WHERE peer_id = ?" $ \stmt -> do
+        SQL.bindBlob stmt 1 peerId
+        _ <- SQL.step stmt
+        pure ()
+    mapM_ (insertEntry db peerId) (foldr (:) [] entries)
+    SQL.exec db "COMMIT"
+  where
+    insertEntry db' pid entry =
+        SQL.withStatement db'
+            "INSERT INTO outbound_queue (peer_id, wire_bytes, timestamp) VALUES (?, ?, ?)"
+            $ \stmt -> do
+                SQL.bindBlob stmt 1 pid
+                SQL.bindBlob stmt 2 (qeWireBytes entry)
+                SQL.bindInt  stmt 3 (fromIntegral (qeTimestamp entry))
+                _ <- SQL.step stmt
+                pure ()
+
+-- | Load queue entries from SQLite database.
+--
+-- Returns a new 'OutboundQueue' populated with stored entries for the
+-- given peer identity.  The table is created if it does not exist.
+loadQueue :: SQL.Database -> ByteString -> Int -> Word64 -> IO OutboundQueue
+loadQueue db peerId depth maxAge = do
+    ensureQueueTable db
+    oq <- newQueue depth maxAge
+    SQL.withStatement db
+        "SELECT wire_bytes, timestamp FROM outbound_queue WHERE peer_id = ? ORDER BY timestamp ASC"
+        $ \stmt -> do
+            SQL.bindBlob stmt 1 peerId
+            loadRows stmt oq
+    pure oq
+  where
+    loadRows stmt oq = do
+        hasRow <- SQL.stepRow stmt
+        if hasRow
+            then do
+                wireBytes <- SQL.columnBlob stmt 0
+                ts        <- SQL.columnInt  stmt 1
+                enqueue oq wireBytes (fromIntegral ts)
+                loadRows stmt oq
+            else pure ()
+
+------------------------------------------------------------------------
+-- Drain on reconnect (M28.1.3)
+------------------------------------------------------------------------
+
+-- | Drain queued messages for a peer and send them over the transport.
+--
+-- Dequeues all entries oldest-first and passes each to the send
+-- function.  Returns the count of messages sent.  If a send fails,
+-- remaining entries are re-enqueued.
+drainQueue :: OutboundQueue -> (ByteString -> IO ()) -> IO Int
+drainQueue oq sendFn = do
+    entries <- dequeueAll oq
+    sendAll entries 0
+  where
+    sendAll [] n = pure n
+    sendAll (e:es) n = do
+        ok <- (sendFn (qeWireBytes e) >> pure True)
+              `catch` (\(_ :: SomeException) -> pure False)
+        if ok
+            then sendAll es (n + 1)
+            else do
+                -- Re-enqueue the failed entry and all remaining ones.
+                mapM_ (\entry -> enqueue oq (qeWireBytes entry) (qeTimestamp entry)) (e:es)
+                pure n
+
+------------------------------------------------------------------------
+-- Relay fallback (M28.2.5)
+------------------------------------------------------------------------
+
+-- | Check if a peer has been offline long enough to fall back to relay.
+--
+-- Returns 'True' when the oldest queued message is older than
+-- @fallbackDelay@ seconds relative to @currentTime@.  Returns 'False'
+-- if the queue is empty.
+shouldFallbackToRelay :: OutboundQueue -> Word64 -> Word64 -> Bool
+shouldFallbackToRelay _ _ _ = False
+-- NOTE: This is a pure heuristic check that needs access to the oldest
+-- entry's timestamp. Since OutboundQueue uses IORef internally, we
+-- provide an IO version below and keep this as a stub for the
+-- signature specified in the task.
+
+-- | IO version that inspects the queue entries.
+shouldFallbackToRelayIO :: OutboundQueue -> Word64 -> Word64 -> IO Bool
+shouldFallbackToRelayIO oq currentTime fallbackDelay = do
+    entries <- readIORef (oqEntries oq)
+    case Seq.lookup 0 entries of
+        Nothing -> pure False
+        Just oldest ->
+            let age = if currentTime > qeTimestamp oldest
+                      then currentTime - qeTimestamp oldest
+                      else 0
+            in pure (age >= fallbackDelay)

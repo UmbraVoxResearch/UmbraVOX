@@ -5,8 +5,9 @@
 module Test.Chat.OutboundQueue (runTests) where
 
 import qualified Data.ByteString as BS
+import Data.IORef (newIORef, readIORef, modifyIORef')
 import UmbraVox.Chat.OutboundQueue
-    ( newQueue, enqueue, dequeueAll, queueSize, pruneStale, QueueEntry(..) )
+    ( newQueue, enqueue, dequeueAll, queueSize, pruneStale, drainQueue, QueueEntry(..) )
 
 runTests :: IO Bool
 runTests = do
@@ -18,6 +19,7 @@ runTests = do
         , testDequeueAllReturnsOldestFirst
         , testPruneStaleRemovesOld
         , testPruneStaleKeepsFresh
+        , testDrainQueueDeliversInOrder
         ]
     let passed = length (filter id results)
         total  = length results
@@ -100,6 +102,26 @@ testPruneStaleKeepsFresh = do
     sz <- queueSize q
     let ok = pruned == 0 && sz == 3
     putStrLn $ "  pruneStale keeps fresh entries: " ++ showResult ok
+    pure ok
+
+-- | M28.3.2: Enqueue 3 messages, drain them, verify all delivered in
+-- order and queue is empty after drain.
+testDrainQueueDeliversInOrder :: IO Bool
+testDrainQueueDeliversInOrder = do
+    q <- newQueue 10 3600
+    enqueue q (BS.pack [10]) 100
+    enqueue q (BS.pack [20]) 101
+    enqueue q (BS.pack [30]) 102
+    -- Collect sent messages in order via IORef
+    sentRef <- newIORef ([] :: [BS.ByteString])
+    let sendFn bs = modifyIORef' sentRef (++ [bs])
+    count <- drainQueue q sendFn
+    sent <- readIORef sentRef
+    szAfter <- queueSize q
+    let ok = count == 3
+          && szAfter == 0
+          && sent == [BS.pack [10], BS.pack [20], BS.pack [30]]
+    putStrLn $ "  drainQueue delivers in order and empties: " ++ showResult ok
     pure ok
 
 showResult :: Bool -> String

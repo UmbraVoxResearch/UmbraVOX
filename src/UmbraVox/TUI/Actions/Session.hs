@@ -17,7 +17,7 @@ import Data.Word (Word8, Word64)
 import System.Directory (doesFileExist, canonicalizePath, getHomeDirectory)
 import Data.List (isPrefixOf)
 import UmbraVox.App.RuntimeLog (logEvent)
-import UmbraVox.Chat.OutboundQueue (newQueue, maxQueueDepth, maxMessageAge)
+import UmbraVox.Chat.OutboundQueue (newQueue, maxQueueDepth, maxMessageAge, drainQueue)
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Render (isPfx)
 import UmbraVox.Chat.Session
@@ -53,6 +53,20 @@ addSession cfg t session peerName = do
             saveConversation db sid "" peerName now
             ) `catch` (\(_ :: SomeException) -> pure ())
         Nothing -> pure ()
+    -- M28.1.3: drain queued messages from any prior session with the same peer
+    existingSessions <- readIORef (cfgSessions cfg)
+    let priorQueues = [ siOutboundQueue s
+                      | (sid', s) <- Map.toList existingSessions
+                      , sid' /= sid
+                      , siPeerName s == peerName
+                      ]
+    drained <- sum <$> mapM (\q -> drainQueue q (anySend t)) priorQueues
+    when (drained > 0) $
+        logEvent cfg "queue.drain.reconnect"
+            [ ("session_id", show sid)
+            , ("peer", peerName)
+            , ("drained", show drained)
+            ]
     logEvent cfg "session.established.remote"
         [ ("session_id", show sid)
         , ("peer", peerName)
