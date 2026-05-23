@@ -14,6 +14,9 @@ module UmbraVox.Protocol.WireFormat
   , encodeEnvelope
   , decodeEnvelope
   , unwrapEnvelope
+    -- * Message padding (M27.2.1)
+  , padToBucket
+  , nextBucket
     -- * ChaCha20-Poly1305 AEAD envelope encryption (M23.1.1c)
   , deriveEnvelopeKey
   , encodeEnvelopeAEAD
@@ -150,6 +153,43 @@ unwrapEnvelope :: Envelope -> ByteString
 unwrapEnvelope = envPayload
 
 ------------------------------------------------------------------------
+-- Message padding to fixed size buckets (M27.2.1)
+------------------------------------------------------------------------
+
+-- | Pad payload to the next size bucket to prevent length correlation.
+-- Buckets: 256, 1024, 4096, 16384 bytes (then multiples of 16384).
+-- The original payload length is stored in the first 2 bytes of the
+-- padded block so the receiver can strip the padding.
+padToBucket :: ByteString -> ByteString
+padToBucket payload =
+    let len = BS.length payload
+        -- 2-byte length prefix is included in the bucket
+        totalNeeded = 2 + len
+        bucket = nextBucket totalNeeded
+        padLen = bucket - totalNeeded
+    in putW16BE (fromIntegral len) <> payload <> BS.replicate padLen 0x00
+
+-- | Determine the next bucket size for a given byte count.
+nextBucket :: Int -> Int
+nextBucket n
+    | n <= 256   = 256
+    | n <= 1024  = 1024
+    | n <= 4096  = 4096
+    | otherwise  = ((n + 16383) `div` 16384) * 16384
+
+-- | Strip bucket padding from a padded payload.
+-- Reads the 2-byte original length prefix and returns only the
+-- original payload bytes, or 'Nothing' if the encoding is invalid.
+unpadFromBucket :: ByteString -> Maybe ByteString
+unpadFromBucket bs
+    | BS.length bs < 2 = Nothing
+    | otherwise =
+        let origLen = fromIntegral (getW16BE (BS.take 2 bs)) :: Int
+        in if origLen < 0 || origLen + 2 > BS.length bs
+           then Nothing
+           else Just (BS.take origLen (BS.drop 2 bs))
+
+------------------------------------------------------------------------
 -- ChaCha20-Poly1305 AEAD envelope encryption (M23.1.1c)
 ------------------------------------------------------------------------
 
@@ -158,10 +198,14 @@ poly1305TagSize :: Int
 poly1305TagSize = 16
 
 -- | Minimum size of an AEAD-encrypted wire message:
--- aad(2) + inner header ciphertext(43) + poly1305 tag(16) = 61 bytes.
--- The inner header is: seq(4) + ephemeralR(32) + viewTag(1) + scanTag(2) + payloadLen(4).
+-- aad(1) + inner ciphertext(44) + poly1305 tag(16) = 61 bytes.
+-- The inner plaintext is: type(1) + seq(4) + ephemeralR(32) + viewTag(1) + scanTag(2) + payloadLen(4).
+--
+-- M27.6.4: The message type byte has been moved inside the encrypted payload
+-- so that observers cannot distinguish message types.  The AAD now contains
+-- only the version byte.
 minAEADSize :: Int
-minAEADSize = 2 + 43 + poly1305TagSize
+minAEADSize = 1 + 44 + poly1305TagSize
 
 -- | Derive a 32-byte envelope encryption key from the transport key.
 --
@@ -198,10 +242,13 @@ seqNonceSafe seqNum
 
 -- | Encode an envelope with ChaCha20-Poly1305 AEAD encryption.
 --
+-- M27.6.4: The message type byte is encrypted inside the AEAD payload so
+-- that observers cannot distinguish message types on the wire.
+--
 -- For data messages (all types except handshake type 2):
---   AAD: version byte + type byte (authenticated but not encrypted)
---   Plaintext: seq(4) + ephemeralR(32) + viewTag(1) + scanTag(2) + payloadLen(4) + payload(N)
---   Output: [version:1][type:1][aead_ciphertext:N][poly1305_tag:16]
+--   AAD: version byte only (authenticated but not encrypted)
+--   Plaintext: type(1) + seq(4) + ephemeralR(32) + viewTag(1) + scanTag(2) + payloadLen(4) + payload(N)
+--   Output: [version:1][aead_ciphertext:N][poly1305_tag:16]
 --
 -- For handshake messages (type 2): delegates to 'encodeEnvelope' (HMAC-SHA-256),
 -- since no session key exists yet during the handshake.
@@ -217,16 +264,20 @@ encodeEnvelopeAEAD envelopeKey seqNum env
         -- M27.3.4: Refuse to encrypt past 2^31 messages; caller must re-key
         error "encodeEnvelopeAEAD: sequence number exceeds re-keying threshold (2^31)"
     | otherwise =
-        let -- AAD: version + type (authenticated but not encrypted)
-            !aad = BS.pack [envVersion env, envType env]
-            -- Plaintext: inner fields (seq through payload)
+        let -- M27.6.4: AAD contains only the version byte; type is encrypted
+            !aad = BS.singleton (envVersion env)
+            -- M27.2.1: Pad payload to fixed size bucket before encryption
+            -- to prevent length correlation attacks.
+            !paddedPayload = padToBucket (envPayload env)
+            -- Plaintext: type byte + inner fields (seq through padded payload)
             !plaintext = BS.concat
-                [ putW32BE (envSequence env)
+                [ BS.singleton (envType env)
+                , putW32BE (envSequence env)
                 , BS.take 32 (envEphemeralR env)
                 , BS.singleton (envViewTag env)
                 , putW16BE (envScanTag env)
-                , putW32BE (fromIntegral (BS.length (envPayload env)))
-                , envPayload env
+                , putW32BE (fromIntegral (BS.length paddedPayload))
+                , paddedPayload
                 ]
             !nonce = seqNonce seqNum
             (!ciphertext, !tag) = chachaPolyEncrypt envelopeKey nonce aad plaintext
@@ -249,26 +300,33 @@ decodeEnvelopeAEAD envelopeKey seqNum bs
     | BS.length bs < 2 = Nothing
     | BS.index bs 0 /= 2 = Nothing  -- reject non-v2 envelopes
     | BS.index bs 1 == 2 =
-        -- Handshake messages use HMAC authentication
+        -- Handshake messages use HMAC authentication (type byte visible)
         decodeEnvelope envelopeKey bs
     | seqNum >= seqNonceMaxSeq = Nothing  -- M27.3.4: reject past re-key threshold
     | BS.length bs < minAEADSize = Nothing
     | otherwise =
-        let !aad = BS.take 2 bs
+        -- M27.6.4: AAD is only the version byte; type is inside encrypted payload.
+        -- However, we still need to check for handshake (type 2) *before*
+        -- decryption.  For non-handshake messages, the second byte is ciphertext,
+        -- not a cleartext type.  The handshake check above uses the legacy
+        -- 2-byte header format where type is visible.
+        let !aad = BS.take 1 bs
             -- ciphertext is everything between aad and the trailing 16-byte tag
             !totalLen = BS.length bs
-            !ciphertextLen = totalLen - 2 - poly1305TagSize
-            !ciphertext = BS.take ciphertextLen (BS.drop 2 bs)
+            !ciphertextLen = totalLen - 1 - poly1305TagSize
+            !ciphertext = BS.take ciphertextLen (BS.drop 1 bs)
             !tag = BS.drop (totalLen - poly1305TagSize) bs
             !nonce = seqNonce seqNum
         in case chachaPolyDecrypt envelopeKey nonce aad ciphertext tag of
             Nothing -> Nothing
-            Just plaintext -> parseInnerEnvelope (BS.index bs 0) (BS.index bs 1) plaintext
+            Just plaintext -> parseInnerEnvelopeV2 (BS.index bs 0) plaintext
 
--- | Parse the decrypted inner plaintext into an 'Envelope'.
+-- | Parse the decrypted inner plaintext into an 'Envelope' (legacy format).
 --
--- Expected layout: seq(4) + ephemeralR(32) + viewTag(1) + scanTag(2) + payloadLen(4) + payload(N)
+-- Expected layout: seq(4) + ephemeralR(32) + viewTag(1) + scanTag(2) + payloadLen(4) + paddedPayload(N)
 -- Minimum plaintext size: 43 bytes (with empty payload).
+-- The payload is bucket-padded (M27.2.1); the first 2 bytes encode the
+-- original length so padding can be stripped.
 parseInnerEnvelope :: Word8 -> Word8 -> ByteString -> Maybe Envelope
 parseInnerEnvelope ver typ plaintext
     | BS.length plaintext < 43 = Nothing
@@ -280,15 +338,47 @@ parseInnerEnvelope ver typ plaintext
             !pLen    = fromIntegral (getW32BE (BS.take 4 (BS.drop 39 plaintext))) :: Int
         in if pLen < 0 || BS.length plaintext < 43 + pLen
            then Nothing
-           else Just Envelope
-                { envVersion    = ver
-                , envType       = typ
-                , envSequence   = seqNum
-                , envEphemeralR = ephR
-                , envViewTag    = vTag
-                , envScanTag    = sTag
-                , envPayload    = BS.take pLen (BS.drop 43 plaintext)
-                }
+           else -- M27.2.1: Strip bucket padding from payload
+                case unpadFromBucket (BS.take pLen (BS.drop 43 plaintext)) of
+                    Nothing -> Nothing
+                    Just origPayload -> Just Envelope
+                        { envVersion    = ver
+                        , envType       = typ
+                        , envSequence   = seqNum
+                        , envEphemeralR = ephR
+                        , envViewTag    = vTag
+                        , envScanTag    = sTag
+                        , envPayload    = origPayload
+                        }
+
+-- | M27.6.4: Parse inner plaintext where the type byte is inside the
+-- encrypted payload (not in the AAD).
+--
+-- Expected layout: type(1) + seq(4) + ephemeralR(32) + viewTag(1) + scanTag(2) + payloadLen(4) + paddedPayload(N)
+-- Minimum plaintext size: 44 bytes (with empty payload).
+parseInnerEnvelopeV2 :: Word8 -> ByteString -> Maybe Envelope
+parseInnerEnvelopeV2 ver plaintext
+    | BS.length plaintext < 44 = Nothing
+    | otherwise =
+        let !typ     = BS.index plaintext 0
+            !seqNum  = getW32BE (BS.take 4 (BS.drop 1 plaintext))
+            !ephR    = BS.take 32 (BS.drop 5 plaintext)
+            !vTag    = BS.index plaintext 37
+            !sTag    = getW16BE (BS.take 2 (BS.drop 38 plaintext))
+            !pLen    = fromIntegral (getW32BE (BS.take 4 (BS.drop 40 plaintext))) :: Int
+        in if pLen < 0 || BS.length plaintext < 44 + pLen
+           then Nothing
+           else case unpadFromBucket (BS.take pLen (BS.drop 44 plaintext)) of
+                    Nothing -> Nothing
+                    Just origPayload -> Just Envelope
+                        { envVersion    = ver
+                        , envType       = typ
+                        , envSequence   = seqNum
+                        , envEphemeralR = ephR
+                        , envViewTag    = vTag
+                        , envScanTag    = sTag
+                        , envPayload    = origPayload
+                        }
 
 ------------------------------------------------------------------------
 -- Per-connection sequence tracking (M23.2.12)

@@ -187,7 +187,7 @@ startDHT dm cfg identityPubKey = do
     case existing of
         Just _  -> pure ()  -- already running
         Nothing -> do
-            st <- newDHTState cfg identityPubKey
+            st <- newDHTState cfg identityPubKey Nothing
             writeIORef (dmDHTState dm) (Just st)
             atomicModifyIORef' (dmSources dm) $ \s ->
                 (Set.insert DiscDHT s, ())
