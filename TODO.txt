@@ -693,7 +693,7 @@ build, supply chain). See doc/SECURITY-REVIEW-v0.4.1.md for full details.
   [x] M27.3.4 WireFormat AEAD: 64-bit sequence counter or re-key guard (cd6c918)
 
 [~] M27.4 High security fixes (4 findings)
-  [ ] M27.4.1 Anthony: migrate to direct-sqlite with prepared statements (HI-010, HI-017)
+  [x] M27.4.1 Anthony: hand-rolled SQLite3 FFI + prepared statements (a8d32d3)
   [x] M27.4.2 Selective TOFU: associate keys with identity, reject changes (a8f2d9b)
   [x] M27.4.3 Noise: add nonce overflow check before encrypt/decrypt (f6dec89)
   [x] M27.4.4 Legacy plaintext pass-through: reject non-UVENC1 rows (073d59c)
