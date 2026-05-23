@@ -36,14 +36,17 @@
 
 set -euo pipefail
 
-ROOT="${UMBRAVOX_ROOT:-$(pwd)}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib-release.sh"
+
+ROOT="$UMBRAVOX_ROOT"
 cd "$ROOT"
 
-OUT_DIR="$ROOT/build/releases"
+OUT_DIR="$RELEASE_OUT_DIR"
 PLATFORM="${1:-}"
-VERSION="${UMBRAVOX_RELEASE_VERSION:-$(git describe --tags --always 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
-COMMIT="${UMBRAVOX_RELEASE_COMMIT:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
-STAMP="${UMBRAVOX_RELEASE_STAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
+VERSION="$RELEASE_VERSION"
+COMMIT="$RELEASE_COMMIT"
+STAMP="$RELEASE_STAMP"
 
 # --------------------------------------------------------------------------
 # Platform definitions
@@ -194,38 +197,12 @@ EOF
 }
 
 # --------------------------------------------------------------------------
-# Guards
+# Guards — delegated to lib-release.sh
 # --------------------------------------------------------------------------
 
-require_cmd() {
-    local cmd="$1"
-    if ! command -v "$cmd" >/dev/null 2>&1; then
-        echo "missing required command: $cmd" >&2
-        exit 1
-    fi
-}
-
-ensure_clean_tree() {
-    if [[ "${UMBRAVOX_ALLOW_DIRTY_RELEASE:-0}" == "1" ]]; then
-        return
-    fi
-    if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
-        echo "refusing release from dirty worktree; commit or stash changes, or set UMBRAVOX_ALLOW_DIRTY_RELEASE=1" >&2
-        exit 1
-    fi
-}
-
-ensure_tagged_release() {
-    if [[ "${UMBRAVOX_ALLOW_UNTAGGED_RELEASE:-0}" == "1" ]]; then
-        return
-    fi
-    local tag=""
-    tag="$(git describe --tags --exact-match HEAD 2>/dev/null || true)"
-    if [[ -z "$tag" ]]; then
-        echo "refusing release from untagged commit; tag HEAD or set UMBRAVOX_ALLOW_UNTAGGED_RELEASE=1" >&2
-        exit 1
-    fi
-}
+require_cmd()         { lib_require_cmd "$@"; }
+ensure_clean_tree()   { lib_ensure_clean_tree; }
+ensure_tagged_release() { lib_ensure_tagged_release; }
 
 validate_platform() {
     local p="$1"
@@ -240,46 +217,24 @@ validate_platform() {
 }
 
 # --------------------------------------------------------------------------
-# Staging helpers
+# Staging helpers — delegated to lib-release.sh
 # --------------------------------------------------------------------------
 
-stage_source_tree() {
-    local stage="$1"
-    mkdir -p "$stage"
-    git ls-files -z | tar --null -T - -cf - | tar -xf - -C "$stage"
-}
+stage_source_tree()   { lib_stage_source_tree "$@"; }
 
 write_manifest() {
     local stage="$1"
     local platform="$2"
     local arch="$3"
     local artifact_kind="$4"
-    cat >"$stage/RELEASE-MANIFEST.txt" <<EOF
-name=UmbraVOX
-platform=${platform}
-arch=${arch}
-artifact_kind=${artifact_kind}
-version=${VERSION}
-commit=${COMMIT}
-timestamp_utc=${STAMP}
-builder=$(uname -srm)
-EOF
+    lib_write_manifest "$stage" \
+        "platform=${platform}" \
+        "arch=${arch}" \
+        "artifact_kind=${artifact_kind}"
 }
 
-copy_docs() {
-    local stage="$1"
-    mkdir -p "$stage/doc"
-    cp README.md LICENSE LEGAL-NOTICE.md "$stage/"
-    [[ -f PUBLISHING-NOTE.md ]] && cp PUBLISHING-NOTE.md "$stage/" || true
-    cp doc/QUICKSTART.md "$stage/doc/"
-}
-
-archive_tgz() {
-    local stage="$1"
-    local artifact="$2"
-    tar -C "$(dirname "$stage")" -czf "$artifact" "$(basename "$stage")"
-    sha256sum "$artifact" > "$artifact.sha256"
-}
+copy_docs()           { lib_copy_common_docs "$@"; }
+archive_tgz()         { lib_archive_tgz "$@"; }
 
 # --------------------------------------------------------------------------
 # Attempt to locate a pre-built binary
