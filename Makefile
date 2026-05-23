@@ -108,17 +108,25 @@ SHELL := /bin/bash
 MAX_COMPLEXITY := 8
 FSTAR_DIR := test/evidence/formal-proofs/fstar
 
+# Build the vm-dev Go tool on first use.
+ENSURE_VM_DEV = @if [ ! -f build/tools/vm-dev ]; then \
+	echo -e "$(BLUE)[BUILD]$(NC) Building vm-dev Go tool..."; \
+	mkdir -p build/tools build/go/mod build/go/cache; \
+	cd tools && GOMODCACHE=$$(pwd)/../build/go/mod GOCACHE=$$(pwd)/../build/go/cache \
+	go build -o ../build/tools/vm-dev ./cmd/vm-dev/; \
+fi
+
 # VM-only execution helper.
 # Usage: $(call vm_or_local,cabal build all --enable-tests 2>&1)
-# Always delegates to scripts/vm-dev-run.sh exec "<cmd>".
+# Always delegates to the Go vm-dev tool in exec mode.
 # Requires the VM image at build/vm/image; errors if missing.
 define vm_or_local
+	$(ENSURE_VM_DEV)
 	@if [ ! -d build/vm/image ] && [ ! -L build/vm/image ]; then \
-		echo -e "$(RED)[ERROR]$(NC) No VM image found at build/vm/image."; \
-		echo "  Run 'make vm-image-build' first."; \
+		echo -e "$(RED)[ERROR]$(NC) No VM image found. Run 'make vm-image-build' first."; \
 		exit 1; \
 	fi; \
-	./scripts/vm-dev-run.sh exec "$(1)"
+	build/tools/vm-dev exec -- $(1)
 endef
 
 # Unset LD_LIBRARY_PATH to prevent curl segfaults in nix-shell
@@ -1230,34 +1238,30 @@ sanity:
 # See doc/VM-DEVELOPMENT.md for the migration plan.
 
 vm-dev:
+	$(ENSURE_VM_DEV)
 	@echo -e "$(BLUE)[VM-DEV]$(NC) Booting interactive NixOS development VM..."
-	@chmod +x ./scripts/vm-dev-run.sh
-	@./scripts/vm-dev-run.sh interactive
+	@build/tools/vm-dev interactive
 
 vm-build:
 	@echo -e "$(BLUE)[VM-BUILD]$(NC) Building inside NixOS VM..."
-	@chmod +x ./scripts/vm-dev-run.sh
-	@./scripts/vm-dev-run.sh exec "cabal build all --enable-tests 2>&1"
+	$(call vm_or_local,cabal build all --enable-tests 2>&1)
 
 vm-test:
 	@echo -e "$(BLUE)[VM-TEST]$(NC) Testing inside NixOS VM..."
-	@chmod +x ./scripts/vm-dev-run.sh
-	@./scripts/vm-dev-run.sh exec "cabal build all --enable-tests 2>&1 && cabal test umbravox-test --test-options='required' 2>&1"
+	$(call vm_or_local,cabal build all --enable-tests 2>&1 && cabal test umbravox-test --test-options='required' 2>&1)
 
 vm-build-only: vm-image-build
 	@echo -e "$(BLUE)[VM-BUILD-ONLY]$(NC) Building inside NixOS VM (no host toolchain needed)..."
-	@chmod +x ./scripts/vm-dev-run.sh
-	@./scripts/vm-dev-run.sh exec "cabal build all --enable-tests 2>&1"
+	$(call vm_or_local,cabal build all --enable-tests 2>&1)
 
 vm-run-gui:
+	$(ENSURE_VM_DEV)
 	@echo -e "$(BLUE)[VM-GUI]$(NC) Booting NixOS VM with graphical QEMU window..."
-	@chmod +x ./scripts/vm-dev-run.sh
-	@./scripts/vm-dev-run.sh gui
+	@build/tools/vm-dev gui
 
 vm-verify:
 	@echo -e "$(BLUE)[VM-VERIFY]$(NC) Running F* verification inside NixOS VM..."
-	@chmod +x ./scripts/vm-dev-run.sh
-	@./scripts/vm-dev-run.sh exec "cabal build all 2>&1 && cabal run fstar-verify 2>&1"
+	$(call vm_or_local,cabal build all 2>&1 && cabal run fstar-verify 2>&1)
 
 vm-test-ephemeral: # Build fresh VM image in temp dir, run tests, discard image
 	@echo -e "$(BLUE)[VM-EPHEMERAL]$(NC) Building ephemeral VM image for testing..."
@@ -1430,10 +1434,17 @@ image-clean: vm-image-clean
 # Stage 2: runtime VM (deny-all, pre-built JAR + backing services)
 # --------------------------------------------------------------------------
 
+# Build the vm-signal Go tool on first use.
+ENSURE_VM_SIGNAL = @if [ ! -f build/tools/vm-signal ]; then \
+	echo -e "$(BLUE)[BUILD]$(NC) Building vm-signal Go tool..."; \
+	mkdir -p build/tools build/go/mod build/go/cache; \
+	cd tools && GOMODCACHE=$$(pwd)/../build/go/mod GOCACHE=$$(pwd)/../build/go/cache \
+	go build -o ../build/tools/vm-signal ./cmd/vm-signal/; \
+fi
+
 vm-signal-server-build-jar:
-	@echo -e "$(BLUE)[SIGNAL-VM]$(NC) Stage 1: Building Signal-Server JAR in VM..."
-	@chmod +x ./scripts/vm-signal-server-run.sh
-	@./scripts/vm-signal-server-run.sh build-jar
+	$(ENSURE_VM_SIGNAL)
+	@build/tools/vm-signal build-jar
 
 # Extract FOD hash from a failed vm-signal-server-build-jar run.
 # Usage:
@@ -1495,19 +1506,16 @@ vm-signal-server-build:
 	fi
 
 vm-signal-server:
-	@echo -e "$(BLUE)[SIGNAL-VM]$(NC) Booting Signal-Server VM..."
-	@chmod +x ./scripts/vm-signal-server-run.sh
-	@./scripts/vm-signal-server-run.sh interactive
+	$(ENSURE_VM_SIGNAL)
+	@build/tools/vm-signal interactive
 
 vm-signal-server-check:
-	@echo -e "$(BLUE)[SIGNAL-VM]$(NC) Booting Signal-Server VM (service check)..."
-	@chmod +x ./scripts/vm-signal-server-run.sh
-	@./scripts/vm-signal-server-run.sh check
+	$(ENSURE_VM_SIGNAL)
+	@build/tools/vm-signal check
 
 vm-signal-server-health:
-	@echo -e "$(BLUE)[SIGNAL-VM]$(NC) Booting Signal-Server VM (health endpoint verification)..."
-	@chmod +x ./scripts/vm-signal-server-run.sh
-	@./scripts/vm-signal-server-run.sh check-health
+	$(ENSURE_VM_SIGNAL)
+	@build/tools/vm-signal check-health
 
 # --------------------------------------------------------------------------
 # Signal Bridge Plugin (M19.6.3)
