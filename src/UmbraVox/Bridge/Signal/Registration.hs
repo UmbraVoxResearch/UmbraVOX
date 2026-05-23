@@ -63,7 +63,25 @@ data RegistrationState = RegistrationState
     , rsProvisioningUuid    :: !ByteString
       -- ^ Provisioning UUID assigned by server (empty until WebSocket
       --   provides it; stub for now).
-    } deriving stock (Show)
+    }
+
+-- | Redacted Show instance: the provisioning private key is replaced with
+-- @"\<redacted\>"@ to prevent accidental exposure in logs or error messages.
+--
+-- Finding:     M27.6.1 — 'RegistrationState' derived a stock 'Show' instance
+--              that printed the raw X25519 provisioning private key.
+-- Vulnerability: Any code path that logs or displays a 'RegistrationState'
+--              value would leak the provisioning secret key in cleartext.
+-- Fix:         Hand-written 'Show' that redacts 'rsProvisioningPrivKey'.
+-- Verified:    @show@ on a 'RegistrationState' no longer contains the private key.
+instance Show RegistrationState where
+    show rs = "RegistrationState {"
+        ++ " rsProvisioningPrivKey = <redacted>"
+        ++ ", rsProvisioningPubKey = " ++ show (rsProvisioningPubKey rs)
+        ++ ", rsServerUrl = " ++ show (rsServerUrl rs)
+        ++ ", rsPhase = " ++ show (rsPhase rs)
+        ++ ", rsProvisioningUuid = " ++ show (rsProvisioningUuid rs)
+        ++ " }"
 
 -- | Data received from the primary device during provisioning.
 data ProvisioningData = ProvisioningData
@@ -79,7 +97,27 @@ data ProvisioningData = ProvisioningData
       -- ^ Device ID assigned by the server.
     , pdProvisioningCode :: !ByteString
       -- ^ Provisioning code for confirming registration with server.
-    } deriving stock (Show)
+    }
+
+-- | Redacted Show instance: private key and profile key fields are replaced
+-- with @"\<redacted\>"@ to prevent accidental exposure in logs or error messages.
+--
+-- Finding:     M27.6.1 — 'ProvisioningData' derived a stock 'Show' instance
+--              that printed the identity private key and profile key.
+-- Vulnerability: Any code path that logs or displays a 'ProvisioningData'
+--              value would leak live identity secret key material.
+-- Fix:         Hand-written 'Show' that redacts 'pdIdentityKeyPriv' and
+--              'pdProfileKey'.
+-- Verified:    @show@ on a 'ProvisioningData' no longer contains secret fields.
+instance Show ProvisioningData where
+    show pd = "ProvisioningData {"
+        ++ " pdIdentityKeyPriv = <redacted>"
+        ++ ", pdIdentityKeyPub = " ++ show (pdIdentityKeyPub pd)
+        ++ ", pdPhoneNumber = " ++ show (pdPhoneNumber pd)
+        ++ ", pdProfileKey = <redacted>"
+        ++ ", pdDeviceId = " ++ show (pdDeviceId pd)
+        ++ ", pdProvisioningCode = " ++ show (pdProvisioningCode pd)
+        ++ " }"
 
 -- | Failure modes for the registration flow.
 data RegistrationError

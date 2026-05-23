@@ -50,12 +50,28 @@ epochInfoPrefix :: ByteString
 epochInfoPrefix = "UmbraVox_RouteToken_v1_epoch_"
 
 -- | Number of messages before hybrid rotation triggers.
+--
+-- Finding:     M27.6.2 — Route tokens rotated only every 100 messages,
+--              giving a passive observer a long window to correlate tokens
+--              with sessions.
+-- Vulnerability: Infrequent rotation allows traffic-analysis attacks to
+--              link route tokens to user sessions over extended periods.
+-- Fix:         Reduced from 100 to 20 messages.
+-- Verified:    'shouldRotate' triggers after 20 messages.
 rotateEveryN :: Word64
-rotateEveryN = 100
+rotateEveryN = 20
 
 -- | Wall-clock epoch length in seconds for hybrid rotation.
+--
+-- Finding:     M27.6.2 — Route tokens rotated only every 600 seconds
+--              (10 minutes) on the wall-clock axis, leaving idle sessions
+--              with stale tokens for too long.
+-- Vulnerability: Stale tokens on idle sessions are easier to correlate
+--              across time by a network-level adversary.
+-- Fix:         Reduced from 600 to 120 seconds (2 minutes).
+-- Verified:    'shouldRotate' triggers after 120 seconds of inactivity.
 wallClockEpoch :: Word64
-wallClockEpoch = 600
+wallClockEpoch = 120
 
 ------------------------------------------------------------------------
 -- Route token state

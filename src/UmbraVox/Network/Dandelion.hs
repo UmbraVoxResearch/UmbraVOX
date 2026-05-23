@@ -28,6 +28,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.IORef
 import Data.Word (Word8, Word64)
+import Control.Concurrent (threadDelay)
 
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Network.RateLimit (RateLimiter, checkRate)
@@ -118,7 +119,26 @@ routeMessage ds msg
                         case mPeer of
                             -- M23.2.7: fall back to fluff instead of dropping
                             Nothing   -> return (FluffBroadcast msg)
-                            Just peer -> return (StemForward peer msg)
+                            Just peer -> do
+                                -- M27.6.3: Add timing jitter before stem forwarding
+                                -- to frustrate timing-based traffic analysis.
+                                --
+                                -- Finding:     M27.6.3 — Stem-phase messages were
+                                --              forwarded immediately, allowing a
+                                --              timing-correlated adversary to link
+                                --              sender and recipient.
+                                -- Vulnerability: Without jitter, an adversary
+                                --              observing message arrival and departure
+                                --              times at relay nodes can correlate
+                                --              stem-phase messages to their origin.
+                                -- Fix:         Introduce a random delay of 50-500 ms
+                                --              (drawn from CSPRNG) before forwarding
+                                --              stem-phase messages.
+                                -- Verified:    Stem forwarding now incurs a random
+                                --              delay; timing correlation is disrupted.
+                                jitterUs <- stemJitter
+                                threadDelay jitterUs
+                                return (StemForward peer msg)
 
 -- | Route a message through Dandelion++ with per-session relay rate
 -- limiting (M23.1.1h DoS mitigation).
@@ -252,3 +272,13 @@ rejectionSample2 n = do
     if val >= limit
         then rejectionSample2 n  -- reject and retry
         else return (val `mod` n)
+
+-- | Generate a random stem-forwarding jitter delay in microseconds.
+-- Range: 50,000 - 500,000 us (50 - 500 ms).
+-- Uses CSPRNG via 'uniformIndex' for uniform distribution.
+stemJitter :: IO Int
+stemJitter = do
+    -- 451 possible values: [50000, 50001, ..., 500000]
+    -- We sample uniformly in [0, 450000] and add 50000.
+    offset <- uniformIndex 450001
+    return (50000 + offset)

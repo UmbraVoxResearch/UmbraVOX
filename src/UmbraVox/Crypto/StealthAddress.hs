@@ -57,7 +57,27 @@ data StealthKeys = StealthKeys
     , skSpendSecret :: !ByteString  -- ^ 32 bytes, Ed25519 secret (seed)
                                     -- TODO(M15.3): wrap in SecureBytes (see module note above)
     , skSpendPublic :: !ByteString  -- ^ 32 bytes, Ed25519 public
-    } deriving stock (Show)
+    }
+
+-- | Redacted Show instance: secret fields are replaced with @"<redacted>"@
+-- to prevent accidental exposure of key material in logs or error messages.
+--
+-- Finding:     M27.6.1 — 'StealthKeys' derived a stock 'Show' instance that
+--              printed raw secret key bytes ('skScanSecret', 'skSpendSecret').
+-- Vulnerability: Any code path that logs or displays a 'StealthKeys' value
+--              (error messages, debug traces, crash dumps) would leak live
+--              X25519 and Ed25519 secret key material in cleartext.
+-- Fix:         Replace @deriving stock (Show)@ with a hand-written instance
+--              that prints @"\<redacted\>"@ for both secret fields while still
+--              showing the public keys for diagnostics.
+-- Verified:    @show@ on a 'StealthKeys' value no longer contains secret bytes.
+instance Show StealthKeys where
+    show sk = "StealthKeys {"
+        ++ " skScanSecret = <redacted>"
+        ++ ", skScanPublic = " ++ show (skScanPublic sk)
+        ++ ", skSpendSecret = <redacted>"
+        ++ ", skSpendPublic = " ++ show (skSpendPublic sk)
+        ++ " }"
 
 -- | A derived one-time stealth address with ephemeral key and view tag.
 data StealthAddress = StealthAddress
