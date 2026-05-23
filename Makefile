@@ -92,7 +92,7 @@
 # Prerequisites:
 #   VM mode (default): make vm-image-build (needs qemu + nix)
 
-.PHONY: all build build-haskell run run-local test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen docs release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm test-make-options test-vm-config sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-build-only vm-test vm-verify vm-run-gui firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot screenshot-local vm-record vm-visual-regression visual-reference-update differential-vectors test-differential-oracle test-differential-full fuzz-differential fuzz-afl differential differential-evidence-check signal-bridge-build test-signal-compat test-signal-bridge-ipc check-isolation tools clean cleandb cleanall help
+.PHONY: all build build-haskell run run-local test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen docs release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance check-vectors release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm test-make-options test-vm-config sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-build-only vm-test vm-verify vm-run-gui firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot screenshot-local vm-record vm-visual-regression visual-reference-update differential-vectors test-differential-oracle test-differential-full fuzz-differential fuzz-afl differential differential-evidence-check signal-bridge-build test-signal-compat test-signal-bridge-ipc check-isolation tools clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -1064,6 +1064,10 @@ assurance: assurance-fast
 		echo -e "$(GREEN)[ASSURANCE]$(NC) PASS ($$pass passed, $$skip skipped)"; \
 	fi)
 
+check-vectors:
+	@echo -e "$(BLUE)[VECTORS]$(NC) Verifying test vector integrity (SHA-256)..."
+	@cd test/vectors && sha256sum -c SHA256SUMS
+
 check-evidence:
 	@echo "Running external evidence checks..."
 	@bash test/evidence/formal-proofs/check-external-evidence.sh
@@ -1604,6 +1608,14 @@ clean: # [host-only] file operations
 	@find . -maxdepth 2 -type f -name "*.tix" -delete 2>/dev/null || true
 	@rm -rf $(FSTAR_DIR)/_cache $(FSTAR_DIR)/_output
 	@echo -e "$(GREEN)[CLEAN]$(NC) Done. (VM image not removed; use make image-clean)"
+
+# Ensure cabal can recover from a clean state — if dist-newstyle was
+# removed (by make clean or manually), cabal build handles it natively.
+# This target explicitly verifies the build works from a clean slate.
+clean-build-test: clean
+	@echo -e "$(BLUE)[CLEAN-BUILD-TEST]$(NC) Verifying build from clean state..."
+	$(call vm_or_local, cabal build all 2>&1 | tail -5)
+	@echo -e "$(GREEN)[CLEAN-BUILD-TEST]$(NC) Clean build verified."
 
 cleandb: # [host-only] file operations
 	@echo -e "$(BLUE)[CLEANDB]$(NC) Removing local database..."

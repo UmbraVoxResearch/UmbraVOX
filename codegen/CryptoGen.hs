@@ -503,6 +503,19 @@ pArgListInner toks =
             (TokRParen : rest2) -> ([arg], rest2)
             _ -> ([arg], rest)
 
+-- | Validate that an algorithm name is safe for use as a file path component.
+-- Rejects names containing path separators, dot-dot sequences, or characters
+-- outside the alphanumeric + underscore + hyphen set.
+validateAlgorithmName :: String -> Either String ()
+validateAlgorithmName name
+    | null name = Left "algorithm name is empty"
+    | ".." `isPrefixOf` name = Left $ "algorithm name contains '..': " ++ name
+    | any (\c -> c == '/' || c == '\\') name =
+        Left $ "algorithm name contains path separator: " ++ name
+    | not (all (\c -> isAlphaNum c || c == '_' || c == '-') name) =
+        Left $ "algorithm name contains invalid characters: " ++ name
+    | otherwise = Right ()
+
 -- | Process a single .spec file: parse, validate, and generate outputs.
 -- Always regenerates all output files unconditionally.
 processSpec :: FilePath -> IO ()
@@ -512,22 +525,25 @@ processSpec path = do
         Left err -> putStrLn $ "  ERROR parsing " ++ path ++ ": " ++ err
         Right ast -> do
             let name = specAlgorithm ast
-                hsDir  = "src" </> "UmbraVox" </> "Crypto" </> "Generated"
-                cDir   = "csrc" </> "generated"
-                ffiDir = "src" </> "UmbraVox" </> "Crypto" </> "Generated" </> "FFI"
-                hsPath  = hsDir  </> (name ++ ".hs")
-                cPath   = cDir   </> (toLowerStr name ++ ".c")
-                ffiPath = ffiDir </> (name ++ ".hs")
-            createDirectoryIfMissing True hsDir
-            createDirectoryIfMissing True cDir
-            createDirectoryIfMissing True ffiDir
-            emitHaskell ast hsPath name
-            emitC ast cPath name
-            emitFFI ast ffiPath name
-            putStrLn $ "  Generated: " ++ name
-            putStrLn $ "    Haskell: " ++ hsPath
-            putStrLn $ "    C:       " ++ cPath
-            putStrLn $ "    FFI:     " ++ ffiPath
+            case validateAlgorithmName name of
+              Left err -> putStrLn $ "  ERROR: unsafe algorithm name in " ++ path ++ ": " ++ err
+              Right () -> do
+                let hsDir  = "src" </> "UmbraVox" </> "Crypto" </> "Generated"
+                    cDir   = "csrc" </> "generated"
+                    ffiDir = "src" </> "UmbraVox" </> "Crypto" </> "Generated" </> "FFI"
+                    hsPath  = hsDir  </> (name ++ ".hs")
+                    cPath   = cDir   </> (toLowerStr name ++ ".c")
+                    ffiPath = ffiDir </> (name ++ ".hs")
+                createDirectoryIfMissing True hsDir
+                createDirectoryIfMissing True cDir
+                createDirectoryIfMissing True ffiDir
+                emitHaskell ast hsPath name
+                emitC ast cPath name
+                emitFFI ast ffiPath name
+                putStrLn $ "  Generated: " ++ name
+                putStrLn $ "    Haskell: " ++ hsPath
+                putStrLn $ "    C:       " ++ cPath
+                putStrLn $ "    FFI:     " ++ ffiPath
 
 toLowerStr :: String -> String
 toLowerStr = map toLower
