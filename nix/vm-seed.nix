@@ -86,8 +86,9 @@ let
       description = "UmbraVOX seed VM builder";
       wantedBy = [ "multi-user.target" ];
       after = [ "local-fs.target" "nix-daemon.service" "network-online.target" ];
-      wants = [ "network-online.target" ];
-      requires = [ "nix-daemon.service" ];
+      wants = [ "network-online.target" "nix-daemon.service" ];
+      # Use 'wants' not 'requires' for nix-daemon — we stop/restart it
+      # during the bind-mount overlay, and 'requires' would kill us too.
       path = config.environment.systemPackages ++ [ pkgs.nix ];
       environment = {
         HOME = "/root";
