@@ -33,6 +33,10 @@
 #   VM_WORK_DIR        — image cache directory (default: build/vm)
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VM_LOG_PREFIX="vm-dragonfly"
+source "${SCRIPT_DIR}/lib-vm.sh"
+
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 DRAGONFLY_VERSION="${DRAGONFLY_VERSION:-6.4.0}"
@@ -56,11 +60,10 @@ SSH_KEY="${VM_WORK_DIR}/dragonfly-vm-key"
 
 UMBRAVOX_ROOT="${UMBRAVOX_ROOT:-$(pwd)}"
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Helpers (delegated to lib-vm.sh) ─────────────────────────────────────────
 
-die() { echo "error: $*" >&2; exit 1; }
-
-log() { echo "[vm-dragonfly] $*"; }
+die()  { vm_die "$@"; }
+log()  { vm_log "$@"; }
 
 info_skip() {
   # Emit an INFO notice and exit 0 — used when GHC is unavailable.
@@ -75,12 +78,12 @@ info_skip() {
 }
 
 require_cmd() {
-  command -v "$1" >/dev/null 2>&1 || die "$1 not found — run inside nix-shell nix/vm-dragonfly.nix"
+  vm_require_cmd "$1" "run inside nix-shell nix/vm-dragonfly.nix"
 }
 
 wait_for_ssh() {
   local port="$1" timeout="$2" elapsed=0
-  log "waiting for SSH on localhost:$port (timeout ${timeout}s)..."
+  vm_log "waiting for SSH on localhost:$port (timeout ${timeout}s)..."
   while ! ssh -o StrictHostKeyChecking=no \
               -o ConnectTimeout=3 \
               -o BatchMode=yes \
@@ -89,21 +92,17 @@ wait_for_ssh() {
     sleep 5
     elapsed=$((elapsed + 5))
     if ((elapsed >= timeout)); then
-      log "timed out waiting for SSH — this is expected if the ISO boots into"
-      log "an interactive installer that requires manual steps."
+      vm_log "timed out waiting for SSH — this is expected if the ISO boots into"
+      vm_log "an interactive installer that requires manual steps."
       info_skip
     fi
-    log "  still waiting... (${elapsed}s)"
+    vm_log "  still waiting... (${elapsed}s)"
   done
-  log "SSH ready after ${elapsed}s"
+  vm_log "SSH ready after ${elapsed}s"
 }
 
 guest_cmd() {
-  ssh -o StrictHostKeyChecking=no \
-      -o BatchMode=yes \
-      -i "$SSH_KEY" \
-      -p "$VM_SSH_PORT" \
-      root@127.0.0.1 "$@"
+  vm_guest_cmd "$SSH_KEY" "$VM_SSH_PORT" "$@"
 }
 
 # ── Prerequisite checks ───────────────────────────────────────────────────────

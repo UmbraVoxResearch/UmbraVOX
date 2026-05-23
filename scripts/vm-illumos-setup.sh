@@ -18,6 +18,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VM_LOG_PREFIX="VM-ILLUMOS"
+source "${SCRIPT_DIR}/lib-vm.sh"
+
 # --------------------------------------------------------------------------
 # Configuration
 # --------------------------------------------------------------------------
@@ -37,14 +41,10 @@ QEMU_MEM="2048"
 QEMU_CPUS="2"
 QEMU_TIMEOUT=2400   # 40 minutes (OmniOS boot + pkg install takes longer)
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-NC='\033[0m'
-
-log()  { echo -e "${BLUE}[VM-ILLUMOS]${NC} $*"; }
-ok()   { echo -e "${GREEN}[VM-ILLUMOS]${NC} $*"; }
-fail() { echo -e "${RED}[VM-ILLUMOS]${NC} $*"; }
+# Aliases for backward compatibility within this script
+log()  { vm_log "$@"; }
+ok()   { vm_ok "$@"; }
+fail() { vm_fail "$@"; }
 
 # --------------------------------------------------------------------------
 # Step 1: Ensure base image is cached
@@ -86,9 +86,7 @@ fi
 # Step 2: Create disposable overlay
 # --------------------------------------------------------------------------
 
-log "Creating disposable overlay..."
-rm -f "${OVERLAY}"
-qemu-img create -f qcow2 -b "${BASE_IMAGE}" -F qcow2 "${OVERLAY}"
+vm_create_overlay "${BASE_IMAGE}" "${OVERLAY}"
 
 # --------------------------------------------------------------------------
 # Step 3: Build an init ISO with the in-guest smoke script
@@ -210,47 +208,15 @@ cat > "${TMPDIR_INIT}/umbravox-smoke-smf.xml" << 'SMF_XML'
 </service_bundle>
 SMF_XML
 
-# Build the ISO
-if command -v genisoimage >/dev/null 2>&1; then
-    genisoimage -o "${INIT_ISO}" -R -J "${TMPDIR_INIT}"
-elif command -v mkisofs >/dev/null 2>&1; then
-    mkisofs -o "${INIT_ISO}" -R -J "${TMPDIR_INIT}"
-elif command -v xorriso >/dev/null 2>&1; then
-    xorriso -as mkisofs -o "${INIT_ISO}" -R -J "${TMPDIR_INIT}"
-else
-    fail "No ISO builder found (genisoimage / mkisofs / xorriso). Install one in nix-shell."
-    exit 1
-fi
-
-ok "Init ISO built: ${INIT_ISO}"
+# Build the ISO using shared helper
+vm_build_init_iso "${TMPDIR_INIT}" "${INIT_ISO}"
 
 # --------------------------------------------------------------------------
 # Step 4: Build a source FAT disk image
 # --------------------------------------------------------------------------
 
-log "Packaging source tree into FAT disk image for in-guest access..."
-
 SRC_IMG="${CACHE_DIR}/illumos-src.img"
-rm -f "${SRC_IMG}"
-
-SRC_SIZE_MB=256
-dd if=/dev/zero of="${SRC_IMG}" bs=1M count="${SRC_SIZE_MB}" 2>/dev/null
-mkfs.fat -F 32 "${SRC_IMG}"
-
-if command -v mcopy >/dev/null 2>&1; then
-    (
-        cd "${SRC_DIR}"
-        git ls-files | while IFS= read -r f; do
-            mmd -i "${SRC_IMG}" -D s "::$(dirname "${f}")" 2>/dev/null || true
-            mcopy -i "${SRC_IMG}" -D o "${f}" "::${f}"
-        done
-    )
-else
-    fail "mtools (mcopy) not found. Install mtools in nix-shell for FAT image creation."
-    exit 1
-fi
-
-ok "Source disk image: ${SRC_IMG}"
+vm_build_source_fat "${SRC_DIR}" "${SRC_IMG}" 256
 
 # --------------------------------------------------------------------------
 # Step 5: Boot and run
@@ -286,18 +252,4 @@ echo ""
 # Step 6: Report
 # --------------------------------------------------------------------------
 
-if [ "${QEMU_EXIT}" -eq 124 ]; then
-    fail "VM timed out after ${QEMU_TIMEOUT}s."
-    fail "Log: ${SMOKE_LOG}"
-    exit 1
-fi
-
-if grep -q "SMOKE_RESULT=PASS" "${SMOKE_LOG}" 2>/dev/null; then
-    ok "illumos smoke: PASS"
-    ok "Log: ${SMOKE_LOG}"
-    exit 0
-else
-    fail "illumos smoke: FAIL"
-    fail "Log: ${SMOKE_LOG}"
-    exit 1
-fi
+vm_check_smoke_result "${SMOKE_LOG}" "${QEMU_EXIT}" "${QEMU_TIMEOUT}" "illumos"

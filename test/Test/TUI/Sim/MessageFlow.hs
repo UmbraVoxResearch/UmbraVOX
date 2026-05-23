@@ -12,6 +12,7 @@ import Test.Util (assertEq)
 import Test.TUI.Sim.Util
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Actions.Session (sendCurrentMessage, sendToSession, addLoopbackSession)
+import UmbraVox.Chat.OutboundQueue (newQueue, maxQueueDepth, maxMessageAge)
 import UmbraVox.Chat.Session (initChatSession)
 import UmbraVox.Crypto.Random (randomBytes)
 import qualified Data.ByteString as BS
@@ -285,7 +286,8 @@ testOfflineSessionRejectsSend = do
     lock <- newMVar ()
     histRef <- newIORef ["Peer: old message"]
     stRef <- newIORef Offline
-    let si = SessionInfo Nothing (RatchetCrypto ref) lock Nothing "restored-offline" histRef stRef
+    oq <- newQueue maxQueueDepth maxMessageAge
+    let si = SessionInfo Nothing (RatchetCrypto ref) lock Nothing "restored-offline" histRef stRef oq
     writeIORef (cfgSessions cfg) (Map.singleton sid si)
     let dummySenderId = BS.replicate 32 0
     result <- sendToSession dummySenderId si (BC.pack "must not loop")

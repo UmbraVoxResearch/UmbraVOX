@@ -22,6 +22,10 @@
 #   VM_WORK_DIR       — image cache directory (default: build/vm)
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VM_LOG_PREFIX="vm-openbsd"
+source "${SCRIPT_DIR}/lib-vm.sh"
+
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 OPENBSD_VERSION="${OPENBSD_VERSION:-7.5}"
@@ -49,41 +53,21 @@ SSH_KEY="${VM_WORK_DIR}/openbsd-vm-key"
 
 UMBRAVOX_ROOT="${UMBRAVOX_ROOT:-$(pwd)}"
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Helpers (delegated to lib-vm.sh) ─────────────────────────────────────────
 
-die() { echo "error: $*" >&2; exit 1; }
-
-log() { echo "[vm-openbsd] $*"; }
+die()  { vm_die "$@"; }
+log()  { vm_log "$@"; }
 
 require_cmd() {
-  command -v "$1" >/dev/null 2>&1 || die "$1 not found — run inside nix-shell nix/vm-openbsd.nix"
+  vm_require_cmd "$1" "run inside nix-shell nix/vm-openbsd.nix"
 }
 
 wait_for_ssh() {
-  local port="$1" timeout="$2" elapsed=0
-  log "waiting for SSH on localhost:$port (timeout ${timeout}s)..."
-  while ! ssh -o StrictHostKeyChecking=no \
-              -o ConnectTimeout=3 \
-              -o BatchMode=yes \
-              -i "$SSH_KEY" \
-              -p "$port" root@127.0.0.1 true 2>/dev/null; do
-    sleep 5
-    elapsed=$((elapsed + 5))
-    if ((elapsed >= timeout)); then
-      die "timed out waiting for guest SSH after ${timeout}s"
-    fi
-    log "  still waiting... (${elapsed}s)"
-  done
-  log "SSH ready after ${elapsed}s"
+  vm_wait_for_ssh "$1" "$2" "$SSH_KEY"
 }
 
 guest_cmd() {
-  # Run a command in the guest over SSH.
-  ssh -o StrictHostKeyChecking=no \
-      -o BatchMode=yes \
-      -i "$SSH_KEY" \
-      -p "$VM_SSH_PORT" \
-      root@127.0.0.1 "$@"
+  vm_guest_cmd "$SSH_KEY" "$VM_SSH_PORT" "$@"
 }
 
 # ── Prerequisite checks ───────────────────────────────────────────────────────
