@@ -363,5 +363,70 @@ algorithm Ed25519Extended {
     dec_Y = dec_y
     dec_Z = 1
     dec_T = fMul(dec_x_final, dec_y)
+
+    -- ==================================================================
+    -- Operation 8: scalar_clamp
+    --
+    -- Clamp a 32-byte scalar per RFC 8032 Section 5.1.5.
+    --
+    -- Input:  Bytes(32) — raw scalar bytes (first 32 bytes of SHA-512 hash)
+    -- Output: Integer   — clamped scalar suitable for multiplication
+    --
+    -- Clamping sets: bit 0,1,2 = 0 (multiple of 8, cofactor clearing)
+    --                bit 255   = 0 (reduce mod 2^255)
+    --                bit 254   = 1 (fixed high bit for constant-time)
+    --
+    -- Used by ed25519PublicKey for key derivation: A = clamp(H(sk)) * B
+    -- ==================================================================
+
+    -- Read the raw 32-byte scalar
+    clamp_bytes = scalar
+
+    -- Clear the lowest 3 bits of byte 0: ensures scalar is a multiple of 8
+    clamp_b0 = clamp_bytes[0] & 0xF8
+
+    -- Clear bit 7 of byte 31: ensures scalar < 2^255
+    -- Set bit 6 of byte 31: ensures fixed high bit for constant-time ladder
+    clamp_b31 = (clamp_bytes[31] & 0x7F) | 0x40
+
+    -- Reassemble: [clamp_b0, bytes[1..30], clamp_b31]
+    clamped = clamp_b0 || clamp_bytes[1 .. 30] || clamp_b31
+
+    -- Decode the clamped bytes as a little-endian integer
+    clamped_scalar = decodeLE(clamped)
+
+    -- ==================================================================
+    -- Operation 9: small_order_check
+    --
+    -- Reject small-order Ed25519 points (M23.4.1).
+    --
+    -- Input:  point : Bytes(32) — compressed Ed25519 point
+    -- Output: Bool              — True if the point has small order
+    --                             (order dividing cofactor 8)
+    --
+    -- The Ed25519 curve has cofactor 8, producing 8 small-order points.
+    -- Any public key or signature R value matching one of these must be
+    -- rejected to prevent signature malleability via the cofactor subgroup.
+    --
+    -- The 8 small-order points (compressed encodings):
+    --   (0, 1)   — identity, order 1
+    --   (0, -1)  — order 2, y = p-1
+    --   (x, 0)   — order 4, two sign variants (x^2 = -1 mod p)
+    --   (x, c)   — order 8, four variants (c = sqrt(-1) mod p)
+    --
+    -- Implementation: constant-time comparison against all 8 encodings.
+    -- The check is a disjunction of 8 constant-time equality tests.
+    -- ==================================================================
+
+    so_p0 = constantTimeEq(point, 0x0100000000000000000000000000000000000000000000000000000000000000)
+    so_p1 = constantTimeEq(point, 0xecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f)
+    so_p2 = constantTimeEq(point, 0x0000000000000000000000000000000000000000000000000000000000000000)
+    so_p3 = constantTimeEq(point, 0x0000000000000000000000000000000000000000000000000000000000000080)
+    so_p4 = constantTimeEq(point, 0xc7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a)
+    so_p5 = constantTimeEq(point, 0xc7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa)
+    so_p6 = constantTimeEq(point, 0x26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05)
+    so_p7 = constantTimeEq(point, 0x26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc85)
+
+    is_small_order = so_p0 | so_p1 | so_p2 | so_p3 | so_p4 | so_p5 | so_p6 | so_p7
   }
 }
