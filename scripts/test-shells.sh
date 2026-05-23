@@ -111,7 +111,7 @@ if [ -L build/vm/image ] && [ -e build/vm/image ]; then
         check "KVM available" "FAIL"
     fi
 else
-    check "VM image cached (run 'make vm-image-build' first)" "SKIP"
+    check "VM image cached (run './uv vm build-image' first)" "SKIP"
 fi
 
 echo ""

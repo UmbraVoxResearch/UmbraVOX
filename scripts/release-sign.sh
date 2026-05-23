@@ -22,7 +22,7 @@ fi
 
 if [ ! -d "$RELEASE_DIR" ]; then
     echo "No release directory at $RELEASE_DIR"
-    echo "Run 'make release-linux' first."
+    echo "Run './uv release linux' first."
     exit 1
 fi
 

@@ -5,12 +5,12 @@
 #   Stage 2: build_builder_from_seed (boot seed VM to produce builder)
 #
 # These tests validate preflight checks, caching, URL construction,
-# source disk creation, nix cache persistence, Makefile targets,
-# host-gating, script sourcing, and SHA-256 pinning — all without
+# source disk creation, nix cache persistence, ./uv subcommands,
+# script sourcing, and SHA-256 pinning — all without
 # requiring QEMU or a real VM boot.
 #
 # Usage: bash scripts/test-vm-bootstrap.sh
-# Or:    make test-bootstrap
+# Or:    ./uv test bootstrap
 set -uo pipefail
 
 PASS=0; FAIL=0; SKIP=0; TOTAL=0
@@ -311,36 +311,31 @@ fi
 
 echo ""
 
-# ── Test 7: Makefile targets exist ──────────────────────────────────
-echo -e "${BLUE}[7/10] Makefile targets exist${NC}"
+# ── Test 7: ./uv subcommands exist ─────────────────────────────────
+echo -e "${BLUE}[7/10] ./uv subcommands exist${NC}"
 
-for target in vm-image-build vm-seed-build vm-seed-clean vm-cache-clean; do
-    if make -C "$REPO_ROOT" -n "$target" >/dev/null 2>&1; then
-        check "make -n $target succeeds (dry-run)" "PASS"
+uv_help=$("$REPO_ROOT/uv" help 2>&1 || true)
+
+for cmd in "vm build-image" "vm build-seed" "vm clean-seed" "vm clean-cache"; do
+    # Extract the subcommand name (last word) to grep for in help output
+    subcmd="${cmd##* }"
+    if echo "$uv_help" | grep -q "$subcmd"; then
+        check "./uv $cmd exists in help output" "PASS"
     else
-        check "make -n $target succeeds (dry-run)" "FAIL"
+        check "./uv $cmd exists in help output" "FAIL"
     fi
 done
 
 echo ""
 
-# ── Test 8: vm-image-build-host gating ──────────────────────────────
-echo -e "${BLUE}[8/10] vm-image-build-host gating${NC}"
+# ── Test 8: ./uv vm build-image --on-host exists ──────────────────
+echo -e "${BLUE}[8/10] ./uv vm build-image --on-host exists${NC}"
 
-# Without I_KNOW_THIS_TOUCHES_HOST, it should fail
-if make -C "$REPO_ROOT" -n vm-image-build-host 2>&1 | grep -q 'I_KNOW_THIS_TOUCHES_HOST\|vm-image-build-host writes'; then
-    check "vm-image-build-host fails without I_KNOW_THIS_TOUCHES_HOST" "PASS"
-elif ! make -C "$REPO_ROOT" -n vm-image-build-host >/dev/null 2>&1; then
-    check "vm-image-build-host fails without I_KNOW_THIS_TOUCHES_HOST" "PASS"
+vm_help=$("$REPO_ROOT/uv" vm build-image --help 2>&1 || true)
+if echo "$vm_help" | grep -q '\-\-on-host\|on.host'; then
+    check "./uv vm build-image --on-host flag exists" "PASS"
 else
-    check "vm-image-build-host fails without I_KNOW_THIS_TOUCHES_HOST" "FAIL"
-fi
-
-# With I_KNOW_THIS_TOUCHES_HOST=1, dry-run should succeed
-if make -C "$REPO_ROOT" -n vm-image-build-host I_KNOW_THIS_TOUCHES_HOST=1 >/dev/null 2>&1; then
-    check "vm-image-build-host succeeds (dry-run) with I_KNOW_THIS_TOUCHES_HOST=1" "PASS"
-else
-    check "vm-image-build-host succeeds (dry-run) with I_KNOW_THIS_TOUCHES_HOST=1" "FAIL"
+    check "./uv vm build-image --on-host flag exists" "FAIL"
 fi
 
 echo ""

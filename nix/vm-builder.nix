@@ -90,7 +90,9 @@ let
       path = config.environment.systemPackages ++ [ pkgs.nix ];
       environment = {
         HOME = "/root";
-        NIX_PATH = "nixpkgs=${pkgs.path}";
+        # NIX_PATH not needed — builder uses `nix build .#vm-image` (flake),
+        # not legacy nix-build.  Omitting it avoids pulling the full nixpkgs
+        # source tree (~1.5 GB) into the disk image closure.
       };
       serviceConfig = {
         Type = "oneshot";
@@ -193,7 +195,7 @@ let
     lib = pkgs.lib;
     config = nixos.config;
     diskSize = "auto";
-    additionalSpace = "4096M";
+    additionalSpace = "8192M";
     format = "raw";
     partitionTableType = "legacy";
     copyChannel = false;

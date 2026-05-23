@@ -11,9 +11,9 @@ isolation strength:
 - **Isolation**: Nix provides hermetic inputs; execution trusts the host
 - **Speed**: Fastest (no VM boot overhead)
 - **Use case**: Quick local iteration when VM overhead is undesirable
-- **Command**: `./uv build && ./uv test`
+- **Command**: `make build && make test`
 - **Trust level**: Non-authoritative — results depend on host state
-- **Note**: No longer the default.  Standard `./uv` commands now route
+- **Note**: No longer the default.  Standard `make` commands now route
   through the VM (Class 2).  The host runner requires the full `nix-shell`
   toolchain.
 
@@ -23,10 +23,10 @@ isolation strength:
 - **Isolation**: Full kernel-level isolation; no shared host state
 - **Speed**: ~2-5 min overhead for VM boot + build
 - **Use case**: Default for all development (build, test, verify) and release qualification
-- **Command**: `./uv build`, `./uv test`, `./uv verify`, `./uv vm smoke`
+- **Command**: `make build`, `make test`, `make verify`, `make vm-smoke`
 - **Trust level**: Authoritative — clean environment, reproducible
-- **Note**: All standard `./uv` targets now route through the VM by default.
-  `./uv vm smoke` runs the full release pipeline.  `./uv dev` provides
+- **Note**: All standard `make` targets now route through the VM by default.
+  `make vm-smoke` runs the full release pipeline.  `make vm-dev` provides
   an interactive shell inside the VM.
 
 ### Class 3: Container Runner (Artifact Smoke Only)
@@ -35,7 +35,7 @@ isolation strength:
 - **Isolation**: Filesystem-level; shares host kernel
 - **Speed**: Fast (no boot, just exec)
 - **Use case**: Quick artifact sanity check
-- **Command**: `./uv release smoke-linux`
+- **Command**: `make release-smoke-linux`
 - **Trust level**: Partial — validates artifact structure, not build
 
 ## Isolation Model
@@ -44,20 +44,20 @@ isolation strength:
 ┌─────────────────────────────────────────────────────────┐
 │  Host (nix-shell)                                      │
 │  │                                                     │
-│  ├── ./uv build/test/verify (default)      Class 2     │
+│  ├── make build/test/verify (default)      Class 2     │
 │  │   └── QEMU/KVM Guest (NixOS)                       │
 │  │       ├── Full toolchain pre-installed              │
 │  │       ├── Source mounted as ext2 disk               │
 │  │       ├── Build + test + verify                     │
 │  │       └── Exit code propagated to host              │
 │  │                                                     │
-│  ├── ./uv vm smoke                         Class 2     │
+│  ├── make vm-smoke                         Class 2     │
 │  │   └── Same VM, full release pipeline                │
 │  │                                                     │
-│  ├── ./uv build                            Class 1     │
+│  ├── make build                            Class 1     │
 │  │   └── Local execution (requires full toolchain)     │
 │  │                                                     │
-│  └── ./uv release smoke-linux              Class 3     │
+│  └── make release-smoke-linux              Class 3     │
 │      └── Container (Ubuntu 24.04)                      │
 │          └── Release bundle mounted read-only          │
 │              └── Binary execution check only           │
@@ -103,7 +103,7 @@ Host
 Setup requires `CAP_NET_ADMIN` (sudo):
 ```bash
 sudo scripts/vm-network-setup.sh setup 6
-./uv vm integration --dual-lan
+make vm-integration-test-dual-lan
 sudo scripts/vm-network-setup.sh teardown
 ```
 
@@ -138,7 +138,7 @@ mDNS uses UDP 224.0.0.251:5353 which works on L2 broadcast domains.
 **Current status**: mDNS code exists in `src/UmbraVox/Network/MDNS.hs`.
 Integration testing requires the headless binary to run the mDNS
 subsystem inside the VM. Currently verified at the unit test level
-(`./uv test core-network`).
+(`make test-core-network`).
 
 ### M5.4.5: PEX Cross-LAN Discovery
 
@@ -197,7 +197,7 @@ reconnect after network interruption.
 
 **Current status**: Disconnect detection exists in the TCP transport
 layer. Reconnect requires the headless binary. Currently tested at
-the unit level (`./uv test tcp`, `./uv test recovery`).
+the unit level (`make test-tcp`, `make test-recovery`).
 
 ## Artifact Handoff
 
@@ -218,7 +218,7 @@ in-guest artifact for distribution is tracked as future work.
 
 ### Container Runner (Class 3) Artifact Flow
 
-1. Host builds release artifact via `./uv release linux`
+1. Host builds release artifact via `make release-linux`
 2. Host mounts `build/releases/` into container
 3. Container extracts and smoke-checks the artifact
 4. Container reports exit code
@@ -230,7 +230,7 @@ in-guest artifact for distribution is tracked as future work.
 | Available | Yes (via nix-shell) | Yes (via nix-shell) |
 | KVM acceleration | Yes | Yes |
 | NixOS image support | Yes (bootable raw disk) | Needs vmlinux + rootfs |
-| Current status | Functional (`./uv vm smoke`) | Scaffold only |
+| Current status | Functional (`make vm-smoke`) | Scaffold only |
 | Use case | Full pipeline isolation | Lightweight, fast-boot isolation |
 
 Firecracker support (M2.4.2) remains scaffold-only. It requires:

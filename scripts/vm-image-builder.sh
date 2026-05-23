@@ -330,7 +330,7 @@ echo ""
 echo -e "${BLUE}[VM-BUILDER]${NC} Cleaning up overlays and source disk (keeping nix cache)..."
 rm -f "$OVERLAY" "$SRC_DISK" 2>/dev/null || true
 # NIX_CACHE_DISK is NOT deleted — it persists at build/vm/nix-cache.qcow2
-# for offline rebuilds. Use `make vm-cache-clean` to delete it.
+# for offline rebuilds. Use `./uv clean` to delete it.
 
 # Step 9: Check build status
 BUILD_STATUS=1

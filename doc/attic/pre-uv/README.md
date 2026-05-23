@@ -3,7 +3,7 @@
 Post-quantum encrypted peer-to-peer messaging.
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-./uv%20test-brightgreen.svg)](#test-workflow)
+[![Tests](https://img.shields.io/badge/tests-make%20test-brightgreen.svg)](#test-workflow)
 [![Haskell](https://img.shields.io/badge/language-Haskell-purple.svg)](UmbraVox.cabal)
 
 UmbraVOX is a decentralized communications research project, protocol
@@ -22,14 +22,16 @@ of thought and expression in the digital age.
 Only two tools are needed on the host:
 
 - **qemu** (`qemu-system-x86_64` with KVM support)
-- **nix** (provides qemu + Go for the build tool)
+- **nix** or **make** (either works)
 
-With **nix**: `nix-shell shell.nix` provides qemu, Go, and the VM orchestration
+With **nix**: `nix-shell shell.nix` provides qemu, make, and the VM orchestration
 environment. This is the recommended approach.
 
+With **make only**: install `qemu-system-x86_64` and `make` from your system
+package manager. The Makefile handles VM creation and build orchestration.
+
 No GHC, cabal, GCC, or other toolchain is required on the host — everything
-compiles inside NixOS VMs. The `./uv` wrapper auto-compiles the Go orchestration
-binary on first use. Nothing is written outside the project directory.
+compiles inside NixOS VMs. Nothing is written outside the project directory.
 
 ### Build & Run
 
@@ -37,41 +39,42 @@ First build downloads a ~300MB seed VM image (one-time). After that,
 all builds are fully offline and self-contained inside VMs.
 
 ```sh
-# Enter nix environment (provides qemu + Go):
+# If nix is installed (provides qemu + make):
 nix-shell shell.nix
 
 # Build and test (all inside VMs):
-./uv vm build-image    # Build the NixOS dev VM (once)
-./uv build             # Build everything (routes to VM)
-./uv test              # Run tests in VM
-./uv verify            # F* formal verification in VM
-./uv dev               # Interactive dev shell inside the VM
-./uv dev --gui         # Interactive dev with QEMU GUI
-./uv                   # Full pipeline: build + test + check (fast gate)
-./uv test soak         # Longer soak/stress run with artifact report
-./uv release linux     # Portable Linux x86_64 terminal bundle
-./uv release all       # Build all defined release artifacts
-./uv help              # Show all available commands
+make vm-image-build    # Build the NixOS dev VM (once)
+make build             # Build everything (routes to VM)
+make test              # Run tests in VM
+make verify            # F* formal verification in VM
+make vm-dev            # Interactive dev shell inside the VM
+make vm-run-gui        # Interactive dev with QEMU GUI
+make test              # Fast messaging-MVP hardening gate (routes to VM)
+make verify            # F* formal verification (routes to VM)
+make quality           # Full pipeline: build + test + verify + complexity + lint + license + format-check (in VM)
+make soak              # Longer soak/stress run with artifact report (in VM)
+make release-linux     # Portable Linux x86_64 terminal bundle (in VM)
+make release           # Build all defined release artifacts (in VM)
+scripts/nix-flake.sh flake show --no-write-lock-file
 ```
 
 ### VM-First Development
 
-All `./uv` commands run inside an isolated NixOS VM by default. The host only
-needs QEMU, Go, and git (all provided by `nix-shell`). No local toolchain
-required for standard workflow.
+All `make` commands run inside an isolated NixOS VM by default. The host only
+needs QEMU and git. No local toolchain required for standard workflow.
 
 ```sh
-nix-shell shell.nix        # Enter VM-first shell
-./uv vm build-image        # Build the NixOS dev VM (once)
-./uv build                 # Build everything in VM
-./uv test                  # Run tests in VM
-./uv dev --gui             # Interactive dev with QEMU GUI
-./uv dev                   # Interactive dev shell inside the VM
+nix-shell shell-minimal.nix  # Enter VM-first shell
+make vm-image-build    # Build the NixOS dev VM (once)
+make vm-build-only     # Build everything in VM
+make vm-test           # Run tests in VM
+make vm-run-gui        # Interactive dev with QEMU GUI
+make vm-dev            # Interactive dev shell inside the VM
 ```
 
 ### VM-local Nix Config (Image Targets)
 
-`./uv vm build-image` and `./uv vm signal build-jar` use local `nix` only
+`make vm-image-build` and `make vm-signal-server-build` use local `nix` only
 and fail closed (no remote fallback, no host compile fallback).
 
 Defaults are committed in `nix/vm-build.env`. Environment variables override
@@ -90,11 +93,11 @@ Override examples:
 
 ```sh
 # use committed defaults
-./uv vm build-image
+make vm-image-build
 
 # override build scratch directory for this shell/session
 export UMBRAVOX_NIX_BUILD_DIR=build/vm/tmp-custom
-./uv vm build-image
+make vm-image-build
 
 # env-only mode (when explicitly allowed)
 UMBRAVOX_NIX_REQUIRE_CONFIG=0 \
@@ -102,7 +105,7 @@ UMBRAVOX_NIX_CONFIG_FILE=/tmp/absent.env \
 UMBRAVOX_NIX_BUILD_DIR=build/vm/tmp-env \
 UMBRAVOX_NIX_SANDBOX_BUILD_DIR=/build \
 UMBRAVOX_NIX_LOCAL_ONLY=1 \
-./uv vm build-image
+make vm-image-build
 ```
 
 Debug output is printed at runtime and includes config source (`file`,
@@ -132,12 +135,12 @@ and packaging behavior.
 UmbraVOX now has explicit release targets:
 
 ```sh
-./uv release linux
-./uv release windows
-./uv release macos
-./uv release bsd
-./uv release freedos
-./uv release all
+make release-linux
+make release-windows-cli
+make release-macos-terminal
+make release-bsd-terminal
+make release-freedos
+make release
 ```
 
 Important: the raw Cabal binary under `dist-newstyle/.../umbravox` is not a
@@ -405,7 +408,7 @@ active assurance claim.
   is to formalize and verify algorithm properties against the intended
   standards.
 * 24 F* specifications are present (0 admit, 25 assume val), and the current
-  full `./uv verify` run is green under the active toolchain. 14 Coq files
+  full `make verify` run is green under the active toolchain. 14 Coq files
   provide 475 Qed proofs (0 Admitted) backing Ed25519 curve/field/scalar
   properties, VRF DLEQ algebra, group associativity instances, and
   sqrt-ratio verification. That means the handwritten formal model suite is internally
@@ -519,27 +522,28 @@ Current known limitations include:
 The active messaging-MVP gate is split by intent rather than kept as one
 large flat suite.
 
-* `./uv test` runs the required messaging gate: deterministic core, real TCP,
+* `make test` runs the required messaging gate: deterministic core, real TCP,
   fault injection, and recovery. It streams the full live output and writes a
   per-run log under `build/test-artifacts/`.
-* `./uv test core` runs the full deterministic core suite.
-* `./uv test core-crypto` runs only deterministic crypto/unit coverage.
-* `./uv test core-network` runs only deterministic network/discovery coverage.
-* `./uv test core-chat` runs only deterministic chat/protocol coverage.
-* `./uv test core-tui` runs only deterministic non-simulated TUI coverage.
-* `./uv test core-tools` runs only deterministic codegen/tools/fuzz coverage.
-* `./uv test tcp` runs real localhost TCP end-to-end scenarios.
-* `./uv test fault` runs adversarial transport and parser hardening scenarios.
-* `./uv test recovery` runs persistence and restart-oriented scenarios.
-* `./uv test tui-sim` runs the TUI simulation coverage that is kept out of the
+* `make test-core` runs the full deterministic core suite.
+* `make test-core-crypto` runs only deterministic crypto/unit coverage.
+* `make test-core-network` runs only deterministic network/discovery coverage.
+* `make test-core-chat` runs only deterministic chat/protocol coverage.
+* `make test-core-tui` runs only deterministic non-simulated TUI coverage.
+* `make test-core-tools` runs only deterministic codegen/tools/fuzz coverage.
+* `make test-tcp` runs real localhost TCP end-to-end scenarios.
+* `make test-fault` runs adversarial transport and parser hardening scenarios.
+* `make test-recovery` runs persistence and restart-oriented scenarios.
+* `make test-tui-sim` runs the TUI simulation coverage that is kept out of the
   fast gate.
-* `./uv test integrity` runs the explicit wire-format and cryptographic
+* `make test-integrity` runs the explicit wire-format and cryptographic
   integrity coverage.
-* `./uv test mdns` runs only the exact mDNS/discovery suite.
-* `./uv test deferred` runs the preserved blockchain, economics, and storage
+* `make test-mdns` runs only the exact mDNS/discovery suite.
+* `make test-deferred` runs the preserved blockchain, economics, and storage
   stub suites outside the MVP fast gate.
-* `./uv test --list` shows all available test suites.
-* `./uv test soak` runs the longer stress suite and writes:
+* Exact suite names such as `mdns`, `sha256`, or `tui-sim-dialogs` are also
+  accepted directly through `cabal test umbravox-test --test-options='<suite>'`.
+* `make soak` runs the longer stress suite and writes:
 
 ```text
 build/test-artifacts/soak-report.txt
@@ -547,7 +551,7 @@ build/test-artifacts/soak-report.txt
 
 Deferred blockchain-facing modules remain in the codebase and documentation,
 but they are not part of the messaging-MVP hardening gate. Use
-`./uv test deferred` when you want explicit coverage of that preserved
+`make test-deferred` when you want explicit coverage of that preserved
 surface.
 
 The broader preserved generated-source tree also remains in the repository,

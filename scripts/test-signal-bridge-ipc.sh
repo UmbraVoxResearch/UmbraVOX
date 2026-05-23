@@ -18,7 +18,7 @@ else
 fi
 
 if [[ -z "$BRIDGE" || ! -x "$BRIDGE" ]]; then
-    echo "FAIL: umbravox-signal-bridge binary not found. Run: make signal-bridge-build" >&2
+    echo "FAIL: umbravox-signal-bridge binary not found. Run: ./uv build --signal-bridge" >&2
     exit 1
 fi
 echo "Binary: $BRIDGE"

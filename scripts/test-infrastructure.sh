@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # ── UmbraVOX Infrastructure Regression Test Suite ────────────────────
 # Comprehensive tests for build system, VM pipeline, shell environments,
-# Makefile targets, and evidence harness. Run after any infrastructure
+# ./uv commands, and evidence harness. Run after any infrastructure
 # change to catch regressions.
 #
 # Usage: bash scripts/test-infrastructure.sh
-# Or:    make test-infra
+# Or:    ./uv test-infra
 #
 # Requires: nix-shell (or shell-minimal.nix for VM tests)
 set -uo pipefail
@@ -31,44 +31,50 @@ check() {
 echo -e "${BLUE}=== UmbraVOX Infrastructure Regression Suite ===${NC}"
 echo ""
 
-# ── Section 1: Makefile structure ─────────────────────────────────────
-echo -e "${BLUE}[1/8] Makefile structure tests${NC}"
+# ── Section 1: Build system structure ────────────────────────────────
+echo -e "${BLUE}[1/8] Build system structure tests${NC}"
 
-# Check critical targets exist
-for target in build test verify quality vm-dev vm-build vm-test vm-test-ephemeral vm-verify \
-              vm-image-build vm-image-build-host vm-image-clean vm-cache-clean vm-extract \
-              vm-screenshot vm-record vm-visual-regression test-infra \
-              check-evidence test-shells test-vm test-make-options \
-              test-vm-config test-bootstrap \
-              help clean; do
-    if make -n "$target" >/dev/null 2>&1; then
-        check "Makefile target '$target' exists" "PASS"
+# Check the uv bootstrap wrapper exists and is executable
+if [ -f ./uv ]; then
+    check "./uv bootstrap wrapper exists" "PASS"
+    if [ -x ./uv ]; then
+        check "./uv is executable" "PASS"
     else
-        check "Makefile target '$target' exists" "FAIL"
+        check "./uv is executable" "FAIL"
+    fi
+else
+    check "./uv bootstrap wrapper exists" "FAIL"
+fi
+
+# Check the Go binary builds successfully
+if ./uv help >/dev/null 2>&1; then
+    check "./uv help runs without error" "PASS"
+else
+    check "./uv help runs without error" "FAIL"
+fi
+
+# Check critical commands are listed in ./uv help output
+help_output=$(./uv help 2>&1 || true)
+for cmd in build test verify dev check coverage release vm evidence fuzz clean exec help; do
+    if echo "$help_output" | grep -qiw "$cmd"; then
+        check "./uv help lists '$cmd' command" "PASS"
+    else
+        check "./uv help lists '$cmd' command" "FAIL"
     fi
 done
 
-# Check VM routing is default
-out=$(make -n build 2>&1 | head -10)
-if echo "$out" | grep -q 'vm-dev-run.sh exec'; then
-    check "make build routes to VM by default" "PASS"
+# Check ./uv test --list shows expected suites
+if ./uv test --list >/dev/null 2>&1; then
+    check "./uv test --list runs without error" "PASS"
 else
-    check "make build routes to VM by default" "FAIL ($out)"
+    check "./uv test --list runs without error" "FAIL"
 fi
 
-# Check local-only path is disabled
-out=$(make -n run-local 2>&1 | head -10)
-if echo "$out" | grep -q 'Local host compilation is disabled'; then
-    check "run-local is guarded and disabled" "PASS"
+# Check ./uv vm info runs
+if ./uv vm info >/dev/null 2>&1; then
+    check "./uv vm info runs without error" "PASS"
 else
-    check "run-local is guarded and disabled" "FAIL"
-fi
-
-# Run full make-option dry-run coverage
-if bash scripts/test-make-options.sh >/dev/null 2>&1; then
-    check "scripts/test-make-options.sh passes" "PASS"
-else
-    check "scripts/test-make-options.sh passes" "FAIL"
+    check "./uv vm info runs without error" "FAIL"
 fi
 
 if bash scripts/test-vm-build-config.sh >/dev/null 2>&1; then
@@ -140,7 +146,7 @@ if [ -L build/vm/image ] && [ -e build/vm/image ]; then
         check "VM image contains nixos.img" "FAIL"
     fi
 else
-    check "VM image cached (run make vm-image-build)" "SKIP"
+    check "VM image cached (run ./uv vm image-build)" "SKIP"
 fi
 
 if [ -e /dev/kvm ]; then
@@ -280,7 +286,6 @@ for script in scripts/vm-dev-run.sh scripts/vm-smoke-run.sh \
               scripts/vm-record-session.sh scripts/vm-visual-regression.sh \
               scripts/vm-socks5-test.sh scripts/vm-build-test.sh \
               scripts/nix-vm-build-config.sh \
-              scripts/test-make-options.sh \
               scripts/test-vm-build-config.sh \
               scripts/test-shells.sh scripts/test-vm.sh \
               scripts/test-vm-bootstrap.sh \

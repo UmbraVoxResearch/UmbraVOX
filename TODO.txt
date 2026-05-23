@@ -10,7 +10,7 @@ Last updated: 2026-05-23
 Rules
 -----
 - Do not modify `.spec` files, `fstar` files, or primitive crypto implementations without explicit approval.
-- Use `make` targets for all build/test/verify (routes through VM).
+- Use `./uv` commands for all build/test/verify (routes through VM).
 - Keep codegen surfaces wired truthfully; do not overstate assurance claims.
 - When a task is complete, move it to CHANGELOG.txt.
 - Deferred/blocked items go in TODO-DEFERRED.txt.
@@ -36,7 +36,7 @@ ACTIVE WORK
 
 [~] M19 Signal bridge (remaining)
   [~] M19.4.5 Fill FOD hash for Signal-Server Maven deps
-    Note: make vm-signal-server-hash target added. Signal Server build VM
+    Note: ./uv vm signal build-jar target added. Signal Server build VM
     image derivation fails — needs nix-build debugging for vm-signal-server.nix.
   [~] M19.4.6 Complete Signal-Server JAR build (blocked on M19.4.5)
   [~] M19.4.7 Health endpoint verification (blocked on M19.4.6)

@@ -17,7 +17,7 @@
 #   ratchet       DH ratchet advancement
 #
 # Requires: qemu-system-x86_64, /dev/kvm
-# The Signal-Server VM image must be pre-built via `make vm-signal-server-build`.
+# The Signal-Server VM image must be pre-built via `./uv vm signal build-jar`.
 set -euo pipefail
 
 RED='\033[0;31m'
@@ -57,7 +57,7 @@ preflight_check() {
     fi
     if [ ! -d "$VM_IMAGE_PATH" ]; then
         echo -e "${RED}${PREFIX}${NC} Signal-Server VM image not found at $VM_IMAGE_PATH"
-        echo -e "${YELLOW}${PREFIX}${NC} Run 'make vm-signal-server-build' first."
+        echo -e "${YELLOW}${PREFIX}${NC} Run './uv vm signal build-jar' first."
         ok=0
     fi
     if [ "$ok" -eq 0 ]; then

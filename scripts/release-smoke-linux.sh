@@ -6,7 +6,7 @@ cd "$ROOT"
 
 latest="$(ls -1t build/releases/umbravox-*-linux-x86_64.tar.gz 2>/dev/null | head -n1 || true)"
 if [[ -z "${latest:-}" ]]; then
-  echo "no linux release artifact found under build/releases; run make release-linux first" >&2
+  echo "no linux release artifact found under build/releases; run ./uv release linux first" >&2
   exit 1
 fi
 

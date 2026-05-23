@@ -88,8 +88,8 @@ jobs:
             **SHA-256 (uncompressed):** `${{ steps.hash.outputs.sha256 }}`
             **Size (uncompressed):** ${{ steps.hash.outputs.size }} bytes
 
-            **Usage:** `make vm-image-build` downloads this automatically.
-            Override URL: `UMBRAVOX_SEED_URL=<url> make vm-image-build`
+            **Usage:** `./uv vm build-image` downloads this automatically.
+            Override URL: `UMBRAVOX_SEED_URL=<url> ./uv vm build-image`
           files: |
             umbravox-seed.img.gz
             umbravox-seed.img.gz.sha256

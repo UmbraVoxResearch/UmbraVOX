@@ -5,7 +5,7 @@
 #
 # Usage: bash scripts/test-vm.sh
 # Requires: nix-shell shell-minimal.nix (for QEMU and genext2fs)
-#           build/vm/image (run 'make vm-image-build' first)
+#           build/vm/image (run './uv vm build-image' first)
 set -Eeuo pipefail
 
 PASS=0; FAIL=0; SKIP=0
@@ -58,7 +58,7 @@ fi
 if [ -L build/vm/image ] && [ -e build/vm/image ]; then
     check "VM image cached" "PASS"
 else
-    check "VM image cached (run make vm-image-build)" "FAIL"
+    check "VM image cached (run ./uv vm build-image)" "FAIL"
     exit 1
 fi
 

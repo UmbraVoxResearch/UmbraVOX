@@ -17,7 +17,7 @@
 #
 # Usage:
 #   nix-shell --run 'bash scripts/vm-freebsd-setup.sh'
-#   make vm-smoke-freebsd
+#   ./uv vm smoke freebsd
 
 set -euo pipefail
 
