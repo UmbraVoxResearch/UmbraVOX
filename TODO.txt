@@ -437,6 +437,36 @@ Economics modules (2):
   - Economics.Onboarding — onboarding token economics
   - Economics.Cycle — economic cycle management
 
+================================================================================
+MILESTONE M29: HOST FILESYSTEM ISOLATION (v0.4.6)
+================================================================================
+Note: 21 violations found in host contamination audit. Build, test, and dev
+activities must write ONLY inside the project directory (or VMs). No touching
+~/.cabal, ~/.umbravox, /tmp, /nix/store, ~/go from build/test paths.
+
+[ ] M29.1 Critical — build/test host contamination
+  [ ] M29.1.1 Makefile cleandb/cleanall: use project-local .umbravox-data/ not ~/.umbravox/
+  [ ] M29.1.2 Go tools: use build/vm/tmp/ not os.TempDir() for temp files
+  [ ] M29.1.3 Go build: set GOMODCACHE=build/go/mod GOCACHE=build/go/cache in make tools
+  [ ] M29.1.4 cabal.project: add store-dir to keep cabal store project-local
+  [ ] M29.1.5 Platform release targets: document nix requirement or route through VM
+  [ ] M29.1.6 vm-image-build-host: gate behind explicit I_KNOW_THIS_TOUCHES_HOST=1
+
+[ ] M29.2 Medium — test temp files
+  [ ] M29.2.1 Create test helper: getProjectTmpDir returning build/test-tmp/
+  [ ] M29.2.2 Replace 28 getTemporaryDirectory calls in tests with project-local helper
+  [ ] M29.2.3 Set TMPDIR=./build/test-tmp in make test recipe
+  [ ] M29.2.4 ReleaseBridge.hs: use build/tmp/ not getTemporaryDirectory
+
+[ ] M29.3 Medium — runtime UMBRAVOX_DATA support
+  [ ] M29.3.1 Startup.hs: read UMBRAVOX_DATA env var for DB/log path, default to ~/.umbravox
+  [ ] M29.3.2 KeyStore.hs: read UMBRAVOX_DATA for identity key path
+  [ ] M29.3.3 ConfigFile.hs: read UMBRAVOX_DATA for config file path
+  [ ] M29.3.4 Discovery.hs: read UMBRAVOX_DATA for peer config path
+
+[ ] M29.4 Low — script cleanup
+  [ ] M29.4.1 lib-vm.sh: use project-local mktemp prefix not bare mktemp -d
+
 OUTSIDE MVP (DEFERRED)
 ================================================================================
 
