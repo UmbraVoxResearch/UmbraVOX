@@ -19,7 +19,7 @@ flag pure-haskell
 
 flag pure-haskell-crypto
   description: Use pure Haskell crypto (NOT constant-time). Disable for FFI to C.
-  default:     True
+  default:     False
   manual:      True
 
 flag profiling
@@ -327,6 +327,8 @@ library
       UmbraVox.Economics.Cycle
       UmbraVox.Economics.Onboarding
     cpp-options: -DSTUBS
+  if flag(pure-haskell-crypto)
+    cpp-options: -DPURE_HASKELL_CRYPTO
   if flag(chaste-build)
     cpp-options: -DCHASTE_BUILD
   if flag(wasm)

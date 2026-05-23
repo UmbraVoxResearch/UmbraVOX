@@ -17,6 +17,7 @@ module UmbraVox.Network.MDNS
     , addrToIP
     , buildAnnouncement
     , buildAnnouncementWithName
+    , deriveEphemeralId
     , isSelfAnnouncement
     , updatePeerList
     ) where
@@ -39,6 +40,8 @@ import Network.Socket (tupleToHostAddress)
 import qualified Network.Socket.ByteString as NSB
 
 import UmbraVox.App.Defaults (mdnsAnnounceIntervalUs, mdnsPeerEvictionSeconds)
+import UmbraVox.Crypto.HKDF (hkdf)
+import UmbraVox.Crypto.Random (randomBytes)
 
 ------------------------------------------------------------------------
 -- Types
@@ -74,6 +77,20 @@ announceIntervalUs = mdnsAnnounceIntervalUs
 -- Sourced from 'UmbraVox.App.Defaults.mdnsPeerEvictionSeconds'.
 peerEvictionSeconds :: Int
 peerEvictionSeconds = mdnsPeerEvictionSeconds
+
+-- | Derive a 32-byte ephemeral mDNS identity from the long-term identity
+-- key and a per-boot random nonce.  The result is used in place of the raw
+-- pubkey fingerprint in announcements so that passive LAN observers cannot
+-- correlate announcements across reboots or link them to a persistent
+-- identity.
+--
+-- > ephemeralId = HKDF-SHA-512(salt=nonce, ikm=identityKey,
+-- >                            info="UmbraVox_mDNS_v1", len=32)
+deriveEphemeralId :: ByteString  -- ^ Identity key (pubkey fingerprint)
+                  -> ByteString  -- ^ Per-boot random nonce (32 bytes)
+                  -> ByteString  -- ^ 32-byte ephemeral ID
+deriveEphemeralId identityKey bootNonce =
+    hkdf bootNonce identityKey "UmbraVox_mDNS_v1" 32
 
 ------------------------------------------------------------------------
 -- FFI for setsockopt (IP_ADD_MEMBERSHIP)
@@ -119,11 +136,20 @@ ipAddMembership = 35
 -- 1. Announces our service every 60 seconds.
 -- 2. Listens for peer announcements and updates the peer list.
 --
+-- Privacy: Announcements use an ephemeral ID derived from the identity key
+-- and a per-boot random nonce via HKDF, so the raw pubkey fingerprint is
+-- never broadcast.  The display name is also omitted.  This prevents
+-- passive observers on the LAN from correlating announcements to a
+-- persistent identity or learning user-chosen names.
+--
 -- Returns the discovered-peer list reference and the thread identifier.
 startMDNS :: Int -> String -> ByteString -> IO (MVar [MDNSPeer], ThreadId)
-startMDNS ourPort ourName ourPubkey = do
+startMDNS ourPort _ourName ourPubkey = do
+    -- Generate a per-boot nonce so the ephemeral ID changes every restart.
+    bootNonce <- randomBytes 32
+    let !ephemeralId = deriveEphemeralId ourPubkey bootNonce
     peersRef <- newMVar []
-    tid <- forkIO (runMDNS ourPort ourName ourPubkey peersRef)
+    tid <- forkIO (runMDNS ourPort "" ephemeralId peersRef)
     pure (peersRef, tid)
 
 -- | Stop the mDNS discovery thread.
@@ -223,11 +249,15 @@ announceLoop sock ourPort ourName ourPubkey = forever $ do
 buildAnnouncement :: Int -> ByteString -> ByteString
 buildAnnouncement port pubkey = buildAnnouncementWithName port "" pubkey
 
+-- | Build an announcement payload with the given identity bytes.
+--
+-- Privacy: The @pubkey@ field now carries an ephemeral ID (see
+-- 'deriveEphemeralId'), NOT the raw identity key.  The display name is
+-- deliberately omitted to prevent passive name harvesting on the LAN.
 buildAnnouncementWithName :: Int -> String -> ByteString -> ByteString
-buildAnnouncementWithName port name pubkey =
+buildAnnouncementWithName port _name pubkey =
     serviceName <> "\n" <> "port=" <> C8.pack (show port)
     <> ";pubkey=" <> toHex pubkey
-    <> ";name=" <> C8.pack (sanitizeName name)
 
 -- | Resolve the multicast destination address.
 multicastDest :: IO NS.SockAddr
