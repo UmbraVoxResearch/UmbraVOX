@@ -27,6 +27,7 @@ import Control.Concurrent (forkIO)
 import Control.Exception (SomeException, bracket, catch, finally)
 import Control.Monad (void)
 import Data.IORef (IORef, newIORef, readIORef)
+import Data.Char (toLower)
 import Data.List (isPrefixOf)
 import Data.Word (Word8)
 import qualified Data.Map.Strict as Map
@@ -280,19 +281,31 @@ dispatchIO cfg DhtStatus req = do
 -- --------------------------------------------------------------------------
 
 -- | Check whether an address string is a private or loopback address.
--- Rejects: localhost, 127.x.x.x, 10.x.x.x, 172.16-31.x.x, 192.168.x.x,
--- ::1, and 0.0.0.0.
+-- Rejects IPv4: localhost, 127.x.x.x, 10.x.x.x, 172.16-31.x.x,
+-- 192.168.x.x, 0.0.0.0.
+-- Rejects IPv6: ::1, fe80:: (link-local), fc00::/fd00:: (unique local),
+-- fec0:: (site-local, deprecated), and ::ffff:-mapped private IPv4.
 isPrivateAddress :: String -> Bool
 isPrivateAddress host
+    -- IPv4 checks
     | host == "localhost"                         = True
-    | host == "::1"                               = True
     | host == "0.0.0.0"                           = True
     | "127." `isPrefixOf` host                    = True
     | "10."  `isPrefixOf` host                    = True
     | "192.168." `isPrefixOf` host                = True
     | "172." `isPrefixOf` host                    = isPrivate172 host
+    -- IPv6 checks (case-insensitive)
+    | low == "::1"                                = True
+    | "fe80:" `isPrefixOf` low                    = True  -- link-local
+    | "fc00:" `isPrefixOf` low                    = True  -- unique local
+    | "fd"    `isPrefixOf` low
+      && length low > 2
+      && low !! 2 /= '.'                         = True  -- unique local fd00::/8
+    | "fec0:" `isPrefixOf` low                    = True  -- site-local (deprecated)
+    | "::ffff:" `isPrefixOf` low                  = isPrivateMappedIPv4 (drop 7 low)
     | otherwise                                   = False
   where
+    low = map toLower host
     -- Check 172.16.0.0/12 range: 172.16.x.x through 172.31.x.x
     isPrivate172 h =
         case break (== '.') (drop 4 h) of
@@ -301,6 +314,14 @@ isPrivateAddress host
                     let oct = readNat octStr
                     in oct >= 16 && oct <= 31
                 | otherwise -> False
+    -- Check the IPv4 tail of a ::ffff:-mapped address
+    isPrivateMappedIPv4 v4
+        | "127." `isPrefixOf` v4                  = True
+        | "10."  `isPrefixOf` v4                  = True
+        | "192.168." `isPrefixOf` v4              = True
+        | "172." `isPrefixOf` v4                  = isPrivate172 v4
+        | v4 == "0.0.0.0"                         = True
+        | otherwise                               = False
     isDigitChar c = c >= '0' && c <= '9'
     readNat s = foldl (\acc c -> acc * 10 + (fromEnum c - fromEnum '0')) 0 s
 

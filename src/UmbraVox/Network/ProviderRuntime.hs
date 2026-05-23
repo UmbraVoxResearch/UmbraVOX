@@ -24,9 +24,10 @@ module UmbraVox.Network.ProviderRuntime
     ) where
 
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as BS8
 import Data.Char (digitToInt, intToDigit, isHexDigit)
 import Data.IORef (IORef, newIORef, atomicModifyIORef')
-import System.IO (Handle, hFlush, hGetLine, hPutStrLn, hClose, hSetBinaryMode, hSetBuffering, BufferMode(..))
+import System.IO (Handle, hFlush, hPutStrLn, hClose, hSetBinaryMode, hSetBuffering, BufferMode(..))
 import System.Process (CreateProcess(..), StdStream(..), ProcessHandle, createProcess, proc, terminateProcess, waitForProcess)
 
 import UmbraVox.Network.ProviderCatalog
@@ -128,19 +129,32 @@ data IPCTransport = IPCTransport
     , ipcErrorCount  :: IORef Int  -- ^ cumulative protocol error count
     }
 
--- | Read one line from the provider, rejecting lines that exceed
--- 'ipcMaxLineLength'.  On violation, increments the error counter
--- and raises an 'IOError'.
+-- | Read one line from the provider in bounded chunks, rejecting
+-- responses that exceed 'ipcMaxLineLength'.  Unlike a naive
+-- @hGetLine@ followed by a length check, this reads in fixed-size
+-- chunks so a malicious provider cannot force the host to allocate
+-- unbounded memory before the guard fires.
 ipcGetLineGuarded :: IPCTransport -> IO String
-ipcGetLineGuarded t = do
-    line <- hGetLine (ipcStdout t)
-    if length line > ipcMaxLineLength
-        then do
-            ipcRecordError t ("line too long: " ++ show (length line) ++ " chars")
-            ioError (userError ("ipc: response line exceeds "
-                ++ show ipcMaxLineLength ++ " char limit ("
-                ++ show (length line) ++ " chars) from " ++ ipcLabel t))
-        else pure line
+ipcGetLineGuarded t = go []
+  where
+    chunkSize = 4096
+    go acc = do
+        chunk <- BS.hGet (ipcStdout t) chunkSize
+        if BS.null chunk
+            then pure (concatRev acc)  -- EOF: return what we have
+            else do
+                let (before, after) = BS8.break (== '\n') chunk
+                    acc' = BS8.unpack before : acc
+                    totalLen = sum (map length acc')
+                if totalLen > ipcMaxLineLength
+                    then do
+                        ipcRecordError t ("line too long: >" ++ show ipcMaxLineLength ++ " chars")
+                        ioError (userError ("ipc: response line exceeds "
+                            ++ show ipcMaxLineLength ++ " char limit from " ++ ipcLabel t))
+                    else if BS.null after
+                        then go acc'  -- no newline yet, read more
+                        else pure (concatRev acc')  -- found newline, done
+    concatRev = concat . reverse
 
 -- | Record a protocol error: increment the counter and print a
 -- diagnostic line to stderr.
