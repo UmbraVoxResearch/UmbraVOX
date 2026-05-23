@@ -52,11 +52,26 @@ data KeyStore = KeyStore
 keystoreInfo :: ByteString
 keystoreInfo = "UmbraVox_KeyStore_v1"
 
--- | Fixed salt for key derivation when no per-file salt is stored.
--- Using a fixed salt is acceptable here because the passphrase is the
--- secret; the nonce ensures ciphertext uniqueness per save.
-keystoreSalt :: ByteString
-keystoreSalt = BS.replicate 32 0x55
+-- | Length of the per-install random salt (32 bytes).
+--
+-- Finding:     M27.6.5 — All installations shared the same fixed
+--              @BS.replicate 32 0x55@ salt for HKDF key derivation.
+-- Vulnerability: A fixed salt means that two users with the same passphrase
+--              derive the same wrapping key, enabling precomputation attacks
+--              (rainbow tables) and cross-installation key correlation.
+-- Fix:         Generate a per-install 32-byte random salt on first save,
+--              stored alongside the key file as @<path>.salt@.  Existing
+--              files without a salt file fall back to the legacy fixed salt
+--              for backward compatibility.
+-- Verified:    Each new installation produces a unique salt; legacy files
+--              without a salt file still decrypt correctly.
+saltLen :: Int
+saltLen = 32
+
+-- | Legacy fixed salt, used only when no per-install salt file exists
+-- (backward compatibility with pre-M27.6.5 key stores).
+legacySalt :: ByteString
+legacySalt = BS.replicate 32 0x55
 
 -- | On-disk sizes.
 nonceLen, plaintextLen, tagLen, blobLen :: Int
@@ -69,12 +84,49 @@ blobLen       = nonceLen + plaintextLen + tagLen  -- 156
 -- Key derivation
 ------------------------------------------------------------------------
 
--- | Derive a 32-byte AES-256-GCM wrapping key from a passphrase.
--- Empty passphrase uses a known-zero derivation for backward compatibility.
-deriveWrappingKey :: ByteString -> ByteString
-deriveWrappingKey passphrase =
-    let !prk = hkdfSHA256Extract keystoreSalt passphrase
+-- | Derive a 32-byte AES-256-GCM wrapping key from a passphrase and salt.
+deriveWrappingKey :: ByteString -> ByteString -> ByteString
+deriveWrappingKey salt passphrase =
+    let !prk = hkdfSHA256Extract salt passphrase
     in hkdfSHA256Expand prk keystoreInfo 32
+
+-- | Path of the per-install salt file for the given key path.
+saltPath :: FilePath -> FilePath
+saltPath path = path ++ ".salt"
+
+-- | Load or generate the per-install random salt for key derivation.
+-- If @<path>.salt@ exists, reads it.  Otherwise generates a fresh 32-byte
+-- random salt, writes it to @<path>.salt@, and returns it.
+loadOrGenerateSalt :: FilePath -> IO ByteString
+loadOrGenerateSalt path = do
+    let sp = saltPath path
+    exists <- doesFileExist sp
+    if exists
+        then do
+            s <- BS.readFile sp
+            if BS.length s == saltLen
+                then pure s
+                else generateAndWriteSalt sp
+        else generateAndWriteSalt sp
+  where
+    generateAndWriteSalt sp = do
+        createDirectoryIfMissing True (takeDirectory sp)
+        s <- randomBytes saltLen
+        BS.writeFile sp s
+        setFileMode sp (ownerReadMode `unionFileModes` ownerWriteMode)
+        pure s
+
+-- | Load the salt for decryption: use the per-install salt if it exists,
+-- otherwise fall back to the legacy fixed salt for backward compatibility.
+loadSaltForDecrypt :: FilePath -> IO ByteString
+loadSaltForDecrypt path = do
+    let sp = saltPath path
+    exists <- doesFileExist sp
+    if exists
+        then do
+            s <- BS.readFile sp
+            if BS.length s == saltLen then pure s else pure legacySalt
+        else pure legacySalt
 
 ------------------------------------------------------------------------
 -- Public API
@@ -133,8 +185,9 @@ saveIdentityKeyWithPassphrase _path _passphrase _ik
 saveIdentityKeyWithPassphrase path passphrase ik = do
     createDirectoryIfMissing True (takeDirectory path)
     nonce <- randomBytes nonceLen
+    salt <- loadOrGenerateSalt path
     let !plaintext = encodeIdentityKey ik
-    sbKey <- fromByteString (deriveWrappingKey passphrase)
+    sbKey <- fromByteString (deriveWrappingKey salt passphrase)
     blob <- withSecureKey sbKey $ \key -> do
         let !(ct, tag) = gcmEncrypt key nonce BS.empty plaintext
         pure (nonce <> ct <> tag)
@@ -158,11 +211,12 @@ loadIdentityKeyWithPassphrase path passphrase = do
             if BS.length blob /= blobLen
                 then pure Nothing
                 else do
+                    salt <- loadSaltForDecrypt path
                     let !nonce   = BS.take nonceLen blob
                         !rest    = BS.drop nonceLen blob
                         !ct      = BS.take plaintextLen rest
                         !tag     = BS.drop plaintextLen rest
-                    sbKey <- fromByteString (deriveWrappingKey passphrase)
+                    sbKey <- fromByteString (deriveWrappingKey salt passphrase)
                     mPlaintext <- withSecureKey sbKey $ \key ->
                         pure (gcmDecrypt key nonce BS.empty ct tag)
                     case mPlaintext of

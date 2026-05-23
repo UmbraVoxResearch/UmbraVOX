@@ -297,11 +297,26 @@ maxBundleAge = 86400 * 30
 -- epoch).  Handles clock skew gracefully: if @bundleTs > now@ (bundle
 -- appears to be from the future), the bundle is accepted since it cannot
 -- be stale.
+-- | Maximum allowed future clock skew in seconds (1 hour).
+--
+-- Finding:     M27.6.23 — 'isBundleFresh' unconditionally accepted any
+--              bundle with a timestamp in the future (@bundleTs > now@).
+-- Vulnerability: An attacker can craft a bundle with a timestamp far in
+--              the future (e.g. year 2099), causing it to be accepted
+--              indefinitely — effectively bypassing the staleness check.
+-- Fix:         Reject bundles whose timestamp is more than 1 hour in the
+--              future.  A 1-hour tolerance accommodates reasonable clock
+--              skew between peers.
+-- Verified:    Bundles > 1 hour in the future return False.
+maxFutureSkew :: Word64
+maxFutureSkew = 3600
+
 isBundleFresh :: Word64  -- ^ Current POSIX time (seconds)
               -> Word64  -- ^ Bundle creation timestamp (seconds)
               -> Bool
 isBundleFresh now bundleTs
-    | bundleTs > now = True   -- future timestamp => not stale (clock skew)
+    | bundleTs > now + maxFutureSkew = False  -- too far in the future
+    | bundleTs > now = True   -- future timestamp within skew tolerance
     | otherwise      = now - bundleTs < maxBundleAge
 
 -- | Encode a 'Word64' timestamp as an 8-byte big-endian 'ByteString'.

@@ -310,12 +310,32 @@ newSeqWindow = newIORef Set.empty
 -- Returns True if the sequence number is new (accepted) and records it.
 -- Returns False if the sequence number is a duplicate (rejected).
 -- When the window is full, the oldest (smallest) entry is evicted.
+--
+-- Finding:     M27.6.11 — The sequence window had no high-water mark,
+--              allowing an attacker to inject a very large sequence number
+--              and then replay all earlier sequence numbers (which would
+--              have been evicted from the window).
+-- Vulnerability: Without a floor, an attacker can advance the window far
+--              ahead with a single crafted packet, then replay packets
+--              with old sequence numbers that are no longer tracked.
+-- Fix:         Maintain a high-water mark (maximum accepted sequence number)
+--              and reject any sequence number below @highWaterMark - windowSize@.
+-- Verified:    Sequence numbers below the high-water floor are rejected.
 validateSequence :: SeqWindow -> Word32 -> IO Bool
 validateSequence ref seqNum = atomicModifyIORef' ref $ \s ->
     if Set.member seqNum s
         then (s, False)  -- duplicate
-        else let s' = Set.insert seqNum s
-                 s'' = if Set.size s' > seqWindowSize
-                       then Set.deleteMin s'
-                       else s'
-             in (s'', True)
+        else
+            -- High-water mark: the maximum sequence number seen so far.
+            -- Reject anything more than seqWindowSize below it.
+            let highWater = if Set.null s then 0 else Set.findMax s
+                floor'    = if highWater > fromIntegral seqWindowSize
+                            then highWater - fromIntegral seqWindowSize
+                            else 0
+            in if seqNum < floor'
+               then (s, False)  -- below high-water floor
+               else let s' = Set.insert seqNum s
+                        s'' = if Set.size s' > seqWindowSize
+                              then Set.deleteMin s'
+                              else s'
+                    in (s'', True)
