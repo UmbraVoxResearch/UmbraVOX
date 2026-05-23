@@ -193,7 +193,7 @@ CABALEOF
     lib = pkgs.lib;
     config = nixos.config;
     diskSize = "auto";
-    additionalSpace = "4096M";
+    additionalSpace = "8192M";
     format = "raw";
     partitionTableType = "legacy";
     copyChannel = false;
@@ -225,7 +225,7 @@ CABALEOF
     lib = pkgs.lib;
     config = firecrackerNixos.config;
     diskSize = "auto";
-    additionalSpace = "512M";
+    additionalSpace = "2048M";
     format = "raw";
     partitionTableType = "none";
     copyChannel = false;
