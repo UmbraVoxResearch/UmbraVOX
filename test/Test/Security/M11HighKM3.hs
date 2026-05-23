@@ -389,12 +389,13 @@ testKM017SkippedKeyEviction = do
     -- Build a skipped-key map with maxTotalSkipped + 5 entries manually,
     -- then call evictOldestLocal to verify the cap is enforced.
     let n = maxTotalSkipped + 5
-        -- Entries: (BS.replicate 32 i, counter i) -> (msgKey, chainKey, seq)
+        -- Entries: (BS.replicate 32 i, counter i) -> (msgKey, chainKey, seq, wallTs)
         -- We use small keys and distinct insertSeq values.
         entries = [ ( (BS.singleton (fromIntegral (i `mod` 256)), fromIntegral i)
                     , ( BS.replicate 4 (fromIntegral i)
                       , BS.replicate 4 0xCC
                       , fromIntegral i  -- insertSeq = i (ascending = oldest first)
+                      , 0               -- wallTimestamp (not relevant for eviction test)
                       )
                     )
                   | i <- [0 .. n - 1] :: [Int]
@@ -425,10 +426,10 @@ testKM017SkippedKeyEviction = do
     pure (ok1 && ok2 && ok3 && ok4 && ok5)
 
 -- | Local mirror of evictOldest from DoubleRatchet.hs.
--- Map value: (msgKey, chainKey, insertSeq).
+-- Map value: (msgKey, chainKey, insertSeq, wallTimestamp).
 evictOldestLocal
-    :: Map (ByteString, Word32) (ByteString, ByteString, Word64)
-    -> Map (ByteString, Word32) (ByteString, ByteString, Word64)
+    :: Map (ByteString, Word32) (ByteString, ByteString, Word64, Word64)
+    -> Map (ByteString, Word32) (ByteString, ByteString, Word64, Word64)
 evictOldestLocal m
     | Map.size m <= maxTotalSkipped = m
     | otherwise =
@@ -437,11 +438,11 @@ evictOldestLocal m
             Nothing  -> m
             Just key -> evictOldestLocal (Map.delete key m)
   where
-    pickOldest Nothing  k (_, _, sq) = Just k `seq` sq `seq` Just k
-    pickOldest (Just bestK) k (_, _, sq) =
+    pickOldest Nothing  k (_, _, sq, _) = Just k `seq` sq `seq` Just k
+    pickOldest (Just bestK) k (_, _, sq, _) =
         case Map.lookup bestK m of
-            Just (_, _, bestSq) -> if sq < bestSq then Just k else Just bestK
-            Nothing             -> Just k
+            Just (_, _, bestSq, _) -> if sq < bestSq then Just k else Just bestK
+            Nothing                -> Just k
 
 ------------------------------------------------------------------------
 -- KM-023: KeyStore corrupted file

@@ -471,7 +471,8 @@ testDoubleRatchetMaxTotalSkipped = do
         preMap  = Map.fromList
                     [ ((fakeKey, fromIntegral i), ( BS.replicate 32 (fromIntegral (i .&. 255))
                                                    , BS.replicate 32 (fromIntegral ((i + 1) .&. 255))
-                                                   , fromIntegral i ))
+                                                   , fromIntegral i
+                                                   , 0 ))
                     | i <- [0 :: Int .. 4959] ]
         -- rsSkipSeq must be set to 4960 so that skipMessageKeys assigns
         -- sequence numbers 4960..5059 to the real skipped keys, making

@@ -27,7 +27,7 @@ module UmbraVox.Crypto.Signal.X3DH
 import Data.Bits (shiftR)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
-import Data.Word (Word64)
+import Data.Word (Word32, Word64)
 
 import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
 import UmbraVox.Crypto.Ed25519 (ed25519Sign, ed25519Verify, ed25519PublicKey)
@@ -126,6 +126,18 @@ signPreKey ik spkPub = ed25519Sign (ikEd25519Secret ik) (ikEd25519Public ik <> s
 x3dhInfo :: ByteString
 x3dhInfo = BS.pack (map (fromIntegral . fromEnum) "UmbraVox_X3DH_v1")
 
+-- | M27.6.10: Prepend a 4-byte big-endian length prefix to a key.
+-- Prevents concatenation collisions when variable-length keys are
+-- used in HKDF info strings under protocol evolution.
+lenPrefix :: ByteString -> ByteString
+lenPrefix bs =
+    let !len = fromIntegral (BS.length bs) :: Word32
+    in BS.pack [ fromIntegral (len `shiftR` 24)
+               , fromIntegral (len `shiftR` 16)
+               , fromIntegral (len `shiftR` 8)
+               , fromIntegral len
+               ] <> bs
+
 ------------------------------------------------------------------------
 -- Shared secret derivation (common to initiator and responder)
 ------------------------------------------------------------------------
@@ -133,8 +145,12 @@ x3dhInfo = BS.pack (map (fromIntegral . fromEnum) "UmbraVox_X3DH_v1")
 -- | Derive the master secret from DH outputs.
 -- ikm = 0xFF*32 || dh1 || dh2 || dh3 || [dh4]
 -- salt = 0x00*32
--- info = "UmbraVox_X3DH_v1" || IK_A_pub || IK_B_pub (identity binding)
+-- info = "UmbraVox_X3DH_v1" || len(IK_A_pub) || IK_A_pub || len(IK_B_pub) || IK_B_pub
 -- output = 32 bytes
+--
+-- M27.6.10: Each key in the info string is now preceded by its 4-byte
+-- big-endian length to prevent concatenation collisions under protocol
+-- evolution (e.g. if key sizes change in future versions).
 deriveSecret :: ByteString  -- ^ dh1
              -> ByteString  -- ^ dh2
              -> ByteString  -- ^ dh3
@@ -146,7 +162,8 @@ deriveSecret !dh1 !dh2 !dh3 !mDh4 !aliceIKPub !bobIKPub =
     let !pad = BS.replicate 32 0xff
         !salt = BS.replicate 32 0x00
         !ikm = BS.concat $ [pad, dh1, dh2, dh3] ++ maybe [] (:[]) mDh4
-        !info = x3dhInfo <> aliceIKPub <> bobIKPub
+        -- M27.6.10: length-prefixed keys in info string
+        !info = x3dhInfo <> lenPrefix aliceIKPub <> lenPrefix bobIKPub
     in hkdf salt ikm info 32
 
 ------------------------------------------------------------------------

@@ -90,7 +90,7 @@ initSession sharedSecret = SessionState
 --   [4: skippedKeys count]
 --     for each entry:
 --       [4: dhPub len][dhPub][4: counter]
---       [4: msgKey len][msgKey][4: chainKey len][chainKey][8: insertSeq]
+--       [4: msgKey len][msgKey][4: chainKey len][chainKey][8: insertSeq][8: wallTimestamp]
 --   [4: peerIdentity len][peerIdentity]
 --   [8: createdAt][8: messageCount]
 -- @
@@ -108,8 +108,8 @@ serializeSession ss =
         skippedCount = fromIntegral (length skippedList) :: Word32
         skippedBytes = mconcat
             [ putBlob k <> putWord32BE n
-              <> putBlob mk <> putBlob ck <> putWord64BE iseq
-            | ((k, n), (mk, ck, iseq)) <- skippedList
+              <> putBlob mk <> putBlob ck <> putWord64BE iseq <> putWord64BE wallTs
+            | ((k, n), (mk, ck, iseq, wallTs)) <- skippedList
             ]
     in mconcat
         [ putBlob dhSec
@@ -227,9 +227,11 @@ getW64 bs
         in Just (w, BS.drop 8 bs)
 
 -- | Read N skipped-key entries from the wire format.
+-- M27.6.9: Each entry now includes a wall-clock timestamp (Word64) for
+-- time-based expiry of stale skipped keys (48-hour window).
 getSkippedKeys :: Int
                -> ByteString
-               -> Maybe (Map.Map (ByteString, Word32) (ByteString, ByteString, Word64), ByteString)
+               -> Maybe (Map.Map (ByteString, Word32) (ByteString, ByteString, Word64, Word64), ByteString)
 getSkippedKeys 0 bs = Just (Map.empty, bs)
 getSkippedKeys n bs = do
     (dhPub, bs1)    <- getBlob bs
@@ -237,5 +239,6 @@ getSkippedKeys n bs = do
     (msgKey, bs3)   <- getBlob bs2
     (chainKey, bs4) <- getBlob bs3
     (iseq, bs5)     <- getW64 bs4
-    (rest, bs6)     <- getSkippedKeys (n - 1) bs5
-    Just (Map.insert (dhPub, counter) (msgKey, chainKey, iseq) rest, bs6)
+    (wallTs, bs6)   <- getW64 bs5
+    (rest, bs7)     <- getSkippedKeys (n - 1) bs6
+    Just (Map.insert (dhPub, counter) (msgKey, chainKey, iseq, wallTs) rest, bs7)

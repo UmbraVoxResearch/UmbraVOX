@@ -33,8 +33,10 @@ module UmbraVox.Crypto.Signal.PQXDH
     , pqxdhRespond
     ) where
 
+import Data.Bits (shiftR)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
+import Data.Word (Word32)
 
 import UmbraVox.Crypto.Curve25519 (x25519)
 import UmbraVox.Crypto.Ed25519 (ed25519Verify)
@@ -74,6 +76,18 @@ data PQXDHResult = PQXDHResult
 pqxdhInfo :: ByteString
 pqxdhInfo = BS.pack (map (fromIntegral . fromEnum) "UmbraVox_PQXDH_v1")
 
+-- | M27.6.10: Prepend a 4-byte big-endian length prefix to a key.
+-- Prevents concatenation collisions when variable-length keys are
+-- used in HKDF info strings under protocol evolution.
+lenPrefix :: ByteString -> ByteString
+lenPrefix bs =
+    let !len = fromIntegral (BS.length bs) :: Word32
+    in BS.pack [ fromIntegral (len `shiftR` 24)
+               , fromIntegral (len `shiftR` 16)
+               , fromIntegral (len `shiftR` 8)
+               , fromIntegral len
+               ] <> bs
+
 ------------------------------------------------------------------------
 -- Shared secret derivation
 ------------------------------------------------------------------------
@@ -81,8 +95,12 @@ pqxdhInfo = BS.pack (map (fromIntegral . fromEnum) "UmbraVox_PQXDH_v1")
 -- | Derive the PQXDH master secret from DH outputs and ML-KEM shared secret.
 -- ikm = 0xFF*32 || dh1 || dh2 || dh3 || [dh4] || pq_ss || SHA256(pq_ct)
 -- salt = 0x00*32
--- info = "UmbraVox_PQXDH_v1" || IK_A_pub || IK_B_pub (identity binding)
+-- info = "UmbraVox_PQXDH_v1" || len(IK_A_pub) || IK_A_pub || len(IK_B_pub) || IK_B_pub
 -- output = 32 bytes
+--
+-- M27.6.10: Each key in the info string is now preceded by its 4-byte
+-- big-endian length to prevent concatenation collisions under protocol
+-- evolution.
 --
 -- The SHA256(pq_ct) binding ensures both parties committed to the same
 -- PQ ciphertext, preventing substitution attacks on the KEM exchange.
@@ -109,7 +127,8 @@ derivePQSecret !dh1 !dh2 !dh3 !mDh4 !pqSS !pqCt !aliceIKPub !bobIKPub =
         !ikm  = BS.concat $ [pad, dh1, dh2, dh3]
                           ++ maybe [] (:[]) mDh4
                           ++ [pqSS, sha256 (let MLKEMCiphertext ct = pqCt in ct)]
-        !info = pqxdhInfo <> aliceIKPub <> bobIKPub
+        -- M27.6.10: length-prefixed keys in info string
+        !info = pqxdhInfo <> lenPrefix aliceIKPub <> lenPrefix bobIKPub
     in hkdf salt ikm info 32
 
 ------------------------------------------------------------------------
