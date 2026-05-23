@@ -46,6 +46,7 @@ import UmbraVox.Version (versionFull)
 import qualified Data.Set as Set
 import qualified UmbraVox.Plugin.Types
 import UmbraVox.Network.ProviderCatalog (TransportProviderId(ProviderUmbraClaw))
+import UmbraVox.Chat.OutboundQueue (queueSize)
 
 clampInt :: Int -> Int -> Int -> Int
 clampInt lo hi x = max lo (min hi x)
@@ -167,11 +168,13 @@ renderContactCell lay entries sel focus cScroll row = do
     if idx >= 0 && idx < length entries then do
         let (_, si) = entries !! idx
         tag <- statusTag <$> readIORef (siStatus si)
+        pending <- queueSize (siOutboundQueue si)
         let pfx = sessionPrefix (siCrypto si)
             mk = if idx == sel then " \x25B8 " else "   "
+            qTag = if pending > 0 then " (" ++ show pending ++ "q)" else ""
             sbW = if showScrollbar then 1 else 0
-            nameW = max 0 (lw - 2 - displayWidth mk - displayWidth tag - sbW)
-            cell = mk ++ padR nameW (pfx ++ siPeerName si) ++ tag
+            nameW = max 0 (lw - 2 - displayWidth mk - displayWidth tag - displayWidth qTag - sbW)
+            cell = mk ++ padR nameW (pfx ++ siPeerName si) ++ qTag ++ tag
         when (idx == sel) $ if focus == ContactPane then bold >> setFg 34 else bold
         putStr cell
         resetSGR
@@ -830,10 +833,11 @@ sessionRenderToken :: (SessionId, SessionInfo) -> IO String
 sessionRenderToken (sid, si) = do
     tag <- statusTag <$> readIORef (siStatus si)
     hist <- readIORef (siHistory si)
+    pending <- queueSize (siOutboundQueue si)
     let msgCount = length hist
         newest = if null hist then "" else head hist
         cryptoTag = sessionPrefix (siCrypto si)
-    pure (show sid ++ "|" ++ cryptoTag ++ siPeerName si ++ "|" ++ tag ++ "|" ++ show msgCount ++ "|" ++ newest)
+    pure (show sid ++ "|" ++ cryptoTag ++ siPeerName si ++ "|" ++ tag ++ "|" ++ show msgCount ++ "|" ++ newest ++ "|q" ++ show pending)
 
 selectedSessionRenderToken :: SessionInfo -> IO String
 selectedSessionRenderToken si = do
