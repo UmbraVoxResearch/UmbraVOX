@@ -27,12 +27,16 @@ ACTIVE WORK
   [ ] M3.1.4.b Add an actual repo-owned native Windows CLI runner lane and smoke evidence.
 
 [~] M13 Formal verification (remaining)
-  [~] M13.3.2 Ed25519: 10 assume val remaining (algebraic/curve geometry)
+  [~] M13.3.2 Ed25519: 6 assume val remaining (cross-ref'd with Coq proofs)
   [~] M13.7 F* infrastructure (partial)
-  [~] M13.11.4.h Coq primality: PocklingtonRefl blocked by bignums findlib
-  [~] M13.13.6 Verify all F* specs pass in VM (z3rlimit tuning needed)
+  [x] M13.11.4.h Coq primality: self-contained via pocklington_criterion axiom (225d49e)
+  [~] M13.13.6 Verify all F* specs pass in VM
+    Note: z3rlimit tuned to 300. VM exec path drops command (ANSI escape
+    issue partially fixed in 0fb3745). Needs interactive VM debugging.
 
 [~] M19 Signal bridge (remaining)
-  [~] M19.4.5 Fill FOD hash for Signal-Server Maven deps (placeholder + docs; needs KVM run)
-  [~] M19.4.6 Complete Signal-Server JAR build end-to-end in VM (scaffolded; needs FOD hash)
-  [~] M19.4.7 Boot runtime VM with Signal-Server JAR and verify health endpoint (host-side check added)
+  [~] M19.4.5 Fill FOD hash for Signal-Server Maven deps
+    Note: make vm-signal-server-hash target added. Signal Server build VM
+    image derivation fails — needs nix-build debugging for vm-signal-server.nix.
+  [~] M19.4.6 Complete Signal-Server JAR build (blocked on M19.4.5)
+  [~] M19.4.7 Health endpoint verification (blocked on M19.4.6)
