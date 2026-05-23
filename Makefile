@@ -1308,12 +1308,19 @@ vm-image-build: # [host-only] Build VM image inside a builder VM (M20.5.8)
 	@if command -v genext2fs >/dev/null 2>&1; then \
 		./scripts/vm-image-builder.sh; \
 	elif command -v nix-shell >/dev/null 2>&1; then \
-		echo -e "$(BLUE)[VM-IMAGE]$(NC) genext2fs not found; entering nix-shell..."; \
-		nix-shell shell.nix --run "./scripts/vm-image-builder.sh"; \
+		echo -e "$(YELLOW)[VM-IMAGE]$(NC) genext2fs not found. Enter nix-shell to continue?"; \
+		printf "  Enter nix-shell and build? [Y/n] "; \
+		read -r ans; \
+		case "$$ans" in \
+			[Nn]*) echo "Aborted."; exit 1 ;; \
+			*) echo -e "$(BLUE)[VM-IMAGE]$(NC) Entering nix-shell..."; \
+			   nix-shell shell.nix --run "./scripts/vm-image-builder.sh" ;; \
+		esac; \
 	else \
-		echo -e "$(RED)[VM-IMAGE]$(NC) genext2fs not found. Run from inside nix-shell:"; \
-		echo "  nix-shell shell.nix"; \
-		echo "  make vm-image-build"; \
+		echo -e "$(RED)[VM-IMAGE]$(NC) genext2fs not found and nix-shell not available."; \
+		echo "  Install nix (https://nixos.org/) then run:"; \
+		echo "    nix-shell shell.nix"; \
+		echo "    make vm-image-build"; \
 		exit 1; \
 	fi
 
