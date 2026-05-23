@@ -10,6 +10,8 @@
  *)
 module Spec.GCM
 
+#set-options "--z3rlimit 300 --fuel 4 --ifuel 2"
+
 open FStar.Seq
 open FStar.UInt8
 open FStar.UInt64
@@ -943,7 +945,7 @@ val constant_eq_correct :
     a:seq UInt8.t
     -> b:seq UInt8.t{Seq.length b = Seq.length a}
     -> Lemma ((constant_eq a b = true) <==> (a == b))
-#push-options "--z3rlimit 60"
+#push-options "--z3rlimit 300"
 let constant_eq_correct a b =
   constant_eq_go_spec a b 0 0uy;
   (* constant_eq_go_spec gives:

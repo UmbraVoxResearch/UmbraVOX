@@ -10,6 +10,8 @@
  *)
 module Spec.Ed25519
 
+#set-options "--z3rlimit 300 --fuel 4 --ifuel 2"
+
 open FStar.Seq
 open FStar.UInt8
 open FStar.Mul
@@ -634,7 +636,7 @@ val pow_mod_base : a:int -> n:nat
   -> Lemma (ensures FStar.Math.Fermat.pow (a % prime) n % prime
                  == FStar.Math.Fermat.pow a n % prime)
            (decreases n)
-#push-options "--fuel 1 --ifuel 0 --z3rlimit 30"
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 300"
 let rec pow_mod_base a n =
   if n = 0 then ()
   else begin
@@ -683,7 +685,7 @@ let rec pow_sqr a n =
 val pow_mod_equiv : base:felem -> exp:nat
   -> Lemma (ensures pow_mod base exp == FStar.Math.Fermat.pow base exp % prime)
            (decreases exp)
-#push-options "--fuel 2 --ifuel 1 --z3rlimit 50"
+#push-options "--fuel 2 --ifuel 1 --z3rlimit 300"
 let rec pow_mod_equiv base exp =
   if exp = 0 then begin
     assert (pow_mod base 0 == 1);
@@ -738,7 +740,7 @@ let rec pow_mod_equiv base exp =
     3. pow definition: a * pow a (p-2) == pow a (p-1)
     4. fermat (FLT): pow a (p-1) % p == 1 *)
 val fmul_inverse : a:felem{a <> 0} -> Lemma (fmul a (finv a) == 1)
-#push-options "--fuel 1 --ifuel 0 --z3rlimit 50"
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 300"
 let fmul_inverse a =
   (* Establish pow_mod a (prime-2) == pow a (prime-2) % prime *)
   pow_mod_equiv a (prime - 2);
@@ -814,7 +816,7 @@ let rec pow_one_local (k : nat) : Lemma (ensures FStar.Math.Fermat.pow 1 k == 1)
 
 (** finv 1 == 1: inverse of 1 is 1 *)
 val finv_one : unit -> Lemma (finv 1 == 1)
-#push-options "--fuel 1 --ifuel 0 --z3rlimit 50"
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 300"
 let finv_one () =
   (* finv 1 = pow_mod 1 (prime-2).  1^n = 1 for all n, so pow_mod 1 (prime-2) = 1. *)
   pow_mod_equiv 1 (prime - 2);
@@ -827,7 +829,7 @@ let finv_one () =
 
 (** pow_mod 0 n == 0 for n > 0.  Induction on n via the halving recursion. *)
 val pow_mod_zero : n:pos -> Lemma (ensures pow_mod 0 n == 0) (decreases n)
-#push-options "--fuel 1 --ifuel 0 --z3rlimit 50"
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 300"
 let rec pow_mod_zero (n : pos) : Lemma (ensures pow_mod 0 n == 0) (decreases n) =
   (* fsqr 0 = fmul 0 0 = 0, so pow_mod recurses with base=0 throughout *)
   assert (fsqr 0 == 0);
@@ -856,7 +858,7 @@ let finv_zero () =
     Proof: (a*b) * inv(b) = a * (b * inv(b)) = a * 1 = a *)
 val fmul_cancel_right : a:felem -> b:felem{b <> 0}
   -> Lemma (fmul (fmul a b) (finv b) == a)
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 100"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let fmul_cancel_right a b =
   fmul_assoc a b (finv b);
   (* fmul (fmul a b) (finv b) == fmul a (fmul b (finv b)) *)
@@ -873,7 +875,7 @@ let fmul_cancel_right a b =
 val finv_fmul : a:felem{a <> 0} -> b:felem{b <> 0}
   -> Lemma (requires fmul a b <> 0)
            (ensures finv (fmul a b) == fmul (finv a) (finv b))
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 200"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let finv_fmul a b =
   let ab = fmul a b in
   let inv_ab = finv ab in
@@ -975,7 +977,7 @@ assume val group_order_lemma : unit
     But by fmul_cancel_right, (b*a) * inv(a) == b.  So b == 0, contradiction. *)
 val fmul_nonzero : a:felem{a <> 0} -> b:felem{b <> 0}
   -> Lemma (fmul a b <> 0)
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 200"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let fmul_nonzero a b =
   (* Proof by contradiction: assume fmul a b == 0 and derive b == 0.
      fmul_cancel_right b a: fmul (fmul b a) (finv a) == b
@@ -1010,7 +1012,7 @@ let encode_point_affine_eq x1 y1 z1 t1 x2 y2 z2 t2 = ()
 val projective_cancel : s:felem{s <> 0} -> a:felem -> b:felem{b <> 0}
   -> Lemma (requires fmul s b <> 0)
            (ensures fmul (fmul s a) (finv (fmul s b)) == fmul a (finv b))
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 200"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let projective_cancel s a b =
   (* finv (s*b) == finv(s) * finv(b) *)
   finv_fmul s b;
@@ -1034,7 +1036,7 @@ val identity_scaling : e:felem -> h:felem -> f:felem{f <> 0}
   -> Lemma (requires fmul f f <> 0)
            (ensures fmul (fmul e f) (finv (fmul f f)) == fmul e (finv f) /\
                     fmul (fmul f h) (finv (fmul f f)) == fmul h (finv f))
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 200"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let identity_scaling e h f =
   (* For x-coordinate: (e*f) * inv(f*f) = (e*f) * (inv(f)*inv(f))
      = e * (f * inv(f) * inv(f)) = e * (1 * inv(f)) = e * inv(f) *)
@@ -1206,7 +1208,7 @@ let point_add_identity_right p =
 val point_add_comm : p:ext_point -> q:ext_point
     -> Lemma (encode_point (point_add p q) ==
               encode_point (point_add q p))
-#push-options "--z3rlimit 100"
+#push-options "--z3rlimit 300"
 let point_add_comm p q =
   let (x1, y1, z1, t1) = p in
   let (x2, y2, z2, t2) = q in
@@ -1324,7 +1326,7 @@ assume val point_add_assoc : p:ext_point -> q:ext_point -> r:ext_point
     Proof: (-a)*(-b) = a*b in GF(p). *)
 val neg_fmul_cancel : a:felem -> b:felem
   -> Lemma (fmul (fsub 0 a) (fsub 0 b) == fmul a b)
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 200"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let neg_fmul_cancel a b =
   (* fsub 0 x = (prime - x) % prime.
      fmul (fsub 0 a) (fsub 0 b) = (((prime-a)%p) * ((prime-b)%p)) % p
@@ -1494,7 +1496,7 @@ let scalar_mult_zero p =
     In GF(p), (p-1)*a = -a. *)
 val fmul_neg_one : a:felem
   -> Lemma (fmul (prime - 1) a == fsub 0 a)
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 100"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let fmul_neg_one a =
   (* fmul (prime-1) a = ((prime-1)*a) % prime
      = (prime*a - a) % prime
@@ -1511,7 +1513,7 @@ let fmul_neg_one a =
     fsub (fsub 0 a) (fsub 0 b) == fsub 0 (fsub a b) *)
 val fsub_neg_distribute : a:felem -> b:felem
   -> Lemma (fsub (fsub 0 a) (fsub 0 b) == fsub 0 (fsub a b))
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 200"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let fsub_neg_distribute a b = ()
 #pop-options
 
@@ -1519,7 +1521,7 @@ let fsub_neg_distribute a b = ()
     fadd (fsub 0 a) (fsub 0 b) == fsub 0 (fadd a b) *)
 val fadd_neg_distribute : a:felem -> b:felem
   -> Lemma (fadd (fsub 0 a) (fsub 0 b) == fsub 0 (fadd a b))
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 200"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let fadd_neg_distribute a b = ()
 #pop-options
 
@@ -1527,7 +1529,7 @@ let fadd_neg_distribute a b = ()
     Doubling commutes with negation. *)
 val fmul_two_neg : a:felem
   -> Lemma (fmul 2 (fsub 0 a) == fsub 0 (fmul 2 a))
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 200"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let fmul_two_neg a =
   fmul_two (fsub 0 a);
   fmul_two a;
@@ -1769,7 +1771,7 @@ val verify_equation :
         encode_point (point_add
                         (scalar_mult r basepoint)
                         (scalar_mult k (scalar_mult a basepoint))))
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 50"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let verify_equation r k a =
   let s = (r + k * a) % group_order in
   (* Step 1: [(r+k*a) mod L]B = [r+k*a]B *)
@@ -1849,7 +1851,7 @@ let rec decode_le_bound s =
     v % (256 * m) = (v % 256) + 256 * ((v / 256) % m) for m > 0. *)
 val mod_digit_decomposition : v:nat -> m:pos
     -> Lemma (v % (256 * m) = (v % 256) + 256 * ((v / 256) % m))
-#push-options "--z3rlimit 200"
+#push-options "--z3rlimit 300"
 let mod_digit_decomposition v m =
   FStar.Math.Lemmas.euclidean_division_definition v 256;
   FStar.Math.Lemmas.euclidean_division_definition (v / 256) m;
@@ -1867,7 +1869,7 @@ let mod_digit_decomposition v m =
 #pop-options
 
 (** decode_le(encode_le_n(k, v)) = v mod 2^(8*k) for any k, v. *)
-#push-options "--z3rlimit 100"
+#push-options "--z3rlimit 300"
 val decode_encode_le_aux : k:nat -> v:nat
     -> Lemma (ensures decode_le (encode_le_n k v) == v % pow2 (8 * k))
              (decreases k)
@@ -1932,7 +1934,7 @@ val sign_s_bound : sk:secret_key -> msg:seq UInt8.t
     -> Lemma (let sig_bytes = ed25519_sign sk msg in
               let s_bytes = Seq.slice sig_bytes 32 64 in
               decode_le s_bytes < group_order)
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 100"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let sign_s_bound sk msg =
   let h = sha512 sk in
   let clamped = clamp_scalar h in
@@ -1992,7 +1994,7 @@ val sign_hash_inputs_match : sk:secret_key -> msg:seq UInt8.t
               let big_r = encode_point (scalar_mult r basepoint) in
               let sign_hash_input = Seq.append big_r (Seq.append pub_key msg) in
               verify_hash_input == sign_hash_input)
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 100"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let sign_hash_inputs_match sk msg =
   (* Unfold ed25519_sign to extract R_bytes and pk_bytes *)
   let h = sha512 sk in
@@ -2041,7 +2043,7 @@ val sign_verify_algebra : sk:secret_key -> msg:seq UInt8.t
               encode_point (point_add
                               (scalar_mult r basepoint)
                               (scalar_mult k (scalar_mult a basepoint))))
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 50"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let sign_verify_algebra sk msg =
   let h = sha512 sk in
   let clamped = clamp_scalar h in
@@ -2071,7 +2073,7 @@ val sign_r_bytes_are_encoding : sk:secret_key -> msg:seq UInt8.t
               let r_hash = sha512 (Seq.append prefix msg) in
               let r = decode_le r_hash % group_order in
               Seq.slice sig_bytes 0 32 == encode_point (scalar_mult r basepoint))
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 100"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let sign_r_bytes_are_encoding sk msg =
   let h = sha512 sk in
   let clamped = clamp_scalar h in
@@ -2111,7 +2113,7 @@ val sign_s_round_trip : sk:secret_key -> msg:seq UInt8.t
               let k = decode_le k_hash % group_order in
               let s = (r + k * a) % group_order in
               decode_le (Seq.slice sig_bytes 32 64) == s)
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 100"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let sign_s_round_trip sk msg =
   let h = sha512 sk in
   let clamped = clamp_scalar h in
@@ -2162,7 +2164,7 @@ val sign_verify_same_k : sk:secret_key -> msg:seq UInt8.t
               let k_hash_verify = sha512 (Seq.append r_bytes (Seq.append pk msg)) in
               let k_verify = decode_le k_hash_verify % group_order in
               k_sign == k_verify)
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 100"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let sign_verify_same_k sk msg =
   sign_hash_inputs_match sk msg;
   (* sign_hash_inputs_match gives us:
@@ -2202,7 +2204,7 @@ val point_add_congruence_left :
     -> Lemma (requires encode_point p1 == encode_point p2)
              (ensures encode_point (point_add p1 q) ==
                       encode_point (point_add p2 q))
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 50"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let point_add_congruence_left q p1 p2 =
   (* point_add p1 q =enc= point_add q p1  (by comm)
                    =enc= point_add q p2  (by right-congruence)
@@ -2256,7 +2258,7 @@ let point_add_congruence_left q p1 p2 =
     Equivalently: pow_mod (fsqr a) ((prime-1)/2) == 1. *)
 val euler_criterion_square : a:felem{a <> 0}
   -> Lemma (pow_mod (fsqr a) ((prime - 1) / 2) == 1)
-#push-options "--fuel 2 --ifuel 1 --z3rlimit 200"
+#push-options "--fuel 2 --ifuel 1 --z3rlimit 300"
 let euler_criterion_square a =
   let a2 = fsqr a in
   let half = (prime - 1) / 2 in
@@ -2341,7 +2343,7 @@ let sqrt_unity x =
     which follows from pow_sqr + pow_mod_equiv + pow_mod_base. *)
 val pow_mod_fsqr : a:felem -> n:nat
   -> Lemma (pow_mod (fsqr a) n == pow_mod a (2 * n))
-#push-options "--fuel 1 --ifuel 0 --z3rlimit 100"
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 300"
 let pow_mod_fsqr a n =
   pow_mod_equiv (fsqr a) n;
   pow_mod_base (a * a) n;
@@ -2355,7 +2357,7 @@ val pow_add_exp : a:int -> m:nat -> n:nat
   -> Lemma (ensures FStar.Math.Fermat.pow a m * FStar.Math.Fermat.pow a n
                  == FStar.Math.Fermat.pow a (m + n))
            (decreases m)
-#push-options "--fuel 1 --ifuel 0 --z3rlimit 50"
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 300"
 let rec pow_add_exp a m n =
   if m = 0 then begin
     assert (FStar.Math.Fermat.pow a 0 == 1);
@@ -2376,7 +2378,7 @@ let rec pow_add_exp a m n =
     Uses pow_mod_equiv to reduce to FStar.Math.Fermat.pow. *)
 val pow_mod_add_exp : a:felem -> m:nat -> n:nat
   -> Lemma (fmul (pow_mod a m) (pow_mod a n) == pow_mod a (m + n))
-#push-options "--fuel 1 --ifuel 0 --z3rlimit 200"
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 300"
 let pow_mod_add_exp a m n =
   pow_mod_equiv a m;
   pow_mod_equiv a n;
@@ -2392,7 +2394,7 @@ let pow_mod_add_exp a m n =
     fsqr (fmul a b) == fmul (fsqr a) (fsqr b). *)
 val fsqr_fmul : a:felem -> b:felem
   -> Lemma (fsqr (fmul a b) == fmul (fsqr a) (fsqr b))
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 200"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let fsqr_fmul a b =
   (* fsqr (fmul a b) = ((a*b%p)*(a*b%p)) % p
      fmul (fsqr a) (fsqr b) = ((a*a%p)*(b*b%p)) % p
@@ -2518,7 +2520,7 @@ val encode_y_canonical : pt:ext_point
                      yn < prime /\
                      yn < pow2 255 /\
                      (yn / pow2 248) < 128))
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 100"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let encode_y_canonical pt =
   let (x, y, z, _t) = pt in
   let zi = finv z in
@@ -2542,7 +2544,7 @@ val decode_y_inverse : yn:felem
                      let last_byte = UInt8.v (Seq.index encoded 31) in
                      last_byte < 128 /\
                      decode_le encoded == yn))
-#push-options "--fuel 1 --ifuel 1 --z3rlimit 200"
+#push-options "--fuel 1 --ifuel 1 --z3rlimit 300"
 let decode_y_inverse yn =
   assert (yn < prime);
   assert_norm (prime < pow2 255);
@@ -2571,7 +2573,7 @@ val sign_bit_consistency : xn:felem -> yn:felem
                      (last_byte' >= 128) == (xn % 2 = 1) /\
                      (* Clearing the sign bit recovers the original byte *)
                      last_byte' % 128 = last_byte))
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 200"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let sign_bit_consistency xn yn =
   let encoded = encode_le_32 yn in
   let last_byte = UInt8.v (Seq.index encoded 31) in
@@ -2612,7 +2614,7 @@ let on_curve_implies_quadratic_residue xn yn =
     All other steps are fully proved. *)
 (** Helper: pow_mod a 1 == a for any felem a. *)
 val pow_mod_one_exp : a:felem -> Lemma (pow_mod a 1 == a)
-#push-options "--fuel 2 --ifuel 0 --z3rlimit 50"
+#push-options "--fuel 2 --ifuel 0 --z3rlimit 300"
 let pow_mod_one_exp a =
   (* pow_mod a 1: exp=1, 1%2=1, so fmul a (pow_mod (fsqr a) 0) = fmul a 1 = a *)
   assert (pow_mod a 1 == fmul a (pow_mod (fsqr a) (1/2)));
@@ -2854,7 +2856,7 @@ assume val scalar_mult_preserves_on_curve_ext : n:nat -> pt:ext_point
     PROVED (modulo point_add/double_preserves_on_curve_ext assumptions). *)
 val scalar_mult_basepoint_on_curve_ext : n:nat
     -> Lemma (on_curve_ext (scalar_mult n basepoint) == true)
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 50"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let scalar_mult_basepoint_on_curve_ext n =
   basepoint_on_curve_ext ();
   scalar_mult_preserves_on_curve_ext n basepoint
@@ -3117,7 +3119,7 @@ let clamp_multiple_of_8 s =
 val clamp_idempotent : s:seq UInt8.t{Seq.length s >= 32}
     -> Lemma (let cs = clamp_scalar s in
               Seq.length cs = 32 /\ clamp_scalar cs == cs)
-#push-options "--z3rlimit 100"
+#push-options "--z3rlimit 300"
 let clamp_idempotent s =
   let cs = clamp_scalar s in
   assert (Seq.length cs = 32);
