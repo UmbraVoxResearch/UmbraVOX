@@ -634,6 +634,31 @@ plugin architecture (ProviderCapBridge + IPC subprocess protocol).
   [x] M25.3.2 UmbraClaw wire-compatibility tests (75e42d8)
 
 ================================================================================
+MILESTONE M28: OFFLINE MESSAGE DELIVERY (future)
+================================================================================
+Note: Currently UmbraVOX is peer-to-peer only — messages require both peers
+online. DHT does NOT store messages (design decision for privacy).
+
+[ ] M28.1 Sender-side outbound queue
+  [ ] M28.1.1 OutboundQueue type — per-peer FIFO of (encrypted wire bytes, timestamp)
+  [ ] M28.1.2 Persist queue to disk (encrypted) so messages survive app restart
+  [ ] M28.1.3 Auto-drain queue when peer reconnects (flush in order)
+  [ ] M28.1.4 Configurable max queue depth + max message age (discard stale)
+  [ ] M28.1.5 TUI: show pending message count per contact ("2 queued")
+
+[ ] M28.2 Relay-assisted delivery (optional, privacy-preserving)
+  [ ] M28.2.1 Design: relay mailbox with stealth-addressed storage
+  [ ] M28.2.2 Recipient polls relay via DHT presence + stealth scan
+  [ ] M28.2.3 Relay stores only encrypted blobs — no identity linkage
+  [ ] M28.2.4 TTL-based expiry on relay (e.g., 7 days)
+  [ ] M28.2.5 Sender falls back to relay when peer is offline for > N minutes
+
+[ ] M28.3 Testing
+  [ ] M28.3.1 Queue persistence round-trip test
+  [ ] M28.3.2 Queue drain on reconnect test
+  [ ] M28.3.3 Queue overflow / stale message eviction test
+
+================================================================================
 MILESTONE M27: SECURITY REVIEW v0.4.1 FIXES
 ================================================================================
 Note: 72 findings from adversarial review (5 agents: privacy, crypto, security,
