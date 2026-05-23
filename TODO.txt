@@ -242,16 +242,12 @@ MILESTONE M20: CODEBASE QUALITY + ARCHITECTURAL IMPROVEMENTS (v0.2.1)
     Done: `make vm-test-ephemeral` builds a fresh VM image in build/vm-ephemeral/,
     runs tests inside the ephemeral VM, then deletes the image. Persistent dev image
     at build/vm/image is never touched. vm-dev-run.sh accepts VM_IMAGE_PATH env override.
-  [ ] M20.5.8 Nix-native Haskell build inside builder VM
-    Note: Current approach runs `nix build` on the host, touching the host nix store.
-    This violates VM-first policy AND consumes host disk space (~30GB for image).
-    All Nix evaluation AND compilation must happen inside a VM:
-    1. Spin up a lightweight builder VM with Nix daemon + large virtio disk
-    2. Run callCabal2nix / nix build inside the builder VM
-    3. Build the VM disk image inside the builder VM (not on host)
-    4. Extract the final image from the builder VM via 9p/virtio share
-    This keeps the host nix store untouched (only qemu + basic nix needed on host).
-    Runtime VM image shrinks to ~1-2GB (no GHC/cabal/GCC in image).
+  [x] M20.5.8 Nix-native Haskell build inside builder VM
+    Done: `make vm-image-build` now boots a lightweight builder VM (nix/vm-builder.nix)
+    with Nix daemon enabled and a 60GB scratch qcow2 for /nix/store. The builder runs
+    `nix build .#vm-image` inside the VM and extracts the result via 9p to build/vm/image.
+    Host /nix/store is untouched. Old host-build approach preserved as `make vm-image-build-host`.
+    scripts/vm-image-builder.sh orchestrates the builder VM lifecycle.
     Dev VM (make vm-dev) keeps full toolchain for interactive work.
     Bonus: eliminates the host disk space constraint entirely — builder VM
     uses its own virtual disk, not the host's /nix/store.

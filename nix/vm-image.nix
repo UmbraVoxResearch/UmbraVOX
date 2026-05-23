@@ -203,8 +203,9 @@ CABALEOF
     # — the Nix sandbox needs enough free space on the root filesystem to
     # create the raw disk image. With 16GB of additional space on top of
     # the auto-calculated closure, the total image is ~30GB.
-    # To reduce image size, use M20.5.8 (Nix-native build in builder VM)
-    # which eliminates GHC/Coq/F* from the runtime image.
+    # M20.5.8: `make vm-image-build` now runs this inside a builder VM,
+    # keeping the host /nix/store untouched. Use `make vm-image-build-host`
+    # for the legacy host-build approach.
     additionalSpace = "16384M";
     format = "raw";
     partitionTableType = "legacy";
