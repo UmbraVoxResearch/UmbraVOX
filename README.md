@@ -19,22 +19,28 @@ of thought and expression in the digital age.
 
 ### Prerequisites
 
-- [Nix](https://nixos.org/) package manager
+Only two tools are needed on the host:
+
+- **qemu** (`qemu-system-x86_64` with KVM support)
+- **make** (GNU Make)
+
+If [Nix](https://nixos.org/) is installed, `nix-shell shell.nix` provides both.
+No GHC, cabal, GCC, or other toolchain is required on the host — everything
+compiles inside NixOS VMs. Nothing is written outside the project directory.
 
 ### Build & Run
 
-All standard `make` build/test/verify targets route through the NixOS VM by
-default. No local GHC or cabal is required for standard operations.
-
 ```sh
-nix-shell shell-minimal.nix  # Enter orchestration-only VM-first environment
+# If nix is installed (provides qemu + make):
+nix-shell shell.nix
+
+# Build and test (all inside VMs):
 make vm-image-build    # Build the NixOS dev VM (once)
-make vm-build-only     # Build everything in VM
-make vm-test           # Run tests in VM
-make vm-run-gui        # Interactive dev with QEMU GUI
-make vm-verify         # F* formal verification in VM
+make build             # Build everything (routes to VM)
+make test              # Run tests in VM
+make verify            # F* formal verification in VM
 make vm-dev            # Interactive dev shell inside the VM
-make build             # Build everything (routes to VM by default)
+make vm-run-gui        # Interactive dev with QEMU GUI
 make test              # Fast messaging-MVP hardening gate (routes to VM)
 make verify            # F* formal verification (routes to VM)
 make quality           # Full pipeline: build + test + verify + complexity + lint + license + format-check (in VM)

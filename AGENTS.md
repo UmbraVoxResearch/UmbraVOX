@@ -4,6 +4,34 @@ Instructions for AI agents working on UmbraVOX. All build, test, and
 verification MUST happen inside NixOS VMs. The host system's nix store
 should never be touched by compilation.
 
+## Host Prerequisites
+
+The **only** tools needed on the host system to build UmbraVOX are:
+
+- **qemu** (specifically `qemu-system-x86_64` with KVM support)
+- **make** (GNU Make)
+
+If nix is installed on the host, `nix-shell shell.nix` provides both.
+No other host-side toolchain (GHC, cabal, GCC, etc.) is required.
+
+All compilation, testing, verification, and image building happens
+inside NixOS VMs. The host filesystem outside the project directory
+is **never** written to by build or test activities.
+
+## Host Filesystem Isolation
+
+**Rule: Nothing writes outside the project directory.**
+
+- Build artifacts: `dist-newstyle/`, `build/`
+- Cabal store: `dist-newstyle/cabal-store/` (NOT `~/.cabal/`)
+- Go cache: `build/go/mod/`, `build/go/cache/` (NOT `~/go/`)
+- Test temp files: `build/test-tmp/` (NOT `/tmp/`)
+- VM scratch: `build/vm/` (NOT `/nix/store/`)
+- App data (dev): `.umbravox-data/` (NOT `~/.umbravox/`)
+
+Set `UMBRAVOX_DATA=.umbravox-data` to keep runtime data project-local.
+The nix shells set this automatically.
+
 ## VM-First Development
 
 **Rule: Never compile on the host.** Use VMs for all:
@@ -41,7 +69,7 @@ agents MUST use `make build` (or the VM exec path), never direct
 ### Quick Reference
 
 ```bash
-make build               # Build in VM (host needs only qemu + nix)
+make build               # Build in VM (host needs only qemu + make)
 make test                # Run tests in VM
 make verify              # F* verification in VM
 make vm-dev              # Interactive dev shell in VM (serial)
