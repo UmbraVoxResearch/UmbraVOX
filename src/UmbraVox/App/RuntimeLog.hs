@@ -1,4 +1,5 @@
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE CPP #-}
 
 -- | Runtime event logging for operational diagnostics.
 --
@@ -24,6 +25,10 @@ import Data.Time.Format (defaultTimeLocale, formatTime)
 import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.Environment (lookupEnv)
 import System.FilePath (takeDirectory)
+#ifdef mingw32_HOST_OS
+import System.Directory (setPermissions, emptyPermissions, setOwnerReadable, setOwnerWritable)
+import System.Process (getCurrentPid)
+#else
 import System.Posix.Files
     ( ownerReadMode
     , ownerWriteMode
@@ -31,6 +36,7 @@ import System.Posix.Files
     , unionFileModes
     )
 import System.Posix.Process (getProcessID)
+#endif
 
 import UmbraVox.BuildProfile (BuildPluginId(..), pluginEnabled)
 import UmbraVox.App.Config (AppConfig(..))
@@ -75,7 +81,11 @@ writeLogLine cfg path line = do
     -- Enforce restrictive permissions on every write
     ensureLogPermissions path
     -- Single-writer PID tracking
+#ifdef mingw32_HOST_OS
+    currentPID <- fromIntegral <$> getCurrentPid
+#else
     currentPID <- fromIntegral <$> getProcessID
+#endif
     previousPID <- readIORef (cfgLogWriterPID cfg)
     writeIORef (cfgLogWriterPID cfg) currentPID
     when (previousPID /= 0 && previousPID /= currentPID) $
@@ -87,8 +97,13 @@ writeLogLine cfg path line = do
 ensureLogPermissions :: FilePath -> IO ()
 ensureLogPermissions path = do
     exists <- doesFileExist path
+#ifdef mingw32_HOST_OS
+    when exists $
+        setPermissions path (setOwnerWritable True (setOwnerReadable True emptyPermissions))
+#else
     when exists $
         setFileMode path (ownerReadMode `unionFileModes` ownerWriteMode)
+#endif
 
 quoteValue :: String -> String
 quoteValue raw = "\"" ++ concatMap escapeChar raw ++ "\""
