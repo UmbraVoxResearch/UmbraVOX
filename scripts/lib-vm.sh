@@ -180,7 +180,7 @@ vm_build_seed_disk() {
     local hostname="${4:-umbravox-vm}"
 
     local seed_tmp
-    seed_tmp="$(mktemp -d)"
+    seed_tmp="$(mktemp -d "${VM_TMP_DIR:-/tmp}/seed.XXXXXX")"
 
     cat > "${seed_tmp}/meta-data" <<EOF
 instance-id: ${instance_id}

@@ -28,6 +28,7 @@ module UmbraVox.Crypto.KeyStore
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import System.Directory (createDirectoryIfMissing, doesFileExist, getHomeDirectory)
+import System.Environment (lookupEnv)
 import System.FilePath ((</>), takeDirectory)
 import System.Posix.Files (ownerReadMode, ownerWriteMode, setFileMode, unionFileModes)
 
@@ -225,8 +226,10 @@ loadIdentityKeyWithPassphrase path passphrase = do
 
 defaultIdentityPath :: IO FilePath
 defaultIdentityPath = do
-    home <- getHomeDirectory
-    pure (home </> ".umbravox" </> "identity.key")
+    dataDir <- lookupEnv "UMBRAVOX_DATA" >>= \case
+        Just d  -> pure d
+        Nothing -> (</> ".umbravox") <$> getHomeDirectory
+    pure (dataDir </> "identity.key")
 
 encodeIdentityKey :: IdentityKey -> ByteString
 encodeIdentityKey ik =

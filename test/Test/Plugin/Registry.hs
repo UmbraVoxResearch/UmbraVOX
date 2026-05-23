@@ -15,10 +15,10 @@
 module Test.Plugin.Registry (runTests) where
 
 import Data.List (isInfixOf, sort)
-import System.Directory (getTemporaryDirectory, createDirectoryIfMissing,
+import System.Directory (createDirectoryIfMissing,
                          removeDirectoryRecursive)
 import System.Posix.Files (setFileMode)
-import Test.Util (assertEq)
+import Test.Util (assertEq, getProjectTmpDir)
 import UmbraVox.Plugin.Registry
     ( defaultPersistencePlugins
     , resolveEnable
@@ -324,7 +324,7 @@ testResolveEnableDisableRoundTrip = do
 -- | A directory owned by the current user with safe permissions passes.
 testValidatePluginDirOwned :: IO Bool
 testValidatePluginDirOwned = do
-    tmp <- getTemporaryDirectory
+    tmp <- getProjectTmpDir
     let dir = tmp ++ "/umbravox-test-plugin-dir-owned"
     createDirectoryIfMissing True dir
     setFileMode dir 0o755
@@ -335,7 +335,7 @@ testValidatePluginDirOwned = do
 -- | A world-writable directory must be rejected even if owned by the user.
 testValidatePluginDirWorldWritable :: IO Bool
 testValidatePluginDirWorldWritable = do
-    tmp <- getTemporaryDirectory
+    tmp <- getProjectTmpDir
     let dir = tmp ++ "/umbravox-test-plugin-dir-ww"
     createDirectoryIfMissing True dir
     setFileMode dir 0o777

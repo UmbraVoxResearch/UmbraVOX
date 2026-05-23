@@ -126,8 +126,10 @@ discoverEnvVar = do
 -- Returns discovered peers tagged with 'SourceConfig'.
 discoverConfigFile :: IO [(String, PeerSource)]
 discoverConfigFile = (do
-    home <- getHomeDirectory
-    let path = home ++ "/.umbravox/config"
+    dataDir <- lookupEnv "UMBRAVOX_DATA" >>= \case
+        Just d  -> pure d
+        Nothing -> (++ "/.umbravox") <$> getHomeDirectory
+    let path = dataDir ++ "/config"
     exists <- doesFileExist path
     if not exists
         then pure []

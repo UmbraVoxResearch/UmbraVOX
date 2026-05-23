@@ -27,10 +27,10 @@ module Test.Security.M11HighSC2 (runTests) where
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.List (nub, sort)
-import System.Directory (getTemporaryDirectory, createDirectoryIfMissing, removeDirectoryRecursive)
+import System.Directory (createDirectoryIfMissing, removeDirectoryRecursive)
 import System.FilePath ((</>))
 
-import Test.Util (assertEq)
+import Test.Util (assertEq, getProjectTmpDir)
 
 import UmbraVox.Crypto.BIP39 (bip39Words)
 import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
@@ -576,7 +576,7 @@ testSC020StealthAddressScanMiss = do
 
 testSC021KeyStoreCorrectPassphrase :: IO Bool
 testSC021KeyStoreCorrectPassphrase = do
-    tmpBase <- getTemporaryDirectory
+    tmpBase <- getProjectTmpDir
     let tmpDir = tmpBase </> "sc021"
     createDirectoryIfMissing True tmpDir
     let path    = tmpDir </> "identity.key"
@@ -603,7 +603,7 @@ testSC021KeyStoreCorrectPassphrase = do
 
 testSC021KeyStoreWrongPassphrase :: IO Bool
 testSC021KeyStoreWrongPassphrase = do
-    tmpBase <- getTemporaryDirectory
+    tmpBase <- getProjectTmpDir
     let tmpDir = tmpBase </> "sc021b"
     createDirectoryIfMissing True tmpDir
     let path    = tmpDir </> "identity.key"

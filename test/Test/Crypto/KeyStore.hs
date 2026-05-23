@@ -4,10 +4,10 @@ module Test.Crypto.KeyStore (runTests) where
 
 import Control.Exception (catch)
 import qualified Data.ByteString as BS
-import System.Directory (getTemporaryDirectory, removeFile)
+import System.Directory (removeFile)
 import System.FilePath ((</>))
 
-import Test.Util (assertEq)
+import Test.Util (assertEq, getProjectTmpDir)
 import UmbraVox.Crypto.KeyStore
     ( openKeyStore, saveIdentityKeyAt, loadIdentityKeyAt )
 import UmbraVox.Crypto.Signal.X3DH
@@ -25,7 +25,7 @@ runTests = do
 
 testOpenKeyStore :: IO Bool
 testOpenKeyStore = do
-    tmp <- getTemporaryDirectory
+    tmp <- getProjectTmpDir
     let path = tmp </> "umbravox-keystore-test" </> "identity.key"
     _ <- openKeyStore path BS.empty
     cleanup path
@@ -33,7 +33,7 @@ testOpenKeyStore = do
 
 testIdentityRoundTrip :: IO Bool
 testIdentityRoundTrip = do
-    tmp <- getTemporaryDirectory
+    tmp <- getProjectTmpDir
     let path = tmp </> "umbravox-keystore-roundtrip.key"
         ik = generateIdentityKey (BS.replicate 32 0x11) (BS.replicate 32 0x22)
     saveIdentityKeyAt path ik

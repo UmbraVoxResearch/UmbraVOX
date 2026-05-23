@@ -9,7 +9,7 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BC
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import Data.IORef (newIORef, readIORef, writeIORef)
-import System.Directory (getTemporaryDirectory, removeFile)
+import System.Directory (removeFile)
 import System.FilePath ((</>))
 import Data.Word (Word8)
 import System.Timeout (timeout)
@@ -18,7 +18,7 @@ import Test.Harness
     ( TransportBackend(..), createNamedClientPairWith, handshakeClients
     , clientSend, clientRecv, closeClient
     )
-import Test.Util (assertEq)
+import Test.Util (assertEq, getProjectTmpDir)
 import Test.TUI.Sim.Util (mkTestConfig)
 import UmbraVox.Crypto.KeyStore
     ( openKeyStore, saveIdentityKeyAt, loadIdentityKeyAt )
@@ -66,7 +66,7 @@ runTests = do
 
 testIdentityStoreRoundTrip :: IO Bool
 testIdentityStoreRoundTrip = do
-    tmp <- getTemporaryDirectory
+    tmp <- getProjectTmpDir
     let path = tmp </> "umbravox-identity-roundtrip.key"
         ik = fixtureIdentity 11 22
     saveIdentityKeyAt path ik
@@ -78,7 +78,7 @@ testIdentityStoreRoundTrip = do
 
 testIdentityStorePersistsAcrossOpen :: IO Bool
 testIdentityStorePersistsAcrossOpen = do
-    tmp <- getTemporaryDirectory
+    tmp <- getProjectTmpDir
     let path = tmp </> "umbravox-keystore" </> "identity.key"
         ik = fixtureIdentity 33 44
     _ <- openKeyStore path BS.empty
@@ -92,7 +92,7 @@ testIdentityStorePersistsAcrossOpen = do
 
 testRestartReconnectWithPersistedIdentity :: IO Bool
 testRestartReconnectWithPersistedIdentity = do
-    tmp <- getTemporaryDirectory
+    tmp <- getProjectTmpDir
     let alicePath = tmp </> "umbravox-restart-alice.key"
         bobPath = tmp </> "umbravox-restart-bob.key"
     alice1 <- resolveIdentityAt alicePath
@@ -229,7 +229,7 @@ testAnthonyTrustedKeyRecovery = withDB "umbravox-recovery-trusted.db" $ \dbPath 
 
 withDB :: FilePath -> (FilePath -> IO Bool) -> IO Bool
 withDB name action = do
-    tmp <- getTemporaryDirectory
+    tmp <- getProjectTmpDir
     let path = tmp </> name
     result <- action path `catch` \(e :: SomeException) -> do
         putStrLn $ "  FAIL: recovery DB exception: " ++ show e
@@ -251,7 +251,7 @@ identityEq name expected got = do
 
 hasAnthony :: IO (Maybe ())
 hasAnthony = do
-    tmp <- getTemporaryDirectory
+    tmp <- getProjectTmpDir
     let path = tmp </> "umbravox-anthony-probe-recovery.db"
     result <- ((do
         db <- openDB path

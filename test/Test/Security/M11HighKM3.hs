@@ -41,11 +41,11 @@ import Data.Maybe (isNothing)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Word (Word32, Word64)
-import System.Directory (getTemporaryDirectory, removeFile)
+import System.Directory (removeFile)
 import System.FilePath ((</>))
 import System.CPUTime (getCPUTime)
 
-import Test.Util (assertEq)
+import Test.Util (assertEq, getProjectTmpDir)
 import UmbraVox.App.Defaults (maxInboundConnections)
 import UmbraVox.Crypto.Export (encryptExport)
 import UmbraVox.Crypto.HKDF (hkdfSHA256Expand)
@@ -256,7 +256,7 @@ testKM012ExportPlaintextPassthrough = do
 
 testKM013PerInstallSaltIdempotent :: IO Bool
 testKM013PerInstallSaltIdempotent = do
-    tmp <- getTemporaryDirectory
+    tmp <- getProjectTmpDir
     let saltPath = tmp </> "umbravox-m11-km013.salt"
     -- Ensure the file does not exist from a previous run.
     removeFile saltPath `catch` (\(_ :: IOError) -> pure ())
@@ -467,7 +467,7 @@ evictOldestLocal m
 
 testKM023KeyStoreCorruptedFile :: IO Bool
 testKM023KeyStoreCorruptedFile = do
-    tmp <- getTemporaryDirectory
+    tmp <- getProjectTmpDir
 
     -- (a) Truncated file: 50 bytes, far below the required 156.
     let truncPath = tmp </> "umbravox-m11-km023-trunc.key"
@@ -521,7 +521,7 @@ testKM023KeyStoreCorruptedFile = do
 
 testKM024KeyStoreNonExistentPath :: IO Bool
 testKM024KeyStoreNonExistentPath = do
-    tmp <- getTemporaryDirectory
+    tmp <- getProjectTmpDir
     let ghost = tmp </> "umbravox-m11-km024-nonexistent-99999.key"
     -- Ensure it really does not exist.
     removeFile ghost `catch` (\(_ :: IOError) -> pure ())

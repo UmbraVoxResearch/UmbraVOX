@@ -11,7 +11,6 @@ import qualified Data.ByteString as BS
 import Data.Word (Word32)
 import System.Directory
     ( createDirectoryIfMissing
-    , getTemporaryDirectory
     , removeDirectoryRecursive
     )
 import System.FilePath ((</>))
@@ -52,7 +51,7 @@ runTests = do
 -- | Run an action with a fresh temporary directory, cleaning up after.
 withTempDir :: (FilePath -> IO a) -> IO a
 withTempDir action = do
-    base <- getTemporaryDirectory
+    base <- getProjectTmpDir
     let dir = base </> "umbravox-ratchet-persist-test"
     bracket
         (createDirectoryIfMissing True dir >> pure dir)

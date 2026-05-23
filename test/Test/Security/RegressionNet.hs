@@ -26,10 +26,10 @@ module Test.Security.RegressionNet (runTests) where
 import Control.Exception (SomeException, catch)
 import qualified Data.ByteString as BS
 import qualified Network.Socket as NS
-import System.Directory (getTemporaryDirectory, removeFile)
+import System.Directory (removeFile)
 import System.FilePath ((</>))
 
-import Test.Util (assertEq)
+import Test.Util (assertEq, getProjectTmpDir)
 import UmbraVox.Network.MDNS
     ( MDNSPeer(..)
     , buildAnnouncementWithName
@@ -345,7 +345,7 @@ testPortAlpha =
 -- gracefully if sqlite3 is unavailable in the environment.
 withTempDB :: String -> (AnthonyDB -> IO Bool) -> IO Bool
 withTempDB label action = do
-    tmpDir <- getTemporaryDirectory
+    tmpDir <- getProjectTmpDir
     let dbFile = tmpDir </> ("umbravox_regnet_" ++ label ++ ".db")
     result <-
         ( do

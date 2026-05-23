@@ -15,7 +15,7 @@ import Data.List (find, isInfixOf, isPrefixOf, sort, stripPrefix)
 import qualified Network.Socket as NS
 import System.Directory
     ( createDirectoryIfMissing, doesFileExist, findExecutable
-    , getTemporaryDirectory, removeDirectoryRecursive, removeFile
+    , removeDirectoryRecursive, removeFile
     )
 import System.Environment (getEnvironment, getExecutablePath)
 import System.Exit (ExitCode(..))
@@ -29,7 +29,7 @@ import System.Process
 import System.Timeout (timeout)
 
 import Test.TUI.Sim.Util (mkTestConfig)
-import Test.Util (assertEq)
+import Test.Util (assertEq, getProjectTmpDir)
 import UmbraVox.App.Startup
     ( newDefaultAppConfig, initializeLocalIdentity, applyPersistenceAnswer
     , refreshPackagedPluginCatalog, refreshTransportProviderCatalog
@@ -92,7 +92,7 @@ runStartupProcessChild answer = do
 
 testResolveIdentityStable :: IO Bool
 testResolveIdentityStable = do
-    tmp <- getTemporaryDirectory
+    tmp <- getProjectTmpDir
     let path = tmp </> "umbravox-startup-identity.key"
     ik1 <- resolveIdentityAt path
     ik2 <- resolveIdentityAt path
@@ -338,7 +338,7 @@ testRestorePersistentStateTrustedKeys = withDB "umbravox-startup-trusted.db" $ \
 
 testRestartPreservesIdentityAndHistory :: IO Bool
 testRestartPreservesIdentityAndHistory = withDB "umbravox-startup-restart.db" $ \dbPath -> do
-    tmp <- getTemporaryDirectory
+    tmp <- getProjectTmpDir
     let idPath = tmp </> "umbravox-startup-restart.key"
     seedPersistentDB dbPath
 
@@ -376,7 +376,7 @@ testProcessRestartAroundBootPath :: IO Bool
 testProcessRestartAroundBootPath = do
     exe <- getExecutablePath
     env0 <- getEnvironment
-    tmp <- getTemporaryDirectory
+    tmp <- getProjectTmpDir
     let homeDir = tmp </> "umbravox-startup-process-home"
         dbPath = homeDir </> ".umbravox" </> "umbravox.db"
         childEnv = ("HOME", homeDir) : filter ((/= "HOME") . fst) env0
@@ -401,7 +401,7 @@ testPromptWaitStartsListenerFirst :: IO Bool
 testPromptWaitStartsListenerFirst = do
     binaryPath <- locateUmbravoxBinary
     env0 <- getEnvironment
-    tmp <- getTemporaryDirectory
+    tmp <- getProjectTmpDir
     let homeDir = tmp </> "umbravox-startup-prompt-home"
         dataDir = homeDir </> ".umbravox"
         childEnv = ("HOME", homeDir) : filter ((/= "HOME") . fst) env0
@@ -448,7 +448,7 @@ testLiveTerminalBootPath = do
                             putStrLn "  SKIP: script PTY helper is unstable in this environment"
                             pure True
                         else do
-                            tmp <- getTemporaryDirectory
+                            tmp <- getProjectTmpDir
                             let homeDir = tmp </> "umbravox-live-terminal-home"
                                 dataDir = homeDir </> ".umbravox"
                                 idPath = dataDir </> "identity.key"
@@ -497,7 +497,7 @@ testLiveTerminalBootPath = do
 testRestorePersistentStateFailureDisablesPersistence :: IO Bool
 testRestorePersistentStateFailureDisablesPersistence = do
     cfg <- mkTestConfig
-    tmp <- getTemporaryDirectory
+    tmp <- getProjectTmpDir
     let dirPath = tmp </> "umbravox-startup-db-dir"
     createDirectoryIfMissing True dirPath
     restored <- restorePersistentStateAt cfg dirPath
@@ -534,7 +534,7 @@ restoredHistories sessions = fmap Map.fromList $
 
 hasAnthony :: IO (Maybe ())
 hasAnthony = do
-    tmp <- getTemporaryDirectory
+    tmp <- getProjectTmpDir
     let path = tmp </> "umbravox-anthony-probe-startup.db"
     result <- ((do
         db <- openDB path
@@ -547,7 +547,7 @@ hasAnthony = do
 
 withDB :: FilePath -> (FilePath -> IO Bool) -> IO Bool
 withDB name action = do
-    tmp <- getTemporaryDirectory
+    tmp <- getProjectTmpDir
     let path = tmp </> name
     result <- action path `catch` \(e :: SomeException) -> do
         putStrLn $ "  FAIL: startup recovery exception: " ++ show e

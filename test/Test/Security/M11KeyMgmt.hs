@@ -33,13 +33,13 @@ import Data.Bits ((.&.))
 import qualified Data.ByteString as BS
 import Data.List (isInfixOf)
 import Data.Word (Word32)
-import System.Directory (getTemporaryDirectory, removeFile)
+import System.Directory (removeFile)
 import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr)
 import System.Posix.Files (fileMode, getFileStatus)
 import System.Posix.Types (FileMode)
 
-import Test.Util (assertEq)
+import Test.Util (assertEq, getProjectTmpDir)
 import UmbraVox.App.RuntimeLog (redactedFieldKeys)
 import UmbraVox.Crypto.Curve25519 (x25519)
 import UmbraVox.Crypto.KeyStore (saveIdentityKeyAt)
@@ -117,7 +117,7 @@ runTests = do
 
 testKM001KeyAtRest :: IO Bool
 testKM001KeyAtRest = do
-    tmp <- getTemporaryDirectory
+    tmp <- getProjectTmpDir
     let path = tmp </> "umbravox-m11-km001.key"
         edSec = BS.replicate 32 0x11
         xSec  = BS.replicate 32 0x22
@@ -166,7 +166,7 @@ permMask = 0o777
 
 testKM002FilePermissions :: IO Bool
 testKM002FilePermissions = do
-    tmp <- getTemporaryDirectory
+    tmp <- getProjectTmpDir
     let path = tmp </> "umbravox-m11-km002.key"
         ik = generateIdentityKey
                 (BS.replicate 32 0xAA)
