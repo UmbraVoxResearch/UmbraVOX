@@ -3,21 +3,21 @@
 # Generate SHA-256 checksums and optionally GPG-sign release artifacts.
 #
 # Usage:
-#   bash scripts/release-sign.sh                  # checksums only
-#   bash scripts/release-sign.sh --gpg-sign       # checksums + GPG signature
+#   bash scripts/release-sign.sh                  # checksums + GPG signature (default)
+#   bash scripts/release-sign.sh --no-gpg-sign    # checksums only (skip GPG)
 #
 # Output:
 #   build/releases/SHA256SUMS          — checksums of all release artifacts
-#   build/releases/SHA256SUMS.sig      — GPG detached signature (if --gpg-sign)
+#   build/releases/SHA256SUMS.sig      — GPG detached signature (unless --no-gpg-sign)
 #   build/releases/MANIFEST.json       — structured manifest with hashes + metadata
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 RELEASE_DIR="$REPO_ROOT/build/releases"
-GPG_SIGN=false
+GPG_SIGN=true
 
-if [ "${1:-}" = "--gpg-sign" ]; then
-    GPG_SIGN=true
+if [ "${1:-}" = "--no-gpg-sign" ]; then
+    GPG_SIGN=false
 fi
 
 if [ ! -d "$RELEASE_DIR" ]; then
@@ -47,6 +47,41 @@ VERSION=$(grep '^version:' "$REPO_ROOT/UmbraVox.cabal" | awk '{print $2}')
 COMMIT=$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
+# ── Compute verification claims dynamically ────────────────────────
+# F* admit count: scan all .fst files, excluding comments and admit_smt
+FSTAR_DIR="$REPO_ROOT/test/evidence/formal-proofs/fstar"
+if [ -d "$FSTAR_DIR" ]; then
+    FSTAR_ADMIT=$(grep -RIn '\badmit\b\|admit()' "$FSTAR_DIR" --include='*.fst' \
+        | grep -v '\*)\|(\*\|//' | grep -v 'admit_smt' | wc -l)
+else
+    FSTAR_ADMIT=0
+fi
+
+# F* assume val count
+if [ -d "$FSTAR_DIR" ]; then
+    FSTAR_ASSUME_VAL=$(grep -RIn '^assume val' "$FSTAR_DIR/" | wc -l)
+else
+    FSTAR_ASSUME_VAL=0
+fi
+
+# Coq Qed / Admitted counts
+COQ_DIR="$REPO_ROOT/test/evidence/formal-proofs/coq"
+if [ -d "$COQ_DIR" ]; then
+    COQ_QED=$(grep -RIn '\bQed\b' "$COQ_DIR" --include='*.v' | wc -l)
+    COQ_ADMITTED=$(grep -RIn '\bAdmitted\b' "$COQ_DIR" --include='*.v' | wc -l)
+else
+    COQ_QED=0
+    COQ_ADMITTED=0
+fi
+
+# Pre-release gate count (number of check sections in pre-release-check.sh)
+PRE_RELEASE_SCRIPT="$REPO_ROOT/scripts/pre-release-check.sh"
+if [ -f "$PRE_RELEASE_SCRIPT" ]; then
+    PRE_RELEASE_GATES=$(grep -cE '^\[[0-9]+/[0-9]+\]|echo.*\[[0-9]+/[0-9]+\]' "$PRE_RELEASE_SCRIPT")
+else
+    PRE_RELEASE_GATES=0
+fi
+
 cat > MANIFEST.json << EOF
 {
   "project": "UmbraVOX",
@@ -62,12 +97,11 @@ $(while IFS= read -r line; do
 done < SHA256SUMS | sed '$ s/,$//')
   ],
   "verification": {
-    "f_star_admit": 0,
-    "f_star_assume_val": 30,
-    "coq_qed": 350,
-    "coq_admitted": 0,
-    "differential_suites": "36/36",
-    "pre_release_gates": "8/8"
+    "f_star_admit": $FSTAR_ADMIT,
+    "f_star_assume_val": $FSTAR_ASSUME_VAL,
+    "coq_qed": $COQ_QED,
+    "coq_admitted": $COQ_ADMITTED,
+    "pre_release_gates": $PRE_RELEASE_GATES
   }
 }
 EOF
@@ -85,7 +119,7 @@ if [ "$GPG_SIGN" = true ]; then
         echo "WARNING: gpg not available, skipping signature"
     fi
 else
-    echo "Checksums generated. Use --gpg-sign to add GPG signature."
+    echo "Checksums generated. GPG signing skipped (--no-gpg-sign)."
 fi
 
 echo ""

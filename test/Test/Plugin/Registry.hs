@@ -9,11 +9,15 @@
 --   runtime failures or data corruption during persistence operations.
 -- Fix: This test suite verifies dependency resolution, disable warnings,
 --   the all-disabled default state of the registry, full-persistence
---   transitive chains (M17.6.3), and enable/disable round-trips (M17.6.5).
+--   transitive chains (M17.6.3), enable/disable round-trips (M17.6.5),
+--   and plugin directory restriction validation (M27.6.19).
 -- Verified: All assertions pass under the default persistence plugin registry.
 module Test.Plugin.Registry (runTests) where
 
-import Data.List (sort)
+import Data.List (isInfixOf, sort)
+import System.Directory (getTemporaryDirectory, createDirectoryIfMissing,
+                         removeDirectoryRecursive)
+import System.Posix.Files (setFileMode)
 import Test.Util (assertEq)
 import UmbraVox.Plugin.Registry
     ( defaultPersistencePlugins
@@ -22,6 +26,8 @@ import UmbraVox.Plugin.Registry
     , pluginEnabled
     , enablePlugin
     , disablePlugin
+    , validatePluginDir
+    , validateManifestPath
     )
 
 runTests :: IO Bool
@@ -42,6 +48,11 @@ runTests = do
         -- M17.6.5: Plugin enable/disable round-trip tests
         , testEnableDisableRoundTrip
         , testResolveEnableDisableRoundTrip
+        -- M27.6.19: Plugin directory restriction tests
+        , testValidatePluginDirOwned
+        , testValidatePluginDirWorldWritable
+        , testValidateManifestPathClean
+        , testValidateManifestPathTraversal
         ]
     let passed = length (filter id results)
         total  = length results
@@ -305,3 +316,48 @@ testResolveEnableDisableRoundTrip = do
                     -- key-persistence should still appear in dependents or
                     -- be separately disabled; verify final state
                     pure (and [a, b, c, d])
+
+------------------------------------------------------------------------
+-- M27.6.19: Plugin directory restriction tests
+------------------------------------------------------------------------
+
+-- | A directory owned by the current user with safe permissions passes.
+testValidatePluginDirOwned :: IO Bool
+testValidatePluginDirOwned = do
+    tmp <- getTemporaryDirectory
+    let dir = tmp ++ "/umbravox-test-plugin-dir-owned"
+    createDirectoryIfMissing True dir
+    setFileMode dir 0o755
+    result <- validatePluginDir dir
+    removeDirectoryRecursive dir
+    assertEq "M27.6.19 validatePluginDir: owned dir passes" (Right ()) result
+
+-- | A world-writable directory must be rejected even if owned by the user.
+testValidatePluginDirWorldWritable :: IO Bool
+testValidatePluginDirWorldWritable = do
+    tmp <- getTemporaryDirectory
+    let dir = tmp ++ "/umbravox-test-plugin-dir-ww"
+    createDirectoryIfMissing True dir
+    setFileMode dir 0o777
+    result <- validatePluginDir dir
+    setFileMode dir 0o755  -- restore before removal
+    removeDirectoryRecursive dir
+    case result of
+        Left msg -> assertEq "M27.6.19 validatePluginDir: world-writable rejected"
+                        True ("world-writable" `isInfixOf` msg)
+        Right () -> do
+            putStrLn "  FAIL: world-writable dir should be rejected"
+            pure False
+
+-- | A clean manifest path passes validation.
+testValidateManifestPathClean :: IO Bool
+testValidateManifestPathClean =
+    assertEq "M27.6.19 validateManifestPath: clean path"
+        (Right ()) (validateManifestPath "plugins/my-plugin/manifest.json")
+
+-- | A manifest path containing ".." is rejected.
+testValidateManifestPathTraversal :: IO Bool
+testValidateManifestPathTraversal =
+    case validateManifestPath "plugins/../../../etc/passwd" of
+        Left _   -> assertEq "M27.6.19 validateManifestPath: traversal rejected" True True
+        Right () -> assertEq "M27.6.19 validateManifestPath: should reject '..'" True False

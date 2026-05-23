@@ -6,9 +6,15 @@ module UmbraVox.Plugin.Registry
     , pluginEnabled
     , enablePlugin
     , disablePlugin
+    , validatePluginDir
+    , validateManifestPath
     ) where
 
+import Data.Bits ((.&.))
+import Data.List (isInfixOf)
 import qualified Data.Map.Strict as Map
+import System.Posix.Files (getFileStatus, fileOwner, fileMode)
+import System.Posix.User (getEffectiveUserID)
 
 import UmbraVox.Plugin.Types
     ( PluginDef(..)
@@ -160,3 +166,30 @@ resolveDisable pid reg =
         Just _  ->
             let dependents = Map.keys (Map.filter (elem pid . pdDependencies) reg)
             in Right dependents
+
+-- | Validate a plugin directory for safe loading.
+--
+-- Checks:
+--   1. Directory is owned by the current (effective) user.
+--   2. Directory is not world-writable (mode & 0o002 == 0).
+--
+-- Returns @Right ()@ on success or @Left reason@ on failure.
+validatePluginDir :: FilePath -> IO (Either String ())
+validatePluginDir dir = do
+    stat <- getFileStatus dir
+    uid  <- getEffectiveUserID
+    let owner = fileOwner stat
+        mode  = fileMode stat
+        worldWritable = mode .&. 0o002 /= 0
+    if owner /= uid
+        then pure $ Left ("plugin directory not owned by current user: " ++ dir)
+        else if worldWritable
+            then pure $ Left ("plugin directory is world-writable: " ++ dir)
+            else pure $ Right ()
+
+-- | Validate that a plugin manifest path does not contain path traversal
+-- sequences.  Returns @Left reason@ if the path contains @\"..\"@.
+validateManifestPath :: FilePath -> Either String ()
+validateManifestPath path
+    | ".." `isInfixOf` path = Left ("manifest path contains '..': " ++ path)
+    | otherwise             = Right ()
