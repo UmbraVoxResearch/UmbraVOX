@@ -119,6 +119,7 @@ newDefaultAppConfig = do
         <*> newIORef initialMode
         <*> newIORef []
         <*> newIORef Set.empty
+        <*> newIORef Map.empty  -- cfgTofoAddrKeys: M27.4.2 address→key tracking
         <*> newIORef False  -- cfgEphemeral: off by default
         <*> newIORef initialStorage  -- cfgStorage: starts as in-memory; upgraded to Anthony on DB open
         <*> newIORef defaultPersistencePlugins  -- cfgPluginRegistry: all persistence plugins disabled

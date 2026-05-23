@@ -10,14 +10,18 @@
 module UmbraVox.Protocol.ProofOfWork
     ( -- * Challenge generation
       generateChallenge
+    , generateBoundChallenge
       -- * Solving
     , solveChallenge
+    , solveBoundChallenge
       -- * Verification
     , verifyChallenge
+    , verifyBoundChallenge
       -- * Constants
     , challengeSize
     , nonceSize
     , difficultyBits
+    , challengeExpirySeconds
     ) where
 
 import Data.Bits (shiftR, (.&.))
@@ -27,6 +31,7 @@ import Data.Word (Word64)
 
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Crypto.SHA256 (sha256)
+import UmbraVox.Crypto.HMAC (hmacSHA256)
 import UmbraVox.Protocol.Encoding (putWord64BE)
 
 -- | Challenge size in bytes.
@@ -42,9 +47,37 @@ nonceSize = 8
 difficultyBits :: Int
 difficultyBits = 16
 
+-- | M27.6.8: Challenge expiry timeout in seconds.
+-- Challenges older than this are rejected to prevent pre-computation attacks.
+challengeExpirySeconds :: Word64
+challengeExpirySeconds = 30
+
 -- | Generate a random 32-byte challenge.
 generateChallenge :: IO ByteString
 generateChallenge = randomBytes challengeSize
+
+-- | M27.6.8: Generate a connection-bound challenge.
+--
+-- The challenge incorporates a server nonce (binding the challenge to
+-- this specific connection) and a timestamp (for expiry checking).
+-- Layout: HMAC-SHA-256(serverNonce, randomBytes || BE64(timestamp))
+--
+-- The server retains @serverNonce@ and @timestamp@ to verify solutions.
+--
+-- Adaptive difficulty: the current implementation uses a fixed
+-- 'difficultyBits' (16 leading zero bits).  A future enhancement will
+-- adjust difficulty dynamically based on server load / connection rate,
+-- increasing bits under heavy traffic and decreasing during idle periods.
+-- The solver already handles arbitrary difficulty via 'hasLeadingZeroBits',
+-- so the only change needed is a difficulty parameter in the challenge
+-- message format.
+generateBoundChallenge :: ByteString  -- ^ 32-byte server nonce (unique per connection)
+                       -> Word64      -- ^ current wall-clock timestamp (seconds)
+                       -> IO ByteString
+generateBoundChallenge serverNonce timestamp = do
+    entropy <- randomBytes challengeSize
+    let !bound = hmacSHA256 serverNonce (entropy <> putWord64BE timestamp)
+    pure bound
 
 -- | Solve a challenge by finding a nonce such that
 -- @SHA-256(challenge || nonce)@ has 'difficultyBits' leading zero bits.
@@ -72,6 +105,43 @@ verifyChallenge challenge nonce
     | BS.length nonce /= nonceSize = False
     | otherwise =
         let !hash = sha256 (challenge <> nonce)
+        in hasLeadingZeroBits difficultyBits hash
+
+-- | M27.6.8: Solve a connection-bound challenge.
+--
+-- Identical to 'solveChallenge' but takes an explicit server nonce that is
+-- prepended to the hash input, binding the solution to this connection.
+solveBoundChallenge :: ByteString  -- ^ challenge (from 'generateBoundChallenge')
+                    -> ByteString  -- ^ server nonce
+                    -> ByteString  -- ^ 8-byte solution nonce
+solveBoundChallenge challenge serverNonce = go 0
+  where
+    go :: Word64 -> ByteString
+    go !n =
+        let !nonceBS = putWord64BE (fromIntegral n)
+            !hash    = sha256 (serverNonce <> challenge <> nonceBS)
+        in if hasLeadingZeroBits difficultyBits hash
+               then nonceBS
+               else go (n + 1)
+
+-- | M27.6.8: Verify a connection-bound PoW solution with expiry.
+--
+-- Returns 'True' only if:
+-- 1. The PoW hash has the required leading zero bits
+-- 2. The challenge has not expired (timestamp within 'challengeExpirySeconds')
+-- 3. The server nonce matches (connection binding)
+verifyBoundChallenge :: ByteString  -- ^ challenge
+                     -> ByteString  -- ^ server nonce
+                     -> ByteString  -- ^ solution nonce (8 bytes)
+                     -> Word64      -- ^ challenge creation timestamp (seconds)
+                     -> Word64      -- ^ current timestamp (seconds)
+                     -> Bool
+verifyBoundChallenge challenge serverNonce nonce createdAt now
+    | BS.length challenge /= challengeSize = False
+    | BS.length nonce /= nonceSize = False
+    | now > createdAt && (now - createdAt) > challengeExpirySeconds = False
+    | otherwise =
+        let !hash = sha256 (serverNonce <> challenge <> nonce)
         in hasLeadingZeroBits difficultyBits hash
 
 ------------------------------------------------------------------------

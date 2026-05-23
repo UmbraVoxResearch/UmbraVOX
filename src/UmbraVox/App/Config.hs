@@ -11,6 +11,7 @@ import Control.Concurrent.MVar (MVar)
 import Data.ByteString (ByteString)
 import Data.IORef (IORef)
 import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import UmbraVox.BuildProfile
     ( BuildPlugin, PluginManifest, PackagedPluginRuntime )
@@ -83,6 +84,11 @@ data AppConfig = AppConfig
     -- check in 'acceptLoopBoundTUI' inserts on first encounter and rejects
     -- conflicting keys on subsequent encounters.
     , cfgTofoKeys         :: IORef (Set.Set ByteString)
+    -- M27.4.2: Selective TOFU address→key tracking.  When a peer address is
+    -- first seen under Selective mode, the presented key is recorded.  If the
+    -- same address reconnects with a *different* key, the connection is
+    -- rejected as a potential key-change (MitM) attack.
+    , cfgTofoAddrKeys     :: IORef (Map.Map String ByteString)
     -- M17.3: ephemeral override — when True all disk writes are skipped
     , cfgEphemeral        :: IORef Bool
     -- M17.2: abstract storage backend (in-memory or Anthony-backed)
