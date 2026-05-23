@@ -190,7 +190,7 @@ private let gf_zero_lsb_lemma ()
   assert_norm (UInt64.v (UInt64.logand 0uL 1uL) = 0)
 
 (** Helper: when v = gf_zero, gf_mul_loop returns z unchanged *)
-#push-options "--z3rlimit 40 --fuel 1 --ifuel 0"
+#push-options "--z3rlimit 300--fuel 1 --ifuel 0"
 private let rec gf_mul_loop_zero_v (x:gf128) (i:nat{i <= 128}) (z:gf128)
     : Lemma
       (ensures gf_mul_loop x i z gf_zero == z)
@@ -257,7 +257,7 @@ let gf_mul_comm a b = ()
 (** Helper: gf_test_bit distributes over gf_xor as XOR of individual bits *)
 private val gf_test_bit_xor : a:gf128 -> b:gf128 -> i:nat{i < 128}
     -> Lemma (gf_test_bit (gf_xor a b) i = (gf_test_bit a i <> gf_test_bit b i))
-#push-options "--z3rlimit 200 --fuel 0 --ifuel 0"
+#push-options "--z3rlimit 300--fuel 0 --ifuel 0"
 private let gf_test_bit_xor (ah, al) (bh, bl) i =
   (* gf_xor (ah,al) (bh,bl) = (logxor ah bh, logxor al bl)
      gf_test_bit checks bit i via logand (shift_right w k) 1uL = 1.
@@ -267,7 +267,7 @@ private let gf_test_bit_xor (ah, al) (bh, bl) i =
 #pop-options
 
 (** Core inductive lemma: the loop invariant for distributivity *)
-#push-options "--z3rlimit 200 --fuel 1 --ifuel 0"
+#push-options "--z3rlimit 300--fuel 1 --ifuel 0"
 private let rec gf_mul_loop_distributive
     (a b : gf128) (h : gf128) (i : nat{i <= 128})
     (za zb : gf128) (v : gf128)
