@@ -6,6 +6,31 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 
 ## [Unreleased]
 
+### v0.4.9 — All stubs implemented, zero open items
+- Signal SenderKeys: full group messaging (chain ratchet, distribution, encrypt/decrypt)
+- Matrix transport: HTTP room events implementation
+- Discord transport: bot API implementation
+- XMPP transport: XML stanza framing implementation
+- SignalServer transport: WebSocket upgrade + auth
+- Signal WebSocket: full RFC 6455 framing with Signal sub-protocol
+- TODO audit: 25 stale markers fixed, deferred items moved to TODO-DEFERRED.txt
+- Completed items moved to CHANGELOG.txt
+
+### v0.4.8 — All active milestones complete, M14 deferred
+- All non-platform milestones complete
+- M14 (platform infrastructure) deferred — requires target hardware
+
+### v0.4.7 — Two-stage seed VM bootstrap, zero host writes
+- Seed VM config (nix/vm-seed.nix): minimal NixOS with nix daemon + network
+- vm-image-builder.sh: download-or-build seed with interactive prompt
+- Persistent nix cache disk for offline rebuilds
+- 31 bootstrap regression tests (scripts/test-vm-bootstrap.sh)
+
+### v0.4.6 — Host filesystem isolation complete
+- M29: 17 host isolation items fixed (cleandb, Go cache, cabal store, test temps)
+- UMBRAVOX_DATA env var support for all runtime paths
+- AGENTS.md + README: qemu + nix/make prerequisites documented
+
 ### M3 — Native Per-Host Build Support + Cross-Target Policy
 - Linux x86_64 runner evidence generated (M3.1.1.b)
 - BSD source-only policy documented in doc/RELEASES.md (M3.1.5)
