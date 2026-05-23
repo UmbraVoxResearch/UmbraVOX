@@ -598,7 +598,7 @@ let rec split_blocks_structure
     when blocks satisfy the split_blocks structure (all but last = 16 bytes,
     all 1..16 bytes, non-empty list).
     Proof by induction on the block list. *)
-#push-options "--z3rlimit 80 --fuel 2 --ifuel 1"
+#push-options "--z3rlimit 300--fuel 2 --ifuel 1"
 let rec split_blocks_concat_roundtrip
     (blocks : list (seq UInt8.t))
     : Lemma
@@ -670,7 +670,7 @@ let rec gctr_process_preserves_structure
     gctr_process_lengths encrypt bs cb
 
 (** Splitting and re-concatenating is the identity *)
-#push-options "--z3rlimit 80 --fuel 2 --ifuel 1"
+#push-options "--z3rlimit 300--fuel 2 --ifuel 1"
 let rec split_blocks_concat_inverse (bs : seq UInt8.t)
     : Lemma
       (ensures concat_blocks (split_blocks bs) == bs)
@@ -700,7 +700,7 @@ let rec split_blocks_concat_inverse (bs : seq UInt8.t)
 #pop-options
 
 (** Main theorem: GCTR is its own inverse *)
-#push-options "--z3rlimit 100 --fuel 1 --ifuel 0"
+#push-options "--z3rlimit 300--fuel 1 --ifuel 0"
 val gctr_involutive : encrypt:aes_encrypt_fn_full
     -> icb:seq UInt8.t{Seq.length icb = 16}
     -> plaintext:seq UInt8.t
@@ -920,7 +920,7 @@ let logxor_zero_iff a b =
   assert (UInt.logxor #8 (UInt8.v a) (UInt8.v b) = 0 <==> UInt8.v a = UInt8.v b)
 
 (** Main induction: constant_eq_go a b i acc = 0 <==> acc = 0 /\ Seq.equal (slice a i n) (slice b i n) *)
-#push-options "--z3rlimit 80 --fuel 1 --ifuel 0"
+#push-options "--z3rlimit 300--fuel 1 --ifuel 0"
 private let rec constant_eq_go_spec
     (a b : seq UInt8.t{Seq.length a = Seq.length b})
     (i : nat{i <= Seq.length a})
@@ -993,7 +993,7 @@ let gcm_tag_equality_placeholder encrypt nonce aad ct = ()
 (** Helper: the tag computed by gcm_decrypt on the ciphertext from gcm_encrypt
     equals the tag returned by gcm_encrypt. This is by structural identity:
     both compute H, J0, GHASH, and XOR with E_K(J0) using the same inputs. *)
-#push-options "--z3rlimit 200 --fuel 0 --ifuel 0"
+#push-options "--z3rlimit 300--fuel 0 --ifuel 0"
 private val gcm_decrypt_recomputes_tag :
     encrypt:aes_encrypt_fn_full
     -> key:seq UInt8.t{Seq.length key = key_size}
@@ -1210,7 +1210,7 @@ private let bs_to_gf_xor a b =
 #pop-options
 
 (** GHASH loop linearity: ghash_loop on XOR input = gf_xor of individual loops *)
-#push-options "--z3rlimit 200 --fuel 1 --ifuel 0"
+#push-options "--z3rlimit 300--fuel 1 --ifuel 0"
 private let rec ghash_loop_linear
     (h : Spec.GaloisField.gf128)
     (x y : seq UInt8.t{Seq.length x % 16 = 0 /\ Seq.length y = Seq.length x})
@@ -1267,7 +1267,7 @@ private let rec ghash_loop_linear
   end
 #pop-options
 
-#push-options "--z3rlimit 80 --fuel 1 --ifuel 0"
+#push-options "--z3rlimit 300--fuel 1 --ifuel 0"
 val ghash_linearity :
     h:Spec.GaloisField.gf128
     -> x:seq UInt8.t{Seq.length x % 16 = 0}
