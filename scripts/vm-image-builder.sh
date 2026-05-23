@@ -110,6 +110,21 @@ ensure_seed_image() {
                 if ! vm_download_and_verify "$SEED_DEFAULT_URL" "$SEED_IMAGE_DIR/nixos.img" "$SEED_SHA256"; then
                     echo -e "${RED}[VM-BUILDER]${NC} Seed image download/verification failed."
                     rm -f "$SEED_IMAGE_DIR/nixos.img"
+                    if command -v nix-build >/dev/null 2>&1; then
+                        echo -e "${YELLOW}[VM-BUILDER]${NC} Fall back to local nix-build? (writes to /nix/store) [y/N]"
+                        read -r fallback
+                        case "$fallback" in
+                            [Yy]*)
+                                echo -e "${BLUE}[VM-BUILDER]${NC} Building seed image locally..."
+                                mkdir -p "$VM_TMP_DIR"
+                                rm -rf "$SEED_IMAGE_DIR"
+                                if TMPDIR="$VM_TMP_DIR" nix-build "$REPO_ROOT/nix/vm-seed.nix" -o "$SEED_IMAGE_DIR"; then
+                                    echo -e "${GREEN}[VM-BUILDER]${NC} Seed image built locally."
+                                    return 0
+                                fi
+                                ;;
+                        esac
+                    fi
                     exit 1
                 fi
             fi
