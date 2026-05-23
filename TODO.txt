@@ -1,464 +1,54 @@
 UmbraVOX Active TODO
 ====================
-Purpose: active work only. Completed and historical items are tracked in CHANGELOG.txt.
+Purpose: active work only.
+- Completed items → CHANGELOG.txt
+- Deferred/blocked items → TODO-DEFERRED.txt
 
-Status: [ ] pending, [~] in progress, [!] blocked
-Last updated: 2026-05-22
+Status: [ ] pending, [~] in progress
+Last updated: 2026-05-23
 
 Rules
 -----
 - Do not modify `.spec` files, `fstar` files, or primitive crypto implementations without explicit approval.
-- Use `nix-shell` for build/test/release commands.
+- Use `make` targets for all build/test/verify (routes through VM).
 - Keep codegen surfaces wired truthfully; do not overstate assurance claims.
-- When a task is complete, remove it from TODO and record the outcome under CHANGELOG.txt (`Unreleased`), then roll into a version section at tag time.
+- When a task is complete, move it to CHANGELOG.txt.
+- Deferred/blocked items go in TODO-DEFERRED.txt.
 
 ================================================================================
-COMPLETED MILESTONES (see CHANGELOG.txt for details)
+ACTIVE WORK
 ================================================================================
-[x] v0.1.3 Assurance Hardening — see CHANGELOG v0.1.3+
-[x] v0.1.4 Cleanroom Multi-Oracle Differential Testing — see CHANGELOG v0.1.4+
-[x] M2 Release Architecture — see CHANGELOG v0.1.x
-[x] M5 Multi-VM Integration Testing — see CHANGELOG v0.1.x
-[x] M6 Independent C Crypto + Differential Testing — see CHANGELOG v0.1.x
-[x] M7 Security Audit Round 1 — see CHANGELOG v0.1.x
-[x] M8 Security Audit Round 2 — see CHANGELOG v0.1.x
-[x] M9 Security Audit Round 3 — see CHANGELOG v0.1.x
-[x] M10 Security Audit Round 4 — see CHANGELOG v0.1.x
-[x] M11 Top-500 Cryptographic Attack Tests — see CHANGELOG v0.1.x
-[x] M12 TUI/Headless Decoupling — see CHANGELOG v0.1.x
-[x] M17 Ephemeral-by-Default + Plugin Architecture — see CHANGELOG v0.1.x
-[x] M20.1 Critical architectural fixes — see CHANGELOG Unreleased
-[x] M20.2 Error handling hardening — see CHANGELOG Unreleased
-[x] M20.3 Module cleanup — see CHANGELOG Unreleased
-[x] M20.6 Coq proofs — see CHANGELOG Unreleased
-[x] M21.4 Full codegen pipeline — see CHANGELOG Unreleased
-[x] M22.1 Go project scaffold — see CHANGELOG Unreleased
-[x] M23 Protocol Security Audit — see CHANGELOG Unreleased
-[x] M24 DHT Network + Unified Discovery — see CHANGELOG Unreleased
-[x] M25 UmbraClaw Plugin — see CHANGELOG Unreleased
-[x] M26.1 Documentation audit + attic migration — see CHANGELOG Unreleased
-
-================================================================================
-MILESTONE M1: MVP ASSURANCE CLOSEOUT (BLOCKS PUBLICATION)
-================================================================================
-
-[!] M1.1 Persistence confidentiality (application-layer, non-SQLCipher claim) — DEFERRED
-  [!] M1.1.3 Encrypt/decrypt message content on save/load — INDEFINITELY DEFERRED (Anthony to be replaced with direct sqlite).
-    Note: Encryption module complete; Anthony.hs integration deferred pending upstream patches.
-
-================================================================================
-MILESTONE M3: NATIVE PER-HOST BUILD SUPPORT + CROSS-TARGET POLICY
-================================================================================
-(all completed items moved to CHANGELOG.txt)
 
 [~] M3.1 Platform lanes
   [~] M3.1.1 Linux x86_64 native runner lane.
-  [ ] M3.1.2 Linux arm64 native runner lane.
   [~] M3.1.3 macOS native runner lane (hosted/native).
   [ ] M3.1.3.b Add an actual repo-owned native macOS runner lane and smoke evidence.
   [~] M3.1.4 Windows native runner lane (CLI).
   [ ] M3.1.4.b Add an actual repo-owned native Windows CLI runner lane and smoke evidence.
 
-================================================================================
-MILESTONE M4: RELEASE COMPLIANCE, LICENSE, AND PROVENANCE GATES
-================================================================================
+[~] M13 Formal verification (remaining)
+  [~] M13.3.2 Ed25519: 10 assume val remaining (algebraic/curve geometry)
+  [~] M13.7 F* infrastructure (partial)
+  [~] M13.11.4.h Coq primality: PocklingtonRefl blocked by bignums findlib
+  [~] M13.13.6 Verify all F* specs pass in VM (z3rlimit tuning needed)
 
-[!] M4.2 Provenance and attestation — DEFERRED
-  [!] M4.2.4 Add attestation path (future: in-toto/SLSA-style) after baseline stability.
-
-================================================================================
-MILESTONE M13: F* FORMAL VERIFICATION — 100% COVERAGE
-================================================================================
-Note: 221 original assumes → 0 admit() + 30 assume val. 17/24 specs fully proved (0 assume val).
-  Remaining: Ed25519 (10), X25519 (7, promoted from hidden assume), SHA256.Refinement (6), VRF (3), DoubleRatchet (2), ChaChaPoly (1), StealthAddress (1).
-  All Lemma(True) placeholders honestly renamed. All hidden assume() made visible.
-      Full ledger: test/evidence/formal-proofs/ASSUMPTIONS.md
-
-[~] M13.13 VM-based development migration
-  [~] M13.13.6 Verify all F* specs pass in VM (cabal run fstar-verify)
-    Note: fstar-verify runs in VM but exits 1 — some specs need higher z3rlimit or more time. Needs investigation.
-
-[~] M13.11 Coq external verification
-  [x] M13.11.4.e Universal completeness: denominators 1±d*x1*x2*y1*y2 ≠ 0 for on-curve points.
-    Done: te_denom_plus_nonzero + te_denom_minus_nonzero in Ed25519GroupUniversal.v.
-    Proof follows Bernstein-Lange 2007 Thm 3.3 (d non-square, a=-1 square).
-    Summary section updated to document 16 completeness lemmas.
-  [x] M13.11.4.g Concrete instance reorganization (Ed25519GroupAssoc.v): label coverage categories.
-    Done: Added Category A (base/identity, 37), B (doubling/self-addition, 15),
-    C (general/full non-trivial, 12) headers.  Added inverse-point coverage note.
-  [!] M13.11.4.h Primality of 2^255-19 via PocklingtonRefl (blocked by bignums plugin).
-    Note: All Pocklington conditions machine-verified. Blocker documented in
-    Ed25519Prime.v Section 14: coq-bignums findlib plugin not in Nix coqc load path.
-    Import paths tried: Coqprime.PocklingtonRefl, Coqprime.Pocklington.Pocklington.
-    Self-contained Pocklington theorem (~200 lines of multiplicative order theory)
-    deferred as high-effort.  Workaround: external verification (SAGE/PARI/Primo).
-  Current totals: 14 Coq files (+ 1 draft), 475 Qed, 0 Admitted.
-
-[~] M13.3 Phase 3: Curve arithmetic
-  [~] M13.3.2 Ed25519: 10 assume val remaining (algebraic/curve geometry). fadd/fmul/distrib proved; all KAT via assert_norm.
-
-[~] M13.7 Infrastructure (partial)
-
-================================================================================
-MILESTONE M14: PLATFORM EXPANSION — VM RUNNERS + ILLUMOS + BSDs
-================================================================================
-
-[!] M14.1 VM runner infrastructure — DEFERRED (requires target platform hardware)
-  [ ] M14.1.1 QEMU VM runner for Linux x86_64 (dedicated evidence from VM smoke).
-  [ ] M14.1.2 QEMU VM runner for Linux arm64 (aarch64 emulation via qemu-system-aarch64).
-  [ ] M14.1.3 QEMU VM runner for FreeBSD x86_64.
-  [ ] M14.1.4 QEMU VM runner for OpenBSD x86_64.
-  [ ] M14.1.5 QEMU VM runner for NetBSD x86_64.
-  [ ] M14.1.6 QEMU VM runner for DragonFlyBSD x86_64.
-  [ ] M14.1.7 QEMU VM runner for OmniOS (illumos) x86_64.
-  [ ] M14.1.8 QEMU VM runner for SmartOS (illumos) x86_64.
-  [ ] M14.1.9 QEMU VM runner for OpenIndiana (illumos) x86_64.
-
-[!] M14.2 Nix VM images per platform — DEFERRED
-  [ ] M14.2.6 nix/vm-smartos.nix — SmartOS QEMU image with GHC + deps.
-  [ ] M14.2.7 nix/vm-openindiana.nix — OpenIndiana QEMU image with GHC + deps.
-  [ ] M14.2.8 nix/vm-linux-arm64.nix — Linux aarch64 QEMU image.
-
-[~] M14.3 Build + test verification per platform
-  Note: scripts/vm-build-test.sh created as universal in-guest build+test script (M14.3.1-8 scaffold).
-  [ ] M14.3.1 FreeBSD: cabal build + test pass in VM.
-  [ ] M14.3.2 OpenBSD: cabal build + test pass in VM.
-  [ ] M14.3.3 NetBSD: cabal build + test pass in VM.
-  [ ] M14.3.4 DragonFlyBSD: cabal build + test pass in VM.
-  [ ] M14.3.5 OmniOS: cabal build + test pass in VM.
-  [ ] M14.3.6 SmartOS: cabal build + test pass in VM.
-  [ ] M14.3.7 OpenIndiana: cabal build + test pass in VM.
-  [ ] M14.3.8 Linux arm64: cabal build + test pass in VM.
-
-[~] M14.4 Release packaging per platform
-  Note: scripts/release-package-platform.sh created; tarball contents and manifest wired (M14.4.1-5 scaffold).
-  [ ] M14.4.1 FreeBSD release tarball (scripts/release-package-platform.sh freebsd).
-  [ ] M14.4.2 OpenBSD release tarball.
-  [ ] M14.4.3 NetBSD release tarball.
-  [ ] M14.4.4 OmniOS/illumos release tarball.
-  [ ] M14.4.5 Linux arm64 release tarball.
-
-[x] M14.5 Makefile targets
-  [x] M14.5.7 make vm-smoke-openbsd — OpenBSD VM smoke test (a0f3891)
-
-[!] M14.6 WebAssembly target — DEFERRED
-  [ ] M14.6.1 GHC WASM backend (ghc-wasm) build configuration.
-  [ ] M14.6.2 Compile UmbraVox core library to WASM (crypto + protocol, no network/TUI).
-  [ ] M14.6.3 WASM test harness: run crypto test suite in wasmtime/wasmer.
-  [ ] M14.6.4 Browser integration scaffold: wasm-bindgen or JS FFI wrapper.
-  [ ] M14.6.5 WASM release artifact: umbravox-core.wasm + JS glue.
-  [ ] M14.6.6 Size budget: target < 2MB for core WASM module.
-
-[!] M14.7 Multi-architecture support — DEFERRED
-  [ ] M14.7.1 Linux x86_64 (native — primary).
-  [ ] M14.7.2 Linux aarch64/arm64 (QEMU emulation or cross-compile).
-  [ ] M14.7.3 Linux riscv64 (QEMU emulation).
-  [ ] M14.7.4 Linux ppc64le (QEMU emulation).
-  [ ] M14.7.5 Linux s390x (QEMU emulation, if GHC supports).
-  [ ] M14.7.6 FreeBSD amd64 + aarch64.
-  [ ] M14.7.7 OpenBSD amd64 + arm64.
-  [ ] M14.7.8 NetBSD amd64 + aarch64 + sparc64 (if GHC supports).
-  [ ] M14.7.9 illumos amd64 (OmniOS/SmartOS/OpenIndiana — x86_64 only currently).
-  [ ] M14.7.10 macOS x86_64 + aarch64 (Apple Silicon).
-  [ ] M14.7.11 Windows x86_64 + aarch64 (WoA).
-
-[!] M14.8 Platform compatibility — DEFERRED
-  [ ] M14.8.1 Audit codebase for Linux-specific syscalls (epoll, inotify, etc.).
-  [ ] M14.8.2 Replace System.Posix.Files with cross-platform alternatives where possible.
-  [ ] M14.8.3 Conditional compilation for platform-specific code (#ifdef).
-  [ ] M14.8.4 Test network stack differences (kqueue vs epoll vs /dev/poll).
-  [ ] M14.8.5 Verify mDNS works on BSD/illumos (multicast group join differences).
-  [ ] M14.8.6 Verify POSIX signal handling on illumos (SIGWINCH, etc.).
-  [ ] M14.8.7 Test terminal handling differences (terminfo/termcap on BSD/illumos).
-
-================================================================================
-MILESTONE M15: SPEC COMPLIANCE — REMAINING ITEMS
-================================================================================
-
-[~] M15.3 Key erasure (partial — IO-boundary wrapping complete, field migration deferred)
-  [~] M15.3.2 Replace ByteString with SecureBytes for secret key fields.
-    Note: IO-boundary wrapping done (KeyStore, Export use withSecureKey). Full IdentityKey field migration deferred — requires 27+ site changes across 14 files, and extracted ByteStrings still live on GC heap. Added zeroIdentityKey helper for session teardown instead.
-
-================================================================================
-MILESTONE M16: DO-178C DAL A TESTING — REMAINING ITEMS
-================================================================================
-
-[x] M16.2-4 Module-level MC/DC targets (3931063) — see doc/MCDC-TARGETS.md
-
-================================================================================
-MILESTONE M19: SIGNAL-COMPATIBLE CHAT BRIDGE + CLEANROOM VM TESTING (v0.2.0)
-================================================================================
-(all completed items moved to CHANGELOG.txt — see CHANGELOG v0.2.0 + Unreleased)
-
-[~] M19.1.4 Tests: encrypt with Signal params, verify against known test vectors
-  Note: round-trip tests done, known-vector comparison pending
-
-[~] M19.4 Real Signal-Server cleanroom VM (~1 day Nix work)
-  [~] M19.4.4 Wire-compat tests:
-    Note: scaffold complete, Signal-Server JAR integration in progress
-    - Registration + prekey upload (our X3DH → server accepts)
-    - Alice→Bob message (our Double Ratchet → server delivers)
-    - Prekey exhaustion → signed prekey fallback
-    - Offline delivery (queue + deliver on reconnect)
-    - Error cases (invalid auth, malformed envelopes)
-    - Ratchet step (multiple messages, DH ratchet advancement)
-  [ ] M19.4.5 Fill FOD hash for Signal-Server Maven deps (first nix-build in VM)
+[~] M19 Signal bridge (remaining)
+  [~] M19.1.4 Signal known-vector comparison tests (round-trip done, vectors pending)
+  [ ] M19.4.5 Fill FOD hash for Signal-Server Maven deps
   [ ] M19.4.6 Complete Signal-Server JAR build end-to-end in VM
   [ ] M19.4.7 Boot runtime VM with Signal-Server JAR and verify health endpoint
 
-Deferred (future, not M19):
-  - Groups (3-5x complexity of 1:1)
-  - Sealed sender
-  - Signal-as-transport (opaque tunnel)
-  - Mock server for fast CI (validate against real server first)
-  - Facebook/IRC/XMPP bridge plugins
+[~] M22.2 VM orchestration Go tools (5 remaining)
+  [ ] M22.2.2 tools/cmd/vm-signal/ — full implementation
+  [ ] M22.2.3 tools/cmd/vm-smoke/ — full implementation
+  [ ] M22.2.4 tools/cmd/vm-build-test/ — full implementation
+  [ ] M22.2.5 tools/cmd/vm-agent/ — full implementation
+  [ ] M22.2.6 tools/cmd/vm-netsetup/ — full implementation
 
-Existing tests preserved unchanged:
-  - test/Test/Crypto/Differential/ (Primitives, Negative, Metamorphic, Fuzz, Protocol*)
-  - test/fuzz/ (AFL++ harnesses)
-  - test/vectors/ (NIST, RFC, Wycheproof, F*)
-  Signal bridge tests are ADDITIVE alongside existing oracle-based tests.
-
-================================================================================
-MILESTONE M20: CODEBASE QUALITY + ARCHITECTURAL IMPROVEMENTS (v0.2.1)
-================================================================================
-(all completed items moved to CHANGELOG.txt — see CHANGELOG Unreleased)
-
-[~] M20.4 Security hardening (remaining)
-  [ ] M20.4.1 Complete M15.3.2 SecureBytes migration for secret key fields
-  [ ] M20.4.5 Upgrade export KDF from HKDF-iteration to memory-hard KDF (Argon2id/scrypt)
-
-[~] M20.5 VM isolation completion (remaining)
-  [x] M20.5.4 VM source export semantics
-    Done: vm-dev-run exports current worktree (not git archive HEAD) with exclusion filters.
-    `.vm-source-ready` marker provides idempotent workspace sync.
-    Exec mode writes `/output/vm-exec-status`; host runner exits with guest command status.
-    VM_IMAGE_PATH env var allows override for ephemeral images.
-  [x] M20.5.5 Fail closed on unenforced VM network ALLOW rules
-    Done: vm-network-policy.sh blocks VM boot (returns 1) when ALLOW rules are present
-    without enforceable QEMU translation. Default vm-network-policy.conf has no uncommented
-    ALLOW rules (deny-all). test-infrastructure.sh validates this.
-  [x] M20.5.7 Ephemeral test VM images — build fresh image per test run, destroy after
-    Done: `make vm-test-ephemeral` builds a fresh VM image in build/vm-ephemeral/,
-    runs tests inside the ephemeral VM, then deletes the image. Persistent dev image
-    at build/vm/image is never touched. vm-dev-run.sh accepts VM_IMAGE_PATH env override.
-  [x] M20.5.8 Nix-native Haskell build inside builder VM
-    Done: `make vm-image-build` now boots a lightweight builder VM (nix/vm-builder.nix)
-    with Nix daemon enabled and a 60GB scratch qcow2 for /nix/store. The builder runs
-    `nix build .#vm-image` inside the VM and extracts the result via 9p to build/vm/image.
-    Host /nix/store is untouched. Old host-build approach preserved as `make vm-image-build-host`.
-    scripts/vm-image-builder.sh orchestrates the builder VM lifecycle.
-    Dev VM (make vm-dev) keeps full toolchain for interactive work.
-    Bonus: eliminates the host disk space constraint entirely — builder VM
-    uses its own virtual disk, not the host's /nix/store.
-  [x] M20.5.9 Local-only VM isolation hardening execution checklist (agent-owned)
-    [x] M20.5.9.a Replace remote-builder config path with local VM nix config (`nix/vm-build.env` + resolver script)
-      Done: nix/vm-build.env + scripts/nix-vm-build-config.sh with fail-closed guards.
-    [x] M20.5.9.b Remove host compile/test escape-hatch behavior from default Make targets (run-local guarded fail)
-      Done: `run-local` exits 1 with message directing to VM targets.
-    [x] M20.5.9.c Wire vm-image/signal-image builds to print effective config variables at runtime
-      Done: Both vm-image-build and vm-signal-server-build print NIX-VM-CONFIG source/file/build_dir/local_only.
-    [x] M20.5.9.d Replace remote-builder regression tests with VM-local config tests
-      Done: scripts/test-vm-build-config.sh tests file-only, env override, env-only, missing-config,
-      local-only guard, remote-builder rejection, empty build dir.
-    [x] M20.5.9.e Remove stale remote-builder docs/references and verify help output
-      Done: No stale remote-builder scripts or docs remain. AGENTS.md reference documents the hard guard
-      (intentional). Help output shows VM-first workflow only.
-    [x] M20.5.9.f Run `make test-make-options` and `make test-infra`; capture and review failures
-      Done: test-infrastructure.sh validates all critical targets including vm-test-ephemeral.
-      test-vm-build-config.sh covers config resolution. test-make-options.sh dry-runs all .PHONY targets.
-    [x] M20.5.9.g Remove or archive obsolete remote-builder scripts/config examples once no references remain
-      Done: No obsolete remote-builder scripts or config examples exist. Only references are:
-      AGENTS.md (documents hard guard), nix-vm-build-config.sh (enforces rejection),
-      test-vm-build-config.sh (tests rejection). All intentional.
-
-[x] M20.7 DRY reduction (build/test infra)
-  [x] M20.7.2 Consolidate logged gate wrappers (test/verify) into shared helper (3571bba)
-  [x] M20.7.3 Extract release packaging shared shell library (3571bba)
-  [x] M20.7.4 Extract VM SSH/QEMU helper library (a0f3891)
-
-================================================================================
-MILESTONE M21: STUB IMPLEMENTATION + CODEGEN EXPANSION (v0.3.0-v0.4.0)
-================================================================================
-(all completed items moved to CHANGELOG.txt — see CHANGELOG v0.3.0 + Unreleased)
-
-[x] M21.1 Phase 1 — Crypto stubs — see CHANGELOG Unreleased
-  [x] M21.1.2 codegen/Specs/VRF.spec + csrc/generated/vrf.c + FFI wrapper (beeb93f)
-  [x] M21.1.3 codegen/Specs/Ed25519Extended.spec — point ops + Elligator2 (58a33da)
-  [x] M21.1.5 codegen/Specs/PQWrapper.spec + csrc/generated/pqwrapper.c + FFI wrapper (beeb93f)
-  [x] M21.1.7 codegen/Specs/SessionState.spec — verified complete (58a33da)
-
-[x] M21.2 Phase 2 — Protocol stubs — see CHANGELOG Unreleased
-  [x] M21.2.2 codegen/Specs/MessageFormat.spec + csrc/generated/messageformat.c + FFI wrapper (beeb93f)
-  [x] M21.2.4 codegen/Specs/WireFormat.spec + csrc/generated/wireformat.c + FFI wrapper (beeb93f)
-
-[x] M21.3 Phase 3 — Chat API + Messaging P2P — see CHANGELOG Unreleased
-  [x] M21.3.4 codegen/Specs/Dandelion.spec — routing + fluff probability (58a33da)
-  [x] M21.3.6 codegen/Specs/NetworkProtocol.spec + csrc/generated/networkprotocol.c + FFI wrapper (58a33da, beeb93f)
-
-Deferred (non-blockchain):
-  - SecureBytes migration (M20.4.1) — invasive (27+ sites)
-  - Argon2id KDF (M20.4.5) — needs new dependency
-
-================================================================================
-MILESTONE M22: SHELL → GO MIGRATION (v0.5.0)
-================================================================================
-Note: Replace 51 shell scripts with static Go binaries compiled in VM.
-Eliminates shell fragility, quoting bugs, platform differences.
-(M22.1 Go project scaffold complete — see CHANGELOG.txt)
-
-[~] M22.2 Priority 1 — VM orchestration Go tools (scaffolded 5d23bf3)
-  [x] M22.2.1 tools/cmd/vm-dev/ — replace vm-dev-run.sh (1d631e3)
-  [ ] M22.2.2 tools/cmd/vm-signal/ — scaffolded, logic not yet implemented
-  [ ] M22.2.3 tools/cmd/vm-smoke/ — scaffolded, logic not yet implemented
-  [ ] M22.2.4 tools/cmd/vm-build-test/ — scaffolded, logic not yet implemented
-  [ ] M22.2.5 tools/cmd/vm-agent/ — scaffolded, logic not yet implemented
-  [ ] M22.2.6 tools/cmd/vm-netsetup/ — scaffolded, logic not yet implemented
-
-[x] M22.3 Priority 2 — Release pipeline (13 scripts → 1 binary)
-  [x] M22.3.1 tools/cmd/release/ — subcommands: check, sign, package, smoke, lane, gate (a1550c5)
-
-[x] M22.4 Priority 3 — Test orchestration (5+ scripts)
-  [x] M22.4.1 tools/cmd/test-runner/ — subcommands (a1550c5)
-
-[x] M22.5 Priority 4 — Platform setup (5 scripts)
-  [x] M22.5.1 tools/cmd/vm-platform/ (a1550c5)
-
-[x] M22.6 Priority 5 — TUI tools (4 scripts)
-  [x] M22.6.1 tools/cmd/tui-tool/ — screenshot, capture, record, regression (a1550c5)
-
-Keep as shell (too simple): nix-flake.sh, with-suite-lock.sh
-
-================================================================================
-MILESTONE M26: DOCUMENTATION OVERHAUL (every release)
-================================================================================
-(M26.1 complete — see CHANGELOG.txt)
-
-[x] M26.2 Auto-generated documentation
-  [x] M26.2.2 Module dependency graph — scripts/gen-dep-graph.sh (7f1b392)
-  [x] M26.2.3 API docs — doc/API-REFERENCE.md (a0f3891)
-  [x] M26.2.4 Plugin authoring docs — doc/PLUGIN-AUTHORING.md (7f1b392)
-  [x] M26.2.5 Test coverage report generation — make coverage-report target wired
-
-[x] M26.3 Per-milestone documentation requirements (72a1cb2)
-  Note: Every milestone MUST include:
-  - Updated CHANGELOG.txt entry
-  - Updated TODO.txt status
-  - Updated AGENTS.md if architecture changes
-  - Updated doc/ARCHITECTURE.md if module structure changes
-  - Haddock on all new public modules
-
-================================================================================
-MILESTONE M27: SECURITY REVIEW v0.4.1 FIXES
-================================================================================
-(all completed items moved to CHANGELOG.txt — see CHANGELOG Unreleased)
-
-[~] M27.5 High build + supply chain fixes (remaining)
-  [ ] M27.5.4 Pin nixpkgs to stable branch (HI-016) — needs coordinated flake.lock update
-
-================================================================================
-MILESTONE M28: OFFLINE MESSAGE DELIVERY (future)
-================================================================================
-Note: Currently UmbraVOX is peer-to-peer only — messages require both peers
-online. DHT does NOT store messages (design decision for privacy).
-
-[x] M28.1 Sender-side outbound queue (01fc5da)
-  [x] M28.1.1 OutboundQueue type — per-peer FIFO of (encrypted wire bytes, timestamp) (01fc5da)
-  [ ] M28.1.2 Persist queue to disk (encrypted) so messages survive app restart
-  [ ] M28.1.3 Auto-drain queue when peer reconnects (flush in order)
-  [x] M28.1.4 Configurable max queue depth + max message age (discard stale) (01fc5da)
-  [ ] M28.1.5 TUI: show pending message count per contact ("2 queued")
-
-[~] M28.2 Relay-assisted delivery (stubs done, integration pending) (19c3d83)
-  [x] M28.2.1 Design: relay mailbox with stealth-addressed storage (19c3d83)
+[~] M28 Offline message delivery (remaining)
+  [ ] M28.1.2 Persist outbound queue to disk (encrypted)
+  [ ] M28.1.3 Auto-drain queue when peer reconnects
+  [ ] M28.1.5 TUI: show pending message count per contact
   [ ] M28.2.2 Recipient polls relay via DHT presence + stealth scan
-  [x] M28.2.3 Relay stores only encrypted blobs — no identity linkage (19c3d83)
-  [x] M28.2.4 TTL-based expiry on relay (7 days default, pruned on poll) (19c3d83)
-  [ ] M28.2.5 Sender falls back to relay when peer is offline for > N minutes
-
-[x] M28.3 Testing (19c3d83)
-  [x] M28.3.1 Queue round-trip test (enqueue/dequeueAll) (19c3d83)
-  [ ] M28.3.2 Queue drain on reconnect test (needs auto-drain wiring M28.1.3)
-  [x] M28.3.3 Queue overflow / stale message eviction test (19c3d83)
-
-================================================================================
-BLOCKED (EXTERNAL DEPENDENCIES)
-================================================================================
-
-[!] X1 Platform runner evidence (needs hardware)
-  [ ] X1.2 M3.1.2 Linux arm64 native runner lane (needs arm64 hardware or QEMU emulation).
-    Note: arm64 image stub exists; requires aarch64 builder.
-
-[!] X2 Provenance signing and attestation (needs policy decisions)
-  [ ] M4.2.4 in-toto/SLSA attestation path — deferred (see M4.2).
-
-[!] X3 Deferred implementation
-  [!] M1.1.3 Anthony.hs encryption integration — INDEFINITELY DEFERRED (Anthony to be replaced with direct sqlite).
-
-================================================================================
-PERMANENTLY DEFERRED — BLOCKCHAIN LAYER
-================================================================================
-Note: All blockchain, consensus, ledger, and economics features are permanently
-deferred. The 1.0 release is the current MVP feature set: encrypted messaging +
-Signal bridge + DHT discovery. No blockchain features in 1.0.
-
-Consensus modules (8):
-  - Consensus.Protocol — consensus protocol core
-  - Consensus.ForkChoice — fork choice rule
-  - Consensus.Validation — block/tx validation
-  - Consensus.Mempool — transaction mempool
-  - Consensus.Ledger — ledger state machine
-  - Consensus.Nonce — consensus nonce/VDF
-  - Consensus.Truncation — chain truncation/pruning
-  - Consensus.LeaderElection — leader/proposer election
-
-Storage blockchain modules (4):
-  - Storage.ChainDB — blockchain storage backend
-  - Storage.Checkpoint — chain checkpoint persistence
-  - Storage.Index — block/tx index
-  - Storage.StateDB — ledger state database
-
-Bridge/network blockchain modules (3):
-  - Chat.Transaction — message-to-blockchain bridge
-  - Network.Gossip — block/tx gossip protocol
-  - Network.Sync — chain synchronization
-
-Economics modules (2):
-  - Economics.Onboarding — onboarding token economics
-  - Economics.Cycle — economic cycle management
-
-================================================================================
-MILESTONE M29: HOST FILESYSTEM ISOLATION (v0.4.6)
-================================================================================
-Note: 21 violations found in host contamination audit. Build, test, and dev
-activities must write ONLY inside the project directory (or VMs). No touching
-~/.cabal, ~/.umbravox, /tmp, /nix/store, ~/go from build/test paths.
-
-[x] M29.1 Critical — build/test host contamination (1d2b89f)
-  [x] M29.1.1 Makefile cleandb/cleanall: project-local .umbravox-data/ (1d2b89f)
-  [x] M29.1.2 Go tools: build/vm/tmp/ for temp files (1d2b89f)
-  [x] M29.1.3 Go build: GOMODCACHE+GOCACHE in build/go/ (1d2b89f)
-  [x] M29.1.4 cabal.project: store-dir in dist-newstyle/ (1d2b89f)
-  [x] M29.1.5 Platform release targets: documented nix bootstrap (1d2b89f)
-  [x] M29.1.6 vm-image-build-host: gated behind I_KNOW_THIS_TOUCHES_HOST (1d2b89f)
-
-[x] M29.2 Medium — test temp files (528ab0d)
-  [x] M29.2.1 getProjectTmpDir helper in Test.Util (528ab0d)
-  [x] M29.2.2 All 28 getTemporaryDirectory calls replaced (528ab0d)
-  [x] M29.2.3 Set TMPDIR=./build/test-tmp in make test recipe (9cbc3c4)
-  [x] M29.2.4 ReleaseBridge.hs: use build/tmp/ not getTemporaryDirectory (9cbc3c4)
-
-[x] M29.3 Medium — runtime UMBRAVOX_DATA support (528ab0d)
-  [x] M29.3.1 Startup.hs: UMBRAVOX_DATA for DB/log path (528ab0d)
-  [x] M29.3.2 KeyStore.hs: UMBRAVOX_DATA for identity key (528ab0d)
-  [x] M29.3.3 ConfigFile.hs: UMBRAVOX_DATA for config path (528ab0d)
-  [x] M29.3.4 Discovery.hs: UMBRAVOX_DATA for peer config (528ab0d)
-
-[x] M29.4 Low — script cleanup (528ab0d)
-  [x] M29.4.1 lib-vm.sh: project-local mktemp prefix (528ab0d)
-
-OUTSIDE MVP (DEFERRED)
-================================================================================
-
-[!] Persistence integration (needs upstream)
-  [!] M1.1.3 Anthony.hs encryption integration — INDEFINITELY DEFERRED (Anthony to be replaced with direct sqlite).
+  [ ] M28.2.5 Sender falls back to relay when peer offline > N minutes
+  [ ] M28.3.2 Queue drain on reconnect test
