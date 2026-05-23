@@ -13,6 +13,8 @@
  *)
 module Spec.Keccak
 
+#set-options "--z3rlimit 300 --fuel 4 --ifuel 2"
+
 open Spec.Keccak.Permutation
 open Spec.Keccak.Sponge
 open Spec.Keccak.SHA3

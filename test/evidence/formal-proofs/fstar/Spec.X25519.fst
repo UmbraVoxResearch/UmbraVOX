@@ -10,6 +10,8 @@
  *)
 module Spec.X25519
 
+#set-options "--z3rlimit 300 --fuel 4 --ifuel 2"
+
 open FStar.Seq
 open FStar.UInt8
 open FStar.Mul
@@ -209,7 +211,7 @@ val pow_mod_base : a:int -> n:nat
   -> Lemma (ensures FStar.Math.Fermat.pow (a % prime) n % prime
                  == FStar.Math.Fermat.pow a n % prime)
            (decreases n)
-#push-options "--fuel 1 --ifuel 0 --z3rlimit 30"
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 300"
 let rec pow_mod_base a n =
   if n = 0 then ()
   else begin
@@ -242,7 +244,7 @@ let rec pow_sqr a n =
 val pow_mod_equiv : base:felem -> exp:nat
   -> Lemma (ensures pow_mod base exp == FStar.Math.Fermat.pow base exp % prime)
            (decreases exp)
-#push-options "--fuel 2 --ifuel 1 --z3rlimit 50"
+#push-options "--fuel 2 --ifuel 1 --z3rlimit 300"
 let rec pow_mod_equiv base exp =
   if exp = 0 then begin
     assert (pow_mod base 0 == 1);
@@ -285,7 +287,7 @@ let rec pow_mod_equiv base exp =
     3. pow definition: a * pow a (p-2) == pow a (p-1)
     4. fermat (FLT): pow a (p-1) % p == 1 *)
 val fmul_inverse : a:felem{a <> 0} -> Lemma (fmul a (finv a) == 1)
-#push-options "--fuel 1 --ifuel 0 --z3rlimit 50"
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 300"
 let fmul_inverse a =
   pow_mod_equiv a (prime - 2);
   FStar.Math.Lemmas.lemma_mod_mul_distr_r a (FStar.Math.Fermat.pow a (prime - 2)) prime;
@@ -338,7 +340,7 @@ let encode_le_is_encode_le_n n =
     v % (256 * m) = (v % 256) + 256 * ((v / 256) % m) for m > 0. *)
 val mod_digit_decomposition : v:nat -> m:pos
     -> Lemma (v % (256 * m) = (v % 256) + 256 * ((v / 256) % m))
-#push-options "--z3rlimit 200"
+#push-options "--z3rlimit 300"
 let mod_digit_decomposition v m =
   FStar.Math.Lemmas.euclidean_division_definition v 256;
   FStar.Math.Lemmas.euclidean_division_definition (v / 256) m;
@@ -356,7 +358,7 @@ let mod_digit_decomposition v m =
 #pop-options
 
 (** decode_le(encode_le_n(k, v)) = v mod 2^(8*k) for any k, v. *)
-#push-options "--z3rlimit 100"
+#push-options "--z3rlimit 300"
 val decode_encode_le_aux : k:nat -> v:nat
     -> Lemma (ensures decode_le (encode_le_n k v) == v % pow2 (8 * k))
              (decreases k)
@@ -678,7 +680,7 @@ let fmul_zero_left a = assert (fmul 0 a == (0 * a) % prime)
 val pow_mod_zero : n:nat{n > 0}
     -> Lemma (ensures pow_mod 0 n == 0)
              (decreases n)
-#push-options "--fuel 2 --ifuel 0 --z3rlimit 20"
+#push-options "--fuel 2 --ifuel 0 --z3rlimit 300"
 let rec pow_mod_zero n =
   if n = 1 then begin
     assert (pow_mod 0 1 == fmul 0 (pow_mod (fsqr 0) 0));
@@ -708,7 +710,7 @@ let get_bit_zero t = assert (0 / pow2 t == 0)
     and nz2 = fmul 0 (...) = 0. *)
 val ladder_step_preserves_z2_zero : u:felem -> x_2:felem -> x_3:felem -> z_3:felem
     -> Lemma (let (_, _, nz2, _) = ladder_step u (x_2, x_3, 0, z_3) 0 in nz2 == 0)
-#push-options "--fuel 1 --ifuel 0 --z3rlimit 40"
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 300"
 let ladder_step_preserves_z2_zero u x_2 x_3 z_3 =
   let a  = fadd x_2 0 in
   let aa = fsqr a in
@@ -732,7 +734,7 @@ val ladder_loop_zero_k_z2 : u:felem -> t:int -> x_2:felem -> x_3:felem -> z_3:fe
     -> Lemma (ensures (let (_, _, z2_f, _, sw_f) = ladder_loop u 0 t x_2 x_3 0 z_3 0 in
                         z2_f == 0 /\ sw_f == 0))
              (decreases (if t < 0 then 0 else t + 1))
-#push-options "--fuel 1 --ifuel 0 --z3rlimit 40"
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 300"
 let rec ladder_loop_zero_k_z2 u t x_2 x_3 z_3 =
   if t < 0 then ()
   else begin
@@ -765,7 +767,7 @@ let rec ladder_loop_zero_k_z2 u t x_2 x_3 z_3 =
     5. fmul_zero: x * 0 = 0 *)
 val scalar_mult_zero : u:felem
     -> Lemma (scalar_mult 0 u == 0)
-#push-options "--fuel 1 --ifuel 0 --z3rlimit 40"
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 300"
 let scalar_mult_zero u =
   let u_fe : felem = u % prime in
   assert (u_fe == u);
@@ -793,7 +795,7 @@ let get_bit_one_zero () = assert_norm (get_bit 1 0 == 1)
 
 (** pow_mod 1 n = 1 for all n: 1^n = 1. *)
 val pow_mod_one : n:nat -> Lemma (ensures pow_mod 1 n == 1) (decreases n)
-#push-options "--fuel 2 --ifuel 0 --z3rlimit 20"
+#push-options "--fuel 2 --ifuel 0 --z3rlimit 300"
 let rec pow_mod_one n =
   if n = 0 then ()
   else begin
@@ -815,7 +817,7 @@ let finv_one () = pow_mod_one (prime - 2)
 val ladder_step_z2_zero_x2_one : u:felem -> x_3:felem -> z_3:felem
     -> Lemma (let (nx2, _, nz2, _) = ladder_step u (1, x_3, 0, z_3) 0 in
               nx2 == 1 /\ nz2 == 0)
-#push-options "--fuel 1 --ifuel 0 --z3rlimit 40"
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 300"
 let ladder_step_z2_zero_x2_one u x_3 z_3 =
   fadd_identity 1;
   fsub_identity 1;
@@ -842,7 +844,7 @@ let ladder_step_z2_zero_x2_one u x_3 z_3 =
     fsub 0 a = (p - a) % p.  For a < p, this is p - a.
     fsqr (p - a) = ((p-a)*(p-a)) % p = (p^2 - 2pa + a^2) % p = a^2 % p = fsqr a. *)
 val fsqr_neg : a:felem -> Lemma (fsqr (fsub 0 a) == fsqr a)
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 200"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let fsqr_neg a =
   let neg_a = fsub 0 a in
   assert (neg_a == (0 - a + prime) % prime);
@@ -867,7 +869,7 @@ let fsqr_neg a =
     Proof: (x-z+p)%p + (x+z)%p ≡ x-z+x+z = 2x (mod p). *)
 val fadd_fsub_fadd_cancel : x:felem -> z:felem
     -> Lemma (fadd (fsub x z) (fadd x z) == fadd x x)
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 100"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let fadd_fsub_fadd_cancel x z =
   let a = fsub x z in
   let b = fadd x z in
@@ -887,7 +889,7 @@ let fadd_fsub_fadd_cancel x z =
     Proof: (x-z)-(x+z) = -2z ≡ p - 2z (mod p). *)
 val fsub_fsub_fadd_cancel : x:felem -> z:felem
     -> Lemma (fsub (fsub x z) (fadd x z) == fsub 0 (fadd z z))
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 200"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let fsub_fsub_fadd_cancel x z =
   let a = fsub x z in  (* (x - z + p) % p *)
   let b = fadd x z in  (* (x + z) % p *)
@@ -1087,7 +1089,7 @@ let ladder_step_ratio_inv u x_3 z_3 =
     Proof: (x+z) - (x-z) = 2z (mod p). *)
 val fsub_fadd_fsub_cancel : x:felem -> z:felem
     -> Lemma (fsub (fadd x z) (fsub x z) == fadd z z)
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 100"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let fsub_fadd_fsub_cancel x z =
   let a = fadd x z in
   let b = fsub x z in
@@ -1491,7 +1493,7 @@ let zero_coordinate : coordinate =
 val ladder_step_u_zero_z_zero_no_swap : x_2:felem
     -> Lemma (let (nx2, nx3, nz2, nz3) = ladder_step 0 (x_2, 0, 0, 0) 0 in
               nx3 == 0 /\ nz2 == 0 /\ nz3 == 0)
-#push-options "--fuel 1 --ifuel 0 --z3rlimit 40"
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 300"
 let ladder_step_u_zero_z_zero_no_swap x_2 =
   (* bit=0 so no swap inside ladder_step: sx2=x_2, sx3=0, sz2=0, sz3=0 *)
   let a  = fadd x_2 0 in
@@ -1537,7 +1539,7 @@ let ladder_step_u_zero_z_zero_no_swap x_2 =
 val ladder_step_u_zero_z_zero_swapped : x_3:felem
     -> Lemma (let (nx2, nx3, nz2, nz3) = ladder_step 0 (0, x_3, 0, 0) 0 in
               nx3 == 0 /\ nz2 == 0 /\ nz3 == 0)
-#push-options "--fuel 1 --ifuel 0 --z3rlimit 40"
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 300"
 let ladder_step_u_zero_z_zero_swapped x_3 =
   (* bit=0: sx2=0, sx3=x_3, sz2=0, sz3=0 *)
   let a  = fadd 0 0 in
@@ -1594,7 +1596,7 @@ let ladder_step_u_zero_z_zero_swapped x_3 =
 val ladder_step_u_zero_initial_no_swap : unit
     -> Lemma (let (nx2, nx3, nz2, nz3) = ladder_step 0 (1, 0, 0, 1) 0 in
               nx3 == 0 /\ nz2 == 0 /\ nz3 == 0)
-#push-options "--fuel 1 --ifuel 0 --z3rlimit 100"
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 300"
 let ladder_step_u_zero_initial_no_swap () =
   (* bit=0: sx2=1, sx3=0, sz2=0, sz3=1 *)
   let a  = fadd 1 0 in
@@ -1644,7 +1646,7 @@ let ladder_step_u_zero_initial_no_swap () =
 val ladder_step_u_zero_initial_swapped : unit
     -> Lemma (let (nx2, nx3, nz2, nz3) = ladder_step 0 (0, 1, 1, 0) 0 in
               nx3 == 0 /\ nz2 == 0 /\ nz3 == 0)
-#push-options "--fuel 1 --ifuel 0 --z3rlimit 100"
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 300"
 let ladder_step_u_zero_initial_swapped () =
   (* After swap of (1,0,0,1): sx2=0, sx3=1, sz2=1, sz3=0 *)
   (* bit=0 in ladder_step: no swap inside *)
@@ -1714,7 +1716,7 @@ val ladder_loop_u_zero_inv : k:nat -> t:int -> x_2:felem -> swap:nat{swap <= 1}
     -> Lemma (ensures (let (_, x3f, z2f, z3f, _) = ladder_loop 0 k t x_2 0 0 0 swap in
                         x3f == 0 /\ z2f == 0 /\ z3f == 0))
              (decreases (if t < 0 then 0 else t + 1))
-#push-options "--fuel 1 --ifuel 0 --z3rlimit 60"
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 300"
 let rec ladder_loop_u_zero_inv k t x_2 swap =
   if t < 0 then ()
   else begin
@@ -1753,7 +1755,7 @@ let rec ladder_loop_u_zero_inv k t x_2 swap =
     2. ladder_loop_u_zero_inv: induction preserves it
     3. finv_zero + fmul_zero: final projection yields 0 *)
 val scalar_mult_u_zero : k:nat -> Lemma (scalar_mult k 0 == 0)
-#push-options "--fuel 1 --ifuel 0 --z3rlimit 80"
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 300"
 let scalar_mult_u_zero k =
   let u_fe : felem = 0 % prime in
   assert (u_fe == 0);
@@ -1780,7 +1782,7 @@ val decode_le_zero : s:seq UInt8.t{Seq.length s > 0}
     -> Lemma (requires (forall (i:nat{i < Seq.length s}). Seq.index s i == 0uy))
              (ensures decode_le s == 0)
              (decreases (Seq.length s))
-#push-options "--fuel 2 --ifuel 0 --z3rlimit 20"
+#push-options "--fuel 2 --ifuel 0 --z3rlimit 300"
 let rec decode_le_zero s =
   assert (UInt8.v (Seq.index s 0) = 0);
   if Seq.length s = 1 then ()
@@ -1797,7 +1799,7 @@ let rec decode_le_zero s =
 
 (** encode_le 0 produces all-zero bytes *)
 val encode_le_zero : unit -> Lemma (encode_le 0 == zero_coordinate)
-#push-options "--fuel 0 --ifuel 0 --z3rlimit 40"
+#push-options "--fuel 0 --ifuel 0 --z3rlimit 300"
 let encode_le_zero () =
   let s = encode_le 0 in
   let z = zero_coordinate in
@@ -1822,7 +1824,7 @@ let encode_le_zero () =
     3. encode_le_zero: encode_le 0 == zero_coordinate *)
 val x25519_zero_u : sk:scalar
     -> Lemma (x25519 sk zero_coordinate == zero_coordinate)
-#push-options "--fuel 1 --ifuel 0 --z3rlimit 100"
+#push-options "--fuel 1 --ifuel 0 --z3rlimit 300"
 let x25519_zero_u sk =
   let clamped = clamp_scalar sk in
   let k = decode_le clamped in

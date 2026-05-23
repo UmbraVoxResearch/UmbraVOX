@@ -10,6 +10,8 @@
  *)
 module Spec.SHA256
 
+#set-options "--z3rlimit 300 --fuel 4 --ifuel 2"
+
 open FStar.Seq
 open FStar.UInt8
 open FStar.UInt32
