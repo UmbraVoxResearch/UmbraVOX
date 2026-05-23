@@ -41,6 +41,22 @@ jobs:
           echo "Seed image SHA-256: $HASH"
           echo "Seed image size: $SIZE bytes"
 
+      - name: Update pinned hash and version in scripts/vm-image-builder.sh
+        run: |
+          HASH=${{ steps.hash.outputs.sha256 }}
+          SEED_VER=${{ steps.version.outputs.seed_version }}
+          sed -i "s/^SEED_SHA256=.*/SEED_SHA256=\"${HASH}\"/" scripts/vm-image-builder.sh
+          sed -i "s/^SEED_VERSION=.*/SEED_VERSION=\"${SEED_VER}\"/" scripts/vm-image-builder.sh
+          echo "Updated SEED_SHA256=$HASH SEED_VERSION=$SEED_VER"
+
+      - name: Commit hash update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add scripts/vm-image-builder.sh
+          git diff --cached --quiet || git commit -m "auto: update seed SHA-256 and version to ${{ steps.version.outputs.seed_version }}"
+          git push origin main
+
       - name: Compress seed image
         run: |
           gzip -c build/vm/seed-image/nixos.img > umbravox-seed.img.gz
