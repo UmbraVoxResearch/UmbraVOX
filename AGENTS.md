@@ -9,9 +9,14 @@ should never be touched by compilation.
 The **only** tools needed on the host system to build UmbraVOX are:
 
 - **qemu** (specifically `qemu-system-x86_64` with KVM support)
-- **make** (GNU Make)
+- **nix** or **make** (either works)
 
-If nix is installed on the host, `nix-shell shell.nix` provides both.
+With **nix**: `nix-shell shell.nix` provides qemu, make, and the VM
+orchestration environment. This is the recommended approach.
+
+With **make only**: install `qemu-system-x86_64` and `make` from your
+system package manager.
+
 No other host-side toolchain (GHC, cabal, GCC, etc.) is required.
 
 All compilation, testing, verification, and image building happens

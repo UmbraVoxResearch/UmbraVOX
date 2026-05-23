@@ -22,9 +22,14 @@ of thought and expression in the digital age.
 Only two tools are needed on the host:
 
 - **qemu** (`qemu-system-x86_64` with KVM support)
-- **make** (GNU Make)
+- **nix** or **make** (either works)
 
-If [Nix](https://nixos.org/) is installed, `nix-shell shell.nix` provides both.
+With **nix**: `nix-shell shell.nix` provides qemu, make, and the VM orchestration
+environment. This is the recommended approach.
+
+With **make only**: install `qemu-system-x86_64` and `make` from your system
+package manager. The Makefile handles VM creation and build orchestration.
+
 No GHC, cabal, GCC, or other toolchain is required on the host — everything
 compiles inside NixOS VMs. Nothing is written outside the project directory.
 
