@@ -6,6 +6,7 @@ module Test.Equivalence (runTests) where
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
+import Data.Maybe (fromJust)
 import Data.Word (Word32)
 import Data.Bits (shiftR, (.&.))
 
@@ -125,7 +126,7 @@ testNoiseRoundTrip = do
         (\g -> let (encKey, g1) = nextBytes 32 g
                    (msg, _)    = nextBytesRange 1 256 g1
                    sendState   = NoiseState encKey encKey 0 0 (BS.replicate 32 0)
-                   (_st', ct)  = noiseEncrypt sendState msg
+                   Just (_st', ct)  = noiseEncrypt sendState msg
                    recvState   = NoiseState encKey encKey 0 0 (BS.replicate 32 0)
                in case noiseDecrypt recvState ct of
                    Just (_, pt) -> pt == msg
@@ -135,7 +136,7 @@ testNoiseRoundTrip = do
                    (encKey2, g2) = nextBytes 32 g1
                    (msg, _)     = nextBytesRange 1 64 g2
                    sendSt = NoiseState encKey1 encKey1 0 0 (BS.replicate 32 0)
-                   (_, ct) = noiseEncrypt sendSt msg
+                   Just (_, ct) = noiseEncrypt sendSt msg
                    recvSt = NoiseState encKey2 encKey2 0 0 (BS.replicate 32 0)
                in case noiseDecrypt recvSt ct of
                    Nothing -> True

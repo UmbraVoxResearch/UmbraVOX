@@ -24,6 +24,7 @@ module Test.Security.M11NoiseDH (runTests) where
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
+import Data.Maybe (fromJust)
 
 import Test.Util (assertEq, hexDecode)
 import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
@@ -329,7 +330,7 @@ testDH003EncryptDecryptRoundTrip = do
                   , nsHandshakeHash = h5R
                   }
               msg = BS.pack [0x68, 0x65, 0x6c, 0x6c, 0x6f]  -- "hello"
-              (_, ct) = noiseEncrypt iState msg
+              Just (_, ct) = noiseEncrypt iState msg
           case noiseDecrypt rState ct of
             Nothing ->
                 putStrLn "  FAIL: DH-003 responder could not decrypt initiator ciphertext" >> pure False
@@ -451,7 +452,7 @@ testDH005ZeroEEDecryptionFails = do
                   , nsHandshakeHash = h5R
                   }
               msg = BS.pack [0x74, 0x65, 0x73, 0x74]  -- "test"
-              (_, ct) = noiseEncrypt iState msg
+              Just (_, ct) = noiseEncrypt iState msg
           case noiseDecrypt rState ct of
             Nothing ->
                 putStrLn "  PASS: DH-005 zero ee -> decryption correctly fails" >> pure True
@@ -581,7 +582,7 @@ testDH007WrongResponderEphemeralFails = do
                   , nsHandshakeHash = h5R
                   }
               msg = BS.pack [0x70, 0x72, 0x6f, 0x62, 0x65]  -- "probe"
-              (_, ct) = noiseEncrypt iState msg
+              Just (_, ct) = noiseEncrypt iState msg
           case noiseDecrypt rState ct of
             Nothing ->
                 putStrLn "  PASS: DH-007 wrong responder ephemeral -> decryption fails" >> pure True

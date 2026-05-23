@@ -58,18 +58,35 @@ import UmbraVox.Network.Noise.State
 -- Verified:  noiseEncrypt/noiseDecrypt round-trip correctly for all message
 --            sizes.  Any modification to the AAD, ciphertext, or tag causes
 --            chachaPolyDecrypt to return Nothing.
-noiseEncrypt :: NoiseState -> ByteString -> (NoiseState, ByteString)
-noiseEncrypt st plaintext =
+-- Finding    M27.4.3 — No nonce-overflow guard existed.  If a session ever
+--            reached 2^64-1 messages the nonce counter would wrap to zero,
+--            reusing a (key, nonce) pair and breaking AEAD confidentiality
+--            and authenticity.
+-- Vulnerability: Nonce reuse after counter overflow would allow an attacker
+--            to recover plaintext via XOR of two ciphertexts encrypted under
+--            the same (key, nonce).
+-- Fix:       Return Nothing when the send counter reaches maxBound - 1,
+--            signalling that the session must be rekeyed before any further
+--            messages can be sent.
+-- Verified:  Guard fires at maxBound - 1 (0xFFFFFFFFFFFFFFFE), preventing
+--            the counter from ever reaching maxBound and wrapping.
+noiseEncrypt :: NoiseState -> ByteString -> Maybe (NoiseState, ByteString)
+noiseEncrypt st plaintext
+    | nsSendN st >= maxBound - 1 = Nothing  -- nonce exhausted
+    | otherwise =
     let !nonce        = makeNonce (nsSendN st)
         !(ct, tag)    = chachaPolyEncrypt (nsSendEncKey st) nonce (nsHandshakeHash st) plaintext
         !st'          = st { nsSendN = nsSendN st + 1 }
-    in (st', ct <> tag)
+    in Just (st', ct <> tag)
 
 -- | Decrypt a ciphertext || tag message using RFC 8439 ChaCha20-Poly1305 AEAD,
 -- verifying the 16-byte Poly1305 tag.
 -- Returns Nothing if the tag does not match.
+-- Finding    M27.4.3 — Matching overflow guard for the receive counter.
+-- Verified:  Symmetric with noiseEncrypt; recv counter cannot wrap.
 noiseDecrypt :: NoiseState -> ByteString -> Maybe (NoiseState, ByteString)
 noiseDecrypt st msg
+    | nsRecvN st >= maxBound - 1 = Nothing  -- nonce exhausted
     | BS.length msg < macLen = Nothing
     | otherwise =
         let !ctLen = BS.length msg - macLen
