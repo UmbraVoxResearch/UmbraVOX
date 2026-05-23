@@ -39,6 +39,7 @@ import UmbraVox.BuildProfile
     , loadPackagedPluginRuntimeCatalog, pluginEnabled
     )
 import UmbraVox.Crypto.BIP39 (generatePassphrase)
+import UmbraVox.Chat.OutboundQueue (newQueue, maxQueueDepth, maxMessageAge)
 import UmbraVox.Chat.Session (initChatSession)
 import UmbraVox.Crypto.KeyStore
     ( loadIdentityKey, saveIdentityKey
@@ -410,6 +411,7 @@ restoreConversation cfg db (convId, _pubkey, name, _created) = do
     lockRef <- newMVar ()
     histRef <- newIORef []
     statRef <- newIORef Offline
+    oq <- newQueue maxQueueDepth maxMessageAge
     let si = SessionInfo
             { siTransport = Nothing
             , siCrypto = RatchetCrypto sessRef
@@ -418,6 +420,7 @@ restoreConversation cfg db (convId, _pubkey, name, _created) = do
             , siPeerName = name
             , siHistory = histRef
             , siStatus = statRef
+            , siOutboundQueue = oq
             }
     msgs <- loadMessages db convId 500
     let formatted = map (\(sender, content, _ts) -> sender ++ ": " ++ content) msgs

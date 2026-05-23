@@ -11,6 +11,7 @@ import System.Directory (getTemporaryDirectory, removeFile)
 import System.FilePath ((</>))
 import Test.Util (assertEq)
 import Test.TUI.Sim.Util
+import UmbraVox.Chat.OutboundQueue (newQueue, maxQueueDepth, maxMessageAge)
 import UmbraVox.Chat.Session (initChatSession)
 import UmbraVox.Network.MDNS (MDNSPeer(..))
 import UmbraVox.Network.Transport.Loopback (newLoopbackPair)
@@ -599,6 +600,7 @@ testSettingsConnectionModeDisconnectsRemoteSessions = do
     lock <- newMVar ()
     histRef <- newIORef []
     statusRef <- newIORef Online
+    oq <- newQueue maxQueueDepth maxMessageAge
     let sid = 1
         si = SessionInfo
             { siTransport = Just (AnyTransport txA)
@@ -608,6 +610,7 @@ testSettingsConnectionModeDisconnectsRemoteSessions = do
             , siPeerName = "peer-1"
             , siHistory = histRef
             , siStatus = statusRef
+            , siOutboundQueue = oq
             }
     writeIORef (cfgSessions (asConfig st)) (Map.singleton sid si)
     writeIORef (cfgNextId (asConfig st)) 2
