@@ -9,6 +9,7 @@ module UmbraVox.Network.DHT.Types
       NodeId(..)
     , xorDistance
     , deriveNodeId
+    , deriveEphemeralNodeId
     , verifyNodeId
       -- * DHT nodes
     , DHTNode(..)
@@ -54,6 +55,15 @@ xorDistance (NodeId a) (NodeId b) =
 -- the handshake public key to prevent Sybil attacks.
 deriveNodeId :: ByteString -> NodeId
 deriveNodeId pubKey = NodeId (sha256 pubKey)
+
+-- | Derive an ephemeral NodeId using a per-boot salt (M27.2.2).
+--
+-- The salt prevents linking DHT presence to long-term identity across
+-- sessions.  Each boot generates a fresh random salt, so the NodeId
+-- changes every restart while remaining stable within a single session.
+deriveEphemeralNodeId :: ByteString -> ByteString -> NodeId
+deriveEphemeralNodeId pubKey bootSalt =
+    NodeId (sha256 (pubKey <> bootSalt))
 
 -- | Verify that a claimed NodeId matches the SHA-256 hash of the given
 -- identity public key.  Returns True if valid.

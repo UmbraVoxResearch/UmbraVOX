@@ -12,12 +12,14 @@ module UmbraVox.Network.PeerExchange
     , encodePeerList
     , decodePeerList
     , exchangePeers
+    , pexToken
     ) where
 
 import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 
+import UmbraVox.Crypto.HKDF (hkdfSHA256Extract, hkdfSHA256Expand)
 import UmbraVox.Network.TransportClass (AnyTransport, anySend, anyRecv)
 
 ------------------------------------------------------------------------
@@ -46,7 +48,7 @@ data PeerInfo = PeerInfo
 -- >   ip_len    : 1 byte
 -- >   ip        : ip_len bytes
 -- >   port      : 2 bytes (big-endian)
--- >   pubkey    : 32 bytes
+-- >   pubkey    : 32 bytes (opaque PEX token, M27.2.3)
 -- >   timestamp : 8 bytes (big-endian)
 --
 -- Indirect peers are excluded (1-hop rule).
@@ -55,6 +57,10 @@ data PeerInfo = PeerInfo
 -- are forwarded.  Peers received via PEX have piIndirect = True (set in
 -- decodePeerList) and are filtered out here, preventing transitive relay
 -- and limiting PEX propagation to exactly one hop.
+--
+-- SECURITY (M27.2.3): The raw pubkey fingerprint is replaced with an
+-- opaque session token derived via HKDF, preventing third-party
+-- correlation of peer identities across PEX exchanges.
 encodePeerList :: [PeerInfo] -> ByteString
 encodePeerList peers =
     let direct = filter (not . piIndirect) peers  -- 1-hop enforcement
@@ -100,7 +106,22 @@ exchangePeers tr ours = do
 -- Internal — per-entry encoding
 ------------------------------------------------------------------------
 
+-- | Derive an opaque PEX token for a peer (M27.2.3).
+--
+-- Instead of sending the raw pubkey fingerprint, we derive a 32-byte
+-- opaque token via HKDF so that PEX observers cannot correlate peer
+-- identity across different PEX exchanges or sessions.
+pexToken :: ByteString       -- ^ session key (unique per PEX exchange)
+         -> ByteString       -- ^ pubkey fingerprint
+         -> ByteString       -- ^ 32-byte opaque token
+pexToken sessionKey pubKeyFingerprint =
+    let !prk = hkdfSHA256Extract sessionKey pubKeyFingerprint
+    in hkdfSHA256Expand prk "UmbraVox_PEX_v1" 32
+
 -- | Encode a single peer entry.
+--
+-- The pubkey field is sent as-is; callers who want opaque tokens should
+-- pre-process piPubkey through 'pexToken' before encoding.
 encodePeer :: PeerInfo -> ByteString
 encodePeer p =
     let !ip    = piIP p

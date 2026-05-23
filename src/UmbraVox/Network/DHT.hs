@@ -53,6 +53,7 @@ import UmbraVox.Network.DHT.Types
     , DHTConfig(..)
     , DHTMessage(..)
     , deriveNodeId
+    , deriveEphemeralNodeId
     )
 
 ------------------------------------------------------------------------
@@ -72,9 +73,15 @@ data DHTState = DHTState
 -- The 'NodeId' is derived as @SHA-256(identityPublicKey)@.  The routing
 -- table is initialised with @dhtK@ bucket capacity and the value store
 -- with a 1024-byte maximum value size.
-newDHTState :: DHTConfig -> ByteString -> IO DHTState
-newDHTState cfg identityPubKey = do
-    let selfId = deriveNodeId identityPubKey
+--
+-- If an optional boot salt is provided (M27.2.2), an ephemeral NodeId
+-- is derived via @SHA-256(pubKey <> bootSalt)@ instead, preventing
+-- linkage of DHT presence to long-term identity across sessions.
+newDHTState :: DHTConfig -> ByteString -> Maybe ByteString -> IO DHTState
+newDHTState cfg identityPubKey mBootSalt = do
+    let selfId = case mBootSalt of
+            Nothing       -> deriveNodeId identityPubKey
+            Just bootSalt -> deriveEphemeralNodeId identityPubKey bootSalt
     rt <- newRoutingTable selfId (dhtK cfg)
     vs <- newValueStore 1024
     return DHTState

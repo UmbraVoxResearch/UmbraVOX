@@ -362,7 +362,7 @@ testRejectsMalformedMessage = do
 testHandlePingReturnsPong :: IO Bool
 testHandlePingReturnsPong = do
     let cfg = defaultDHTConfig
-    st <- newDHTState cfg (strToBS "server-key")
+    st <- newDHTState cfg (strToBS "server-key") Nothing
     let senderId = deriveNodeId (strToBS "client-key")
     resp <- handleMessage st (Ping senderId) 1000
     assertEq "Ping -> Pong" (Just (Pong (dhSelfId st))) resp
@@ -371,7 +371,7 @@ testHandlePingReturnsPong = do
 testHandleFindNodeReturnsClosest :: IO Bool
 testHandleFindNodeReturnsClosest = do
     let cfg = defaultDHTConfig
-    st <- newDHTState cfg (strToBS "server-key")
+    st <- newDHTState cfg (strToBS "server-key") Nothing
     -- Insert a node into the routing table first
     let nodeId1 = deriveNodeId (strToBS "node1")
         node1 = DHTNode nodeId1 "host1:80" 500 Nothing
@@ -393,7 +393,7 @@ testHandleFindNodeReturnsClosest = do
 testHandleStoreAndFindValue :: IO Bool
 testHandleStoreAndFindValue = do
     let cfg = defaultDHTConfig
-    st <- newDHTState cfg (strToBS "server-key")
+    st <- newDHTState cfg (strToBS "server-key") Nothing
     let senderId = deriveNodeId (strToBS "client-key")
         key = strToBS "test-key"
         value = strToBS "test-value"
@@ -417,7 +417,7 @@ testHandleStoreAndFindValue = do
 testHandleFindValueMissingKey :: IO Bool
 testHandleFindValueMissingKey = do
     let cfg = defaultDHTConfig
-    st <- newDHTState cfg (strToBS "server-key")
+    st <- newDHTState cfg (strToBS "server-key") Nothing
     let senderId = deriveNodeId (strToBS "client-key")
         key = strToBS "nonexistent-key"
     resp <- handleMessage st (FindValue senderId key) 1000
@@ -697,7 +697,7 @@ registerNode nodesRef st = do
 
 -- | Create a DHTState from a key string using small-network config.
 mkTestState :: String -> IO DHTState
-mkTestState keyStr = newDHTState testConfig (strToBS keyStr)
+mkTestState keyStr = newDHTState testConfig (strToBS keyStr) Nothing
 
 -- | Small-network DHT config for integration tests.
 testConfig :: DHTConfig
