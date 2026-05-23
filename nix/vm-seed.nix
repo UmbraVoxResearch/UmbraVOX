@@ -95,6 +95,8 @@ let
       };
       serviceConfig = {
         Type = "oneshot";
+        RemainAfterExit = true;
+        Restart = "no";
         ExecStart = pkgs.writeShellScript "umbravox-seed-builder-run" ''
           set -euo pipefail
           export PATH="/run/current-system/sw/bin:/run/current-system/sw/sbin:$PATH"
@@ -103,7 +105,10 @@ let
 
           # Mount source disk (project tree)
           mkdir -p /mnt/src
-          mount -o ro /dev/vdb /mnt/src
+          mount -o ro /dev/vdb /mnt/src || {
+              echo "[SEED] ERROR: /dev/vdb not found (source disk missing)"
+              systemctl poweroff; exit 1
+          }
 
           # Mount and format scratch disk for Nix store overlay
           mkdir -p /nix-scratch
@@ -120,8 +125,11 @@ let
           # copying them to scratch first.
           cp -a /nix/store/. /nix-scratch/store/ 2>/dev/null || true
           mount --bind /nix-scratch/store /nix/store
-          # Restart the daemon so it sees the new mount
-          systemctl restart nix-daemon.service
+          # Stop and start nix-daemon (not restart, to avoid systemd
+          # dependency cycle that kills this service)
+          systemctl stop nix-daemon.socket nix-daemon.service 2>/dev/null || true
+          sleep 1
+          systemctl start nix-daemon.socket nix-daemon.service
           sleep 2
 
           # Mount 9p output share
