@@ -293,11 +293,10 @@ build_platform_release() {
     write_manifest "$stage" "$platform" "$arch" "platform-source-release"
     platform_build_note "$platform" > "$stage/BUILDING-${platform^^}.txt"
 
-    # Include vm-build-test.sh for convenience inside the guest
-    if [[ -f scripts/vm-build-test.sh ]]; then
-        mkdir -p "$stage/scripts"
-        cp scripts/vm-build-test.sh "$stage/scripts/vm-build-test.sh"
-        chmod +x "$stage/scripts/vm-build-test.sh"
+    # Include ./uv bootstrap for convenience inside the release
+    if [[ -f uv ]]; then
+        cp uv "$stage/uv"
+        chmod +x "$stage/uv"
     fi
 
     try_copy_binary "$stage"

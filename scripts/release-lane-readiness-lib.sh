@@ -70,16 +70,14 @@ require_repo_path() {
   fi
 }
 
-require_make_target() {
-  local target="$1"
+require_uv_command() {
+  local cmd="$1"
   local detail="$2"
   local next_action="$3"
-  local escaped_target
-  escaped_target="$(escape_ere "$target")"
-  if grep -Eq "^[[:space:]]*${escaped_target}:" "$ROOT/Makefile"; then
-    check_ok "$detail ($target)"
+  if "$ROOT/uv" help 2>/dev/null | grep -q "$cmd"; then
+    check_ok "$detail ($cmd)"
   else
-    check_fail "$detail ($target)" "$next_action"
+    check_fail "$detail ($cmd)" "$next_action"
   fi
 }
 

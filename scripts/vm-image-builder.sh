@@ -12,7 +12,7 @@
 # After the build completes, the result is at build/vm/image/nixos.img
 # and the scratch disk is deleted (no persistent builder state).
 #
-# Usage (called by Makefile, not directly by users):
+# Usage (called by ./uv vm build-image, not directly by users):
 #   scripts/vm-image-builder.sh
 #
 # Requires: qemu-system-x86_64, genext2fs, nix (for building the builder image), /dev/kvm
