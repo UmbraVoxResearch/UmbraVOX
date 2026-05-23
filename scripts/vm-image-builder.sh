@@ -24,11 +24,17 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+source "$(dirname "$0")/lib-vm.sh" 2>/dev/null || true
+
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VM_CACHE_DIR="$REPO_ROOT/build/vm"
 VM_TMP_DIR="$VM_CACHE_DIR/tmp"
 BUILDER_IMAGE_DIR="$VM_CACHE_DIR/builder-image"
 OUTPUT_DIR="$VM_CACHE_DIR/builder-output"
+SEED_IMAGE_DIR="$VM_CACHE_DIR/seed-image"
+SEED_VERSION="0.1.0"
+SEED_SHA256="PLACEHOLDER_HASH_UPDATE_AFTER_FIRST_BUILD"
+SEED_DEFAULT_URL="${UMBRAVOX_SEED_URL:-https://github.com/UmbraVoxResearch/UmbraVOX/releases/download/seed-v${SEED_VERSION}/umbravox-seed.img}"
 
 mkdir -p "$VM_TMP_DIR" "$OUTPUT_DIR"
 
@@ -53,57 +59,160 @@ preflight_check() {
     fi
 }
 
-# ── Build or locate builder VM image ──────────────────────────────────
+# ── Seed image (two-stage bootstrap, stage 1) ────────────────────────
 
-ensure_builder_image() {
-    if [ -L "$BUILDER_IMAGE_DIR" ] && [ -e "$BUILDER_IMAGE_DIR/nixos.img" ]; then
-        echo -e "${BLUE}[VM-BUILDER]${NC} Builder image already cached."
+ensure_seed_image() {
+    if [ -e "$SEED_IMAGE_DIR/nixos.img" ]; then
+        echo -e "${BLUE}[VM-BUILDER]${NC} Seed image already cached."
         return 0
     fi
 
-    # The builder VM image must be built once via nix-build. This is the
-    # one unavoidable host /nix/store write — a bootstrap dependency.
-    # After the first build, the image is cached and all subsequent
-    # operations happen inside VMs.
-    echo -e "${YELLOW}[VM-BUILDER]${NC} Builder VM image not found (first-time setup)."
-    echo -e "${YELLOW}[VM-BUILDER]${NC} Building it requires nix-build, which writes to /nix/store."
-    echo -e "${YELLOW}[VM-BUILDER]${NC} This is a one-time bootstrap step."
-    printf "  Proceed with nix-build? (writes to host /nix/store) [y/N] "
+    echo -e "${YELLOW}[VM-BUILDER]${NC} Builder VM image not found. Bootstrap options:"
+    echo "  [A] Download seed image (~300MB) and build in VM (default, no host writes)"
+    echo "  [B] Build locally with nix-build (faster, writes to /nix/store)"
+    printf "Choose [A/b]: "
     read -r ans
     case "$ans" in
-        [Yy]*) ;;
-        *) echo "Aborted. To skip this, provide a pre-built builder image at:";
-           echo "  $BUILDER_IMAGE_DIR/nixos.img";
-           exit 1 ;;
+        [Bb]*)
+            # Option B: local nix-build
+            if [ -z "$(command -v nix 2>/dev/null)" ] && [ -x /nix/var/nix/profiles/default/bin/nix ]; then
+                export PATH="/nix/var/nix/profiles/default/bin:$PATH"
+            fi
+            if ! command -v nix-build >/dev/null 2>&1; then
+                echo -e "${RED}[VM-BUILDER]${NC} nix-build not found."
+                echo "  Install Nix (https://nixos.org/) or add it to PATH."
+                exit 1
+            fi
+            echo -e "${YELLOW}[VM-BUILDER]${NC} WARNING: This writes to /nix/store on the host."
+            echo -e "${BLUE}[VM-BUILDER]${NC} Building seed image locally (may take several minutes)..."
+            mkdir -p "$VM_TMP_DIR"
+            if ! TMPDIR="$VM_TMP_DIR" nix-build "$REPO_ROOT/nix/vm-seed.nix" -o "$SEED_IMAGE_DIR"; then
+                echo -e "${RED}[VM-BUILDER]${NC} Failed to build seed image."
+                exit 1
+            fi
+            echo -e "${GREEN}[VM-BUILDER]${NC} Seed image ready at $SEED_IMAGE_DIR"
+            ;;
+        *)
+            # Option A (default): download seed image
+            mkdir -p "$SEED_IMAGE_DIR"
+            if [ "$SEED_SHA256" = "PLACEHOLDER_HASH_UPDATE_AFTER_FIRST_BUILD" ]; then
+                echo -e "${YELLOW}[VM-BUILDER]${NC} WARNING: Seed hash is placeholder (dev mode) — skipping verification."
+                echo -e "${BLUE}[VM-BUILDER]${NC} Downloading seed image from $SEED_DEFAULT_URL ..."
+                if command -v curl >/dev/null 2>&1; then
+                    curl -L --progress-bar -o "$SEED_IMAGE_DIR/nixos.img" "$SEED_DEFAULT_URL"
+                elif command -v wget >/dev/null 2>&1; then
+                    wget -q --show-progress -O "$SEED_IMAGE_DIR/nixos.img" "$SEED_DEFAULT_URL"
+                else
+                    echo -e "${RED}[VM-BUILDER]${NC} Neither curl nor wget found."
+                    exit 1
+                fi
+            else
+                if ! vm_download_and_verify "$SEED_DEFAULT_URL" "$SEED_IMAGE_DIR/nixos.img" "$SEED_SHA256"; then
+                    echo -e "${RED}[VM-BUILDER]${NC} Seed image download/verification failed."
+                    rm -f "$SEED_IMAGE_DIR/nixos.img"
+                    exit 1
+                fi
+            fi
+            echo -e "${GREEN}[VM-BUILDER]${NC} Seed image downloaded to $SEED_IMAGE_DIR"
+            ;;
     esac
+}
 
-    # Resolve nix on PATH
-    if [ -z "$(command -v nix 2>/dev/null)" ] && [ -x /nix/var/nix/profiles/default/bin/nix ]; then
-        export PATH="/nix/var/nix/profiles/default/bin:$PATH"
+# ── Build builder image from seed (two-stage bootstrap, stage 2) ─────
+
+build_builder_from_seed() {
+    echo -e "${BLUE}[VM-BUILDER]${NC} Building builder image from seed (stage 2)..."
+
+    # Create COW overlay on seed image
+    local SEED_IMG
+    SEED_IMG="$(readlink -f "$SEED_IMAGE_DIR/nixos.img")"
+    local SEED_OVERLAY
+    SEED_OVERLAY="$(mktemp "$VM_TMP_DIR/umbravox-seed-overlay.XXXXXX.qcow2")"
+    rm -f "$SEED_OVERLAY"
+    echo -e "${BLUE}[VM-BUILDER]${NC} Creating COW overlay on seed image..."
+    qemu-img create -f qcow2 -b "$SEED_IMG" -F raw "$SEED_OVERLAY" >/dev/null 2>&1
+
+    # Create source disk
+    local SRC_DISK
+    SRC_DISK="$(create_source_disk)"
+
+    # Ensure nix cache disk exists
+    NIX_CACHE_DISK="$VM_CACHE_DIR/nix-cache.qcow2"
+    if [ ! -f "$NIX_CACHE_DISK" ]; then
+        echo -e "${BLUE}[VM-BUILDER]${NC} Creating 60GB nix store cache disk (first build, thin-provisioned)..."
+        qemu-img create -f qcow2 "$NIX_CACHE_DISK" 60G >/dev/null 2>&1
+    else
+        echo -e "${BLUE}[VM-BUILDER]${NC} Reusing nix store cache disk (offline build possible)."
     fi
 
-    if ! command -v nix-build >/dev/null 2>&1; then
-        echo -e "${RED}[VM-BUILDER]${NC} nix-build not found."
-        echo "  Install Nix (https://nixos.org/) or add it to PATH."
-        exit 1
+    # Prepare output directory
+    mkdir -p "$BUILDER_IMAGE_DIR"
+    rm -f "$BUILDER_IMAGE_DIR/seed-status" 2>/dev/null || true
+
+    # Auto-scale VM resources
+    local HOST_CORES HOST_MEM_MB VM_CORES VM_MEM_MB
+    HOST_CORES=$(nproc 2>/dev/null || echo 4)
+    HOST_MEM_MB=$(awk '/MemTotal/{printf "%d", $2/1024}' /proc/meminfo 2>/dev/null || echo 8192)
+    VM_CORES=$(( HOST_CORES * 3 / 4 ))
+    VM_MEM_MB=$(( HOST_MEM_MB * 3 / 4 ))
+    [ "$VM_CORES" -lt 2 ] && VM_CORES=2
+    [ "$VM_MEM_MB" -lt 4096 ] && VM_MEM_MB=4096
+
+    echo -e "${BLUE}[VM-BUILDER]${NC} VM resources: ${VM_CORES} cores, ${VM_MEM_MB}MB RAM (host: ${HOST_CORES} cores, ${HOST_MEM_MB}MB)"
+    echo -e "${BLUE}[VM-BUILDER]${NC} Network: enabled (seed bootstrap)"
+    echo -e "${BLUE}[VM-BUILDER]${NC} Booting seed VM..."
+    echo ""
+
+    set +e
+    qemu-system-x86_64 \
+        -machine "q35,accel=kvm" \
+        -cpu max \
+        -m "$VM_MEM_MB" \
+        -smp "$VM_CORES" \
+        -drive "if=virtio,format=qcow2,file=$SEED_OVERLAY" \
+        -drive "if=virtio,format=raw,file=$SRC_DISK,readonly=on" \
+        -drive "if=virtio,format=qcow2,file=$NIX_CACHE_DISK" \
+        -virtfs "local,path=$BUILDER_IMAGE_DIR,mount_tag=output,security_model=mapped-xattr,id=output" \
+        -nic user,model=virtio \
+        -nographic -nodefaults -serial stdio \
+        -no-reboot
+    local QEMU_EXIT=$?
+    set -e
+
+    echo ""
+
+    # Clean up overlay and source disk (keep nix-cache)
+    echo -e "${BLUE}[VM-BUILDER]${NC} Cleaning up seed overlay and source disk..."
+    rm -f "$SEED_OVERLAY" "$SRC_DISK" 2>/dev/null || true
+
+    # Check seed build status
+    if [ -f "$BUILDER_IMAGE_DIR/seed-status" ]; then
+        local STATUS_RAW
+        STATUS_RAW="$(head -n 1 "$BUILDER_IMAGE_DIR/seed-status" 2>/dev/null || true)"
+        if [[ "$STATUS_RAW" =~ ^[0-9]+$ ]] && [ "$STATUS_RAW" -eq 0 ]; then
+            if [ -e "$BUILDER_IMAGE_DIR/nixos.img" ]; then
+                echo -e "${GREEN}[VM-BUILDER]${NC} Builder image built successfully from seed."
+                rm -f "$BUILDER_IMAGE_DIR/seed-status" 2>/dev/null || true
+                return 0
+            fi
+        fi
     fi
 
-    echo -e "${BLUE}[VM-BUILDER]${NC} Building builder VM image (one-time, may take several minutes)..."
+    echo -e "${RED}[VM-BUILDER]${NC} Seed VM failed to produce builder image."
+    echo "  Check the console output above for details."
+    rm -f "$BUILDER_IMAGE_DIR/seed-status" 2>/dev/null || true
+    exit 1
+}
 
-    local tmpdir="$VM_TMP_DIR"
-    mkdir -p "$tmpdir"
+# ── Ensure builder VM image exists ───────────────────────────────────
 
-    if ! (
-        TMPDIR="$tmpdir" nix-build \
-            "$REPO_ROOT/nix/vm-builder.nix" \
-            -o "$BUILDER_IMAGE_DIR" 2>&1
-    ); then
-        echo -e "${RED}[VM-BUILDER]${NC} Failed to build builder VM image."
-        exit 1
+ensure_builder_image() {
+    if [ -e "$BUILDER_IMAGE_DIR/nixos.img" ]; then
+        echo -e "${BLUE}[VM-BUILDER]${NC} Builder image already cached."
+        return 0
     fi
-
-    echo -e "${GREEN}[VM-BUILDER]${NC} Builder image ready at $BUILDER_IMAGE_DIR"
-    echo -e "${GREEN}[VM-BUILDER]${NC} Subsequent builds will not touch host /nix/store."
+    ensure_seed_image
+    build_builder_from_seed
 }
 
 # ── Create source disk ────────────────────────────────────────────────
