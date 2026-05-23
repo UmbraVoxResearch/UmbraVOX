@@ -84,6 +84,7 @@
 #   make test-vm      - Test NixOS development VM (boot + toolchain + source mount)
 #   make test-make-options - Dry-run every declared .PHONY make target
 #   make test-vm-config - Validate VM-local Nix config resolution/guards
+#   make test-bootstrap - Test two-stage seed VM bootstrap behavior
 #   make sanity       - Check Makefile wiring for release smoke/microVM helpers
 #   make evidence     - Run quality and write a publication evidence bundle
 #   make screenshot-local - Capture 8 TUI screenshots locally (no VM, needs tmux)
@@ -96,7 +97,7 @@
 # Prerequisites:
 #   VM mode (default): make vm-image-build (needs qemu + nix)
 
-.PHONY: all build build-haskell run run-local test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report coverage-report coverage-check verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen docs release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance check-vectors release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm test-make-options test-vm-config sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-build-only vm-test vm-test-ephemeral vm-verify vm-run-gui firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot screenshot-local vm-record vm-visual-regression visual-reference-update differential-vectors test-differential-oracle test-differential-full fuzz-differential fuzz-afl differential differential-evidence-check signal-bridge-build test-signal-compat test-signal-bridge-ipc check-isolation tools dep-graph clean cleandb cleanall help vm-seed-build vm-seed-clean
+.PHONY: all build build-haskell run run-local test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report coverage-report coverage-check verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen docs release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance check-vectors release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm test-make-options test-vm-config sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-build-only vm-test vm-test-ephemeral vm-verify vm-run-gui firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot screenshot-local vm-record vm-visual-regression visual-reference-update differential-vectors test-differential-oracle test-differential-full fuzz-differential fuzz-afl differential differential-evidence-check signal-bridge-build test-signal-compat test-signal-bridge-ipc check-isolation tools dep-graph clean cleandb cleanall help vm-seed-build vm-seed-clean test-bootstrap
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -321,6 +322,7 @@ help: # [host-only]
 	@echo "    make check-isolation  Verify build isolation (no host GHC/cabal leak, VM images present)"
 	@echo "    make test-make-options Dry-run every declared .PHONY target"
 	@echo "    make test-vm-config Validate VM-local nix config resolution/guards"
+	@echo "    make test-bootstrap Test two-stage seed VM bootstrap behavior"
 	@echo "    make clean       Remove build artifacts + build/ + dist-newstyle"
 	@echo "    make cleandb     Remove local database"
 	@echo "    make cleanall    Remove everything (build + DB + tools)"
@@ -955,6 +957,11 @@ vm-smoke-arm64:
 test-infra:
 	@echo -e "$(BLUE)[TEST-INFRA]$(NC) Running infrastructure regression suite..."
 	@bash scripts/test-infrastructure.sh
+
+test-bootstrap:
+	@echo -e "$(BLUE)[TEST-BOOTSTRAP]$(NC) Running VM bootstrap regression suite..."
+	@chmod +x scripts/test-vm-bootstrap.sh
+	@bash scripts/test-vm-bootstrap.sh
 
 test-shells:
 	@echo -e "$(BLUE)[TEST-SHELLS]$(NC) Testing nix-shell environments..."

@@ -39,7 +39,7 @@ for target in build test verify quality vm-dev vm-build vm-test vm-test-ephemera
               vm-image-build vm-image-build-host vm-image-clean vm-cache-clean vm-extract \
               vm-screenshot vm-record vm-visual-regression test-infra \
               check-evidence test-shells test-vm test-make-options \
-              test-vm-config \
+              test-vm-config test-bootstrap \
               help clean; do
     if make -n "$target" >/dev/null 2>&1; then
         check "Makefile target '$target' exists" "PASS"
@@ -75,6 +75,12 @@ if bash scripts/test-vm-build-config.sh >/dev/null 2>&1; then
     check "scripts/test-vm-build-config.sh passes" "PASS"
 else
     check "scripts/test-vm-build-config.sh passes" "FAIL"
+fi
+
+if bash scripts/test-vm-bootstrap.sh >/dev/null 2>&1; then
+    check "scripts/test-vm-bootstrap.sh passes" "PASS"
+else
+    check "scripts/test-vm-bootstrap.sh passes" "FAIL"
 fi
 
 echo ""
@@ -277,6 +283,7 @@ for script in scripts/vm-dev-run.sh scripts/vm-smoke-run.sh \
               scripts/test-make-options.sh \
               scripts/test-vm-build-config.sh \
               scripts/test-shells.sh scripts/test-vm.sh \
+              scripts/test-vm-bootstrap.sh \
               scripts/test-infrastructure.sh; do
     if [ -f "$script" ]; then
         if [ -x "$script" ]; then
