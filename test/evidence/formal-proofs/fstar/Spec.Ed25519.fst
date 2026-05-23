@@ -626,7 +626,10 @@ let fmul_comm a b =
       checks for a in {2,3,5}.  Also verifies group order L is prime and
       the Hasse bound on the curve trace.
       Certificate output: test/evidence/formal-proofs/primality-certificate.txt
-      Reproduce: nix-shell --run "runghc scripts/primality-certificate.hs" *)
+      Reproduce: nix-shell --run "runghc scripts/primality-certificate.hs"
+
+    Cross-verified in Coq: Ed25519Prime.v, theorem p25519_prime
+      (Pocklington criterion applied to machine-verified certificate) *)
 assume val prime_is_prime : unit -> Lemma (FStar.Math.Euclid.is_prime prime)
 
 (** Congruence of pow under modular reduction of the base.
