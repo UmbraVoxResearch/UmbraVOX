@@ -33,7 +33,7 @@ BUILDER_IMAGE_DIR="$VM_CACHE_DIR/builder-image"
 OUTPUT_DIR="$VM_CACHE_DIR/builder-output"
 SEED_IMAGE_DIR="$VM_CACHE_DIR/seed-image"
 SEED_VERSION="0.1.0"
-SEED_SHA256="PLACEHOLDER_HASH_UPDATE_AFTER_FIRST_BUILD"
+SEED_SHA256="cad98e2f2c29d4c1bdf7f08c46cebe51ffb5ee60cda7d71efc38f185653f2914"
 SEED_DEFAULT_URL="${UMBRAVOX_SEED_URL:-https://github.com/UmbraVoxResearch/UmbraVOX/releases/download/seed-v${SEED_VERSION}/umbravox-seed.img}"
 
 mkdir -p "$VM_TMP_DIR" "$OUTPUT_DIR"

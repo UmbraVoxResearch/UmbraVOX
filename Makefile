@@ -1341,7 +1341,8 @@ vm-image-build: # [host-only] Build VM image inside a builder VM (M20.5.8)
 
 vm-seed-build: # [maintainer/CI] Build seed VM image for publishing
 	@echo -e "$(BLUE)[VM-SEED]$(NC) Building seed VM image (requires nix-build)..."
-	@mkdir -p build/vm/seed-image build/vm/tmp
+	@mkdir -p build/vm/tmp
+	@rm -rf build/vm/seed-image
 	@if command -v nix-build >/dev/null 2>&1; then \
 		TMPDIR="$$(pwd)/build/vm/tmp" nix-build nix/vm-seed.nix -o build/vm/seed-image; \
 		echo -e "$(GREEN)[VM-SEED]$(NC) Seed image:"; \
