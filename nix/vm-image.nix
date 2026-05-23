@@ -198,6 +198,13 @@ CABALEOF
     # TODO: trim closure — avahi comes from qemu-guest.nix profile,
     # GCC/valgrind/gdb are only needed for C builds, and coq/tlaplus
     # could be split into a separate "proof" image layer.
+    # NOTE: The full dev-toolchain closure requires ~30GB total disk image.
+    # If `make vm-image-build` fails with "cptofs failed", check `df -h /`
+    # — the Nix sandbox needs enough free space on the root filesystem to
+    # create the raw disk image. With 16GB of additional space on top of
+    # the auto-calculated closure, the total image is ~30GB.
+    # To reduce image size, use M20.5.8 (Nix-native build in builder VM)
+    # which eliminates GHC/Coq/F* from the runtime image.
     additionalSpace = "16384M";
     format = "raw";
     partitionTableType = "legacy";
