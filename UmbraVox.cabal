@@ -191,6 +191,7 @@ library
       UmbraVox.Network.DHT.Lookup
       UmbraVox.Network.DHT.Store
       UmbraVox.Network.DHT
+      UmbraVox.Network.Relay
       UmbraVox.Network.Listener
       -- App / Config
       UmbraVox.App.Config
@@ -515,6 +516,7 @@ test-suite umbravox-test
     Test.Chat.Transaction
     Test.Chat.Contacts
     Test.Chat.API
+    Test.Chat.OutboundQueue
     Test.Codegen
     Test.TUI.Types
     Test.TUI.Render
