@@ -61,23 +61,37 @@ ensure_builder_image() {
         return 0
     fi
 
-    echo -e "${BLUE}[VM-BUILDER]${NC} Building builder VM image (lightweight, one-time)..."
+    # The builder VM image must be built once via nix-build. This is the
+    # one unavoidable host /nix/store write — a bootstrap dependency.
+    # After the first build, the image is cached and all subsequent
+    # operations happen inside VMs.
+    echo -e "${YELLOW}[VM-BUILDER]${NC} Builder VM image not found (first-time setup)."
+    echo -e "${YELLOW}[VM-BUILDER]${NC} Building it requires nix-build, which writes to /nix/store."
+    echo -e "${YELLOW}[VM-BUILDER]${NC} This is a one-time bootstrap step."
+    printf "  Proceed with nix-build? (writes to host /nix/store) [y/N] "
+    read -r ans
+    case "$ans" in
+        [Yy]*) ;;
+        *) echo "Aborted. To skip this, provide a pre-built builder image at:";
+           echo "  $BUILDER_IMAGE_DIR/nixos.img";
+           exit 1 ;;
+    esac
 
     # Resolve nix on PATH
     if [ -z "$(command -v nix 2>/dev/null)" ] && [ -x /nix/var/nix/profiles/default/bin/nix ]; then
         export PATH="/nix/var/nix/profiles/default/bin:$PATH"
     fi
 
-    if ! command -v nix >/dev/null 2>&1 && ! command -v nix-build >/dev/null 2>&1; then
-        echo -e "${RED}[VM-BUILDER]${NC} Neither 'nix' nor 'nix-build' is available on PATH."
-        echo "  The builder VM image must be built once with Nix."
-        echo "  Install Nix or add /nix/var/nix/profiles/default/bin to PATH."
+    if ! command -v nix-build >/dev/null 2>&1; then
+        echo -e "${RED}[VM-BUILDER]${NC} nix-build not found."
+        echo "  Install Nix (https://nixos.org/) or add it to PATH."
         exit 1
     fi
 
+    echo -e "${BLUE}[VM-BUILDER]${NC} Building builder VM image (one-time, may take several minutes)..."
+
     local tmpdir="$VM_TMP_DIR"
     mkdir -p "$tmpdir"
-    export TMPDIR="$tmpdir"
 
     if ! (
         TMPDIR="$tmpdir" nix-build \
@@ -89,6 +103,7 @@ ensure_builder_image() {
     fi
 
     echo -e "${GREEN}[VM-BUILDER]${NC} Builder image ready at $BUILDER_IMAGE_DIR"
+    echo -e "${GREEN}[VM-BUILDER]${NC} Subsequent builds will not touch host /nix/store."
 }
 
 # ── Create source disk ────────────────────────────────────────────────
