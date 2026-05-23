@@ -19,10 +19,11 @@ type Overlay struct {
 }
 
 // CreateOverlay creates a new qcow2 COW overlay on top of baseImage.
-// The overlay is created as a temporary file in dir (or os.TempDir if empty).
+// The overlay is created as a temporary file in dir, which must be non-empty
+// to avoid writing temp files to the host OS temp directory.
 func CreateOverlay(baseImage string, dir string) (*Overlay, error) {
 	if dir == "" {
-		dir = os.TempDir()
+		return nil, fmt.Errorf("CreateOverlay: dir must be specified (refusing to use host OS temp dir)")
 	}
 
 	f, err := os.CreateTemp(dir, "umbravox-vm-dev-overlay.*.qcow2")

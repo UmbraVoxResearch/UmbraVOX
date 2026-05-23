@@ -1,2 +1,5 @@
 packages: .
 -- All dependencies are GHC boot libraries, no Hackage needed
+
+-- Keep the cabal package store inside the project to avoid host contamination
+store-dir: dist-newstyle/cabal-store

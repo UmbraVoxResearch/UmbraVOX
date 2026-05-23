@@ -1,6 +1,7 @@
 # Build artifacts
 dist-newstyle/
 build/
+.umbravox-data/
 cabal.project.local
 cabal.project.local~
 *.hi
