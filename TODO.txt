@@ -78,13 +78,20 @@ Note: 221 original assumes → 0 admit() + 30 assume val. 17/24 specs fully prov
   [~] M13.13.6 Verify all F* specs pass in VM (cabal run fstar-verify)
     Note: fstar-verify runs in VM but exits 1 — some specs need higher z3rlimit or more time. Needs investigation.
 
-[ ] M13.11 Coq external verification
-  [ ] M13.11.4.e Universal completeness: denominators 1±d*x1*x2*y1*y2 ≠ 0 for on-curve points.
-    Note: Requires d_nonsquare + field reasoning (Bernstein-Lange 2007 Thm 3.3).
-  [ ] M13.11.4.g Concrete instance reorganization (Ed25519GroupAssoc.v): label coverage categories.
-  [ ] M13.11.4.h Primality of 2^255-19 via PocklingtonRefl (blocked by bignums plugin).
-    Note: Full factorization chain computed (14 levels). All Pocklington conditions
-    machine-verified in Ed25519Prime.v. PocklingtonRefl import fails due to findlib.
+[~] M13.11 Coq external verification
+  [x] M13.11.4.e Universal completeness: denominators 1±d*x1*x2*y1*y2 ≠ 0 for on-curve points.
+    Done: te_denom_plus_nonzero + te_denom_minus_nonzero in Ed25519GroupUniversal.v.
+    Proof follows Bernstein-Lange 2007 Thm 3.3 (d non-square, a=-1 square).
+    Summary section updated to document 16 completeness lemmas.
+  [x] M13.11.4.g Concrete instance reorganization (Ed25519GroupAssoc.v): label coverage categories.
+    Done: Added Category A (base/identity, 37), B (doubling/self-addition, 15),
+    C (general/full non-trivial, 12) headers.  Added inverse-point coverage note.
+  [!] M13.11.4.h Primality of 2^255-19 via PocklingtonRefl (blocked by bignums plugin).
+    Note: All Pocklington conditions machine-verified. Blocker documented in
+    Ed25519Prime.v Section 14: coq-bignums findlib plugin not in Nix coqc load path.
+    Import paths tried: Coqprime.PocklingtonRefl, Coqprime.Pocklington.Pocklington.
+    Self-contained Pocklington theorem (~200 lines of multiplicative order theory)
+    deferred as high-effort.  Workaround: external verification (SAGE/PARI/Primo).
   Current totals: 13 Coq files, 444 Qed, 0 Admitted.
 
 [~] M13.3 Phase 3: Curve arithmetic
@@ -250,10 +257,10 @@ MILESTONE M20: CODEBASE QUALITY + ARCHITECTURAL IMPROVEMENTS (v0.2.1)
     [ ] M20.5.9.f Run `make test-make-options` and `make test-infra`; capture and review failures
     [ ] M20.5.9.g Remove or archive obsolete remote-builder scripts/config examples once no references remain
 
-[~] M20.7 DRY reduction (build/test infra)
-  [ ] M20.7.2 Consolidate logged gate wrappers (test/verify) into shared helper
-  [ ] M20.7.3 Extract release packaging shared shell library (release-package*.sh)
-  [ ] M20.7.4 Extract VM SSH/QEMU helper library for *bsd/illumos setup scripts
+[x] M20.7 DRY reduction (build/test infra)
+  [x] M20.7.2 Consolidate logged gate wrappers (test/verify) into shared helper (3571bba)
+  [x] M20.7.3 Extract release packaging shared shell library (3571bba)
+  [x] M20.7.4 Extract VM SSH/QEMU helper library (a0f3891)
 
 ================================================================================
 MILESTONE M21: STUB IMPLEMENTATION + CODEGEN EXPANSION (v0.3.0-v0.4.0)
@@ -265,13 +272,13 @@ MILESTONE M21: STUB IMPLEMENTATION + CODEGEN EXPANSION (v0.3.0-v0.4.0)
     - .spec file done (932f60b); C generation + FFI wrappers pending
     - Constant-time VRF proof generation
     - Elligator2 hash-to-curve implementation
-  [ ] M21.1.3 codegen/Specs/Ed25519Extended.spec — point ops + Elligator2
+  [x] M21.1.3 codegen/Specs/Ed25519Extended.spec — point ops + Elligator2 (58a33da)
     - Ed25519 scalar_mult_base, point_add, elligator2_hash
     - Extended beyond current sign/verify codegen
   [~] M21.1.5 codegen/Specs/PQWrapper.spec + csrc/generated/pqwrapper.c
     - .spec file done (932f60b); C generation + FFI wrappers pending
     - Serialized KEM ciphertext + AEAD ciphertext + tag
-  [ ] M21.1.7 codegen/Specs/SessionState.spec — constant-time serialization
+  [x] M21.1.7 codegen/Specs/SessionState.spec — verified complete (58a33da)
 
 [~] M21.2 Phase 2 — Protocol stubs (remaining)
   [~] M21.2.2 codegen/Specs/MessageFormat.spec + csrc/generated/messageformat.c
@@ -281,7 +288,7 @@ MILESTONE M21: STUB IMPLEMENTATION + CODEGEN EXPANSION (v0.3.0-v0.4.0)
     - .spec file done (6f3fe1c); C generation + FFI wrappers pending
 
 [~] M21.3 Phase 3 — Chat API + Messaging P2P (remaining)
-  [ ] M21.3.4 codegen/Specs/Dandelion.spec — constant-time routing decision
+  [x] M21.3.4 codegen/Specs/Dandelion.spec — routing + fluff probability (58a33da)
   [ ] M21.3.6 codegen/Specs/NetworkProtocol.spec + csrc/generated/netprotocol.c
 
 Deferred (non-blockchain):
@@ -304,16 +311,16 @@ Eliminates shell fragility, quoting bugs, platform differences.
   [ ] M22.2.6 tools/cmd/vm-netsetup/ — replace vm-network-setup.sh
 
 [ ] M22.3 Priority 2 — Release pipeline (13 scripts → 1 binary)
-  [ ] M22.3.1 tools/cmd/release/ — subcommands: check, sign, package, smoke, lane, gate
+  [x] M22.3.1 tools/cmd/release/ — subcommands: check, sign, package, smoke, lane, gate (a1550c5)
 
 [ ] M22.4 Priority 3 — Test orchestration (5+ scripts)
-  [ ] M22.4.1 tools/cmd/test-runner/ — subcommands: infra, shells, vm, forensics, socks5, signal
+  [x] M22.4.1 tools/cmd/test-runner/ — subcommands (a1550c5)
 
 [ ] M22.5 Priority 4 — Platform setup (5 scripts)
-  [ ] M22.5.1 tools/cmd/vm-platform/ — FreeBSD, OpenBSD, NetBSD, DragonFly, illumos
+  [x] M22.5.1 tools/cmd/vm-platform/ (a1550c5)
 
 [ ] M22.6 Priority 5 — TUI tools (4 scripts)
-  [ ] M22.6.1 tools/cmd/tui-tool/ — screenshot, capture, record, regression
+  [x] M22.6.1 tools/cmd/tui-tool/ — screenshot, capture, record, regression (a1550c5)
 
 Keep as shell (too simple): nix-flake.sh, with-suite-lock.sh
 
