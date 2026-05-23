@@ -96,7 +96,7 @@
 # Prerequisites:
 #   VM mode (default): make vm-image-build (needs qemu + nix)
 
-.PHONY: all build build-haskell run run-local test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report coverage-report coverage-check verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen docs release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance check-vectors release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm test-make-options test-vm-config sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-build-only vm-test vm-test-ephemeral vm-verify vm-run-gui firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot screenshot-local vm-record vm-visual-regression visual-reference-update differential-vectors test-differential-oracle test-differential-full fuzz-differential fuzz-afl differential differential-evidence-check signal-bridge-build test-signal-compat test-signal-bridge-ipc check-isolation tools dep-graph clean cleandb cleanall help
+.PHONY: all build build-haskell run run-local test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report coverage-report coverage-check verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen docs release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance check-vectors release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm test-make-options test-vm-config sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-build-only vm-test vm-test-ephemeral vm-verify vm-run-gui firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot screenshot-local vm-record vm-visual-regression visual-reference-update differential-vectors test-differential-oracle test-differential-full fuzz-differential fuzz-afl differential differential-evidence-check signal-bridge-build test-signal-compat test-signal-bridge-ipc check-isolation tools dep-graph clean cleandb cleanall help vm-seed-build vm-seed-clean
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -294,6 +294,8 @@ help: # [host-only]
 	@echo "    make vm-smoke       Run full pipeline inside isolated QEMU VM"
 	@echo "    make vm-image-build Build VM image inside a builder VM (no host nix store)"
 	@echo "    make vm-image-build-host Build VM image on host (uses host nix store, ~30GB)"
+	@echo "    make vm-seed-build  Build seed VM image for publishing (maintainer/CI)"
+	@echo "    make vm-seed-clean  Remove cached seed image"
 	@echo "    make vm-image-clean Remove the cached VM image"
 	@echo "    make image-clean    Alias for vm-image-clean"
 	@echo "    make firecracker-smoke  Run pipeline inside Firecracker VM"
@@ -1323,6 +1325,24 @@ vm-image-build: # [host-only] Build VM image inside a builder VM (M20.5.8)
 		echo "    make vm-image-build"; \
 		exit 1; \
 	fi
+
+vm-seed-build: # [maintainer/CI] Build seed VM image for publishing
+	@echo -e "$(BLUE)[VM-SEED]$(NC) Building seed VM image (requires nix-build)..."
+	@mkdir -p build/vm/seed-image build/vm/tmp
+	@if command -v nix-build >/dev/null 2>&1; then \
+		TMPDIR="$$(pwd)/build/vm/tmp" nix-build nix/vm-seed.nix -o build/vm/seed-image; \
+		echo -e "$(GREEN)[VM-SEED]$(NC) Seed image:"; \
+		ls -lh build/vm/seed-image/nixos.img; \
+		echo -e "$(BLUE)[VM-SEED]$(NC) SHA-256:"; \
+		sha256sum build/vm/seed-image/nixos.img; \
+	else \
+		echo -e "$(RED)[VM-SEED]$(NC) nix-build required."; exit 1; \
+	fi
+
+vm-seed-clean:
+	@echo -e "$(BLUE)[VM-SEED]$(NC) Removing cached seed image..."
+	@rm -rf build/vm/seed-image
+	@echo -e "$(GREEN)[VM-SEED]$(NC) Done."
 
 vm-image-build-host: # [host-only] nix-build produces VM image directly on host
 ifndef I_KNOW_THIS_TOUCHES_HOST
