@@ -29,6 +29,7 @@
 #   make soak         - Run the long soak suite and write an artifact report
 #   make mcdc-report  - Build with HPC coverage and emit per-module expression report
 #   make coverage-report - Build with HPC and generate HTML coverage report under build/coverage/
+#   make coverage-check - Check per-module coverage against tier targets (doc/MCDC-TARGETS.md)
 #   make verify       - Run F* formal verification (17 modules)
 #   make verify-haskell - Opt-in bridge wrapper for Haskell verification orchestration
 #   make complexity   - Check cyclomatic complexity (<= 8 for all functions)
@@ -50,6 +51,7 @@
 #   make vm-build     - Build inside NixOS VM (cabal build all)
 #   make vm-build-only - Build inside VM with auto image-build (host needs only QEMU+Nix)
 #   make vm-test      - Test inside NixOS VM (cabal test required)
+#   make vm-test-ephemeral - Build fresh VM image, run tests, discard image (M20.5.7)
 #   make vm-verify    - F* verification inside NixOS VM
 #   make vm-run-gui   - Boot dev VM with graphical QEMU window (VGA display)
 #   make release-linux - Build a portable Linux x86_64 terminal bundle
@@ -94,7 +96,7 @@
 # Prerequisites:
 #   VM mode (default): make vm-image-build (needs qemu + nix)
 
-.PHONY: all build build-haskell run run-local test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report coverage-report verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen docs release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance check-vectors release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm test-make-options test-vm-config sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-build-only vm-test vm-verify vm-run-gui firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot screenshot-local vm-record vm-visual-regression visual-reference-update differential-vectors test-differential-oracle test-differential-full fuzz-differential fuzz-afl differential differential-evidence-check signal-bridge-build test-signal-compat test-signal-bridge-ipc check-isolation tools dep-graph clean cleandb cleanall help
+.PHONY: all build build-haskell run run-local test test-haskell test-core test-core-crypto test-core-network test-core-chat test-core-tui test-core-tools test-tcp test-fault test-recovery test-tui-sim test-integrity test-mdns test-deferred test-differential soak mcdc-report coverage-report coverage-check verify verify-haskell complexity quality evidence check-evidence assurance-fast assurance lint license license-fix release-compliance release-sbom release-license-bundle format-check codegen docs release release-linux release-appimage release-smoke-linux release-smoke-appimage release-smoke-qemu release-smoke-qemu-profile release-smoke-firecracker release-smoke-firecracker-pinned release-smoke-qemu-nix platform-lane-qemu platform-lane-firecracker platform-smoke-qemu-profile platform-sanity release-lane-qemu release-lane-firecracker release-lane-readiness release-lane-readiness-haskell release-gate-assurance check-vectors release-windows-cli release-macos-terminal release-bsd-terminal release-freedos release-source release-freebsd release-openbsd release-netbsd release-illumos release-linux-arm64 test-infra test-shells test-vm test-make-options test-vm-config sanity vm-smoke vm-image-build vm-image-clean vm-cache-clean vm-extract image-clean vm-dev vm-build vm-build-only vm-test vm-test-ephemeral vm-verify vm-run-gui firecracker-smoke firecracker-image-build release-sbom-generate release-license-bundle-generate release-license-check release-linking release-manifest release-checksums test-offline-parity vm-integration-test vm-integration-test-dual-lan verify-traffic vm-forensics vm-smoke-freebsd vm-smoke-illumos vm-smoke-openbsd vm-smoke-netbsd vm-smoke-dragonfly vm-smoke-arm64 vm-socks5-test vm-screenshot screenshot-local vm-record vm-visual-regression visual-reference-update differential-vectors test-differential-oracle test-differential-full fuzz-differential fuzz-afl differential differential-evidence-check signal-bridge-build test-signal-compat test-signal-bridge-ipc check-isolation tools dep-graph clean cleandb cleanall help
 .DEFAULT_GOAL := all
 
 # --------------------------------------------------------------------------
@@ -225,6 +227,7 @@ help: # [host-only]
 	@echo "    make soak        Run long soak suite and write artifact report"
 	@echo "    make mcdc-report Build with HPC coverage and emit per-module expression report"
 	@echo "    make coverage-report Build with HPC and generate HTML coverage report under build/coverage/"
+	@echo "    make coverage-check Check per-module coverage against tier targets (doc/MCDC-TARGETS.md)"
 	@echo "    make signal-bridge-build Build Signal bridge plugin (M19.6.3)"
 	@echo "    make test-signal-bridge-ipc Run Signal bridge IPC subprocess smoke test"
 	@echo "    make codegen     Generate Haskell + C + FFI from .spec files"
@@ -283,6 +286,7 @@ help: # [host-only]
 	@echo "    make vm-build       Build inside VM (cabal build all)"
 	@echo "    make vm-build-only  Build inside VM, auto-build image first (host needs only QEMU+Nix)"
 	@echo "    make vm-test        Test inside VM (cabal test required)"
+	@echo "    make vm-test-ephemeral Build fresh VM image, run tests, discard image"
 	@echo "    make vm-verify      F* verification inside VM"
 	@echo "    make vm-run-gui     Boot dev VM with graphical QEMU window (TUI on VGA console)"
 	@echo ""
@@ -516,6 +520,19 @@ coverage-report:
 		$$([ -n "$$mix_test" ] && echo "--hpcdir=$$mix_test") && \
 	echo -e "$(GREEN)[COVERAGE]$(NC) Summary: build/coverage/coverage-summary.txt" && \
 	echo -e "$(GREEN)[COVERAGE]$(NC) HTML: build/coverage/hpc_index.html")
+
+# --------------------------------------------------------------------------
+# Coverage Target Check (M16.2-4)
+# --------------------------------------------------------------------------
+#
+# Parses the HPC coverage summary and compares each module's expression
+# coverage against the tier targets in doc/MCDC-TARGETS.md.
+# Fails if any module is below its target.
+# Requires: make coverage-report (to generate build/coverage/coverage-summary.txt)
+
+coverage-check:
+	@echo -e "$(BLUE)[COVERAGE-CHECK]$(NC) Checking per-module coverage against tier targets..."
+	@bash scripts/coverage-check.sh build/coverage/coverage-summary.txt
 
 # --------------------------------------------------------------------------
 # F* Formal Verification
@@ -1226,6 +1243,51 @@ vm-verify:
 	@echo -e "$(BLUE)[VM-VERIFY]$(NC) Running F* verification inside NixOS VM..."
 	@chmod +x ./scripts/vm-dev-run.sh
 	@./scripts/vm-dev-run.sh exec "cabal build all 2>&1 && cabal run fstar-verify 2>&1"
+
+vm-test-ephemeral: # Build fresh VM image in temp dir, run tests, discard image
+	@echo -e "$(BLUE)[VM-EPHEMERAL]$(NC) Building ephemeral VM image for testing..."
+	@mkdir -p build/vm-ephemeral build/vm-ephemeral/tmp build/vm-ephemeral/tmp/sandbox
+	@CFG_SCRIPT="./scripts/nix-vm-build-config.sh"; \
+	if [ ! -x "$$CFG_SCRIPT" ] && [ -f "$$CFG_SCRIPT" ]; then chmod +x "$$CFG_SCRIPT"; fi; \
+	if [ -z "$$(command -v nix 2>/dev/null)" ] && [ -x /nix/var/nix/profiles/default/bin/nix ]; then \
+		export PATH="/nix/var/nix/profiles/default/bin:$$PATH"; \
+	fi; \
+	if ! command -v nix >/dev/null 2>&1 && ! command -v nix-build >/dev/null 2>&1; then \
+		echo -e "$(RED)[VM-EPHEMERAL]$(NC) Neither 'nix' nor 'nix-build' is available on PATH."; \
+		exit 1; \
+	fi; \
+	CFG_EXPORTS="$$( "$$CFG_SCRIPT" shell )" || exit 1; \
+	eval "$$CFG_EXPORTS"; \
+	echo -e "$(BLUE)[NIX-VM-CONFIG]$(NC) source=$$UMBRAVOX_NIX_CONFIG_SOURCE local_only=$$UMBRAVOX_NIX_LOCAL_ONLY"; \
+	TMPDIR="$$(pwd)/build/vm-ephemeral/tmp"; export TMPDIR; \
+	echo -e "$(BLUE)[VM-EPHEMERAL]$(NC) Building via nix into ephemeral path..."; \
+	if ! ( \
+		nix --extra-experimental-features "nix-command flakes" \
+			--option build-dir "$$TMPDIR" \
+			--option sandbox-build-dir "$$UMBRAVOX_NIX_SANDBOX_BUILD_DIR" \
+			build -L .#vm-image -o build/vm-ephemeral/image || \
+		nix-build --option build-dir "$$TMPDIR" \
+			--option sandbox-build-dir "$$UMBRAVOX_NIX_SANDBOX_BUILD_DIR" \
+			nix/vm-image.nix -A qemu -o build/vm-ephemeral/image \
+	); then \
+		echo -e "$(RED)[VM-EPHEMERAL]$(NC) Ephemeral image build failed."; \
+		rm -rf build/vm-ephemeral; \
+		exit 1; \
+	fi; \
+	echo -e "$(GREEN)[VM-EPHEMERAL]$(NC) Ephemeral image built. Running tests..."; \
+	EPHEMERAL_STATUS=0; \
+	VM_IMAGE_PATH=build/vm-ephemeral/image \
+		./scripts/vm-dev-run.sh exec \
+		"cabal build all --enable-tests 2>&1 && cabal test umbravox-test --test-options='required' 2>&1" \
+		|| EPHEMERAL_STATUS=$$?; \
+	echo -e "$(BLUE)[VM-EPHEMERAL]$(NC) Cleaning up ephemeral image..."; \
+	rm -rf build/vm-ephemeral; \
+	if [ "$$EPHEMERAL_STATUS" -eq 0 ]; then \
+		echo -e "$(GREEN)[VM-EPHEMERAL]$(NC) Ephemeral VM tests passed."; \
+	else \
+		echo -e "$(RED)[VM-EPHEMERAL]$(NC) Ephemeral VM tests failed (exit $$EPHEMERAL_STATUS)."; \
+		exit $$EPHEMERAL_STATUS; \
+	fi
 
 # --------------------------------------------------------------------------
 # VM Isolated Smoke Testing

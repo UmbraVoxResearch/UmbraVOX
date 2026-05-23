@@ -228,16 +228,20 @@ MILESTONE M20: CODEBASE QUALITY + ARCHITECTURAL IMPROVEMENTS (v0.2.1)
   [ ] M20.4.1 Complete M15.3.2 SecureBytes migration for secret key fields
   [ ] M20.4.5 Upgrade export KDF from HKDF-iteration to memory-hard KDF (Argon2id/scrypt)
 
-[ ] M20.5 VM isolation completion (remaining)
-  [~] M20.5.4 VM source export semantics
-    Note: vm-dev-run now exports current worktree (not git archive HEAD) with exclusion filters.
-    Note: vm-dev and smoke copy paths now use `.vm-source-ready` marker for idempotent workspace sync.
-    Note: vm-dev exec mode now writes `/output/vm-exec-status`; host runner exits with guest command status.
-  [~] M20.5.5 Fail closed on unenforced VM network ALLOW rules
-    Note: vm-network-policy.sh now blocks VM boot when ALLOW rules are present without enforcement.
-  [ ] M20.5.7 Ephemeral test VM images — build fresh image per test run, destroy after
-    Note: Test pipeline should not overwrite persistent dev image. Build ephemeral image
-    in a temp path, run tests, discard. Keeps dev image stable while testing on clean state.
+[~] M20.5 VM isolation completion (remaining)
+  [x] M20.5.4 VM source export semantics
+    Done: vm-dev-run exports current worktree (not git archive HEAD) with exclusion filters.
+    `.vm-source-ready` marker provides idempotent workspace sync.
+    Exec mode writes `/output/vm-exec-status`; host runner exits with guest command status.
+    VM_IMAGE_PATH env var allows override for ephemeral images.
+  [x] M20.5.5 Fail closed on unenforced VM network ALLOW rules
+    Done: vm-network-policy.sh blocks VM boot (returns 1) when ALLOW rules are present
+    without enforceable QEMU translation. Default vm-network-policy.conf has no uncommented
+    ALLOW rules (deny-all). test-infrastructure.sh validates this.
+  [x] M20.5.7 Ephemeral test VM images — build fresh image per test run, destroy after
+    Done: `make vm-test-ephemeral` builds a fresh VM image in build/vm-ephemeral/,
+    runs tests inside the ephemeral VM, then deletes the image. Persistent dev image
+    at build/vm/image is never touched. vm-dev-run.sh accepts VM_IMAGE_PATH env override.
   [ ] M20.5.8 Nix-native Haskell build inside builder VM
     Note: Current approach runs `nix build` on the host, touching the host nix store.
     All Nix evaluation AND compilation must happen inside a VM:
@@ -248,14 +252,26 @@ MILESTONE M20: CODEBASE QUALITY + ARCHITECTURAL IMPROVEMENTS (v0.2.1)
     This keeps the host nix store untouched (only qemu + basic nix needed on host).
     Runtime VM image shrinks to ~1-2GB (no GHC/cabal/GCC in image).
     Dev VM (make vm-dev) keeps full toolchain for interactive work.
-  [ ] M20.5.9 Local-only VM isolation hardening execution checklist (agent-owned)
-    [ ] M20.5.9.a Replace remote-builder config path with local VM nix config (`nix/vm-build.env` + resolver script)
-    [ ] M20.5.9.b Remove host compile/test escape-hatch behavior from default Make targets (run-local guarded fail)
-    [ ] M20.5.9.c Wire vm-image/signal-image builds to print effective config variables at runtime
-    [ ] M20.5.9.d Replace remote-builder regression tests with VM-local config tests
-    [ ] M20.5.9.e Remove stale remote-builder docs/references and verify help output
-    [ ] M20.5.9.f Run `make test-make-options` and `make test-infra`; capture and review failures
-    [ ] M20.5.9.g Remove or archive obsolete remote-builder scripts/config examples once no references remain
+  [x] M20.5.9 Local-only VM isolation hardening execution checklist (agent-owned)
+    [x] M20.5.9.a Replace remote-builder config path with local VM nix config (`nix/vm-build.env` + resolver script)
+      Done: nix/vm-build.env + scripts/nix-vm-build-config.sh with fail-closed guards.
+    [x] M20.5.9.b Remove host compile/test escape-hatch behavior from default Make targets (run-local guarded fail)
+      Done: `run-local` exits 1 with message directing to VM targets.
+    [x] M20.5.9.c Wire vm-image/signal-image builds to print effective config variables at runtime
+      Done: Both vm-image-build and vm-signal-server-build print NIX-VM-CONFIG source/file/build_dir/local_only.
+    [x] M20.5.9.d Replace remote-builder regression tests with VM-local config tests
+      Done: scripts/test-vm-build-config.sh tests file-only, env override, env-only, missing-config,
+      local-only guard, remote-builder rejection, empty build dir.
+    [x] M20.5.9.e Remove stale remote-builder docs/references and verify help output
+      Done: No stale remote-builder scripts or docs remain. AGENTS.md reference documents the hard guard
+      (intentional). Help output shows VM-first workflow only.
+    [x] M20.5.9.f Run `make test-make-options` and `make test-infra`; capture and review failures
+      Done: test-infrastructure.sh validates all critical targets including vm-test-ephemeral.
+      test-vm-build-config.sh covers config resolution. test-make-options.sh dry-runs all .PHONY targets.
+    [x] M20.5.9.g Remove or archive obsolete remote-builder scripts/config examples once no references remain
+      Done: No obsolete remote-builder scripts or config examples exist. Only references are:
+      AGENTS.md (documents hard guard), nix-vm-build-config.sh (enforces rejection),
+      test-vm-build-config.sh (tests rejection). All intentional.
 
 [x] M20.7 DRY reduction (build/test infra)
   [x] M20.7.2 Consolidate logged gate wrappers (test/verify) into shared helper (3571bba)

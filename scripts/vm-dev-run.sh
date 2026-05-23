@@ -24,7 +24,7 @@ NC='\033[0m'
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VM_CACHE_DIR="$REPO_ROOT/build/vm"
-VM_IMAGE_PATH="$VM_CACHE_DIR/image"
+VM_IMAGE_PATH="${VM_IMAGE_PATH:-$VM_CACHE_DIR/image}"
 VM_TMP_DIR="$VM_CACHE_DIR/tmp"
 
 # Keep transient VM artifacts inside the repo build tree to avoid /tmp/rootfs pressure.

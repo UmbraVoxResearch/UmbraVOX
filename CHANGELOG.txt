@@ -23,6 +23,7 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - M20.3 Module cleanup: consensus/economics stubs gated behind cabal flag, transport stubs documented, all test files wired, 7 attic docs archived
 - M20.4 Security hardening (partial): 36 M-series TODOs audited (M20.4.2), VM agent trust boundary hardened (M20.4.3), IPC decode hardened with 64 KiB guard + telemetry (M20.4.4), config hash pinning fail-closed (M20.4.6)
 - M20.5 VM isolation (partial): all Makefile test targets VM-default (M20.5.1), flake.nix VM-only devShell (M20.5.2), smoke/dev boot split (M20.5.3), VM cache/output policy (M20.5.6), README/QUICKSTART updated for vm-first (M20.5.7), legacy provider manifests moved to plugins/ (M20.5.8)
+- M20.5 VM isolation (continued): source export semantics verified (M20.5.4), ALLOW rule fail-closed enforcement verified (M20.5.5), ephemeral test VM target added (M20.5.7), local-only hardening checklist complete (M20.5.9.a-g)
 - M20.6 Coq proofs: ED-008e universal completeness PROVED (62 Qed), 475 Qed total across 14 files
 - M20.7 DRY reduction (partial): run_named_suite macro added to Makefile (M20.7.1)
 
