@@ -134,11 +134,17 @@ ensure_builder_image
 # Step 2: Create source disk
 SRC_DISK="$(create_source_disk)"
 
-# Step 3: Create scratch disk (60GB, thin-provisioned qcow2)
-SCRATCH_DISK="$(mktemp "$VM_TMP_DIR/umbravox-builder-scratch.XXXXXX.qcow2")"
-rm -f "$SCRATCH_DISK"
-echo -e "${BLUE}[VM-BUILDER]${NC} Creating 60GB scratch disk (thin-provisioned)..."
-qemu-img create -f qcow2 "$SCRATCH_DISK" 60G >/dev/null 2>&1
+# Step 3: Use persistent nix store cache disk (survives across builds)
+# This avoids re-downloading ~6GB of GHC/Coq/F*/Z3 on every build and
+# enables fully offline rebuilds after the first successful build.
+NIX_CACHE_DISK="$VM_CACHE_DIR/nix-cache.qcow2"
+if [ ! -f "$NIX_CACHE_DISK" ]; then
+    echo -e "${BLUE}[VM-BUILDER]${NC} Creating 60GB nix store cache disk (first build, thin-provisioned)..."
+    qemu-img create -f qcow2 "$NIX_CACHE_DISK" 60G >/dev/null 2>&1
+else
+    echo -e "${BLUE}[VM-BUILDER]${NC} Reusing nix store cache disk (offline build possible)."
+fi
+SCRATCH_DISK="$NIX_CACHE_DISK"
 
 # Step 4: Create COW overlay on the builder image
 BOOT_IMG="$(readlink -f "$BUILDER_IMAGE_DIR/nixos.img")"
@@ -183,9 +189,11 @@ set -e
 
 echo ""
 
-# Step 8: Cleanup temporary files
-echo -e "${BLUE}[VM-BUILDER]${NC} Cleaning up scratch disk and overlays..."
-rm -f "$OVERLAY" "$SRC_DISK" "$SCRATCH_DISK" 2>/dev/null || true
+# Step 8: Cleanup temporary files (keep nix cache disk for offline rebuilds)
+echo -e "${BLUE}[VM-BUILDER]${NC} Cleaning up overlays and source disk (keeping nix cache)..."
+rm -f "$OVERLAY" "$SRC_DISK" 2>/dev/null || true
+# NIX_CACHE_DISK is NOT deleted — it persists at build/vm/nix-cache.qcow2
+# for offline rebuilds. Use `make vm-cache-clean` to delete it.
 
 # Step 9: Check build status
 BUILD_STATUS=1
