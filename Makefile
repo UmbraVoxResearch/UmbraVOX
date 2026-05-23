@@ -292,7 +292,8 @@ help: # [host-only]
 	@echo ""
 	@echo "  VM Smoke (isolated build/test) [VM-only]:"
 	@echo "    make vm-smoke       Run full pipeline inside isolated QEMU VM"
-	@echo "    make vm-image-build Build and cache the NixOS VM image (local nix build)"
+	@echo "    make vm-image-build Build VM image inside a builder VM (no host nix store)"
+	@echo "    make vm-image-build-host Build VM image on host (uses host nix store, ~30GB)"
 	@echo "    make vm-image-clean Remove the cached VM image"
 	@echo "    make image-clean    Alias for vm-image-clean"
 	@echo "    make firecracker-smoke  Run pipeline inside Firecracker VM"
@@ -1297,8 +1298,17 @@ vm-smoke:
 	@echo -e "$(BLUE)[VM-SMOKE]$(NC) Running isolated VM build/test/release pipeline..."
 	$(call vm_or_local,cabal run umbravox -- vm-smoke)
 
-vm-image-build: # [host-only] nix-build produces VM image; no compilers on host
-	@echo -e "$(BLUE)[VM-IMAGE]$(NC) Building/caching NixOS VM image..."
+vm-image-build: # [host-only] Build VM image inside a builder VM (M20.5.8)
+	@echo -e "$(BLUE)[VM-IMAGE]$(NC) Building NixOS VM image inside builder VM..."
+	@mkdir -p build/vm build/vm/tmp build/vm/tmp/sandbox
+	@chmod +x ./scripts/vm-image-builder.sh
+	@./scripts/vm-image-builder.sh
+
+vm-image-build-host: # [host-only] nix-build produces VM image directly on host
+	@echo -e "$(YELLOW)[VM-IMAGE]$(NC) WARNING: Building VM image on the host."
+	@echo -e "$(YELLOW)[VM-IMAGE]$(NC) This touches the host /nix/store and uses ~30GB of disk."
+	@echo -e "$(YELLOW)[VM-IMAGE]$(NC) Prefer 'make vm-image-build' (builder VM) instead."
+	@echo -e "$(BLUE)[VM-IMAGE]$(NC) Building/caching NixOS VM image on host..."
 	@mkdir -p build/vm build/vm/tmp build/vm/tmp/sandbox
 	@CFG_SCRIPT="./scripts/nix-vm-build-config.sh"; \
 	if [ ! -x "$$CFG_SCRIPT" ] && [ -f "$$CFG_SCRIPT" ]; then chmod +x "$$CFG_SCRIPT"; fi; \
