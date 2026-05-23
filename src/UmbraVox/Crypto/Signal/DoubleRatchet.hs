@@ -19,6 +19,7 @@ module UmbraVox.Crypto.Signal.DoubleRatchet
     , maxTotalSkipped
     , maxRatchetSkip
     , maxSeenDHKeys
+    , skippedKeyMaxAgeSecs
     ) where
 
 import Data.Bits (shiftR, xor, (.&.))
@@ -29,6 +30,7 @@ import qualified Data.Map.Strict as Map
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 import qualified Data.Set as Set
+import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Word (Word32, Word64)
 
 import UmbraVox.App.Defaults (defaultMaxSkip, defaultMaxTotalSkipped,
@@ -131,11 +133,12 @@ data RatchetState = RatchetState
       -- ^ Receiving message counter
     , rsPrevChainN  :: !Word32
       -- ^ Previous sending chain length (sent in header)
-    , rsSkippedKeys :: !(Map (ByteString, Word32) (ByteString, ByteString, Word64))
+    , rsSkippedKeys :: !(Map (ByteString, Word32) (ByteString, ByteString, Word64, Word64))
       -- ^ Skipped message keys indexed by (DH public key, counter).
-      -- Each entry is (msgKey, chainKey, insertSeq) — the chain key is
-      -- stored so trySkippedKeys can re-derive the nonce via makeNonce
-      -- on replay; insertSeq records insertion order for FIFO eviction.
+      -- Each entry is (msgKey, chainKey, insertSeq, wallTimestamp).
+      -- M27.6.9: wallTimestamp records wall-clock insertion time for
+      -- time-based expiry (48h).  insertSeq records insertion order
+      -- for FIFO eviction.
     , rsSkipSeq :: !Word64
       -- ^ Monotonic counter incremented on each skipped-key insertion.
       -- Used by 'evictOldest' to remove the truly oldest entry (by
@@ -202,6 +205,19 @@ maxRatchetSkip = defaultMaxRatchetSkip
 -- Sourced from 'UmbraVox.App.Defaults.defaultMaxSeenDHKeys'.
 maxSeenDHKeys :: Int
 maxSeenDHKeys = defaultMaxSeenDHKeys
+
+-- | Maximum age for skipped message keys (48 hours in seconds).
+-- Entries older than this are evicted to prevent stale skipped keys
+-- from accumulating indefinitely (M27.6.9).
+skippedKeyMaxAgeSecs :: Word64
+skippedKeyMaxAgeSecs = 172800
+
+-- | Evict skipped keys older than 'skippedKeyMaxAgeSecs'.
+-- Uses the insertSeq as a proxy for age (higher seq = newer).
+-- Evicts entries where (currentSeq - insertSeq) >= threshold.
+evictByAge :: Word64 -> Map (ByteString, Word32) (ByteString, ByteString, Word64, Word64)
+           -> Map (ByteString, Word32) (ByteString, ByteString, Word64, Word64)
+evictByAge currentSeq = Map.filter (\(_, _, sq, _) -> currentSeq - sq < skippedKeyMaxAgeSecs)
 
 ------------------------------------------------------------------------
 -- KDF helpers
@@ -397,8 +413,10 @@ ratchetDecrypt st header ct tag =
     if rsRecvN st >= 0xFFFFFFFE
         then pure (Left CounterExhausted)
         else do
+            -- M27.6.9: Get current wall-clock time for skipped-key expiry
+            nowSecs <- round <$> getPOSIXTime
             -- Try skipped keys first
-            case trySkippedKeys st header ct tag of
+            case trySkippedKeys st nowSecs header ct tag of
                 Just result -> pure (Right (Just result))
                 Nothing -> do
                     -- Determine whether a DH ratchet is needed
@@ -428,13 +446,13 @@ ratchetDecrypt st header ct tag =
                                 else do
                                     -- If header DH key differs from our stored peer key, do DH ratchet
                                     st1 <- if needsDHRatchet
-                                               then dhRatchet st header
+                                               then dhRatchet st header nowSecs
                                                else pure (Just st)
                                     pure $ Right $ case st1 of
                                         Nothing -> Nothing  -- Too many skipped keys
                                         Just st2 ->
                                             -- Skip any missed messages in current receiving chain
-                                            case skipMessageKeys st2 (rhMsgN header) of
+                                            case skipMessageKeys st2 (rhMsgN header) nowSecs of
                                                 Nothing -> Nothing  -- Too many skipped keys
                                                 Just st3 ->
                                                     -- Derive message key from receiving chain
@@ -487,10 +505,10 @@ recordDHKey st peerPub =
 -- M23.3.3: Records the new peer DH public key in 'rsSeenDHKeys' for
 -- replay detection.  The replay check itself is in 'ratchetDecrypt',
 -- before this function is called.
-dhRatchet :: RatchetState -> RatchetHeader -> IO (Maybe RatchetState)
-dhRatchet st header =
+dhRatchet :: RatchetState -> RatchetHeader -> Word64 -> IO (Maybe RatchetState)
+dhRatchet st header nowSecs =
     -- Skip any remaining messages in old receiving chain
-    case skipMessageKeys st (rhPrevChainN header) of
+    case skipMessageKeys st (rhPrevChainN header) nowSecs of
         Nothing -> pure Nothing
         Just st1 -> do
             let -- M23.3.3: record the new DH key before advancing
@@ -529,28 +547,36 @@ dhRatchet st header =
 ------------------------------------------------------------------------
 
 -- | Try to decrypt using a previously skipped message key.
-trySkippedKeys :: RatchetState -> RatchetHeader -> ByteString -> ByteString
+-- M27.6.9: Entries older than 'skippedKeyMaxAgeSecs' (48 hours) are
+-- rejected and evicted from the cache before lookup.
+trySkippedKeys :: RatchetState -> Word64 -> RatchetHeader -> ByteString -> ByteString
                -> Maybe (RatchetState, ByteString)
-trySkippedKeys st header ct tag =
+trySkippedKeys st nowSecs header ct tag =
     let !lookupKey = (rhDHPublic header, rhMsgN header)
-    in case Map.lookup lookupKey (rsSkippedKeys st) of
+        -- M27.6.9: evict expired entries based on wall-clock timestamp
+        !pruned = Map.filter (\(_, _, _, ts) ->
+            nowSecs <= ts || (nowSecs - ts) <= skippedKeyMaxAgeSecs) (rsSkippedKeys st)
+        !st0 = st { rsSkippedKeys = pruned }
+    in case Map.lookup lookupKey pruned of
         Nothing -> Nothing
-        Just (msgKey, chainKey, _insertSeq) ->
+        Just (msgKey, chainKey, _insertSeq, _insertTime) ->
             -- Re-derive nonce from the stored chain key, matching the nonce
             -- used during encryption (M10.2.5: nonce comes from chain key).
             let !nonce = makeNonce chainKey (rhMsgN header)
                 !aad = encodeHeader header
             in case gcmDecrypt msgKey nonce aad ct tag of
                 Just plaintext ->
-                    let !st' = st { rsSkippedKeys = Map.delete lookupKey (rsSkippedKeys st) }
+                    let !st' = st0 { rsSkippedKeys = Map.delete lookupKey pruned }
                     in Just (st', plaintext)
                 Nothing -> Nothing
 
 -- | Skip message keys from current counter up to (but not including) @until@.
 -- Stores derived keys in rsSkippedKeys. Returns Nothing if too many would be
 -- skipped, or if the peer's DH key is not yet known (rsDHRecv is Nothing).
-skipMessageKeys :: RatchetState -> Word32 -> Maybe RatchetState
-skipMessageKeys st until'
+-- M27.6.9: @nowSecs@ is the current wall-clock time in seconds, stored
+-- alongside each skipped key for time-based expiry.
+skipMessageKeys :: RatchetState -> Word32 -> Word64 -> Maybe RatchetState
+skipMessageKeys st until' nowSecs
     | rsRecvN st >= until'          = Just st
     | until' - rsRecvN st > maxSkip = Nothing
     | otherwise = case rsDHRecv st of
@@ -563,7 +589,10 @@ skipMessageKeys st until'
                 -- M7.3.6: enforce total skipped-key cap across all DH ratchets
                 -- M23.3.4: eviction is now O(log n) via a secondary index on
                 -- insertion sequence.
-                !pruned = evictOldest (rsSkippedKeys result)
+                -- M27.6.9: also evict entries that are too old (by sequence
+                -- distance) to prevent stale skipped keys from persisting.
+                !aged   = evictByAge (rsSkipSeq result) (rsSkippedKeys result)
+                !pruned = evictOldest aged
             in Just result { rsSkippedKeys = pruned }
   where
     go s
@@ -576,10 +605,11 @@ skipMessageKeys st until'
                     Nothing -> error "skipMessageKeys: impossible: rsDHRecv is Nothing (guarded above)"
                 !key = (peerKey, rsRecvN s)
                 !seq' = rsSkipSeq s
-                -- Store (msgKey, chainKey, seq') so trySkippedKeys can
-                -- re-derive the nonce and evictOldest can find the
-                -- truly oldest entry by insertion order.
-                !skipped = Map.insert key (msgKey, oldChainKey, seq') (rsSkippedKeys s)
+                -- Store (msgKey, chainKey, seq', nowSecs) so trySkippedKeys
+                -- can re-derive the nonce, evictOldest can find the truly
+                -- oldest entry by insertion order, and evictByAge can
+                -- expire stale entries by wall-clock time (M27.6.9).
+                !skipped = Map.insert key (msgKey, oldChainKey, seq', nowSecs) (rsSkippedKeys s)
             in go s
                 { rsRecvChain   = newChainKey
                 , rsRecvN       = rsRecvN s + 1
@@ -629,22 +659,22 @@ skipMessageKeys st until'
 --
 -- M23.3.4: Uses a secondary index (Map Word64 key) for O(log n) per
 -- eviction instead of O(n) linear scan.
-evictOldest :: Map (ByteString, Word32) (ByteString, ByteString, Word64)
-            -> Map (ByteString, Word32) (ByteString, ByteString, Word64)
+evictOldest :: Map (ByteString, Word32) (ByteString, ByteString, Word64, Word64)
+            -> Map (ByteString, Word32) (ByteString, ByteString, Word64, Word64)
 evictOldest m
     | Map.size m <= maxTotalSkipped = m
     | otherwise =
         -- Build a secondary index: insertSeq -> primary key, then evict
         -- entries with the smallest insertion sequence numbers.
         let !seqIndex = Map.foldlWithKey'
-                (\acc k (_, _, sq) -> Map.insert sq k acc)
+                (\acc k (_, _, sq, _) -> Map.insert sq k acc)
                 (Map.empty :: Map Word64 (ByteString, Word32))
                 m
         in evictWithIndex m seqIndex
   where
-    evictWithIndex :: Map (ByteString, Word32) (ByteString, ByteString, Word64)
+    evictWithIndex :: Map (ByteString, Word32) (ByteString, ByteString, Word64, Word64)
                    -> Map Word64 (ByteString, Word32)
-                   -> Map (ByteString, Word32) (ByteString, ByteString, Word64)
+                   -> Map (ByteString, Word32) (ByteString, ByteString, Word64, Word64)
     evictWithIndex primary idx
         | Map.size primary <= maxTotalSkipped = primary
         | Map.null idx = primary
