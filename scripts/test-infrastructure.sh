@@ -35,7 +35,7 @@ echo ""
 echo -e "${BLUE}[1/8] Makefile structure tests${NC}"
 
 # Check critical targets exist
-for target in build test verify quality vm-dev vm-build vm-test vm-verify \
+for target in build test verify quality vm-dev vm-build vm-test vm-test-ephemeral vm-verify \
               vm-image-build vm-image-clean vm-cache-clean vm-extract \
               vm-screenshot vm-record vm-visual-regression test-infra \
               check-evidence test-shells test-vm test-make-options \
