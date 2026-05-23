@@ -173,7 +173,7 @@ serialise (w0,w1,w2,w3,w4,w5,w6,w7,w8,w9,w10,w11,w12,w13,w14,w15) =
 -- | CSPRNG internal state.
 data CSPRNGState = CSPRNGState
     { csKey     :: !ByteString   -- ^ 32-byte ChaCha20 key
-    , csCounter :: !Word32       -- ^ Block counter
+    , csCounter :: !Word64       -- ^ Block counter (Word64 to prevent overflow)
     , csNonce   :: !ByteString   -- ^ 12-byte nonce (from entropy)
     , csBuffer  :: !ByteString   -- ^ Remaining bytes from last block
     , csOutputs :: !Int          -- ^ Outputs since last reseed
@@ -342,7 +342,7 @@ generateBlocks needed st = go needed [] st
     go remaining acc s
         | remaining <= 0 = (BS.concat (reverse acc), s)
         | otherwise =
-            let !block = chacha20Block (csKey s) (csNonce s) (csCounter s)
+            let !block = chacha20Block (csKey s) (csNonce s) (fromIntegral (csCounter s))
             in go (remaining - 64) (block : acc)
                   (s { csCounter = csCounter s + 1 })
 

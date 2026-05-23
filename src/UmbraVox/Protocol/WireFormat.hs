@@ -177,9 +177,24 @@ deriveEnvelopeKey transportKey =
 --
 -- Layout: @0x00*4 || BE32(sequence) || 0x00*4@ (12 bytes total).
 -- Unique per message within a session since sequence numbers are not reused.
+--
+-- SECURITY: The 32-bit sequence number limits each session key to at most
+-- 2^32 messages.  'seqNonceSafe' enforces a 2^31 threshold to allow
+-- re-keying margin before nonce space exhaustion.
 seqNonce :: Word32 -> ByteString
 seqNonce seqNum =
     BS.replicate 4 0 <> putW32BE seqNum <> BS.replicate 4 0
+
+-- | Maximum sequence number before mandatory re-key (2^31, leaving margin).
+seqNonceMaxSeq :: Word32
+seqNonceMaxSeq = 2^(31 :: Int)
+
+-- | Safe variant of 'seqNonce' that returns 'Nothing' when the sequence number
+-- exceeds the re-keying threshold (2^31), preventing nonce space exhaustion.
+seqNonceSafe :: Word32 -> Maybe ByteString
+seqNonceSafe seqNum
+    | seqNum >= seqNonceMaxSeq = Nothing
+    | otherwise = Just (seqNonce seqNum)
 
 -- | Encode an envelope with ChaCha20-Poly1305 AEAD encryption.
 --
@@ -198,6 +213,9 @@ encodeEnvelopeAEAD envelopeKey seqNum env
     | envType env == 2 =
         -- Handshake messages use HMAC authentication (no session key yet)
         encodeEnvelope envelopeKey env
+    | seqNum >= seqNonceMaxSeq =
+        -- M27.3.4: Refuse to encrypt past 2^31 messages; caller must re-key
+        error "encodeEnvelopeAEAD: sequence number exceeds re-keying threshold (2^31)"
     | otherwise =
         let -- AAD: version + type (authenticated but not encrypted)
             !aad = BS.pack [envVersion env, envType env]
@@ -233,6 +251,7 @@ decodeEnvelopeAEAD envelopeKey seqNum bs
     | BS.index bs 1 == 2 =
         -- Handshake messages use HMAC authentication
         decodeEnvelope envelopeKey bs
+    | seqNum >= seqNonceMaxSeq = Nothing  -- M27.3.4: reject past re-key threshold
     | BS.length bs < minAEADSize = Nothing
     | otherwise =
         let !aad = BS.take 2 bs
