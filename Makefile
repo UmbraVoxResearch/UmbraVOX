@@ -549,18 +549,18 @@ verify:
 	@echo -e "$(BLUE)[VERIFY]$(NC) Running F* formal verification (all modules)..."
 	$(call vm_or_local,$(SUITE_LOCK) bash -c 'mkdir -p $(TEST_ARTIFACT_DIR); \
 	log_file=$$(mktemp "$(TEST_ARTIFACT_DIR)/verify.XXXXXX.log"); \
-	echo -e "$(BLUE)[VERIFY]$(NC) Log: $$log_file"; \
+	echo "[VERIFY] Log: $$log_file"; \
 	set -o pipefail; \
 	$(RUN_FSTAR) 2>&1 | tee "$$log_file"; \
 	status=$${PIPESTATUS[0]}; \
 	if [ $$status -ne 0 ]; then \
-		echo -e "$(RED)[VERIFY]$(NC) Verification command failed. See $$log_file"; \
+		echo "[VERIFY] Verification command failed. See $$log_file"; \
 		exit $$status; \
 	fi; \
 	if grep -q "All modules verified" "$$log_file"; then \
-		echo -e "$(GREEN)[VERIFY]$(NC) All F* modules verified."; \
+		echo "[VERIFY] All F* modules verified."; \
 	else \
-		echo -e "$(RED)[VERIFY]$(NC) Success marker missing. See $$log_file"; \
+		echo "[VERIFY] Success marker missing. See $$log_file"; \
 		exit 1; \
 	fi')
 
