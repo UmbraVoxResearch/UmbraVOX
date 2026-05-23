@@ -306,6 +306,8 @@ library
       csrc/generated/dandelion.c
       csrc/generated/networkprotocol.c
       csrc/generated/sessionstate.c
+      csrc/constant_time.c
+    cc-options: -fstack-protector-strong -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security
   if !flag(wasm) && flag(stubs)
     exposed-modules:
       -- Consensus (stub / deferred)

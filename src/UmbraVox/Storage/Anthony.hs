@@ -209,8 +209,8 @@ loadMessages db convId limit = do
                 Just plaintext -> [(sender, plaintext, ts)]
                 Nothing        -> []  -- M10.3.7: authentication failure — drop the row
         | otherwise =
-            -- Legacy plaintext (written before encryption was enabled): pass through.
-            [(sender, content, ts)]
+            -- M27.4.4: reject legacy plaintext when encryption is active.
+            [(sender, "[UNREADABLE: legacy plaintext rejected]", ts)]
 
 -- | Delete messages older than N days.
 pruneMessages :: AnthonyDB -> Int -> IO ()
