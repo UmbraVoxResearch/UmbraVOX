@@ -17,11 +17,12 @@
 #   network access, so the bootstrap is a two-pass process:
 #
 #   Pass 1 — Obtain the FOD hash:
-#     1. Run: make vm-signal-server-build-jar
+#     1. Run: make vm-signal-server-build-jar 2>&1 | tee build/signal-server-build.log
 #     2. The build VM boots, runs nix-build, Maven fetches deps.
 #     3. nix-build fails with "hash mismatch" and prints the correct hash.
-#     4. Copy the "got: sha256-..." value from the error output.
-#     5. Paste it into outputHash below (replacing the placeholder).
+#     4. Run: make vm-signal-server-hash
+#        (auto-extracts the hash and patches this file)
+#     Or manually: copy the "got: sha256-..." value and paste below.
 #
 #   Pass 2 — Build the JAR:
 #     1. Run: make vm-signal-server-build-jar  (again, with correct hash)
@@ -71,14 +72,14 @@ let
     outputHashAlgo = "sha256";
     outputHashMode = "recursive";
     # TODO(M19.4.5): Compute FOD hash by running Stage 1 build VM:
-    #   make vm-signal-server-build-jar
+    #   make vm-signal-server-build-jar 2>&1 | tee build/signal-server-build.log
+    #   make vm-signal-server-hash   # auto-extracts and patches this file
     # The first run will fail with a hash mismatch.  Nix prints:
     #   error: hash mismatch ...
     #     specified: sha256-AAAA...
     #     got:       sha256-XXXX...
-    # Copy the "got:" hash below. Alternatively, from inside the VM:
+    # Alternatively, from inside the VM:
     #   nix-build /mnt/src/nix/signal-server-build.nix -A mvnDeps 2>&1 | grep "got:"
-    # Then update this hash with the actual value.
     #
     # The hash is empty until the first successful network fetch.
     # This is intentional: FOD hashes cannot be computed without
