@@ -1,4 +1,5 @@
 -- SPDX-License-Identifier: Apache-2.0
+{-# LANGUAGE CPP #-}
 -- | Startup helpers for identity and persistence recovery.
 module UmbraVox.App.Startup
     ( newDefaultAppConfig
@@ -28,7 +29,11 @@ import qualified Data.Set as Set
 import System.Directory (createDirectoryIfMissing, doesFileExist, getHomeDirectory)
 import System.Environment (lookupEnv)
 import System.FilePath (takeDirectory)
+#ifdef mingw32_HOST_OS
+import System.Directory (setPermissions, emptyPermissions, setOwnerReadable, setOwnerWritable)
+#else
 import System.Posix.Files (ownerReadMode, ownerWriteMode, setFileMode, unionFileModes)
+#endif
 import qualified Network.Socket as NS
 
 import UmbraVox.App.RuntimeLog (logEvent)
@@ -371,8 +376,13 @@ rememberPersistencePreferenceAt path enabled = do
         value = if enabled then "1\n" else "0\n"
     createDirectoryIfMissing True (takeDirectory prefPath)
     writeFile prefPath value `catch` \(_ :: SomeException) -> pure ()
+#ifdef mingw32_HOST_OS
+    setPermissions prefPath (setOwnerWritable True (setOwnerReadable True emptyPermissions))
+        `catch` \(_ :: SomeException) -> pure ()
+#else
     setFileMode prefPath (ownerReadMode `unionFileModes` ownerWriteMode)
         `catch` \(_ :: SomeException) -> pure ()
+#endif
 
 persistencePreferencePath :: FilePath -> FilePath
 persistencePreferencePath path = path ++ ".pref"
