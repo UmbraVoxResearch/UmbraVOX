@@ -335,13 +335,16 @@ Note: Items from codebase audit (2026-05-20).
   [ ] M20.5.7 Ephemeral test VM images — build fresh image per test run, destroy after
     Note: Test pipeline should not overwrite persistent dev image. Build ephemeral image
     in a temp path, run tests, discard. Keeps dev image stable while testing on clean state.
-  [ ] M20.5.8 Nix-native Haskell build — replace cabal-in-VM with callCabal2nix
-    Note: Current approach bakes entire GHC toolchain (~6GB) into VM image so cabal
-    can build inside the guest. This causes VM image bloat (16GB+) and cptofs failures.
-    Fix: Use haskellPackages.callCabal2nix or mkDerivation to build UmbraVOX as a
-    proper Nix derivation. VM image only needs compiled binary + runtime deps (~1-2GB).
+  [ ] M20.5.8 Nix-native Haskell build inside builder VM
+    Note: Current approach runs `nix build` on the host, touching the host nix store.
+    All Nix evaluation AND compilation must happen inside a VM:
+    1. Spin up a lightweight builder VM with Nix daemon
+    2. Run callCabal2nix / nix build inside the builder VM
+    3. Extract the resulting binary from the VM
+    4. Build the final runtime VM image using only the compiled binary
+    This keeps the host nix store untouched (only qemu + basic nix needed on host).
+    Runtime VM image shrinks to ~1-2GB (no GHC/cabal/GCC in image).
     Dev VM (make vm-dev) keeps full toolchain for interactive work.
-    Split images: smoke/test image (small, binary-only) vs dev image (full toolchain).
   [x] M20.5.7 Refresh README/QUICKSTART/VM-ISOLATION for vm-first defaults and run-local opt-in
     Note: VM commands promoted as primary. Coq 475 Qed / 14 files.
   [x] M20.5.8 Move remaining legacy provider manifests into plugins/
@@ -676,11 +679,11 @@ build, supply chain). See doc/SECURITY-REVIEW-v0.4.1.md for full details.
   [x] M27.1.2 Default pure-haskell-crypto to False, add compile guard (51ace78)
   [x] M27.1.3 Quote VM exec heredoc, pass cmd via file (51ace78)
 
-[~] M27.2 High privacy fixes (5 findings)
-  [ ] M27.2.1 Message padding to fixed size buckets before encryption (HI-001)
-  [ ] M27.2.2 DHT NodeId: HKDF with per-boot ephemeral salt (HI-002)
-  [ ] M27.2.3 PEX: exchange opaque session tokens not pubkey fingerprints (HI-003)
-  [ ] M27.2.4 PQXDH: wrap initial message inside Noise IK encryption (HI-004)
+[x] M27.2 High privacy fixes (5 findings)
+  [x] M27.2.1 Message padding to fixed size buckets before encryption (2c9eb7c)
+  [x] M27.2.2 DHT NodeId: HKDF with per-boot ephemeral salt (2c9eb7c)
+  [x] M27.2.3 PEX: exchange opaque session tokens not pubkey fingerprints (2c9eb7c)
+  [x] M27.2.4 PQXDH: wrap initial message inside Noise IK encryption (a8f2d9b)
   [x] M27.2.5 Listener: truncated fingerprint with user confirmation (cd6c918)
 
 [x] M27.3 High crypto fixes (4 findings) (cd6c918)
@@ -691,7 +694,7 @@ build, supply chain). See doc/SECURITY-REVIEW-v0.4.1.md for full details.
 
 [~] M27.4 High security fixes (4 findings)
   [ ] M27.4.1 Anthony: migrate to direct-sqlite with prepared statements (HI-010, HI-017)
-  [ ] M27.4.2 Selective TOFU: associate keys with identity, reject changes (HI-011)
+  [x] M27.4.2 Selective TOFU: associate keys with identity, reject changes (a8f2d9b)
   [x] M27.4.3 Noise: add nonce overflow check before encrypt/decrypt (f6dec89)
   [x] M27.4.4 Legacy plaintext pass-through: reject non-UVENC1 rows (073d59c)
 
@@ -707,28 +710,28 @@ build, supply chain). See doc/SECURITY-REVIEW-v0.4.1.md for full details.
   [x] M27.6.1 Redact Show instances for secret types (a819048)
   [x] M27.6.2 Reduce route token rotation period (a819048)
   [x] M27.6.3 Add timing jitter for Dandelion forwarding (a819048)
-  [ ] M27.6.4 Encrypt message type in AEAD payload (ME-004)
+  [x] M27.6.4 Encrypt message type in AEAD payload (a8f2d9b)
   [x] M27.6.5 KeyStore: per-install random salt (a819048)
   [x] M27.6.6 constantEq: implement in C via FFI (073d59c, feadf14)
-  [ ] M27.6.7 Wire key confirmation MAC into handshake flow (ME-009)
-  [ ] M27.6.8 Adaptive PoW difficulty + expiry + connection binding (ME-010, LO-004)
+  [x] M27.6.7 Wire key confirmation MAC into handshake flow (a8f2d9b)
+  [x] M27.6.8 Adaptive PoW difficulty + expiry + connection binding (a8f2d9b)
   [ ] M27.6.9 Time-based expiry for skipped message keys (ME-011)
-  [ ] M27.6.10 HKDF info: add length prefixes (ME-012)
+  [x] M27.6.10 HKDF info: add length prefixes (a8f2d9b)
   [x] M27.6.11 Sequence window: add high-water mark (a819048)
   [x] M27.6.12 API auth: use constantEq for token comparison (feadf14)
   [x] M27.6.13 IPC: chunked reading with incremental length check (2fcc8b4)
   [x] M27.6.14 SSRF: block IPv6 private + IPv4-mapped addresses (2fcc8b4)
   [x] M27.6.15 DHT store: add max entry count limit (feadf14)
-  [ ] M27.6.16 Codegen: validate output paths against allowlist (ME-022)
+  [x] M27.6.16 Codegen: validate output paths against allowlist (6f578e3)
   [ ] M27.6.17 Cabal: generate and commit cabal.project.freeze (ME-026)
   [ ] M27.6.18 GPG release signing mandatory (ME-028)
   [ ] M27.6.19 Plugin: restrict directories, require signed manifests (ME-029)
-  [ ] M27.6.20 Test vectors: add SHA-256 integrity verification (ME-030)
+  [x] M27.6.20 Test vectors: add SHA-256 integrity verification (6f578e3)
   [ ] M27.6.21 Release manifest: compute verification claims dynamically (ME-031)
-  [ ] M27.6.22 Reproducibility check as mandatory release gate (ME-032)
+  [x] M27.6.22 Reproducibility check as mandatory release gate (6f578e3)
   [x] M27.6.23 isBundleFresh: reject future timestamps > 1 hour (a819048)
-  [ ] M27.6.24 GCM nonce tracker: bounded or counter-based (LO-005)
-  [ ] M27.6.25 RuntimeLog: switch to denylist redaction (LO-002)
+  [x] M27.6.24 GCM nonce tracker: bounded or counter-based (6f578e3)
+  [x] M27.6.25 RuntimeLog: switch to denylist redaction (6f578e3)
 
 OUTSIDE MVP (DEFERRED)
 ================================================================================
