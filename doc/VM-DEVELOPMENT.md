@@ -240,6 +240,64 @@ The host only has QEMU and git.
 - Nix package manager (for `nix-shell` and `nix build`)
 - First-time VM image build requires network access (for Nix to fetch packages)
 
+## Seed Bootstrap
+
+The two-stage bootstrap lets `make vm-image-build` work without any nix
+toolchain on the host. Instead of building on the host, a minimal "seed"
+NixOS VM is downloaded, booted, and used to build the full builder VM
+image entirely inside QEMU.
+
+### What the seed image is
+
+The seed image is a minimal NixOS qcow2 (~300MB) containing just enough
+to run `nix-build`: the Nix daemon, basic coreutils, and network tools
+for fetching nixpkgs. It has no GHC, cabal, or project-specific
+toolchain -- those are built by the seed VM when it produces the full
+builder image.
+
+### Building the seed locally (for maintainers)
+
+Maintainers who need to produce a new seed image:
+
+```bash
+make vm-seed-build
+```
+
+This uses `nix-build` on the host to create the seed qcow2 from
+`nix/vm-image.nix` (or the seed-specific nix expression). The output
+lands in `build/vm/seed/`.
+
+### Publishing (for CI)
+
+After building a new seed locally:
+
+1. Compute the SHA-256 checksum:
+
+   ```bash
+   sha256sum build/vm/seed/nixos-seed.qcow2
+   ```
+
+2. Upload the seed image to a GitHub release (or other hosting).
+
+3. Update the pinned hash in `scripts/vm-image-builder.sh`:
+   find the `SEED_SHA256=` line and replace its value with the new
+   checksum. Update the `SEED_URL=` line if the download location
+   changed.
+
+4. Commit both changes together so the URL and hash stay in sync.
+
+### Customizing the seed location
+
+Set `UMBRAVOX_SEED_URL` to override the default download URL:
+
+```bash
+UMBRAVOX_SEED_URL=https://internal-mirror.example.com/nixos-seed.qcow2 \
+  make vm-image-build
+```
+
+This is useful for air-gapped networks, corporate mirrors, or local
+caches. The SHA-256 verification still applies regardless of the URL.
+
 ## Troubleshooting
 
 ### "VM image not found"
