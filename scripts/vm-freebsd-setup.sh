@@ -21,6 +21,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VM_LOG_PREFIX="VM-FREEBSD"
+source "${SCRIPT_DIR}/lib-vm.sh"
+
 # --------------------------------------------------------------------------
 # Configuration
 # --------------------------------------------------------------------------
@@ -40,14 +44,10 @@ QEMU_MEM="2048"
 QEMU_CPUS="2"
 QEMU_TIMEOUT=1800   # 30 minutes
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-NC='\033[0m'
-
-log()  { echo -e "${BLUE}[VM-FREEBSD]${NC} $*"; }
-ok()   { echo -e "${GREEN}[VM-FREEBSD]${NC} $*"; }
-fail() { echo -e "${RED}[VM-FREEBSD]${NC} $*"; }
+# Aliases for backward compatibility within this script
+log()  { vm_log "$@"; }
+ok()   { vm_ok "$@"; }
+fail() { vm_fail "$@"; }
 
 # --------------------------------------------------------------------------
 # Step 1: Ensure base image is cached
@@ -81,9 +81,7 @@ fi
 # Step 2: Create disposable overlay
 # --------------------------------------------------------------------------
 
-log "Creating disposable overlay..."
-rm -f "${OVERLAY}"
-qemu-img create -f qcow2 -b "${BASE_IMAGE}" -F qcow2 "${OVERLAY}"
+vm_create_overlay "${BASE_IMAGE}" "${OVERLAY}"
 
 # --------------------------------------------------------------------------
 # Step 3: Build an init ISO with the in-guest smoke script
@@ -175,52 +173,15 @@ if [ -f /mnt/init/umbravox-smoke.sh ]; then
 fi
 RC_LOCAL
 
-# Build the ISO (requires genisoimage or mkisofs; fall back to xorriso)
-if command -v genisoimage >/dev/null 2>&1; then
-    genisoimage -o "${INIT_ISO}" -R -J "${TMPDIR_INIT}"
-elif command -v mkisofs >/dev/null 2>&1; then
-    mkisofs -o "${INIT_ISO}" -R -J "${TMPDIR_INIT}"
-elif command -v xorriso >/dev/null 2>&1; then
-    xorriso -as mkisofs -o "${INIT_ISO}" -R -J "${TMPDIR_INIT}"
-else
-    fail "No ISO builder found (genisoimage / mkisofs / xorriso). Install one in nix-shell."
-    exit 1
-fi
-
-ok "Init ISO built: ${INIT_ISO}"
+# Build the ISO using shared helper
+vm_build_init_iso "${TMPDIR_INIT}" "${INIT_ISO}"
 
 # --------------------------------------------------------------------------
 # Step 4: Build a source disk image from the current working tree
 # --------------------------------------------------------------------------
 
-log "Packaging source tree into FAT disk image for in-guest access..."
-
 SRC_IMG="${CACHE_DIR}/freebsd-src.img"
-rm -f "${SRC_IMG}"
-
-# Rough size estimate: 256 MB is plenty for the source tree
-SRC_SIZE_MB=256
-dd if=/dev/zero of="${SRC_IMG}" bs=1M count="${SRC_SIZE_MB}" 2>/dev/null
-mkfs.fat -F 32 "${SRC_IMG}"
-
-TMPDIR_MNT=$(mktemp -d)
-# Use mcopy (mtools) to avoid needing root for FAT mounts
-if command -v mcopy >/dev/null 2>&1; then
-    (
-        cd "${SRC_DIR}"
-        # Copy tracked source files only (skip build artifacts)
-        git ls-files | while IFS= read -r f; do
-            dir=$(dirname "MTOOLS_SKIP_CHECK=1 ${SRC_IMG}::/${f}")
-            mmd -i "${SRC_IMG}" -D s "::$(dirname "${f}")" 2>/dev/null || true
-            mcopy -i "${SRC_IMG}" -D o "${f}" "::${f}"
-        done
-    )
-else
-    fail "mtools (mcopy) not found. Install mtools in nix-shell for FAT image creation."
-    exit 1
-fi
-
-ok "Source disk image: ${SRC_IMG}"
+vm_build_source_fat "${SRC_DIR}" "${SRC_IMG}" 256
 
 # --------------------------------------------------------------------------
 # Step 5: Boot and run
@@ -257,18 +218,4 @@ echo ""
 # Step 6: Report
 # --------------------------------------------------------------------------
 
-if [ "${QEMU_EXIT}" -eq 124 ]; then
-    fail "VM timed out after ${QEMU_TIMEOUT}s."
-    fail "Log: ${SMOKE_LOG}"
-    exit 1
-fi
-
-if grep -q "SMOKE_RESULT=PASS" "${SMOKE_LOG}" 2>/dev/null; then
-    ok "FreeBSD smoke: PASS"
-    ok "Log: ${SMOKE_LOG}"
-    exit 0
-else
-    fail "FreeBSD smoke: FAIL"
-    fail "Log: ${SMOKE_LOG}"
-    exit 1
-fi
+vm_check_smoke_result "${SMOKE_LOG}" "${QEMU_EXIT}" "${QEMU_TIMEOUT}" "FreeBSD"
