@@ -116,8 +116,8 @@ defaultMaxSeenDHKeys = 10
 -- Storage
 ------------------------------------------------------------------------
 
--- | Timeout for sqlite3 CLI subprocess calls (microseconds).
--- Both runSQL and querySQL apply this limit to avoid indefinite hangs.
+-- | Timeout for SQLite operations (microseconds).
+-- Preserved as a named constant for audit and documentation.
 sqliteTimeoutMicros :: Int
 sqliteTimeoutMicros = 10 * 1000000  -- 10 seconds
 

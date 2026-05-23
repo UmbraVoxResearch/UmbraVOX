@@ -23,7 +23,7 @@
 -- 4. What property this specific test verifies.
 module Test.Security.RegressionNet (runTests) where
 
-import Control.Exception (SomeException, catch, try)
+import Control.Exception (SomeException, catch)
 import qualified Data.ByteString as BS
 import qualified Network.Socket as NS
 import System.Directory (getTemporaryDirectory, removeFile)
@@ -189,54 +189,50 @@ testSQLNormalString = withTempDB "sql-normal" $ \db -> do
     val <- loadSetting db "greeting"
     assertEq "SQL normal string: round-trip" (Just "hello world") val
 
--- | M10.4.5: A string with an embedded single quote must be stored via
--- quote-doubling and retrieved correctly.  Verifies that the escaping
--- mechanism does not corrupt valid data containing apostrophes.
+-- | M10.4.5 / M27.4.1: A string with an embedded single quote must round-trip
+-- correctly.  Prepared statements handle this by construction — no escaping
+-- is needed because user data is never interpolated into SQL.
 testSQLSingleQuoteEscaped :: IO Bool
 testSQLSingleQuoteEscaped = withTempDB "sql-quote" $ \db -> do
     saveSetting db "msg" "it's fine"
     val <- loadSetting db "msg"
     assertEq "SQL single quote: round-trip" (Just "it's fine") val
 
--- | M10.4.5: A value containing "--" (SQL line-comment marker) must be
--- rejected by the @quote@ guard, raising a synchronous exception.
--- Without the guard this would silently truncate the SQL statement.
+-- | M10.4.5 / M27.4.1: A value containing "--" (SQL line-comment marker)
+-- must round-trip correctly.  With prepared statements, this is safe by
+-- construction — the value is bound as a parameter, not interpolated.
 testSQLCommentRejected :: IO Bool
 testSQLCommentRejected = withTempDB "sql-comment" $ \db -> do
-    result <- (try (saveSetting db "k" "value -- DROP TABLE peers") :: IO (Either SomeException ()))
-    case result of
-        Left  _ -> putStrLn "  PASS: SQL comment rejected" >> pure True
-        Right _ -> assertEq "SQL comment: should have been rejected" True False
+    saveSetting db "k" "value -- DROP TABLE peers"
+    val <- loadSetting db "k"
+    assertEq "SQL comment safe via prepared stmt" (Just "value -- DROP TABLE peers") val
 
--- | M10.4.5: A value containing "; DROP" must be rejected.  The semicolon
--- alone triggers the guard before the DROP keyword is examined, preventing
--- multi-statement injection.
+-- | M10.4.5 / M27.4.1: A value containing "; DROP" must round-trip
+-- correctly.  With prepared statements, semicolons and SQL keywords in
+-- bound parameter values cannot alter the query structure.
 testSQLDropRejected :: IO Bool
 testSQLDropRejected = withTempDB "sql-drop" $ \db -> do
-    result <- (try (saveSetting db "k" "hello; DROP TABLE peers") :: IO (Either SomeException ()))
-    case result of
-        Left  _ -> putStrLn "  PASS: SQL DROP rejected" >> pure True
-        Right _ -> assertEq "SQL DROP: should have been rejected" True False
+    saveSetting db "k" "hello; DROP TABLE peers"
+    val <- loadSetting db "k"
+    assertEq "SQL DROP safe via prepared stmt" (Just "hello; DROP TABLE peers") val
 
--- | M10.4.5: A value containing a tab followed by a semicolon must be
--- rejected.  The tab is normalised to a space during the keyword scan,
--- confirming that whitespace-based bypass attempts are blocked.
+-- | M10.4.5 / M27.4.1: A value containing a tab and semicolon must
+-- round-trip correctly.  Prepared statements make whitespace-based
+-- injection bypass attempts structurally impossible.
 testSQLTabSemicolonRejected :: IO Bool
 testSQLTabSemicolonRejected = withTempDB "sql-tab-semi" $ \db -> do
-    result <- (try (saveSetting db "k" "\t;") :: IO (Either SomeException ()))
-    case result of
-        Left  _ -> putStrLn "  PASS: SQL tab+semicolon rejected" >> pure True
-        Right _ -> assertEq "SQL tab+semicolon: should have been rejected" True False
+    saveSetting db "k" "\t;"
+    val <- loadSetting db "k"
+    assertEq "SQL tab+semicolon safe via prepared stmt" (Just "\t;") val
 
--- | M10.4.5: A value containing a newline immediately before DROP must be
--- rejected.  The newline is normalised to a space, confirming that
--- newline-based bypass attempts (which some simple scanners miss) are blocked.
+-- | M10.4.5 / M27.4.1: A value containing a newline before DROP must
+-- round-trip correctly.  With prepared statements, newline-based bypass
+-- attempts are structurally impossible.
 testSQLNewlineDropRejected :: IO Bool
 testSQLNewlineDropRejected = withTempDB "sql-newline-drop" $ \db -> do
-    result <- (try (saveSetting db "k" "\nDROP TABLE foo") :: IO (Either SomeException ()))
-    case result of
-        Left  _ -> putStrLn "  PASS: SQL newline+DROP rejected" >> pure True
-        Right _ -> assertEq "SQL newline+DROP: should have been rejected" True False
+    saveSetting db "k" "\nDROP TABLE foo"
+    val <- loadSetting db "k"
+    assertEq "SQL newline+DROP safe via prepared stmt" (Just "\nDROP TABLE foo") val
 
 ------------------------------------------------------------------------
 -- M10.4.13  mDNS name sanitization
