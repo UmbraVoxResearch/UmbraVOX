@@ -13,6 +13,7 @@ import Control.Exception (SomeException, try, evaluate)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.IORef (newIORef, readIORef, writeIORef)
+import Data.Maybe (fromJust)
 
 import Test.Util (assertEq, strToBS)
 
@@ -525,8 +526,8 @@ testPL017SessionFixation = do
         plaintext = strToBS "session fixation test"
 
     -- (a) Encrypt two messages; counters must differ (counter advances)
-    let (st1, ctAndTag1) = noiseEncrypt st0 plaintext
-        (st2, ctAndTag2) = noiseEncrypt st1 plaintext
+    let Just (st1, ctAndTag1) = noiseEncrypt st0 plaintext
+        Just (st2, ctAndTag2) = noiseEncrypt st1 plaintext
     ok1 <- assertEq "PL-017 counter advanced: nsSendN after msg1 is 1"
                1 (nsSendN st1)
     ok2 <- assertEq "PL-017 counter advanced: nsSendN after msg2 is 2"
@@ -538,8 +539,8 @@ testPL017SessionFixation = do
     -- (b) Reusing st0 (counter=0) twice produces identical ciphertexts
     -- (showing what would happen if the counter were reset — this IS a bug
     -- scenario we're confirming is prevented by the monotonic counter)
-    let (_, ct_reuse1) = noiseEncrypt st0 plaintext
-        (_, ct_reuse2) = noiseEncrypt st0 plaintext
+    let Just (_, ct_reuse1) = noiseEncrypt st0 plaintext
+        Just (_, ct_reuse2) = noiseEncrypt st0 plaintext
     ok4 <- assertEq "PL-017 reused-state (counter=0) produces same ciphertext (nonce collision risk)"
                True (ct_reuse1 == ct_reuse2)
 

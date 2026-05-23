@@ -8,6 +8,7 @@ module Test.Network.Noise (runTests) where
 import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import qualified Data.ByteString as BS
+import Data.Maybe (fromJust)
 import Test.Util
 import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
 import UmbraVox.Network.Noise
@@ -58,7 +59,7 @@ testHandshakeRoundTrip = do
         (Just iSt, Just (rSt, _peerKey)) -> do
             -- Encrypt with initiator, decrypt with responder
             let msg = strToBS "Hello Noise!"
-                (_iSt', ct) = noiseEncrypt iSt msg
+                Just (_iSt', ct) = noiseEncrypt iSt msg
             case noiseDecrypt rSt ct of
                 Nothing -> do
                     putStrLn "  FAIL: handshake round-trip (decrypt failed)"
@@ -87,7 +88,7 @@ testEncryptDecryptRoundTrip = checkPropertyIO
                 , nsRecvN         = 0
                 , nsHandshakeHash = BS.replicate 32 0
                 }
-            (_, ct) = noiseEncrypt senderSt payload
+            Just (_, ct) = noiseEncrypt senderSt payload
         pure $ case noiseDecrypt receiverSt ct of
             Nothing     -> False
             Just (_, pt) -> pt == payload
@@ -113,7 +114,7 @@ testWrongKeyFails = do
             , nsHandshakeHash = BS.replicate 32 0
             }
         msg = strToBS "secret message"
-        (_, ct) = noiseEncrypt senderSt msg
+        Just (_, ct) = noiseEncrypt senderSt msg
         rejected = case noiseDecrypt badReceiverSt ct of
             Nothing -> True
             Just _  -> False
