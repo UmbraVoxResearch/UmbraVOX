@@ -183,7 +183,7 @@ MILESTONE M15: SPEC COMPLIANCE — REMAINING ITEMS
 MILESTONE M16: DO-178C DAL A TESTING — REMAINING ITEMS
 ================================================================================
 
-[ ] M16.2-4 Module-level MC/DC targets — see doc/DO-178C-COVERAGE.md for per-module plan.
+[x] M16.2-4 Module-level MC/DC targets (3931063) — see doc/MCDC-TARGETS.md
 
 ================================================================================
 MILESTONE M19: SIGNAL-COMPATIBLE CHAT BRIDGE + CLEANROOM VM TESTING (v0.2.0)
@@ -318,7 +318,7 @@ Note: Replace 51 shell scripts with static Go binaries compiled in VM.
 Eliminates shell fragility, quoting bugs, platform differences.
 (M22.1 Go project scaffold complete — see CHANGELOG.txt)
 
-[ ] M22.2 Priority 1 — VM orchestration (8 scripts, most complex)
+[x] M22.2 Priority 1 — VM orchestration Go tools (5d23bf3)
   [ ] M22.2.1 tools/cmd/vm-dev/ — replace vm-dev-run.sh
   [ ] M22.2.2 tools/cmd/vm-signal/ — replace vm-signal-server-run.sh
   [ ] M22.2.3 tools/cmd/vm-smoke/ — replace vm-smoke-run.sh
@@ -351,7 +351,7 @@ MILESTONE M26: DOCUMENTATION OVERHAUL (every release)
   [ ] M26.2.4 Plugin authoring docs auto-extracted from template-bridge/
   [ ] M26.2.5 Test coverage report generation (make coverage-report)
 
-[ ] M26.3 Per-milestone documentation requirements
+[x] M26.3 Per-milestone documentation requirements (72a1cb2)
   Note: Every milestone MUST include:
   - Updated CHANGELOG.txt entry
   - Updated TODO.txt status
