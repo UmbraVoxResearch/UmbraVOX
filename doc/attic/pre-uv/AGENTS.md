@@ -8,7 +8,7 @@ should never be touched by compilation.
 
 The **only** tools needed on the host:
 - **qemu** (`qemu-system-x86_64` with KVM support)
-- **nix** or **bash** (either works; `./uv` is a bash script)
+- **nix** or **make** (either works)
 - **curl** (for downloading the seed VM image on first run)
 
 No GHC, cabal, GCC, or other toolchain required. Everything compiles
@@ -34,7 +34,7 @@ The nix shells set this automatically.
 
 ## Bootstrap Flow
 
-On first `./uv vm build-image`:
+On first `make vm-image-build`:
 1. Downloads a minimal seed VM image (~300MB) + SHA-256 verification
 2. Boots the seed VM, which builds the full builder VM image inside itself
 3. Caches the builder image at build/vm/builder-image/
@@ -57,17 +57,17 @@ after the first successful build.
 - Coq proofs (`coqc`)
 - Signal-Server (Maven/Java)
 
-### CRITICAL: Always Use `./uv` Commands
+### CRITICAL: Always Use `make` Targets
 
 **Never run `cabal build`, `cabal test`, or `nix-shell --run` directly.**
-Always use `./uv` commands, which route through `vm_or_local` to ensure
+Always use `make` targets, which route through `vm_or_local` to ensure
 builds happen inside the VM.
 
 ```bash
-# CORRECT — uses VM via ./uv
-./uv build               # Build in VM
-./uv test                # Test in VM
-./uv verify              # F* verification in VM
+# CORRECT — uses VM via make system
+make build               # Build in VM
+make test                # Test in VM
+make verify              # F* verification in VM
 
 # WRONG — bypasses VM isolation
 nix-shell shell.nix --pure --run "cabal build all"   # ← NEVER DO THIS
@@ -75,7 +75,7 @@ cabal build                                           # ← NEVER DO THIS
 ```
 
 This applies to AI agents as well. When verifying that code compiles,
-agents MUST use `./uv build` (or the VM exec path), never direct
+agents MUST use `make build` (or the VM exec path), never direct
 `cabal build` invocations. Direct builds on the host:
 - Touch the host nix store (policy violation)
 - May use different toolchain versions than the VM
@@ -87,8 +87,8 @@ agents MUST use `./uv build` (or the VM exec path), never direct
 All VMs expose a serial console for interactive debugging:
 
 ```bash
-./uv dev                 # Interactive serial console (login as root)
-./uv vm run-gui          # GUI window with VGA console
+make vm-dev              # Interactive serial console (login as root)
+make vm-run-gui          # GUI window with VGA console
 ```
 
 Inside the VM:
@@ -108,19 +108,19 @@ echo $?  # exit code from the VM command
 ### Quick Reference
 
 ```bash
-./uv build               # Build in VM (host needs only qemu + bash)
-./uv test                # Run tests in VM
-./uv verify              # F* verification in VM
-./uv dev                 # Interactive dev shell in VM (serial)
-./uv vm run-gui          # Interactive dev shell (QEMU GTK window)
-./uv vm signal-server-build-jar  # Build Signal-Server JAR in VM
-./uv vm signal-server    # Boot Signal-Server runtime VM
-./uv check-isolation     # Verify host nix store is clean
+make build               # Build in VM (host needs only qemu + make)
+make test                # Run tests in VM
+make verify              # F* verification in VM
+make vm-dev              # Interactive dev shell in VM (serial)
+make vm-run-gui          # Interactive dev shell (QEMU GTK window)
+make vm-signal-server-build-jar  # Build Signal-Server JAR in VM
+make vm-signal-server    # Boot Signal-Server runtime VM
+make check-isolation     # Verify host nix store is clean
 ```
 
 ### VM-local Nix Config (Image Builds)
 
-`./uv vm build-image` and `./uv vm signal-server-build` use local `nix`
+`make vm-image-build` and `make vm-signal-server-build` use local `nix`
 configuration from `nix/vm-build.env` and fail closed.
 Environment variables override file values.
 
@@ -137,7 +137,7 @@ Hard guard: remote-builder variables are rejected in local-only mode.
 
 - **Haskell**: all application code, crypto, protocol, TUI, bridge plugins
 - **C**: generated crypto + FFI (csrc/)
-- **Shell**: scripts/, uv
+- **Shell**: scripts/, Makefile
 - **Nix**: VM images, environments
 - **F***: formal specs (test/evidence/formal-proofs/fstar/)
 - **Coq**: external proofs (test/evidence/formal-proofs/coq/)
@@ -165,15 +165,15 @@ scripts/                       VM orchestration + test scripts
 ## Building
 
 ```bash
-./uv build                            # VM (preferred)
+make vm-build-only                    # VM (preferred)
 ```
 
 ## Testing
 
 ```bash
-./uv test                             # full suite in VM
-./uv test-signal-bridge-ipc           # bridge IPC smoke test
-./uv test-signal-compat               # wire-compat (needs Signal-Server VM)
+make vm-test                          # full suite in VM
+make test-signal-bridge-ipc           # bridge IPC smoke test
+make test-signal-compat               # wire-compat (needs Signal-Server VM)
 ```
 
 ## Coq Proofs
@@ -204,6 +204,6 @@ Uses own crypto with Signal params — no libsignal dependency.
 - **Zero warnings**: `cabal build all` clean
 - **Zero Admitted**: all Coq files
 - **No Co-Authored-By**: never add attribution to commits
-- **VM isolation**: never compile on host; `./uv check-isolation` to verify
+- **VM isolation**: never compile on host; `make check-isolation` to verify
 - **Commit prefix**: feat/fix/proof/test/docs/infra/chore
 - **Security fixes**: require Finding/Vulnerability/Fix/Verified documentation

@@ -17,7 +17,7 @@ SUMMARY="${1:-build/coverage/coverage-summary.txt}"
 
 if [ ! -f "$SUMMARY" ]; then
     echo "ERROR: Coverage summary not found: $SUMMARY"
-    echo "Run 'make coverage-report' first."
+    echo "Run './uv coverage' first."
     exit 1
 fi
 

@@ -20,7 +20,7 @@ Last updated: 2026-05-22
 - M20.4 (partial): 36 M-series TODOs audited, VM agent trust boundary hardened,
   IPC decode hardened with 64 KiB guard + telemetry, config hash pinning
   fail-closed.
-- M20.5 (partial): All Makefile test targets VM-default, flake.nix VM-only
+- M20.5 (partial): All build tool test targets VM-default, flake.nix VM-only
   devShell, smoke/dev boot split, VM cache/output policy.
 - M20.6: ED-008e universal completeness PROVED (62 Qed), 475 Qed total across
   14 Coq files.
@@ -33,7 +33,7 @@ Last updated: 2026-05-22
 - `src/UmbraVox/Crypto/*.hs` (*Safe variants across all crypto modules)
 - `src/UmbraVox/Consensus/` (gated stubs)
 - `src/UmbraVox/Economics/` (gated stubs)
-- `Makefile` (VM-default targets, run_named_suite macro)
+- `Makefile` (VM-default targets, run_named_suite macro -- legacy, now `./uv`)
 - `flake.nix` (VM-only devShell)
 - `coq/` (Coq proof files, 14 files, 475 Qed)
 
@@ -41,7 +41,7 @@ Last updated: 2026-05-22
 - `test/Test/Hardening/` (Fault.hs, Recovery.hs, Soak.hs, TCP.hs)
 - `test/Test/App/` (RuntimeLog tests)
 - `test/Test/Storage/` (Encryption tests)
-- Infrastructure tests: `make test-infra`
+- Infrastructure tests: `./uv test infra`
 
 ### Design docs
 - `doc/VM-DEVELOPMENT.md`
@@ -228,7 +228,7 @@ Last updated: 2026-05-22
 
 ### What was implemented
 - M26.1: Stale docs moved to `doc/attic/`, `doc/README.md` and
-  `doc/ARCHITECTURE.md` updated, Haddock generation via `make docs`.
+  `doc/ARCHITECTURE.md` updated, Haddock generation via `./uv docs`.
 - M26.2 (partial): Module dependency graph, API docs, plugin docs, test coverage
   report -- pending.
 - M26.3: Per-milestone documentation requirements -- this file.
@@ -291,7 +291,7 @@ Last updated: 2026-05-22
 - `src/UmbraVox/App/` (RuntimeLog denylist redaction)
 - `csrc/constant_time.c` (C FFI for constant-time comparison)
 - `csrc/sqlite3_shim.c` (hand-rolled SQLite3 FFI)
-- `Makefile` (cc-options hardening)
+- `Makefile` (cc-options hardening -- legacy, now `./uv`)
 - `nix/vm-image.nix` (VM firewall default, base image SHA-256 pins)
 
 ### Tests

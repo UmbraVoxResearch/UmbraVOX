@@ -15,7 +15,7 @@ native host builds available.
 
 Current implementation note:
 
-- `linux-hosted-fast` is exercised by the active `nix-shell` + `./uv` workflow.
+- `linux-hosted-fast` is exercised by the active `nix-shell` + `make` workflow.
 - `linux-kvm-integration` and `linux-kvm-release` have repo-owned scaffold
   entrypoints and microVM smoke hooks, but not yet a maintained guest image or
   authoritative in-guest release graph.
@@ -25,7 +25,7 @@ Current implementation note:
 ## Lane Model
 
 1. `fast` lane
-- build/test/verify via `nix-shell` + `./uv`.
+- build/test/verify via `nix-shell` + `make`.
 - no VM requirement.
 
 2. `integration` lane (QEMU/KVM)
@@ -37,7 +37,7 @@ Current implementation note:
 3. `authoritative-release` lane (Firecracker preferred, QEMU fallback)
 - current scaffold validates host prerequisites for the planned Firecracker
   authoritative lane.
-- `./uv release lane-readiness` now aggregates the repo-owned native runner
+- `make release-lane-readiness` now aggregates the repo-owned native runner
   readiness scripts for Linux x86_64, Linux arm64, macOS, Windows, and BSD.
 - intended next step is booting a pinned builder microVM and executing the
   release graph inside the guest.
@@ -60,24 +60,24 @@ Current implementation note:
 ## Current Scope
 
 - Linux release artifacts are executable bundles.
-- `./uv release smoke-linux` performs the current isolated smoke check with
+- `make release-smoke-linux` performs the current isolated smoke check with
   `podman` or `docker`; it is not the microVM smoke lane.
-- `./uv release smoke-qemu` and `./uv release smoke-firecracker` are the
+- `make release-smoke-qemu` and `make release-smoke-firecracker` are the
   microVM smoke entrypoints.
-- `./uv release smoke-qemu-profile` adds the deterministic QEMU profile
-  wrapper around `./uv release smoke-qemu`.
-- `./uv release smoke-firecracker-pinned` adds the pinned-input wrapper around
-  `./uv release smoke-firecracker`.
+- `make release-smoke-qemu-profile` adds the deterministic QEMU profile
+  wrapper around `make release-smoke-qemu`.
+- `make release-smoke-firecracker-pinned` adds the pinned-input wrapper around
+  `make release-smoke-firecracker`.
 - pinned microVM runs now require an explicit in-guest verification command
   template via `UMBRAVOX_QEMU_VERIFY_CMD` or
   `UMBRAVOX_FIRECRACKER_VERIFY_CMD`; the repo still does not ship the
   maintained guest image that executes that command by default.
-- `./uv release lane-qemu` and `./uv release lane-firecracker` remain
+- `make release-lane-qemu` and `make release-lane-firecracker` remain
   host-prerequisite scaffolds only.
-- `./uv release lane-readiness` runs the aggregate native runner readiness
+- `make release-lane-readiness` runs the aggregate native runner readiness
   scripts and reports the Linux x86_64 lane as required while the Linux arm64,
   macOS, Windows, and BSD lanes remain informational.
-- `./uv platform-sanity` and `./uv sanity` only verify that the related lane
+- `make platform-sanity` and `make sanity` only verify that the related lane
   scripts/helpers are wired into the tree.
 - None of that is a claim that UmbraVOX currently ships a maintained guest
   image, performs artifact handoff into a guest automatically, or proves the
@@ -88,14 +88,14 @@ Current implementation note:
 
 Current repo-owned readiness checks across the release lanes are:
 
-- `fast`: `./uv build`, `./uv test`, and `./uv verify`, with `./uv`
-  (no args) aggregating the active host-side release gate.
-- Linux artifact packaging: `./uv release linux` plus the manifest/digest
+- `fast`: `make build`, `make test`, and `make verify`, with `make quality`
+  aggregating the active host-side release gate.
+- Linux artifact packaging: `make release-linux` plus the manifest/digest
   outputs recorded in each staged release artifact.
-- Linux smoke validation: `./uv release smoke-linux` for the current
+- Linux smoke validation: `make release-smoke-linux` for the current
   container-based isolated bundle launch/linkage check.
-- microVM readiness baseline: `./uv release smoke-qemu` and
-  `./uv release smoke-firecracker` verify artifact presence, selected VMM
+- microVM readiness baseline: `make release-smoke-qemu` and
+  `make release-smoke-firecracker` verify artifact presence, selected VMM
   availability, and `/dev/kvm` before any runner hook or pinned boot path.
 - microVM direct invocation readiness: QEMU and Firecracker can both execute
   caller-supplied runner hooks or pinned boot inputs when those inputs are
@@ -145,28 +145,28 @@ Remaining gaps before these lanes become authoritative release evidence:
 
 ```sh
 nix-shell
-./uv release linux
-./uv release smoke-linux
-./uv release smoke-qemu
-./uv release smoke-qemu-profile
-./uv release smoke-firecracker
-./uv release smoke-firecracker-pinned
-./uv release lane-qemu
-./uv release lane-firecracker
-./uv release lane-readiness
-./uv platform-sanity
-./uv sanity
+make release-linux
+make release-smoke-linux
+make release-smoke-qemu
+make release-smoke-qemu-profile
+make release-smoke-firecracker
+make release-smoke-firecracker-pinned
+make release-lane-qemu
+make release-lane-firecracker
+make release-lane-readiness
+make platform-sanity
+make sanity
 ```
 
 Current command behavior:
 
-- `./uv release smoke-linux` extracts the latest Linux bundle in a container
+- `make release-smoke-linux` extracts the latest Linux bundle in a container
   and checks basic launch/linkage files.
-- `./uv release lane-qemu` and `./uv release lane-firecracker` only verify
+- `make release-lane-qemu` and `make release-lane-firecracker` only verify
   host prerequisites and print the next implementation step.
-- `./uv release lane-readiness` runs the aggregate native runner readiness
+- `make release-lane-readiness` runs the aggregate native runner readiness
   checks and exits non-zero if the Linux x86_64 lane is blocked.
-- `./uv platform-sanity` and `./uv sanity` verify build tool wiring for the
+- `make platform-sanity` and `make sanity` verify Makefile wiring for the
   helper scripts and current lane targets.
 - `scripts/release-smoke-microvm.sh <qemu|firecracker>` verifies artifact +
   host prerequisites and can then either:

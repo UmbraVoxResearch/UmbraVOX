@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+# UmbraVOX build system bootstrap.
+# Compiles the Go orchestration binary on first use, then execs it.
+set -euo pipefail
+REPO="$(cd "$(dirname "$0")" && pwd)"
+BIN="$REPO/build/tools/umbravox-vm"
+if [ ! -f "$BIN" ]; then
+    echo "[uv] Building umbravox-vm tool..."
+    mkdir -p "$REPO/build/tools" "$REPO/build/go/mod" "$REPO/build/go/cache"
+    ( cd "$REPO/tools" && \
+      GOMODCACHE="$REPO/build/go/mod" GOCACHE="$REPO/build/go/cache" \
+      go build -o "$BIN" ./cmd/umbravox-vm/ )
+fi
+exec "$BIN" "$@"

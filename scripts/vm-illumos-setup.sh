@@ -14,7 +14,7 @@
 #
 # Usage:
 #   nix-shell --run 'bash scripts/vm-illumos-setup.sh'
-#   make vm-smoke-illumos
+#   ./uv vm smoke illumos
 
 set -euo pipefail
 

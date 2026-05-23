@@ -14,7 +14,7 @@ REFDIR="test/evidence/visual-reference"
 RESULT="PASS"
 if [ ! -d "$REFDIR" ] || [ -z "$(ls -A "$REFDIR" 2>/dev/null)" ]; then
   echo "No reference screenshots found — skipping regression check"
-  echo "Run 'make visual-reference-update' to create initial baselines"
+  echo "Visual reference update is now handled by ./uv"
   echo "VISUAL_REGRESSION=SKIP"
   exit 0
 fi
