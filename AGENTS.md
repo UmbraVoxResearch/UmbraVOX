@@ -13,14 +13,39 @@ should never be touched by compilation.
 - Coq proofs (`coqc`)
 - Signal-Server (Maven/Java)
 
+### CRITICAL: Always Use `make` Targets
+
+**Never run `cabal build`, `cabal test`, or `nix-shell --run` directly.**
+Always use `make` targets, which route through `vm_or_local` to ensure
+builds happen inside the VM.
+
+```bash
+# CORRECT — uses VM via make system
+make build               # Build in VM
+make test                # Test in VM
+make verify              # F* verification in VM
+
+# WRONG — bypasses VM isolation
+nix-shell shell.nix --pure --run "cabal build all"   # ← NEVER DO THIS
+cabal build                                           # ← NEVER DO THIS
+```
+
+This applies to AI agents as well. When verifying that code compiles,
+agents MUST use `make build` (or the VM exec path), never direct
+`cabal build` invocations. Direct builds on the host:
+- Touch the host nix store (policy violation)
+- May use different toolchain versions than the VM
+- Bypass VM network isolation
+- Can leave stale `dist-newstyle/` state that breaks subsequent builds
+
 ### Quick Reference
 
 ```bash
-make vm-build-only       # Build in VM (host needs only qemu + nix)
+make build               # Build in VM (host needs only qemu + nix)
+make test                # Run tests in VM
+make verify              # F* verification in VM
 make vm-dev              # Interactive dev shell in VM (serial)
 make vm-run-gui          # Interactive dev shell (QEMU GTK window)
-make vm-test             # Run tests in VM
-make vm-verify           # F* verification in VM
 make vm-signal-server-build-jar  # Build Signal-Server JAR in VM
 make vm-signal-server    # Boot Signal-Server runtime VM
 make check-isolation     # Verify host nix store is clean

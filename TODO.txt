@@ -335,6 +335,13 @@ Note: Items from codebase audit (2026-05-20).
   [ ] M20.5.7 Ephemeral test VM images — build fresh image per test run, destroy after
     Note: Test pipeline should not overwrite persistent dev image. Build ephemeral image
     in a temp path, run tests, discard. Keeps dev image stable while testing on clean state.
+  [ ] M20.5.8 Nix-native Haskell build — replace cabal-in-VM with callCabal2nix
+    Note: Current approach bakes entire GHC toolchain (~6GB) into VM image so cabal
+    can build inside the guest. This causes VM image bloat (16GB+) and cptofs failures.
+    Fix: Use haskellPackages.callCabal2nix or mkDerivation to build UmbraVOX as a
+    proper Nix derivation. VM image only needs compiled binary + runtime deps (~1-2GB).
+    Dev VM (make vm-dev) keeps full toolchain for interactive work.
+    Split images: smoke/test image (small, binary-only) vs dev image (full toolchain).
   [x] M20.5.7 Refresh README/QUICKSTART/VM-ISOLATION for vm-first defaults and run-local opt-in
     Note: VM commands promoted as primary. Coq 475 Qed / 14 files.
   [x] M20.5.8 Move remaining legacy provider manifests into plugins/
