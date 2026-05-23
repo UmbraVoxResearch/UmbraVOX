@@ -13,6 +13,7 @@ import qualified Test.Chat.Message as ChatMessage
 import qualified Test.Chat.Session as ChatSession
 import qualified Test.Chat.Transaction as ChatTransaction
 import qualified Test.Chat.Wire as ChatWire
+import qualified Test.Chat.OutboundQueue as ChatOutboundQueue
 import qualified Test.Chat.WireEdge as ChatWireEdge
 import qualified Test.Codegen as Codegen
 #ifdef STUBS
@@ -350,6 +351,7 @@ coreSuites =
     , Suite "chat-message" ChatMessage.runTests
     , Suite "chat-contacts" ChatContacts.runTests
     , Suite "chat-api" ChatAPI.runTests
+    , Suite "chat-outbound-queue" ChatOutboundQueue.runTests
     , Suite "codegen" Codegen.runTests
     , Suite "tui-types" TUITypes.runTests
     , Suite "tui-render" TUIRender.runTests
@@ -453,6 +455,7 @@ coreChatSuites =
     , Suite "wire-format" WireFormat.runTests
     , Suite "route-token" RouteToken.runTests
     , Suite "chat-wire" ChatWire.runTests
+    , Suite "chat-outbound-queue" ChatOutboundQueue.runTests
     , Suite "cbor" CBOR.runTests
     , Suite "qrcode" QRCode.runTests
     , Suite "safety-number" SafetyNumber.runTests
