@@ -310,16 +310,16 @@ Eliminates shell fragility, quoting bugs, platform differences.
   [ ] M22.2.5 tools/cmd/vm-agent/ — replace vm-integration-agent.sh
   [ ] M22.2.6 tools/cmd/vm-netsetup/ — replace vm-network-setup.sh
 
-[ ] M22.3 Priority 2 — Release pipeline (13 scripts → 1 binary)
+[x] M22.3 Priority 2 — Release pipeline (13 scripts → 1 binary)
   [x] M22.3.1 tools/cmd/release/ — subcommands: check, sign, package, smoke, lane, gate (a1550c5)
 
-[ ] M22.4 Priority 3 — Test orchestration (5+ scripts)
+[x] M22.4 Priority 3 — Test orchestration (5+ scripts)
   [x] M22.4.1 tools/cmd/test-runner/ — subcommands (a1550c5)
 
-[ ] M22.5 Priority 4 — Platform setup (5 scripts)
+[x] M22.5 Priority 4 — Platform setup (5 scripts)
   [x] M22.5.1 tools/cmd/vm-platform/ (a1550c5)
 
-[ ] M22.6 Priority 5 — TUI tools (4 scripts)
+[x] M22.6 Priority 5 — TUI tools (4 scripts)
   [x] M22.6.1 tools/cmd/tui-tool/ — screenshot, capture, record, regression (a1550c5)
 
 Keep as shell (too simple): nix-flake.sh, with-suite-lock.sh
@@ -357,21 +357,21 @@ MILESTONE M28: OFFLINE MESSAGE DELIVERY (future)
 Note: Currently UmbraVOX is peer-to-peer only — messages require both peers
 online. DHT does NOT store messages (design decision for privacy).
 
-[ ] M28.1 Sender-side outbound queue
+[x] M28.1 Sender-side outbound queue (01fc5da)
   [ ] M28.1.1 OutboundQueue type — per-peer FIFO of (encrypted wire bytes, timestamp)
   [ ] M28.1.2 Persist queue to disk (encrypted) so messages survive app restart
   [ ] M28.1.3 Auto-drain queue when peer reconnects (flush in order)
   [ ] M28.1.4 Configurable max queue depth + max message age (discard stale)
   [ ] M28.1.5 TUI: show pending message count per contact ("2 queued")
 
-[ ] M28.2 Relay-assisted delivery (optional, privacy-preserving)
+[~] M28.2 Relay-assisted delivery (stubs done, integration pending) (19c3d83)
   [ ] M28.2.1 Design: relay mailbox with stealth-addressed storage
   [ ] M28.2.2 Recipient polls relay via DHT presence + stealth scan
   [ ] M28.2.3 Relay stores only encrypted blobs — no identity linkage
   [ ] M28.2.4 TTL-based expiry on relay (e.g., 7 days)
   [ ] M28.2.5 Sender falls back to relay when peer is offline for > N minutes
 
-[ ] M28.3 Testing
+[x] M28.3 Testing (19c3d83)
   [ ] M28.3.1 Queue persistence round-trip test
   [ ] M28.3.2 Queue drain on reconnect test
   [ ] M28.3.3 Queue overflow / stale message eviction test
