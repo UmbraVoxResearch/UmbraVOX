@@ -67,7 +67,7 @@ build_jar() {
     if [ ! -d "$BUILD_VM_IMAGE_PATH" ]; then
         echo -e "${RED}[SIGNAL-VM]${NC} Build VM image not found at $BUILD_VM_IMAGE_PATH"
         echo -e "${YELLOW}[SIGNAL-VM]${NC} Building it now..."
-        mkdir -p "$BUILD_VM_IMAGE_PATH"
+        rm -rf "$BUILD_VM_IMAGE_PATH"  # nix-build creates a symlink here
         local nix_tmp
         nix_tmp="$VM_TMP_DIR"
         local cfg_script
