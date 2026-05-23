@@ -880,6 +880,9 @@ release-freedos:
 # Platform Release Packaging (M14.4.1-5)
 # --------------------------------------------------------------------------
 
+# Platform release targets require host nix as a bootstrap dependency.
+# nix-shell shell-minimal.nix provides coreutils, gnutar, and gzip for
+# cross-platform packaging without a full Haskell toolchain.
 release-freebsd: # [host-only] packaging only, no compiler needed
 	@echo -e "$(BLUE)[RELEASE]$(NC) Building FreeBSD platform release tarball (M14.4.1)..."
 	@chmod +x ./scripts/release-package-platform.sh
@@ -1305,6 +1308,9 @@ vm-image-build: # [host-only] Build VM image inside a builder VM (M20.5.8)
 	@./scripts/vm-image-builder.sh
 
 vm-image-build-host: # [host-only] nix-build produces VM image directly on host
+ifndef I_KNOW_THIS_TOUCHES_HOST
+	$(error vm-image-build-host writes to /nix/store. Set I_KNOW_THIS_TOUCHES_HOST=1 or use make vm-image-build)
+endif
 	@echo -e "$(YELLOW)[VM-IMAGE]$(NC) WARNING: Building VM image on the host."
 	@echo -e "$(YELLOW)[VM-IMAGE]$(NC) This touches the host /nix/store and uses ~30GB of disk."
 	@echo -e "$(YELLOW)[VM-IMAGE]$(NC) Prefer 'make vm-image-build' (builder VM) instead."
@@ -1718,7 +1724,7 @@ check-isolation:
 tools: # [host-only] build Go tool binaries
 	@echo -e "$(BLUE)[TOOLS]$(NC) Building Go tools..."
 	@mkdir -p build/tools
-	@cd tools && go build -o ../build/tools/ ./cmd/...
+	@cd tools && GOMODCACHE=$(CURDIR)/build/go/mod GOCACHE=$(CURDIR)/build/go/cache go build -o ../build/tools/ ./cmd/...
 	@echo -e "$(GREEN)[TOOLS]$(NC) Go tools built in build/tools/"
 
 # --------------------------------------------------------------------------
@@ -1745,10 +1751,10 @@ clean-build-test: clean
 
 cleandb: # [host-only] file operations
 	@echo -e "$(BLUE)[CLEANDB]$(NC) Removing local database..."
-	@rm -f ~/.umbravox/umbravox.db
+	@rm -f .umbravox-data/umbravox.db
 	@echo -e "$(GREEN)[CLEANDB]$(NC) Database removed. Will be recreated on next launch."
 
 cleanall: clean cleandb # [host-only] file operations
 	@echo -e "$(BLUE)[CLEANALL]$(NC) Removing all local data..."
-	@rm -rf ~/.umbravox/tools
+	@rm -rf .umbravox-data/tools
 	@echo -e "$(GREEN)[CLEANALL]$(NC) All cleaned (build + DB + tools)."

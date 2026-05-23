@@ -80,7 +80,12 @@ func run() int {
 
 	// ── Create COW overlay ───────────────────────────────────────────
 	logMsg(blue, "Creating COW overlay...")
-	overlay, err := disk.CreateOverlay(diskImg, "")
+	overlayDir := filepath.Join(vmCacheDir, "tmp")
+	if err := os.MkdirAll(overlayDir, 0o755); err != nil {
+		logMsg(red, fmt.Sprintf("Failed to create overlay tmp dir: %v", err))
+		return 1
+	}
+	overlay, err := disk.CreateOverlay(diskImg, overlayDir)
 	if err != nil {
 		logMsg(red, fmt.Sprintf("Failed to create overlay: %v", err))
 		return 1
@@ -370,8 +375,14 @@ func readHostMemoryMB() int {
 
 // createSourceDisk exports the worktree into an ext2 disk image.
 func createSourceDisk(repoRoot, mode, vmCmd string) (string, error) {
+	// Use project-local temp directory to avoid host filesystem contamination
+	tmpDir := filepath.Join(repoRoot, "build", "vm", "tmp")
+	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
+		return "", fmt.Errorf("create temp dir: %w", err)
+	}
+
 	// Create temp file for the ext2 disk
-	diskFile, err := os.CreateTemp("", fmt.Sprintf("umbravox-vm-dev-source.%d.*.ext2", os.Getpid()))
+	diskFile, err := os.CreateTemp(tmpDir, fmt.Sprintf("umbravox-vm-dev-source.%d.*.ext2", os.Getpid()))
 	if err != nil {
 		return "", fmt.Errorf("create source disk temp file: %w", err)
 	}
@@ -380,7 +391,7 @@ func createSourceDisk(repoRoot, mode, vmCmd string) (string, error) {
 	os.Remove(diskPath) // genext2fs creates it
 
 	// Create temp dir for source export
-	srcDir, err := os.MkdirTemp("", "umbravox-vm-dev-src.")
+	srcDir, err := os.MkdirTemp(tmpDir, "umbravox-vm-dev-src.")
 	if err != nil {
 		return "", fmt.Errorf("create source temp dir: %w", err)
 	}
