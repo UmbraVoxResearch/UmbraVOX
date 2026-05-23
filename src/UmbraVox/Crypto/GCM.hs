@@ -156,6 +156,15 @@ gctrWithKey key icb plaintext = BS.concat (zipWith enc counters blocks)
         in xorBS blk (BS.take (BS.length blk) ks)
 
 ------------------------------------------------------------------------
+-- SP 800-38D Section 5.2.1.1 — Input length constraints
+------------------------------------------------------------------------
+
+-- | NIST SP 800-38D Section 5.2.1.1: max plaintext length is 2^39 - 256 bits,
+-- equivalent to (2^32 - 2) * 128 bits = (2^32 - 2) * 16 bytes = 68,719,476,704 bytes.
+gcmMaxPlaintextLen :: Int
+gcmMaxPlaintextLen = (2^(32::Int) - 2) * 16
+
+------------------------------------------------------------------------
 -- SP 800-38D Section 7.1 — GCM-AE
 ------------------------------------------------------------------------
 
@@ -166,6 +175,8 @@ gcmEncryptSafe :: ByteString -> ByteString -> ByteString -> ByteString
 gcmEncryptSafe !key !nonce !aad !plaintext
     | BS.length key /= 32   = Left "AES-256-GCM: key must be 32 bytes"
     | BS.length nonce /= 12 = Left "AES-256-GCM: nonce must be 12 bytes"
+    | BS.length plaintext > gcmMaxPlaintextLen =
+        Left "AES-256-GCM: plaintext exceeds NIST SP 800-38D maximum length"
     | otherwise = Right $
     let !h  = bsToGF (aesEncrypt key (BS.replicate 16 0))
         !j0 = nonce <> BS.pack [0, 0, 0, 1]

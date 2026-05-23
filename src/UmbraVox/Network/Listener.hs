@@ -149,18 +149,18 @@ acceptLoopCore cs cbs ik port connCount listener = do
                     mode <- readIORef (cfgConnectionMode cfg)
                     case mode of
                         Swing       -> do
-                            lcOnStatus cbs ("Swing: accepted " ++ fingerprint peerKey)
+                            lcOnStatus cbs ("Swing: accepted " ++ take 8 (fingerprint peerKey))
                             pure True
                         Promiscuous -> pure True
                         Selective   -> do
                             tofoKeys <- readIORef (cfgTofoKeys cfg)
                             if Set.member peerKey tofoKeys
                                 then do
-                                    lcOnStatus cbs ("Selective: known peer " ++ fingerprint peerKey)
+                                    lcOnStatus cbs ("Selective: known peer " ++ take 8 (fingerprint peerKey))
                                     pure True
                                 else do
                                     modifyIORef' (cfgTofoKeys cfg) (Set.insert peerKey)
-                                    lcOnStatus cbs ("Selective: new peer trusted " ++ fingerprint peerKey)
+                                    lcOnStatus cbs ("Selective: new peer trusted " ++ take 8 (fingerprint peerKey))
                                     pure True
                         Chaste      -> do
                             keys <- readIORef (cfgTrustedKeys cfg)

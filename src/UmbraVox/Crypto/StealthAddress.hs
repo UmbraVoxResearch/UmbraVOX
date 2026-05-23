@@ -28,7 +28,7 @@ import UmbraVox.Crypto.Ed25519
     ( ExtPoint, basepoint, pointAdd, scalarMul
     , encodePoint, decodePoint, groupL
     , decodeLE, encodeLEn, clampScalar
-    , ed25519PublicKey
+    , ed25519PublicKey, isSmallOrder
     )
 import UmbraVox.Crypto.HKDF (hkdf)
 import UmbraVox.Crypto.Random (randomBytes)
@@ -161,7 +161,10 @@ deriveViewTagBytes sharedSecret = hkdf hkdfSalt sharedSecret viewTagInfo 32
 -- Returns empty ByteString if the spend public key is not a valid Ed25519 point.
 -- SAFETY (M9.1.2): Callers should check for BS.null result as an error indicator.
 addSpendKey :: ExtPoint -> ByteString -> ByteString
-addSpendKey sG spendPubBS =
+addSpendKey sG spendPubBS
+    -- Verify spend public key is in prime-order subgroup (reject small-order keys)
+    | isSmallOrder spendPubBS = BS.empty
+    | otherwise =
     case decodePoint spendPubBS of
         Nothing      -> BS.empty  -- invalid key, caller must check
         Just !bPoint -> encodePoint (pointAdd sG bPoint)
