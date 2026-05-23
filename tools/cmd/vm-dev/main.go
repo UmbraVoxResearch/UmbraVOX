@@ -6,9 +6,12 @@
 //
 // Usage:
 //
+//	vm-dev                           # interactive dev shell (serial console)
+//	vm-dev dev                       # alias for interactive
 //	vm-dev interactive               # interactive dev shell (serial console)
 //	vm-dev gui                       # interactive dev shell (QEMU VGA window)
 //	vm-dev exec "cabal build all"    # run command, exit
+//	vm-dev smoke                     # run full smoke pipeline, exit
 //
 // Requires: qemu-system-x86_64, genext2fs, /dev/kvm
 // The VM image must be pre-built via `make vm-image-build`.
@@ -225,6 +228,9 @@ func run() int {
 	return 0
 }
 
+// smokeCmd is the full smoke pipeline command executed in smoke mode.
+const smokeCmd = `cabal build all --enable-tests && cabal test umbravox-test`
+
 // parseArgs extracts mode and optional command from os.Args.
 func parseArgs() (mode, vmCmd string) {
 	args := os.Args[1:]
@@ -233,6 +239,8 @@ func parseArgs() (mode, vmCmd string) {
 	}
 	mode = args[0]
 	switch mode {
+	case "dev":
+		return "interactive", ""
 	case "interactive", "gui":
 		return mode, ""
 	case "exec":
@@ -241,11 +249,32 @@ func parseArgs() (mode, vmCmd string) {
 			os.Exit(2)
 		}
 		return "exec", args[1]
+	case "smoke":
+		return "exec", smokeCmd
+	case "help", "-h", "--help":
+		printUsage()
+		os.Exit(0)
+		return "", ""
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown mode: %s\nUsage: %s {interactive|gui|exec \"cmd\"}\n", mode, os.Args[0])
+		fmt.Fprintf(os.Stderr, "Unknown mode: %s\n", mode)
+		printUsage()
 		os.Exit(2)
 		return "", "" // unreachable
 	}
+}
+
+func printUsage() {
+	fmt.Fprintf(os.Stderr, `Usage: %s <mode> [args]
+
+Modes:
+  dev, interactive   Interactive dev shell via serial console (default)
+  gui                Interactive dev shell via QEMU VGA window
+  exec "cmd"         Run a command in the VM, then exit
+  smoke              Run the full smoke pipeline (build + test), then exit
+
+Requires: qemu-system-x86_64, genext2fs, /dev/kvm
+The VM image must be pre-built via 'make vm-image-build'.
+`, os.Args[0])
 }
 
 // findRepoRoot walks up from the executable (or cwd) to find the repo root.
@@ -408,6 +437,15 @@ func createSourceDisk(repoRoot, mode, vmCmd string) (string, error) {
 		return "", fmt.Errorf("write init script: %w", err)
 	}
 
+	// For exec mode, write the command to a separate file so the init script
+	// reads it at runtime (avoids shell metacharacter issues).
+	if mode == "exec" && vmCmd != "" {
+		execCmdPath := filepath.Join(srcDir, ".vm-exec-cmd")
+		if err := os.WriteFile(execCmdPath, []byte(vmCmd+"\n"), 0o644); err != nil {
+			return "", fmt.Errorf("write exec command file: %w", err)
+		}
+	}
+
 	logMsg(blue, "Creating source disk...")
 	genCmd := exec.Command("genext2fs", "-b", "1048576", "-d", srcDir, diskPath)
 	if out, err := genCmd.CombinedOutput(); err != nil {
@@ -547,23 +585,28 @@ exec /bin/bash --login
 		}
 
 	default:
-		// Exec mode: run command and power off
-		b.WriteString(fmt.Sprintf(`
+		// Exec mode: read command from .vm-exec-cmd file (written alongside
+		// this init script on the source disk). This avoids any shell
+		// metacharacter issues from embedding the command directly.
+		b.WriteString(`
+# Read the command written by the host into .vm-exec-cmd on the source disk.
+VM_EXEC_CMD="$(cat /mnt/src/.vm-exec-cmd 2>/dev/null || true)"
+
 echo ""
 echo "========================================"
-echo "  UmbraVOX VM: %s"
+echo "  UmbraVOX VM: $VM_EXEC_CMD"
 echo "========================================"
 echo ""
 
 # Run the command and preserve its exit status.
 set +e
-%s
+eval "$VM_EXEC_CMD"
 STATUS=$?
 set -e
 
 # Persist command status to host-visible shared output.
 if [ -d /output ]; then
-    printf "%%s\n" "$STATUS" > /output/vm-exec-status 2>/dev/null || true
+    printf "%s\n" "$STATUS" > /output/vm-exec-status 2>/dev/null || true
     sync 2>/dev/null || true
 fi
 
@@ -577,7 +620,7 @@ fi
 # Power off after command completes
 systemctl poweroff || true
 exit $STATUS
-`, cmd, cmd))
+`)
 	}
 
 	return b.String()
