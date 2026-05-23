@@ -1,11 +1,16 @@
 name: Build and publish seed VM image
 
-# Rebuild seed image on minor version tags (v0.5.0, v0.6.0, v1.0.0, etc.)
-# NOT on patch tags (v0.4.11, v0.4.12) — seed only changes with nixpkgs or vm-seed.nix updates.
+# Rebuild seed image only when seed-related files change on main.
+# The seed image only needs updating when nix/vm-seed.nix, nix/vm-base.nix,
+# or flake.lock change — not on every release.
 on:
   push:
-    tags:
-      - 'v[0-9]+.[0-9]+.0'  # only X.Y.0 tags (minor releases)
+    branches: [main]
+    paths:
+      - 'nix/vm-seed.nix'
+      - 'nix/vm-base.nix'
+      - 'flake.lock'
+      - '.github/workflows/seed-image.yml'
 
 jobs:
   build-seed:
@@ -41,19 +46,19 @@ jobs:
           gzip -c build/vm/seed-image/nixos.img > umbravox-seed.img.gz
           sha256sum umbravox-seed.img.gz > umbravox-seed.img.gz.sha256
 
-      - name: Extract version
+      - name: Compute seed version
         id: version
         run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          # Seed version matches the minor release
-          SEED_VER="${TAG#v}"
+          # Seed version is date-based (YYYY.MM.DD) since it only rebuilds on config changes
+          SEED_VER="$(date +%Y.%m.%d)"
+          COMMIT_SHORT="$(git rev-parse --short HEAD)"
           echo "seed_version=$SEED_VER" >> "$GITHUB_OUTPUT"
+          echo "commit=$COMMIT_SHORT" >> "$GITHUB_OUTPUT"
 
       - name: Create seed release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: seed-${{ steps.version.outputs.tag }}
+          tag_name: seed-${{ steps.version.outputs.seed_version }}
           name: "Seed VM Image (${{ steps.version.outputs.tag }})"
           body: |
             Minimal NixOS seed VM image for UmbraVOX builder bootstrap.
