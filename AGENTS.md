@@ -82,6 +82,29 @@ agents MUST use `make build` (or the VM exec path), never direct
 - Bypass VM network isolation
 - Can leave stale `dist-newstyle/` state that breaks subsequent builds
 
+### Debugging with Serial Console
+
+All VMs expose a serial console for interactive debugging:
+
+```bash
+make vm-dev              # Interactive serial console (login as root)
+make vm-run-gui          # GUI window with VGA console
+```
+
+Inside the VM:
+- Workspace at `/work/umbravox`
+- Run `cabal build all`, `cabal test`, `fstar.exe` directly
+- Check `/output/vm-exec-status` for last exec command result
+- Check `/mnt/src/.vm-exec-cmd` for the command that was sent
+- Systemd journal: `journalctl -u umbravox-smoke` for boot logs
+
+For exec mode debugging:
+```bash
+# Run a specific command in the VM and get its exit code
+scripts/vm-dev-run.sh exec "cabal build all"
+echo $?  # exit code from the VM command
+```
+
 ### Quick Reference
 
 ```bash
