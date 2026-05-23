@@ -42,8 +42,8 @@ COMPLETED MILESTONES (see CHANGELOG.txt for details)
 MILESTONE M1: MVP ASSURANCE CLOSEOUT (BLOCKS PUBLICATION)
 ================================================================================
 
-[~] M1.1 Persistence confidentiality (application-layer, non-SQLCipher claim)
-  [~] M1.1.3 Encrypt/decrypt message content on save/load — INDEFINITELY DEFERRED (Anthony to be replaced with direct sqlite).
+[!] M1.1 Persistence confidentiality (application-layer, non-SQLCipher claim) — DEFERRED
+  [!] M1.1.3 Encrypt/decrypt message content on save/load — INDEFINITELY DEFERRED (Anthony to be replaced with direct sqlite).
     Note: Encryption module complete; Anthony.hs integration deferred pending upstream patches.
 
 ================================================================================
@@ -63,8 +63,8 @@ MILESTONE M3: NATIVE PER-HOST BUILD SUPPORT + CROSS-TARGET POLICY
 MILESTONE M4: RELEASE COMPLIANCE, LICENSE, AND PROVENANCE GATES
 ================================================================================
 
-[~] M4.2 Provenance and attestation
-  [ ] M4.2.4 Add attestation path (future: in-toto/SLSA-style) after baseline stability.
+[!] M4.2 Provenance and attestation — DEFERRED
+  [!] M4.2.4 Add attestation path (future: in-toto/SLSA-style) after baseline stability.
 
 ================================================================================
 MILESTONE M13: F* FORMAL VERIFICATION — 100% COVERAGE
@@ -92,7 +92,7 @@ Note: 221 original assumes → 0 admit() + 30 assume val. 17/24 specs fully prov
     Import paths tried: Coqprime.PocklingtonRefl, Coqprime.Pocklington.Pocklington.
     Self-contained Pocklington theorem (~200 lines of multiplicative order theory)
     deferred as high-effort.  Workaround: external verification (SAGE/PARI/Primo).
-  Current totals: 13 Coq files, 444 Qed, 0 Admitted.
+  Current totals: 14 Coq files (+ 1 draft), 475 Qed, 0 Admitted.
 
 [~] M13.3 Phase 3: Curve arithmetic
   [~] M13.3.2 Ed25519: 10 assume val remaining (algebraic/curve geometry). fadd/fmul/distrib proved; all KAT via assert_norm.
@@ -138,8 +138,8 @@ MILESTONE M14: PLATFORM EXPANSION — VM RUNNERS + ILLUMOS + BSDs
   [ ] M14.4.4 OmniOS/illumos release tarball.
   [ ] M14.4.5 Linux arm64 release tarball.
 
-[~] M14.5 Makefile targets
-  [ ] M14.5.7 make vm-smoke-openbsd — OpenBSD VM smoke test.
+[x] M14.5 Makefile targets
+  [x] M14.5.7 make vm-smoke-openbsd — OpenBSD VM smoke test (a0f3891)
 
 [!] M14.6 WebAssembly target — DEFERRED
   [ ] M14.6.1 GHC WASM backend (ghc-wasm) build configuration.
@@ -282,29 +282,19 @@ MILESTONE M21: STUB IMPLEMENTATION + CODEGEN EXPANSION (v0.3.0-v0.4.0)
 ================================================================================
 (all completed items moved to CHANGELOG.txt — see CHANGELOG v0.3.0 + Unreleased)
 
-[~] M21.1 Phase 1 — Crypto stubs (remaining)
-  [~] M21.1.2 codegen/Specs/VRF.spec + csrc/generated/vrf.c + FFI wrapper
-    - .spec file done (932f60b); C generation + FFI wrappers pending
-    - Constant-time VRF proof generation
-    - Elligator2 hash-to-curve implementation
+[x] M21.1 Phase 1 — Crypto stubs — see CHANGELOG Unreleased
+  [x] M21.1.2 codegen/Specs/VRF.spec + csrc/generated/vrf.c + FFI wrapper (beeb93f)
   [x] M21.1.3 codegen/Specs/Ed25519Extended.spec — point ops + Elligator2 (58a33da)
-    - Ed25519 scalar_mult_base, point_add, elligator2_hash
-    - Extended beyond current sign/verify codegen
-  [~] M21.1.5 codegen/Specs/PQWrapper.spec + csrc/generated/pqwrapper.c
-    - .spec file done (932f60b); C generation + FFI wrappers pending
-    - Serialized KEM ciphertext + AEAD ciphertext + tag
+  [x] M21.1.5 codegen/Specs/PQWrapper.spec + csrc/generated/pqwrapper.c + FFI wrapper (beeb93f)
   [x] M21.1.7 codegen/Specs/SessionState.spec — verified complete (58a33da)
 
-[~] M21.2 Phase 2 — Protocol stubs (remaining)
-  [~] M21.2.2 codegen/Specs/MessageFormat.spec + csrc/generated/messageformat.c
-    - .spec file done (6f3fe1c); C generation + FFI wrappers pending
-    - Constant-time padding (prevent padding oracle attacks)
-  [~] M21.2.4 codegen/Specs/WireFormat.spec + csrc/generated/wireformat.c
-    - .spec file done (6f3fe1c); C generation + FFI wrappers pending
+[x] M21.2 Phase 2 — Protocol stubs — see CHANGELOG Unreleased
+  [x] M21.2.2 codegen/Specs/MessageFormat.spec + csrc/generated/messageformat.c + FFI wrapper (beeb93f)
+  [x] M21.2.4 codegen/Specs/WireFormat.spec + csrc/generated/wireformat.c + FFI wrapper (beeb93f)
 
-[~] M21.3 Phase 3 — Chat API + Messaging P2P (remaining)
+[x] M21.3 Phase 3 — Chat API + Messaging P2P — see CHANGELOG Unreleased
   [x] M21.3.4 codegen/Specs/Dandelion.spec — routing + fluff probability (58a33da)
-  [ ] M21.3.6 codegen/Specs/NetworkProtocol.spec + csrc/generated/netprotocol.c
+  [x] M21.3.6 codegen/Specs/NetworkProtocol.spec + csrc/generated/networkprotocol.c + FFI wrapper (58a33da, beeb93f)
 
 Deferred (non-blockchain):
   - SecureBytes migration (M20.4.1) — invasive (27+ sites)
@@ -317,13 +307,13 @@ Note: Replace 51 shell scripts with static Go binaries compiled in VM.
 Eliminates shell fragility, quoting bugs, platform differences.
 (M22.1 Go project scaffold complete — see CHANGELOG.txt)
 
-[x] M22.2 Priority 1 — VM orchestration Go tools (5d23bf3)
-  [ ] M22.2.1 tools/cmd/vm-dev/ — replace vm-dev-run.sh
-  [ ] M22.2.2 tools/cmd/vm-signal/ — replace vm-signal-server-run.sh
-  [ ] M22.2.3 tools/cmd/vm-smoke/ — replace vm-smoke-run.sh
-  [ ] M22.2.4 tools/cmd/vm-build-test/ — replace vm-build-test.sh
-  [ ] M22.2.5 tools/cmd/vm-agent/ — replace vm-integration-agent.sh
-  [ ] M22.2.6 tools/cmd/vm-netsetup/ — replace vm-network-setup.sh
+[~] M22.2 Priority 1 — VM orchestration Go tools (scaffolded 5d23bf3)
+  [x] M22.2.1 tools/cmd/vm-dev/ — replace vm-dev-run.sh (1d631e3)
+  [ ] M22.2.2 tools/cmd/vm-signal/ — scaffolded, logic not yet implemented
+  [ ] M22.2.3 tools/cmd/vm-smoke/ — scaffolded, logic not yet implemented
+  [ ] M22.2.4 tools/cmd/vm-build-test/ — scaffolded, logic not yet implemented
+  [ ] M22.2.5 tools/cmd/vm-agent/ — scaffolded, logic not yet implemented
+  [ ] M22.2.6 tools/cmd/vm-netsetup/ — scaffolded, logic not yet implemented
 
 [x] M22.3 Priority 2 — Release pipeline (13 scripts → 1 binary)
   [x] M22.3.1 tools/cmd/release/ — subcommands: check, sign, package, smoke, lane, gate (a1550c5)
@@ -344,11 +334,11 @@ MILESTONE M26: DOCUMENTATION OVERHAUL (every release)
 ================================================================================
 (M26.1 complete — see CHANGELOG.txt)
 
-[~] M26.2 Auto-generated documentation
-  [ ] M26.2.2 Module dependency graph via graphmod or standalon
-  [ ] M26.2.3 API docs for Chat.API JSON-RPC (auto from source)
-  [ ] M26.2.4 Plugin authoring docs auto-extracted from template-bridge/
-  [ ] M26.2.5 Test coverage report generation (make coverage-report)
+[x] M26.2 Auto-generated documentation
+  [x] M26.2.2 Module dependency graph — scripts/gen-dep-graph.sh (7f1b392)
+  [x] M26.2.3 API docs — doc/API-REFERENCE.md (a0f3891)
+  [x] M26.2.4 Plugin authoring docs — doc/PLUGIN-AUTHORING.md (7f1b392)
+  [x] M26.2.5 Test coverage report generation — make coverage-report target wired
 
 [x] M26.3 Per-milestone documentation requirements (72a1cb2)
   Note: Every milestone MUST include:
@@ -373,23 +363,23 @@ Note: Currently UmbraVOX is peer-to-peer only — messages require both peers
 online. DHT does NOT store messages (design decision for privacy).
 
 [x] M28.1 Sender-side outbound queue (01fc5da)
-  [ ] M28.1.1 OutboundQueue type — per-peer FIFO of (encrypted wire bytes, timestamp)
+  [x] M28.1.1 OutboundQueue type — per-peer FIFO of (encrypted wire bytes, timestamp) (01fc5da)
   [ ] M28.1.2 Persist queue to disk (encrypted) so messages survive app restart
   [ ] M28.1.3 Auto-drain queue when peer reconnects (flush in order)
-  [ ] M28.1.4 Configurable max queue depth + max message age (discard stale)
+  [x] M28.1.4 Configurable max queue depth + max message age (discard stale) (01fc5da)
   [ ] M28.1.5 TUI: show pending message count per contact ("2 queued")
 
 [~] M28.2 Relay-assisted delivery (stubs done, integration pending) (19c3d83)
-  [ ] M28.2.1 Design: relay mailbox with stealth-addressed storage
+  [x] M28.2.1 Design: relay mailbox with stealth-addressed storage (19c3d83)
   [ ] M28.2.2 Recipient polls relay via DHT presence + stealth scan
-  [ ] M28.2.3 Relay stores only encrypted blobs — no identity linkage
-  [ ] M28.2.4 TTL-based expiry on relay (e.g., 7 days)
+  [x] M28.2.3 Relay stores only encrypted blobs — no identity linkage (19c3d83)
+  [x] M28.2.4 TTL-based expiry on relay (7 days default, pruned on poll) (19c3d83)
   [ ] M28.2.5 Sender falls back to relay when peer is offline for > N minutes
 
 [x] M28.3 Testing (19c3d83)
-  [ ] M28.3.1 Queue persistence round-trip test
-  [ ] M28.3.2 Queue drain on reconnect test
-  [ ] M28.3.3 Queue overflow / stale message eviction test
+  [x] M28.3.1 Queue round-trip test (enqueue/dequeueAll) (19c3d83)
+  [ ] M28.3.2 Queue drain on reconnect test (needs auto-drain wiring M28.1.3)
+  [x] M28.3.3 Queue overflow / stale message eviction test (19c3d83)
 
 ================================================================================
 BLOCKED (EXTERNAL DEPENDENCIES)
@@ -403,7 +393,7 @@ BLOCKED (EXTERNAL DEPENDENCIES)
   [ ] M4.2.4 in-toto/SLSA attestation path — deferred (see M4.2).
 
 [!] X3 Deferred implementation
-  [~] M1.1.3 Anthony.hs encryption integration — INDEFINITELY DEFERRED (Anthony to be replaced with direct sqlite).
+  [!] M1.1.3 Anthony.hs encryption integration — INDEFINITELY DEFERRED (Anthony to be replaced with direct sqlite).
 
 ================================================================================
 PERMANENTLY DEFERRED — BLOCKCHAIN LAYER
@@ -471,4 +461,4 @@ OUTSIDE MVP (DEFERRED)
 ================================================================================
 
 [!] Persistence integration (needs upstream)
-  [~] M1.1.3 Anthony.hs encryption integration — INDEFINITELY DEFERRED (Anthony to be replaced with direct sqlite).
+  [!] M1.1.3 Anthony.hs encryption integration — INDEFINITELY DEFERRED (Anthony to be replaced with direct sqlite).
