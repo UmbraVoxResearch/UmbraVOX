@@ -18,7 +18,7 @@ import (
 // If expected is empty, the hash check is skipped.
 // Returns an error on HTTP errors, timeouts, or hash mismatches.
 func FetchFile(url, dest, expected string) error {
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil { // #nosec G301 -- download destination
 		return fmt.Errorf("create destination directory: %w", err)
 	}
 

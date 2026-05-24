@@ -19,7 +19,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VM_LOG_PREFIX="VM-ILLUMOS"
+export VM_LOG_PREFIX="VM-ILLUMOS"
 source "${SCRIPT_DIR}/lib-vm.sh"
 
 # --------------------------------------------------------------------------

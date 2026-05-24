@@ -43,10 +43,10 @@ vm_require_cmd() {
 # Detect KVM availability; sets VM_ACCEL to "kvm" or "tcg".
 vm_detect_accel() {
     if [[ -e /dev/kvm ]]; then
-        VM_ACCEL="kvm"
+        export VM_ACCEL="kvm"
     else
         vm_log "WARNING: /dev/kvm not present — falling back to TCG (slow)"
-        VM_ACCEL="tcg"
+        export VM_ACCEL="tcg"
     fi
 }
 

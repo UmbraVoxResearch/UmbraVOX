@@ -3,6 +3,8 @@
 --
 -- Tests that pqxdhInitiate + pqxdhRespond produce the same shared secret,
 -- and that an invalid SPK signature causes initiation to return Nothing.
+-- Additional coverage: round-trip with OPK, tampered PQ signature rejection,
+-- wrong identity key produces different secret, deterministic reproducibility.
 module Test.Crypto.PQXDH (runTests) where
 
 import qualified Data.ByteString as BS
@@ -24,6 +26,11 @@ runTests = do
         [ testPQXDHAgreement
         , testInvalidSPKReturnsNothing
         , testPQXDHPQKeySigVerification
+        , testPQXDHRoundTrip
+        , testPQXDHWithOPK
+        , testPQXDHBadPQSignature
+        , testPQXDHBadIdentityKey
+        , testPQXDHDeterministic
         ]
     let passed = length (filter id results)
         total  = length results

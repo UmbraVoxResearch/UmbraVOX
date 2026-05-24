@@ -13,7 +13,7 @@ import (
 // .vm-exec-cmd (read by the init script at boot). Returns the path to the
 // disk image file; the caller must remove it when done.
 func CreateSourceDisk(repoRoot, tmpDir, initScript, execCmd string) (string, error) {
-	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
+	if err := os.MkdirAll(tmpDir, 0o755); err != nil { // #nosec G301 -- temp directory
 		return "", fmt.Errorf("create temp dir: %w", err)
 	}
 

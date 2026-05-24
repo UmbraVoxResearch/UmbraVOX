@@ -30,6 +30,7 @@ module UmbraVox.Chat.OutboundQueue
 
 import Control.Exception (SomeException, catch)
 import Data.ByteString (ByteString)
+import System.IO (hPutStrLn, stderr)
 import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef')
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
@@ -180,7 +181,9 @@ drainQueue oq sendFn = do
     sendAll [] n = pure n
     sendAll (e:es) n = do
         ok <- (sendFn (qeWireBytes e) >> pure True)
-              `catch` (\(_ :: SomeException) -> pure False)
+              `catch` (\(e' :: SomeException) -> do
+                  hPutStrLn stderr $ "Warning: send failed: " ++ show e'
+                  pure False)
         if ok
             then sendAll es (n + 1)
             else do

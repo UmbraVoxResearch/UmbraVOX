@@ -133,9 +133,6 @@ eval_sha256() {
     local hex_input="$1"
     local byte_count
     byte_count=$(hex_byte_count "$hex_input")
-    local fstar_bytes
-    fstar_bytes=$(hex_to_fstar_bytes "$hex_input")
-
     local tmpdir
     tmpdir=$(mktemp -d)
     trap "rm -rf $tmpdir" EXIT

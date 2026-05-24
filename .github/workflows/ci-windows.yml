@@ -22,7 +22,7 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      - uses: msys2/setup-msys2@v2
+      - uses: msys2/setup-msys2@d0e80f58dffbc64f6a3a1f43527d469b4fc7b6c8  # v2
         with:
           msystem: UCRT64
           update: true
@@ -33,7 +33,7 @@ jobs:
             zip
             mingw-w64-ucrt-x86_64-coreutils
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
 
       - name: Create source tarball
         run: |
@@ -56,10 +56,10 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
 
       - name: Set up Haskell
-        uses: haskell-actions/setup@v2
+        uses: haskell-actions/setup@ec49af4e6fd92c53c1d67070e922e43fdde17af0  # v2
         with:
           ghc-version: '9.6'
           cabal-version: 'latest'
@@ -79,7 +79,7 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      - uses: msys2/setup-msys2@v2
+      - uses: msys2/setup-msys2@d0e80f58dffbc64f6a3a1f43527d469b4fc7b6c8  # v2
         with:
           msystem: UCRT64
           update: true
@@ -89,7 +89,7 @@ jobs:
             zip
             mingw-w64-ucrt-x86_64-coreutils
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
 
       - name: Windows lane readiness
         run: bash scripts/release-lane-readiness-windows.sh

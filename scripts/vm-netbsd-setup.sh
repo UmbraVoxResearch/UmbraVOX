@@ -23,7 +23,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VM_LOG_PREFIX="vm-netbsd"
+export VM_LOG_PREFIX="vm-netbsd"
 source "${SCRIPT_DIR}/lib-vm.sh"
 
 # ── Configuration ─────────────────────────────────────────────────────────────

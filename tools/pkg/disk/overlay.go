@@ -63,7 +63,7 @@ func EnsureCacheDisk(path string, size string) error {
 		return nil // already exists
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil { // #nosec G301 -- cache directory
 		return fmt.Errorf("create cache disk directory: %w", err)
 	}
 

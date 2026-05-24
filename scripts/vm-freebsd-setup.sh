@@ -22,7 +22,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VM_LOG_PREFIX="VM-FREEBSD"
+export VM_LOG_PREFIX="VM-FREEBSD"
 source "${SCRIPT_DIR}/lib-vm.sh"
 
 # --------------------------------------------------------------------------

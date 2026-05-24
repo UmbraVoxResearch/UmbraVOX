@@ -116,7 +116,10 @@ tcp_probe() {
 is_port_free() {
     local port="$1"
     if command -v ss >/dev/null 2>&1; then
-        ! ss -tln 2>/dev/null | grep -q "[.:]$port "
+        if ss -tln 2>/dev/null | grep -q "[.:]$port "; then
+            return 1  # port in use
+        fi
+        return 0  # port free
     else
         return 0
     fi

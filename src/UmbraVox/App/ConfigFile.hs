@@ -16,6 +16,7 @@ module UmbraVox.App.ConfigFile
 
 import Control.Exception (SomeException, catch)
 import Data.Char (isSpace, toLower)
+import System.IO (hPutStrLn, stderr)
 import Data.IORef (writeIORef)
 import Data.List (dropWhileEnd, isPrefixOf)
 import qualified Data.ByteString as BS
@@ -57,7 +58,9 @@ loadConfigFile = do
             length contents `seq` pure ()
             let pairs = [ p | Just p <- map parseLine (lines contents) ]
             pure (Map.fromList pairs)
-            ) `catch` \(_ :: SomeException) -> pure Map.empty
+            ) `catch` \(e :: SomeException) -> do
+                hPutStrLn stderr $ "Warning: config parse failed, using defaults: " ++ show e
+                pure Map.empty
 
 -- | Apply a config map (from 'loadConfigFile') to an 'AppConfig', overriding
 -- only the fields for which a key is present in the map.

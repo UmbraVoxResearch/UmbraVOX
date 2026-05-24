@@ -46,7 +46,6 @@ OUT_DIR="$RELEASE_OUT_DIR"
 PLATFORM="${1:-}"
 VERSION="$RELEASE_VERSION"
 COMMIT="$RELEASE_COMMIT"
-STAMP="$RELEASE_STAMP"
 
 # --------------------------------------------------------------------------
 # Platform definitions

@@ -13,10 +13,10 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
 
       - name: Install Nix
-        uses: cachix/install-nix-action@v27
+        uses: cachix/install-nix-action@d1ca2b820025855eb2a2c513a76a9a0d9e84a2a1  # v27
         with:
           nix_path: nixpkgs=channel:nixos-unstable
 
@@ -38,10 +38,10 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
 
       - name: Install Nix
-        uses: cachix/install-nix-action@v27
+        uses: cachix/install-nix-action@d1ca2b820025855eb2a2c513a76a9a0d9e84a2a1  # v27
         with:
           nix_path: nixpkgs=channel:nixos-unstable
 

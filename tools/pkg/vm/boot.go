@@ -87,7 +87,7 @@ func Boot(cfg BootConfig) (*BootResult, error) {
 	if cfg.TmpDir == "" {
 		return nil, fmt.Errorf("TmpDir is required")
 	}
-	if err := os.MkdirAll(cfg.TmpDir, 0o755); err != nil {
+	if err := os.MkdirAll(cfg.TmpDir, 0o755); err != nil { // #nosec G301 -- build directory, needs traversal
 		return nil, fmt.Errorf("create tmp dir: %w", err)
 	}
 
@@ -139,7 +139,7 @@ func Boot(cfg BootConfig) (*BootResult, error) {
 
 	// 9p output share
 	if cfg.OutputDir != "" {
-		if err := os.MkdirAll(cfg.OutputDir, 0o755); err != nil {
+		if err := os.MkdirAll(cfg.OutputDir, 0o755); err != nil { // #nosec G301 -- build directory, needs traversal
 			return nil, fmt.Errorf("create output dir: %w", err)
 		}
 		share := ninep.DefaultOutputShare(cfg.OutputDir)

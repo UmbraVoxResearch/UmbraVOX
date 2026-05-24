@@ -14,7 +14,8 @@ echo ""
 
 # Build 1
 echo "[1/3] First build..."
-cd "$REPO_ROOT" && ./uv release linux > /dev/null 2>&1 || true
+cd "$REPO_ROOT" || exit 1
+./uv release linux > /dev/null 2>&1 || true
 ARTIFACT1=$(find "$REPO_ROOT/build/releases" -name "umbravox-*-linux-x86_64.tar.gz" -type f 2>/dev/null | head -1)
 if [ -z "$ARTIFACT1" ]; then
     echo "SKIP: No release artifact produced (./uv release linux may need fixing)"
@@ -32,7 +33,8 @@ cp "$ARTIFACT1" /tmp/umbravox-repro-check-1.tar.gz
 echo ""
 echo "[2/3] Clean rebuild..."
 rm -rf "$REPO_ROOT/build/releases"
-cd "$REPO_ROOT" && ./uv release linux > /dev/null 2>&1 || true
+cd "$REPO_ROOT" || exit 1
+./uv release linux > /dev/null 2>&1 || true
 ARTIFACT2=$(find "$REPO_ROOT/build/releases" -name "umbravox-*-linux-x86_64.tar.gz" -type f 2>/dev/null | head -1)
 if [ -z "$ARTIFACT2" ]; then
     echo "SKIP: Second build failed"

@@ -93,18 +93,7 @@ func vmBuildImage(args []string) int {
 	}
 
 	if onHost {
-		log.Info(tag, "Building VM image on host (writes to /nix/store)...")
-		cmd := exec.Command("nix-build", filepath.Join(repoRoot, "nix", "vm-image.nix"),
-			"-A", "qemu",
-			"-o", filepath.Join(repoRoot, "build", "vm", "image"))
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			log.Fail(tag, fmt.Sprintf("nix-build failed: %v", err))
-			return 1
-		}
-		log.OK(tag, "VM image built successfully.")
-		return 0
+		return vmBuildImageOnHost(repoRoot)
 	}
 
 	// ── Preflight: disk space check ───────────────────────────────
@@ -119,13 +108,40 @@ func vmBuildImage(args []string) int {
 
 	// ── Ensure builder image ──────────────────────────────────────
 	vmCacheDir := filepath.Join(repoRoot, "build", "vm")
+	builderDir := filepath.Join(vmCacheDir, "builder-image")
+	builderImg := filepath.Join(builderDir, "nixos.img")
+
+	if code := downloadOrBuildBuilder(repoRoot, builderDir, builderImg); code != 0 {
+		return code
+	}
+
+	return bootBuilderVM(repoRoot, builderImg)
+}
+
+// vmBuildImageOnHost builds the VM image directly on the host via nix-build.
+func vmBuildImageOnHost(repoRoot string) int {
+	log.Info(tag, "Building VM image on host (writes to /nix/store)...")
+	cmd := exec.Command("nix-build", filepath.Join(repoRoot, "nix", "vm-image.nix"),
+		"-A", "qemu",
+		"-o", filepath.Join(repoRoot, "build", "vm", "image"))
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		log.Fail(tag, fmt.Sprintf("nix-build failed: %v", err))
+		return 1
+	}
+	log.OK(tag, "VM image built successfully.")
+	return 0
+}
+
+// downloadOrBuildBuilder ensures the builder image exists, downloading or
+// building it if necessary. Returns 0 on success.
+func downloadOrBuildBuilder(repoRoot, builderDir, builderImg string) int {
+	vmCacheDir := filepath.Dir(builderDir)
 	if err := os.MkdirAll(vmCacheDir, 0o755); err != nil {
 		log.Fail(tag, fmt.Sprintf("Failed to create cache dir: %v", err))
 		return 1
 	}
-
-	builderDir := filepath.Join(vmCacheDir, "builder-image")
-	builderImg := filepath.Join(builderDir, "nixos.img")
 
 	if _, err := os.Stat(builderImg); os.IsNotExist(err) {
 		// Try download, fall back to local build
@@ -138,6 +154,14 @@ func vmBuildImage(args []string) int {
 		log.Fail(tag, "Builder image not available after download/build attempt")
 		return 1
 	}
+	return 0
+}
+
+// bootBuilderVM prepares disks, boots QEMU with the builder image, and
+// extracts the resulting VM image. Returns 0 on success.
+func bootBuilderVM(repoRoot, builderImg string) int {
+	vmCacheDir := filepath.Join(repoRoot, "build", "vm")
+	builderDir := filepath.Dir(builderImg)
 
 	// ── Preflight ─────────────────────────────────────────────────
 	if err := repo.Preflight(builderDir, false); err != nil {

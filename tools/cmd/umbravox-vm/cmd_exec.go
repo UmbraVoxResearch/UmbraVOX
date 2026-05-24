@@ -36,6 +36,99 @@ func runExec(args []string) int {
 	return execInVM(cmd, qemu.ProfileDev, 30*time.Minute)
 }
 
+// prepareVMDisks creates the source disk, COW overlay, and cache disk needed
+// to boot the dev VM. The caller must invoke cleanup() when done.
+func prepareVMDisks(repoRoot, cmd string) (srcDisk, overlayPath, cacheDisk, outputDir string, cleanup func(), err error) {
+	vmCacheDir := filepath.Join(repoRoot, "build", "vm")
+	vmImagePath := filepath.Join(vmCacheDir, "image")
+
+	if pfErr := repo.Preflight(vmImagePath, true); pfErr != nil {
+		err = pfErr
+		return
+	}
+
+	diskImg, evalErr := filepath.EvalSymlinks(filepath.Join(vmImagePath, "nixos.img"))
+	if evalErr != nil {
+		err = fmt.Errorf("cannot resolve nixos.img: %w", evalErr)
+		return
+	}
+
+	// Create source disk with init script + exec command
+	tmpDir := filepath.Join(vmCacheDir, "tmp")
+	initScript := generateInitScript("exec", cmd)
+	srcDisk, err = disk.CreateSourceDisk(repoRoot, tmpDir, initScript, cmd)
+	if err != nil {
+		err = fmt.Errorf("failed to create source disk: %w", err)
+		return
+	}
+
+	// COW overlay
+	log.Info(tag, "Creating COW overlay...")
+	overlayDir := filepath.Join(vmCacheDir, "tmp")
+	if mkErr := os.MkdirAll(overlayDir, 0o755); mkErr != nil {
+		os.Remove(srcDisk)
+		err = fmt.Errorf("failed to create overlay dir: %w", mkErr)
+		return
+	}
+	overlay, overlayErr := disk.CreateOverlay(diskImg, overlayDir)
+	if overlayErr != nil {
+		os.Remove(srcDisk)
+		err = fmt.Errorf("failed to create overlay: %w", overlayErr)
+		return
+	}
+	overlayPath = overlay.Path
+
+	// Persistent build cache
+	cacheDisk = filepath.Join(vmCacheDir, "build-cache.qcow2")
+	if cacheErr := disk.EnsureCacheDisk(cacheDisk, "4G"); cacheErr != nil {
+		os.Remove(srcDisk)
+		overlay.Remove()
+		err = fmt.Errorf("failed to create cache disk: %w", cacheErr)
+		return
+	}
+
+	// Output directory (9p share)
+	outputDir = filepath.Join(repoRoot, "build", "vm-output")
+	if mkErr := os.MkdirAll(outputDir, 0o755); mkErr != nil {
+		os.Remove(srcDisk)
+		overlay.Remove()
+		err = fmt.Errorf("failed to create output dir: %w", mkErr)
+		return
+	}
+	vmStatusFile := filepath.Join(outputDir, "vm-exec-status")
+	os.Remove(vmStatusFile)
+
+	cleanup = func() {
+		os.Remove(srcDisk)
+		overlay.Remove()
+	}
+	return
+}
+
+// readGuestStatus reads the guest exit code from the status file written by
+// the in-guest init script. If the status file is missing or invalid, it
+// falls back to the QEMU process exit code.
+func readGuestStatus(outputDir string, qemuExit int) int {
+	vmStatusFile := filepath.Join(outputDir, "vm-exec-status")
+	data, err := os.ReadFile(vmStatusFile)
+	if err == nil {
+		raw := strings.TrimSpace(strings.SplitN(string(data), "\n", 2)[0])
+		if matched, _ := regexp.MatchString(`^[0-9]+$`, raw); matched {
+			status, _ := strconv.Atoi(raw)
+			if status == 0 {
+				log.OK(tag, "Guest command completed successfully.")
+			} else {
+				log.Fail(tag, fmt.Sprintf("Guest command failed with exit %d.", status))
+			}
+			return status
+		}
+		log.Warn(tag, fmt.Sprintf("Invalid vm-exec-status: '%s'; using QEMU exit.", raw))
+	} else {
+		log.Warn(tag, "Missing vm-exec-status; using QEMU exit.")
+	}
+	return qemuExit
+}
+
 // execInVM boots the dev VM, runs cmd inside it, and returns the guest exit code.
 // This is the core primitive — most commands are thin wrappers around it.
 func execInVM(cmd string, profile qemu.VMProfile, timeout time.Duration) int {
@@ -45,58 +138,12 @@ func execInVM(cmd string, profile qemu.VMProfile, timeout time.Duration) int {
 		return 1
 	}
 
-	vmCacheDir := filepath.Join(repoRoot, "build", "vm")
-	vmImagePath := filepath.Join(vmCacheDir, "image")
-
-	if err := repo.Preflight(vmImagePath, true); err != nil {
-		return 1
-	}
-
-	diskImg, err := filepath.EvalSymlinks(filepath.Join(vmImagePath, "nixos.img"))
+	srcDisk, overlayPath, cacheDisk, outputDir, cleanup, err := prepareVMDisks(repoRoot, cmd)
 	if err != nil {
-		log.Fail(tag, fmt.Sprintf("Cannot resolve nixos.img: %v", err))
+		log.Fail(tag, err.Error())
 		return 1
 	}
-
-	// Create source disk with init script + exec command
-	tmpDir := filepath.Join(vmCacheDir, "tmp")
-	initScript := generateInitScript("exec", cmd)
-	srcDisk, err := disk.CreateSourceDisk(repoRoot, tmpDir, initScript, cmd)
-	if err != nil {
-		log.Fail(tag, fmt.Sprintf("Failed to create source disk: %v", err))
-		return 1
-	}
-	defer os.Remove(srcDisk)
-
-	// COW overlay
-	log.Info(tag, "Creating COW overlay...")
-	overlayDir := filepath.Join(vmCacheDir, "tmp")
-	if err := os.MkdirAll(overlayDir, 0o755); err != nil {
-		log.Fail(tag, fmt.Sprintf("Failed to create overlay dir: %v", err))
-		return 1
-	}
-	overlay, err := disk.CreateOverlay(diskImg, overlayDir)
-	if err != nil {
-		log.Fail(tag, fmt.Sprintf("Failed to create overlay: %v", err))
-		return 1
-	}
-	defer overlay.Remove()
-
-	// Persistent build cache
-	cacheDisk := filepath.Join(vmCacheDir, "build-cache.qcow2")
-	if err := disk.EnsureCacheDisk(cacheDisk, "4G"); err != nil {
-		log.Fail(tag, fmt.Sprintf("Failed to create cache disk: %v", err))
-		return 1
-	}
-
-	// Output directory (9p share)
-	outputDir := filepath.Join(repoRoot, "build", "vm-output")
-	if err := os.MkdirAll(outputDir, 0o755); err != nil {
-		log.Fail(tag, fmt.Sprintf("Failed to create output dir: %v", err))
-		return 1
-	}
-	vmStatusFile := filepath.Join(outputDir, "vm-exec-status")
-	os.Remove(vmStatusFile)
+	defer cleanup()
 
 	// Network policy
 	policyFile := filepath.Join(repoRoot, "vm-network-policy.conf")
@@ -115,7 +162,7 @@ func execInVM(cmd string, profile qemu.VMProfile, timeout time.Duration) int {
 	outputShare := ninep.DefaultOutputShare(outputDir)
 	cfg := qemu.ProfileConfig(profile)
 	cfg.Drives = []qemu.Drive{
-		{Interface: "virtio", Format: qemu.FormatQCOW2, File: overlay.Path},
+		{Interface: "virtio", Format: qemu.FormatQCOW2, File: overlayPath},
 		{Interface: "virtio", Format: qemu.FormatRaw, File: srcDisk, ReadOnly: true},
 		{Interface: "virtio", Format: qemu.FormatQCOW2, File: cacheDisk},
 	}
@@ -158,24 +205,7 @@ func execInVM(cmd string, profile qemu.VMProfile, timeout time.Duration) int {
 		}
 	}
 
-	// Read guest exit code
-	data, err := os.ReadFile(vmStatusFile)
-	if err == nil {
-		raw := strings.TrimSpace(strings.SplitN(string(data), "\n", 2)[0])
-		if matched, _ := regexp.MatchString(`^[0-9]+$`, raw); matched {
-			status, _ := strconv.Atoi(raw)
-			if status == 0 {
-				log.OK(tag, "Guest command completed successfully.")
-			} else {
-				log.Fail(tag, fmt.Sprintf("Guest command failed with exit %d.", status))
-			}
-			return status
-		}
-		log.Warn(tag, fmt.Sprintf("Invalid vm-exec-status: '%s'; using QEMU exit.", raw))
-	} else {
-		log.Warn(tag, "Missing vm-exec-status; using QEMU exit.")
-	}
-	return qemuExit
+	return readGuestStatus(outputDir, qemuExit)
 }
 
 // generateInitScript produces the in-guest init script content.

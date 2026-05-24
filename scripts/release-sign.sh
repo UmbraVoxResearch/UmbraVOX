@@ -31,7 +31,7 @@ echo "=== Release Signing ==="
 echo "Generating SHA-256 checksums..."
 
 cd "$RELEASE_DIR"
-sha256sum *.tar.gz *.zip 2>/dev/null > SHA256SUMS || true
+sha256sum ./*.tar.gz ./*.zip 2>/dev/null > SHA256SUMS || true
 
 if [ ! -s SHA256SUMS ]; then
     echo "No release artifacts found (*.tar.gz, *.zip)"
