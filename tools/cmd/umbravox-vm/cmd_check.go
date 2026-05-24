@@ -243,11 +243,26 @@ func checkComplexity() int {
 		}
 	}
 
-	// Generated C complexity check (host-side)
-	// Generated C functions are fully unrolled and may exceed 8 — this is
-	// expected for crypto round functions. Check that non-generated C files
-	// (ct_helpers.h, manual code) stay under the threshold.
-	log.Info(tag, "Note: generated C (csrc/generated/) exempt from complexity gate (unrolled crypto rounds)")
+	// Generated C branch check (host-side, informational)
+	// Constant-time crypto should be straight-line (complexity 1).
+	// Branches in generated C indicate the generator is emitting
+	// conditionals where it should use ct_select (security concern).
+	genDir := filepath.Join(repoRoot, "csrc", "generated")
+	if _, err := os.Stat(genDir); err == nil {
+		branchCheck := exec.Command("bash", "-c",
+			`for f in `+genDir+`/*.c; do
+				branches=$(grep -c 'if\s*(' "$f" 2>/dev/null || echo 0)
+				if [ "$branches" -gt 0 ]; then
+					echo "  $(basename $f): $branches branch(es) — review for constant-time safety"
+				fi
+			done`)
+		if out, _ := branchCheck.Output(); len(out) > 0 {
+			log.Warn(tag, "Generated C contains branches (should use ct_select for constant-time):")
+			fmt.Fprintf(os.Stderr, "%s", out)
+		} else {
+			log.OK(tag, "Generated C: no branches (constant-time safe)")
+		}
+	}
 
 	// Shell script complexity check (host-side)
 	// ShellCheck with complexity metrics would be ideal but is not always
