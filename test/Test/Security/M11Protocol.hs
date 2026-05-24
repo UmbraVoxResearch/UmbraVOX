@@ -63,7 +63,7 @@ import UmbraVox.Crypto.Signal.X3DH
     )
 import UmbraVox.Network.Noise.Handshake
     ( noiseHandshakeInitiator, noiseHandshakeResponder
-    , hkdfCK, encryptWithKey
+    , hkdfCK, encryptAndTag
     , initHash, initCK, mixHash
     )
 import UmbraVox.Network.Transport.Loopback (newLoopbackPair)
@@ -251,7 +251,7 @@ testPL002CrossSessionReplay = do
         !h3        = mixHash h2 ePub
         !dhES      = case x25519 eSec bobPub of Just d -> d; Nothing -> error "dhES: impossible"
         !(_ck1, !k1) = hkdfCK ck0 dhES
-        !encStaticPub = encryptWithKey k1 h3 alicePub
+        !encStaticPub = encryptAndTag k1 h3 alicePub
         !msg1      = ePub <> encStaticPub
 
     -- Present Bob's msg1 to Carol's responder via a loopback transport
@@ -731,16 +731,17 @@ testPL010PQXDHPrekeyReuse = do
 --              msg1 with a different key.  In Noise IK the static key is
 --              encrypted and authenticated under k1 (derived from es).
 --              The responder decrypts and authenticates encStaticPub;
---              if the HMAC check fails, decryptWithKey returns Nothing
---              and the responder aborts.
+--              if the Poly1305 tag check fails, decryptAndVerify returns
+--              Nothing and the responder aborts.
 --
 -- Vulnerability: If encStaticPub were not authenticated, an adversary
 --              could substitute any static public key, bypassing identity
 --              binding and breaking mutual authentication.
 --
--- Fix:         encryptWithKey appends HMAC-SHA256(k1, h || ct) as a 32-byte
---              MAC.  decryptWithKey verifies this MAC before decrypting.
---              A tampered ciphertext fails the MAC check and returns Nothing.
+-- Fix:         encryptAndTag uses ChaChaPoly AEAD (RFC 8439) to encrypt and
+--              authenticate with a 16-byte Poly1305 tag.  decryptAndVerify
+--              verifies this tag before decrypting.  A tampered ciphertext
+--              fails the tag check and returns Nothing.
 --
 -- Verified:    Craft a valid msg1 for the responder, then flip one bit in
 --              the encStaticPub field.  The responder must return Nothing.
@@ -765,7 +766,7 @@ testPL011NoiseIKIdentityMismatch = do
         !h3        = mixHash h2 ePub
         !dhES      = mustX25519 eSec rStaticPub
         !(_ck1, !k1) = hkdfCK ck0 dhES
-        !encStaticPub = encryptWithKey k1 h3 alicePub
+        !encStaticPub = encryptAndTag k1 h3 alicePub
         !validMsg1 = ePub <> encStaticPub
 
     -- Flip one byte in encStaticPub to tamper the static key ciphertext

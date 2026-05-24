@@ -228,7 +228,7 @@ testPL006TranscriptHashBindsBothIdentities = do
 --              predictable session keys from attacker-controlled bytes.
 --
 -- Fix:         noiseHandshakeResponder (Handshake.hs, line 202) checks
---              BS.length msg1 < (32 + 32 + hsHmacLen) and returns Nothing
+--              BS.length msg1 < (32 + 32 + hsTagLen) and returns Nothing
 --              before accessing any field.
 --
 -- Verified:    (a) A msg1 of 0 bytes causes the responder to return Nothing.
