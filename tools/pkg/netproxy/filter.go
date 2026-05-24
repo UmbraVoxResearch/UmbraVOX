@@ -107,9 +107,17 @@ func (f *Filter) handleConn(guest net.Conn) {
 		return // deny all
 	}
 
-	// Connect to first allowed destination
+	// Route to the first allowed destination.  Currently each guestfwd
+	// UNIX socket corresponds to exactly one allowed host:port entry (e.g.
+	// port 443 → cache.nixos.org).  If multiple allowed destinations are
+	// needed on the same socket, TLS SNI inspection would be required to
+	// disambiguate — see TODO below.
+	//
+	// TODO(multi-dest): implement SNI-based routing when multiple allowed
+	// entries share a single guestfwd socket.
 	dest := f.Allowed[0]
 	addr := net.JoinHostPort(dest.Host, dest.Port)
+	fmt.Fprintf(os.Stderr, "netproxy: routing connection to %s\n", addr)
 	upstream, err := net.Dial("tcp", addr)
 	if err != nil {
 		return

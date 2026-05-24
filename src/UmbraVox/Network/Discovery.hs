@@ -152,7 +152,9 @@ discoverConfigFile = (do
                     let raw = parsePeerList val
                     validated <- mapM (\a -> validateAndWarn allowLoop "config file" a SourceConfig) raw
                     pure (concat validated)
-    ) `catch` \(_ :: SomeException) -> pure []
+    ) `catch` \(e :: SomeException) -> do
+        hPutStrLn stderr $ "Warning: failed to read peer config: " ++ show e
+        pure []
 
 -- | Parse a single config line into (key, value).
 parseLine :: String -> Maybe (String, String)

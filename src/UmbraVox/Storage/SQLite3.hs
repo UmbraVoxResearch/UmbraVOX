@@ -301,7 +301,10 @@ reset (Statement stmtPtr) =
     c_sqlite3_reset stmtPtr >> pure ()
 
 -- | Execute a SQL string directly (for DDL, PRAGMA, etc.).
--- Not suitable for user data — use prepared statements instead.
+--
+-- WARNING: This function executes raw SQL without parameterisation.
+-- Never pass user-controlled data.  Use prepared statements ('prepare',
+-- 'bindText', etc.) for any values originating from external input.
 exec :: Database -> String -> IO ()
 exec (Database dbPtr) sql = alloca $ \ppErr -> do
     poke ppErr nullPtr

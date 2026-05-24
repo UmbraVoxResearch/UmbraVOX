@@ -304,6 +304,10 @@ echo "========================================"
 echo ""
 
 set +e
+# eval is intentional: the command originates from the host CLI (not guest
+# input) and may contain shell features like pipes and redirects.  The VM
+# is sandboxed by QEMU with no network access, so this does not expand
+# the trust boundary.
 eval "$VM_EXEC_CMD"
 STATUS=$?
 set -e
