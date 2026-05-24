@@ -32,7 +32,7 @@ nix-shell shell-minimal.nix
 ./uv test              # Run tests
 ./uv test soak         # Longer stress suite
 ./uv verify            # F* verification pass
-./uv                   # Full quality gate (build + test + verify + complexity + lint + license + format-check)
+./uv                   # Full quality gate (build + test + verify + check)
 ./uv dev               # Interactive development shell inside the NixOS VM
 ./uv release linux     # Build portable Linux x86_64 bundle
 ./uv clean             # Clean build artifacts
@@ -45,7 +45,8 @@ scripts/nix-flake.sh flake show --no-write-lock-file
 - It streams the full live suite output and writes a per-run log under `build/test-artifacts/`.
 - `./uv test soak` runs the longer stress suite and writes artifacts under `build/test-artifacts/`.
 - `./uv verify` runs the F* verification pass.
-- `./uv` (no args) runs the full build pipeline (`build + test + verify + complexity + lint + license + format-check`).
+- `./uv` (no args) runs the full build pipeline (`build + test + verify + check`).
+- `./uv check` runs lint + format + license + complexity + generated-headers + constant-time-branches gates.
 - `./uv build` builds library + executables (routes to VM by default).
 - `./uv release linux` builds a portable Linux x86_64 terminal bundle with a patched local loader/lib set.
 - `./uv dev` opens an interactive development shell inside the NixOS VM with
@@ -73,7 +74,8 @@ an isolated NixOS VM by default.  The host only needs QEMU and git.
 | `./uv build` | Build library + executables (routes to VM by default) |
 | `./uv test` | Run `required` test suite (routes to VM by default) |
 | `./uv verify` | Run F* formal verification (routes to VM by default) |
-| `./uv` | Full quality gate (build + test + verify + complexity + lint + license + format-check) |
+| `./uv` | Full quality gate (build + test + verify + check) |
+| `./uv check` | Lint + format + license + complexity + generated-headers + constant-time-branches |
 | `./uv dev` | Interactive development shell inside the NixOS VM |
 | `./uv release linux` | Build portable Linux x86_64 bundle |
 | `./uv clean` | Clean build artifacts |
@@ -88,7 +90,8 @@ See `doc/VM-DEVELOPMENT.md` for the full VM development guide and troubleshootin
 ## Aggregate Readiness Check
 
 - Use `./uv` (no args) as the current aggregate host-side readiness gate
-  (`build + test + verify + complexity + lint + license + format-check`).
+  (`build + test + verify + check`). The `check` sub-gate covers lint,
+  format, license, complexity, generated-headers, and constant-time-branches.
 - Use `./uv release linux` to stage the only current prebuilt native artifact.
 - Remaining readiness gaps are unchanged: no maintained repo-owned guest image
   performs in-guest bundle verification by default, no authoritative in-guest

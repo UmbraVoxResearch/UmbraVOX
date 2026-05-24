@@ -47,7 +47,8 @@ nix-shell shell.nix
 ./uv verify            # F* formal verification in VM
 ./uv dev               # Interactive dev shell inside the VM
 ./uv dev --gui         # Interactive dev with QEMU GUI
-./uv                   # Full pipeline: build + test + check (fast gate)
+./uv                   # Full pipeline: build + test + verify + check
+./uv check             # Quality gates: lint + format + license + complexity + generated-headers + constant-time-branches
 ./uv test soak         # Longer soak/stress run with artifact report
 ./uv release linux     # Portable Linux x86_64 terminal bundle
 ./uv release all       # Build all defined release artifacts

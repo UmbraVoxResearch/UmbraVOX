@@ -15,7 +15,7 @@ After ANY code change, verify it works:
 ```bash
 ./uv build                # Compiles in VM — catches build errors
 ./uv test                 # Runs tests in VM — catches regressions
-./uv check                # Runs lint/format/license/complexity gates
+./uv check                # Runs lint/format/license/complexity/generated-headers/constant-time-branches gates
 ```
 
 After infrastructure/nix changes, verify the full pipeline:
@@ -141,7 +141,7 @@ echo $?  # exit code from the VM command
 ./uv vm signal update      # Update Signal-Server version (interactive)
 ./uv vm signal run         # Boot Signal-Server runtime VM
 ./uv vm signal health      # Health-check Signal-Server
-./uv check               # Run lint/format/license/complexity gates
+./uv check               # Run lint/format/license/complexity/generated-headers/constant-time-branches gates
 ```
 
 ### VM-local Nix Config (Image Builds)
@@ -191,6 +191,9 @@ codegen/Specs/*.spec  →  codegen/CryptoGen.hs  →  csrc/generated/*.c
   not the generated `.c` file — the fix must flow from spec to output
 - The F* verification specs and codegen specs share the same algorithm
   definitions, providing a verified-to-compiled assurance chain
+- Generated C branch detection is a **hard fail** gate: `./uv check`
+  rejects any generated C file containing conditional branches that
+  could leak secret-dependent timing information
 
 ## Project Structure
 

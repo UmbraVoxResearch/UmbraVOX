@@ -6,6 +6,30 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 
 ## [Unreleased]
 
+### v0.5.9 — Generated C branch detection as hard gate
+- Codegen constant-time assurance: generated C files checked for conditional branches that could leak secret-dependent timing
+- `./uv check` now includes generated-C branch detection as a hard fail gate
+
+### v0.5.8 — Complexity check extended to shell scripts
+- Cyclomatic complexity gate (<=8) now covers shell scripts in addition to Haskell, Go, and C
+
+### v0.5.7 — All 18 code review findings resolved
+- All 18 findings from code review addressed and verified
+
+### v0.5.6 — Quality gate for generated file headers
+- `./uv check` enforces generated file header presence and format
+- Generated headers gate added alongside lint, format, license, and complexity checks
+
+### v0.5.5 — Fix all MEDIUM+LOW review findings
+- Noise ChaChaPoly: fixed nonce handling
+- GCM nonce: hardened nonce generation and tracking
+- Discovery validation: input validation strengthened
+- Schema content_enc: content encryption field handling corrected
+- PQXDH ct: constant-time comparison in PQXDH path
+- isSmallOrder ct: constant-time small-order point check
+- Download limit: enforced size limit on downloads
+- Tar sanitization: path traversal prevention in tar extraction
+
 ### v0.5.3 (upcoming) — SHA-512 codegen fix, M28 protocol tests
 - SHA-512 codegen: ROTR64 macro fix (was generating wrong rotation width)
 - Codegen regeneration required for affected .spec outputs
@@ -38,7 +62,7 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 - New foundation packages: pkg/log, pkg/repo, pkg/download, pkg/disk/source
 - Enhanced pkg/qemu with VMProfile, Timeout, ScaleToHost, ReadHostMemoryMB
 - Project-wide cyclomatic complexity gate (<=8) for all languages (Haskell, Go, C, shell)
-- ./uv check consolidates lint + format + license + complexity gates
+- ./uv check consolidates lint + format + license + complexity + generated-headers + constant-time-branches gates
 - Documentation overhaul: all make references updated to ./uv equivalents
 - Old documentation archived to doc/attic/pre-uv/
 - 25-line shim Makefile for backwards compatibility (deprecated)
