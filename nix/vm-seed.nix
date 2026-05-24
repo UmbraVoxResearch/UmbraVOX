@@ -151,8 +151,12 @@ let
           git config --global --add safe.directory /nix-scratch/workspace
 
           echo "[SEED] Running nix-build for vm-builder.nix ..."
+          # Use scratch disk for build temp so the 10GB+ disk image
+          # doesn't fill the boot disk's /tmp.
+          mkdir -p /nix-scratch/tmp
           set +e
-          nix-build /nix-scratch/workspace/nix/vm-builder.nix \
+          TMPDIR=/nix-scratch/tmp nix-build /nix-scratch/workspace/nix/vm-builder.nix \
+              --option build-dir /nix-scratch/tmp \
               -o /nix-scratch/workspace/result 2>&1
           BUILD_STATUS=$?
           set -e
