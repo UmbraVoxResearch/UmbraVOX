@@ -573,6 +573,7 @@ test-suite umbravox-test
     Test.Security.M11Final
     Test.Security.MCDC
     Test.Bridge.UmbraClaw
+    Test.VectorIntegrity
     CryptoGen
   if flag(stubs)
     other-modules:

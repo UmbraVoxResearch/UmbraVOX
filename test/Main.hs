@@ -164,6 +164,7 @@ import qualified Test.Tools.Complexity as ToolsComplexity
 import qualified Test.Tools.FStarVerify as ToolsFStarVerify
 import qualified Test.Tools.FetchReferences as ToolsFetchReferences
 import qualified Test.Bridge.UmbraClaw as BridgeUmbraClaw
+import qualified Test.VectorIntegrity as VectorIntegrity
 
 data Suite = Suite
     { suiteName :: String
@@ -534,6 +535,7 @@ integritySuites :: [Suite]
 integritySuites =
     [ Suite "chat-wire-edge" ChatWireEdge.runTests
     , Suite "crypto-integrity" CryptoIntegrity.runTests
+    , Suite "vector-integrity" VectorIntegrity.runTests
     ]
 
 deferredSuites :: [Suite]
