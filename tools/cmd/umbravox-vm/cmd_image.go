@@ -2,10 +2,13 @@
 package main
 
 import (
+	"bufio"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -69,7 +72,7 @@ Actions:
   build-image [--on-host]    Build NixOS VM image
   clean-image                Remove cached VM image
   smoke [TARGET]             Platform smoke (freebsd, openbsd, netbsd, illumos, dragonfly, arm64)
-  signal build-jar|run|health Signal Server VM
+  signal build-jar|update|run|health Signal Server VM
   integration [--dual-lan]   Multi-VM integration test
   info                       VM config diagnostics
 `)
@@ -558,7 +561,7 @@ func vmSmoke(args []string) int {
 
 func vmSignal(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: ./uv vm signal build-jar|run|health")
+		fmt.Fprintln(os.Stderr, "Usage: ./uv vm signal build-jar|update|run|health")
 		return 2
 	}
 
@@ -586,10 +589,14 @@ func vmSignal(args []string) int {
 	switch args[0] {
 	case "build-jar":
 		signalCmd = "build-jar"
+	case "extract-hash":
+		signalCmd = "extract-hash"
 	case "run":
 		signalCmd = "interactive"
 	case "health":
 		signalCmd = "check-health"
+	case "update":
+		return vmSignalUpdate(repoRoot)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown signal action: %s\n", args[0])
 		return 2
@@ -676,5 +683,152 @@ func vmInfo() int {
 	} else {
 		fmt.Println("NOT available")
 	}
+	return 0
+}
+
+// signalServerConfig represents nix/signal-server.json.
+type signalServerConfig struct {
+	Version         string `json:"version"`
+	Tag             string `json:"tag"`
+	Owner           string `json:"owner"`
+	Repo            string `json:"repo"`
+	SHA256          string `json:"sha256"`
+	JDK             string `json:"jdk"`
+	MavenVersion    string `json:"mavenVersion"`
+	OutputTimestamp string `json:"outputTimestamp"`
+}
+
+// githubTag represents a tag from the GitHub API.
+type githubTag struct {
+	Name string `json:"name"`
+}
+
+// vmSignalUpdate prompts with recent Signal-Server tags, lets the user
+// pick one, computes the source hash, and updates signal-server.json.
+func vmSignalUpdate(repoRoot string) int {
+	configPath := filepath.Join(repoRoot, "nix", "signal-server.json")
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		log.Fail(tag, fmt.Sprintf("Cannot read %s: %v", configPath, err))
+		return 1
+	}
+	var cfg signalServerConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		log.Fail(tag, fmt.Sprintf("Cannot parse %s: %v", configPath, err))
+		return 1
+	}
+
+	// Fetch recent tags from GitHub API
+	log.Info(tag, fmt.Sprintf("Fetching recent tags from %s/%s...", cfg.Owner, cfg.Repo))
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/tags?per_page=10", cfg.Owner, cfg.Repo)
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Get(apiURL)
+	if err != nil {
+		log.Fail(tag, fmt.Sprintf("GitHub API error: %v", err))
+		return 1
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		log.Fail(tag, fmt.Sprintf("GitHub API returned %d", resp.StatusCode))
+		return 1
+	}
+
+	var tags []githubTag
+	if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
+		log.Fail(tag, fmt.Sprintf("Cannot parse tags: %v", err))
+		return 1
+	}
+
+	if len(tags) == 0 {
+		log.Fail(tag, "No tags found")
+		return 1
+	}
+
+	// Display tags
+	fmt.Printf("\nCurrent: %s\n\n", cfg.Tag)
+	fmt.Println("Available Signal-Server versions:")
+	limit := 10
+	if len(tags) < limit {
+		limit = len(tags)
+	}
+	for i := 0; i < limit; i++ {
+		marker := "  "
+		if tags[i].Name == cfg.Tag {
+			marker = "* "
+		}
+		fmt.Printf("  %s[%d] %s\n", marker, i+1, tags[i].Name)
+	}
+
+	// Prompt
+	fmt.Printf("\nSelect version (1-%d) or Enter to keep current: ", limit)
+	reader := bufio.NewReader(os.Stdin)
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(input)
+
+	if input == "" {
+		fmt.Println("Keeping current version.")
+		return 0
+	}
+
+	var sel int
+	if _, err := fmt.Sscanf(input, "%d", &sel); err != nil {
+		log.Fail(tag, "Invalid selection")
+		return 1
+	}
+	if sel < 1 || sel > limit {
+		log.Fail(tag, fmt.Sprintf("Selection out of range (1-%d)", limit))
+		return 1
+	}
+
+	selected := tags[sel-1]
+	if selected.Name == cfg.Tag {
+		fmt.Println("Already on this version.")
+		return 0
+	}
+
+	// Compute source hash
+	log.Info(tag, fmt.Sprintf("Computing source hash for %s...", selected.Name))
+	tarURL := fmt.Sprintf("https://github.com/%s/%s/archive/refs/tags/%s.tar.gz",
+		cfg.Owner, cfg.Repo, selected.Name)
+	hashCmd := exec.Command("nix-prefetch-url", "--unpack", tarURL)
+	hashOut, err := hashCmd.Output()
+	if err != nil {
+		log.Fail(tag, fmt.Sprintf("nix-prefetch-url failed: %v", err))
+		return 1
+	}
+	newHash := strings.TrimSpace(string(hashOut))
+
+	// Extract version from tag (strip leading "v")
+	newVersion := strings.TrimPrefix(selected.Name, "v")
+
+	// Update config
+	cfg.Tag = selected.Name
+	cfg.Version = newVersion
+	cfg.SHA256 = newHash
+	if len(newVersion) >= 8 {
+		datePart := newVersion[:8]
+		cfg.OutputTimestamp = fmt.Sprintf("%s-%s-%sT00:00:00Z",
+			datePart[:4], datePart[4:6], datePart[6:8])
+	}
+
+	outData, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		log.Fail(tag, fmt.Sprintf("Cannot marshal config: %v", err))
+		return 1
+	}
+	outData = append(outData, '\n')
+	if err := os.WriteFile(configPath, outData, 0o644); err != nil {
+		log.Fail(tag, fmt.Sprintf("Cannot write %s: %v", configPath, err))
+		return 1
+	}
+
+	log.OK(tag, fmt.Sprintf("Updated signal-server.json to %s", selected.Name))
+	fmt.Printf("  Tag:       %s\n", cfg.Tag)
+	fmt.Printf("  Version:   %s\n", cfg.Version)
+	fmt.Printf("  SHA256:    %s\n", cfg.SHA256)
+	fmt.Printf("  Timestamp: %s\n", cfg.OutputTimestamp)
+	fmt.Printf("\nRun './uv vm signal build-jar' to build with the new version.\n")
 	return 0
 }

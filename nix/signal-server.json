@@ -1,0 +1,10 @@
+{
+  "version": "20260521.0.0",
+  "tag": "v20260521.0.0",
+  "owner": "signalapp",
+  "repo": "Signal-Server",
+  "sha256": "0fhhgkn4k5v6k1b33kmff3kwcfhn3fqgpa1sfq1bz8nrhn405fmb",
+  "jdk": "25",
+  "mavenVersion": "3.8.6",
+  "outputTimestamp": "2026-05-21T00:00:00Z"
+}

@@ -85,7 +85,7 @@ Commands:
   check [GATE]        Static quality gates (lint, format, license, complexity)
   coverage [FLAGS]    HPC coverage report (--check, --mcdc)
   release [PLATFORM]  Build release artifacts
-  vm <action>         VM infrastructure (build-image, smoke, signal, seed)
+  vm <action>         VM infrastructure (build-image, smoke, signal)
   evidence [FLAGS]    Evidence & assurance bundles (--fast, --full)
   fuzz [MODE]         Fuzzing (differential, afl)
   clean [--all|--nix-gc] Remove build artifacts (--nix-gc frees /nix/store)
@@ -101,8 +101,7 @@ VM actions:
   build-image [--on-host]    Build NixOS VM image
   clean-image                Remove cached VM image
   smoke [TARGET]             Platform smoke test
-  seed build|clean           Seed image management
-  signal build-jar|run|health Signal Server VM
+  signal build-jar|update|run|health  Signal Server VM
   integration [--dual-lan]   Multi-VM integration test
   info                       VM config diagnostics
 

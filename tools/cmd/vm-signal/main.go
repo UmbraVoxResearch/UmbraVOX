@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -42,6 +43,7 @@ Usage:
 
 Subcommands:
   build-jar      Stage 1: boot build VM with network, run Maven, output JAR
+  extract-hash   Extract FOD hash from failed build log and patch nix file
   interactive    Stage 2: boot runtime VM with services (interactive shell)
   check          Stage 2: boot runtime VM, health-check, exit
   check-health   Stage 2: host-side health endpoint verification
@@ -50,6 +52,11 @@ Flags for 'build-jar':
   --network-policy <path>   Network policy file (default: vm-network-policy.conf)
   --output-dir <path>       JAR output directory (default: build/signal-server-jar)
   --timeout <duration>      Build timeout (default: 30m)
+
+Flags for 'extract-hash':
+  --log <path>              Build log file (default: build/signal-server-build.log)
+  --nix-file <path>         Nix file to patch (default: nix/signal-server-build.nix)
+  --dry-run                 Print the hash but do not patch the file
 
 Flags for 'check-health':
   --host <host>             Health check host (default: localhost)
@@ -91,6 +98,14 @@ func run(args []string) int {
 		_ = fs.String("timeout", "30m", "build timeout")
 		fs.Parse(args[1:])
 		return runBuildJar(*outputDir)
+
+	case "extract-hash":
+		fs := flag.NewFlagSet("extract-hash", flag.ExitOnError)
+		logFile := fs.String("log", "", "build log file")
+		nixFile := fs.String("nix-file", "", "nix file to patch")
+		dryRun := fs.Bool("dry-run", false, "print hash without patching")
+		fs.Parse(args[1:])
+		return runExtractHash(*logFile, *nixFile, *dryRun)
 
 	case "interactive":
 		fs := flag.NewFlagSet("interactive", flag.ExitOnError)
@@ -508,4 +523,83 @@ func runCheckHealth(host string, port int, maxRetries int) error {
 		time.Sleep(2 * time.Second)
 	}
 	return fmt.Errorf("health check failed after %d retries (%s:%d)", maxRetries, host, port)
+}
+
+// runExtractHash parses a build log for the Nix FOD hash mismatch error,
+// extracts the correct hash, and patches nix/signal-server-build.nix.
+//
+// This implements the same logic as the archived Makefile target
+// vm-signal-server-hash (M19.4.5).
+func runExtractHash(logFileFlag, nixFileFlag string, dryRun bool) int {
+	repoRoot := findRepoRoot()
+
+	logFile := logFileFlag
+	if logFile == "" {
+		logFile = filepath.Join(repoRoot, "build", "signal-server-build.log")
+	} else if !filepath.IsAbs(logFile) {
+		logFile = filepath.Join(repoRoot, logFile)
+	}
+
+	nixFile := nixFileFlag
+	if nixFile == "" {
+		nixFile = filepath.Join(repoRoot, "nix", "signal-server-build.nix")
+	} else if !filepath.IsAbs(nixFile) {
+		nixFile = filepath.Join(repoRoot, nixFile)
+	}
+
+	// Read the build log
+	data, err := os.ReadFile(logFile)
+	if err != nil {
+		logMsg(red, fmt.Sprintf("Build log not found: %s", logFile))
+		logMsg(yellow, "Run the build first and capture output:")
+		logMsg(yellow, "  ./uv vm signal build-jar 2>&1 | tee build/signal-server-build.log")
+		return 1
+	}
+
+	// Extract the "got: sha256-..." hash from the Nix error output.
+	// Nix prints lines like:
+	//   got:    sha256-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX=
+	re := regexp.MustCompile(`got:\s+(sha256-[A-Za-z0-9+/]+=*)`)
+	matches := re.FindAllStringSubmatch(string(data), -1)
+	if len(matches) == 0 {
+		logMsg(red, fmt.Sprintf("No 'got: sha256-...' hash found in %s", logFile))
+		logMsg(yellow, "The build may not have reached the hash mismatch stage.")
+		logMsg(yellow, "Look for 'hash mismatch in fixed-output derivation' in the log.")
+		return 1
+	}
+
+	// Use the last match (in case there are multiple FOD steps)
+	gotHash := matches[len(matches)-1][1]
+	logMsg(green, fmt.Sprintf("Extracted FOD hash: %s", gotHash))
+
+	if dryRun {
+		logMsg(blue, "Dry run: not patching file.")
+		fmt.Println(gotHash)
+		return 0
+	}
+
+	// Read the nix file and replace the outputHash value
+	nixData, err := os.ReadFile(nixFile)
+	if err != nil {
+		logMsg(red, fmt.Sprintf("Cannot read nix file: %s", nixFile))
+		return 1
+	}
+
+	hashRe := regexp.MustCompile(`outputHash = "sha256-[A-Za-z0-9+/=]*";`)
+	if !hashRe.Match(nixData) {
+		logMsg(red, "Cannot find outputHash line in nix file")
+		return 1
+	}
+
+	replacement := fmt.Sprintf(`outputHash = "%s";`, gotHash)
+	newData := hashRe.ReplaceAll(nixData, []byte(replacement))
+
+	if err := os.WriteFile(nixFile, newData, 0o644); err != nil {
+		logMsg(red, fmt.Sprintf("Failed to write nix file: %v", err))
+		return 1
+	}
+
+	logMsg(green, fmt.Sprintf("Updated %s with FOD hash", nixFile))
+	logMsg(blue, "Next step: ./uv vm signal build-jar  (should succeed now)")
+	return 0
 }

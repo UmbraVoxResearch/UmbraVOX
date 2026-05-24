@@ -137,14 +137,16 @@ echo $?  # exit code from the VM command
 ./uv verify              # F* verification in VM
 ./uv dev                 # Interactive dev shell in VM (serial)
 ./uv vm run-gui          # Interactive dev shell (QEMU GTK window)
-./uv vm signal-server-build-jar  # Build Signal-Server JAR in VM
-./uv vm signal-server    # Boot Signal-Server runtime VM
+./uv vm signal build-jar   # Build Signal-Server JAR in VM
+./uv vm signal update      # Update Signal-Server version (interactive)
+./uv vm signal run         # Boot Signal-Server runtime VM
+./uv vm signal health      # Health-check Signal-Server
 ./uv check-isolation     # Verify host nix store is clean
 ```
 
 ### VM-local Nix Config (Image Builds)
 
-`./uv vm build-image` and `./uv vm signal-server-build` use local `nix`
+`./uv vm build-image` and `./uv vm signal build-jar` use local `nix`
 configuration from `nix/vm-build.env` and fail closed.
 Environment variables override file values.
 
