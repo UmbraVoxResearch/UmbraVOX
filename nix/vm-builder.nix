@@ -195,7 +195,9 @@ let
     lib = pkgs.lib;
     config = nixos.config;
     diskSize = "auto";
-    additionalSpace = "8192M";
+    # Builder closure is ~1.5GB. Keep additional space under 4GB total
+    # to avoid cptofs/LKL I/O errors (LKL runs with 100MB RAM).
+    additionalSpace = "2048M";
     format = "raw";
     partitionTableType = "legacy";
     copyChannel = false;
