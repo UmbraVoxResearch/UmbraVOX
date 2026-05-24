@@ -2,12 +2,12 @@
 
 ## Overview
 
-UmbraVOX uses a VM-first development model.  All `make build`, `make test`,
-`make verify`, and other standard Makefile targets route through an isolated
+UmbraVOX uses a VM-first development model.  All `./uv build`, `./uv test`,
+`./uv verify`, and other standard build commands route through an isolated
 NixOS QEMU VM by default.  The full development toolchain (GHC 9.6, Cabal,
 F\*, Z3, Coq, AFL++, valgrind, gcc, etc.) runs inside the VM.  The host
-machine only needs orchestration tools: QEMU, git, make, and basic POSIX
-utilities (provided by `shell-minimal.nix`).
+machine only needs orchestration tools: QEMU, git, `./uv` (Go binary), and
+basic POSIX utilities (provided by `shell-minimal.nix`).
 
 ## Motivation
 
@@ -27,19 +27,16 @@ utilities (provided by `shell-minimal.nix`).
 nix-shell shell-minimal.nix
 
 # Build the VM image (first time only; cached afterwards)
-make vm-image-build
+./uv vm build-image
 
 # Standard commands — these all run inside the VM by default
-make build        # cabal build all (in VM)
-make test         # cabal test umbravox-test --test-options="required" (in VM)
-make verify       # F* formal verification (in VM)
+./uv build        # cabal build all (in VM)
+./uv test         # cabal test umbravox-test --test-options="required" (in VM)
+./uv verify       # F* formal verification (in VM)
 
 # Interactive development inside the VM
-make vm-dev
-make vm-run-gui
-
-# Host-local compile bypass is disabled
-make run-local   # returns an explicit error; use make vm-run-gui instead
+./uv dev
+./uv dev --gui
 ```
 
 ## Architecture
@@ -47,7 +44,7 @@ make run-local   # returns an explicit error; use make vm-run-gui instead
 ```
 Host (shell-minimal.nix)          NixOS VM (nix/vm-image.nix)
 ========================          ============================
-QEMU, git, make                   GHC 9.6, Cabal, F*, Z3, Coq
+QEMU, git, ./uv                   GHC 9.6, Cabal, F*, Z3, Coq
 genext2fs, e2fsprogs               gcc, gdb, valgrind, AFL++
                                    graphviz, jq, patchelf
      |                                  |
@@ -88,18 +85,18 @@ VM resources auto-scale to 50% of the host, with a 25% minimum floor:
 | Root disk | COW overlay | Disposable per session |
 | Cache disk | 4 GB qcow2 | Persists build artifacts across sessions |
 
-## Makefile Targets
+## Build Commands
 
-All standard `make` targets (`build`, `test`, `verify`, `quality`, etc.)
-now route through the VM by default. Host-local compile bypass is disabled.
+All standard `./uv` commands (`build`, `test`, `verify`, `quality`, etc.)
+route through the VM by default. Host-local compile bypass is disabled.
 
-### `make build` / `make test` / `make verify`
+### `./uv build` / `./uv test` / `./uv verify`
 
 These are the primary development commands.  By default they boot the VM,
 execute the corresponding operation, and power off.  Exit code reflects
 success/failure.
 
-### `make vm-dev`
+### `./uv dev`
 
 Boots the VM with `-serial stdio` and auto-login.  You get a root shell
 inside the NixOS VM with the full toolchain available.  Source is on
@@ -107,24 +104,24 @@ inside the NixOS VM with the full toolchain available.  Source is on
 
 Shut down with `poweroff` or Ctrl-A then X (QEMU monitor escape).
 
-### `make vm-image-build`
+### `./uv vm build-image`
 
 Builds and caches the NixOS VM image inside a builder VM (M20.5.8).  The
 builder VM has its own Nix daemon and a 60GB scratch disk for `/nix/store`,
-so the host's `/nix/store` is never touched.  Only needs QEMU, git, make,
-and nix on the host (nix is only used to build the lightweight builder
-image itself, not the full dev-toolchain image).
+so the host's `/nix/store` is never touched.  Only needs QEMU, git,
+`./uv`, and nix on the host (nix is only used to build the lightweight
+builder image itself, not the full dev-toolchain image).
 
 To build directly on the host instead (legacy approach), use
-`make vm-image-build-host`.  This uses ~30GB of host disk and writes to
-the host `/nix/store`.
+`./uv vm build-image --on-host`.  This uses ~30GB of host disk and writes
+to the host `/nix/store`.
 
-### `make vm-image-build-host`
+### `./uv vm build-image --on-host`
 
 Legacy target that builds the VM image directly on the host via `nix build`.
-Touches the host `/nix/store` and consumes ~30GB.  Prefer `make vm-image-build`.
+Touches the host `/nix/store` and consumes ~30GB.  Prefer `./uv vm build-image`.
 
-### `make vm-cache-clean`
+### `./uv clean`
 
 Removes the persistent build cache disk (`build/vm/build-cache.qcow2`).
 The next VM build will start from scratch.  Use when the cache becomes
@@ -139,7 +136,7 @@ The VM shares a directory with the host via virtio-9p:
 | Guest: `/output/` | Shared output directory (writable) |
 | Host: `build/vm-output/` | Same directory, visible immediately |
 
-Inside `make vm-dev`, copy any files to `/output/` and they appear on the
+Inside `./uv dev`, copy any files to `/output/` and they appear on the
 host at `build/vm-output/` in real time — no extraction step needed.
 
 ```bash
@@ -151,18 +148,16 @@ cp /work/umbravox/build/releases/*.tar.gz /output/
 ls build/vm-output/
 ```
 
-Use `make vm-extract` to check what's in the output directory.
-
-For `vm-build`, `vm-test`, and `vm-verify`, the guest also writes
+For `./uv build`, `./uv test`, and `./uv verify`, the guest also writes
 `/output/vm-exec-status` (host: `build/vm-output/vm-exec-status`) so the
 host command exits with the same pass/fail status as the in-guest command.
 
 ### TUI Screenshot / Recording / Visual Regression
 
 ```bash
-make vm-screenshot          # Capture 8 TUI scenario frames (ANSI + HTML)
-make vm-record              # Record an asciinema session of the TUI scenario
-make vm-visual-regression   # Compare current TUI against reference baselines
+./uv vm screenshot          # Capture 8 TUI scenario frames (ANSI + HTML)
+./uv vm record              # Record an asciinema session of the TUI scenario
+./uv vm visual-regression   # Compare current TUI against reference baselines
 ```
 
 These targets build the TUI binary inside the VM, then run `vm-tui-scenario.sh`
@@ -173,7 +168,7 @@ shared output directory (`build/vm-output/screenshots/`).
 To update reference baselines after intentional UI changes:
 
 ```bash
-make visual-reference-update
+./uv vm visual-reference-update
 ```
 
 ### Network Policy
@@ -197,37 +192,36 @@ The policy file is host-side only — the VM guest cannot modify it.  See
 ### SOCKS5 Transport Test
 
 ```bash
-make vm-socks5-test         # Test SOCKS5 proxy transport in VM
+./uv vm socks5-test         # Test SOCKS5 proxy transport in VM
 ```
 
-### Explicit `vm-*` Targets
+### Explicit `vm` Subcommands
 
-The `vm-build`, `vm-test`, and `vm-verify` targets still exist as explicit
-aliases but are now equivalent to the standard targets (which also route
-through the VM).
+The `./uv vm build`, `./uv vm test`, and `./uv vm verify` subcommands
+still exist as explicit aliases but are now equivalent to the standard
+commands (which also route through the VM).
 
 ## Migration Plan
 
 ### Phase 1: Parallel Operation (completed)
 
 Both `shell.nix` and `shell-minimal.nix` coexisted.  Developers could use
-either workflow.  Standard `make` targets used the local toolchain while
-`vm-*` targets used the VM.
+either workflow.  Standard build commands used the local toolchain while
+`vm` subcommands used the VM.
 
 ### Phase 2: VM-Primary (current)
 
-All standard Makefile targets (`make build`, `make test`, `make verify`,
-`make quality`, etc.) now route through the VM by default.
+All standard build commands (`./uv build`, `./uv test`, `./uv verify`,
+`./uv quality`, etc.) now route through the VM by default.
 
 - `nix-shell` (i.e. `shell.nix`) provides the full local toolchain but
   its banner documents that commands run in the VM by default.
 - `nix-shell shell-minimal.nix` provides an orchestration-only shell
-  (QEMU, git, make) for developers who do not need the full local
+  (QEMU, git, `./uv`) for developers who do not need the full local
   toolchain.
-- `make run` is an alias for `make vm-run-gui`.
-- `make run-local` is intentionally guarded and exits with an error.
-- `make vm-image-build` works without cabal — it uses `nix build` directly.
-- `make vm-dev` provides an interactive development shell inside the VM.
+- `./uv run` is an alias for `./uv dev --gui`.
+- `./uv vm build-image` works without cabal -- it uses `nix build` directly.
+- `./uv dev` provides an interactive development shell inside the VM.
 
 ### Phase 3: VM-Only (future)
 
@@ -242,7 +236,7 @@ The host only has QEMU and git.
 
 ## Seed Bootstrap
 
-The two-stage bootstrap lets `make vm-image-build` work without any nix
+The two-stage bootstrap lets `./uv vm build-image` work without any nix
 toolchain on the host. Instead of building on the host, a minimal "seed"
 NixOS VM is downloaded, booted, and used to build the full builder VM
 image entirely inside QEMU.
@@ -260,7 +254,7 @@ builder image.
 Maintainers who need to produce a new seed image:
 
 ```bash
-make vm-seed-build
+./uv vm seed build
 ```
 
 This uses `nix-build` on the host to create the seed qcow2 from
@@ -292,7 +286,7 @@ Set `UMBRAVOX_SEED_URL` to override the default download URL:
 
 ```bash
 UMBRAVOX_SEED_URL=https://internal-mirror.example.com/nixos-seed.qcow2 \
-  make vm-image-build
+  ./uv vm build-image
 ```
 
 This is useful for air-gapped networks, corporate mirrors, or local
@@ -302,7 +296,7 @@ caches. The SHA-256 verification still applies regardless of the URL.
 
 ### "VM image not found"
 
-Run `make vm-image-build` to build and cache the NixOS VM image.
+Run `./uv vm build-image` to build and cache the NixOS VM image.
 This is a one-time operation unless `flake.nix` or `flake.lock` change.
 
 ### "/dev/kvm not found"
@@ -323,10 +317,10 @@ Enter the orchestration shell first: `nix-shell shell-minimal.nix`
 
 By design.  The VM uses a tmpfs workspace and a COW overlay on the root
 disk.  Nothing persists after shutdown.  Edit source on the host, then
-use `make vm-build` / `make vm-test` to validate inside the VM.
+use `./uv build` / `./uv test` to validate inside the VM.
 
 ### Slow first build
 
-The first `make vm-image-build` downloads and installs the full NixOS
+The first `./uv vm build-image` downloads and installs the full NixOS
 toolchain.  Subsequent runs use the cached image and are fast.  The
 two-stage build also pre-caches F\* verification results in the image.

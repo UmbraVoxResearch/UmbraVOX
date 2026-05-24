@@ -48,19 +48,11 @@
           e2fsprogs
         ]);
 
-        mkMakeApp = target: pkgs.writeShellApplication {
-          name = "umbravox-${target}";
-          runtimeInputs = [ pkgs.gnumake pkgs.bash ];
-          text = ''
-            set -euo pipefail
-            exec make ${target} "$@"
-          '';
-        };
-        mkCheck = name: target: pkgs.runCommand "umbravox-${name}-check" { nativeBuildInputs = devTools; } ''
+        mkCheck = name: cmd: pkgs.runCommand "umbravox-${name}-check" { nativeBuildInputs = devTools; } ''
           cp -r ${./.} src
           chmod -R +w src
           cd src
-          make ${target}
+          ./uv ${cmd}
           mkdir -p $out
           echo ok > $out/${name}
         '';
@@ -87,18 +79,18 @@
             export UMBRAVOX_ROOT="$(pwd)"
             export UMBRAVOX_DATA="$UMBRAVOX_ROOT/.umbravox-data"
             export PATH="$UMBRAVOX_ROOT/scripts:$PATH"
-            echo "UmbraVOX full dev shell ready: use make build/test/verify/release-*"
+            echo "UmbraVOX full dev shell ready: use ./uv build/test/verify/release"
           '';
         };
 
         packages.default = pkgs.stdenv.mkDerivation {
-          pname = "umbravox-make-build";
+          pname = "umbravox-build";
           version = "dev";
           src = ./.;
           nativeBuildInputs = devTools;
           buildPhase = ''
             runHook preBuild
-            make build
+            ./uv build
             runHook postBuild
           '';
           installPhase = ''
@@ -113,7 +105,7 @@
           nativeBuildInputs = devTools;
           buildPhase = ''
             runHook preBuild
-            make release-linux
+            ./uv release linux
             runHook postBuild
           '';
           installPhase = ''
@@ -128,7 +120,7 @@
           nativeBuildInputs = devTools;
           buildPhase = ''
             runHook preBuild
-            make release-windows-cli
+            ./uv release windows
             runHook postBuild
           '';
           installPhase = ''
@@ -143,7 +135,7 @@
           nativeBuildInputs = devTools;
           buildPhase = ''
             runHook preBuild
-            make release-macos-terminal
+            ./uv release macos
             runHook postBuild
           '';
           installPhase = ''
@@ -158,7 +150,7 @@
           nativeBuildInputs = devTools;
           buildPhase = ''
             runHook preBuild
-            make release-bsd-terminal
+            ./uv release bsd
             runHook postBuild
           '';
           installPhase = ''
@@ -173,7 +165,7 @@
           nativeBuildInputs = devTools;
           buildPhase = ''
             runHook preBuild
-            make release-freedos
+            ./uv release freedos
             runHook postBuild
           '';
           installPhase = ''
@@ -380,17 +372,30 @@ INITEOF
           quality = mkCheck "quality" "quality";
         };
 
-        apps = {
-          build = { type = "app"; program = "${mkMakeApp "build"}/bin/umbravox-build"; };
-          test = { type = "app"; program = "${mkMakeApp "test"}/bin/umbravox-test"; };
-          verify = { type = "app"; program = "${mkMakeApp "verify"}/bin/umbravox-verify"; };
-          quality = { type = "app"; program = "${mkMakeApp "quality"}/bin/umbravox-quality"; };
-          release-linux = { type = "app"; program = "${mkMakeApp "release-linux"}/bin/umbravox-release-linux"; };
-          release-windows-cli = { type = "app"; program = "${mkMakeApp "release-windows-cli"}/bin/umbravox-release-windows-cli"; };
-          release-macos-terminal = { type = "app"; program = "${mkMakeApp "release-macos-terminal"}/bin/umbravox-release-macos-terminal"; };
-          release-bsd-terminal = { type = "app"; program = "${mkMakeApp "release-bsd-terminal"}/bin/umbravox-release-bsd-terminal"; };
-          release-freedos = { type = "app"; program = "${mkMakeApp "release-freedos"}/bin/umbravox-release-freedos"; };
-          release = { type = "app"; program = "${mkMakeApp "release"}/bin/umbravox-release"; };
-        };
+        apps =
+          let
+            mkApp = name: cmd: {
+              type = "app";
+              program = "${pkgs.writeShellApplication {
+                name = "umbravox-${name}";
+                runtimeInputs = vmTools;
+                text = ''
+                  set -euo pipefail
+                  exec ./uv ${cmd} "$@"
+                '';
+              }}/bin/umbravox-${name}";
+            };
+          in {
+            build = mkApp "build" "build";
+            test = mkApp "test" "test";
+            verify = mkApp "verify" "verify";
+            quality = mkApp "quality" "";
+            release-linux = mkApp "release-linux" "release linux";
+            release-windows-cli = mkApp "release-windows-cli" "release windows";
+            release-macos-terminal = mkApp "release-macos-terminal" "release macos";
+            release-bsd-terminal = mkApp "release-bsd-terminal" "release bsd";
+            release-freedos = mkApp "release-freedos" "release freedos";
+            release = mkApp "release" "release all";
+          };
       });
 }

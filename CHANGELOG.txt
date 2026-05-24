@@ -6,6 +6,23 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 
 ## [Unreleased]
 
+### v0.5.0 — Build system rewrite: ./uv replaces Makefile
+- Replaced 1846-line Makefile (143 targets) with unified ./uv Go binary (13 commands)
+- Single bootstrap wrapper (./uv) auto-compiles Go orchestration binary on first use
+- Simplified CLI organized around user intent: build, test, dev, verify, check, vm, release
+- All 17 test suites accessible via ./uv test [SUITE] with --list discovery
+- Unified QEMU launcher with VMProfile auto-scaling (Build/Dev/Runtime presets)
+- Consolidated 6 separate Go binaries into one (vm-dev, vm-info, vm-platform, release, test-runner, tui-tool)
+- New foundation packages: pkg/log, pkg/repo, pkg/download, pkg/disk/source
+- Enhanced pkg/qemu with VMProfile, Timeout, ScaleToHost, ReadHostMemoryMB
+- Project-wide cyclomatic complexity gate (<=8) for all languages (Haskell, Go, C, shell)
+- ./uv check consolidates lint + format + license + complexity gates
+- Documentation overhaul: all make references updated to ./uv equivalents
+- Old documentation archived to doc/attic/pre-uv/
+- 25-line shim Makefile for backwards compatibility (deprecated)
+- Removed NIX_PATH from vm-builder.nix (eliminated 1.5GB nixpkgs closure from builder image)
+- Increased vm-builder.nix additionalSpace to 8192M (fixes seed VM cptofs failure)
+
 ### v0.4.9 — All stubs implemented, zero open items
 - Signal SenderKeys: full group messaging (chain ratchet, distribution, encrypt/decrypt)
 - Matrix transport: HTTP room events implementation

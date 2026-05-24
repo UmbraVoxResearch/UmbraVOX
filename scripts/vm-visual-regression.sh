@@ -2,7 +2,7 @@
 set -euo pipefail
 echo "=== UmbraVOX Visual Regression ==="
 
-# When launched via vm-dev-run.sh exec, /work/umbravox already exists
+# When launched via ./uv exec --, /work/umbravox already exists
 # with build cache symlinks intact. Only copy fresh if missing.
 if [ ! -d /work/umbravox ]; then
     mount /dev/vdb /mnt/src 2>/dev/null || mount -o ro /dev/vdb /mnt/src
@@ -14,7 +14,7 @@ REFDIR="test/evidence/visual-reference"
 RESULT="PASS"
 if [ ! -d "$REFDIR" ] || [ -z "$(ls -A "$REFDIR" 2>/dev/null)" ]; then
   echo "No reference screenshots found — skipping regression check"
-  echo "Run 'make visual-reference-update' to create initial baselines"
+  echo "Visual reference update is now handled by ./uv"
   echo "VISUAL_REGRESSION=SKIP"
   exit 0
 fi

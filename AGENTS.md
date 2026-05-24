@@ -4,11 +4,36 @@ Instructions for AI agents working on UmbraVOX. All build, test, and
 verification MUST happen inside NixOS VMs. The host system's nix store
 should never be touched by compilation.
 
+## MANDATORY: Use the Build System
+
+**All development, testing, and verification by agents MUST use `./uv`.**
+Agents must NOT run `cabal`, `ghc`, `nix-build`, `nix-shell`, or any
+compiler/build tool directly. The build system exists to catch issues
+early — bypassing it means problems are discovered late or not at all.
+
+After ANY code change, verify it works:
+```bash
+./uv build                # Compiles in VM — catches build errors
+./uv test                 # Runs tests in VM — catches regressions
+./uv check                # Runs lint/format/license/complexity gates
+```
+
+After infrastructure/nix changes, verify the full pipeline:
+```bash
+./uv vm build-image       # Builds dev VM image — catches nix/disk issues
+./uv dev                  # Boots VM — catches boot/service issues
+```
+
+**Never assume a change works without testing it through `./uv`.** The
+build system enforces VM isolation, correct toolchain versions, network
+policy, and disk space checks. Bypassing it leads to broken builds that
+only surface when users try to build.
+
 ## Host Prerequisites
 
 The **only** tools needed on the host:
 - **qemu** (`qemu-system-x86_64` with KVM support)
-- **nix** or **make** (either works)
+- **nix** or **bash** (either works; `./uv` is a bash script)
 - **curl** (for downloading the seed VM image on first run)
 
 No GHC, cabal, GCC, or other toolchain required. Everything compiles
@@ -34,19 +59,18 @@ The nix shells set this automatically.
 
 ## Bootstrap Flow
 
-On first `make vm-image-build`:
-1. Downloads a minimal seed VM image (~300MB) + SHA-256 verification
-2. Boots the seed VM, which builds the full builder VM image inside itself
-3. Caches the builder image at build/vm/builder-image/
-4. All subsequent builds use the cached builder -- no downloads needed
+On first `./uv vm build-image`:
+1. Downloads pre-built builder VM image from GitHub release (~300MB)
+   + SHA-256 sidecar verification
+2. If download fails: falls back to local nix-build (~3GB host writes)
+3. Boots the builder VM, which downloads packages from cache.nixos.org
+   and builds the full dev VM image natively (mke2fs -d, no cptofs/LKL)
+4. Extracts compressed result via 9p share, decompresses on host
+5. Caches the builder image at build/vm/builder-image/
 
-Alternative: users with nix installed can build the seed locally instead
-of downloading (option B at the prompt). This is faster but touches
-/nix/store.
-
-The persistent nix cache disk (build/vm/nix-cache.qcow2) stores
-downloaded packages across builds, enabling fully offline rebuilds
-after the first successful build.
+The scratch disk (build/vm/nix-cache.qcow2, 100GB thin-provisioned)
+stores downloaded packages across builds. Use `./uv vm clean-image`
+to remove all cached images and free disk space.
 
 ## VM-First Development
 
@@ -57,17 +81,17 @@ after the first successful build.
 - Coq proofs (`coqc`)
 - Signal-Server (Maven/Java)
 
-### CRITICAL: Always Use `make` Targets
+### CRITICAL: Always Use `./uv` Commands
 
 **Never run `cabal build`, `cabal test`, or `nix-shell --run` directly.**
-Always use `make` targets, which route through `vm_or_local` to ensure
+Always use `./uv` commands, which route through `vm_or_local` to ensure
 builds happen inside the VM.
 
 ```bash
-# CORRECT — uses VM via make system
-make build               # Build in VM
-make test                # Test in VM
-make verify              # F* verification in VM
+# CORRECT — uses VM via ./uv
+./uv build               # Build in VM
+./uv test                # Test in VM
+./uv verify              # F* verification in VM
 
 # WRONG — bypasses VM isolation
 nix-shell shell.nix --pure --run "cabal build all"   # ← NEVER DO THIS
@@ -75,7 +99,7 @@ cabal build                                           # ← NEVER DO THIS
 ```
 
 This applies to AI agents as well. When verifying that code compiles,
-agents MUST use `make build` (or the VM exec path), never direct
+agents MUST use `./uv build` (or the VM exec path), never direct
 `cabal build` invocations. Direct builds on the host:
 - Touch the host nix store (policy violation)
 - May use different toolchain versions than the VM
@@ -87,8 +111,8 @@ agents MUST use `make build` (or the VM exec path), never direct
 All VMs expose a serial console for interactive debugging:
 
 ```bash
-make vm-dev              # Interactive serial console (login as root)
-make vm-run-gui          # GUI window with VGA console
+./uv dev                 # Interactive serial console (login as root)
+./uv vm run-gui          # GUI window with VGA console
 ```
 
 Inside the VM:
@@ -101,26 +125,26 @@ Inside the VM:
 For exec mode debugging:
 ```bash
 # Run a specific command in the VM and get its exit code
-scripts/vm-dev-run.sh exec "cabal build all"
+./uv exec -- cabal build all
 echo $?  # exit code from the VM command
 ```
 
 ### Quick Reference
 
 ```bash
-make build               # Build in VM (host needs only qemu + make)
-make test                # Run tests in VM
-make verify              # F* verification in VM
-make vm-dev              # Interactive dev shell in VM (serial)
-make vm-run-gui          # Interactive dev shell (QEMU GTK window)
-make vm-signal-server-build-jar  # Build Signal-Server JAR in VM
-make vm-signal-server    # Boot Signal-Server runtime VM
-make check-isolation     # Verify host nix store is clean
+./uv build               # Build in VM (host needs only qemu + bash)
+./uv test                # Run tests in VM
+./uv verify              # F* verification in VM
+./uv dev                 # Interactive dev shell in VM (serial)
+./uv vm run-gui          # Interactive dev shell (QEMU GTK window)
+./uv vm signal-server-build-jar  # Build Signal-Server JAR in VM
+./uv vm signal-server    # Boot Signal-Server runtime VM
+./uv check-isolation     # Verify host nix store is clean
 ```
 
 ### VM-local Nix Config (Image Builds)
 
-`make vm-image-build` and `make vm-signal-server-build` use local `nix`
+`./uv vm build-image` and `./uv vm signal-server-build` use local `nix`
 configuration from `nix/vm-build.env` and fail closed.
 Environment variables override file values.
 
@@ -137,7 +161,7 @@ Hard guard: remote-builder variables are rejected in local-only mode.
 
 - **Haskell**: all application code, crypto, protocol, TUI, bridge plugins
 - **C**: generated crypto + FFI (csrc/)
-- **Shell**: scripts/, Makefile
+- **Shell**: scripts/, uv
 - **Nix**: VM images, environments
 - **F***: formal specs (test/evidence/formal-proofs/fstar/)
 - **Coq**: external proofs (test/evidence/formal-proofs/coq/)
@@ -165,15 +189,15 @@ scripts/                       VM orchestration + test scripts
 ## Building
 
 ```bash
-make vm-build-only                    # VM (preferred)
+./uv build                            # VM (preferred)
 ```
 
 ## Testing
 
 ```bash
-make vm-test                          # full suite in VM
-make test-signal-bridge-ipc           # bridge IPC smoke test
-make test-signal-compat               # wire-compat (needs Signal-Server VM)
+./uv test                             # full suite in VM
+./uv test-signal-bridge-ipc           # bridge IPC smoke test
+./uv test-signal-compat               # wire-compat (needs Signal-Server VM)
 ```
 
 ## Coq Proofs
@@ -204,6 +228,6 @@ Uses own crypto with Signal params — no libsignal dependency.
 - **Zero warnings**: `cabal build all` clean
 - **Zero Admitted**: all Coq files
 - **No Co-Authored-By**: never add attribution to commits
-- **VM isolation**: never compile on host; `make check-isolation` to verify
+- **VM isolation**: never compile on host; `./uv check-isolation` to verify
 - **Commit prefix**: feat/fix/proof/test/docs/infra/chore
 - **Security fixes**: require Finding/Vulnerability/Fix/Verified documentation

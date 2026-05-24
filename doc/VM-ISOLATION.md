@@ -15,7 +15,7 @@ This document is an audit snapshot. Some findings below are intentionally
 preserved for historical traceability and may no longer reflect current code.
 Resolved after this snapshot:
 
-- `make run` now aliases `make vm-run-gui`; host-local compile bypass is disabled.
+- `./uv run` now aliases VM GUI launch; host-local compile bypass is disabled.
 - `test-offline-parity` now routes through `vm_or_local`.
 - `test-core*`, `test-tcp`, `test-fault`, `test-recovery`, `test-tui-sim`,
   `test-integrity`, `test-mdns`, `test-deferred`, and `test-differential`
@@ -31,11 +31,11 @@ The project has two nix-shell environments:
 | Shell               | Purpose                                 | Pulls compilers into host nix store? |
 |---------------------|-----------------------------------------|--------------------------------------|
 | `shell.nix`         | Full local dev (GHC, F\*, Coq, AFL++)   | **YES** -- violation                 |
-| `shell-minimal.nix` | VM orchestration only (qemu, git, make) | No -- clean                          |
+| `shell-minimal.nix` | VM orchestration only (qemu, git, ./uv) | No -- clean                          |
 
-The Makefile now routes `build`, `test`, and `verify` through the VM path.
-When the image is absent, these targets fail with an explicit
-`make vm-image-build` instruction.
+The `./uv` driver now routes `build`, `test`, and `verify` through the VM path.
+When the image is absent, these commands fail with an explicit
+`./uv vm build-image` instruction.
 
 ---
 
@@ -43,14 +43,14 @@ When the image is absent, these targets fail with an explicit
 
 ### VM-Only Targets (GOOD -- no host compiler needed)
 
-These targets delegate all compilation to a QEMU guest via `scripts/vm-dev-run.sh`:
+These targets delegate all compilation to a QEMU guest via `./uv exec --`:
 
 | Target                        | Mechanism                                        |
 |-------------------------------|--------------------------------------------------|
-| `vm-build`                    | `vm-dev-run.sh exec "cabal build all ..."`       |
-| `vm-build-only`               | `vm-image-build` then `vm-dev-run.sh exec ...`   |
-| `vm-test`                     | `vm-dev-run.sh exec "cabal build && cabal test"` |
-| `vm-verify`                   | `vm-dev-run.sh exec "cabal run fstar-verify"`    |
+| `vm-build`                    | `./uv exec -- cabal build all ...`               |
+| `vm-build-only`               | `./uv vm build-image` then `./uv exec -- ...`   |
+| `vm-test`                     | `./uv exec -- cabal build && cabal test`         |
+| `vm-verify`                   | `./uv exec -- cabal run fstar-verify`            |
 | `vm-dev`                      | Interactive shell inside VM                      |
 | `vm-run-gui`                  | GUI shell inside VM                              |
 | `vm-screenshot`               | Build + screenshot inside VM                     |
@@ -78,7 +78,7 @@ store gets the image derivation and its closure, but not GHC/cabal directly
 | `vm-image-build`     | `nix build .#vm-image` or `nix-build nix/vm-image.nix` |
 | `vm-signal-server-build` | `nix-build nix/vm-signal-server.nix`              |
 
-**Caveat:** `vm-image-build` has a fallback `cabal run umbravox -- vm-image-build`
+**Caveat:** `./uv vm build-image` has a fallback `cabal run umbravox -- vm-image-build`
 that would pull cabal into the host if both nix commands fail.  This fallback
 is a violation and should be removed or gated.
 
@@ -144,9 +144,9 @@ These targets invoke `cabal`, `ghc`, `coqc`, `fstar.exe`, or `nix-shell`
 | `release-netbsd` | `nix-shell --run "scripts/release-package-platform.sh netbsd"` | Uses shell.nix |
 | `release-illumos` | `nix-shell --run "scripts/release-package-platform.sh illumos"` | Uses shell.nix |
 | `release-linux-arm64` | `nix-shell --run "scripts/release-package-platform.sh linux-arm64"` | Uses shell.nix |
-| `build-haskell` | `cabal run umbravox -- build` or `make build` | Runs on host |
-| `test-haskell` | `cabal run umbravox -- test` or `make test` | Runs on host |
-| `verify-haskell` | `cabal run umbravox -- verify` or `make verify` | Runs on host |
+| `build-haskell` | `cabal run umbravox -- build` or `./uv build` | Runs on host |
+| `test-haskell` | `cabal run umbravox -- test` or `./uv test` | Runs on host |
+| `verify-haskell` | `cabal run umbravox -- verify` or `./uv verify` | Runs on host |
 
 ### Shell-Only / No-Compiler Targets (CLEAN)
 
@@ -185,8 +185,8 @@ These use only `grep`, `bash`, `find`, `test`, `git`, etc. -- no compilers:
 | `test-infra` | shell script |
 | `test-shells` | Checks tool presence (runs inside nix-shell, but just version queries) |
 | `test-vm` | shell script |
-| `test-offline-parity` | Runs `make build` + `make test-core-crypto` (inherits violations) |
-| `evidence` | Chains `make quality` (inherits violations) |
+| `test-offline-parity` | Runs `./uv build` + `./uv test-core-crypto` (inherits violations) |
+| `evidence` | Chains `./uv quality` (inherits violations) |
 
 ---
 
@@ -195,8 +195,8 @@ These use only `grep`, `bash`, `find`, `test`, `git`, etc. -- no compilers:
 The flake defines several nix derivations that pull the full toolchain
 (`devTools` including GHC, cabal, F\*, Coq, etc.) into the host nix store:
 
-- `packages.default` -- runs `make build` inside a derivation with `devTools`
-- `packages.release-linux` -- runs `make release-linux` with `devTools`
+- `packages.default` -- runs `./uv build` inside a derivation with `devTools`
+- `packages.release-linux` -- runs `./uv release-linux` with `devTools`
 - `packages.release-windows-cli-source` -- with `devTools`
 - `packages.release-macos-terminal-source` -- with `devTools`
 - `packages.release-bsd-terminal-source` -- with `devTools`
@@ -215,10 +215,10 @@ the "host only needs qemu+nix" goal for developer machines.
 
 1. **`build`/`test`/`verify` fallback:** Change the "no VM image" path from
    silently running locally to erroring with a message like
-   `"No VM image. Run 'make vm-image-build' first."`
+   `"No VM image. Run './uv vm build-image' first."`
    This prevents accidentally pulling compilers into the host store.
 
-2. **`vm-image-build` cabal fallback:** Remove the
+2. **`./uv vm build-image` cabal fallback:** Remove the
    `cabal run umbravox -- vm-image-build` fallback.  If both nix commands
    fail, just error out.
 
@@ -228,15 +228,10 @@ All the `test-core-*`, `test-tcp`, `test-fault`, etc. targets currently
 always run on host.  Add the same VM-dispatch pattern that `build`/`test`/
 `verify` already have:
 
-```makefile
-test-core:
-    @if [ -d build/vm/image ] || [ -L build/vm/image ]; then \
-        $(MAKE) _vm-exec VM_CMD="cabal test umbravox-test --test-options='core'"; \
-        exit $$?; \
-    else \
-        echo "No VM image — run 'make vm-image-build'"; \
-        exit 1; \
-    fi
+```sh
+# example: route test-core through the VM
+./uv exec -- cabal test umbravox-test --test-options='core'
+# fails with "No VM image -- run './uv vm build-image'" when image is absent
 ```
 
 Affected targets: `test-core`, `test-core-crypto`, `test-core-network`,
@@ -250,7 +245,7 @@ Many targets use `cabal run umbravox -- <subcommand>` as a host-side CLI
 orchestrator.  These need to either:
 
 - Run inside the VM (preferred), or
-- Be rewritten as shell scripts that call `vm-dev-run.sh exec ...`
+- Be rewritten as shell scripts that call `./uv exec -- ...`
 
 Affected: `vm-smoke`, `firecracker-smoke`, `firecracker-image-build`,
 `vm-integration-test`, `vm-integration-test-dual-lan`, `vm-forensics`,
@@ -262,11 +257,11 @@ Affected: `vm-smoke`, `firecracker-smoke`, `firecracker-image-build`,
 
 ### Phase 4: Route complexity/codegen/fuzz/mcdc through VM (low effort)
 
-- `complexity`: route through `vm-dev-run.sh exec`
-- `codegen`: route through `vm-dev-run.sh exec`
-- `fuzz-afl`: route through `vm-dev-run.sh exec` (GHC invocations)
-- `mcdc-report`: route through `vm-dev-run.sh exec`
-- `signal-bridge-build`: route through `vm-dev-run.sh exec`
+- `complexity`: route through `./uv exec --`
+- `codegen`: route through `./uv exec --`
+- `fuzz-afl`: route through `./uv exec --` (GHC invocations)
+- `mcdc-report`: route through `./uv exec --`
+- `signal-bridge-build`: route through `./uv exec --`
 
 ### Phase 5: Platform release packaging (low effort)
 
@@ -307,5 +302,5 @@ The VM-dispatch pattern in `build`/`test`/`verify` is the right architecture.
 The main gap was applying it to the remaining targets that invoked `cabal`
 or `ghc` on the host.
 The `shell-minimal.nix` file is ready and correct -- developers just need
-to use it instead of `shell.nix`, and the Makefile needs to stop silently
+to use it instead of `shell.nix`, and `./uv` needs to stop silently
 falling back to host compilation.

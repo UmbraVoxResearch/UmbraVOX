@@ -64,7 +64,7 @@ check_artifact() {
   artifacts=(build/releases/umbravox-*-linux-x86_64.tar.gz)
   shopt -u nullglob
 
-  ((${#artifacts[@]} > 0)) || die "no linux release artifact found under build/releases; run make release-linux first"
+  ((${#artifacts[@]} > 0)) || die "no linux release artifact found under build/releases; run ./uv release linux first"
 
   for artifact in "${artifacts[@]}"; do
     mtime="$(stat -c '%Y' "$artifact")" || die "unable to stat release artifact: $artifact"
@@ -74,7 +74,7 @@ check_artifact() {
     fi
   done
 
-  [[ -n "$latest" ]] || die "no linux release artifact found under build/releases; run make release-linux first"
+  [[ -n "$latest" ]] || die "no linux release artifact found under build/releases; run ./uv release linux first"
   echo "artifact: $latest"
 }
 

@@ -11,7 +11,7 @@ cabal test umbravox-test --test-options='core-crypto' > "$TEST_ARTIFACT_DIR/pari
 online_exit=$?
 
 echo -e "\033[0;34m[PARITY]\033[0m Running core-crypto in offline mode..."
-UMBRAVOX_OFFLINE=1 make test-core-crypto > "$TEST_ARTIFACT_DIR/parity-offline.log" 2>&1
+UMBRAVOX_OFFLINE=1 ./uv test core-crypto > "$TEST_ARTIFACT_DIR/parity-offline.log" 2>&1
 offline_exit=$?
 
 online_pass="$(grep -c 'PASS:' "$TEST_ARTIFACT_DIR/parity-online.log" 2>/dev/null || echo 0)"

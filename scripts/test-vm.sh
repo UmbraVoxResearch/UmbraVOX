@@ -5,7 +5,7 @@
 #
 # Usage: bash scripts/test-vm.sh
 # Requires: nix-shell shell-minimal.nix (for QEMU and genext2fs)
-#           build/vm/image (run 'make vm-image-build' first)
+#           build/vm/image (run './uv vm build-image' first)
 set -Eeuo pipefail
 
 PASS=0; FAIL=0; SKIP=0
@@ -58,7 +58,7 @@ fi
 if [ -L build/vm/image ] && [ -e build/vm/image ]; then
     check "VM image cached" "PASS"
 else
-    check "VM image cached (run make vm-image-build)" "FAIL"
+    check "VM image cached (run ./uv vm build-image)" "FAIL"
     exit 1
 fi
 
@@ -88,8 +88,8 @@ echo "CABAL_VERSION=$(cabal --numeric-version 2>/dev/null || echo N/A)"
 echo "VM_TEST_COMPLETE=YES"
 EOF
 
-# Run via vm-dev-run.sh in exec mode with a short timeout
-RESULT=$(timeout 120 bash scripts/vm-dev-run.sh exec "bash -c '$(cat $TEST_SCRIPT)'" 2>&1 || true)
+# Run via ./uv exec in the VM with a short timeout
+RESULT=$(timeout 120 ./uv exec -- "bash -c '$(cat $TEST_SCRIPT)'" 2>&1 || true)
 rm -f "$TEST_SCRIPT"
 
 if echo "$RESULT" | grep -q "VM_BOOT=OK"; then
@@ -119,7 +119,7 @@ echo ""
 # ── Test 3: VM can build the project ──────────────────────────────────
 echo "[3/4] Testing VM can parse cabal file..."
 
-RESULT2=$(timeout 120 bash scripts/vm-dev-run.sh exec "cd /work/umbravox && cabal check 2>&1; echo CABAL_CHECK=\$?" 2>&1 || true)
+RESULT2=$(timeout 120 ./uv exec -- "cd /work/umbravox && cabal check 2>&1; echo CABAL_CHECK=\$?" 2>&1 || true)
 
 if echo "$RESULT2" | grep -q "CABAL_CHECK=0"; then
     check "VM cabal check passes" "PASS"
@@ -134,7 +134,7 @@ echo ""
 # ── Test 4: VM source mount ───────────────────────────────────────────
 echo "[4/4] Testing VM source mounting..."
 
-RESULT3=$(timeout 120 bash scripts/vm-dev-run.sh exec "ls /work/umbravox/UmbraVox.cabal && echo SOURCE_MOUNT=OK || echo SOURCE_MOUNT=FAIL" 2>&1 || true)
+RESULT3=$(timeout 120 ./uv exec -- "ls /work/umbravox/UmbraVox.cabal && echo SOURCE_MOUNT=OK || echo SOURCE_MOUNT=FAIL" 2>&1 || true)
 
 if echo "$RESULT3" | grep -q "SOURCE_MOUNT=OK"; then
     check "VM source mounted at /work/umbravox" "PASS"

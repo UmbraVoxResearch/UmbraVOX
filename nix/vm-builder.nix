@@ -1,18 +1,19 @@
-# Minimal NixOS configuration for the VM image builder.
+# Single-stage NixOS builder VM for UmbraVOX.
 #
-# This VM exists solely to run `nix build .#vm-image` in isolation,
-# keeping the host /nix/store untouched. The builder boots, runs the
-# build, copies the result to a 9p output share, and shuts down.
+# Downloads the dev toolchain closure from cache.nixos.org via a
+# host-side network filter (UNIX socket, allowlist-only), then
+# builds the full dev VM image natively.
 #
 # Disks:
 #   /dev/vda  — boot disk (this NixOS image, COW overlay)
-#   /dev/vdb  — project source (ext2, read-only, from genext2fs)
-#   /dev/vdc  — scratch disk (qcow2, 60GB) mounted at /nix-scratch
+#   /dev/vdb  — project source with .git (ext2, read-only)
+#   /dev/vdc  — scratch disk (qcow2, 100GB) for /nix/store overlay + build
 #
 # 9p shares:
 #   output    — host directory where the built image is deposited
 #
-# Network: disabled (offline build only)
+# Network: QEMU user-mode with restrict=on + guestfwd through
+#          host-side allowlist filter (cache.nixos.org:443 only)
 { pkgs ? import <nixpkgs> { system = "x86_64-linux"; } }:
 
 let
@@ -24,6 +25,7 @@ let
     services.getty.autologinUser = "root";
 
     boot.loader.grub.device = "/dev/vda";
+    boot.loader.timeout = 0;
     boot.kernelParams = [ "console=ttyS0" "panic=1" ];
     boot.initrd.availableKernelModules = [
       "virtio_pci" "virtio_blk" "virtio_scsi" "virtio_net"
@@ -37,18 +39,18 @@ let
 
     swapDevices = [];
     networking.hostName = "umbravox-builder";
+    networking.useDHCP = true;
     networking.firewall.enable = true;
 
-    # Nix daemon enabled — this is the whole point of the builder VM
+    # Nix daemon — downloads from binary cache via guestfwd proxy
     nix.enable = true;
     nix.settings = {
       experimental-features = [ "nix-command" "flakes" ];
-      # No substituters — fully offline build
-      substituters = lib.mkForce [];
+      trusted-users = [ "root" ];
       sandbox = true;
     };
 
-    # Minimize image size (no docs, no avahi, no polkit)
+    # Minimize image size
     documentation.enable = false;
     programs.command-not-found.enable = false;
     services.udisks2.enable = false;
@@ -73,6 +75,7 @@ let
       gnused
       gnutar
       gzip
+      zstd
       which
       gnumake
       git
@@ -81,12 +84,12 @@ let
       mount
     ];
 
-    # Builder service: mount disks, run nix build, extract result, shut down
+    # Builder service: mount disks, download + build, extract, shut down
     systemd.services.umbravox-builder = {
       description = "UmbraVOX VM image builder";
       wantedBy = [ "multi-user.target" ];
-      after = [ "local-fs.target" "nix-daemon.service" ];
-      requires = [ "nix-daemon.service" ];
+      after = [ "local-fs.target" "nix-daemon.service" "network-online.target" ];
+      wants = [ "network-online.target" "nix-daemon.service" ];
       path = config.environment.systemPackages ++ [ pkgs.nix ];
       environment = {
         HOME = "/root";
@@ -94,17 +97,22 @@ let
       };
       serviceConfig = {
         Type = "oneshot";
+        RemainAfterExit = true;
+        Restart = "no";
         ExecStart = pkgs.writeShellScript "umbravox-builder-run" ''
           set -euo pipefail
           export PATH="/run/current-system/sw/bin:/run/current-system/sw/sbin:$PATH"
 
           echo "[BUILDER] Starting VM image build..."
 
-          # Mount source disk (project tree)
+          # Mount source disk (project tree with .git)
           mkdir -p /mnt/src
-          mount -o ro /dev/vdb /mnt/src
+          mount -o ro /dev/vdb /mnt/src || {
+              echo "[BUILDER] ERROR: /dev/vdb not found (source disk missing)"
+              systemctl poweroff; exit 1
+          }
 
-          # Mount and format scratch disk for Nix store overlay
+          # Mount and format scratch disk
           mkdir -p /nix-scratch
           if ! blkid /dev/vdc >/dev/null 2>&1; then
               echo "[BUILDER] Formatting scratch disk..."
@@ -112,15 +120,19 @@ let
           fi
           mount /dev/vdc /nix-scratch
 
-          # Bind-mount the scratch space over /nix/store so all build
-          # artifacts land on the scratch disk, not the boot disk.
+          # Overlay /nix/store onto scratch disk
           mkdir -p /nix-scratch/store
-          # Preserve existing store contents (from the boot image) by
-          # copying them to scratch first.
           cp -a /nix/store/. /nix-scratch/store/ 2>/dev/null || true
           mount --bind /nix-scratch/store /nix/store
-          # Restart the daemon so it sees the new mount
-          systemctl restart nix-daemon.service
+
+          # Redirect /tmp and build temp to scratch disk
+          mkdir -p /nix-scratch/tmp
+          mount --bind /nix-scratch/tmp /tmp
+
+          # Restart nix-daemon to see new mounts
+          systemctl stop nix-daemon.socket nix-daemon.service 2>/dev/null || true
+          sleep 1
+          systemctl start nix-daemon.socket nix-daemon.service
           sleep 2
 
           # Mount 9p output share
@@ -132,15 +144,16 @@ let
               exit 1
           }
 
-          # Copy source to a writable workspace
+          # Copy source to writable workspace
           mkdir -p /nix-scratch/workspace
           cp -a /mnt/src/. /nix-scratch/workspace/
           cd /nix-scratch/workspace
 
-          # Configure git safe directory (nix build needs it)
+          # Configure git safe directory
           git config --global --add safe.directory /nix-scratch/workspace
 
           echo "[BUILDER] Running nix build .#vm-image ..."
+          export TMPDIR=/nix-scratch/tmp
           set +e
           nix build \
               --option build-dir /nix-scratch/tmp \
@@ -158,11 +171,10 @@ let
               exit 1
           fi
 
-          echo "[BUILDER] Build succeeded. Copying image to output share..."
-          # The result is a symlink to the nix store path containing nixos.img
+          echo "[BUILDER] Build succeeded. Compressing and copying image..."
           if [ -L /nix-scratch/workspace/result ] && [ -e /nix-scratch/workspace/result/nixos.img ]; then
-              cp /nix-scratch/workspace/result/nixos.img /output/nixos.img
-              echo "[BUILDER] Image copied successfully."
+              zstd -T0 -3 /nix-scratch/workspace/result/nixos.img -o /output/nixos.img.zst 2>&1
+              echo "[BUILDER] Image compressed and copied successfully."
               printf "0\n" > /output/builder-status
           else
               echo "[BUILDER] ERROR: Expected result/nixos.img not found"
@@ -176,7 +188,7 @@ let
         '';
         StandardOutput = "journal+console";
         StandardError = "journal+console";
-        TimeoutStartSec = "7200";  # 2 hours for full image build
+        TimeoutStartSec = "7200";
       };
     };
 
@@ -188,12 +200,12 @@ let
     configuration = builderConfig;
   };
 
-  image = import (pkgs.path + "/nixos/lib/make-disk-image.nix") {
+  image = import ./make-disk-image.nix {
     inherit pkgs;
     lib = pkgs.lib;
     config = nixos.config;
     diskSize = "auto";
-    additionalSpace = "4096M";
+    additionalSpace = "1024M";
     format = "raw";
     partitionTableType = "legacy";
     copyChannel = false;

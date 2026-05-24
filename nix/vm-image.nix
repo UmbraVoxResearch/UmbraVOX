@@ -188,24 +188,14 @@ CABALEOF
     configuration = nixosConfig;
   };
 
-  image = import (pkgs.path + "/nixos/lib/make-disk-image.nix") {
+  # Uses local make-disk-image.nix which replaces cptofs (LKL, 100MB RAM)
+  # with mke2fs -d (native e2fsprogs, no RAM limit). This fixes large
+  # image builds that fail with I/O errors inside nested VMs.
+  image = import ./make-disk-image.nix {
     inherit pkgs;
     lib = pkgs.lib;
     config = nixos.config;
     diskSize = "auto";
-    # The full dev-toolchain closure (GHC, F*, Coq, GCC, AFL++, etc.) is
-    # ~14 GB.  16384M gives enough headroom for the rootfs plus logs.
-    # TODO: trim closure — avahi comes from qemu-guest.nix profile,
-    # GCC/valgrind/gdb are only needed for C builds, and coq/tlaplus
-    # could be split into a separate "proof" image layer.
-    # NOTE: The full dev-toolchain closure requires ~30GB total disk image.
-    # If `make vm-image-build` fails with "cptofs failed", check `df -h /`
-    # — the Nix sandbox needs enough free space on the root filesystem to
-    # create the raw disk image. With 16GB of additional space on top of
-    # the auto-calculated closure, the total image is ~30GB.
-    # M20.5.8: `make vm-image-build` now runs this inside a builder VM,
-    # keeping the host /nix/store untouched. Use `make vm-image-build-host`
-    # for the legacy host-build approach.
     additionalSpace = "16384M";
     format = "raw";
     partitionTableType = "legacy";

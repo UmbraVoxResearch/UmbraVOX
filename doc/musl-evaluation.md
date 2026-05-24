@@ -63,10 +63,10 @@ The single-file track remains **experimental** and outside the
 authoritative release posture until:
 
 - A working single-file artifact exists (musl static or AppImage).
-- The artifact passes the VM smoke pipeline (`make vm-smoke`).
+- The artifact passes the VM smoke pipeline (`./uv vm smoke`).
 - Support and compatibility policies are documented.
 - Parity with the dynamic bundle is demonstrated through differential
   testing.
 
-Until these conditions are met, `make release-linux` (dynamic bundle)
+Until these conditions are met, `./uv release linux` (dynamic bundle)
 remains the only supported Linux release artifact.
