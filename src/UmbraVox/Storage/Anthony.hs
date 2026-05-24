@@ -111,7 +111,7 @@ openDB :: FilePath -> IO AnthonyDB
 openDB path = do
     conn <- SQL.open path
     let db = AnthonyDB { dbPath = path, dbConn = conn, dbStorageKey = Nothing }
-    mapM_ (SQL.exec conn) schemaStatements
+    mapM_ (SQL.execute_ conn) schemaStatements
     setFileMode path (ownerReadMode `unionFileModes` ownerWriteMode)
     pure db
 
@@ -123,7 +123,7 @@ openDBWithKey :: FilePath -> StorageKey -> IO AnthonyDB
 openDBWithKey path key = do
     conn <- SQL.open path
     let db = AnthonyDB { dbPath = path, dbConn = conn, dbStorageKey = Just key }
-    mapM_ (SQL.exec conn) schemaStatements
+    mapM_ (SQL.execute_ conn) schemaStatements
     setFileMode path (ownerReadMode `unionFileModes` ownerWriteMode)
     pure db
 

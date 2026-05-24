@@ -108,7 +108,7 @@ pruneStale oq now =
 -- | Ensure the outbound_queue table exists.
 ensureQueueTable :: SQL.Database -> IO ()
 ensureQueueTable db =
-    SQL.exec db
+    SQL.execute_ db
         "CREATE TABLE IF NOT EXISTS outbound_queue \
         \(id INTEGER PRIMARY KEY, peer_id TEXT NOT NULL, \
         \message BLOB NOT NULL, created_at INTEGER NOT NULL)"
@@ -121,13 +121,13 @@ saveQueue :: SQL.Database -> ByteString -> OutboundQueue -> IO ()
 saveQueue db peerId oq = do
     ensureQueueTable db
     entries <- readIORef (oqEntries oq)
-    SQL.exec db "BEGIN"
+    SQL.execute_ db "BEGIN"
     SQL.withStatement db "DELETE FROM outbound_queue WHERE peer_id = ?" $ \stmt -> do
         SQL.bindBlob stmt 1 peerId
         _ <- SQL.step stmt
         pure ()
     mapM_ (insertEntry db peerId) (foldr (:) [] entries)
-    SQL.exec db "COMMIT"
+    SQL.execute_ db "COMMIT"
   where
     insertEntry db' pid entry =
         SQL.withStatement db'

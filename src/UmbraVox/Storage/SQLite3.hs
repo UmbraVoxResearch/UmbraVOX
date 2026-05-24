@@ -24,9 +24,9 @@ module UmbraVox.Storage.SQLite3
     , columnBlob
     , columnCount
     , finalize
-    , exec
     , reset
     , withStatement
+    , execute_
     ) where
 
 import Prelude hiding (error)
@@ -327,6 +327,14 @@ exec (Database dbPtr) sql = alloca $ \ppErr -> do
 withStatement :: Database -> String -> (Statement -> IO a) -> IO a
 withStatement db sql action =
     bracket (prepare db sql) finalize action
+
+-- | Execute a SQL statement that takes no parameters and returns no rows.
+--
+-- Uses a prepared statement internally, so the SQL is parsed but no data
+-- binding occurs.  Suitable for DDL ('CREATE TABLE'), transaction control
+-- ('BEGIN', 'COMMIT'), and other fixed statements.
+execute_ :: Database -> String -> IO ()
+execute_ db sql = withStatement db sql $ \stmt -> step stmt >> pure ()
 
 ------------------------------------------------------------------------
 -- Internal helpers
