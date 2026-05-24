@@ -86,6 +86,10 @@ let
       mount
     ];
 
+    # Disable PrivateTmp for nix-daemon so our /tmp bind-mount
+    # (to the scratch disk) is visible to the daemon process.
+    systemd.services.nix-daemon.serviceConfig.PrivateTmp = lib.mkForce false;
+
     # Seed service: mount disks, run nix-build for builder image, shut down
     systemd.services.umbravox-seed-builder = {
       description = "UmbraVOX seed VM builder";
