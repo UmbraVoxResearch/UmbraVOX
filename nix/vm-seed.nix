@@ -46,7 +46,12 @@ let
     nix.settings = {
       experimental-features = [ "nix-command" "flakes" ];
       # Keep default substituters (cache.nixos.org) — seed needs binary cache
-      sandbox = true;
+      # Sandbox disabled: the seed VM is already QEMU-isolated.
+      # With sandbox=true, nix creates build temp dirs on the boot
+      # disk's /tmp which has <1GB free — too small for the 3.7GB
+      # builder disk image. Without sandbox, TMPDIR redirects the
+      # build to the 60GB scratch disk.
+      sandbox = false;
     };
 
     # Minimize image size (no docs, no avahi, no polkit)
@@ -152,8 +157,11 @@ let
           git config --global --add safe.directory /nix-scratch/workspace
 
           echo "[SEED] Running nix-build for vm-builder.nix ..."
+          # TMPDIR on scratch disk so build temp files (including the
+          # 3.7GB raw disk image) don't fill the boot disk.
+          mkdir -p /nix-scratch/tmp
           set +e
-          nix-build /nix-scratch/workspace/nix/vm-builder.nix \
+          TMPDIR=/nix-scratch/tmp nix-build /nix-scratch/workspace/nix/vm-builder.nix \
               -o /nix-scratch/workspace/result 2>&1
           BUILD_STATUS=$?
           set -e
