@@ -1,0 +1,66 @@
+name: Release (minor/major versions)
+
+# Create a release with source + builder image on minor/major version tags.
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.0'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Extract version
+        id: version
+        run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - name: Build builder VM image
+        run: |
+          mkdir -p build/vm/tmp
+          TMPDIR="$(pwd)/build/vm/tmp" nix-build nix/vm-builder.nix -o build/vm/builder-result
+
+      - name: Compress builder + hash
+        run: |
+          gzip -c build/vm/builder-result/nixos.img > umbravox-builder.img.gz
+          sha256sum umbravox-builder.img.gz > umbravox-builder.img.gz.sha256
+
+      - name: Create source tarball
+        run: |
+          TAG=${{ steps.version.outputs.tag }}
+          git archive --prefix="umbravox-${TAG}/" HEAD | gzip > "umbravox-${TAG}-source.tar.gz"
+          sha256sum "umbravox-${TAG}-source.tar.gz" > "umbravox-${TAG}-source.tar.gz.sha256"
+
+      - name: Extract release notes
+        id: notes
+        run: |
+          TAG=${{ steps.version.outputs.tag }}
+          # Extract the section for this version from CHANGELOG.txt
+          sed -n "/### ${TAG}/,/### v/p" CHANGELOG.txt | head -n -1 > release-notes.md || true
+          if [ ! -s release-notes.md ]; then
+            echo "Release ${TAG}" > release-notes.md
+          fi
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "UmbraVOX ${{ steps.version.outputs.tag }}"
+          body_path: release-notes.md
+          files: |
+            umbravox-builder.img.gz
+            umbravox-builder.img.gz.sha256
+            umbravox-${{ steps.version.outputs.tag }}-source.tar.gz
+            umbravox-${{ steps.version.outputs.tag }}-source.tar.gz.sha256
+          draft: false
+          prerelease: false
