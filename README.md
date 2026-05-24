@@ -391,7 +391,7 @@ active assurance claim.
 * Persistent message content and conversation names are encrypted at the
   application layer using AES-256-GCM with per-identity keys derived via
   HKDF. Structural metadata (peer keys, timestamps, IDs) remains
-  plaintext. See `doc/persistence-model.md` for the residual-exposure
+  plaintext. See `doc/attic/persistence-model.md` for the residual-exposure
   analysis.
 * The generated Haskell namespace is active, but it is currently wrapper-style
   code that delegates to the audited handwritten/reference Haskell
@@ -654,9 +654,3 @@ The immediate focus is:
 ## License
 
 See [`LICENSE`](LICENSE).
-
-```
-::contentReference[oaicite:1]{index=1}
-```
-
-[1]: https://github.com/UmbraVoxResearch/UmbraVOX "GitHub - UmbraVoxResearch/UmbraVOX: A decentralized communications research project and technical manuscript.  UmbraVox is a protocol design, writing project, and reference implementation effort focused on censorship resistance, privacy-preserving communication, and durable freedom of thought and expression in the digital age. · GitHub"

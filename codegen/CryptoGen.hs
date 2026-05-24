@@ -167,9 +167,16 @@ parseParams = mapMaybe parseParam
   where
     parseParam l =
         case break (== ':') (strip l) of
-            (n, ':':t) -> Just $ Param (strip n) (parseType (strip t))
+            (n, ':':t) -> Just $ Param (strip n) (parseType (stripComment (strip t)))
             _ -> Nothing
+    -- Strip trailing "-- comment" from type annotations
+    stripComment s = strip (go s)
+      where
+        go [] = []
+        go ('-':'-':_) = []
+        go (c:rest) = c : go rest
     parseType "Bytes"   = TBytes
+    parseType "UInt8"   = TUInt32  -- promoted to uint32_t in C
     parseType "UInt32"  = TUInt32
     parseType "UInt64"  = TUInt64
     parseType "Bool"    = TBool
@@ -987,19 +994,32 @@ cSource ast name =
         Nothing ->
             let allOps = concatMap stepOps (specSteps ast)
                 (helperOps, bodyOps) = partitionHelpers allOps
-                helperMacros = concatMap cHelperMacro helperOps
+                ws = detectWordSize (specConstants ast)
+                helperMacros = concatMap (cHelperMacro ws) helperOps
                 bodySteps = [Step Nothing bodyOps]
             in  unlines $
                     cHeader
                     ++ [""]
-                    ++ cRotateMacros
+                    ++ cRotateMacros ws
                     ++ (if null helperMacros then [] else "" : helperMacros)
                     ++ [""]
                     ++ cConstants (specConstants ast)
                     ++ [""]
-                    ++ cFunction name (specParams ast) bodySteps
+                    ++ cFunction ws name (specParams ast) bodySteps
                     ++ [""]
                     ++ cLinkProbe name
+
+-- | Detect the word size (32 or 64) from constants.
+--   If any hex constant has more than 8 hex digits, it's a 64-bit algorithm.
+detectWordSize :: [Constant] -> Int
+detectWordSize consts
+    | any is64bit consts = 64
+    | otherwise          = 32
+  where
+    is64bit c = hexDigitCount (constValue c) > 8
+    hexDigitCount ('0':'x':rest) = length (filter isHexDigit rest)
+    hexDigitCount ('0':'X':rest) = length (filter isHexDigit rest)
+    hexDigitCount _ = 0
 
 cHeader :: [String]
 cHeader =
@@ -1008,8 +1028,12 @@ cHeader =
     , "#include <stddef.h>"
     ]
 
-cRotateMacros :: [String]
-cRotateMacros =
+cRotateMacros :: Int -> [String]
+cRotateMacros 64 =
+    [ "#define ROTR64(x, n) (((x) >> (n)) | ((x) << (64 - (n))))"
+    , "#define ROTL64(x, n) (((x) << (n)) | ((x) >> (64 - (n))))"
+    ]
+cRotateMacros _ =
     [ "#define ROTR32(x, n) (((x) >> (n)) | ((x) << (32 - (n))))"
     , "#define ROTL32(x, n) (((x) << (n)) | ((x) >> (32 - (n))))"
     ]
@@ -1108,12 +1132,12 @@ allVarsGeneric (Index _ _)      = False
 allVarsGeneric (FunCall _ _)    = False
 
 -- | Emit a helper definition as a C preprocessor macro.
-cHelperMacro :: Operation -> [String]
-cHelperMacro (Assign name expr) =
+cHelperMacro :: Int -> Operation -> [String]
+cHelperMacro ws (Assign name expr) =
     let params = collectVarNames expr
         paramStr = intercalate ", " params
-    in  ["#define " ++ name ++ "(" ++ paramStr ++ ") " ++ cExpr expr]
-cHelperMacro _ = []
+    in  ["#define " ++ name ++ "(" ++ paramStr ++ ") " ++ cExpr ws expr]
+cHelperMacro _ _ = []
 
 -- | Collect unique variable names from an expression in order of appearance.
 collectVarNames :: Expr -> [String]
@@ -1178,18 +1202,19 @@ preprocessingFunctions =
     , "FOR_EACH"
     ]
 
-cFunction :: String -> [Param] -> [Step] -> [String]
-cFunction name params steps =
+cFunction :: Int -> String -> [Param] -> [Step] -> [String]
+cFunction ws name params steps =
     -- Only scalar-typed parameters (uint32_t, uint64_t, int) are valid
-    -- in direct C assignments to uint32_t locals.  Pointer-typed params
+    -- in direct C assignments to locals.  Pointer-typed params
     -- (const uint8_t*) are excluded from scope so that assignments from
     -- them become preprocessing placeholders instead of type errors.
     let paramScope = [ paramName p | p <- params
                      , paramType p `elem` [TUInt32, TUInt64, TBool, TFloat64] ]
         allOps = concatMap stepOps steps
+        cWordType = if ws == 64 then "uint64_t" else "uint32_t"
     in  [ "__attribute__((noinline))"
-        , "uint32_t " ++ toLowerStr name ++ "(" ++ cParamList params ++ ") {"
-        ] ++ cOpsWithScope "    " paramScope allOps
+        , cWordType ++ " " ++ toLowerStr name ++ "(" ++ cParamList params ++ ") {"
+        ] ++ cOpsWithScope ws "    " paramScope allOps
           ++ ["    return 0; /* placeholder */", "}"]
 
 cParamList :: [Param] -> String
@@ -1206,33 +1231,35 @@ mapParamTypeC TFloat64 = "double"
 mapParamTypeC TBytes   = "const uint8_t*"
 mapParamTypeC TBool    = "int"
 
-cStep :: String -> Step -> [String]
-cStep indent step = cOpsWithScope indent [] (stepOps step)
+cStep :: Int -> String -> Step -> [String]
+cStep ws indent step = cOpsWithScope ws indent [] (stepOps step)
 
 -- | Emit operations while tracking which variables are "live" (defined by
 --   real C assignments vs preprocessing placeholders).  An operation whose
 --   RHS references any variable NOT in scope (or defined as a preprocessing
 --   placeholder) is itself emitted as a preprocessing placeholder.
-cOpsWithScope :: String -> [String] -> [Operation] -> [String]
-cOpsWithScope _ _ [] = []
-cOpsWithScope indent scope (op@(Assign lhs expr) : rest)
-    -- Tuple LHS: (a, b) = expr → split into separate uint32_t declarations,
+cOpsWithScope :: Int -> String -> [String] -> [Operation] -> [String]
+cOpsWithScope _ _ _ [] = []
+cOpsWithScope ws indent scope (op@(Assign lhs expr) : rest)
+    -- Tuple LHS: (a, b) = expr -> split into separate declarations,
     -- each as a preprocessing placeholder since C has no tuple destructuring.
     | '(' `elem` lhs =
         let vars = parseTupleLHS lhs
-            lines_ = map (\v -> indent ++ "uint32_t " ++ v ++ " = 0; /* preprocessing: " ++ cExpr expr ++ " */") vars
-        in  lines_ ++ cOpsWithScope indent scope rest
+            cWordType = if ws == 64 then "uint64_t" else "uint32_t"
+            lines_ = map (\v -> indent ++ cWordType ++ " " ++ v ++ " = 0; /* preprocessing: " ++ cExpr ws expr ++ " */") vars
+        in  lines_ ++ cOpsWithScope ws indent scope rest
     | otherwise =
-        let (line, newScope) =
+        let cWordType = if ws == 64 then "uint64_t" else "uint32_t"
+            (line, newScope) =
                 if isPreprocessingOp op || hasUndefinedVars scope expr
-                then ( indent ++ "uint32_t " ++ lhs ++ " = 0; /* preprocessing: " ++ cExpr expr ++ " */"
+                then ( indent ++ cWordType ++ " " ++ lhs ++ " = 0; /* preprocessing: " ++ cExpr ws expr ++ " */"
                      , scope )  -- placeholder: don't add to scope
-                else ( indent ++ "uint32_t " ++ lhs ++ " = " ++ cExpr expr ++ ";"
+                else ( indent ++ cWordType ++ " " ++ lhs ++ " = " ++ cExpr ws expr ++ ";"
                      , lhs : scope )
-        in  line : cOpsWithScope indent newScope rest
-cOpsWithScope indent scope (op@(IfThenElse cond tOps fOps) : rest) =
-    let ifLines = cOp indent op
-    in  ifLines ++ cOpsWithScope indent scope rest
+        in  line : cOpsWithScope ws indent newScope rest
+cOpsWithScope ws indent scope (op@(IfThenElse cond tOps fOps) : rest) =
+    let ifLines = cOp ws indent op
+    in  ifLines ++ cOpsWithScope ws indent scope rest
 
 -- | Check if an expression references any variable not in the current scope,
 --   or contains a function call to a non-macro function (preprocessing op).
@@ -1251,7 +1278,7 @@ hasUndefinedVars scope expr =
 
 -- | Check if an expression contains a function call to a non-macro function.
 --   Macros are identified by checking if the function name is defined as a
---   helper in the current scope or is ROTR32/ROTL32.
+--   helper in the current scope or is ROTR32/ROTL32/ROTR64/ROTL64.
 hasNonMacroCall :: [String] -> Expr -> Bool
 hasNonMacroCall _ (Var _)          = False
 hasNonMacroCall _ (Lit _)          = False
@@ -1289,35 +1316,44 @@ collectExprVars (UnOp _ e)         = collectExprVars e
 collectExprVars (Index a i)        = collectExprVars a ++ collectExprVars i
 collectExprVars (FunCall _ args)   = concatMap collectExprVars args
 
-cOp :: String -> Operation -> [String]
-cOp indent (Assign lhs expr) =
-    [indent ++ "uint32_t " ++ lhs ++ " = " ++ cExpr expr ++ ";"]
-cOp indent (IfThenElse cond tOps fOps) =
-    [indent ++ "if (" ++ cExpr cond ++ ") {"]
-    ++ concatMap (cOp (indent ++ "    ")) tOps
+cOp :: Int -> String -> Operation -> [String]
+cOp ws indent (Assign lhs expr) =
+    let cWordType = if ws == 64 then "uint64_t" else "uint32_t"
+    in  [indent ++ cWordType ++ " " ++ lhs ++ " = " ++ cExpr ws expr ++ ";"]
+cOp ws indent (IfThenElse cond tOps fOps) =
+    [indent ++ "if (" ++ cExpr ws cond ++ ") {"]
+    ++ concatMap (cOp ws (indent ++ "    ")) tOps
     ++ [indent ++ "} else {"]
-    ++ concatMap (cOp (indent ++ "    ")) fOps
+    ++ concatMap (cOp ws (indent ++ "    ")) fOps
     ++ [indent ++ "}"]
 
-cExpr :: Expr -> String
-cExpr (Var v)           = v
-cExpr (Lit l)           = l
-cExpr (BinOp op a b)   = cBinOp op (cExpr a) (cExpr b)
-cExpr (UnOp OpNot a)    = "(~" ++ cExpr a ++ ")"
-cExpr (Index arr idx)   = cExpr arr ++ "[" ++ cExpr idx ++ "]"
-cExpr (FunCall f args)  = f ++ "(" ++ intercalate ", " (map cExpr args) ++ ")"
+cExpr :: Int -> Expr -> String
+cExpr _  (Var v)           = v
+cExpr _  (Lit l)           = l
+cExpr ws (BinOp op a b)   = cBinOp ws op (cExpr ws a) (cExpr ws b)
+cExpr ws (UnOp OpNot a)    = "(~" ++ cExpr ws a ++ ")"
+cExpr ws (Index arr idx)   = cExpr ws arr ++ "[" ++ cExpr ws idx ++ "]"
+cExpr ws (FunCall f args)  = f ++ "(" ++ intercalate ", " (map (cExpr ws) args) ++ ")"
 
-cBinOp :: BinaryOp -> String -> String -> String
-cBinOp OpXor    a b = "(" ++ a ++ " ^ " ++ b ++ ")"
-cBinOp OpOr     a b = "(" ++ a ++ " | " ++ b ++ ")"
-cBinOp OpAnd    a b = "(" ++ a ++ " & " ++ b ++ ")"
-cBinOp OpRotR   a b = "ROTR32(" ++ a ++ ", " ++ b ++ ")"
-cBinOp OpRotL   a b = "ROTL32(" ++ a ++ ", " ++ b ++ ")"
-cBinOp OpShiftR a b = "(" ++ a ++ " >> " ++ b ++ ")"
-cBinOp OpShiftL a b = "(" ++ a ++ " << " ++ b ++ ")"
-cBinOp OpAddMod a b = "(" ++ a ++ " + " ++ b ++ ")"
-cBinOp OpSubMod a b = "(" ++ a ++ " - " ++ b ++ ")"
-cBinOp OpMulMod a b = "(" ++ a ++ " * " ++ b ++ ")"
+cBinOp :: Int -> BinaryOp -> String -> String -> String
+cBinOp _  OpXor    a b = "(" ++ a ++ " ^ " ++ b ++ ")"
+cBinOp _  OpOr     a b = "(" ++ a ++ " | " ++ b ++ ")"
+cBinOp _  OpAnd    a b = "(" ++ a ++ " & " ++ b ++ ")"
+cBinOp ws OpRotR   a b = rotrName ws ++ "(" ++ a ++ ", " ++ b ++ ")"
+cBinOp ws OpRotL   a b = rotlName ws ++ "(" ++ a ++ ", " ++ b ++ ")"
+cBinOp _  OpShiftR a b = "(" ++ a ++ " >> " ++ b ++ ")"
+cBinOp _  OpShiftL a b = "(" ++ a ++ " << " ++ b ++ ")"
+cBinOp _  OpAddMod a b = "(" ++ a ++ " + " ++ b ++ ")"
+cBinOp _  OpSubMod a b = "(" ++ a ++ " - " ++ b ++ ")"
+cBinOp _  OpMulMod a b = "(" ++ a ++ " * " ++ b ++ ")"
+
+rotrName :: Int -> String
+rotrName 64 = "ROTR64"
+rotrName _  = "ROTR32"
+
+rotlName :: Int -> String
+rotlName 64 = "ROTL64"
+rotlName _  = "ROTL32"
 
 -- | Previously returned link probe stubs. Now returns Nothing so the
 -- real C code generator (cFunction/cStep/cOp/cExpr) is used instead.

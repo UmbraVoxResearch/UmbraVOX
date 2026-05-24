@@ -54,7 +54,7 @@ func evidenceFast() int {
 
 	// Check for F* assume val
 	cmd := exec.Command("grep", "-r", "assume val", "--include=*.fst", "--include=*.fsti",
-		filepath.Join(repoRoot, "fstar"))
+		filepath.Join(repoRoot, "test", "evidence", "formal-proofs", "fstar"))
 	if out, _ := cmd.Output(); len(out) > 0 {
 		log.Fail(tag, "F* assume val found (should be reduced):")
 		fmt.Fprintf(os.Stderr, "%s", out)
@@ -63,7 +63,7 @@ func evidenceFast() int {
 
 	// Check for Coq Admitted
 	cmd = exec.Command("grep", "-r", "Admitted", "--include=*.v",
-		filepath.Join(repoRoot, "coq"))
+		filepath.Join(repoRoot, "test", "evidence", "formal-proofs", "coq"))
 	if out, _ := cmd.Output(); len(out) > 0 {
 		log.Fail(tag, "Coq Admitted found:")
 		fmt.Fprintf(os.Stderr, "%s", out)

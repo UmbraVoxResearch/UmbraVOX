@@ -109,8 +109,8 @@ ensureQueueTable :: SQL.Database -> IO ()
 ensureQueueTable db =
     SQL.exec db
         "CREATE TABLE IF NOT EXISTS outbound_queue \
-        \(peer_id BLOB NOT NULL, wire_bytes BLOB NOT NULL, \
-        \timestamp INTEGER NOT NULL)"
+        \(id INTEGER PRIMARY KEY, peer_id TEXT NOT NULL, \
+        \message BLOB NOT NULL, created_at INTEGER NOT NULL)"
 
 -- | Save queue entries to SQLite database.
 --
@@ -130,7 +130,7 @@ saveQueue db peerId oq = do
   where
     insertEntry db' pid entry =
         SQL.withStatement db'
-            "INSERT INTO outbound_queue (peer_id, wire_bytes, timestamp) VALUES (?, ?, ?)"
+            "INSERT INTO outbound_queue (peer_id, message, created_at) VALUES (?, ?, ?)"
             $ \stmt -> do
                 SQL.bindBlob stmt 1 pid
                 SQL.bindBlob stmt 2 (qeWireBytes entry)
@@ -147,7 +147,7 @@ loadQueue db peerId depth maxAge = do
     ensureQueueTable db
     oq <- newQueue depth maxAge
     SQL.withStatement db
-        "SELECT wire_bytes, timestamp FROM outbound_queue WHERE peer_id = ? ORDER BY timestamp ASC"
+        "SELECT message, created_at FROM outbound_queue WHERE peer_id = ? ORDER BY created_at ASC"
         $ \stmt -> do
             SQL.bindBlob stmt 1 peerId
             loadRows stmt oq

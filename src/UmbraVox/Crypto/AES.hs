@@ -15,6 +15,13 @@ module UmbraVox.Crypto.AES
     , AESKey
     ) where
 
+{-# WARNING aesEncrypt
+    "Variable-time S-box lookups: leaks key material via cache timing. Use FFI to constant-time C (e.g. AES-NI) for production." #-}
+{-# WARNING aesDecrypt
+    "Variable-time S-box lookups: leaks key material via cache timing. Use FFI to constant-time C (e.g. AES-NI) for production." #-}
+{-# WARNING aesExpandKey
+    "Variable-time S-box lookups in key schedule. Use FFI to constant-time C (e.g. AES-NI) for production." #-}
+
 import Data.Array (Array, listArray, (!))
 import Data.Bits ((.&.), (.|.), shiftL, shiftR, xor)
 import Data.ByteString (ByteString)

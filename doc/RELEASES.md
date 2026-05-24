@@ -13,7 +13,7 @@ UmbraVOX now defines explicit release targets instead of treating
 | `./uv release macos-terminal` | `.tar.gz` | macOS terminal source release with native build instructions |
 | `./uv release bsd-terminal` | `.tar.gz` | BSD terminal source release with native build instructions |
 | `./uv release freedos` | `.zip` | FreeDOS research/source release with explicit unsupported-runtime note |
-| `./uv release` | mixed | Builds every target above |
+| `./uv release all` | mixed | Builds every target above |
 
 Artifacts are written under `build/releases/`.
 Each staged release artifact also includes:
@@ -27,40 +27,26 @@ Each staged release artifact also includes:
 Current smoke coverage is split between a working container-based check and
 microVM entrypoints that now support direct pinned boot for both VMMs:
 
-- `./uv release smoke-linux` runs today and performs an isolated Linux bundle
-  smoke check with `podman` or `docker` when available.
-- `./uv release smoke-appimage` runs the experimental AppImage scaffold smoke
-  placeholder and only checks the scaffold layout.
-- `./uv release smoke-qemu` runs the QEMU microVM smoke entrypoint.
-- `./uv release smoke-qemu-profile` runs the QEMU microVM smoke entrypoint
-  with `QEMU_SMOKE_PROFILE=bundle-basic` unless overridden.
-- `./uv release smoke-firecracker` runs the Firecracker microVM smoke
-  entrypoint.
-- `./uv release smoke-firecracker-pinned` runs the Firecracker microVM smoke
-  entrypoint with the pinned-input variables passed through from the `./uv` build tool.
-- `./uv release lane-readiness` runs the aggregate native runner readiness
-  checks for Linux x86_64, Linux arm64, macOS, Windows, and BSD.
+- `./uv release --smoke linux` performs an isolated Linux bundle smoke check
+  with `podman` or `docker` when available.
+- Smoke scripts are also available directly under `scripts/`:
+  - `scripts/release-smoke-linux.sh` -- container-based Linux bundle smoke.
+  - `scripts/release-smoke-appimage.sh` -- experimental AppImage scaffold smoke.
+  - `scripts/release-smoke-microvm.sh qemu` -- QEMU microVM smoke entrypoint.
+  - `scripts/release-smoke-microvm.sh firecracker` -- Firecracker microVM smoke.
+  - `scripts/release-smoke-qemu-profile.sh` -- QEMU with `QEMU_SMOKE_PROFILE`.
 
 ## Orchestration Migration
 
-Current release orchestration is still bridge-mode:
+Current release orchestration is bridge-mode:
 
-- `./uv` targets dispatch to shell scripts for lane checks and smoke
-  scaffolding.
+- `./uv` (Go binary) dispatches to shell scripts for release packaging,
+  lane checks, and smoke scaffolding.
 - That shell layer is a compatibility bridge, not the final orchestration
   boundary.
-- `./uv release lane-readiness-haskell` now routes the readiness command
-  through a minimal Haskell entrypoint, but it still shells out to the current
-  script implementation.
-- `./uv build-haskell`, `./uv test-haskell`, and `./uv verify-haskell` are
-  thin opt-in bridge wrappers. They default to the legacy `./uv` path and
-  only flip to the Haskell orchestration path when `UMBRAVOX_USE_HASKELL_ORCH=1`
-  is set.
-- When `UMBRAVOX_USE_HASKELL_ORCH=1` is set, the `build-haskell`,
-  `test-haskell`, and `verify-haskell` targets now pass `--orchestrated`
-  to the Haskell binary. This routes to the real orchestration
-  implementation (`runOrchestratedBuild`, `runOrchestratedTest`,
-  `runOrchestratedVerify`) instead of shelling back to `./uv` targets.
+- Haskell orchestration entrypoints exist (`runOrchestratedBuild`,
+  `runOrchestratedTest`, `runOrchestratedVerify`) and can be activated
+  via `UMBRAVOX_USE_HASKELL_ORCH=1` inside the VM.
 - Exit codes from orchestrated subcommands follow stable mapping:
   0 = success, 1 = failure, 124 = timeout, 127 = missing tool.
 - The migration is phased:
@@ -75,11 +61,11 @@ current operational glue rather than the desired end state.
 
 ## Assurance Release Gate
 
-`./uv release gate-assurance` verifies that the assurance matrix is
-present, complete, and not stale relative to crypto source changes.
-This gate should be included in release checklists to ensure that
-material assurance changes are reflected in the documentation before
-release.
+The assurance gate (available via `scripts/release-gate-assurance.sh` or
+the Haskell entrypoint) verifies that the assurance matrix is present,
+complete, and not stale relative to crypto source changes. This gate
+should be included in release checklists to ensure that material assurance
+changes are reflected in the documentation before release.
 
 ## Isolated VM Pipeline
 
@@ -106,7 +92,7 @@ Image caching:
 
 - The VM image is cached at `build/vm/image` (a Nix store symlink)
 - It is only rebuilt when `flake.nix` or `flake.lock` change
-- Use `./uv vm image-clean` to force a rebuild on next invocation
+- Use `./uv vm clean-image` to force a rebuild on next invocation
 
 This closes the gap between host-trusted builds and authoritative
 isolated release execution (M2.4).
@@ -129,13 +115,9 @@ The Firecracker image is cached at `build/vm/firecracker-image`.
 In addition to release smoke testing, the VM infrastructure supports
 functional and visual testing:
 
-| Target | Description |
-|--------|-------------|
-| `./uv vm socks5-test` | SOCKS5 proxy transport test via microsocks in VM |
-| `./uv vm screenshot` | Capture TUI frames via tmux capture-pane in VM |
-| `./uv vm record` | Record TUI session via asciinema in VM |
-| `./uv vm visual-regression` | Diff captured frames against reference screenshots |
-| `./uv vm visual-reference-update` | Update reference baselines from latest captures |
+These capabilities exist as shell scripts but are not yet wired into `./uv vm`
+subcommands. Run them directly via `scripts/vm-screenshot-capture.sh` and
+`scripts/vm-tui-scenario.sh`.
 
 Screenshots are captured as ANSI text files (with escape codes) and
 optionally converted to HTML via `aha`. Reference captures live in
@@ -146,37 +128,18 @@ that spawns microsocks locally (skips gracefully when unavailable).
 
 ## Compliance Placeholder Gates
 
-The repository now provides real compliance tooling implemented in Haskell:
-
-- `./uv release sbom-generate` generates a real SBOM listing all Haskell
-  dependencies, C sources, and build tools with their licenses (replaces the
-  placeholder `./uv release sbom`).
-- `./uv release license-bundle-generate` generates a real aggregated
-  third-party license bundle.
-- `./uv release license-check` enforces a license allow-list against all
-  known dependencies.
-- `./uv release linking` documents static vs dynamic linking obligations
-  for the release bundle.
-- `./uv release compliance` runs all compliance gates in sequence.
-- The old placeholder targets (`./uv release sbom`, `./uv release license-bundle`)
-  still exist for backward compatibility but the new targets produce actual
-  output.
+The repository now provides real compliance tooling implemented in Haskell.
+These are invoked via `./uv release --compliance`, which runs the Haskell
+entrypoints for SBOM generation, license bundle generation, license policy
+enforcement, and linking obligation analysis in sequence.
 
 ## Release Provenance
 
-`./uv release manifest` generates a structured provenance manifest for
-the current release artifacts. It captures:
-
-- Git commit hash, describe string, and tag
-- Build timestamp and builder hostname
-- SHA-256 digests for all artifacts under `build/releases/`
-
-The manifest is written to `build/releases/RELEASE-PROVENANCE.txt` and
-printed to stdout.
-
-`./uv release checksums` emits SHA-256 checksums for all release
-artifacts in `sha256sum`-compatible format, written to
-`build/releases/SHA256SUMS.txt`.
+The Haskell release binary can generate a structured provenance manifest
+(`release-manifest`) and SHA-256 checksums (`release-checksums`) for all
+release artifacts under `build/releases/`. These are invoked as part of
+the `./uv release --compliance` pipeline or directly via the Haskell binary
+inside the VM.
 
 The microVM smoke script always does these baseline checks first:
 
@@ -197,9 +160,8 @@ After those checks:
 4. Firecracker can invoke `firecracker --config-file` when
    `UMBRAVOX_FIRECRACKER_KERNEL`, `UMBRAVOX_FIRECRACKER_ROOTFS`, and
    `UMBRAVOX_FIRECRACKER_CONFIG` are supplied
-5. `./uv release lane-qemu` and `./uv release lane-firecracker` remain
-   prerequisite-only checks
-6. `./uv platform-sanity` and `./uv sanity` only verify helper wiring
+5. QEMU and Firecracker lane checks remain prerequisite-only checks
+6. Platform sanity checks only verify helper wiring
 
 What is still not claimed here:
 
@@ -238,7 +200,7 @@ To verify reproducibility manually:
 ./uv vm smoke  # produces build/releases/umbravox-*.tar.gz
 sha256sum build/releases/umbravox-*-linux-x86_64.tar.gz > /tmp/hash1.txt
 
-./uv vm image-clean && ./uv vm smoke
+./uv vm clean-image && ./uv vm smoke
 sha256sum build/releases/umbravox-*-linux-x86_64.tar.gz > /tmp/hash2.txt
 
 diff /tmp/hash1.txt /tmp/hash2.txt
@@ -315,13 +277,13 @@ repo-owned native BSD builders are available. This means:
 nix-shell
 ./uv release linux
 ./uv release appimage
-./uv release smoke-linux
-./uv release smoke-appimage
-./uv release smoke-qemu
-./uv release smoke-qemu-profile
-./uv release smoke-firecracker
-./uv release smoke-firecracker-pinned
-./uv release lane-readiness
+./uv release all
+./uv release --smoke linux
+./uv release --compliance
+scripts/release-smoke-linux.sh
+scripts/release-smoke-appimage.sh
+scripts/release-smoke-microvm.sh qemu
+scripts/release-smoke-microvm.sh firecracker
 UMBRAVOX_QEMU_PROFILE=bundle-basic \
 UMBRAVOX_QEMU_KERNEL=/path/to/bzImage \
 UMBRAVOX_QEMU_INITRD=/path/to/initrd \
@@ -331,5 +293,4 @@ UMBRAVOX_FIRECRACKER_KERNEL=/path/to/vmlinux \
 UMBRAVOX_FIRECRACKER_ROOTFS=/path/to/rootfs.img \
 UMBRAVOX_FIRECRACKER_CONFIG=/path/to/firecracker.json \
 ./scripts/release-smoke-microvm.sh firecracker
-./uv release
 ```

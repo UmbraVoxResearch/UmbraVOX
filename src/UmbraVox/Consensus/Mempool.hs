@@ -1,8 +1,7 @@
 -- SPDX-License-Identifier: Apache-2.0
--- STUB MODULE — not yet implemented.
--- All exported functions raise 'error'. See TODO.txt M20.3.1 for plans
--- to move stubs to a deferred build target.
 -- | Transaction pool (50K cap, fee-priority)
+-- Note: Mempool is a placeholder type; fields (TVar queue, capacity,
+-- fee ordering) will be added when the consensus integration lands.
 --
 -- See: doc/spec/consensus.md
 module UmbraVox.Consensus.Mempool
@@ -16,4 +15,4 @@ data Mempool = Mempool
 
 -- | Create an empty mempool.
 emptyMempool :: Mempool
-emptyMempool = error "not implemented"
+emptyMempool = Mempool

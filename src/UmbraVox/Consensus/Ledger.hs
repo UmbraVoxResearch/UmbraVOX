@@ -1,8 +1,7 @@
 -- SPDX-License-Identifier: Apache-2.0
--- STUB MODULE — not yet implemented.
--- All exported functions raise 'error'. See TODO.txt M20.3.1 for plans
--- to move stubs to a deferred build target.
 -- | Ledger state: balances, nonces, stakes
+-- Note: LedgerState is a placeholder type; fields will be added when
+-- the ledger integration milestone lands.
 --
 -- See: doc/spec/consensus.md
 module UmbraVox.Consensus.Ledger
@@ -16,4 +15,4 @@ data LedgerState = LedgerState
 
 -- | An empty initial ledger.
 emptyLedger :: LedgerState
-emptyLedger = error "not implemented"
+emptyLedger = LedgerState

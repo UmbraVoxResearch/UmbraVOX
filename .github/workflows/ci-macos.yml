@@ -1,0 +1,51 @@
+name: CI - macOS (M3.1.3)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test:
+    name: Build and test (native-macos)
+    runs-on: macos-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      # macOS runners have no KVM, so ./uv (which boots a QEMU VM) cannot
+      # run.  Use cabal directly inside nix-shell instead.
+
+      - name: Cabal update
+        run: nix-shell --run "cabal update"
+
+      - name: Build
+        run: nix-shell --run "cabal build all --enable-tests"
+
+      - name: Test (required fast gate)
+        run: nix-shell --run "cabal test umbravox-test --test-options='required'"
+
+  readiness:
+    name: Lane readiness check
+    runs-on: macos-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: macOS lane readiness
+        run: nix-shell --run "bash scripts/release-lane-readiness-macos.sh"
+        # Readiness check is informational on macOS; do not block CI.
+        continue-on-error: true

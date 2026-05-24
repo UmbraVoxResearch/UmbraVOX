@@ -1,10 +1,10 @@
 UmbraVOX F* Verification Summary
-Generated: 2026-05-19
+Generated: 2026-05-23
 Version: v0.1.6
 
-Total specs: 24
-Specs with 0 assume val: 18
-Total assume val: 28
+Total specs: 32
+Specs with 0 assume val: 24
+Total assume val: 34
 Total admit(): 0
 Coq verified files: 6
 Coq Qed total: 219
@@ -12,27 +12,35 @@ Differential suites: 22/22 PASS
 Pre-release gates: 8/8 PASS
 
 Per-spec breakdown:
-  Spec.SHA256                    assume val: 0
-  Spec.SHA512                    assume val: 0
-  Spec.ChaCha20                  assume val: 0
   Spec.AES256                    assume val: 0
-  Spec.GCM                       assume val: 0
-  Spec.X25519                    assume val: 5
-  Spec.Ed25519                   assume val: 10
-  Spec.MLKEM768                  assume val: 0
-  Spec.Poly1305                  assume val: 0
-  Spec.HMAC                      assume val: 0
-  Spec.HKDF                      assume val: 0
-  Spec.GaloisField               assume val: 0
-  Spec.Keccak.Permutation        assume val: 0
-  Spec.Keccak.Sponge             assume val: 0
-  Spec.Keccak.SHA3               assume val: 0
+  Spec.ChaCha20                  assume val: 0
   Spec.ChaChaPoly                assume val: 1
+  Spec.Dandelion                 assume val: 0
   Spec.DoubleRatchet             assume val: 2
+  Spec.Ed25519                   assume val: 10
+  Spec.Ed25519Extended           assume val: 2
+  Spec.GaloisField               assume val: 0
+  Spec.GCM                       assume val: 0
+  Spec.HKDF                      assume val: 0
+  Spec.HMAC                      assume val: 0
+  Spec.Keccak                    assume val: 0
+  Spec.Keccak.Permutation        assume val: 0
+  Spec.Keccak.SHA3               assume val: 0
+  Spec.Keccak.Sponge             assume val: 0
+  Spec.MessageFormat             assume val: 0
+  Spec.MLKEM768                  assume val: 0
+  Spec.NetworkProtocol           assume val: 0
   Spec.NoiseIK                   assume val: 0
+  Spec.Poly1305                  assume val: 0
+  Spec.PQWrapper                 assume val: 2
   Spec.PQXDH                     assume val: 0
   Spec.SenderKeys                assume val: 0
+  Spec.SessionState              assume val: 1
+  Spec.SHA256                    assume val: 0
+  Spec.SHA256.Refinement         assume val: 6
+  Spec.SHA512                    assume val: 0
   Spec.StealthAddress            assume val: 1
   Spec.VRF                       assume val: 3
+  Spec.WireFormat                assume val: 1
+  Spec.X25519                    assume val: 5
   Spec.X3DH                      assume val: 0
-  Spec.SHA256.Refinement         assume val: 6

@@ -65,7 +65,7 @@ Flags for 'check-health':
 
 Flags for 'check':
   --timeout <duration>      Health-check timeout (default: 120s)
-  --endpoint <url>          Health endpoint URL (default: http://localhost:8080/health)
+  --endpoint <url>          Health endpoint URL (default: http://localhost:8081/healthcheck)
 
 Requires: qemu-system-x86_64, /dev/kvm
 The VM images must be pre-built via './uv vm signal build-jar'.
@@ -117,7 +117,7 @@ func run(args []string) int {
 	case "check":
 		fs := flag.NewFlagSet("check", flag.ExitOnError)
 		_ = fs.String("timeout", "120s", "health-check timeout")
-		_ = fs.String("endpoint", "http://localhost:8080/health", "health endpoint URL")
+		_ = fs.String("endpoint", "http://localhost:8081/healthcheck", "health endpoint URL")
 		fs.Parse(args[1:])
 		return runRuntime("check")
 

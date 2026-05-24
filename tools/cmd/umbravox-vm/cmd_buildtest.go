@@ -28,26 +28,24 @@ var testSuites = map[string]string{
 	"soak":         "soak",
 }
 
-// runBuild handles: uv build [--codegen] [--docs]
+// runBuild handles: uv build [--docs]
+// Codegen always runs before build to ensure generated files match specs.
 func runBuild(args []string) int {
-	codegen := false
 	docs := false
 	for _, a := range args {
-		switch a {
-		case "--codegen":
-			codegen = true
-		case "--docs":
+		if a == "--docs" {
 			docs = true
 		}
 	}
 
 	var cmd string
-	if codegen {
-		cmd = "cabal run codegen && cabal build all --enable-tests 2>&1 | tail -20"
-	} else if docs {
+	if docs {
 		cmd = "cabal haddock --haddock-html 2>&1"
 	} else {
-		cmd = "cabal build all --enable-tests 2>&1 | tail -20"
+		// Always run codegen before build to ensure generated C/Haskell/FFI
+		// files are in sync with .spec sources. This provides assurance that
+		// the generated code matches the specifications.
+		cmd = "cabal run codegen && cabal build all --enable-tests 2>&1 | tail -20"
 	}
 
 	return execInVM(cmd, qemu.ProfileDev, 30*time.Minute)

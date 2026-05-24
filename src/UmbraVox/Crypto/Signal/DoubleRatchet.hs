@@ -213,11 +213,11 @@ skippedKeyMaxAgeSecs :: Word64
 skippedKeyMaxAgeSecs = 172800
 
 -- | Evict skipped keys older than 'skippedKeyMaxAgeSecs'.
--- Uses the insertSeq as a proxy for age (higher seq = newer).
--- Evicts entries where (currentSeq - insertSeq) >= threshold.
+-- Uses the wall-clock timestamp (4th tuple element) for age comparison.
+-- Evicts entries where (currentTimeSecs - wallTimestamp) >= threshold.
 evictByAge :: Word64 -> Map (ByteString, Word32) (ByteString, ByteString, Word64, Word64)
            -> Map (ByteString, Word32) (ByteString, ByteString, Word64, Word64)
-evictByAge currentSeq = Map.filter (\(_, _, sq, _) -> currentSeq - sq < skippedKeyMaxAgeSecs)
+evictByAge currentTimeSecs = Map.filter (\(_, _, _, ts) -> currentTimeSecs - ts < skippedKeyMaxAgeSecs)
 
 ------------------------------------------------------------------------
 -- KDF helpers
@@ -589,9 +589,9 @@ skipMessageKeys st until' nowSecs
                 -- M7.3.6: enforce total skipped-key cap across all DH ratchets
                 -- M23.3.4: eviction is now O(log n) via a secondary index on
                 -- insertion sequence.
-                -- M27.6.9: also evict entries that are too old (by sequence
-                -- distance) to prevent stale skipped keys from persisting.
-                !aged   = evictByAge (rsSkipSeq result) (rsSkippedKeys result)
+                -- M27.6.9: also evict entries that are too old (by wall-clock
+                -- time) to prevent stale skipped keys from persisting.
+                !aged   = evictByAge nowSecs (rsSkippedKeys result)
                 !pruned = evictOldest aged
             in Just result { rsSkippedKeys = pruned }
   where

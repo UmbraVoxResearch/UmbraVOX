@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: Apache-2.0
 {-# LANGUAGE OverloadedStrings #-}
 -- | Metamorphic property tests — self-consistency checks that hold
 -- without any external oracle.

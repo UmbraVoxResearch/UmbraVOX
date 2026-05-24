@@ -13,6 +13,11 @@ module UmbraVox.Crypto.VRF
   , vrfVerify
   ) where
 
+{-# WARNING vrfProve
+    "Uses variable-time Ed25519 scalarMul: leaks secret key bits via timing. Use FFI to constant-time C for production." #-}
+{-# WARNING vrfVerify
+    "Uses variable-time Ed25519 scalarMul. Use FFI to constant-time C for production." #-}
+
 import Data.Bits ((.&.), shiftR, testBit)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS

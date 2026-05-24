@@ -6,6 +6,28 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 
 ## [Unreleased]
 
+### v0.5.3 (upcoming) — SHA-512 codegen fix, M28 protocol tests
+- SHA-512 codegen: ROTR64 macro fix (was generating wrong rotation width)
+- Codegen regeneration required for affected .spec outputs
+- M28.1.2: Outbound queue persistence (durable per-peer FIFO with WAL)
+- M28.2: Relay mailbox (stealth-addressed store-and-forward with TTL expiry)
+- 22 differential protocol tests (routing, relay, queue, envelope round-trip)
+- 6 Signal integration tests (session setup, message send/receive, group ratchet)
+
+### v0.5.2 — Signal Server real version, VM boot factory
+- Signal Server pinned to real CalVer tag v20260521.0.0 (was fictional v9.99.1)
+- Central config: nix/signal-server.json (version, tag, JDK, hash)
+- New command: ./uv vm signal update (fetches latest Signal-Server release)
+- JDK 25 configured for Signal-Server Maven build
+- VM boot factory with VMProfile presets (Build/Dev/Runtime)
+- TCG fallback when KVM is unavailable
+- Disk space checks before VM image creation
+- F* ANSI escape suppression under UMBRAVOX_VM=1 (v0.5.1 fix carried forward)
+
+### v0.5.1 — F* ANSI escape fix for VM verification
+- fstar-verify detects UMBRAVOX_VM=1 and suppresses color output
+- Fixes false failures in VM verification pipeline caused by ANSI escape codes
+
 ### v0.5.0 — Build system rewrite: ./uv replaces Makefile
 - Replaced 1846-line Makefile (143 targets) with unified ./uv Go binary (13 commands)
 - Single bootstrap wrapper (./uv) auto-compiles Go orchestration binary on first use

@@ -154,22 +154,18 @@ host command exits with the same pass/fail status as the in-guest command.
 
 ### TUI Screenshot / Recording / Visual Regression
 
+These capabilities exist as shell scripts but are not yet wired into `./uv vm`
+subcommands. Run them directly:
+
 ```bash
-./uv vm screenshot          # Capture 8 TUI scenario frames (ANSI + HTML)
-./uv vm record              # Record an asciinema session of the TUI scenario
-./uv vm visual-regression   # Compare current TUI against reference baselines
+scripts/vm-screenshot-capture.sh     # Capture TUI scenario frames
+scripts/vm-tui-scenario.sh           # Drive tmux through 8 key states
 ```
 
-These targets build the TUI binary inside the VM, then run `vm-tui-scenario.sh`
+The scripts build the TUI binary inside the VM, then run `vm-tui-scenario.sh`
 which drives tmux through 8 key states (initial screen, help overlay, prefs
 dialog, identity panel, etc.).  Results are copied to the host via the 9p
 shared output directory (`build/vm-output/screenshots/`).
-
-To update reference baselines after intentional UI changes:
-
-```bash
-./uv vm visual-reference-update
-```
 
 ### Network Policy
 
@@ -195,11 +191,11 @@ The policy file is host-side only — the VM guest cannot modify it.  See
 ./uv vm socks5-test         # Test SOCKS5 proxy transport in VM
 ```
 
-### Explicit `vm` Subcommands
+### VM Routing
 
-The `./uv vm build`, `./uv vm test`, and `./uv vm verify` subcommands
-still exist as explicit aliases but are now equivalent to the standard
-commands (which also route through the VM).
+All standard commands (`./uv build`, `./uv test`, `./uv verify`) route
+through the VM automatically. There are no separate `./uv vm build` or
+`./uv vm test` aliases -- use the standard commands directly.
 
 ## Migration Plan
 
@@ -212,14 +208,14 @@ either workflow.  Standard build commands used the local toolchain while
 ### Phase 2: VM-Primary (current)
 
 All standard build commands (`./uv build`, `./uv test`, `./uv verify`,
-`./uv quality`, etc.) now route through the VM by default.
+`./uv check`, etc.) now route through the VM by default.
 
 - `nix-shell` (i.e. `shell.nix`) provides the full local toolchain but
   its banner documents that commands run in the VM by default.
 - `nix-shell shell-minimal.nix` provides an orchestration-only shell
   (QEMU, git, `./uv`) for developers who do not need the full local
   toolchain.
-- `./uv run` is an alias for `./uv dev --gui`.
+- `./uv dev --gui` provides an interactive QEMU GTK window for GUI development.
 - `./uv vm build-image` works without cabal -- it uses `nix build` directly.
 - `./uv dev` provides an interactive development shell inside the VM.
 
@@ -251,15 +247,15 @@ builder image.
 
 ### Building the seed locally (for maintainers)
 
-Maintainers who need to produce a new seed image:
+Maintainers who need to produce a new seed image should use the VM image
+builder directly:
 
 ```bash
-./uv vm seed build
+./uv vm build-image
 ```
 
-This uses `nix-build` on the host to create the seed qcow2 from
-`nix/vm-image.nix` (or the seed-specific nix expression). The output
-lands in `build/vm/seed/`.
+This builds the VM image from `nix/vm-image.nix`. The output
+lands in the build cache directory.
 
 ### Publishing (for CI)
 

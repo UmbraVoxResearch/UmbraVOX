@@ -1,13 +1,21 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 -- SPDX-License-Identifier: Apache-2.0
 -- | Outbound queue test suite.
 --
--- Tests queue creation, enqueue/dequeue, capacity overflow, and stale pruning.
+-- Tests queue creation, enqueue/dequeue, capacity overflow, stale pruning,
+-- and SQLite persistence (M28.1.2).
 module Test.Chat.OutboundQueue (runTests) where
 
+import Control.Exception (SomeException, catch)
 import qualified Data.ByteString as BS
 import Data.IORef (newIORef, readIORef, modifyIORef')
+import System.Directory (removeFile)
+import System.FilePath ((</>))
 import UmbraVox.Chat.OutboundQueue
-    ( newQueue, enqueue, dequeueAll, queueSize, pruneStale, drainQueue, QueueEntry(..) )
+    ( newQueue, enqueue, dequeueAll, queueSize, pruneStale, drainQueue
+    , saveQueue, loadQueue, QueueEntry(..) )
+import qualified UmbraVox.Storage.SQLite3 as SQL
+import Test.Util (getProjectTmpDir)
 
 runTests :: IO Bool
 runTests = do
@@ -20,6 +28,9 @@ runTests = do
         , testPruneStaleRemovesOld
         , testPruneStaleKeepsFresh
         , testDrainQueueDeliversInOrder
+        , testSaveAndLoadRoundTrip
+        , testLoadEmptyQueue
+        , testSaveOverwritesPreviousEntries
         ]
     let passed = length (filter id results)
         total  = length results
@@ -123,6 +134,86 @@ testDrainQueueDeliversInOrder = do
           && sent == [BS.pack [10], BS.pack [20], BS.pack [30]]
     putStrLn $ "  drainQueue delivers in order and empties: " ++ showResult ok
     pure ok
+
+------------------------------------------------------------------------
+-- Persistence tests (M28.1.2)
+------------------------------------------------------------------------
+
+-- | Save a queue with entries, load it back, verify contents match.
+testSaveAndLoadRoundTrip :: IO Bool
+testSaveAndLoadRoundTrip = withDB "outbound-queue-roundtrip.db" $ \dbPath -> do
+    db <- SQL.open dbPath
+    let peerId = BS.pack [0xAA, 0xBB]
+    q <- newQueue 10 3600
+    enqueue q (BS.pack [1, 2, 3]) 100
+    enqueue q (BS.pack [4, 5, 6]) 200
+    enqueue q (BS.pack [7, 8, 9]) 300
+    saveQueue db peerId q
+    q2 <- loadQueue db peerId 10 3600
+    entries <- dequeueAll q2
+    SQL.close db
+    let ok = length entries == 3
+          && qeWireBytes (entries !! 0) == BS.pack [1, 2, 3]
+          && qeTimestamp (entries !! 0) == 100
+          && qeWireBytes (entries !! 1) == BS.pack [4, 5, 6]
+          && qeTimestamp (entries !! 1) == 200
+          && qeWireBytes (entries !! 2) == BS.pack [7, 8, 9]
+          && qeTimestamp (entries !! 2) == 300
+    putStrLn $ "  saveQueue/loadQueue round-trip: " ++ showResult ok
+    pure ok
+
+-- | Loading from a peer with no rows returns an empty queue.
+testLoadEmptyQueue :: IO Bool
+testLoadEmptyQueue = withDB "outbound-queue-empty.db" $ \dbPath -> do
+    db <- SQL.open dbPath
+    let peerId = BS.pack [0xCC]
+    q <- loadQueue db peerId 10 3600
+    sz <- queueSize q
+    SQL.close db
+    let ok = sz == 0
+    putStrLn $ "  loadQueue empty peer returns empty: " ++ showResult ok
+    pure ok
+
+-- | Saving overwrites previous entries for the same peer.
+testSaveOverwritesPreviousEntries :: IO Bool
+testSaveOverwritesPreviousEntries = withDB "outbound-queue-overwrite.db" $ \dbPath -> do
+    db <- SQL.open dbPath
+    let peerId = BS.pack [0xDD]
+    -- Save initial entries.
+    q1 <- newQueue 10 3600
+    enqueue q1 (BS.pack [1]) 100
+    enqueue q1 (BS.pack [2]) 200
+    saveQueue db peerId q1
+    -- Save again with different entries.
+    q2 <- newQueue 10 3600
+    enqueue q2 (BS.pack [99]) 500
+    saveQueue db peerId q2
+    -- Load and verify only the second save's entries exist.
+    q3 <- loadQueue db peerId 10 3600
+    entries <- dequeueAll q3
+    SQL.close db
+    let ok = length entries == 1
+          && qeWireBytes (head entries) == BS.pack [99]
+          && qeTimestamp (head entries) == 500
+    putStrLn $ "  saveQueue overwrites previous entries: " ++ showResult ok
+    pure ok
+
+------------------------------------------------------------------------
+-- Helpers
+------------------------------------------------------------------------
+
+withDB :: FilePath -> (FilePath -> IO Bool) -> IO Bool
+withDB name action = do
+    tmp <- getProjectTmpDir
+    let path = tmp </> name
+    result <- action path `catch` \(e :: SomeException) -> do
+        putStrLn $ "  FAIL: outbound queue DB exception: " ++ show e
+        pure False
+    cleanup path
+    pure result
+
+cleanup :: FilePath -> IO ()
+cleanup path = removeFile path `catch` \(_ :: SomeException) -> pure ()
 
 showResult :: Bool -> String
 showResult True  = "PASS"

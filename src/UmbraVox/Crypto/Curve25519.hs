@@ -10,6 +10,9 @@ module UmbraVox.Crypto.Curve25519
     , x25519Basepoint
     ) where
 
+{-# WARNING x25519
+    "Variable-time: GHC Integer arithmetic is not constant-time. Use FFI to constant-time C (e.g. libsodium) for production." #-}
+
 import Data.Bits ((.&.), (.|.), shiftL, shiftR, testBit, xor)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS

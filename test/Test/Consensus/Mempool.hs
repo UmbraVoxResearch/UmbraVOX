@@ -1,8 +1,5 @@
 -- SPDX-License-Identifier: Apache-2.0
 -- | Tests for UmbraVox.Consensus.Mempool
---
--- The module currently only exports a stub (emptyMempool = error).
--- Tests verify the type exists and the stub throws as expected.
 module Test.Consensus.Mempool (runTests) where
 
 import Control.Exception (SomeException, evaluate, try)
@@ -15,7 +12,7 @@ runTests = do
     putStrLn (replicate 40 '-')
     results <- sequence
         [ testMempoolTypeExists
-        , testEmptyMempoolIsStub
+        , testEmptyMempoolReturnsValue
         ]
     let passed = length (filter id results)
         total  = length results
@@ -30,14 +27,14 @@ testMempoolTypeExists =
         putStrLn "  PASS: Mempool type exists"
         pure True
 
--- Verify emptyMempool is a stub that throws
-testEmptyMempoolIsStub :: IO Bool
-testEmptyMempoolIsStub = do
+-- Verify emptyMempool returns a valid value (no longer a stub)
+testEmptyMempoolReturnsValue :: IO Bool
+testEmptyMempoolReturnsValue = do
     result <- try (evaluate emptyMempool) :: IO (Either SomeException Mempool)
     case result of
-        Left _  -> do
-            putStrLn "  PASS: emptyMempool is stub (throws error)"
-            pure True
         Right _ -> do
-            putStrLn "  FAIL: emptyMempool should throw but returned a value"
+            putStrLn "  PASS: emptyMempool returns a value"
+            pure True
+        Left e -> do
+            putStrLn $ "  FAIL: emptyMempool threw: " ++ show e
             pure False

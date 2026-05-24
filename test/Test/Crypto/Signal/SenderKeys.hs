@@ -34,7 +34,7 @@ runTests = do
                     putStrLn ("  FAIL: encryptSenderKey returned error: " ++ show err)
                     pure False
                 Right (_senderSt', skmsg) ->
-                    case decryptSenderKey recvSt skmsg of
+                    case decryptSenderKey recvSt skmsg 1000000 of
                         Left err -> do
                             putStrLn ("  FAIL: decryptSenderKey returned error: " ++ show err)
                             pure False

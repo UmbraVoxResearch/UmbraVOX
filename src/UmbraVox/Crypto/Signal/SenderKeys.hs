@@ -63,6 +63,14 @@ senderKeyNonceInfo = "UmbraVox_SenderKey_Nonce_v1"
 maxSenderKeySkip :: Word32
 maxSenderKeySkip = 2000
 
+-- | Maximum entries in the skipped-key cache.
+maxSkippedSenderKeys :: Int
+maxSkippedSenderKeys = 256
+
+-- | Maximum age for skipped sender keys (48 hours in seconds).
+skippedSenderKeyMaxAgeSecs :: Word64
+skippedSenderKeyMaxAgeSecs = 172800
+
 ------------------------------------------------------------------------
 -- Types
 ------------------------------------------------------------------------
@@ -81,6 +89,12 @@ data SenderKeyState = SenderKeyState
     , sksSigningKey  :: !ByteString
       -- ^ 32-byte signing/identity key for this sender (used as AAD
       -- context, not for digital signatures in this layer).
+    , sksSkippedKeys :: !(Map (ByteString, Word32) (ByteString, ByteString, Word64))
+      -- ^ Skipped message keys indexed by (senderId, iteration).
+      -- Each entry is (msgKey, chainKey, wallTimestamp).
+      -- Allows decryption of out-of-order messages.
+    , sksSkipSeq     :: !Word64
+      -- ^ Monotonic counter for insertion-order eviction.
     } deriving stock (Show, Eq)
 
 -- | An encrypted group message produced by the sender key chain.
@@ -155,10 +169,12 @@ createSenderKeyDistribution senderId = do
     chainKey   <- randomBytes 32
     signingKey <- randomBytes 32
     let st = SenderKeyState
-            { sksSenderId   = senderId
-            , sksChainKey   = chainKey
-            , sksIteration  = 0
-            , sksSigningKey = signingKey
+            { sksSenderId    = senderId
+            , sksChainKey    = chainKey
+            , sksIteration   = 0
+            , sksSigningKey  = signingKey
+            , sksSkippedKeys = Map.empty
+            , sksSkipSeq     = 0
             }
         dist = SenderKeyDistributionMessage
             { skdSenderId   = senderId
@@ -185,10 +201,12 @@ processSenderKeyDistribution dist
     = Left (InvalidDistribution "sender ID must not be empty")
     | otherwise
     = Right SenderKeyState
-        { sksSenderId   = skdSenderId dist
-        , sksChainKey   = skdChainKey dist
-        , sksIteration  = skdIteration dist
-        , sksSigningKey = skdSigningKey dist
+        { sksSenderId    = skdSenderId dist
+        , sksChainKey    = skdChainKey dist
+        , sksIteration   = skdIteration dist
+        , sksSigningKey  = skdSigningKey dist
+        , sksSkippedKeys = Map.empty
+        , sksSkipSeq     = 0
         }
 
 ------------------------------------------------------------------------
@@ -233,23 +251,31 @@ encryptSenderKey st plaintext
 -- | Decrypt a received group message using the stored sender key state.
 --
 -- If the message iteration is ahead of our chain, we advance the chain
--- (up to 'maxSenderKeySkip' steps) to reach the correct message key.
--- Returns the updated state and plaintext on success.
+-- (up to 'maxSenderKeySkip' steps) to reach the correct message key,
+-- storing intermediate keys in the skipped-key cache for out-of-order
+-- delivery.  If the iteration is behind our chain, we check the
+-- skipped-key cache.
+--
+-- @nowSecs@ is the current wall-clock time in POSIX seconds, used for
+-- age-based eviction of cached skipped keys (48 hours).
 decryptSenderKey
     :: SenderKeyState
     -> SenderKeyMessage
+    -> Word64               -- ^ Current POSIX time (seconds)
     -> Either SenderKeyError (SenderKeyState, ByteString)
-decryptSenderKey st msg
+decryptSenderKey st msg nowSecs
     | skmSenderId msg /= sksSenderId st
     = Left (UnknownSender (skmSenderId msg))
     | skmIteration msg < sksIteration st
-    = Left DecryptionFailed  -- cannot go backwards in chain
+    = trySkippedSenderKeys st msg nowSecs
     | skmIteration msg - sksIteration st > maxSenderKeySkip
     = Left ChainTooFarAhead
     | otherwise =
-        -- Advance chain to the target iteration
-        let !(advancedChainKey, targetChainKey, targetMsgKey) =
+        -- Store intermediate keys in the skipped-key cache, then
+        -- decrypt the target message.
+        let !(advancedChainKey, targetChainKey, targetMsgKey, skipped) =
                 advanceChain (sksChainKey st) (sksIteration st) (skmIteration msg)
+                             (sksSenderId st) (sksSkippedKeys st) (sksSkipSeq st) nowSecs
             !nonce = makeSenderNonce targetChainKey (skmIteration msg)
             !aad = sksSenderId st
                 <> sksSigningKey st
@@ -257,24 +283,87 @@ decryptSenderKey st msg
         in case gcmDecrypt targetMsgKey nonce aad (skmCiphertext msg) (skmTag msg) of
             Nothing -> Left DecryptionFailed
             Just plaintext ->
-                let !st' = st
-                        { sksChainKey  = advancedChainKey
-                        , sksIteration = skmIteration msg + 1
+                let !evicted = evictSkippedSenderKeys nowSecs skipped
+                    !st' = st
+                        { sksChainKey    = advancedChainKey
+                        , sksIteration   = skmIteration msg + 1
+                        , sksSkippedKeys = evicted
+                        , sksSkipSeq     = sksSkipSeq st + fromIntegral (skmIteration msg - sksIteration st)
                         }
                 in Right (st', plaintext)
 
--- | Advance the chain from @currentIter@ to @targetIter@, returning
--- (newChainKey after target, chainKey at target, msgKey at target).
-advanceChain :: ByteString -> Word32 -> Word32 -> (ByteString, ByteString, ByteString)
-advanceChain chainKey currentIter targetIter = go chainKey currentIter
+-- | Try to decrypt using a previously cached skipped message key.
+-- Evicts expired entries (older than 48 hours) before lookup.
+trySkippedSenderKeys :: SenderKeyState -> SenderKeyMessage -> Word64
+                     -> Either SenderKeyError (SenderKeyState, ByteString)
+trySkippedSenderKeys st msg nowSecs =
+    let !lookupKey = (sksSenderId st, skmIteration msg)
+        -- Evict expired entries
+        !pruned = Map.filter (\(_, _, ts) ->
+            nowSecs <= ts || (nowSecs - ts) <= skippedSenderKeyMaxAgeSecs) (sksSkippedKeys st)
+    in case Map.lookup lookupKey pruned of
+        Nothing -> Left DecryptionFailed
+        Just (msgKey, chainKey, _insertTime) ->
+            let !nonce = makeSenderNonce chainKey (skmIteration msg)
+                !aad = sksSenderId st
+                    <> sksSigningKey st
+                    <> encodeWord32BE (skmIteration msg)
+            in case gcmDecrypt msgKey nonce aad (skmCiphertext msg) (skmTag msg) of
+                Nothing -> Left DecryptionFailed
+                Just plaintext ->
+                    let !st' = st { sksSkippedKeys = Map.delete lookupKey pruned }
+                    in Right (st', plaintext)
+
+-- | Advance the chain from @currentIter@ to @targetIter@, storing
+-- intermediate message keys in the skipped-key cache.
+-- Returns (newChainKey after target, chainKey at target, msgKey at target, updatedSkippedKeys).
+advanceChain :: ByteString -> Word32 -> Word32
+             -> ByteString
+             -> Map (ByteString, Word32) (ByteString, ByteString, Word64)
+             -> Word64 -> Word64
+             -> (ByteString, ByteString, ByteString, Map (ByteString, Word32) (ByteString, ByteString, Word64))
+advanceChain chainKey currentIter targetIter senderId skipped skipSeq nowSecs =
+    go chainKey currentIter skipped skipSeq
   where
-    go !ck !i
+    go !ck !i !sk !sq
         | i == targetIter =
             let !(newCK, msgKey) = senderKdfCK ck
-            in (newCK, ck, msgKey)
+            in (newCK, ck, msgKey, sk)
         | otherwise =
-            let !(newCK, _msgKey) = senderKdfCK ck
-            in go newCK (i + 1)
+            let !(newCK, msgKey) = senderKdfCK ck
+                !key = (senderId, i)
+                !sk' = Map.insert key (msgKey, ck, nowSecs) sk
+            in go newCK (i + 1) sk' (sq + 1)
+
+-- | Evict skipped sender keys that are too old or exceed the cache cap.
+evictSkippedSenderKeys :: Word64
+                       -> Map (ByteString, Word32) (ByteString, ByteString, Word64)
+                       -> Map (ByteString, Word32) (ByteString, ByteString, Word64)
+evictSkippedSenderKeys nowSecs m =
+    let -- Age-based eviction (48 hours)
+        !aged = Map.filter (\(_, _, ts) ->
+            nowSecs <= ts || (nowSecs - ts) <= skippedSenderKeyMaxAgeSecs) m
+    in -- Size-based eviction: remove oldest entries by timestamp
+       if Map.size aged <= maxSkippedSenderKeys
+       then aged
+       else evictOldestSenderKeys aged
+
+-- | Remove the oldest entries (by wall-clock timestamp) until the cache
+-- is within 'maxSkippedSenderKeys'.
+evictOldestSenderKeys :: Map (ByteString, Word32) (ByteString, ByteString, Word64)
+                      -> Map (ByteString, Word32) (ByteString, ByteString, Word64)
+evictOldestSenderKeys m
+    | Map.size m <= maxSkippedSenderKeys = m
+    | otherwise =
+        -- Find the entry with the smallest timestamp and remove it
+        let !oldest = Map.foldlWithKey'
+                (\acc k (_, _, ts) -> case acc of
+                    Nothing -> Just (k, ts)
+                    Just (_, accTs) -> if ts < accTs then Just (k, ts) else acc)
+                Nothing m
+        in case oldest of
+            Nothing -> m
+            Just (k, _) -> evictOldestSenderKeys (Map.delete k m)
 
 ------------------------------------------------------------------------
 -- Encoding helpers

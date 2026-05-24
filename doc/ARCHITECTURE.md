@@ -40,9 +40,9 @@ are unchanged by layout mode.
 
 ## VM-First Development Model
 
-All standard `make` targets (`build`, `test`, `verify`, `quality`, etc.)
+All standard `./uv` commands (`build`, `test`, `verify`, `check`, etc.)
 route through an isolated NixOS QEMU VM by default.  The host only needs
-orchestration tools (QEMU, git, make) provided by `shell-minimal.nix`.
+orchestration tools (QEMU, git, `./uv`) provided by `shell-minimal.nix`.
 The full development toolchain (GHC 9.6, Cabal, F*, Z3, Coq, AFL++, etc.)
 lives inside the VM image built from `nix/vm-image.nix`.
 
@@ -51,8 +51,8 @@ details.
 
 ## Release Orchestration
 
-- Build and release orchestration currently uses `Makefile` targets plus shell
-  scripts as a bridge layer.
+- Build and release orchestration uses `./uv` (a Go binary) plus shell scripts
+  as a bridge layer.
 - That bridge exists to keep release and readiness commands runnable while the
   long-term Haskell entrypoints are introduced.
 - The migration target is phased: first mirror the current shell behavior in
@@ -133,7 +133,7 @@ The codegen pipeline generates Haskell wrappers, C implementations, and FFI
 bridge modules from `.spec` files:
 
 ```text
-codegen/*.spec
+codegen/Specs/*.spec
   -> codegen/CodeGen.hs
   -> src/UmbraVox/Crypto/Generated/*.hs   (Haskell wrappers)
   -> csrc/generated/*.c                    (C implementations)
@@ -169,7 +169,7 @@ implementations produce correct output for all supported primitives:
 - 8 metamorphic suites check self-consistency properties (AEAD roundtrip,
   sign-verify, commutativity, determinism, avalanche).
 
-All 22 suites are part of `make test-differential` (Tier 1, <90s) and are
+All 22 suites are part of the differential test tier (Tier 1, <90s) and are
 wired into the required test gate via `coreCryptoSuites`.
 
 ## Test Architecture

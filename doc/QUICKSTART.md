@@ -13,7 +13,7 @@ The `./uv` driver auto-compiles on first use -- no manual build step is needed.
 
 Flake commands are also supported through `scripts/nix-flake.sh`.
 
-The repository preserves 30 generated artifacts from 10 `.spec` files. In the
+The repository preserves 54 generated artifacts from 18 `.spec` files. In the
 active build/test graph, generated coverage is currently limited to the parser
 path and generated SHA-256 parity; the remaining generated outputs are
 preserved artifacts pending broader wiring.
@@ -118,7 +118,7 @@ See `doc/VM-DEVELOPMENT.md` for the full VM development guide and troubleshootin
 2. Run `./uv vm build-image` (first time only -- builds and caches the NixOS VM image; `./uv` auto-compiles on first use).
 3. Run `./uv build` (builds everything inside the VM).
 4. Run `./uv dev` to enter the interactive VM shell, then launch the app.
-5. Open **Contacts** with `F2` and create a new single-peer connection.
+5. Click `[ New ]` in the contacts toolbar (below the contact list) to start a new connection.
 6. Enter the remote `host:port` and let the Noise_IK handshake complete.
 
 ## Scope Note

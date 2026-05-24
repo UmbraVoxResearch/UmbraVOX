@@ -112,7 +112,7 @@ All VMs expose a serial console for interactive debugging:
 
 ```bash
 ./uv dev                 # Interactive serial console (login as root)
-./uv vm run-gui          # GUI window with VGA console
+./uv dev --gui           # GUI window with QEMU GTK console
 ```
 
 Inside the VM:
@@ -136,12 +136,12 @@ echo $?  # exit code from the VM command
 ./uv test                # Run tests in VM
 ./uv verify              # F* verification in VM
 ./uv dev                 # Interactive dev shell in VM (serial)
-./uv vm run-gui          # Interactive dev shell (QEMU GTK window)
+./uv dev --gui           # Interactive dev shell (QEMU GTK window)
 ./uv vm signal build-jar   # Build Signal-Server JAR in VM
 ./uv vm signal update      # Update Signal-Server version (interactive)
 ./uv vm signal run         # Boot Signal-Server runtime VM
 ./uv vm signal health      # Health-check Signal-Server
-./uv check-isolation     # Verify host nix store is clean
+./uv check               # Run lint/format/license/complexity gates
 ```
 
 ### VM-local Nix Config (Image Builds)
@@ -163,12 +163,13 @@ Hard guard: remote-builder variables are rejected in local-only mode.
 
 - **Haskell**: all application code, crypto, protocol, TUI, bridge plugins
 - **C**: generated crypto + FFI (csrc/)
-- **Shell**: scripts/, uv
+- **Go**: build orchestration (tools/cmd/, the `./uv` binary)
+- **Shell**: scripts/, uv bootstrap wrapper
 - **Nix**: VM images, environments
 - **F***: formal specs (test/evidence/formal-proofs/fstar/)
 - **Coq**: external proofs (test/evidence/formal-proofs/coq/)
 
-No Rust, Go, or Python in production. Python for cert-gen scripts only.
+No Rust or Python in production. Go is build tooling only. Python for cert-gen scripts only.
 
 ## Project Structure
 
@@ -198,8 +199,9 @@ scripts/                       VM orchestration + test scripts
 
 ```bash
 ./uv test                             # full suite in VM
-./uv test-signal-bridge-ipc           # bridge IPC smoke test
-./uv test-signal-compat               # wire-compat (needs Signal-Server VM)
+./uv test core                        # deterministic core suite
+./uv test tcp                         # real localhost TCP end-to-end
+./uv test soak                        # longer stress suite
 ```
 
 ## Coq Proofs
@@ -230,6 +232,6 @@ Uses own crypto with Signal params — no libsignal dependency.
 - **Zero warnings**: `cabal build all` clean
 - **Zero Admitted**: all Coq files
 - **No Co-Authored-By**: never add attribution to commits
-- **VM isolation**: never compile on host; `./uv check-isolation` to verify
+- **VM isolation**: never compile on host
 - **Commit prefix**: feat/fix/proof/test/docs/infra/chore
 - **Security fixes**: require Finding/Vulnerability/Fix/Verified documentation

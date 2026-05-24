@@ -5,7 +5,7 @@ Purpose: active work only.
 - Deferred/blocked items → TODO-DEFERRED.txt
 
 Status: [ ] pending, [~] in progress
-Last updated: 2026-05-23
+Last updated: 2026-05-24
 
 Rules
 -----
@@ -14,6 +14,17 @@ Rules
 - Keep codegen surfaces wired truthfully; do not overstate assurance claims.
 - When a task is complete, move it to CHANGELOG.txt.
 - Deferred/blocked items go in TODO-DEFERRED.txt.
+
+================================================================================
+RECENTLY COMPLETED (move to CHANGELOG on next release)
+================================================================================
+
+[x] M28.1.2 Outbound queue persistence (durable per-peer FIFO with WAL)
+[x] M28.2 Relay mailbox (stealth-addressed store-and-forward with TTL expiry)
+[x] M19.4.5 Signal-Server version pinning (v20260521.0.0, central config, ./uv vm signal update)
+[x] SHA-512 codegen ROTR64 fix (was generating wrong rotation width)
+[x] 22 differential protocol tests (routing, relay, queue, envelope)
+[x] 6 Signal integration tests (session, send/receive, group ratchet)
 
 ================================================================================
 ACTIVE WORK
@@ -26,6 +37,10 @@ ACTIVE WORK
   [~] M3.1.4 Windows native runner lane (CLI).
   [ ] M3.1.4.b Add an actual repo-owned native Windows CLI runner lane and smoke evidence.
 
+[ ] Codegen regeneration
+  [ ] Regenerate all affected C outputs after SHA-512 ROTR64 fix
+  [ ] Re-run differential tests to confirm C vs Haskell parity
+
 [~] M13 Formal verification (remaining)
   [~] M13.3.2 Ed25519: 6 assume val remaining (cross-ref'd with Coq proofs)
   [~] M13.7 F* infrastructure (partial)
@@ -34,9 +49,10 @@ ACTIVE WORK
     Note: ANSI escape fix applied (v0.5.1). fstar-verify now detects
     UMBRAVOX_VM=1 and suppresses color output. Ready for VM testing
     with ./uv verify.
+  [ ] M13.13.7 Run full F* verification suite in VM and capture evidence
 
 [~] M19 Signal bridge (remaining)
-  [~] M19.4.5 Signal-Server version pinning
+  [x] M19.4.5 Signal-Server version pinning
     Pinned to real CalVer tag v20260521.0.0 (was fictional v9.99.1).
     Central config: nix/signal-server.json (version, tag, JDK, hash).
     Update to new version: ./uv vm signal update
@@ -45,3 +61,71 @@ ACTIVE WORK
     JDK 25 required (configured in signal-server.json).
     Deterministic build flags applied (outputTimestamp, EPOCH).
   [~] M19.4.7 Health endpoint verification (blocked on M19.4.6)
+
+================================================================================
+CODE REVIEW FINDINGS (v0.5.3 audit)
+================================================================================
+
+[HIGH] DoubleRatchet evictByAge uses sequence number vs seconds threshold
+  File: src/UmbraVox/Crypto/Signal/DoubleRatchet.hs:218-220
+  Fix: use wall-clock timestamp (4th tuple element) instead of sequence number
+
+[HIGH] Ed25519 scalarMul is not constant-time (no production gate)
+  File: src/UmbraVox/Crypto/Ed25519.hs:135-142
+  Fix: add CPP guard or runtime assertion to prevent pure Haskell crypto in production
+
+[MEDIUM] Noise handshake uses ChaCha20+HMAC instead of ChaChaPoly AEAD
+  File: src/UmbraVox/Network/Noise/Handshake.hs:318-326
+  Fix: replace encryptWithKey with chachaPolyEncrypt to match Noise spec
+
+[MEDIUM] X3DH deriveSecretWithTimestamp missing lenPrefix on keys
+  File: src/UmbraVox/Crypto/Signal/X3DH.hs:371
+  Fix: apply lenPrefix consistently with deriveSecret
+
+[MEDIUM] SenderKeys drops out-of-order group messages (no skipped-key cache)
+  File: src/UmbraVox/Crypto/Signal/SenderKeys.hs:245-246
+  Fix: implement skipped-key cache like DoubleRatchet rsSkippedKeys
+
+[MEDIUM] GCM nonce comparison uses lexicographic ByteString ordering
+  File: src/UmbraVox/Crypto/GCM.hs:264-266
+  Fix: document big-endian convention or convert to numeric comparison
+
+[MEDIUM] Discovery: no validation of peer addresses from env/config
+  File: src/UmbraVox/Network/Discovery.hs:119,143
+  Fix: validate host:port pattern, reject loopback unless allowed
+
+[MEDIUM] Schema stores message content as plaintext TEXT column
+  File: src/UmbraVox/Storage/Schema.hs:29
+  Fix: rename to content_enc or add encryption assertion
+
+[MEDIUM] netproxy/filter.go routes all connections to first allowed dest
+  File: tools/pkg/netproxy/filter.go:110-111
+  Fix: implement SNI inspection or document single-destination limit
+
+[LOW] PQXDH all-zero shared secret check is not constant-time
+  File: src/UmbraVox/Crypto/Signal/PQXDH.hs:220
+  Fix: use constantEq for all-zero comparison
+
+[LOW] Ed25519 isSmallOrder uses non-constant-time elem
+  File: src/UmbraVox/Crypto/Ed25519.hs:299-300
+  Fix: use any constantEq instead of elem
+
+[LOW] download.go has no response body size limit
+  File: tools/pkg/download/download.go:52
+  Fix: wrap resp.Body in io.LimitReader(maxSize)
+
+[LOW] SQLite3 exec exported publicly (SQL injection vector if misused)
+  File: src/UmbraVox/Storage/SQLite3.hs:305-320
+  Fix: restrict export or add runtime assertion
+
+[LOW] cmd_exec.go passes user command through eval
+  File: tools/cmd/umbravox-vm/cmd_exec.go:307
+  Fix: document or use exec "$@" pattern
+
+[LOW] tar extraction lacks path sanitization flags
+  File: tools/cmd/umbravox-vm/cmd_image.go:383-407
+  Fix: add --no-same-owner --no-same-permissions
+
+[LOW] Discovery config file error handling swallows all exceptions
+  File: src/UmbraVox/Network/Discovery.hs:128-144
+  Fix: log caught exceptions instead of silently swallowing

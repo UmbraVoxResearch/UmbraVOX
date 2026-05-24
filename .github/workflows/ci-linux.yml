@@ -1,0 +1,110 @@
+name: CI - Linux x86_64 (M3.1.1)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test:
+    name: Build and test (linux-hosted-fast)
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Cabal update
+        run: nix-shell --run "cabal update"
+
+      - name: Build
+        run: nix-shell --run "cabal build all --enable-tests"
+
+      - name: Test (required fast gate)
+        run: nix-shell --run "cabal test umbravox-test --test-options='required'"
+
+  check:
+    name: Quality gates (lint, format, license)
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Lint (tabs, long lines)
+        run: |
+          nix-shell --run "
+            failed=0
+            for dir in src test; do
+              if [ -d \"\$dir\" ]; then
+                if grep -Prn '\t' --include='*.hs' -r \"\$dir\"; then
+                  echo 'FAIL: tab characters found'
+                  failed=1
+                fi
+                if grep -Pcn '.{121,}' --include='*.hs' -r \"\$dir\"; then
+                  echo 'FAIL: lines > 120 chars found'
+                  failed=1
+                fi
+              fi
+            done
+            exit \$failed
+          "
+
+      - name: Format (trailing whitespace)
+        run: |
+          nix-shell --run "
+            failed=0
+            for dir in src test; do
+              if [ -d \"\$dir\" ]; then
+                if grep -Pn '\s$' --include='*.hs' -r \"\$dir\"; then
+                  echo 'FAIL: trailing whitespace found'
+                  failed=1
+                fi
+              fi
+            done
+            exit \$failed
+          "
+
+      - name: License headers (SPDX)
+        run: |
+          nix-shell --run "
+            failed=0
+            for dir in src test; do
+              if [ -d \"\$dir\" ]; then
+                find \"\$dir\" -name '*.hs' -type f | while read -r f; do
+                  if ! head -5 \"\$f\" | grep -q 'SPDX-License-Identifier'; then
+                    echo \"FAIL: missing SPDX header: \$f\"
+                    failed=1
+                  fi
+                done
+              fi
+            done
+            exit \$failed
+          "
+
+  readiness:
+    name: Lane readiness check
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Linux x86_64 lane readiness
+        run: nix-shell --run "bash scripts/release-lane-readiness-linux-x86_64.sh"

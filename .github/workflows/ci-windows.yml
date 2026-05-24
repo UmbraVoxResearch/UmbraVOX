@@ -1,0 +1,97 @@
+name: CI - Windows (M3.1.4)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Windows CI for a Haskell/Nix project is limited.  Nix is not natively
+# supported on Windows, so this lane uses MSYS2 with GHC directly.
+# The primary goal is best-effort validation: verify the source tarball
+# can be created and, when toolchain availability allows, build the
+# project.
+
+jobs:
+  source-tarball:
+    name: Verify source tarball (native-windows)
+    runs-on: windows-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            tar
+            gzip
+            zip
+            mingw-w64-ucrt-x86_64-coreutils
+
+      - uses: actions/checkout@v4
+
+      - name: Create source tarball
+        run: |
+          TAG="dev-$(date +%Y%m%d)"
+          git archive --prefix="umbravox-${TAG}/" HEAD | gzip > "umbravox-${TAG}-source.tar.gz"
+          sha256sum "umbravox-${TAG}-source.tar.gz"
+
+      - name: Verify tarball contents
+        run: |
+          TAG="dev-$(date +%Y%m%d)"
+          tar tzf "umbravox-${TAG}-source.tar.gz" | head -20
+          echo "---"
+          echo "Source tarball created successfully."
+
+  build:
+    name: Build with GHC (best effort)
+    runs-on: windows-latest
+    # Best-effort: do not block CI if Windows build fails.
+    continue-on-error: true
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Haskell
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: '9.6'
+          cabal-version: 'latest'
+
+      - name: Cabal update
+        run: cabal update
+
+      - name: Build
+        run: cabal build all --enable-tests
+
+  readiness:
+    name: Lane readiness check
+    runs-on: windows-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            tar
+            zip
+            mingw-w64-ucrt-x86_64-coreutils
+
+      - uses: actions/checkout@v4
+
+      - name: Windows lane readiness
+        run: bash scripts/release-lane-readiness-windows.sh
+        # Readiness check is informational on Windows; do not block CI.
+        continue-on-error: true

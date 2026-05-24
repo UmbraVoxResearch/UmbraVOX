@@ -10,6 +10,9 @@ module UmbraVox.Crypto.Poly1305
   , poly1305Safe
   ) where
 
+{-# WARNING poly1305
+    "Variable-time polynomial arithmetic: leaks key material via timing. Use FFI to constant-time C for production." #-}
+
 import Data.Bits ((.&.), (.|.), shiftL, shiftR)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS

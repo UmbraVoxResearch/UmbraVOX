@@ -18,6 +18,10 @@ module UmbraVox.Network.Relay
     , pollRelay
     , newRelayMailbox
     , relayMessageTTL
+      -- * High-level relay operations (M28.2)
+    , depositMessage
+    , pollMessages
+    , expireMessages
       -- * DHT-based relay polling (M28.2.2)
     , pollRelayViaDHT
     ) where
@@ -29,7 +33,16 @@ import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 import Data.Word (Word64)
 
-import UmbraVox.Crypto.StealthAddress (StealthKeys(..))
+import UmbraVox.Crypto.ChaChaPoly (chachaPolyEncrypt, chachaPolyDecrypt)
+import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
+import UmbraVox.Crypto.Ed25519
+    ( ExtPoint, basepoint, pointAdd, scalarMul
+    , encodePoint, decodePoint, groupL
+    , decodeLE, isSmallOrder
+    )
+import UmbraVox.Crypto.HKDF (hkdf)
+import UmbraVox.Crypto.Random (randomBytes)
+import UmbraVox.Crypto.StealthAddress (StealthKeys(..), viewTag)
 import UmbraVox.Network.DHT (DHTState(..))
 import qualified UmbraVox.Network.DHT.Store as DHTStore
 
@@ -93,6 +106,195 @@ pollRelay mb now =
     atomicModifyIORef' (rmMessages mb) $ \s ->
         let valid = Seq.filter (\(_, expiry) -> expiry > now) s
         in (valid, map fst (foldr (:) [] valid))
+
+------------------------------------------------------------------------
+-- High-level relay operations (M28.2)
+------------------------------------------------------------------------
+
+-- | HKDF domain separation for relay encryption key derivation.
+relayEncKeyInfo :: ByteString
+relayEncKeyInfo = "UmbraVox_RelayEnc_v1"
+
+-- | HKDF salt: 32 zero bytes (matches stealth address convention).
+relayHKDFSalt :: ByteString
+relayHKDFSalt = BS.replicate 32 0
+
+-- | Deposit a message for an offline peer at a relay mailbox.
+--
+-- The message is stealth-addressed and encrypted so the relay node
+-- cannot determine the recipient or read the contents.  A single
+-- ephemeral X25519 keypair is used for both stealth address derivation
+-- and AEAD key derivation, so the recipient can recover everything
+-- from the ephemeral public key alone.
+--
+-- The wire format of the stored blob is:
+--
+-- @
+--   [32 bytes ephemeral pubkey | 1 byte view tag | 16 bytes auth tag | ciphertext]
+-- @
+--
+-- The encryption key and nonce are derived via HKDF from the X25519
+-- shared secret (ephemeral secret * recipient scan public key) with
+-- the domain separator @UmbraVox_RelayEnc_v1@.
+--
+-- Returns 'Nothing' if:
+--   * ECDH fails (invalid or low-order recipient scan key)
+--   * the stealth address point is invalid (bad spend key)
+--   * the resulting blob exceeds the relay max size
+depositMessage :: RelayMailbox
+               -> ByteString   -- ^ Recipient scan public key (32 bytes, X25519)
+               -> ByteString   -- ^ Recipient spend public key (32 bytes, Ed25519)
+               -> ByteString   -- ^ Plaintext message
+               -> Word64       -- ^ Current POSIX timestamp
+               -> RelayConfig  -- ^ Relay configuration
+               -> IO (Maybe ())
+depositMessage mb scanPub spendPub plaintext now cfg = do
+    -- Step 1: Generate a fresh ephemeral keypair.
+    ephSecret <- randomBytes 32
+    case x25519 ephSecret x25519Basepoint of
+        Nothing -> pure Nothing
+        Just ephPub ->
+            -- Step 2: ECDH shared secret with recipient's scan key.
+            case x25519 ephSecret scanPub of
+                Nothing -> pure Nothing
+                Just sharedSecret -> do
+                    -- Step 3: Derive the view tag (for fast recipient filtering).
+                    let !vtBytes = hkdf relayHKDFSalt sharedSecret "UmbraVox_ViewTag_v2" 32
+                        !vt     = viewTag vtBytes
+
+                    -- Step 4: Rebuild the stealth address for AAD binding.
+                    case rebuildStealthAddress sharedSecret spendPub of
+                        Nothing -> pure Nothing
+                        Just stealthAddr -> do
+                            -- Step 5: Derive encryption key (32 bytes) and nonce (12 bytes).
+                            let !derived = hkdf relayHKDFSalt sharedSecret relayEncKeyInfo 44
+                                !encKey  = BS.take 32 derived
+                                !nonce   = BS.drop 32 derived
+
+                            -- Step 6: Encrypt with ChaCha20-Poly1305.
+                            -- AAD = stealth address, binding ciphertext to recipient.
+                            let (!ciphertext, !tag) = chachaPolyEncrypt encKey nonce stealthAddr plaintext
+
+                            -- Step 7: Build the wire blob.
+                            let !blob = BS.concat
+                                    [ ephPub                 -- 32 bytes
+                                    , BS.singleton vt        --  1 byte
+                                    , tag                    -- 16 bytes
+                                    , ciphertext             -- variable
+                                    ]
+                                !expiry = now + rcTTLSeconds cfg
+
+                            -- Step 8: Store in the mailbox (checks size limit).
+                            ok <- storeForRelay mb blob expiry
+                            pure (if ok then Just () else Nothing)
+
+-- | Poll a relay mailbox for messages addressed to us.
+--
+-- For each stored blob, the recipient:
+--
+--   1. Extracts the view tag for fast filtering (rejects ~255/256 of
+--      non-matching messages with a single byte comparison).
+--   2. Recomputes the expected view tag from the ephemeral key and our
+--      scan secret.  If it does not match, skip.
+--   3. Derives the encryption key from the ECDH shared secret and
+--      attempts authenticated decryption.
+--   4. Returns successfully decrypted plaintexts.
+--
+-- Expired messages are pruned during the poll (same as 'pollRelay').
+pollMessages :: RelayMailbox
+             -> StealthKeys  -- ^ Our stealth keypair
+             -> Word64       -- ^ Current POSIX timestamp
+             -> IO [ByteString]
+pollMessages mb sk now = do
+    -- Get all non-expired blobs, pruning expired ones.
+    blobs <- pollRelay mb now
+    -- Try to decrypt each blob; collect successes.
+    pure (concatMap (tryDecryptBlob sk) blobs)
+
+-- | Attempt to decrypt a single relay blob with our stealth keys.
+--
+-- Wire format: [ephPub(32) | viewTag(1) | tag(16) | ciphertext]
+-- Minimum blob size: 32 + 1 + 16 = 49 bytes (empty plaintext).
+tryDecryptBlob :: StealthKeys -> ByteString -> [ByteString]
+tryDecryptBlob sk blob
+    | BS.length blob < 49 = []  -- too short, not ours
+    | otherwise =
+        let !ephPub     = BS.take 32 blob
+            !vt         = BS.index blob 32
+            !tag        = BS.take 16 (BS.drop 33 blob)
+            !ciphertext = BS.drop 49 blob
+        in case x25519 (skScanSecret sk) ephPub of
+            Nothing -> []  -- DH failure (low-order point), not ours
+            Just sharedSecret ->
+                -- Fast view tag check: rejects ~255/256 of non-matching blobs.
+                let !vtDerived  = hkdf relayHKDFSalt sharedSecret "UmbraVox_ViewTag_v2" 32
+                    !expectedVT = viewTag vtDerived
+                in if expectedVT /= vt
+                   then []  -- view tag mismatch, not ours
+                   else
+                       -- Rebuild the stealth address for AAD verification.
+                       case rebuildStealthAddress sharedSecret (skSpendPublic sk) of
+                           Nothing -> []
+                           Just aad ->
+                               -- Derive encryption key and nonce from shared secret.
+                               let !derived = hkdf relayHKDFSalt sharedSecret relayEncKeyInfo 44
+                                   !encKey  = BS.take 32 derived
+                                   !nonce   = BS.drop 32 derived
+                               in case chachaPolyDecrypt encKey nonce aad ciphertext tag of
+                                   Nothing -> []  -- auth failure, not ours
+                                   Just pt -> [pt]
+
+-- | Rebuild the stealth address point from a shared secret and spend
+-- public key.  This mirrors the computation in
+-- 'UmbraVox.Crypto.StealthAddress.computeStealthAddress' but returns
+-- only the address bytes (or Nothing on failure).
+rebuildStealthAddress :: ByteString -> ByteString -> Maybe ByteString
+rebuildStealthAddress sharedSecret spendPub =
+    let !stealthScalarBytes = hkdf relayHKDFSalt sharedSecret "UmbraVox_StealthKey_v1" 32
+    in case rebuildPoint stealthScalarBytes spendPub of
+        addr | BS.null addr -> Nothing
+             | otherwise    -> Just addr
+
+-- | Perform s*G + spendPub point arithmetic using the Ed25519 primitives.
+-- Imports are re-used from StealthAddress; this duplicates the logic
+-- of 'addSpendKey' to keep the relay module self-contained.
+rebuildPoint :: ByteString -> ByteString -> ByteString
+rebuildPoint stealthScalarBytes spendPubBS =
+    let !s = decodeScalar stealthScalarBytes
+        !sG = ed25519ScalarMul s ed25519Basepoint
+    in ed25519AddSpendKey sG spendPubBS
+
+-- Ed25519 re-exports for point arithmetic (used in rebuildPoint).
+-- These are thin wrappers to keep import lists clean.
+
+ed25519ScalarMul :: Integer -> ExtPoint -> ExtPoint
+ed25519ScalarMul = scalarMul
+
+ed25519Basepoint :: ExtPoint
+ed25519Basepoint = basepoint
+
+ed25519AddSpendKey :: ExtPoint -> ByteString -> ByteString
+ed25519AddSpendKey sG spendPubBS
+    | isSmallOrder spendPubBS = BS.empty
+    | otherwise =
+    case decodePoint spendPubBS of
+        Nothing     -> BS.empty
+        Just bPoint -> encodePoint (pointAdd sG bPoint)
+
+-- | Decode a little-endian scalar mod L from a ByteString.
+decodeScalar :: ByteString -> Integer
+decodeScalar bs = decodeLE bs `mod` groupL
+
+-- | Expire messages past their TTL from a relay mailbox.
+--
+-- Removes all entries whose expiry timestamp is at or before @now@.
+-- Returns the number of messages expired.
+expireMessages :: RelayMailbox -> Word64 -> IO Int
+expireMessages mb now =
+    atomicModifyIORef' (rmMessages mb) $ \s ->
+        let !valid   = Seq.filter (\(_, expiry) -> expiry > now) s
+            !expired = Seq.length s - Seq.length valid
+        in (valid, expired)
 
 ------------------------------------------------------------------------
 -- DHT-based relay polling (M28.2.2)

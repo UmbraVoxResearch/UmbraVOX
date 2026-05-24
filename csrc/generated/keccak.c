@@ -2,8 +2,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define ROTR32(x, n) (((x) >> (n)) | ((x) << (32 - (n))))
-#define ROTL32(x, n) (((x) << (n)) | ((x) >> (32 - (n))))
+#define ROTR64(x, n) (((x) >> (n)) | ((x) << (64 - (n))))
+#define ROTL64(x, n) (((x) << (n)) | ((x) >> (64 - (n))))
 
 static const uint64_t RC_0 = 0x0000000000000001ULL;
 static const uint64_t RC_1 = 0x0000000000008082ULL;
@@ -56,73 +56,73 @@ static const uint32_t ROT_23 = 56;
 static const uint32_t ROT_24 = 14;
 
 __attribute__((noinline))
-uint32_t keccak(const uint8_t* message, const uint8_t* rate, const uint8_t* suffix, const uint8_t* output_len) {
-    uint32_t C_0 = 0; /* preprocessing: ((((state[0] ^ state[5]) ^ state[10]) ^ state[15]) ^ state[20]) */
-    uint32_t C_1 = 0; /* preprocessing: ((((state[1] ^ state[6]) ^ state[11]) ^ state[16]) ^ state[21]) */
-    uint32_t C_2 = 0; /* preprocessing: ((((state[2] ^ state[7]) ^ state[12]) ^ state[17]) ^ state[22]) */
-    uint32_t C_3 = 0; /* preprocessing: ((((state[3] ^ state[8]) ^ state[13]) ^ state[18]) ^ state[23]) */
-    uint32_t C_4 = 0; /* preprocessing: ((((state[4] ^ state[9]) ^ state[14]) ^ state[19]) ^ state[24]) */
-    uint32_t D_0 = (C_4 ^ ROTL32(C_1, 1));
-    uint32_t D_1 = (C_0 ^ ROTL32(C_2, 1));
-    uint32_t D_2 = (C_1 ^ ROTL32(C_3, 1));
-    uint32_t D_3 = (C_2 ^ ROTL32(C_4, 1));
-    uint32_t D_4 = (C_3 ^ ROTL32(C_0, 1));
-    uint32_t theta_i = 0; /* preprocessing: (state[i] ^ D_(i)) */
-    uint32_t rho_i = 0; /* preprocessing: ROTL32(theta_i, ROT_i) */
-    uint32_t pi_0 = 0; /* preprocessing: rho_0 */
-    uint32_t pi_10 = 0; /* preprocessing: rho_1 */
-    uint32_t pi_20 = 0; /* preprocessing: rho_2 */
-    uint32_t pi_5 = 0; /* preprocessing: rho_3 */
-    uint32_t pi_15 = 0; /* preprocessing: rho_4 */
-    uint32_t pi_16 = 0; /* preprocessing: rho_5 */
-    uint32_t pi_1 = 0; /* preprocessing: rho_6 */
-    uint32_t pi_11 = 0; /* preprocessing: rho_7 */
-    uint32_t pi_21 = 0; /* preprocessing: rho_8 */
-    uint32_t pi_6 = 0; /* preprocessing: rho_9 */
-    uint32_t pi_7 = 0; /* preprocessing: rho_10 */
-    uint32_t pi_17 = 0; /* preprocessing: rho_11 */
-    uint32_t pi_2 = 0; /* preprocessing: rho_12 */
-    uint32_t pi_12 = 0; /* preprocessing: rho_13 */
-    uint32_t pi_22 = 0; /* preprocessing: rho_14 */
-    uint32_t pi_23 = 0; /* preprocessing: rho_15 */
-    uint32_t pi_8 = 0; /* preprocessing: rho_16 */
-    uint32_t pi_18 = 0; /* preprocessing: rho_17 */
-    uint32_t pi_3 = 0; /* preprocessing: rho_18 */
-    uint32_t pi_13 = 0; /* preprocessing: rho_19 */
-    uint32_t pi_14 = 0; /* preprocessing: rho_20 */
-    uint32_t pi_24 = 0; /* preprocessing: rho_21 */
-    uint32_t pi_9 = 0; /* preprocessing: rho_22 */
-    uint32_t pi_19 = 0; /* preprocessing: rho_23 */
-    uint32_t pi_4 = 0; /* preprocessing: rho_24 */
-    uint32_t chi_0 = 0; /* preprocessing: (pi_0 ^ ((~pi_1) & pi_2)) */
-    uint32_t chi_1 = 0; /* preprocessing: (pi_1 ^ ((~pi_2) & pi_3)) */
-    uint32_t chi_2 = 0; /* preprocessing: (pi_2 ^ ((~pi_3) & pi_4)) */
-    uint32_t chi_3 = 0; /* preprocessing: (pi_3 ^ ((~pi_4) & pi_0)) */
-    uint32_t chi_4 = 0; /* preprocessing: (pi_4 ^ ((~pi_0) & pi_1)) */
-    uint32_t chi_5 = 0; /* preprocessing: (pi_5 ^ ((~pi_6) & pi_7)) */
-    uint32_t chi_6 = 0; /* preprocessing: (pi_6 ^ ((~pi_7) & pi_8)) */
-    uint32_t chi_7 = 0; /* preprocessing: (pi_7 ^ ((~pi_8) & pi_9)) */
-    uint32_t chi_8 = 0; /* preprocessing: (pi_8 ^ ((~pi_9) & pi_5)) */
-    uint32_t chi_9 = 0; /* preprocessing: (pi_9 ^ ((~pi_5) & pi_6)) */
-    uint32_t chi_10 = 0; /* preprocessing: (pi_10 ^ ((~pi_11) & pi_12)) */
-    uint32_t chi_11 = 0; /* preprocessing: (pi_11 ^ ((~pi_12) & pi_13)) */
-    uint32_t chi_12 = 0; /* preprocessing: (pi_12 ^ ((~pi_13) & pi_14)) */
-    uint32_t chi_13 = 0; /* preprocessing: (pi_13 ^ ((~pi_14) & pi_10)) */
-    uint32_t chi_14 = 0; /* preprocessing: (pi_14 ^ ((~pi_10) & pi_11)) */
-    uint32_t chi_15 = 0; /* preprocessing: (pi_15 ^ ((~pi_16) & pi_17)) */
-    uint32_t chi_16 = 0; /* preprocessing: (pi_16 ^ ((~pi_17) & pi_18)) */
-    uint32_t chi_17 = 0; /* preprocessing: (pi_17 ^ ((~pi_18) & pi_19)) */
-    uint32_t chi_18 = 0; /* preprocessing: (pi_18 ^ ((~pi_19) & pi_15)) */
-    uint32_t chi_19 = 0; /* preprocessing: (pi_19 ^ ((~pi_15) & pi_16)) */
-    uint32_t chi_20 = 0; /* preprocessing: (pi_20 ^ ((~pi_21) & pi_22)) */
-    uint32_t chi_21 = 0; /* preprocessing: (pi_21 ^ ((~pi_22) & pi_23)) */
-    uint32_t chi_22 = 0; /* preprocessing: (pi_22 ^ ((~pi_23) & pi_24)) */
-    uint32_t chi_23 = 0; /* preprocessing: (pi_23 ^ ((~pi_24) & pi_20)) */
-    uint32_t chi_24 = 0; /* preprocessing: (pi_24 ^ ((~pi_20) & pi_21)) */
-    uint32_t iota_0 = 0; /* preprocessing: (chi_0 ^ RC_r) */
-    uint32_t padded = 0; /* preprocessing: pad(message, rate, suffix) */
-    uint32_t absorbed = 0; /* preprocessing: absorb(padded, rate) */
-    uint32_t output = 0; /* preprocessing: squeeze(absorbed, rate, output_len) */
+uint64_t keccak(const uint8_t* message, const uint8_t* rate, const uint8_t* suffix, const uint8_t* output_len) {
+    uint64_t C_0 = 0; /* preprocessing: ((((state[0] ^ state[5]) ^ state[10]) ^ state[15]) ^ state[20]) */
+    uint64_t C_1 = 0; /* preprocessing: ((((state[1] ^ state[6]) ^ state[11]) ^ state[16]) ^ state[21]) */
+    uint64_t C_2 = 0; /* preprocessing: ((((state[2] ^ state[7]) ^ state[12]) ^ state[17]) ^ state[22]) */
+    uint64_t C_3 = 0; /* preprocessing: ((((state[3] ^ state[8]) ^ state[13]) ^ state[18]) ^ state[23]) */
+    uint64_t C_4 = 0; /* preprocessing: ((((state[4] ^ state[9]) ^ state[14]) ^ state[19]) ^ state[24]) */
+    uint64_t D_0 = (C_4 ^ ROTL64(C_1, 1));
+    uint64_t D_1 = (C_0 ^ ROTL64(C_2, 1));
+    uint64_t D_2 = (C_1 ^ ROTL64(C_3, 1));
+    uint64_t D_3 = (C_2 ^ ROTL64(C_4, 1));
+    uint64_t D_4 = (C_3 ^ ROTL64(C_0, 1));
+    uint64_t theta_i = 0; /* preprocessing: (state[i] ^ D_(i)) */
+    uint64_t rho_i = 0; /* preprocessing: ROTL64(theta_i, ROT_i) */
+    uint64_t pi_0 = 0; /* preprocessing: rho_0 */
+    uint64_t pi_10 = 0; /* preprocessing: rho_1 */
+    uint64_t pi_20 = 0; /* preprocessing: rho_2 */
+    uint64_t pi_5 = 0; /* preprocessing: rho_3 */
+    uint64_t pi_15 = 0; /* preprocessing: rho_4 */
+    uint64_t pi_16 = 0; /* preprocessing: rho_5 */
+    uint64_t pi_1 = 0; /* preprocessing: rho_6 */
+    uint64_t pi_11 = 0; /* preprocessing: rho_7 */
+    uint64_t pi_21 = 0; /* preprocessing: rho_8 */
+    uint64_t pi_6 = 0; /* preprocessing: rho_9 */
+    uint64_t pi_7 = 0; /* preprocessing: rho_10 */
+    uint64_t pi_17 = 0; /* preprocessing: rho_11 */
+    uint64_t pi_2 = 0; /* preprocessing: rho_12 */
+    uint64_t pi_12 = 0; /* preprocessing: rho_13 */
+    uint64_t pi_22 = 0; /* preprocessing: rho_14 */
+    uint64_t pi_23 = 0; /* preprocessing: rho_15 */
+    uint64_t pi_8 = 0; /* preprocessing: rho_16 */
+    uint64_t pi_18 = 0; /* preprocessing: rho_17 */
+    uint64_t pi_3 = 0; /* preprocessing: rho_18 */
+    uint64_t pi_13 = 0; /* preprocessing: rho_19 */
+    uint64_t pi_14 = 0; /* preprocessing: rho_20 */
+    uint64_t pi_24 = 0; /* preprocessing: rho_21 */
+    uint64_t pi_9 = 0; /* preprocessing: rho_22 */
+    uint64_t pi_19 = 0; /* preprocessing: rho_23 */
+    uint64_t pi_4 = 0; /* preprocessing: rho_24 */
+    uint64_t chi_0 = 0; /* preprocessing: (pi_0 ^ ((~pi_1) & pi_2)) */
+    uint64_t chi_1 = 0; /* preprocessing: (pi_1 ^ ((~pi_2) & pi_3)) */
+    uint64_t chi_2 = 0; /* preprocessing: (pi_2 ^ ((~pi_3) & pi_4)) */
+    uint64_t chi_3 = 0; /* preprocessing: (pi_3 ^ ((~pi_4) & pi_0)) */
+    uint64_t chi_4 = 0; /* preprocessing: (pi_4 ^ ((~pi_0) & pi_1)) */
+    uint64_t chi_5 = 0; /* preprocessing: (pi_5 ^ ((~pi_6) & pi_7)) */
+    uint64_t chi_6 = 0; /* preprocessing: (pi_6 ^ ((~pi_7) & pi_8)) */
+    uint64_t chi_7 = 0; /* preprocessing: (pi_7 ^ ((~pi_8) & pi_9)) */
+    uint64_t chi_8 = 0; /* preprocessing: (pi_8 ^ ((~pi_9) & pi_5)) */
+    uint64_t chi_9 = 0; /* preprocessing: (pi_9 ^ ((~pi_5) & pi_6)) */
+    uint64_t chi_10 = 0; /* preprocessing: (pi_10 ^ ((~pi_11) & pi_12)) */
+    uint64_t chi_11 = 0; /* preprocessing: (pi_11 ^ ((~pi_12) & pi_13)) */
+    uint64_t chi_12 = 0; /* preprocessing: (pi_12 ^ ((~pi_13) & pi_14)) */
+    uint64_t chi_13 = 0; /* preprocessing: (pi_13 ^ ((~pi_14) & pi_10)) */
+    uint64_t chi_14 = 0; /* preprocessing: (pi_14 ^ ((~pi_10) & pi_11)) */
+    uint64_t chi_15 = 0; /* preprocessing: (pi_15 ^ ((~pi_16) & pi_17)) */
+    uint64_t chi_16 = 0; /* preprocessing: (pi_16 ^ ((~pi_17) & pi_18)) */
+    uint64_t chi_17 = 0; /* preprocessing: (pi_17 ^ ((~pi_18) & pi_19)) */
+    uint64_t chi_18 = 0; /* preprocessing: (pi_18 ^ ((~pi_19) & pi_15)) */
+    uint64_t chi_19 = 0; /* preprocessing: (pi_19 ^ ((~pi_15) & pi_16)) */
+    uint64_t chi_20 = 0; /* preprocessing: (pi_20 ^ ((~pi_21) & pi_22)) */
+    uint64_t chi_21 = 0; /* preprocessing: (pi_21 ^ ((~pi_22) & pi_23)) */
+    uint64_t chi_22 = 0; /* preprocessing: (pi_22 ^ ((~pi_23) & pi_24)) */
+    uint64_t chi_23 = 0; /* preprocessing: (pi_23 ^ ((~pi_24) & pi_20)) */
+    uint64_t chi_24 = 0; /* preprocessing: (pi_24 ^ ((~pi_20) & pi_21)) */
+    uint64_t iota_0 = 0; /* preprocessing: (chi_0 ^ RC_r) */
+    uint64_t padded = 0; /* preprocessing: pad(message, rate, suffix) */
+    uint64_t absorbed = 0; /* preprocessing: absorb(padded, rate) */
+    uint64_t output = 0; /* preprocessing: squeeze(absorbed, rate, output_len) */
     return 0; /* placeholder */
 }
 

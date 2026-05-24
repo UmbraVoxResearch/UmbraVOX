@@ -167,7 +167,7 @@ let
             }
 
           echo "=== Build complete ==="
-          JAR=$(find service/target -name 'service-*.jar' -not -name '*-sources*' -not -name '*-tests*' | head -1)
+          JAR=$(find service/target -name 'TextSecureServer-*.jar' -not -name '*-sources*' -not -name '*-tests*' | head -1)
           if [ -z "$JAR" ]; then
             echo "BUILD_RESULT=FAIL"
             echo "JAR not found in service/target/"

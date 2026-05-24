@@ -368,7 +368,7 @@ deriveSecretWithTimestamp !dh1 !dh2 !dh3 !mDh4 !aliceIKPub !bobIKPub !bundleTs =
     let !pad = BS.replicate 32 0xff
         !salt = BS.replicate 32 0x00
         !ikm = BS.concat $ [pad, dh1, dh2, dh3] ++ maybe [] (:[]) mDh4
-        !info = x3dhInfo <> aliceIKPub <> bobIKPub <> encodeTimestamp bundleTs
+        !info = x3dhInfo <> lenPrefix aliceIKPub <> lenPrefix bobIKPub <> encodeTimestamp bundleTs
     in hkdf salt ikm info 32
 
 -- | Alice initiates X3DH with bundle freshness validation (M23.2.2).
