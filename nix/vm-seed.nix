@@ -126,6 +126,12 @@ let
           # copying them to scratch first.
           cp -a /nix/store/. /nix-scratch/store/ 2>/dev/null || true
           mount --bind /nix-scratch/store /nix/store
+
+          # Redirect nix build sandbox to scratch disk so the 10GB+
+          # disk image doesn't fill the boot disk's /tmp.
+          mkdir -p /nix-scratch/tmp
+          echo "build-dir = /nix-scratch/tmp" >> /etc/nix/nix.conf
+
           # Stop and start nix-daemon (not restart, to avoid systemd
           # dependency cycle that kills this service)
           systemctl stop nix-daemon.socket nix-daemon.service 2>/dev/null || true
@@ -151,12 +157,8 @@ let
           git config --global --add safe.directory /nix-scratch/workspace
 
           echo "[SEED] Running nix-build for vm-builder.nix ..."
-          # Use scratch disk for build temp so the 10GB+ disk image
-          # doesn't fill the boot disk's /tmp.
-          mkdir -p /nix-scratch/tmp
           set +e
-          TMPDIR=/nix-scratch/tmp nix-build /nix-scratch/workspace/nix/vm-builder.nix \
-              --option build-dir /nix-scratch/tmp \
+          nix-build /nix-scratch/workspace/nix/vm-builder.nix \
               -o /nix-scratch/workspace/result 2>&1
           BUILD_STATUS=$?
           set -e
