@@ -38,6 +38,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Word (Word32)
 
+import UmbraVox.Crypto.ConstantTime (constantEq)
 import UmbraVox.Crypto.Curve25519 (x25519)
 import UmbraVox.Crypto.Ed25519 (ed25519Verify)
 import UmbraVox.Crypto.HKDF (hkdf)
@@ -217,6 +218,6 @@ pqxdhRespond bobIK spkSecret mOPKSecret pqDK aliceIKPub aliceEKPub pqCt = do
     let -- ML-KEM decapsulation
         !pqSS = mlkemDecaps pqDK pqCt
     -- M23.3.2: reject decapsulation failure (all-zero shared secret)
-    if BS.all (== 0) pqSS
+    if constantEq pqSS (BS.replicate (BS.length pqSS) 0)
         then Nothing
         else Just (derivePQSecret dh1 dh2 dh3 mDh4 pqSS pqCt aliceIKPub (ikX25519Public bobIK))

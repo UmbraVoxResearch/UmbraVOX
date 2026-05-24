@@ -29,17 +29,19 @@ module UmbraVox.Network.Discovery
     , discoverDNS
     -- * Parsing helpers (exported for testing)
     , parsePeerList
+    , validatePeerAddress
     ) where
 
 import Control.Exception (SomeException, catch)
 import Data.ByteString (ByteString)
-import Data.Char (isSpace)
+import Data.Char (isDigit, isSpace)
 import Data.IORef
 import Data.List (dropWhileEnd)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import System.Directory (doesFileExist, getHomeDirectory)
 import System.Environment (lookupEnv)
+import System.IO (hPutStrLn, stderr)
 
 import UmbraVox.Network.DHT (DHTState(..), newDHTState)
 import UmbraVox.Network.DHT.RoutingTable (findClosest)
@@ -111,12 +113,17 @@ discoverPeers dm = do
 -- | Parse UMBRAVOX_PEERS environment variable.
 -- Format: @host1:port,host2:port@
 -- Returns discovered peers tagged with 'SourceEnvVar'.
+-- Malformed or loopback addresses are rejected with a warning.
 discoverEnvVar :: IO [(String, PeerSource)]
 discoverEnvVar = do
     mVal <- lookupEnv "UMBRAVOX_PEERS"
-    pure $ case mVal of
-        Nothing  -> []
-        Just val -> map (\a -> (a, SourceEnvVar)) (parsePeerList val)
+    case mVal of
+        Nothing  -> pure []
+        Just val -> do
+            allowLoop <- isLoopbackAllowed
+            let raw = parsePeerList val
+            validated <- mapM (\a -> validateAndWarn allowLoop "UMBRAVOX_PEERS" a SourceEnvVar) raw
+            pure (concat validated)
 
 ------------------------------------------------------------------------
 -- Config file source
@@ -140,7 +147,11 @@ discoverConfigFile = (do
                 cfg   = Map.fromList pairs
             case Map.lookup "peers" cfg of
                 Nothing  -> pure []
-                Just val -> pure $ map (\a -> (a, SourceConfig)) (parsePeerList val)
+                Just val -> do
+                    allowLoop <- isLoopbackAllowed
+                    let raw = parsePeerList val
+                    validated <- mapM (\a -> validateAndWarn allowLoop "config file" a SourceConfig) raw
+                    pure (concat validated)
     ) `catch` \(_ :: SomeException) -> pure []
 
 -- | Parse a single config line into (key, value).
@@ -221,6 +232,63 @@ discoverDHT dm = do
                  | n <- nodes
                  , not (null (dhtAddress n))
                  ]
+
+------------------------------------------------------------------------
+-- Peer address validation
+------------------------------------------------------------------------
+
+-- | Validate a peer address string.
+--
+-- Must be @host:port@ where port is a decimal integer in 1..65535.
+-- Rejects empty host, empty port, non-numeric port, and loopback
+-- addresses (127.0.0.1, ::1, localhost) unless the first argument
+-- is 'True' (i.e. @UMBRAVOX_ALLOW_LOOPBACK=1@ is set).
+--
+-- Returns @Just (host, port)@ on success, @Nothing@ on failure.
+validatePeerAddress :: Bool -> String -> Maybe (String, Int)
+validatePeerAddress allowLoopback addr =
+    case breakOnLastColon addr of
+        Nothing -> Nothing
+        Just (host, portStr)
+            | null host       -> Nothing
+            | null portStr    -> Nothing
+            | not (all isDigit portStr) -> Nothing
+            | otherwise ->
+                let p = read portStr :: Int
+                in if p < 1 || p > 65535
+                    then Nothing
+                    else if not allowLoopback && isLoopbackAddr host
+                        then Nothing
+                        else Just (host, p)
+  where
+    -- Break on the last ':' to support IPv6 addresses like [::1]:8080
+    breakOnLastColon :: String -> Maybe (String, String)
+    breakOnLastColon s =
+        case break (== ':') (reverse s) of
+            (_, [])    -> Nothing   -- no colon found
+            (rp, _:rh) -> Just (reverse rh, reverse rp)
+
+-- | Check whether a host string is a loopback address.
+isLoopbackAddr :: String -> Bool
+isLoopbackAddr h = h `elem` ["127.0.0.1", "::1", "localhost", "[::1]"]
+
+-- | Check whether UMBRAVOX_ALLOW_LOOPBACK=1 is set.
+isLoopbackAllowed :: IO Bool
+isLoopbackAllowed = do
+    val <- lookupEnv "UMBRAVOX_ALLOW_LOOPBACK"
+    pure (val == Just "1")
+
+-- | Validate a peer address and log a warning if rejected.
+-- Returns a singleton list on success, empty on failure.
+validateAndWarn :: Bool -> String -> String -> PeerSource -> IO [(String, PeerSource)]
+validateAndWarn allowLoop source addr peerSrc =
+    case validatePeerAddress allowLoop addr of
+        Just _  -> pure [(addr, peerSrc)]
+        Nothing -> do
+            hPutStrLn stderr $
+                "UmbraVox: WARNING: rejected invalid peer address "
+                ++ show addr ++ " from " ++ source
+            pure []
 
 ------------------------------------------------------------------------
 -- Parsing helpers

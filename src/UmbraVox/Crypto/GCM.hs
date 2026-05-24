@@ -20,7 +20,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.IORef (IORef, newIORef, atomicModifyIORef')
 import Data.List (foldl')
-import Data.Word (Word64)
+import Data.Word (Word8, Word64)
 
 import UmbraVox.Crypto.AES (aesEncrypt)
 import UmbraVox.Crypto.ConstantTime (constantEq)
@@ -261,11 +261,47 @@ gcmEncryptNR :: GCMNonceTracker
              -> ByteString -> ByteString -> ByteString -> ByteString
              -> IO (Either String (ByteString, ByteString))
 gcmEncryptNR (GCMNonceTracker ref) !key !nonce !aad !plaintext = do
+    -- Finding    — Nonce comparison used ByteString's lexicographic Ord instance
+    --              which compares byte-by-byte left-to-right but short-circuits
+    --              on length differences, producing incorrect results when nonces
+    --              have different lengths (e.g. an empty initial maxNonce vs a
+    --              12-byte nonce).
+    -- Vulnerability: A shorter nonce could compare as "less than" a longer one
+    --              regardless of numeric value, potentially allowing nonce reuse
+    --              to go undetected.
+    -- Fix:       Use explicit big-endian numeric comparison that zero-pads the
+    --              shorter nonce on the left before comparing byte-by-byte.
+    -- Verified:  BS.null guard handles the initial empty state; equal-length
+    --              nonces (the normal 12-byte case) compare identically to before.
     rejected <- atomicModifyIORef' ref $ \maxNonce ->
-        if BS.null maxNonce || nonce > maxNonce
+        if BS.null maxNonce || nonceGtBE nonce maxNonce
         then (nonce, False)
         else (maxNonce, True)
     if rejected
         then return (Left "AES-256-GCM: nonce reuse detected — refusing to encrypt")
         else return (gcmEncryptSafe key nonce aad plaintext)
 
+-- | Big-endian numeric comparison: @nonceGtBE a b@ returns 'True' iff @a@
+-- interpreted as a big-endian unsigned integer is strictly greater than @b@.
+-- Shorter nonces are logically left-padded with zeros.
+nonceGtBE :: ByteString -> ByteString -> Bool
+nonceGtBE !a !b = go 0
+  where
+    !la  = BS.length a
+    !lb  = BS.length b
+    !len = max la lb
+    -- Left-pad the shorter one with zeros so both are the same length.
+    !a'  | la == len = a
+         | otherwise = BS.replicate (len - la) 0 <> a
+    !b'  | lb == len = b
+         | otherwise = BS.replicate (len - lb) 0 <> b
+    -- Walk bytes left-to-right (big-endian MSB first).
+    go :: Int -> Bool
+    go !i
+        | i >= len  = False          -- equal
+        | ai > bi   = True
+        | ai < bi   = False
+        | otherwise = go (i + 1)
+      where
+        !ai = BS.index a' i :: Word8
+        !bi = BS.index b' i :: Word8

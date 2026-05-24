@@ -194,7 +194,7 @@ loadSetting db key =
 -- | Save a message to the database.
 --
 -- When the 'AnthonyDB' handle carries a 'StorageKey' (set via 'openDBWithKey'),
--- the @content@ field is encrypted with 'encryptField' before insertion so that
+-- the @content_enc@ field is encrypted with 'encryptField' before insertion so that
 -- the raw database does not contain plaintext message bodies.
 saveMessage :: AnthonyDB -> Int -> String -> String -> Int -> IO ()
 saveMessage db convId sender content timestamp = do
@@ -202,7 +202,7 @@ saveMessage db convId sender content timestamp = do
         Just key -> encryptField key content
         Nothing  -> pure content
     SQL.withStatement (dbConn db)
-        "INSERT INTO messages (conversation_id, sender, content, timestamp) VALUES (?, ?, ?, ?)"
+        "INSERT INTO messages (conversation_id, sender, content_enc, timestamp) VALUES (?, ?, ?, ?)"
         $ \stmt -> do
             SQL.bindInt  stmt 1 convId
             SQL.bindText stmt 2 sender
@@ -215,7 +215,7 @@ saveMessage db convId sender content timestamp = do
 --
 -- Returns @(sender, content, timestamp)@ tuples, oldest first.
 --
--- When the 'AnthonyDB' handle carries a 'StorageKey', each row's @content@
+-- When the 'AnthonyDB' handle carries a 'StorageKey', each row's @content_enc@
 -- field is decrypted with 'decryptField'.  Rows that carry the @UVENC1:@
 -- prefix but fail GCM authentication are dropped (M10.3.7 — genuine
 -- authentication failure or tampered ciphertext).  Rows that lack the prefix
@@ -224,7 +224,7 @@ saveMessage db convId sender content timestamp = do
 loadMessages :: AnthonyDB -> Int -> Int -> IO [(String, String, Int)]
 loadMessages db convId limit = do
     rows <- SQL.withStatement (dbConn db)
-        "SELECT sender, content, timestamp FROM messages WHERE conversation_id = ? ORDER BY timestamp DESC LIMIT ?"
+        "SELECT sender, content_enc, timestamp FROM messages WHERE conversation_id = ? ORDER BY timestamp DESC LIMIT ?"
         $ \stmt -> do
             SQL.bindInt stmt 1 convId
             SQL.bindInt stmt 2 limit

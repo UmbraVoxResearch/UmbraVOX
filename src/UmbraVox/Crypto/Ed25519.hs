@@ -37,6 +37,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Word (Word8)
 
+import UmbraVox.Crypto.ConstantTime (constantEq)
 import UmbraVox.Crypto.SHA512 (sha512)
 
 ------------------------------------------------------------------------
@@ -306,7 +307,7 @@ smallOrderPoints =
 -- | Returns True if the given 32-byte compressed point is one of the
 -- 8 small-order points on Ed25519.
 isSmallOrder :: ByteString -> Bool
-isSmallOrder !pt = pt `elem` smallOrderPoints
+isSmallOrder !pt = any (constantEq pt) smallOrderPoints
 
 ------------------------------------------------------------------------
 -- RFC 8032 Section 5.1 — Key generation, signing, verification

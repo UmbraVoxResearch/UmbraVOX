@@ -49,7 +49,7 @@ func FetchFile(url, dest, expected string) error {
 	h := sha256.New()
 	w := io.MultiWriter(f, h)
 
-	if _, err := io.Copy(w, resp.Body); err != nil {
+	if _, err := io.Copy(w, io.LimitReader(resp.Body, 10*1024*1024*1024)); err != nil {
 		f.Close()
 		return fmt.Errorf("write %s: %w", tmp, err)
 	}

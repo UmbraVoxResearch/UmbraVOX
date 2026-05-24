@@ -10,7 +10,7 @@
 --   GE = gcmEncrypt, GD = gcmDecrypt, CE = chachaPolyEncrypt,
 --   CD = chachaPolyDecrypt, AE = aesEncrypt, AD = aesDecrypt,
 --   EX = decryptExport, DP = Ed25519.decodePoint, KS = KeyStore blob length,
---   KK = Keccak sponge rate, DW = Noise decryptWithKey.
+--   KK = Keccak sponge rate, DW = Noise decryptAndVerify.
 --
 -- M16.2-4 gap-fill additions:
 --   GA = GCM auth-tag decision paths, EV = Ed25519 verify decision paths,
@@ -31,7 +31,7 @@ import UmbraVox.Crypto.Ed25519 (ed25519Sign, ed25519Verify, ed25519PublicKey,
 import UmbraVox.Crypto.Export (decryptExport)
 import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt, gcmEncryptSafe, gcmDecryptSafe)
 import UmbraVox.Crypto.Keccak (sha3_256, shake128)
-import UmbraVox.Network.Noise.Handshake (decryptWithKey)
+import UmbraVox.Network.Noise.Handshake (decryptAndVerify)
 import UmbraVox.Protocol.WireFormat (Envelope(..), decodeEnvelope, wrapEnvelope,
                                       encodeEnvelope, decodeEnvelopeAEAD,
                                       encodeEnvelopeAEAD, deriveEnvelopeKey)
@@ -80,7 +80,7 @@ runTests = do
         , testKK_sha3_256_valid
         , testKK_shake128_valid
 
-          -- Noise decryptWithKey guard (table 14)
+          -- Noise decryptAndVerify guard (table 14)
         , testDW1_cipherMacTooShort
 
           -- M16.2-4: GCM auth-tag decision coverage
@@ -335,18 +335,18 @@ testKK_shake128_valid = do
         64 (BS.length out)
 
 ------------------------------------------------------------------------
--- Noise Handshake decryptWithKey guard
+-- Noise Handshake decryptAndVerify guard
 ------------------------------------------------------------------------
 
 -- DW1: too_short = T  (table 14, row 2)
--- Handshake.hs:329 — BS.length cipherMac < hsHmacLen (32) = Nothing
+-- Handshake.hs — BS.length cipherTag < hsTagLen (16) = Nothing
 testDW1_cipherMacTooShort :: IO Bool
 testDW1_cipherMacTooShort = do
     let k          = BS.replicate 32 0x01
         h          = BS.replicate 32 0x02
-        shortInput = BS.replicate 16 0x03  -- < 32 bytes (hsHmacLen)
-    assertEq "DW1: decryptWithKey cipherMac < 32 bytes returns Nothing"
-        Nothing (decryptWithKey k h shortInput)
+        shortInput = BS.replicate 8 0x03   -- < 16 bytes (hsTagLen)
+    assertEq "DW1: decryptAndVerify cipherTag < 16 bytes returns Nothing"
+        Nothing (decryptAndVerify k h shortInput)
 
 ------------------------------------------------------------------------
 -- M16.2-4: GCM authentication tag decision coverage

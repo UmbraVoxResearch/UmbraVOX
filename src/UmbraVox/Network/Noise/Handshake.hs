@@ -15,8 +15,8 @@ module UmbraVox.Network.Noise.Handshake
   -- * Helpers (exported for testing)
   , hkdfCK
   , splitKeys
-  , encryptWithKey
-  , decryptWithKey
+  , encryptAndTag
+  , decryptAndVerify
   , initHash
   , initCK
   , mixHash
@@ -27,11 +27,10 @@ import qualified Data.ByteString as BS
 import Data.Word (Word32)
 
 import UmbraVox.App.Defaults (maxFrameSize)
-import UmbraVox.Crypto.ConstantTime (constantEq)
+import UmbraVox.Crypto.ChaChaPoly (chachaPolyEncrypt, chachaPolyDecrypt)
 import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
 import UmbraVox.Crypto.HKDF (hkdfSHA256Extract, hkdfSHA256Expand)
-import UmbraVox.Crypto.HMAC (hmacSHA256)
-import UmbraVox.Crypto.Random (chacha20Encrypt, randomBytes)
+import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Crypto.SHA256 (sha256)
 import UmbraVox.Network.Noise.State
     ( NoiseState(..)
@@ -94,7 +93,7 @@ noiseHandshakeInitiator iStaticSec iStaticPub rStaticPub trustCheck transport = 
             let (!ck1, !k1) = hkdfCK ck0 dhES
 
             -- -> s: encrypt and send initiator's static public key
-            let !encStaticPub = encryptWithKey k1 h3 iStaticPub
+            let !encStaticPub = encryptAndTag k1 h3 iStaticPub
             let !h4 = mixHash h3 encStaticPub
 
             -- -> ss: DH(s, rs); reject all-zero (low-order point)
@@ -200,7 +199,7 @@ noiseHandshakeResponder rStaticSec rStaticPub transport = do
       Nothing -> pure Nothing
       Just msg1
         -- Validate message length: need at least 32 (ephemeral) + 32 (ct) + 32 (HMAC)
-        | BS.length msg1 < (32 + 32 + hsHmacLen) -> pure Nothing
+        | BS.length msg1 < (32 + 32 + hsTagLen) -> pure Nothing
         | otherwise -> do
             let !iEPub        = BS.take 32 msg1
                 !encStaticPub = BS.drop 32 msg1
@@ -215,7 +214,7 @@ noiseHandshakeResponder rStaticSec rStaticPub transport = do
                 let (!ck1, !k1) = hkdfCK ck0 dhES
 
                 -- -> s: decrypt initiator's static public key
-                case decryptWithKey k1 h3 encStaticPub of
+                case decryptAndVerify k1 h3 encStaticPub of
                   Nothing         -> pure Nothing
                   Just iStaticPub -> do
                     let !h4 = mixHash h3 encStaticPub
@@ -307,35 +306,40 @@ splitKeys !ck =
         !recvEncKey = hkdfSHA256Expand prk (packASCII "enc-recv") 32
     in (sendEncKey, recvEncKey)
 
--- | HMAC-SHA256 tag length used in the Noise IK handshake (not the transport).
--- The transport uses 16-byte Poly1305 tags (RFC 8439); the handshake uses
--- 32-byte HMAC-SHA256 tags for encrypting the initiator's static public key.
-hsHmacLen :: Int
-hsHmacLen = 32
+-- | Poly1305 tag length (16 bytes, per RFC 8439 / Noise spec §11.1).
+hsTagLen :: Int
+hsTagLen = 16
 
--- | Encrypt data with a handshake key (ChaCha20 + HMAC for authentication).
+-- | Encrypt data with a handshake key using ChaChaPoly AEAD (RFC 8439).
+--
+-- Finding    — The handshake previously used ChaCha20 + separate HMAC-SHA256,
+--              departing from the Noise spec §11.1 which requires the same AEAD
+--              cipher (ChaChaPoly1305) in both handshake and transport phases.
+-- Vulnerability: Non-standard AEAD composition is harder to audit and
+--              incompatible with reference Noise implementations.
+-- Fix:       Use chachaPolyEncrypt with the handshake hash as AAD and a zero
+--            nonce (each handshake key is used at most once).
+-- Verified:  Round-trips correctly with decryptAndVerify; tag is 16 bytes.
+--
 -- Uses a zero nonce since each handshake key is used only once.
-encryptWithKey :: ByteString -> ByteString -> ByteString -> ByteString
-encryptWithKey !k !h !plaintext =
-    let !nonce = BS.replicate 12 0
-        !ct    = chacha20Encrypt k nonce 0 plaintext
-        !mac   = hmacSHA256 k (h <> ct)
-    in ct <> mac
+-- The handshake hash @h@ is passed as associated data (AAD).
+encryptAndTag :: ByteString -> ByteString -> ByteString -> ByteString
+encryptAndTag !k !h !plaintext =
+    let !nonce    = BS.replicate 12 0
+        (!ct, !tag) = chachaPolyEncrypt k nonce h plaintext
+    in ct <> tag
 
--- | Decrypt data with a handshake key, verifying the HMAC tag.
--- Returns 'Nothing' if the MAC does not match.
-decryptWithKey :: ByteString -> ByteString -> ByteString -> Maybe ByteString
-decryptWithKey !k !h !cipherMac
-    | BS.length cipherMac < hsHmacLen = Nothing
+-- | Decrypt data with a handshake key using ChaChaPoly AEAD, verifying
+-- the Poly1305 tag.  Returns 'Nothing' if authentication fails.
+decryptAndVerify :: ByteString -> ByteString -> ByteString -> Maybe ByteString
+decryptAndVerify !k !h !cipherTag
+    | BS.length cipherTag < hsTagLen = Nothing
     | otherwise =
-        let !ctLen = BS.length cipherMac - hsHmacLen
-            !ct    = BS.take ctLen cipherMac
-            !mac   = BS.drop ctLen cipherMac
-            !expected = hmacSHA256 k (h <> ct)
+        let !ctLen = BS.length cipherTag - hsTagLen
+            !ct    = BS.take ctLen cipherTag
+            !tag   = BS.drop ctLen cipherTag
             !nonce = BS.replicate 12 0
-        in if constantEq mac expected
-           then Just (chacha20Encrypt k nonce 0 ct)
-           else Nothing
+        in chachaPolyDecrypt k nonce h ct tag
 
 ------------------------------------------------------------------------
 -- Framing: length-prefixed messages over transport

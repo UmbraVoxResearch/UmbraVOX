@@ -32,7 +32,7 @@ import UmbraVox.Network.Noise (NoiseState(..), noiseEncrypt, noiseDecrypt)
 import UmbraVox.Network.Noise.Handshake
     ( hkdfCK
     , splitKeys
-    , encryptWithKey
+    , encryptAndTag
     , initHash
     , initCK
     , mixHash
@@ -139,7 +139,7 @@ computeInitiatorChain isSec _isPub rsPub ieSec _iePub rePub = do
     let (!ck1, !k1) = hkdfCK ck0 dhES
 
     -- -> s: encrypt initiator static public key
-    let !encStaticPub = encryptWithKey k1 h3 _isPub
+    let !encStaticPub = encryptAndTag k1 h3 _isPub
         !h4 = mixHash h3 encStaticPub
 
     -- -> ss: DH(s_i, s_r)
@@ -165,7 +165,7 @@ computeInitiatorChain isSec _isPub rsPub ieSec _iePub rePub = do
 --
 -- In these tests @isPub@ is supplied directly (as if the responder
 -- successfully decrypted the initiator's static public key from msg1).
--- We compute @encStaticPub@ using the same @encryptWithKey@ the initiator
+-- We compute @encStaticPub@ using the same @encryptAndTag@ the initiator
 -- used, to reproduce the exact handshake hash h4 without going through
 -- @decryptWithKey@ (which would require the framing macLen to match the
 -- handshake-phase HMAC length, a concern separate from the DH chain).
@@ -192,8 +192,8 @@ computeResponderChain rsSec rsPub isPub iePub reSec rePub = do
     let (!ck1, !k1) = hkdfCK ck0 dhES
 
     -- -> s: reproduce encStaticPub that the initiator sent, to hash it
-    -- (same formula as encryptWithKey in the initiator path)
-    let !encStaticPub = encryptWithKey k1 h3 isPub
+    -- (same formula as encryptAndTag in the initiator path)
+    let !encStaticPub = encryptAndTag k1 h3 isPub
         !h4 = mixHash h3 encStaticPub
 
     -- -> ss: DH(s_r, s_i)
@@ -385,7 +385,7 @@ computeBuggyInitiatorChain isSec _isPub rsPub ieSec _iePub rePub = do
     dhES <- x25519 ieSec rsPub
     let (!ck1, !k1) = hkdfCK ck0 dhES
 
-    let !encStaticPub = encryptWithKey k1 h3 _isPub
+    let !encStaticPub = encryptAndTag k1 h3 _isPub
         !h4 = mixHash h3 encStaticPub
 
     dhSS <- x25519 isSec rsPub
@@ -474,7 +474,7 @@ computeZeroEEInitiator isSec _isPub rsPub ieSec _iePub rePub = do
     dhES <- x25519 ieSec rsPub
     let (!ck1, !k1) = hkdfCK ck0 dhES
 
-    let !encStaticPub = encryptWithKey k1 h3 _isPub
+    let !encStaticPub = encryptAndTag k1 h3 _isPub
         !h4 = mixHash h3 encStaticPub
 
     dhSS <- x25519 isSec rsPub
@@ -609,7 +609,7 @@ computeH5 iePub rePub =
                     Just v -> v
                     Nothing -> error "computeH5: impossible dhES"
         (!_ck1, !k1) = hkdfCK ck0 dhES
-        !encStaticPub = encryptWithKey k1 h3 iStaticPub
+        !encStaticPub = encryptAndTag k1 h3 iStaticPub
         !h4 = mixHash h3 encStaticPub
         !h5 = mixHash h4 rePub
     in h5

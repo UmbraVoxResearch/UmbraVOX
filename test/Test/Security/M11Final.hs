@@ -39,7 +39,7 @@ import UmbraVox.Crypto.StealthAddress
     )
 import UmbraVox.Network.Noise.Handshake
     ( noiseHandshakeInitiator, noiseHandshakeResponder
-    , encryptWithKey, decryptWithKey
+    , encryptAndTag, decryptAndVerify
     , initHash, initCK, mixHash, hkdfCK
     )
 import UmbraVox.Network.Transport.Loopback (newLoopbackPair)
@@ -435,7 +435,7 @@ testHA012SafetyNumberKeyBinding = do
 --             allow state confusion and processing of attacker-controlled
 --             bytes as DH material.
 -- Fix:        noiseHandshakeResponder validates msg1 length:
---             BS.length msg1 < (32 + 32 + hsHmacLen=32) -> pure Nothing.
+--             BS.length msg1 < (32 + 32 + hsTagLen=16) -> pure Nothing.
 -- Verified:   (a) 32-byte payload (msg2 format): responder returns Nothing.
 --             (b) 96-byte all-zero payload (valid length, bad crypto):
 --             responder also returns Nothing (DH decryption fails).
@@ -529,12 +529,12 @@ testSM008PQXDHPartialAbort = do
 -- Vulnerability: Plaintext static key in msg1 allows a global passive
 --             adversary to build a deanonymisation database correlating
 --             sessions to long-term initiator identities.
--- Fix:        encryptWithKey (Handshake.hs) encrypts iStaticPub under k1.
+-- Fix:        encryptAndTag (Handshake.hs) encrypts iStaticPub under k1.
 --             The output is 64 bytes (32 ciphertext + 32 HMAC tag), not the
 --             32-byte plaintext key.
--- Verified:   (a) encryptWithKey output /= plaintext static key (not plaintext).
+-- Verified:   (a) encryptAndTag output /= plaintext static key (not plaintext).
 --             (b) Encrypted output is longer than 32 bytes (has HMAC).
---             (c) decryptWithKey correctly recovers the original static key.
+--             (c) decryptAndVerify correctly recovers the original static key.
 --             (d) A full loopback handshake completes: responder recovers
 --             the initiator's static public key via decryption.
 ------------------------------------------------------------------------
@@ -557,14 +557,14 @@ testMT012HandshakeIdentityHiding = do
         dhES     = mustX25519 eSec rPub
         ck0      = initCK
         (_, k1)  = hkdfCK ck0 dhES
-        encStatic = encryptWithKey k1 h3 iPub
+        encStatic = encryptAndTag k1 h3 iPub
 
     ok1 <- assertEq "MT-012 encrypted static key /= plaintext static key"
                True (encStatic /= iPub)
     ok2 <- assertEq "MT-012 encrypted static key length > 32 (ciphertext + HMAC)"
                True (BS.length encStatic > 32)
-    let mDecrypted = decryptWithKey k1 h3 encStatic
-    ok3 <- assertEq "MT-012 decryptWithKey recovers original static public key"
+    let mDecrypted = decryptAndVerify k1 h3 encStatic
+    ok3 <- assertEq "MT-012 decryptAndVerify recovers original static public key"
                (Just iPub) mDecrypted
 
     -- (d) Full loopback handshake: responder recovers initiator static pubkey.

@@ -386,7 +386,7 @@ func createBuilderSourceDisk(repoRoot, tmpDir string) (string, error) {
 		"--exclude=build",
 		"--exclude=result",
 		"-cf", "-", ".")
-	tarExtract := exec.Command("tar", "-xf", "-", "-C", srcDir)
+	tarExtract := exec.Command("tar", "-xf", "-", "-C", srcDir, "--no-same-owner", "--no-same-permissions")
 
 	pipe, err := tarCreate.StdoutPipe()
 	if err != nil {
