@@ -6,6 +6,16 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 
 ## [Unreleased]
 
+### v0.5.16 — vm-init Go binary, command wiring, cloud-init helpers
+- vm-init Go binary (328 lines): replaces generated shell init script
+  for in-guest VM setup (mount, copy, cache, env, exec/interactive modes)
+- Cloud-init helpers: pkg/disk/cloudinit.go for seed disks + init ISOs
+- ./uv vm signal test — wired to Go signal-test binary
+- ./uv verify vectors — wired to Go fstar-eval binary
+- source.go: auto-cross-compiles vm-init into source disk
+- cmd_exec.go: Go binary primary, shell fallback
+- Future platform targets: Redox, TempleOS, ChromeOS, Plan 9, Inferno
+
 ### v0.5.15 — signal-test + fstar-eval Go tools, SQLite3 API cleanup, future targets
 - Shell-to-Go migration: signal-test Go tool (687 lines, replaces 1157-line vm-signal-test.sh), wired as `./uv vm signal test`
 - Shell-to-Go migration: fstar-eval Go tool (498 lines, replaces fstar-eval-vectors.sh vector evaluator)
