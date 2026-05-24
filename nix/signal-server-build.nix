@@ -17,22 +17,21 @@
 #   network access, so the bootstrap is a two-pass process:
 #
 #   Pass 1 — Obtain the FOD hash:
-#     1. Run: make vm-signal-server-build-jar 2>&1 | tee build/signal-server-build.log
+#     1. Run: ./uv vm signal build-jar 2>&1 | tee build/signal-server-build.log
 #     2. The build VM boots, runs nix-build, Maven fetches deps.
 #     3. nix-build fails with "hash mismatch" and prints the correct hash.
-#     4. Run: make vm-signal-server-hash
-#        (auto-extracts the hash and patches this file)
+#     4. Run: ./uv vm signal extract-hash
+#        (auto-extracts the hash from the log and patches this file)
 #     Or manually: copy the "got: sha256-..." value and paste below.
 #
 #   Pass 2 — Build the JAR:
-#     1. Run: make vm-signal-server-build-jar  (again, with correct hash)
+#     1. Run: ./uv vm signal build-jar  (again, with correct hash)
 #     2. Phase 1 succeeds (hash matches), Phase 2 builds the JAR offline.
 #     3. JAR lands in build/signal-server-jar/signal-server.jar.
 #
 #   Pass 3 — Build and boot runtime VM:
-#     1. Run: make vm-signal-server-build  (bakes JAR into runtime image)
-#     2. Run: make vm-signal-server        (boots runtime VM)
-#     3. Run: make vm-signal-server-check  (health-checks services)
+#     1. Run: ./uv vm signal run    (boots runtime VM with pre-built JAR)
+#     2. Run: ./uv vm signal health (health-checks services)
 #
 #   WHAT'S NEEDED TO COMPLETE THE BUILD:
 #   - [x] Source pinning (signalServerSrc fetchFromGitHub — done)
@@ -72,8 +71,8 @@ let
     outputHashAlgo = "sha256";
     outputHashMode = "recursive";
     # TODO(M19.4.5): Compute FOD hash by running Stage 1 build VM:
-    #   make vm-signal-server-build-jar 2>&1 | tee build/signal-server-build.log
-    #   make vm-signal-server-hash   # auto-extracts and patches this file
+    #   ./uv vm signal build-jar 2>&1 | tee build/signal-server-build.log
+    #   ./uv vm signal extract-hash   # auto-extracts and patches this file
     # The first run will fail with a hash mismatch.  Nix prints:
     #   error: hash mismatch ...
     #     specified: sha256-AAAA...
@@ -84,11 +83,18 @@ let
     # The hash is empty until the first successful network fetch.
     # This is intentional: FOD hashes cannot be computed without
     # actually running Maven with network access (inside the build VM).
-    outputHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    # Deterministic hash: SOURCE_DATE_EPOCH=469105871 (1984-11-11) +
+    # timestamp normalization + metadata cleanup.
+    outputHash = "sha256-mi7sRP2cDdvY/lWZHNjXbs0XbyWt0S+EYUFMSiQapDo=";
 
     buildPhase = ''
       export HOME=$TMPDIR
       export JAVA_HOME=${pkgs.jdk21_headless}
+
+      # Deterministic timestamps: Maven metadata includes download
+      # timestamps. SOURCE_DATE_EPOCH makes tools produce consistent
+      # output. We also normalize file timestamps after download.
+      export SOURCE_DATE_EPOCH=469105871
 
       # Download all dependencies to a local repo
       mvn -B -ntp dependency:go-offline \
@@ -118,6 +124,9 @@ let
       find $out -name 'maven-metadata-*.xml' -delete
       find $out -name '*.lastUpdated' -delete
       find $out -name 'resolver-status.properties' -delete
+
+      # Normalize all file timestamps to SOURCE_DATE_EPOCH
+      find $out -exec touch -d @$SOURCE_DATE_EPOCH {} + 2>/dev/null || true
     '';
 
     installPhase = "true";  # output is already $out (the maven repo)

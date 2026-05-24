@@ -61,8 +61,7 @@ func Preflight(vmImagePath string, requireImage bool) error {
 	ok := true
 
 	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
-		log.Fail("UV", "/dev/kvm not found; KVM required")
-		ok = false
+		log.Warn("UV", "/dev/kvm not found; falling back to TCG (slow)")
 	}
 	if _, err := exec.LookPath("qemu-system-x86_64"); err != nil {
 		log.Fail("UV", "qemu-system-x86_64 not on PATH")

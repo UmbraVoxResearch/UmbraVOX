@@ -69,7 +69,7 @@ Actions:
   build-image [--on-host]    Build NixOS VM image
   clean-image                Remove cached VM image
   smoke [TARGET]             Platform smoke (freebsd, openbsd, netbsd, illumos, dragonfly, arm64)
-  signal build-jar|run|health Signal Server VM
+  signal build-jar|extract-hash|run|health Signal Server VM
   integration [--dual-lan]   Multi-VM integration test
   info                       VM config diagnostics
 `)
@@ -558,7 +558,7 @@ func vmSmoke(args []string) int {
 
 func vmSignal(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: ./uv vm signal build-jar|run|health")
+		fmt.Fprintln(os.Stderr, "Usage: ./uv vm signal build-jar|extract-hash|run|health")
 		return 2
 	}
 
@@ -586,6 +586,8 @@ func vmSignal(args []string) int {
 	switch args[0] {
 	case "build-jar":
 		signalCmd = "build-jar"
+	case "extract-hash":
+		signalCmd = "extract-hash"
 	case "run":
 		signalCmd = "interactive"
 	case "health":

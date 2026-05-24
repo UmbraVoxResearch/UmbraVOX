@@ -31,12 +31,19 @@ ACTIVE WORK
   [~] M13.7 F* infrastructure (partial)
   [x] M13.11.4.h Coq primality: self-contained via pocklington_criterion axiom (225d49e)
   [~] M13.13.6 Verify all F* specs pass in VM
-    Note: z3rlimit tuned to 300. VM exec path drops command (ANSI escape
-    issue partially fixed in 0fb3745). Needs interactive VM debugging.
+    Note: ANSI escape fix applied (v0.5.1). fstar-verify now detects
+    UMBRAVOX_VM=1 and suppresses color output. Ready for VM testing
+    with ./uv verify.
 
 [~] M19 Signal bridge (remaining)
   [~] M19.4.5 Fill FOD hash for Signal-Server Maven deps
-    Note: ./uv vm signal build-jar target added. Signal Server build VM
-    image derivation fails — needs nix-build debugging for vm-signal-server.nix.
+    Source URL verified: signalapp/Signal-Server v9.99.1 exists on GitHub.
+    FOD hash cannot be computed without KVM (Maven must run with network).
+    extract-hash subcommand added to vm-signal tool to automate patching.
+    Steps to complete (requires KVM host):
+      1. ./uv vm signal build-jar 2>&1 | tee build/signal-server-build.log
+      2. ./uv vm signal extract-hash
+         (parses log, patches nix/signal-server-build.nix with correct hash)
+      3. ./uv vm signal build-jar  (should succeed with correct hash)
   [~] M19.4.6 Complete Signal-Server JAR build (blocked on M19.4.5)
   [~] M19.4.7 Health endpoint verification (blocked on M19.4.6)

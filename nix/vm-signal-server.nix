@@ -71,14 +71,17 @@ let
     ];
 
     networking.hostName = lib.mkForce "umbravox-signal-build";
+    boot.loader.timeout = 0;
 
-    # Nix daemon for in-VM builds
+    # Nix daemon for in-VM builds (vm-base.nix sets nix.enable=false)
+    nix.enable = lib.mkForce true;
     nix.settings = {
       experimental-features = [ "nix-command" ];
-      # Sandbox disabled — this is a single-purpose build VM, not multi-user.
-      # Avoids needing nixbld users while keeping the build simple.
       sandbox = false;
+      trusted-users = [ "root" ];
     };
+    # Ensure nixbld group has members (required even with sandbox=false)
+    nix.nrBuildUsers = 4;
 
     environment.systemPackages = with pkgs; [
       nix
@@ -123,36 +126,40 @@ let
           mkdir -p /mnt/src
           mount -o ro /dev/vdb /mnt/src 2>/dev/null || true
 
-          # Run nix-build on the FOD-based build expression
-          # Phase 1 (FOD): fetches Maven deps with network (hash-locked)
-          # Phase 2: builds JAR offline using cached deps
-          echo "=== Running nix-build (FOD Maven deps + offline JAR build) ==="
-          echo "  This takes several minutes on first run..."
-          echo ""
-
-          if [ -f /mnt/src/nix/signal-server-build.nix ]; then
-            BUILD_NIX=/mnt/src/nix/signal-server-build.nix
-          else
-            # Fallback: copy from the nix store source
-            BUILD_NIX=${./signal-server-build.nix}
-          fi
-
-          nix-build "$BUILD_NIX" -o /tmp/signal-server-result \
+          # Clone Signal-Server source
+          SIGNAL_SRC=/tmp/signal-server-src
+          echo "=== Cloning Signal-Server v9.99.1 ==="
+          git clone --depth 1 --branch v9.99.1 \
+            https://github.com/signalapp/Signal-Server.git "$SIGNAL_SRC" \
             || {
               echo "BUILD_RESULT=FAIL"
-              echo "nix-build failed. Check output above."
-              echo ""
-              echo "If the FOD hash is wrong, update outputHash in"
-              echo "nix/signal-server-build.nix with the hash from the error."
+              echo "git clone failed."
+              systemctl poweroff
+              exit 1
+            }
+          cd "$SIGNAL_SRC"
+
+          # Build JAR with Maven (network for dependency downloads)
+          echo "=== Building Signal-Server JAR with Maven ==="
+          mvn -B -ntp package -pl service -am -DskipTests \
+            || {
+              echo "BUILD_RESULT=FAIL"
+              echo "Maven build failed."
               systemctl poweroff
               exit 1
             }
 
           echo "=== Build complete ==="
-          ls -la /tmp/signal-server-result/lib/signal-server.jar
+          JAR=$(find service/target -name 'service-*.jar' -not -name '*-sources*' -not -name '*-tests*' | head -1)
+          if [ -z "$JAR" ]; then
+            echo "BUILD_RESULT=FAIL"
+            echo "JAR not found in service/target/"
+            ls -la service/target/ 2>/dev/null
+            systemctl poweroff
+            exit 1
+          fi
 
-          # Copy JAR to output (host picks it up via 9p)
-          cp /tmp/signal-server-result/lib/signal-server.jar /output/signal-server.jar
+          cp "$JAR" /output/signal-server.jar
           echo "BUILD_RESULT=PASS"
           echo "JAR copied to /output/signal-server.jar"
           ls -lh /output/signal-server.jar
@@ -171,7 +178,7 @@ let
     configuration = buildVmConfig;
   };
 
-  buildVmImage = import (pkgs.path + "/nixos/lib/make-disk-image.nix") {
+  buildVmImage = import ./make-disk-image.nix {
     inherit pkgs;
     lib = pkgs.lib;
     config = buildVmNixos.config;
@@ -195,6 +202,7 @@ let
     ];
 
     networking.hostName = lib.mkForce "umbravox-signal";
+    boot.loader.timeout = 0;
 
     services.postgresql = {
       enable = true;
@@ -316,7 +324,7 @@ let
     configuration = runtimeVmConfig;
   };
 
-  runtimeImage = import (pkgs.path + "/nixos/lib/make-disk-image.nix") {
+  runtimeImage = import ./make-disk-image.nix {
     inherit pkgs;
     lib = pkgs.lib;
     config = runtimeNixos.config;

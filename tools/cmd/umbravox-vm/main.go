@@ -102,7 +102,7 @@ VM actions:
   clean-image                Remove cached VM image
   smoke [TARGET]             Platform smoke test
   seed build|clean           Seed image management
-  signal build-jar|run|health Signal Server VM
+  signal build-jar|extract-hash|run|health Signal Server VM
   integration [--dual-lan]   Multi-VM integration test
   info                       VM config diagnostics
 
