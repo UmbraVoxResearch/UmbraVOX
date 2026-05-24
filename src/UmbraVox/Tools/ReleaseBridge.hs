@@ -371,6 +371,20 @@ createSourceDisk = do
         _ -> do
             hPutStrLn stderr "[VM-SMOKE] git archive failed"
             exitWith (ExitFailure 1)
+    -- Build Go vm-smoke binary for the guest (static, linux/amd64)
+    hPutStrLn stderr "[VM-SMOKE] building Go vm-smoke binary..."
+    let binDir = srcDir </> "tools" </> "bin"
+    createDirectoryIfMissing True binDir
+    ecGo <- runScript "bash" ["-c",
+        "cd " ++ (srcDir </> "tools") ++
+        " && CGO_ENABLED=0 GOOS=linux GOARCH=amd64" ++
+        " go build -o " ++ (binDir </> "vm-smoke") ++
+        " ./cmd/vm-smoke"]
+    case ecGo of
+        ExitSuccess ->
+            hPutStrLn stderr "[VM-SMOKE] vm-smoke binary built"
+        _ ->
+            hPutStrLn stderr "[VM-SMOKE] WARNING: Go vm-smoke build failed; falling back to shell script"
     hPutStrLn stderr "[VM-SMOKE] creating source disk..."
     ec <- runScript "genext2fs" ["-b", "524288", "-d", srcDir, diskPath]
     -- Clean up temp source dir

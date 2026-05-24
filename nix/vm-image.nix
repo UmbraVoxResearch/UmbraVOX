@@ -108,22 +108,23 @@ let
           set -euo pipefail
           export PATH=/run/current-system/sw/bin:/run/current-system/sw/sbin:$PATH
 
-          # Offline cabal config (no network in guest)
-          mkdir -p /root/.cabal
-          cat > /root/.cabal/config << 'CABALEOF'
-offline: True
-nix: False
-CABALEOF
-
-          # Mount source disk and delegate to the in-guest script
+          # Mount source disk to check for vm-dev mode
           mkdir -p /mnt/src
-          mount -o ro /dev/vdb /mnt/src
+          mount -o ro /dev/vdb /mnt/src 2>/dev/null || true
           # vm-dev/vm-build/vm-test inject .vm-init.sh; skip smoke in that mode.
           if [ -f /mnt/src/.vm-init.sh ]; then
             echo "[VM-SMOKE] vm-dev mode detected (.vm-init.sh present); skipping smoke pipeline."
+            umount /mnt/src 2>/dev/null || true
             exit 0
           fi
-          exec /run/current-system/sw/bin/bash /mnt/src/scripts/vm-smoke-run.sh
+          # Delegate to the Go vm-smoke binary (pre-built on the source disk).
+          # The binary handles source mounting internally (detects already-mounted).
+          if [ -x /mnt/src/tools/bin/vm-smoke ]; then
+            exec /mnt/src/tools/bin/vm-smoke run
+          else
+            echo "[VM-SMOKE] Go binary not found; falling back to shell script"
+            exec /run/current-system/sw/bin/bash /mnt/src/scripts/vm-smoke-run.sh
+          fi
         '';
         StandardOutput = "journal+console";
         StandardError = "journal+console";

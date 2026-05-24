@@ -13,6 +13,7 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"os"
@@ -138,18 +139,18 @@ func shouldRun(stage, skip, only string) bool {
 	return true
 }
 
+// isMountpoint returns true if the given path is a mount point.
+func isMountpoint(path string) bool {
+	err := exec.Command("mountpoint", "-q", path).Run()
+	return err == nil
+}
+
 // runStep executes a command, prints pass/fail, and returns true on success.
 func runStep(label string, verbose bool, name string, args ...string) bool {
 	fmt.Printf("\n-- %s --\n", label)
 	cmd := exec.Command(name, args...)
-	cmd.Dir = "" // inherit working directory
-	if verbose {
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-	} else {
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-	}
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 
 	err := cmd.Run()
 	if err == nil {
@@ -183,6 +184,119 @@ func findBin(workDir, name string) string {
 	return result
 }
 
+// runLicenseCheck walks src/ and test/ looking for .hs files missing
+// an SPDX-License-Identifier header in the first 5 lines.
+func runLicenseCheck(workDir string) bool {
+	fmt.Println("\n-- license --")
+	missing := 0
+	dirs := []string{"src", "test"}
+	for _, dir := range dirs {
+		fullDir := filepath.Join(workDir, dir)
+		filepath.Walk(fullDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() {
+				return nil
+			}
+			if !strings.HasSuffix(path, ".hs") {
+				return nil
+			}
+			f, ferr := os.Open(path)
+			if ferr != nil {
+				return nil
+			}
+			defer f.Close()
+			scanner := bufio.NewScanner(f)
+			found := false
+			for i := 0; i < 5 && scanner.Scan(); i++ {
+				if strings.Contains(scanner.Text(), "SPDX-License-Identifier") {
+					found = true
+					break
+				}
+			}
+			if !found {
+				missing++
+			}
+			return nil
+		})
+	}
+	if missing > 0 {
+		fmt.Printf("  %d files missing SPDX header\n", missing)
+		fmt.Println("  STEP FAIL: license")
+		return false
+	}
+	fmt.Println("  All files have SPDX headers")
+	fmt.Println("  STEP PASS: license")
+	return true
+}
+
+// runFormatCheck checks for tabs and trailing whitespace in .hs files
+// under src/ and test/.
+func runFormatCheck(workDir string) bool {
+	fmt.Println("\n-- format-check --")
+	tabs := 0
+	trailing := 0
+	dirs := []string{"src", "test"}
+	for _, dir := range dirs {
+		fullDir := filepath.Join(workDir, dir)
+		filepath.Walk(fullDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() {
+				return nil
+			}
+			if !strings.HasSuffix(path, ".hs") {
+				return nil
+			}
+			f, ferr := os.Open(path)
+			if ferr != nil {
+				return nil
+			}
+			defer f.Close()
+			scanner := bufio.NewScanner(f)
+			for scanner.Scan() {
+				line := scanner.Text()
+				if strings.Contains(line, "\t") {
+					tabs++
+				}
+				if len(line) > 0 && (line[len(line)-1] == ' ' || line[len(line)-1] == '\t') {
+					trailing++
+				}
+			}
+			return nil
+		})
+	}
+	if tabs > 0 || trailing > 0 {
+		fmt.Printf("  tabs=%d trailing-ws=%d\n", tabs, trailing)
+		fmt.Println("  STEP FAIL: format-check")
+		return false
+	}
+	fmt.Println("  Format OK")
+	fmt.Println("  STEP PASS: format-check")
+	return true
+}
+
+// writeFstarCache writes .checked files to /dev/vdc if that block device
+// exists. This is used by the two-stage image build to extract cache files.
+func writeFstarCache(workDir string) {
+	if _, err := os.Stat("/dev/vdc"); err != nil {
+		return
+	}
+	fmt.Println("  writing F* cache to /dev/vdc...")
+	os.MkdirAll("/mnt/cache-out", 0o755)
+	exec.Command("mount", "/dev/vdc", "/mnt/cache-out").Run()
+	if !isMountpoint("/mnt/cache-out") {
+		return
+	}
+
+	cacheDir := filepath.Join(workDir, "test/evidence/formal-proofs/fstar/_cache")
+	entries, _ := filepath.Glob(filepath.Join(cacheDir, "*.checked"))
+	for _, e := range entries {
+		exec.Command("cp", e, "/mnt/cache-out/").Run()
+	}
+	exec.Command("sync").Run()
+
+	written, _ := filepath.Glob("/mnt/cache-out/*.checked")
+	fmt.Printf("  wrote %d .checked files to /dev/vdc\n", len(written))
+	exec.Command("umount", "/mnt/cache-out").Run()
+}
+
 func runSmoke(workDir, outputDir, skip, only string, verbose bool) int {
 	fmt.Println("========================================")
 	fmt.Println("  UmbraVOX Isolated VM Smoke Pipeline")
@@ -199,7 +313,15 @@ func runSmoke(workDir, outputDir, skip, only string, verbose bool) int {
 
 	// Mount source disk
 	os.MkdirAll("/mnt/src", 0o755)
-	exec.Command("mount", "-o", "ro", "/dev/vdb", "/mnt/src").Run()
+	if isMountpoint("/mnt/src") {
+		fmt.Println("source disk already mounted at /mnt/src")
+	} else if err := exec.Command("mount", "-o", "ro", "/dev/vdb", "/mnt/src").Run(); err == nil {
+		fmt.Println("source disk mounted at /mnt/src")
+	} else {
+		fmt.Println("SMOKE FAIL: cannot mount source disk /dev/vdb")
+		fmt.Println("SMOKE_RESULT=FAIL")
+		return 1
+	}
 
 	// Copy to writable workspace
 	markerPath := filepath.Join(workDir, ".vm-source-ready")
@@ -210,6 +332,14 @@ func runSmoke(workDir, outputDir, skip, only string, verbose bool) int {
 		os.WriteFile(markerPath, []byte("ready\n"), 0o644)
 	} else {
 		fmt.Println("workspace already prepared at", workDir, "(marker present)")
+	}
+
+	// Print workspace size
+	if du, err := exec.Command("du", "-sh", workDir).Output(); err == nil {
+		fields := strings.Fields(string(du))
+		if len(fields) > 0 {
+			fmt.Printf("workspace ready: %s\n", fields[0])
+		}
 	}
 
 	if err := os.Chdir(workDir); err != nil {
@@ -298,6 +428,15 @@ func runSmoke(workDir, outputDir, skip, only string, verbose bool) int {
 			fmt.Println("  STEP FAIL: verify (fstar-verify binary not found)")
 			fail++
 		}
+
+		// Report F* module results for evidence
+		if fstarBin != "" {
+			checked, _ := filepath.Glob(filepath.Join(cacheDir, "*.checked"))
+			fmt.Printf("  F* cache: %d of 17 modules cached\n", len(checked))
+		}
+
+		// Write F* cache to output disk if available
+		writeFstarCache(workDir)
 	}
 
 	// Step 4: Complexity
@@ -305,10 +444,8 @@ func runSmoke(workDir, outputDir, skip, only string, verbose bool) int {
 		if complexityBin != "" {
 			ok := runComplexityCheck(workDir, complexityBin)
 			if ok {
-				fmt.Println("  STEP PASS: complexity")
 				pass++
 			} else {
-				fmt.Println("  STEP FAIL: complexity")
 				fail++
 			}
 		} else {
@@ -319,7 +456,7 @@ func runSmoke(workDir, outputDir, skip, only string, verbose bool) int {
 
 	// Step 5: License
 	if shouldRun("license", skip, only) {
-		if runStep("license", verbose, "make", "license") {
+		if runLicenseCheck(workDir) {
 			pass++
 		} else {
 			fail++
@@ -328,7 +465,7 @@ func runSmoke(workDir, outputDir, skip, only string, verbose bool) int {
 
 	// Step 6: Format check
 	if shouldRun("format", skip, only) {
-		if runStep("format-check", verbose, "make", "format-check") {
+		if runFormatCheck(workDir) {
 			pass++
 		} else {
 			fail++
@@ -337,7 +474,8 @@ func runSmoke(workDir, outputDir, skip, only string, verbose bool) int {
 
 	// Step 7: Release
 	if shouldRun("release", skip, only) {
-		if runStep("release-linux", verbose, "make", "release-linux") {
+		releaseScript := filepath.Join(workDir, "scripts/release-package.sh")
+		if runStep("release-linux", verbose, "bash", releaseScript, "linux") {
 			pass++
 		} else {
 			fail++
@@ -427,9 +565,11 @@ func runComplexityCheck(workDir, complexityBin string) bool {
 
 	if violations > 0 {
 		fmt.Printf("  %d file(s) exceed complexity threshold.\n", violations)
+		fmt.Println("  STEP FAIL: complexity")
 		return false
 	}
 	fmt.Printf("  All %d files pass complexity check (<= 8).\n", total)
+	fmt.Println("  STEP PASS: complexity")
 	return true
 }
 
