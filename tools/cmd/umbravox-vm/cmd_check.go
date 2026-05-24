@@ -257,11 +257,11 @@ func checkComplexity() int {
 				fi
 			done`)
 		if out, _ := branchCheck.Output(); len(out) > 0 {
-			log.Warn(tag, "Generated C contains branches (should use ct_select for constant-time):")
+			log.Fail(tag, "Generated C contains branches (must use ct_select for constant-time):")
 			fmt.Fprintf(os.Stderr, "%s", out)
-		} else {
-			log.OK(tag, "Generated C: no branches (constant-time safe)")
+			return 1
 		}
+		log.OK(tag, "Generated C: no branches (constant-time safe)")
 	}
 
 	// Shell script complexity check (host-side)
