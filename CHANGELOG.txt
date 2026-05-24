@@ -6,6 +6,11 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 
 ## [Unreleased]
 
+### v0.5.14 — Shell-to-Go migration: vm-smoke, test-coqprime, release
+- Shell-to-Go migration: vm-smoke-run.sh, test-coqprime-vm.sh, release-package.sh replaced with Go binaries (tools/cmd/vm-smoke, tools/cmd/test-coqprime, tools/cmd/release)
+- nix/vm-image.nix delegates to Go smoke binary instead of shell script
+- ReleaseBridge.hs auto-builds vm-smoke into source disk
+
 ### v0.5.13 — Go complexity refactoring and PQXDH tests
 - Go complexity refactoring: vmBuildImage 27->10, execInVM 17->8 (cyclomatic complexity)
 - PQXDH unit tests: 5 test cases for post-quantum key agreement
