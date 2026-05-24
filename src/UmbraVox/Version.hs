@@ -12,7 +12,7 @@ module UmbraVox.Version
 -- | Version string, e.g. "v0.4.0".
 -- Kept in sync with the @version@ field in @UmbraVox.cabal@.
 version :: String
-version = "v0.5.0"
+version = "v0.5.1"
 
 -- | Full version with app name, e.g. "UmbraVOX v0.4.0"
 versionFull :: String
