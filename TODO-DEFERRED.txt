@@ -141,3 +141,12 @@ Bridge/network blockchain modules (3):
 
 Economics modules (2):
   - Economics.Onboarding, Economics.Cycle
+
+PERMANENTLY DEFERRED — FUTURE PLATFORM TARGETS
+  [!] Haiku OS — BeOS-compatible open source OS
+  [!] ReactOS — Windows-compatible open source OS
+  [!] Redox OS — Rust-based microkernel OS
+  [!] TempleOS — 64-bit ring-0 OS (research/educational)
+  [!] ChromeOS/ChromiumOS — Linux container (Crostini) target
+  [!] Plan 9 from Bell Labs — distributed systems research OS
+  [!] Inferno — distributed virtual machine OS (Limbo/Styx)
