@@ -205,7 +205,246 @@ parseConstants = mapMaybe parseConst
         go (c:rest)     = c : go rest
 
 parseSteps :: [String] -> [Step]
-parseSteps lns = [Step Nothing (concatMap parseOpLine (joinMultiLine lns))]
+parseSteps lns = [Step Nothing (concatMap parseOpLine (joinMultiLine (resolveRoundRefs (expandLoops lns))))]
+
+-- | Resolve @rN[idx]@ references in spec lines by substituting the
+--   actual variable name from the diagonal output state of round N.
+--   For example, @r10[0]@ becomes @r10d0_a2@, @r10[4]@ becomes @r10d3_b2@.
+--   Only applies to patterns matching @rN[digits]@ where N is a number.
+resolveRoundRefs :: [String] -> [String]
+resolveRoundRefs = map resolveLineRefs
+
+resolveLineRefs :: String -> String
+resolveLineRefs [] = []
+resolveLineRefs s@(c:rest)
+    | c == 'r' && not (null rest) && isDigit (head rest) =
+        let (numPart, after) = span isDigit rest
+        in  case after of
+                ('[':after2) ->
+                    let (idxStr, after3) = span isDigit after2
+                    in  case after3 of
+                            (']':after4)
+                                | not (null idxStr) ->
+                                    let rn = "r" ++ numPart
+                                        idx = read idxStr :: Int
+                                        varName = lookupState (diagOutputState rn) idx
+                                    in  varName ++ resolveLineRefs after4
+                            _ -> c : resolveLineRefs rest
+                _ -> c : resolveLineRefs rest
+    | otherwise = c : resolveLineRefs rest
+
+-- | Expand @loop rN from rP { ... }@ constructs into fully unrolled
+--   assignment lines matching the same naming convention used by manually
+--   unrolled rounds (e.g. @r3c0_a1 = r2d0_a2 +mod r2d3_b2@).
+--
+--   The loop body must contain @column { QR(...); ... }@ and
+--   @diagonal { QR(...); ... }@ sections.  Each @QR(a,b,c,d)@ is
+--   expanded into the 8-line quarter-round inline.
+--
+--   Lines that are not part of a loop construct pass through unchanged.
+expandLoops :: [String] -> [String]
+expandLoops [] = []
+expandLoops (l:rest)
+    | "loop " `isPrefixOf` strip l =
+        case parseLoopHeader (strip l) of
+            Just (roundName, prevName) ->
+                let (bodyLines, remaining) = collectLoopBody rest
+                    expanded = expandOneLoop roundName prevName bodyLines
+                in  expanded ++ expandLoops remaining
+            Nothing -> l : expandLoops rest
+    | otherwise = l : expandLoops rest
+
+-- | Parse a loop header line like @loop r3 from r2 {@ and return
+--   @Just ("r3", "r2")@.  Returns Nothing if the line does not match.
+parseLoopHeader :: String -> Maybe (String, String)
+parseLoopHeader s =
+    case words s of
+        ("loop" : rn : "from" : rp : _) ->
+            Just (filter (\c -> isAlphaNum c || c == '_') rn,
+                  filter (\c -> isAlphaNum c || c == '_') rp)
+        _ -> Nothing
+
+-- | Collect the loop body lines.  Because @collectBlock@ in
+--   @parseSection@ strips standalone @}@ lines before we see them,
+--   we cannot rely on brace-matching.  Instead, the body consists of
+--   all immediately following lines that are loop-body content:
+--   @column@, @diagonal@, @QR(...)@, bare braces, or blank lines.
+--   The first line that looks like an assignment or another @loop@
+--   header terminates the body.
+collectLoopBody :: [String] -> ([String], [String])
+collectLoopBody = go []
+  where
+    go acc [] = (reverse acc, [])
+    go acc (x:xs)
+        | isLoopBodyLine (strip x) = go (x : acc) xs
+        | otherwise                = (reverse acc, x : xs)
+    isLoopBodyLine s
+        | null s                     = True   -- blank / whitespace-only
+        | "column" `isPrefixOf` s    = True
+        | "diagonal" `isPrefixOf` s  = True
+        | "QR(" `isPrefixOf` s       = True
+        | s == "{"                   = True
+        | s == "}"                   = True
+        | otherwise                  = False
+
+-- | Expand a single loop into unrolled assignment lines.
+--   @roundName@ is e.g. "r3", @prevName@ is e.g. "r2".
+expandOneLoop :: String -> String -> [String] -> [String]
+expandOneLoop rn rp bodyLines =
+    let qrs = parseLoopQRs bodyLines
+        colQRs = [ indices | ("column", indices) <- qrs ]
+        diagQRs = [ indices | ("diagonal", indices) <- qrs ]
+        -- Build the state mapping from the previous round's diagonal outputs.
+        -- After a diagonal round rP, the state vector maps as:
+        --   [0] =rPd0_a2  [1] =rPd1_a2  [2] =rPd2_a2  [3] =rPd3_a2
+        --   [4] =rPd3_b2  [5] =rPd0_b2  [6] =rPd1_b2  [7] =rPd2_b2
+        --   [8] =rPd2_c2  [9] =rPd3_c2  [10]=rPd0_c2  [11]=rPd1_c2
+        --   [12]=rPd1_d2  [13]=rPd2_d2  [14]=rPd3_d2  [15]=rPd0_d2
+        prevState = diagOutputState rp
+        -- Generate column round assignments
+        colOps = concatMap (\(qrIdx, (a,b,c,d)) ->
+            expandQR rn "c" qrIdx prevState a b c d)
+            (zip [0..] colQRs)
+        -- After column round, the state vector maps as:
+        --   [i*4+j] for position = column QR j, output a/b/c/d
+        colState = colOutputState rn
+        -- Generate diagonal round assignments
+        diagOps = concatMap (\(qrIdx, (a,b,c,d)) ->
+            expandQR rn "d" qrIdx colState a b c d)
+            (zip [0..] diagQRs)
+    in  colOps ++ diagOps
+
+-- | Parse QR calls from loop body lines.  Returns a list of
+--   @(section, (a, b, c, d))@ where section is "column" or "diagonal"
+--   and a,b,c,d are the state position indices.
+--
+--   Lines starting with @column@ or @diagonal@ switch the current section
+--   AND may contain QR calls on the same line (e.g. @column { QR(0,4,8,12); ... }@).
+parseLoopQRs :: [String] -> [(String, (Int, Int, Int, Int))]
+parseLoopQRs = go "column"
+  where
+    go _ [] = []
+    go section (l:ls)
+        | "column" `isPrefixOf` stripped =
+            let qrs = extractQRCalls stripped
+            in  map (\idx -> ("column", idx)) qrs ++ go "column" ls
+        | "diagonal" `isPrefixOf` stripped =
+            let qrs = extractQRCalls stripped
+            in  map (\idx -> ("diagonal", idx)) qrs ++ go "diagonal" ls
+        | otherwise =
+            let qrs = extractQRCalls stripped
+            in  map (\idx -> (section, idx)) qrs ++ go section ls
+      where stripped = strip l
+
+-- | Extract QR calls from a line.  Handles both bare @QR(a,b,c,d)@ and
+--   semicolon-separated sequences like @QR(0,4,8,12); QR(1,5,9,13)@.
+extractQRCalls :: String -> [(Int, Int, Int, Int)]
+extractQRCalls [] = []
+extractQRCalls s =
+    case findQR s of
+        Nothing -> []
+        Just (indices, rest) -> indices : extractQRCalls rest
+  where
+    findQR [] = Nothing
+    findQR ('Q':'R':'(':cs) =
+        case span (/= ')') cs of
+            (args, ')':remaining) ->
+                case map (readInt . strip) (splitComma args) of
+                    [Just a, Just b, Just c, Just d] ->
+                        Just ((a, b, c, d), remaining)
+                    _ -> findQR remaining
+            _ -> Nothing
+    findQR (_:cs) = findQR cs
+
+    splitComma :: String -> [String]
+    splitComma [] = []
+    splitComma xs = case break (== ',') xs of
+        (pre, [])    -> [pre]
+        (pre, _:suf) -> pre : splitComma suf
+
+    readInt :: String -> Maybe Int
+    readInt [] = Nothing
+    readInt xs
+        | all isDigit xs = Just (read xs)
+        | otherwise      = Nothing
+
+-- | Build the state vector mapping after a diagonal round.
+--
+--   After diagonal round with prefix P (applying QR to positions
+--   (0,5,10,15), (1,6,11,12), (2,7,8,13), (3,4,9,14)):
+--
+--   The diagonal QR K writes outputs to positions determined by the
+--   diagonal pattern.  The resulting state is:
+--
+--   > [0] =Pd0_a2  [1] =Pd1_a2  [2] =Pd2_a2  [3] =Pd3_a2
+--   > [4] =Pd3_b2  [5] =Pd0_b2  [6] =Pd1_b2  [7] =Pd2_b2
+--   > [8] =Pd2_c2  [9] =Pd3_c2  [10]=Pd0_c2  [11]=Pd1_c2
+--   > [12]=Pd1_d2  [13]=Pd2_d2  [14]=Pd3_d2  [15]=Pd0_d2
+diagOutputState :: String -> [(Int, String)]
+diagOutputState p =
+    [ ( 0, p ++ "d0_a2"), ( 1, p ++ "d1_a2"), ( 2, p ++ "d2_a2"), ( 3, p ++ "d3_a2")
+    , ( 4, p ++ "d3_b2"), ( 5, p ++ "d0_b2"), ( 6, p ++ "d1_b2"), ( 7, p ++ "d2_b2")
+    , ( 8, p ++ "d2_c2"), ( 9, p ++ "d3_c2"), (10, p ++ "d0_c2"), (11, p ++ "d1_c2")
+    , (12, p ++ "d1_d2"), (13, p ++ "d2_d2"), (14, p ++ "d3_d2"), (15, p ++ "d0_d2")
+    ]
+
+-- | Build the state vector mapping after a column round.
+--
+--   After column round with prefix R (applying QR to positions
+--   (0,4,8,12), (1,5,9,13), (2,6,10,14), (3,7,11,15)):
+--
+--   Column QR K touches positions (K, K+4, K+8, K+12) as (a,b,c,d):
+--
+--   > [0] =Rc0_a2  [1] =Rc1_a2  [2] =Rc2_a2  [3] =Rc3_a2
+--   > [4] =Rc0_b2  [5] =Rc1_b2  [6] =Rc2_b2  [7] =Rc3_b2
+--   > [8] =Rc0_c2  [9] =Rc1_c2  [10]=Rc2_c2  [11]=Rc3_c2
+--   > [12]=Rc0_d2  [13]=Rc1_d2  [14]=Rc2_d2  [15]=Rc3_d2
+colOutputState :: String -> [(Int, String)]
+colOutputState r =
+    [ ( 0, r ++ "c0_a2"), ( 1, r ++ "c1_a2"), ( 2, r ++ "c2_a2"), ( 3, r ++ "c3_a2")
+    , ( 4, r ++ "c0_b2"), ( 5, r ++ "c1_b2"), ( 6, r ++ "c2_b2"), ( 7, r ++ "c3_b2")
+    , ( 8, r ++ "c0_c2"), ( 9, r ++ "c1_c2"), (10, r ++ "c2_c2"), (11, r ++ "c3_c2")
+    , (12, r ++ "c0_d2"), (13, r ++ "c1_d2"), (14, r ++ "c2_d2"), (15, r ++ "c3_d2")
+    ]
+
+-- | Look up a state position index in the state mapping.
+lookupState :: [(Int, String)] -> Int -> String
+lookupState stateMap idx =
+    case lookup idx stateMap of
+        Just v  -> v
+        Nothing -> "UNDEFINED_" ++ show idx
+
+-- | Expand a single QR(a,b,c,d) into 8 assignment lines.
+--
+--   Given round prefix @rn@, type @ty@ ("c" for column, "d" for diagonal),
+--   QR index @qrIdx@, the current state mapping, and position indices
+--   @aPos, bPos, cPos, dPos@, generate lines like:
+--
+--   > rNcK_a1 = prev[aPos] +mod prev[bPos]
+--   > rNcK_d1 = (prev[dPos] ^ rNcK_a1) <<< 16
+--   > rNcK_c1 = prev[cPos] +mod rNcK_d1
+--   > rNcK_b1 = (prev[bPos] ^ rNcK_c1) <<< 12
+--   > rNcK_a2 = rNcK_a1 +mod rNcK_b1
+--   > rNcK_d2 = (rNcK_d1 ^ rNcK_a2) <<< 8
+--   > rNcK_c2 = rNcK_c1 +mod rNcK_d2
+--   > rNcK_b2 = (rNcK_b1 ^ rNcK_c2) <<< 7
+expandQR :: String -> String -> Int -> [(Int, String)]
+         -> Int -> Int -> Int -> Int -> [String]
+expandQR rn ty qrIdx stateMap aPos bPos cPos dPos =
+    let prefix = rn ++ ty ++ show qrIdx ++ "_"
+        aIn = lookupState stateMap aPos
+        bIn = lookupState stateMap bPos
+        cIn = lookupState stateMap cPos
+        dIn = lookupState stateMap dPos
+    in  [ "    " ++ prefix ++ "a1 = " ++ aIn ++ " +mod " ++ bIn
+              ++ "; " ++ prefix ++ "d1 = (" ++ dIn ++ " ^ " ++ prefix ++ "a1) <<< 16"
+        , "    " ++ prefix ++ "c1 = " ++ cIn ++ " +mod " ++ prefix ++ "d1"
+              ++ "; " ++ prefix ++ "b1 = (" ++ bIn ++ " ^ " ++ prefix ++ "c1) <<< 12"
+        , "    " ++ prefix ++ "a2 = " ++ prefix ++ "a1 +mod " ++ prefix ++ "b1"
+              ++ "; " ++ prefix ++ "d2 = (" ++ prefix ++ "d1 ^ " ++ prefix ++ "a2) <<< 8"
+        , "    " ++ prefix ++ "c2 = " ++ prefix ++ "c1 +mod " ++ prefix ++ "d2"
+              ++ "; " ++ prefix ++ "b2 = (" ++ prefix ++ "b1 ^ " ++ prefix ++ "c2) <<< 7"
+        ]
 
 -- | Join multi-line constructs into single logical lines.
 --
@@ -997,8 +1236,10 @@ cSource ast name =
                 ws = detectWordSize (specConstants ast)
                 helperMacros = concatMap (cHelperMacro ws) helperOps
                 bodySteps = [Step Nothing bodyOps]
+                needsCTHelpers = usesConstantTimeOps allOps
             in  unlines $
                     cHeader
+                    ++ (if needsCTHelpers then ["#include \"ct_helpers.h\""] else [])
                     ++ [""]
                     ++ cRotateMacros ws
                     ++ (if null helperMacros then [] else "" : helperMacros)
@@ -1020,6 +1261,34 @@ detectWordSize consts
     hexDigitCount ('0':'x':rest) = length (filter isHexDigit rest)
     hexDigitCount ('0':'X':rest) = length (filter isHexDigit rest)
     hexDigitCount _ = 0
+
+-- | Constant-time function names that require ct_helpers.h.
+constantTimeFunctions :: [String]
+constantTimeFunctions =
+    [ "ct_select", "ct_select32", "ct_select64"
+    , "ct_lt32", "ct_lt64"
+    , "cswap", "cmov"
+    , "constantTimeEq", "constantTimeLT"
+    , "constantTimeEqZero", "constantTimeGTE", "constantTimeSelect"
+    ]
+
+-- | Check if any operation in the list calls a constant-time helper,
+--   which requires including ct_helpers.h in the generated C file.
+usesConstantTimeOps :: [Operation] -> Bool
+usesConstantTimeOps = any opUsesCT
+  where
+    opUsesCT (Assign _ expr) = exprUsesCT expr
+    opUsesCT (IfThenElse c ts fs) =
+        exprUsesCT c || any opUsesCT ts || any opUsesCT fs
+    exprUsesCT (FunCall name args) =
+        name `elem` constantTimeFunctions
+        || (name == "IF" && length args == 3)
+        || (name == "CLAMP" && length args == 3)
+        || any exprUsesCT args
+    exprUsesCT (BinOp _ l r) = exprUsesCT l || exprUsesCT r
+    exprUsesCT (UnOp _ e) = exprUsesCT e
+    exprUsesCT (Index a i) = exprUsesCT a || exprUsesCT i
+    exprUsesCT _ = False
 
 cHeader :: [String]
 cHeader =
@@ -1154,17 +1423,28 @@ collectVarNames = go []
 
 -- | Check if an operation is a preprocessing step that cannot be directly
 --   compiled to C.  This includes:
---   - High-level functions: pad, getLE32, le_bytes, zeros, length, repeat,
+--   - High-level functions: pad, le_bytes, zeros, length, repeat,
 --     HMAC, hash_fn, clamp, encode, decode, etc.
 --   - Conditional constructs: IF ... THEN ... ELSE (parsed as Var "IF")
---   - Block indexing: block[N]
+--   - Indexing into unknown arrays (known arrays with constant indices
+--     like block[N], state[N], key[N] etc. emit live C)
 --   - Any function call to a name that is NOT a known codegen helper macro
 --     (helpers are detected dynamically by partitionHelpers).
---   These are emitted as zero-initialized placeholders.
+--   Byte unpacking functions (getLE32, getLE64, putLE32, putLE64) emit
+--   inline little-endian load/store C code.
+--   IF(cond, t, f) and CLAMP(val, lo, hi) with exactly 3 args emit as
+--   constant-time select operations (ct_select32/ct_select64).
+--   All other preprocessing ops are emitted as zero-initialized placeholders.
 isPreprocessingOp :: Operation -> Bool
+isPreprocessingOp (Assign _ (FunCall "IF" [_, _, _]))    = False  -- handled as ct_select
+isPreprocessingOp (Assign _ (FunCall "CLAMP" [_, _, _])) = False  -- handled as ct_select+ct_lt
 isPreprocessingOp (Assign _ (Var "IF"))              = True
-isPreprocessingOp (Assign _ (Index (Var "block") _)) = True
+isPreprocessingOp (Assign _ (Index (Var arr) (Lit _)))
+    | arr `elem` ["block", "state", "key", "nonce", "message", "input", "output"] = False
+isPreprocessingOp (Assign _ (Index (Var _) _))       = True  -- unknown arrays still preprocessing
 isPreprocessingOp (Assign _ (FunCall name _))
+    | name `elem` ["getLE32", "getLE64", "putLE32", "putLE64"] = False
+    | name `elem` callableFunctions                   = False
     | name `elem` preprocessingFunctions              = True
 isPreprocessingOp _ = False
 
@@ -1172,25 +1452,22 @@ isPreprocessingOp _ = False
 --   be compiled to C directly.
 preprocessingFunctions :: [String]
 preprocessingFunctions =
-    [ "pad", "getLE32", "le_bytes", "zeros", "length", "repeat"
-    , "HMAC", "hash_fn", "IF", "clamp", "CLAMP", "encode", "decode"
-    , "decodeLE", "encodeLE", "clampScalar"
-    , "concat", "truncate", "ceil", "FLOOR", "mod", "keccak_f"
+    [ "pad", "le_bytes", "zeros", "length", "repeat"
+    , "HMAC", "hash_fn", "clamp", "encode", "decode"
+    , "clampScalar"
+    , "concat", "truncate", "ceil", "FLOOR", "mod"
     , "absorb", "squeeze", "sponge", "xof"
     , "fAdd", "fSub", "fMul", "fInv", "fSquare", "fNeg", "fSqrt", "fPow"
-    , "compress", "ntt", "intt", "barrett_reduce"
+    , "ntt", "intt", "barrett_reduce"
     , "cbd", "byte_decode", "byte_encode"
     -- VRF operations (RFC 9381)
     , "SHA512", "edClamp", "ecvrf_encode_to_curve", "edScalarMul"
     , "edEncode", "reduceMod", "edBasePoint", "addMod", "mulMod"
-    , "decodeLEmod", "edDecode", "edPointSub", "constantTimeEq"
+    , "decodeLEmod", "edDecode", "edPointSub"
     -- Ed25519 extended operations (point arithmetic / encoding)
     , "edValidate", "edScalarMultBase", "edFromAffine", "edDouble"
-    , "edAdd", "edPointNegate", "cmov", "legendreSymbol"
+    , "edAdd", "edPointNegate", "legendreSymbol"
     , "bit", "setBit", "clearBit"
-    -- Constant-time helpers (Dandelion, general)
-    , "constantTimeLT", "constantTimeEqZero", "constantTimeGTE"
-    , "constantTimeSelect"
     -- PQWrapper operations (ML-KEM + AES-GCM composition)
     , "random", "MLKEM768_Encaps", "HMAC_SHA512", "HKDF_Expand"
     , "AES256GCM_Encrypt", "MLKEM768_Decaps", "AES256GCM_Decrypt"
@@ -1200,6 +1477,27 @@ preprocessingFunctions =
     , "HMAC_SHA256"
     -- Loop / iteration constructs
     , "FOR_EACH"
+    ]
+
+-- | Functions that have real C implementations and should be emitted as
+--   direct C function calls rather than preprocessing placeholders.
+--   These are either AES/Keccak round functions, hash compression helpers,
+--   XOF primitives, or constant-time operation helpers from ct_helpers.h.
+callableFunctions :: [String]
+callableFunctions =
+    -- AES round functions
+    [ "SubBytes", "ShiftRows", "MixColumns", "AddRoundKey"
+    , "InvSubBytes", "InvShiftRows", "InvMixColumns"
+    -- Keccak permutation
+    , "keccak_f"
+    -- Hash compression / XOF
+    , "compress", "xof_absorb", "xof_squeeze"
+    -- Constant-time operations (ct_helpers.h)
+    , "ct_select", "ct_select32", "ct_select64"
+    , "ct_lt32", "ct_lt64"
+    , "cswap", "cmov"
+    , "constantTimeEq", "constantTimeLT"
+    , "constantTimeEqZero", "constantTimeGTE", "constantTimeSelect"
     ]
 
 cFunction :: Int -> String -> [Param] -> [Step] -> [String]
@@ -1286,6 +1584,13 @@ hasNonMacroCall s (BinOp _ l r)    = hasNonMacroCall s l || hasNonMacroCall s r
 hasNonMacroCall s (UnOp _ e)       = hasNonMacroCall s e
 hasNonMacroCall s (Index a i)      = hasNonMacroCall s a || hasNonMacroCall s i
 hasNonMacroCall s (FunCall name args)
+    -- IF and CLAMP with 3 args emit as ct_select; never preprocessing
+    | name == "IF" && length args == 3 = any (hasNonMacroCall s) args
+    | name == "CLAMP" && length args == 3 = any (hasNonMacroCall s) args
+    -- Byte unpacking functions emit inline C; never preprocessing
+    | name `elem` ["getLE32", "getLE64", "putLE32", "putLE64"] = any (hasNonMacroCall s) args
+    -- Callable C functions emit real calls; never preprocessing
+    | name `elem` callableFunctions = any (hasNonMacroCall s) args
     -- Preprocessing functions are always non-macro
     | name `elem` preprocessingFunctions = True
     -- Otherwise, it's a valid macro call (detected as helper) - check args
@@ -1333,6 +1638,50 @@ cExpr _  (Lit l)           = l
 cExpr ws (BinOp op a b)   = cBinOp ws op (cExpr ws a) (cExpr ws b)
 cExpr ws (UnOp OpNot a)    = "(~" ++ cExpr ws a ++ ")"
 cExpr ws (Index arr idx)   = cExpr ws arr ++ "[" ++ cExpr ws idx ++ "]"
+-- Conditional emission: IF(cond, t, f) -> ct_select
+cExpr ws (FunCall "IF" [cond, tVal, fVal]) =
+    let selFn = if ws == 64 then "ct_select64" else "ct_select32"
+    in  selFn ++ "(" ++ cExpr ws cond ++ ", " ++ cExpr ws tVal ++ ", " ++ cExpr ws fVal ++ ")"
+-- CLAMP(val, lo, hi) -> ct_select(ct_lt(val, lo), lo, ct_select(ct_lt(hi, val), hi, val))
+cExpr ws (FunCall "CLAMP" [val, lo, hi]) =
+    let selFn = if ws == 64 then "ct_select64" else "ct_select32"
+        ltFn  = if ws == 64 then "ct_lt64" else "ct_lt32"
+        v = cExpr ws val
+        l = cExpr ws lo
+        h = cExpr ws hi
+    in  selFn ++ "(" ++ ltFn ++ "(" ++ v ++ ", " ++ l ++ "), " ++ l ++ ", "
+        ++ selFn ++ "(" ++ ltFn ++ "(" ++ h ++ ", " ++ v ++ "), " ++ h ++ ", " ++ v ++ "))"
+-- Byte unpacking: inline little-endian loads/stores
+cExpr ws (FunCall "getLE32" [buf, off]) =
+    let b = cExpr ws buf
+        o = cExpr ws off
+    in  "(((uint32_t)" ++ b ++ "[" ++ o ++ "]) | "
+        ++ "((uint32_t)" ++ b ++ "[" ++ o ++ "+1] << 8) | "
+        ++ "((uint32_t)" ++ b ++ "[" ++ o ++ "+2] << 16) | "
+        ++ "((uint32_t)" ++ b ++ "[" ++ o ++ "+3] << 24))"
+cExpr ws (FunCall "getLE64" [buf, off]) =
+    let b = cExpr ws buf
+        o = cExpr ws off
+    in  "(((uint64_t)" ++ b ++ "[" ++ o ++ "]) | "
+        ++ "((uint64_t)" ++ b ++ "[" ++ o ++ "+1] << 8) | "
+        ++ "((uint64_t)" ++ b ++ "[" ++ o ++ "+2] << 16) | "
+        ++ "((uint64_t)" ++ b ++ "[" ++ o ++ "+3] << 24) | "
+        ++ "((uint64_t)" ++ b ++ "[" ++ o ++ "+4] << 32) | "
+        ++ "((uint64_t)" ++ b ++ "[" ++ o ++ "+5] << 40) | "
+        ++ "((uint64_t)" ++ b ++ "[" ++ o ++ "+6] << 48) | "
+        ++ "((uint64_t)" ++ b ++ "[" ++ o ++ "+7] << 56))"
+cExpr ws (FunCall "putLE32" [val]) =
+    let v = cExpr ws val
+    in  "((uint8_t)(" ++ v ++ ") | ((uint8_t)((" ++ v ++ ") >> 8) << 8) | "
+        ++ "((uint8_t)((" ++ v ++ ") >> 16) << 16) | ((uint8_t)((" ++ v ++ ") >> 24) << 24))"
+cExpr ws (FunCall "putLE64" [val]) =
+    let v = cExpr ws val
+    in  "((uint8_t)(" ++ v ++ ") | ((uint8_t)((" ++ v ++ ") >> 8) << 8) | "
+        ++ "((uint8_t)((" ++ v ++ ") >> 16) << 16) | ((uint8_t)((" ++ v ++ ") >> 24) << 24) | "
+        ++ "((uint64_t)(uint8_t)((" ++ v ++ ") >> 32) << 32) | "
+        ++ "((uint64_t)(uint8_t)((" ++ v ++ ") >> 40) << 40) | "
+        ++ "((uint64_t)(uint8_t)((" ++ v ++ ") >> 48) << 48) | "
+        ++ "((uint64_t)(uint8_t)((" ++ v ++ ") >> 56) << 56))"
 cExpr ws (FunCall f args)  = f ++ "(" ++ intercalate ", " (map (cExpr ws) args) ++ ")"
 
 cBinOp :: Int -> BinaryOp -> String -> String -> String
