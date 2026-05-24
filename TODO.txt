@@ -157,3 +157,20 @@ FUTURE PLATFORM TARGETS
   [ ] ReactOS — Windows-compatible open source OS
     Windows CLI release should work natively on ReactOS.
     Needs: testing in ReactOS VM to verify Win32 API compatibility.
+  [ ] Redox OS — Rust-based microkernel OS with POSIX compatibility
+    Needs: Redox toolchain or QEMU image for native build/test.
+    Haskell cross-compilation to Redox is experimental.
+  [ ] TempleOS — 64-bit ring-0 OS (research/educational target)
+    No POSIX, no networking stack. Research-only port exploring
+    bare-metal crypto primitives. HolyC FFI for C codegen output.
+  [ ] ChromeOS/ChromiumOS — Linux-based, Crostini container support
+    Should work in Linux container (Crostini) without modification.
+    Needs: testing in ChromeOS VM or device.
+  [ ] Plan 9 from Bell Labs — distributed systems research OS
+    9P protocol native. Interesting for network transport layer.
+    Needs: Plan 9 cross-compilation or 9front VM for native build.
+    Go has native Plan 9 support (GOOS=plan9).
+  [ ] Inferno — distributed virtual machine OS (Limbo language)
+    Hosted mode runs on Linux/Windows/macOS. Native Dis VM target
+    would require Limbo port of crypto primitives.
+    Research target for distributed messaging over Styx protocol.
