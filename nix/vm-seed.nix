@@ -132,8 +132,15 @@ let
           cp -a /nix/store/. /nix-scratch/store/ 2>/dev/null || true
           mount --bind /nix-scratch/store /nix/store
 
+          # Bind-mount /tmp to scratch disk so the nix daemon's build
+          # temp files (3.7GB disk image) don't fill the boot disk.
+          mkdir -p /nix-scratch/tmp
+          mount --bind /nix-scratch/tmp /tmp
+
           # Stop and start nix-daemon (not restart, to avoid systemd
-          # dependency cycle that kills this service)
+          # dependency cycle that kills this service).
+          # The daemon must restart AFTER the /tmp bind-mount so it
+          # sees the scratch-backed /tmp.
           systemctl stop nix-daemon.socket nix-daemon.service 2>/dev/null || true
           sleep 1
           systemctl start nix-daemon.socket nix-daemon.service
