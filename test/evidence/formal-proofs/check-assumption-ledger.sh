@@ -31,7 +31,7 @@ while IFS= read -r line; do
     fi
 done < <(grep -RIn '^assume val' "$FSTAR_DIR" --include='*.fst')
 
-if $check1_ok; then
+if [ "$check1_ok" = true ]; then
     echo "  PASS — all assume vals found in ASSUMPTIONS.md"
 else
     echo "  FAIL — assume vals missing from ASSUMPTIONS.md"
@@ -56,7 +56,7 @@ while IFS='|' read -r _ _id _file decl _rest; do
     fi
 done < <(grep -E '^\|[[:space:]]*[A-Z]+-[0-9]+' "$ASSUMPTIONS")
 
-if $check2_ok; then
+if [ "$check2_ok" = true ]; then
     echo "  PASS — all ASSUMPTIONS.md declarations exist in F* source"
 else
     echo "  FAIL — stale declarations in ASSUMPTIONS.md"
@@ -96,7 +96,7 @@ while IFS='|' read -r _ _id _file _decl _cat _indep _dep _reason evidence _disch
     esac
 done < <(grep -E '^\|[[:space:]]*[A-Z]+-[0-9]+' "$ASSUMPTIONS")
 
-if $check3_ok; then
+if [ "$check3_ok" = true ]; then
     echo "  PASS — all EXTERNALLY_VERIFIED evidence files exist"
 else
     echo "  FAIL — missing evidence files"
@@ -143,7 +143,7 @@ else
     echo "  SKIP — no _CoqProject found"
 fi
 
-if $check4_ok; then
+if [ "$check4_ok" = true ]; then
     echo "  PASS — no Admitted/Axiom/Parameter in Coq files"
 else
     echo "  FAIL — Coq files contain proof gaps"
@@ -165,7 +165,7 @@ while IFS='|' read -r _ id _file decl cat _rest; do
     fi
 done < <(grep -E '^\|[[:space:]]*[A-Z]+-[0-9]+' "$ASSUMPTIONS")
 
-if $check5_ok; then
+if [ "$check5_ok" = true ]; then
     echo "  PASS — all assumptions have a category"
 else
     echo "  FAIL — assumptions missing category"
@@ -187,7 +187,7 @@ while IFS='|' read -r _ id _file _decl _cat _indep _dep _reason _evidence _disch
     fi
 done < <(grep -E '^\|[[:space:]]*[A-Z]+-[0-9]+' "$ASSUMPTIONS")
 
-if $check6_ok; then
+if [ "$check6_ok" = true ]; then
     echo "  PASS — all assumptions have a status"
 else
     echo "  FAIL — assumptions missing status"

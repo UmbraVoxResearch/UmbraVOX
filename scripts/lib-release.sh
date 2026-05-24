@@ -72,9 +72,9 @@ lib_copy_common_docs() {
     local stage="$1"
     mkdir -p "$stage/doc"
     cp README.md LICENSE LEGAL-NOTICE.md "$stage/"
-    [[ -f PUBLISHING-NOTE.md ]] && cp PUBLISHING-NOTE.md "$stage/" || true
-    [[ -f doc/QUICKSTART.md ]] && cp doc/QUICKSTART.md "$stage/doc/" || true
-    [[ -f doc/RELEASES.md ]] && cp doc/RELEASES.md "$stage/doc/" || true
+    if [[ -f PUBLISHING-NOTE.md ]]; then cp PUBLISHING-NOTE.md "$stage/"; fi
+    if [[ -f doc/QUICKSTART.md ]]; then cp doc/QUICKSTART.md "$stage/doc/"; fi
+    if [[ -f doc/RELEASES.md ]]; then cp doc/RELEASES.md "$stage/doc/"; fi
 }
 
 # Write a target-specific note file.

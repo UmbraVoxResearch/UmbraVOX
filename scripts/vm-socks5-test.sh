@@ -11,7 +11,7 @@ ECHO_PID=$!
 sleep 0.5
 # Run SOCKS5 probe (send "hello" through proxy to echo server, verify reply)
 REPLY=$(echo "hello" | nc -X 5 -x 127.0.0.1:1080 127.0.0.1 9999 2>/dev/null || echo "FAIL")
-kill $PROXY_PID $ECHO_PID 2>/dev/null || true
+kill "$PROXY_PID" "$ECHO_PID" 2>/dev/null || true
 if [ "$REPLY" = "hello" ]; then
   echo "SOCKS5_TEST=PASS"
 else

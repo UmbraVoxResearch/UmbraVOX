@@ -27,9 +27,11 @@ static inline uint32_t ct_eq32(uint32_t a, uint32_t b) {
     return ((uint32_t)(-(int32_t)x) >> 31) ^ 1;
 }
 
-/* Return 1 if a < b, 0 otherwise (32-bit, unsigned). */
+/* Return 1 if a < b, 0 otherwise (32-bit, unsigned).
+   Arithmetic right shift of signed int64 is implementation-defined
+   but universally sign-extends on all modern platforms (x86, ARM, RISC-V). */
 static inline uint32_t ct_lt32(uint32_t a, uint32_t b) {
-    return (uint32_t)((int64_t)a - (int64_t)b) >> 63;
+    return (uint32_t)(((int64_t)a - (int64_t)b) >> 63);
 }
 
 /* Return 1 if a == 0, 0 otherwise (32-bit). */

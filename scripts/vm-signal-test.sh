@@ -1154,4 +1154,4 @@ else
     echo -e "${RED}${PREFIX}${NC} Some wire-compatibility tests failed."
 fi
 
-exit $TEST_EXIT
+exit "$TEST_EXIT"

@@ -227,8 +227,8 @@ echo "  git commit: $(git rev-parse HEAD 2>/dev/null || echo unknown)"
 if [ -d build/releases ]; then
     ARTIFACT=$(ls build/releases/umbravox-*-linux-x86_64.tar.gz 2>/dev/null | head -1)
     if [ -n "$ARTIFACT" ]; then
-        echo "  artifact:   $(basename $ARTIFACT)"
-        echo "  sha256:     $(sha256sum $ARTIFACT 2>/dev/null | cut -d' ' -f1)"
+        echo "  artifact:   $(basename "$ARTIFACT")"
+        echo "  sha256:     $(sha256sum "$ARTIFACT" 2>/dev/null | cut -d' ' -f1)"
     fi
 fi
 

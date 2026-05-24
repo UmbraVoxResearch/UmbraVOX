@@ -89,7 +89,7 @@ echo "VM_TEST_COMPLETE=YES"
 EOF
 
 # Run via ./uv exec in the VM with a short timeout
-RESULT=$(timeout 120 ./uv exec -- "bash -c '$(cat $TEST_SCRIPT)'" 2>&1 || true)
+RESULT=$(timeout 120 ./uv exec -- "bash -c '$(cat "$TEST_SCRIPT")'" 2>&1 || true)
 rm -f "$TEST_SCRIPT"
 
 if echo "$RESULT" | grep -q "VM_BOOT=OK"; then

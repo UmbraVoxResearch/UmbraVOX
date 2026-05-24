@@ -72,7 +72,7 @@ if [ -f "$DB_PATH" ] && command -v sqlite3 >/dev/null; then
     for f in "${DB_PATH}-wal" "${DB_PATH}-journal"; do
         if [ -f "$f" ]; then
             PLAIN_IN_WAL=$(strings "$f" 2>/dev/null | grep -cv "UVENC1:" || echo "0")
-            check "no plaintext in $(basename $f)" test "$PLAIN_IN_WAL" -lt 5
+            check "no plaintext in $(basename "$f")" test "$PLAIN_IN_WAL" -lt 5
         fi
     done
 else
