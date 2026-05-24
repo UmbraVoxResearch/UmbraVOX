@@ -148,7 +148,7 @@ Priority order (by scan finding density):
   [ ] vm-signal-test.sh (1157 lines, 50+ scan findings) → Go test harness
   [ ] vm-smoke-run.sh (239 lines) → Go smoke runner (tools/cmd/vm-smoke already exists)
   [ ] lib-vm.sh (301 lines) → already partially replaced by Go pkg/
-  [ ] test-coqprime-vm.sh → Go test wrapper
+  [x] test-coqprime-vm.sh → Go test wrapper (tools/cmd/test-coqprime)
   [ ] release-package.sh + lib-release.sh → Go release tool
   [ ] fstar-eval-vectors.sh → Go F* vector evaluator
   [ ] Platform setup scripts (freebsd/openbsd/netbsd/dragonfly/illumos) → keep shell (platform-specific)

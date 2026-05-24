@@ -6,6 +6,24 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 
 ## [Unreleased]
 
+### v0.5.13 — Go complexity refactoring and PQXDH tests
+- Go complexity refactoring: vmBuildImage 27->10, execInVM 17->8 (cyclomatic complexity)
+- PQXDH unit tests: 5 test cases for post-quantum key agreement
+- Shell-to-Go migration plan added to TODO
+
+### v0.5.12 — Supply chain hardening and code quality
+- All 22 GitHub Actions pinned to full commit SHA
+- Shell script A&&B||C patterns rewritten to if/then/else
+- Unused shell vars exported or removed
+- Go #nosec G301 annotations for intentional 0o755 permissions
+- FStarVerify bracket for file handle safety
+- OutboundQueue + ConfigFile exception logging
+
+### v0.5.11 — Go stdlib update and shell hardening
+- Go stdlib updated from 1.22 to 1.26 (fixes 30+ CVEs)
+- Shell script quoting fixes (10 files)
+- ct_helpers.h parenthesization for ct_lt32
+
 ### v0.5.9 — Generated C branch detection as hard gate
 - Codegen constant-time assurance: generated C files checked for conditional branches that could leak secret-dependent timing
 - `./uv check` now includes generated-C branch detection as a hard fail gate
