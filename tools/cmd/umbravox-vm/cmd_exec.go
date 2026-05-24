@@ -209,6 +209,9 @@ func execInVM(cmd string, profile qemu.VMProfile, timeout time.Duration) int {
 }
 
 // generateInitScript produces the in-guest init script content.
+// If the cross-compiled vm-init binary is present on the source disk,
+// the script delegates to it; otherwise it falls back to the full
+// shell-based implementation.
 func generateInitScript(mode, cmd string) string {
 	var b strings.Builder
 
@@ -218,18 +221,25 @@ set -euo pipefail
 export HOME=/root
 export PATH="/run/current-system/sw/bin:/run/current-system/sw/sbin:$PATH"
 
+# Mount source disk early so we can check for the Go binary.
+mkdir -p /mnt/src
+if ! mountpoint -q /mnt/src 2>/dev/null; then
+    mount -o ro /dev/vdb /mnt/src 2>/dev/null || true
+fi
+
+# Prefer the cross-compiled Go binary when available.
+if [ -x /mnt/src/tools/bin/vm-init ]; then
+    exec /mnt/src/tools/bin/vm-init "` + mode + `"
+fi
+
+# --- fallback: inline shell implementation ---
+
 # Offline cabal config
 mkdir -p /root/.cabal
 cat > /root/.cabal/config << 'CABALEOF'
 offline: True
 nix: False
 CABALEOF
-
-# Mount source disk
-mkdir -p /mnt/src
-if ! mountpoint -q /mnt/src 2>/dev/null; then
-    mount -o ro /dev/vdb /mnt/src 2>/dev/null || true
-fi
 
 # Mount shared output directory (host <-> guest via 9p)
 mkdir -p /output

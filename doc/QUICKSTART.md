@@ -76,6 +76,7 @@ an isolated NixOS VM by default.  The host only needs QEMU and git.
 | `./uv verify` | Run F* formal verification (routes to VM by default) |
 | `./uv` | Full quality gate (build + test + verify + check) |
 | `./uv check` | Lint + format + license + complexity + generated-headers + constant-time-branches |
+| `./uv vm signal test` | Signal-Server integration test suite (Go) |
 | `./uv dev` | Interactive development shell inside the NixOS VM |
 | `./uv release linux` | Build portable Linux x86_64 bundle |
 | `./uv clean` | Clean build artifacts |

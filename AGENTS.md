@@ -140,6 +140,7 @@ echo $?  # exit code from the VM command
 ./uv vm signal build-jar   # Build Signal-Server JAR in VM
 ./uv vm signal update      # Update Signal-Server version (interactive)
 ./uv vm signal run         # Boot Signal-Server runtime VM
+./uv vm signal test        # Signal-Server integration test suite (Go, 687 lines)
 ./uv vm signal health      # Health-check Signal-Server
 ./uv check               # Run lint/format/license/complexity/generated-headers/constant-time-branches gates
 ```
@@ -250,6 +251,20 @@ Plugin → Host: AUTH_OK, OK, DATA, CONTACTS, STATUS, PONG, ERR
 ```
 
 Uses own crypto with Signal params — no libsignal dependency.
+
+## Shell-to-Go Migration Status
+
+5 of 7 major shell scripts now have Go replacements:
+
+| Script | Go replacement | Status |
+|--------|---------------|--------|
+| vm-signal-test.sh (1157 lines) | tools/cmd/signal-test (687 lines) | Done (v0.5.15) |
+| fstar-eval-vectors.sh | tools/cmd/fstar-eval (498 lines) | Done (v0.5.15) |
+| vm-smoke-run.sh (239 lines) | tools/cmd/vm-smoke | Done (v0.5.14) |
+| test-coqprime-vm.sh | tools/cmd/test-coqprime | Done (v0.5.14) |
+| release-package.sh + lib-release.sh | tools/cmd/release | Done (v0.5.14) |
+| lib-vm.sh (301 lines) | partially replaced by Go pkg/ | In progress |
+| Platform setup scripts | keep as shell (platform-specific) | Not planned |
 
 ## Conventions
 

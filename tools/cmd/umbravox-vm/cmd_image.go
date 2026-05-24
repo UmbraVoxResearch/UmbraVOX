@@ -72,7 +72,7 @@ Actions:
   build-image [--on-host]    Build NixOS VM image
   clean-image                Remove cached VM image
   smoke [TARGET]             Platform smoke (freebsd, openbsd, netbsd, illumos, dragonfly, arm64)
-  signal build-jar|update|run|health Signal Server VM
+  signal build-jar|update|test|run|health Signal Server VM
   integration [--dual-lan]   Multi-VM integration test
   info                       VM config diagnostics
 `)
@@ -585,7 +585,7 @@ func vmSmoke(args []string) int {
 
 func vmSignal(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: ./uv vm signal build-jar|update|run|health")
+		fmt.Fprintln(os.Stderr, "Usage: ./uv vm signal build-jar|update|test|run|health")
 		return 2
 	}
 
@@ -619,6 +619,33 @@ func vmSignal(args []string) int {
 		signalCmd = "interactive"
 	case "health":
 		signalCmd = "check-health"
+	case "test":
+		testBin := filepath.Join(repoRoot, "build", "tools", "signal-test")
+		if _, err := os.Stat(testBin); os.IsNotExist(err) {
+			log.Info(tag, "Building signal-test tool...")
+			buildCmd := exec.Command("go", "build", "-o", testBin, "./cmd/signal-test/")
+			buildCmd.Dir = filepath.Join(repoRoot, "tools")
+			buildCmd.Env = append(os.Environ(),
+				"GOMODCACHE="+filepath.Join(repoRoot, "build", "go", "mod"),
+				"GOCACHE="+filepath.Join(repoRoot, "build", "go", "cache"))
+			if out, err := buildCmd.CombinedOutput(); err != nil {
+				log.Fail(tag, fmt.Sprintf("Failed to build signal-test: %v\n%s", err, out))
+				return 1
+			}
+		}
+		cmd := exec.Command(testBin, args[1:]...)
+		cmd.Dir = repoRoot
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Stdin = os.Stdin
+		if err := cmd.Run(); err != nil {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				return exitErr.ExitCode()
+			}
+			log.Fail(tag, fmt.Sprintf("signal-test failed: %v", err))
+			return 1
+		}
+		return 0
 	case "update":
 		return vmSignalUpdate(repoRoot)
 	default:

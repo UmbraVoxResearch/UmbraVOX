@@ -60,6 +60,19 @@ func CreateSourceDisk(repoRoot, tmpDir, initScript, execCmd string) (string, err
 		return "", fmt.Errorf("tar extract: %w", err)
 	}
 
+	// Cross-compile vm-init binary for the guest (static, linux/amd64).
+	// Falls back gracefully -- the init script contains a shell fallback.
+	binDir := filepath.Join(srcDir, "tools", "bin")
+	if err := os.MkdirAll(binDir, 0o755); err == nil {
+		toolsDir := filepath.Join(repoRoot, "tools")
+		goBuild := exec.Command("go", "build", "-o", filepath.Join(binDir, "vm-init"), "./cmd/vm-init")
+		goBuild.Dir = toolsDir
+		goBuild.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64")
+		if out, err := goBuild.CombinedOutput(); err != nil {
+			fmt.Fprintf(os.Stderr, "[uv] WARNING: vm-init cross-compile failed; using shell fallback\n%s\n", out)
+		}
+	}
+
 	// Write init script
 	if err := os.WriteFile(filepath.Join(srcDir, ".vm-init.sh"), []byte(initScript), 0o755); err != nil {
 		return "", fmt.Errorf("write init script: %w", err)

@@ -134,12 +134,12 @@ Benefits: no quoting bugs, no word-splitting, no A&&B||C pitfalls,
 cross-platform, testable, type-safe.
 
 Priority order (by scan finding density):
-  [x] vm-signal-test.sh (1157 lines, 50+ scan findings) → done (tools/cmd/signal-test)
+  [x] vm-signal-test.sh (1157 lines, 50+ scan findings) → done (tools/cmd/signal-test, wired as ./uv vm signal test)
   [x] vm-smoke-run.sh (239 lines) → done (tools/cmd/vm-smoke expanded in v0.5.14)
   [ ] lib-vm.sh (301 lines) → already partially replaced by Go pkg/
   [x] test-coqprime-vm.sh → done (tools/cmd/test-coqprime created in v0.5.14)
   [x] release-package.sh + lib-release.sh → done (tools/cmd/release created in v0.5.14)
-  [ ] fstar-eval-vectors.sh → Go F* vector evaluator
+  [x] fstar-eval-vectors.sh → done (tools/cmd/fstar-eval, wired as ./uv verify vectors)
   [ ] Platform setup scripts (freebsd/openbsd/netbsd/dragonfly/illumos) → keep shell (platform-specific)
 
 In-guest scripts (run inside VM):

@@ -4,9 +4,13 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"time"
 
+	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/log"
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/qemu"
+	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/repo"
 )
 
 // testSuites maps suite names to cabal test-options arguments.
@@ -100,10 +104,54 @@ cabal build all --enable-tests && cabal test umbravox-test --test-options='requi
 	return execInVM(cmd, qemu.ProfileBuild, 60*time.Minute)
 }
 
-// runVerify handles: uv verify
-func runVerify() int {
+// runVerify handles: uv verify [vectors [ARGS...]]
+func runVerify(args []string) int {
+	if len(args) > 0 && args[0] == "vectors" {
+		return runFstarEval(args[1:])
+	}
 	cmd := "cabal build all --enable-tests && cabal run fstar-verify 2>&1"
 	return execInVM(cmd, qemu.ProfileDev, 60*time.Minute)
+}
+
+// runFstarEval builds and runs the fstar-eval binary (M18.2.3 vector evaluation).
+// Invoked via: uv verify vectors [--generate-all | <primitive> <args...>]
+func runFstarEval(args []string) int {
+	repoRoot, err := repo.Root()
+	if err != nil {
+		log.Fail(tag, err.Error())
+		return 1
+	}
+
+	evalBin := filepath.Join(repoRoot, "build", "tools", "fstar-eval")
+	if _, err := os.Stat(evalBin); os.IsNotExist(err) {
+		log.Info(tag, "Building fstar-eval tool...")
+		buildCmd := exec.Command("go", "build", "-o", evalBin, "./cmd/fstar-eval/")
+		buildCmd.Dir = filepath.Join(repoRoot, "tools")
+		buildCmd.Env = append(os.Environ(),
+			"GOMODCACHE="+filepath.Join(repoRoot, "build", "go", "mod"),
+			"GOCACHE="+filepath.Join(repoRoot, "build", "go", "cache"))
+		if out, err := buildCmd.CombinedOutput(); err != nil {
+			log.Fail(tag, fmt.Sprintf("Failed to build fstar-eval: %v\n%s", err, out))
+			return 1
+		}
+	}
+
+	if len(args) == 0 {
+		args = []string{"--generate-all"}
+	}
+
+	cmd := exec.Command(evalBin, args...)
+	cmd.Dir = repoRoot
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return exitErr.ExitCode()
+		}
+		log.Fail(tag, fmt.Sprintf("fstar-eval: %v", err))
+		return 1
+	}
+	return 0
 }
 
 // runAll handles: uv (no args) — build + test + check

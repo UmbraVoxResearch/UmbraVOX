@@ -8,6 +8,7 @@
 //	umbravox-vm test [SUITE]         run test suite in VM
 //	umbravox-vm dev [--gui]          interactive VM dev shell
 //	umbravox-vm verify               F* formal verification
+//	umbravox-vm verify vectors       F* test vector evaluation (M18.2.3)
 //	umbravox-vm check [GATE]         static quality gates
 //	umbravox-vm coverage [FLAGS]     HPC coverage report
 //	umbravox-vm release [PLATFORM]   build release artifacts
@@ -45,7 +46,7 @@ func run(args []string) int {
 	case "dev":
 		return runDev(rest)
 	case "verify":
-		return runVerify()
+		return runVerify(rest)
 	case "check":
 		return runCheck(rest)
 	case "coverage":
@@ -82,6 +83,7 @@ Commands:
   test [SUITE]        Run test suite (default: required fast gate)
   dev [--gui]         Interactive VM development shell
   verify              F* formal verification (17 modules)
+  verify vectors      F* test vector evaluation (M18.2.3)
   check [GATE]        Static quality gates (lint, format, license, complexity)
   coverage [FLAGS]    HPC coverage report (--check, --mcdc)
   release [PLATFORM]  Build release artifacts
@@ -101,7 +103,7 @@ VM actions:
   build-image [--on-host]    Build NixOS VM image
   clean-image                Remove cached VM image
   smoke [TARGET]             Platform smoke test
-  signal build-jar|update|run|health  Signal Server VM
+  signal build-jar|update|test|run|health  Signal Server VM
   integration [--dual-lan]   Multi-VM integration test
   info                       VM config diagnostics
 

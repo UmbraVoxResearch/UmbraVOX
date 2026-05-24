@@ -50,6 +50,7 @@ nix-shell shell.nix
 ./uv                   # Full pipeline: build + test + verify + check
 ./uv check             # Quality gates: lint + format + license + complexity + generated-headers + constant-time-branches
 ./uv test soak         # Longer soak/stress run with artifact report
+./uv vm signal test    # Signal-Server integration test suite (Go)
 ./uv release linux     # Portable Linux x86_64 terminal bundle
 ./uv release all       # Build all defined release artifacts
 ./uv help              # Show all available commands

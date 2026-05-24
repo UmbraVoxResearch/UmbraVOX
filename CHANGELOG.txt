@@ -6,6 +6,13 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 
 ## [Unreleased]
 
+### v0.5.15 — signal-test + fstar-eval Go tools, SQLite3 API cleanup, future targets
+- Shell-to-Go migration: signal-test Go tool (687 lines, replaces 1157-line vm-signal-test.sh), wired as `./uv vm signal test`
+- Shell-to-Go migration: fstar-eval Go tool (498 lines, replaces fstar-eval-vectors.sh vector evaluator)
+- 5 of 7 major shell scripts now have Go replacements (signal-test, vm-smoke, test-coqprime, release, fstar-eval)
+- SQLite3 FFI: `exec` removed from public exports (raw SQL risk), `execute_` added as safe prepared-statement alternative
+- Future platform targets added: Haiku OS (BeOS-compatible, POSIX layer) and ReactOS (Win32-compatible)
+
 ### v0.5.14 — Shell-to-Go migration: vm-smoke, test-coqprime, release
 - Shell-to-Go migration: vm-smoke-run.sh, test-coqprime-vm.sh, release-package.sh replaced with Go binaries (tools/cmd/vm-smoke, tools/cmd/test-coqprime, tools/cmd/release)
 - nix/vm-image.nix delegates to Go smoke binary instead of shell script
