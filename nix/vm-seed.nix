@@ -46,12 +46,7 @@ let
     nix.settings = {
       experimental-features = [ "nix-command" "flakes" ];
       # Keep default substituters (cache.nixos.org) — seed needs binary cache
-      # Sandbox disabled: the seed VM is already QEMU-isolated.
-      # With sandbox=true, nix creates build temp dirs on the boot
-      # disk's /tmp which has <1GB free — too small for the 3.7GB
-      # builder disk image. Without sandbox, TMPDIR redirects the
-      # build to the 60GB scratch disk.
-      sandbox = false;
+      sandbox = true;
     };
 
     # Minimize image size (no docs, no avahi, no polkit)
@@ -85,10 +80,6 @@ let
       util-linux
       mount
     ];
-
-    # Disable PrivateTmp for nix-daemon so our /tmp bind-mount
-    # (to the scratch disk) is visible to the daemon process.
-    systemd.services.nix-daemon.serviceConfig.PrivateTmp = lib.mkForce false;
 
     # Seed service: mount disks, run nix-build for builder image, shut down
     systemd.services.umbravox-seed-builder = {
@@ -136,15 +127,8 @@ let
           cp -a /nix/store/. /nix-scratch/store/ 2>/dev/null || true
           mount --bind /nix-scratch/store /nix/store
 
-          # Bind-mount /tmp to scratch disk so the nix daemon's build
-          # temp files (3.7GB disk image) don't fill the boot disk.
-          mkdir -p /nix-scratch/tmp
-          mount --bind /nix-scratch/tmp /tmp
-
           # Stop and start nix-daemon (not restart, to avoid systemd
           # dependency cycle that kills this service).
-          # The daemon must restart AFTER the /tmp bind-mount so it
-          # sees the scratch-backed /tmp.
           systemctl stop nix-daemon.socket nix-daemon.service 2>/dev/null || true
           sleep 1
           systemctl start nix-daemon.socket nix-daemon.service
@@ -168,11 +152,8 @@ let
           git config --global --add safe.directory /nix-scratch/workspace
 
           echo "[SEED] Running nix-build for vm-builder.nix ..."
-          # TMPDIR on scratch disk so build temp files (including the
-          # 3.7GB raw disk image) don't fill the boot disk.
-          mkdir -p /nix-scratch/tmp
           set +e
-          TMPDIR=/nix-scratch/tmp nix-build /nix-scratch/workspace/nix/vm-builder.nix \
+          nix-build /nix-scratch/workspace/nix/vm-builder.nix \
               -o /nix-scratch/workspace/result 2>&1
           BUILD_STATUS=$?
           set -e
@@ -220,7 +201,10 @@ let
     lib = pkgs.lib;
     config = nixos.config;
     diskSize = "auto";
-    additionalSpace = "1024M";
+    # 5GB additional: the nix daemon creates the 3.7GB builder disk
+    # image as a temp file on the boot disk during nix-build, and no
+    # combination of TMPDIR/bind-mount/sandbox=false redirects this.
+    additionalSpace = "5120M";
     format = "raw";
     partitionTableType = "legacy";
     copyChannel = false;
