@@ -529,11 +529,11 @@ testSM008PQXDHPartialAbort = do
 -- Vulnerability: Plaintext static key in msg1 allows a global passive
 --             adversary to build a deanonymisation database correlating
 --             sessions to long-term initiator identities.
--- Fix:        encryptAndTag (Handshake.hs) encrypts iStaticPub under k1.
---             The output is 64 bytes (32 ciphertext + 32 HMAC tag), not the
---             32-byte plaintext key.
+-- Fix:        encryptAndTag (Handshake.hs) encrypts iStaticPub under k1
+--             using ChaChaPoly AEAD.  The output is 48 bytes (32 ciphertext
+--             + 16 Poly1305 tag), not the 32-byte plaintext key.
 -- Verified:   (a) encryptAndTag output /= plaintext static key (not plaintext).
---             (b) Encrypted output is longer than 32 bytes (has HMAC).
+--             (b) Encrypted output is longer than 32 bytes (has Poly1305 tag).
 --             (c) decryptAndVerify correctly recovers the original static key.
 --             (d) A full loopback handshake completes: responder recovers
 --             the initiator's static public key via decryption.
@@ -561,7 +561,7 @@ testMT012HandshakeIdentityHiding = do
 
     ok1 <- assertEq "MT-012 encrypted static key /= plaintext static key"
                True (encStatic /= iPub)
-    ok2 <- assertEq "MT-012 encrypted static key length > 32 (ciphertext + HMAC)"
+    ok2 <- assertEq "MT-012 encrypted static key length > 32 (ciphertext + Poly1305 tag)"
                True (BS.length encStatic > 32)
     let mDecrypted = decryptAndVerify k1 h3 encStatic
     ok3 <- assertEq "MT-012 decryptAndVerify recovers original static public key"

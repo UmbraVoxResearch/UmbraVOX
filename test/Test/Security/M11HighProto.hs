@@ -233,12 +233,12 @@ testPL006TranscriptHashBindsBothIdentities = do
 --
 -- Verified:    (a) A msg1 of 0 bytes causes the responder to return Nothing.
 --              (b) A msg1 of exactly 31 bytes (one byte short) returns Nothing.
---              (c) A msg1 of exactly 95 bytes (one byte short of minimum)
+--              (c) A msg1 of exactly 79 bytes (one byte short of minimum 80)
 --              returns Nothing.
---              (d) Sending the correct minimum 96-byte msg1 with valid DH
---              fields (even with garbage for the HMAC) returns Nothing due
---              to MAC failure — not a crash, confirming the length guard fires
---              before the MAC check.
+--              (d) Sending the correct minimum 80-byte msg1 with valid DH
+--              fields (even with garbage for the Poly1305 tag) returns Nothing
+--              due to tag failure — not a crash, confirming the length guard
+--              fires before the tag check.
 ------------------------------------------------------------------------
 
 testPL012NoiseTruncatedMsg1 :: IO Bool
@@ -280,36 +280,36 @@ testPL012NoiseTruncatedMsg1 = do
             Right (Just _) -> putStrLn "  FAIL: PL-012 31-byte msg1 should be Nothing" >> pure False
             Left _         -> putStrLn "  PASS: PL-012 31-byte msg1 -> exception" >> pure True
 
-    -- (c) 95-byte msg1 (one byte short of minimum 96)
+    -- (c) 79-byte msg1 (one byte short of minimum 80)
     ok3 <- do
         (loopA, loopB) <- newLoopbackPair "pl012-c"
         let tA = AnyTransport loopA
             tB = AnyTransport loopB
-        sendFrame tA (BS.replicate 95 0xBB)
+        sendFrame tA (BS.replicate 79 0xBB)
         result <- try (noiseHandshakeResponder rStaticSec rStaticPub tB)
                   :: IO (Either SomeException (Maybe (NoiseState, ByteString)))
         case result of
-            Right Nothing  -> putStrLn "  PASS: PL-012 95-byte msg1 -> Nothing" >> pure True
-            Right (Just _) -> putStrLn "  FAIL: PL-012 95-byte msg1 should be Nothing" >> pure False
-            Left _         -> putStrLn "  PASS: PL-012 95-byte msg1 -> exception" >> pure True
+            Right Nothing  -> putStrLn "  PASS: PL-012 79-byte msg1 -> Nothing" >> pure True
+            Right (Just _) -> putStrLn "  FAIL: PL-012 79-byte msg1 should be Nothing" >> pure False
+            Left _         -> putStrLn "  PASS: PL-012 79-byte msg1 -> exception" >> pure True
 
-    -- (d) Exactly 96-byte msg1: first 32 bytes are a valid-looking ephemeral pub,
-    -- next 64 bytes are garbage (enc_s + HMAC). Length guard passes but MAC fails.
+    -- (d) Exactly 80-byte msg1: first 32 bytes are a valid-looking ephemeral pub,
+    -- next 48 bytes are garbage (enc_s + Poly1305 tag). Length guard passes but tag fails.
     ok4 <- do
         (loopA, loopB) <- newLoopbackPair "pl012-d"
         let tA = AnyTransport loopA
             tB = AnyTransport loopB
         -- A non-trivial ephemeral public (32 bytes of 0x01 is a valid X25519 point)
-        let fakeMsg1 = BS.replicate 32 0x01 <> BS.replicate 64 0xFF
+        let fakeMsg1 = BS.replicate 32 0x01 <> BS.replicate 48 0xFF
         sendFrame tA fakeMsg1
         result <- try (noiseHandshakeResponder rStaticSec rStaticPub tB)
                   :: IO (Either SomeException (Maybe (NoiseState, ByteString)))
-        -- Should return Nothing (MAC failure) rather than a valid session
+        -- Should return Nothing (tag failure) rather than a valid session
         let ok = case result of
-                    Right Nothing  -> True  -- length OK but MAC failed
+                    Right Nothing  -> True  -- length OK but tag failed
                     Right (Just _) -> False -- must not succeed
                     Left _         -> True  -- exception acceptable for garbage input
-        assertEq "PL-012 96-byte garbage msg1 does not produce valid session" True ok
+        assertEq "PL-012 80-byte garbage msg1 does not produce valid session" True ok
 
     pure (ok1 && ok2 && ok3 && ok4)
 

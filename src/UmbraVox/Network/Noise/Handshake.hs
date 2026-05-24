@@ -198,7 +198,7 @@ noiseHandshakeResponder rStaticSec rStaticPub transport = do
     case mMsg1 of
       Nothing -> pure Nothing
       Just msg1
-        -- Validate message length: need at least 32 (ephemeral) + 32 (ct) + 32 (HMAC)
+        -- Validate message length: need at least 32 (ephemeral) + 32 (ct) + 16 (Poly1305 tag)
         | BS.length msg1 < (32 + 32 + hsTagLen) -> pure Nothing
         | otherwise -> do
             let !iEPub        = BS.take 32 msg1

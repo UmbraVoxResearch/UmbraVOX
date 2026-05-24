@@ -215,8 +215,8 @@ testPL001HandshakeReplay = do
 --
 -- Fix:         The es DH in Noise IK binds msg1 to the responder's exact
 --              static key.  Carol computes DH(carol_s, e_i) to derive k1,
---              then calls decryptWithKey k1 encStaticPub.  If msg1 was
---              encrypted under Bob's key the HMAC check fails and
+--              then calls decryptAndVerify k1 encStaticPub.  If msg1 was
+--              encrypted under Bob's key the Poly1305 tag check fails and
 --              noiseHandshakeResponder returns Nothing.
 --
 -- Verified:    Craft a valid msg1 for Bob, then present it to Carol's

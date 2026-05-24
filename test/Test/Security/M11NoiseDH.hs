@@ -167,7 +167,7 @@ computeInitiatorChain isSec _isPub rsPub ieSec _iePub rePub = do
 -- successfully decrypted the initiator's static public key from msg1).
 -- We compute @encStaticPub@ using the same @encryptAndTag@ the initiator
 -- used, to reproduce the exact handshake hash h4 without going through
--- @decryptWithKey@ (which would require the framing macLen to match the
+-- @decryptAndVerify@ (which would require the framing tagLen to match the
 -- handshake-phase HMAC length, a concern separate from the DH chain).
 computeResponderChain
     :: ByteString   -- ^ Responder static secret
