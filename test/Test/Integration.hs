@@ -236,7 +236,7 @@ deliverAll st ((hdr, ct, tag, expected):rest) = do
 ------------------------------------------------------------------------
 
 testKeyExhaustion :: IO Bool
-testKeyExhaustion =
+testKeyExhaustion = do
     mSession <- setupFixedSession
     case mSession of
         Nothing -> putStrLn "  FAIL: session setup failed" >> pure False
