@@ -56,10 +56,15 @@ func main() {
 		"freedos":        func() string { return ctx.buildSource("freedos", "freedos-source", "zip", "FREEDOS-STATUS.txt", noteFreeDOS) },
 		"linux":          func() string { return ctx.buildLinux() },
 		"appimage":       func() string { return ctx.buildAppImage() },
+		"freebsd":        func() string { return ctx.buildPlatform("freebsd") },
+		"openbsd":        func() string { return ctx.buildPlatform("openbsd") },
+		"netbsd":         func() string { return ctx.buildPlatform("netbsd") },
+		"illumos":        func() string { return ctx.buildPlatform("illumos") },
+		"linux-arm64":    func() string { return ctx.buildPlatform("linux-arm64") },
 	}
 
 	if target == "all" {
-		for _, t := range []string{"source", "windows-cli", "macos-terminal", "bsd-terminal", "freedos"} {
+		for _, t := range []string{"source", "windows-cli", "macos-terminal", "bsd-terminal", "freedos", "linux", "appimage", "freebsd", "openbsd", "netbsd", "illumos", "linux-arm64"} {
 			fmt.Println(targets[t]())
 		}
 		return
@@ -271,6 +276,196 @@ func (c *releaseCtx) buildAppImage() string {
 	createTarGz(stage, artifact)
 	writeArtifactSHA256(artifact)
 	return artifact
+}
+
+// buildPlatform creates a platform source+binary release tarball for freebsd,
+// openbsd, netbsd, illumos, or linux-arm64, matching
+// scripts/release-package-platform.sh.
+func (c *releaseCtx) buildPlatform(platform string) string {
+	requireCmd("git")
+	requireCmd("tar")
+
+	arch := platformArch(platform)
+	pkg := fmt.Sprintf("umbravox-%s-%s-%s", c.version, platform, arch)
+	stage := filepath.Join(c.outDir, pkg)
+	artifact := stage + ".tar.gz"
+
+	fmt.Fprintf(os.Stderr, "\n  Platform:  %s %s\n  Version:   %s\n  Commit:    %s\n  Artifact:  %s\n\n",
+		platformOS(platform), arch, c.version, c.commit, artifact)
+
+	os.RemoveAll(stage)
+	stageSourceTree(stage)
+	copyCommonDocs(c.root, stage)
+	c.writePlatformManifest(stage, platform, arch, "platform-source-release")
+
+	noteFile := fmt.Sprintf("BUILDING-%s.txt", strings.ToUpper(platform))
+	writeFile(filepath.Join(stage, noteFile), platformBuildNote(platform))
+
+	// Copy ./uv bootstrap into the release if present.
+	uvSrc := filepath.Join(c.root, "uv")
+	if info, err := os.Stat(uvSrc); err == nil && !info.IsDir() {
+		uvDst := filepath.Join(stage, "uv")
+		copyFile(uvSrc, uvDst)
+		must0(os.Chmod(uvDst, 0o755))
+	}
+
+	tryCopyBinary(stage)
+
+	writeContentsSHA256(stage)
+	writePlatformScriptSHA256(stage, c.root)
+	appendPlatformManifestFooter(stage)
+
+	createTarGz(stage, artifact)
+	writeArtifactSHA256(artifact)
+	return artifact
+}
+
+// writePlatformManifest writes a manifest with platform/arch fields.
+func (c *releaseCtx) writePlatformManifest(stage, platform, arch, kind string) {
+	lines := []string{
+		"name=UmbraVOX",
+		"platform=" + platform,
+		"arch=" + arch,
+		"artifact_kind=" + kind,
+		"version=" + c.version,
+		"commit=" + c.commit,
+		"timestamp_utc=" + c.stamp,
+		fmt.Sprintf("builder=%s/%s", runtime.GOOS, runtime.GOARCH),
+	}
+	writeFile(filepath.Join(stage, "RELEASE-MANIFEST.txt"), strings.Join(lines, "\n")+"\n")
+}
+
+// tryCopyBinary attempts to locate the built umbravox binary via cabal or
+// dist-newstyle, copying it into stage/bin/umbravox.  Falls back to a
+// source-only note when no binary is found.
+func tryCopyBinary(stage string) {
+	binDir := filepath.Join(stage, "bin")
+
+	// Try cabal list-bin first.
+	if out, err := exec.Command("cabal", "list-bin", "exe:umbravox").Output(); err == nil {
+		bin := strings.TrimSpace(string(out))
+		if bin != "" {
+			if info, err2 := os.Stat(bin); err2 == nil && !info.IsDir() {
+				must0(os.MkdirAll(binDir, 0o755))
+				dst := filepath.Join(binDir, "umbravox")
+				copyFile(bin, dst)
+				fileDesc := platformFileDesc(dst)
+				fmt.Fprintf(os.Stderr, "  binary: bin/umbravox (%s)\n", fileDesc)
+				appendManifestLine(stage, "binary=bin/umbravox")
+				return
+			}
+		}
+	}
+
+	// Fallback: search dist-newstyle.
+	out, err := exec.Command("find", "dist-newstyle", "-path", "*/build/*/umbravox/umbravox", "-type", "f").Output()
+	if err == nil {
+		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+			if line == "" {
+				continue
+			}
+			if info, err2 := os.Stat(line); err2 == nil && !info.IsDir() {
+				must0(os.MkdirAll(binDir, 0o755))
+				dst := filepath.Join(binDir, "umbravox")
+				copyFile(line, dst)
+				fileDesc := platformFileDesc(dst)
+				fmt.Fprintf(os.Stderr, "  binary: bin/umbravox (%s)\n", fileDesc)
+				appendManifestLine(stage, "binary=bin/umbravox")
+				return
+			}
+		}
+	}
+
+	fmt.Fprintln(os.Stderr, "  binary: not found (source-only release)")
+	appendManifestLine(stage, "binary=none")
+}
+
+// appendManifestLine appends a single key=value line to RELEASE-MANIFEST.txt.
+func appendManifestLine(stage, line string) {
+	f := must(os.OpenFile(filepath.Join(stage, "RELEASE-MANIFEST.txt"), os.O_APPEND|os.O_WRONLY, 0o644))
+	defer f.Close()
+	fmt.Fprintln(f, line)
+}
+
+// appendPlatformManifestFooter appends the checksum file references to the manifest.
+func appendPlatformManifestFooter(stage string) {
+	f := must(os.OpenFile(filepath.Join(stage, "RELEASE-MANIFEST.txt"), os.O_APPEND|os.O_WRONLY, 0o644))
+	defer f.Close()
+	fmt.Fprintln(f, "contents_sha256_file=CONTENTS.SHA256")
+	fmt.Fprintln(f, "release_script_sha256_file=RELEASE-SCRIPT.SHA256")
+}
+
+// writePlatformScriptSHA256 hashes scripts/release-package-platform.sh (the
+// shell predecessor) so provenance is recorded, falling back to this binary.
+func writePlatformScriptSHA256(stage, root string) {
+	scriptPath := filepath.Join(root, "scripts", "release-package-platform.sh")
+	if _, err := os.Stat(scriptPath); err != nil {
+		// Fall back to the Go executable itself.
+		if self, err2 := os.Executable(); err2 == nil {
+			scriptPath = self
+		} else {
+			scriptPath = "tools/cmd/release/main.go"
+		}
+	}
+	h := fileSHA256(scriptPath)
+	writeFile(filepath.Join(stage, "RELEASE-SCRIPT.SHA256"), fmt.Sprintf("%s  %s\n", h, scriptPath))
+}
+
+// platformFileDesc runs `file` on a binary and returns the description after
+// the colon, or an empty string if file is unavailable.
+func platformFileDesc(binPath string) string {
+	if out, err := exec.Command("file", binPath).Output(); err == nil {
+		parts := strings.SplitN(string(out), ":", 2)
+		if len(parts) == 2 {
+			return strings.TrimSpace(parts[1])
+		}
+	}
+	return ""
+}
+
+// ---------- platform metadata ----------
+
+func platformArch(platform string) string {
+	switch platform {
+	case "linux-arm64":
+		return "aarch64"
+	default:
+		return "amd64"
+	}
+}
+
+func platformOS(platform string) string {
+	switch platform {
+	case "freebsd":
+		return "FreeBSD"
+	case "openbsd":
+		return "OpenBSD"
+	case "netbsd":
+		return "NetBSD"
+	case "illumos":
+		return "illumos"
+	case "linux-arm64":
+		return "Linux"
+	default:
+		return "unknown"
+	}
+}
+
+func platformBuildNote(platform string) string {
+	switch platform {
+	case "freebsd":
+		return notePlatformFreeBSD
+	case "openbsd":
+		return notePlatformOpenBSD
+	case "netbsd":
+		return notePlatformNetBSD
+	case "illumos":
+		return notePlatformIllumos
+	case "linux-arm64":
+		return notePlatformLinuxARM64
+	default:
+		return fmt.Sprintf("UmbraVOX platform release (%s)\n", platform)
+	}
 }
 
 // writeManifestLinux writes a manifest with ABI fields for linux targets.
@@ -572,7 +767,12 @@ targets:
   bsd-terminal    BSD source archive (.tar.gz)
   freedos         FreeDOS source archive (.zip)
   appimage        AppImage scaffold
-  all             build all source targets`
+  freebsd         FreeBSD 14.x amd64 platform release
+  openbsd         OpenBSD 7.x amd64 platform release
+  netbsd          NetBSD 10.x amd64 platform release
+  illumos         OmniOS/illumos amd64 platform release
+  linux-arm64     Linux aarch64 platform release
+  all             build all targets`
 
 const noteSource = `UmbraVOX generic source release
 
@@ -652,4 +852,91 @@ const appRunScript = `#!/usr/bin/env bash
 set -euo pipefail
 HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 exec "$HERE/run-umbravox.sh" "$@"
+`
+
+const notePlatformFreeBSD = `UmbraVOX FreeBSD release
+
+This tarball contains the UmbraVOX source tree and build notes for FreeBSD.
+A native binary is included when this package is built inside a FreeBSD VM
+runner; otherwise it is a source release requiring a native build.
+
+Recommended native build on FreeBSD 14.x amd64:
+  pkg install ghc cabal-hs gmake git curl ca_root_nss
+  cabal update
+  cabal build all
+  cabal test umbravox-test --test-options=required
+
+The in-guest build+test script is at scripts/vm-build-test.sh.
+`
+
+const notePlatformOpenBSD = `UmbraVOX OpenBSD release
+
+This tarball contains the UmbraVOX source tree and build notes for OpenBSD.
+A native binary is included when this package is built inside an OpenBSD VM
+runner; otherwise it is a source release requiring a native build.
+
+Recommended native build on OpenBSD 7.x amd64:
+  pkg_add ghc cabal-install
+  cabal update
+  cabal build all
+  cabal test umbravox-test --test-options=required
+
+The in-guest build+test script is at scripts/vm-build-test.sh.
+`
+
+const notePlatformNetBSD = `UmbraVOX NetBSD release
+
+This tarball contains the UmbraVOX source tree and build notes for NetBSD.
+A native binary is included when this package is built inside a NetBSD VM
+runner; otherwise it is a source release requiring a native build.
+
+Recommended native build on NetBSD 10.x amd64:
+  pkgin install ghc cabal-install
+  cabal update
+  cabal build all
+  cabal test umbravox-test --test-options=required
+
+The in-guest build+test script is at scripts/vm-build-test.sh.
+`
+
+const notePlatformIllumos = `UmbraVOX illumos/OmniOS release
+
+This tarball contains the UmbraVOX source tree and build notes for
+OmniOS CE (illumos). A native binary is included when this package is
+built inside an OmniOS VM runner; otherwise it is a source release.
+
+Recommended native build on OmniOS CE r151052 amd64:
+  pkg set-publisher -g https://pkg.ooce.omnios.org/omnios/r151052 ooce
+  pkg install ooce/lang/ghc ooce/developer/cabal developer/gcc14 \
+      developer/gnu-binutils system/header developer/build/gnu-make \
+      scm/git web/curl
+  export PATH="/opt/ooce/bin:/opt/ooce/sbin:$PATH"
+  cabal update
+  cabal build all
+  cabal test umbravox-test --test-options=required
+
+The in-guest build+test script is at scripts/vm-build-test.sh.
+`
+
+const notePlatformLinuxARM64 = `UmbraVOX Linux arm64 release
+
+This tarball contains the UmbraVOX source tree and build notes for
+Linux aarch64. A native binary is included when this package is built
+on an arm64 runner (native or QEMU emulation); otherwise it is a source release.
+
+Recommended native build on Linux aarch64 (Debian/Ubuntu example):
+  apt-get install -y ghc cabal-install make git curl
+  cabal update
+  cabal build all
+  cabal test umbravox-test --test-options=required
+
+Alternatively, use ghcup for the latest GHC release (download, verify,
+then execute — never pipe curl directly to sh):
+  curl --proto '=https' --tlsv1.2 -sSf -o /tmp/ghcup-install.sh https://get-ghcup.haskell.org
+  # TODO: Replace with current ghcup installer SHA-256 from https://www.haskell.org/ghcup/
+  echo "TODO_INSERT_ACTUAL_SHA256  /tmp/ghcup-install.sh" | sha256sum -c -
+  sh /tmp/ghcup-install.sh
+  rm /tmp/ghcup-install.sh
+
+The in-guest build+test script is at scripts/vm-build-test.sh.
 `

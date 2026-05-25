@@ -10,7 +10,7 @@
 //	umbravox-vm dev [--gui]          interactive VM dev shell
 //	umbravox-vm verify               F* formal verification
 //	umbravox-vm verify vectors       F* test vector evaluation (M18.2.3)
-//	umbravox-vm check [GATE]         static quality gates (lint,format,license,complexity,generated-headers)
+//	umbravox-vm check [GATE]         static quality gates (lint,format,license,complexity,generated-headers,assurance,pre-release)
 //	umbravox-vm coverage [FLAGS]     HPC coverage report
 //	umbravox-vm release [PLATFORM]   build release artifacts
 //	umbravox-vm vm <action>          VM infrastructure management
@@ -91,7 +91,7 @@ Commands:
   dev [--gui]         Interactive VM development shell
   verify              F* formal verification (17 modules)
   verify vectors      F* test vector evaluation (M18.2.3)
-  check [GATE]        Static quality gates (lint, format, license, complexity, generated-headers)
+  check [GATE]        Static quality gates (lint, format, license, complexity, generated-headers, assurance, pre-release)
   coverage [FLAGS]    HPC coverage report (--check, --mcdc)
   release [PLATFORM]  Build release artifacts
   vm <action>         VM infrastructure (build-image, smoke, signal)
@@ -110,7 +110,7 @@ Test suites:
 VM actions:
   build-image [--on-host]    Build NixOS VM image
   clean-image                Remove cached VM image
-  smoke [TARGET]             Platform smoke test
+  smoke [TARGET]             Platform smoke test (freebsd, openbsd, netbsd, illumos, dragonfly, arm64, release)
   signal build-jar|update|test|run|health  Signal Server VM
   integration [--dual-lan]   Multi-VM integration test
   info                       VM config diagnostics

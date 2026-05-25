@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/log"
@@ -40,8 +41,12 @@ func runCheck(args []string) int {
 			return checkComplexity()
 		case "generated-headers":
 			return checkGeneratedHeaders()
+		case "assurance":
+			return checkAssurance()
+		case "pre-release":
+			return checkPreRelease()
 		default:
-			fmt.Fprintf(os.Stderr, "Unknown check gate: %s\nAvailable: lint, format, license, complexity, generated-headers\n", gate)
+			fmt.Fprintf(os.Stderr, "Unknown check gate: %s\nAvailable: lint, format, license, complexity, generated-headers, assurance, pre-release\n", gate)
 			return 2
 		}
 	}
@@ -61,6 +66,9 @@ func runCheck(args []string) int {
 		code = c
 	}
 	if c := checkGeneratedHeaders(); c != 0 {
+		code = c
+	}
+	if c := checkAssurance(); c != 0 {
 		code = c
 	}
 	if code == 0 {
@@ -343,6 +351,424 @@ func checkGeneratedHeaders() int {
 	}
 	log.OK(tag, "Generated headers: passed")
 	return 0
+}
+
+func checkAssurance() int {
+	log.Info(tag, "Checking assurance matrix (present and not stale)...")
+	repoRoot, err := repo.Root()
+	if err != nil {
+		log.Fail(tag, err.Error())
+		return 1
+	}
+
+	matrix := filepath.Join(repoRoot, "doc", "assurance-matrix.md")
+	roadmap := filepath.Join(repoRoot, "doc", "assurance-roadmap.md")
+
+	// 1. Check file exists.
+	if _, err := os.Stat(matrix); os.IsNotExist(err) {
+		log.Fail(tag, fmt.Sprintf("Missing: doc/assurance-matrix.md"))
+		fmt.Fprintf(os.Stderr, "  The assurance matrix must exist before release.\n")
+		return 1
+	}
+
+	// 2. Check for required section.
+	matrixData, err := os.ReadFile(matrix)
+	if err != nil {
+		log.Fail(tag, fmt.Sprintf("Cannot read doc/assurance-matrix.md: %v", err))
+		return 1
+	}
+	if !contains(string(matrixData), "## Current Assurance Statement") {
+		log.Fail(tag, "Missing section: '## Current Assurance Statement' in doc/assurance-matrix.md")
+		fmt.Fprintf(os.Stderr, "  The matrix must contain the current assurance statement.\n")
+		return 1
+	}
+
+	// 3. Check for bounded MVP statement in roadmap (if roadmap exists).
+	if _, err := os.Stat(roadmap); err == nil {
+		roadmapData, err := os.ReadFile(roadmap)
+		if err != nil {
+			log.Fail(tag, fmt.Sprintf("Cannot read doc/assurance-roadmap.md: %v", err))
+			return 1
+		}
+		if !contains(string(roadmapData), "## Bounded MVP Assurance Statement") {
+			log.Fail(tag, "Missing section: '## Bounded MVP Assurance Statement' in doc/assurance-roadmap.md")
+			return 1
+		}
+	}
+
+	// 4. Staleness check via git: matrix must be at least as recent as any
+	// material change under src/UmbraVox/Crypto or src/UmbraVox/Storage/Encryption.hs.
+	cryptoPaths := []string{
+		"src/UmbraVox/Crypto",
+		"src/UmbraVox/Storage/Encryption.hs",
+	}
+
+	if _, err := exec.LookPath("git"); err == nil {
+		// Confirm we are inside a work-tree.
+		check := exec.Command("git", "-C", repoRoot, "rev-parse", "--is-inside-work-tree")
+		if check.Run() == nil {
+			matrixHash, matrixTS := gitLastCommit(repoRoot, "doc/assurance-matrix.md")
+			if matrixHash != "" {
+				var latestHash string
+				var latestTS int64
+				for _, p := range cryptoPaths {
+					full := filepath.Join(repoRoot, filepath.FromSlash(p))
+					if _, err := os.Stat(full); err != nil {
+						continue
+					}
+					h, ts := gitLastCommit(repoRoot, p)
+					if h != "" && ts > latestTS {
+						latestHash = h
+						latestTS = ts
+					}
+				}
+
+				if latestHash != "" && latestTS > matrixTS {
+					log.Fail(tag, "Stale: doc/assurance-matrix.md was last updated before the most recent crypto source change.")
+					matrixDate := gitCommitDate(repoRoot, matrixHash)
+					cryptoDate := gitCommitDate(repoRoot, latestHash)
+					fmt.Fprintf(os.Stderr, "  Matrix last updated: %s\n", matrixDate)
+					fmt.Fprintf(os.Stderr, "  Crypto last changed: %s\n", cryptoDate)
+					fmt.Fprintf(os.Stderr, "  Update the assurance matrix to reflect any material changes.\n")
+					return 1
+				}
+			}
+		}
+	}
+
+	log.OK(tag, "Assurance: passed")
+	return 0
+}
+
+// checkPreRelease runs all pre-release assurance gates (Go port of
+// scripts/pre-release-check.sh). Invoke with: ./uv check pre-release
+func checkPreRelease() int {
+	repoRoot, err := repo.Root()
+	if err != nil {
+		log.Fail(tag, err.Error())
+		return 1
+	}
+
+	log.Info(tag, "=== UmbraVOX Pre-Release Check ===")
+
+	pass, fail := 0, 0
+
+	type result struct {
+		label string
+		code  int
+		info  string // optional informational note
+	}
+	var results []result
+
+	runGate := func(label string, fn func() (int, string)) {
+		code, note := fn()
+		results = append(results, result{label: label, code: code, info: note})
+		if code == 0 {
+			pass++
+		} else if code > 0 { // code < 0 means skip
+			fail++
+		}
+	}
+
+	fstarDir := filepath.Join(repoRoot, "test", "evidence", "formal-proofs", "fstar")
+	proofLogsDir := filepath.Join(repoRoot, "test", "evidence", "formal-proofs", "logs")
+	assuranceMatrix := filepath.Join(repoRoot, "test", "evidence", "formal-proofs", "ASSURANCE-MATRIX.md")
+
+	// 1. F* admit check
+	runGate("[1/10] F* admit check", func() (int, string) {
+		if _, err := os.Stat(fstarDir); err != nil {
+			return -1, "skip (fstar dir not found)"
+		}
+		cmd := exec.Command("grep", "-RIn", `\badmit\b\|admit()`, "--include=*.fst", "-r", fstarDir)
+		out, _ := cmd.Output()
+		count := 0
+		for _, line := range splitLines(string(out)) {
+			if line == "" {
+				continue
+			}
+			// Exclude comments and admit_smt
+			if contains(line, "*)") || contains(line, "(*") || contains(line, "//") || contains(line, "admit_smt") {
+				continue
+			}
+			count++
+		}
+		if count == 0 {
+			return 0, "0 admit"
+		}
+		return 1, fmt.Sprintf("%d admit found", count)
+	})
+
+	// 2. assume val inventory (always passes; writes inventory file)
+	var assumeCount int
+	runGate("[2/10] Assume val inventory", func() (int, string) {
+		if _, err := os.Stat(fstarDir); err != nil {
+			return -1, "skip (fstar dir not found)"
+		}
+		cmd := exec.Command("grep", "-RIn", "^assume val", "-r", fstarDir)
+		out, _ := cmd.Output()
+		lines := splitLines(strings.TrimRight(string(out), "\n"))
+		for _, l := range lines {
+			if l != "" {
+				assumeCount++
+			}
+		}
+		// Write inventory file
+		if _, err := os.Stat(proofLogsDir); err == nil {
+			inventoryLines := make([]string, 0, len(lines))
+			for _, l := range lines {
+				if l != "" {
+					inventoryLines = append(inventoryLines, l)
+				}
+			}
+			// sort for determinism
+			sortStrings(inventoryLines)
+			inventoryPath := filepath.Join(proofLogsDir, "assume-val-inventory.txt")
+			_ = os.WriteFile(inventoryPath, []byte(strings.Join(inventoryLines, "\n")+"\n"), 0o644)
+		}
+		return 0, fmt.Sprintf("%d assume val declarations", assumeCount)
+	})
+
+	// 3. Assumption ledger consistency
+	runGate("[3/10] Assumption ledger", func() (int, string) {
+		script := filepath.Join(repoRoot, "test", "evidence", "formal-proofs", "check-assumption-ledger.sh")
+		if _, err := os.Stat(script); err != nil {
+			return -1, "skip (check-assumption-ledger.sh not found)"
+		}
+		cmd := exec.Command("bash", script)
+		cmd.Dir = repoRoot
+		if err := cmd.Run(); err != nil {
+			return 1, ""
+		}
+		return 0, ""
+	})
+
+	// 4. Proof hygiene
+	runGate("[4/10] Proof hygiene", func() (int, string) {
+		script := filepath.Join(repoRoot, "test", "evidence", "formal-proofs", "check-proof-hygiene.sh")
+		if _, err := os.Stat(script); err != nil {
+			return -1, "skip (check-proof-hygiene.sh not found)"
+		}
+		cmd := exec.Command("bash", script)
+		cmd.Dir = repoRoot
+		if err := cmd.Run(); err != nil {
+			return 1, ""
+		}
+		return 0, ""
+	})
+
+	// 5. Coq build
+	runGate("[5/10] Coq build", func() (int, string) {
+		if _, err := exec.LookPath("coqc"); err != nil {
+			return -1, "skip (coqc not available — run in nix-shell)"
+		}
+		coqDir := filepath.Join(repoRoot, "test", "evidence", "formal-proofs", "coq")
+		if _, err := os.Stat(coqDir); err != nil {
+			return -1, "skip (coq dir not found)"
+		}
+		clean := exec.Command("make", "-C", coqDir, "clean")
+		if err := clean.Run(); err != nil {
+			return 1, ""
+		}
+		build := exec.Command("make", "-C", coqDir)
+		if err := build.Run(); err != nil {
+			return 1, ""
+		}
+		return 0, ""
+	})
+
+	// 6. Infrastructure tests
+	runGate("[6/10] Infrastructure tests", func() (int, string) {
+		script := filepath.Join(repoRoot, "scripts", "test-infrastructure.sh")
+		if _, err := os.Stat(script); err != nil {
+			return -1, "skip (test-infrastructure.sh not found)"
+		}
+		cmd := exec.Command("bash", script)
+		cmd.Dir = repoRoot
+		if err := cmd.Run(); err != nil {
+			return 1, ""
+		}
+		return 0, ""
+	})
+
+	// 7. Differential tests
+	runGate("[7/10] Differential tests", func() (int, string) {
+		if _, err := exec.LookPath("cabal"); err != nil {
+			return -1, "skip (cabal not available)"
+		}
+		cmd := exec.Command("cabal", "test", "umbravox-test", "--test-options=differential-oracle")
+		cmd.Dir = repoRoot
+		if err := cmd.Run(); err != nil {
+			return 1, ""
+		}
+		return 0, ""
+	})
+
+	// 8. ASSURANCE-MATRIX freshness
+	runGate("[8/10] ASSURANCE-MATRIX freshness", func() (int, string) {
+		if _, err := os.Stat(assuranceMatrix); err != nil {
+			return -1, "skip (ASSURANCE-MATRIX.md not found)"
+		}
+		data, err := os.ReadFile(assuranceMatrix)
+		if err != nil {
+			return 1, fmt.Sprintf("cannot read ASSURANCE-MATRIX.md: %v", err)
+		}
+		// Extract the number from "assume val total N"
+		matrixAssume := extractAssumeValTotal(string(data))
+		if matrixAssume < 0 {
+			return 1, "cannot parse 'assume val total' from ASSURANCE-MATRIX.md"
+		}
+		if matrixAssume == assumeCount {
+			return 0, fmt.Sprintf("matrix=%d, live=%d", matrixAssume, assumeCount)
+		}
+		return 1, fmt.Sprintf("matrix=%d, live=%d — update ASSURANCE-MATRIX.md", matrixAssume, assumeCount)
+	})
+
+	// 9. GPG signing key availability
+	runGate("[9/10] GPG signing key availability", func() (int, string) {
+		if _, err := exec.LookPath("gpg"); err != nil {
+			return 1, "gpg not installed — required for release signing"
+		}
+		cmd := exec.Command("gpg", "--list-secret-keys", "--keyid-format", "LONG")
+		out, _ := cmd.Output()
+		count := 0
+		for _, line := range splitLines(string(out)) {
+			if strings.HasPrefix(line, "sec") {
+				count++
+			}
+		}
+		if count > 0 {
+			return 0, fmt.Sprintf("%d secret key(s) available", count)
+		}
+		return 1, "no GPG secret keys found — release signing requires a key"
+	})
+
+	// 10. Reproducibility check
+	runGate("[10/10] Reproducibility check", func() (int, string) {
+		script := filepath.Join(repoRoot, "scripts", "release-reproducibility-check.sh")
+		info, err := os.Stat(script)
+		if err != nil || info.Mode()&0o111 == 0 {
+			return -1, "skip (release-reproducibility-check.sh not found or not executable)"
+		}
+		cmd := exec.Command("bash", script)
+		cmd.Dir = repoRoot
+		if err := cmd.Run(); err != nil {
+			return 1, ""
+		}
+		return 0, ""
+	})
+
+	// Print results
+	fmt.Println()
+	for _, r := range results {
+		switch {
+		case r.code < 0:
+			suffix := ""
+			if r.info != "" {
+				suffix = " (" + r.info + ")"
+			}
+			log.Info(tag, fmt.Sprintf("%s: SKIP%s", r.label, suffix))
+		case r.code == 0:
+			suffix := ""
+			if r.info != "" {
+				suffix = " (" + r.info + ")"
+			}
+			log.OK(tag, fmt.Sprintf("%s: PASS%s", r.label, suffix))
+		default:
+			suffix := ""
+			if r.info != "" {
+				suffix = " — " + r.info
+			}
+			log.Fail(tag, fmt.Sprintf("%s: FAIL%s", r.label, suffix))
+		}
+	}
+
+	fmt.Println()
+	log.Info(tag, fmt.Sprintf("Results: Pass=%d  Fail=%d", pass, fail))
+	if fail > 0 {
+		log.Fail(tag, "PRE-RELEASE CHECK FAILED")
+		return 1
+	}
+	log.OK(tag, "All pre-release checks passed.")
+	return 0
+}
+
+// extractAssumeValTotal parses the count from a line like "assume val total N"
+// in ASSURANCE-MATRIX.md. Returns -1 if not found.
+func extractAssumeValTotal(content string) int {
+	for _, line := range splitLines(content) {
+		if !contains(line, "assume val total") {
+			continue
+		}
+		// Extract the first number in the line
+		fields := splitFields(line)
+		for _, f := range fields {
+			var n int
+			if _, err := fmt.Sscan(f, &n); err == nil {
+				return n
+			}
+		}
+	}
+	return -1
+}
+
+// sortStrings sorts a string slice in place (avoids importing sort in this file).
+func sortStrings(ss []string) {
+	// Insertion sort — slice is small (assume val inventory).
+	for i := 1; i < len(ss); i++ {
+		key := ss[i]
+		j := i - 1
+		for j >= 0 && ss[j] > key {
+			ss[j+1] = ss[j]
+			j--
+		}
+		ss[j+1] = key
+	}
+}
+
+// gitLastCommit returns the commit hash and Unix timestamp of the most recent
+// commit that touched path (relative to repoRoot). Returns ("", 0) on failure.
+func gitLastCommit(repoRoot, path string) (string, int64) {
+	cmd := exec.Command("git", "-C", repoRoot, "log", "-1", "--format=%H %ct", "--", path)
+	out, err := cmd.Output()
+	if err != nil || len(out) == 0 {
+		return "", 0
+	}
+	parts := splitFields(strings.TrimSpace(string(out)))
+	if len(parts) != 2 {
+		return "", 0
+	}
+	var ts int64
+	fmt.Sscan(parts[1], &ts)
+	return parts[0], ts
+}
+
+// gitCommitDate returns a human-readable date string for a commit hash.
+func gitCommitDate(repoRoot, hash string) string {
+	cmd := exec.Command("git", "-C", repoRoot, "log", "-1", "--format=%ci", hash)
+	out, err := cmd.Output()
+	if err != nil {
+		return hash
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// splitFields splits s on whitespace, returning non-empty tokens.
+func splitFields(s string) []string {
+	var fields []string
+	start := -1
+	for i := 0; i < len(s); i++ {
+		isSpace := s[i] == ' ' || s[i] == '\t' || s[i] == '\n' || s[i] == '\r'
+		if !isSpace && start == -1 {
+			start = i
+		} else if isSpace && start != -1 {
+			fields = append(fields, s[start:i])
+			start = -1
+		}
+	}
+	if start != -1 {
+		fields = append(fields, s[start:])
+	}
+	return fields
 }
 
 // helpers

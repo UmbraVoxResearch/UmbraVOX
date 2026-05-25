@@ -86,7 +86,7 @@ Actions:
   build-image [--on-host]    Build NixOS VM image
   build-runtime-image [--on-host] Build lightweight runtime VM images
   clean-image                Remove cached VM image
-  smoke [TARGET]             Platform smoke (freebsd, openbsd, netbsd, illumos, dragonfly, arm64)
+  smoke [TARGET]             Platform smoke (freebsd, openbsd, netbsd, illumos, dragonfly, arm64, release)
   signal build-jar|update|test|run|health Signal Server VM
   integration [--dual-lan]   Multi-VM integration test
   info                       VM config diagnostics
@@ -731,7 +731,7 @@ func formatSize(bytes uint64) string {
 func vmSmoke(args []string) int {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "Usage: ./uv vm smoke <target>")
-		fmt.Fprintln(os.Stderr, "Targets: freebsd, openbsd, netbsd, illumos, dragonfly, arm64")
+		fmt.Fprintln(os.Stderr, "Targets: freebsd, openbsd, netbsd, illumos, dragonfly, arm64, release")
 		return 2
 	}
 
@@ -776,6 +776,10 @@ func vmSmoke(args []string) int {
 			return 1
 		}
 		return 0
+	}
+
+	if target == "release" {
+		return vmSmokeRelease(args[1:])
 	}
 
 	fmt.Fprintf(os.Stderr, "Unknown smoke target: %s\n", target)

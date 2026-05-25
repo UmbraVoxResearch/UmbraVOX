@@ -2,10 +2,14 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/log"
@@ -127,17 +131,8 @@ hpc report umbravox-test 2>&1`
 			log.Fail(tag, err.Error())
 			return 1
 		}
-		script := filepath.Join(repoRoot, "scripts", "coverage-check.sh")
 		summary := filepath.Join(repoRoot, "build", "coverage", "coverage-summary.txt")
-		cmd := exec.Command("bash", script, summary)
-		cmd.Dir = repoRoot
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			log.Fail(tag, "Coverage check failed")
-			return 1
-		}
-		return 0
+		return checkCoverageTargets(summary)
 	}
 
 	// Default: generate HTML coverage report
@@ -148,6 +143,135 @@ cabal test umbravox-test 2>&1 && \
 mkdir -p build/coverage && \
 hpc markup umbravox-test --destdir=build/coverage 2>&1`
 	return execInVM(cmd, qemu.ProfileDev, 30*time.Minute)
+}
+
+// coverageTarget returns the expression-coverage target percentage for a
+// Haskell module name, following the tier policy in doc/MCDC-TARGETS.md.
+// Returns -1 for types-only modules that should be skipped entirely.
+func coverageTarget(mod string) int {
+	switch {
+	case mod == "UmbraVox.Crypto.Warning":
+		// Types-only, no executable code
+		return -1
+	case strings.HasPrefix(mod, "UmbraVox.Crypto.Generated."):
+		// Generated FFI wrappers — expect 100% trivially
+		return 100
+	case strings.HasPrefix(mod, "UmbraVox.Crypto."):
+		return 100
+	case strings.HasPrefix(mod, "UmbraVox.Protocol."),
+		strings.HasPrefix(mod, "UmbraVox.Network.Noise."):
+		return 95
+	case strings.HasPrefix(mod, "UmbraVox.Network."):
+		return 90
+	case strings.HasPrefix(mod, "UmbraVox.TUI."),
+		strings.HasPrefix(mod, "UmbraVox.App."),
+		strings.HasPrefix(mod, "UmbraVox.Chat."),
+		strings.HasPrefix(mod, "UmbraVox.Storage."),
+		strings.HasPrefix(mod, "UmbraVox.Tools."),
+		strings.HasPrefix(mod, "UmbraVox.Bridge."),
+		strings.HasPrefix(mod, "UmbraVox.Plugin."),
+		mod == "UmbraVox.BuildProfile",
+		mod == "UmbraVox.Version",
+		strings.HasPrefix(mod, "UmbraVox.Runtime."):
+		return 80
+	case strings.HasPrefix(mod, "UmbraVox.Consensus."),
+		strings.HasPrefix(mod, "UmbraVox.Economics."):
+		// Stub/deferred modules — lower bar
+		return 50
+	default:
+		// Unknown module — default to 80%
+		return 80
+	}
+}
+
+// moduleNameRe matches a Haskell module name: starts with an uppercase letter,
+// contains dots, with each component starting uppercase (e.g. Foo.Bar.Baz).
+var moduleNameRe = regexp.MustCompile(`^[A-Z][a-zA-Z0-9]*\.[A-Z]`)
+
+// pctRe matches one or more percentage values like "75%" on a line.
+var pctRe = regexp.MustCompile(`(\d+)%`)
+
+// checkCoverageTargets parses an HPC per-module summary file and enforces the
+// tier-based expression coverage targets.  It is the Go equivalent of
+// scripts/coverage-check.sh.
+//
+// Input format (from `hpc report --per-module`):
+//
+//	ModuleName   75% ( 30/ 40) top-level, 88% ( 70/ 80) alts, 92% (230/250) exprs
+func checkCoverageTargets(summaryPath string) int {
+	f, err := os.Open(summaryPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "ERROR: Coverage summary not found: %s\nRun './uv coverage' first.\n", summaryPath)
+		} else {
+			fmt.Fprintf(os.Stderr, "ERROR: Cannot open coverage summary: %v\n", err)
+		}
+		return 1
+	}
+	defer f.Close()
+
+	failures := 0
+	checked := 0
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Skip blank, separator, "Program", and lines that start with a percentage
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "---") || strings.HasPrefix(trimmed, "Program") {
+			continue
+		}
+		if len(trimmed) > 0 && (trimmed[0] >= '0' && trimmed[0] <= '9') {
+			continue
+		}
+
+		// First field must look like a Haskell module name (Foo.Bar...)
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		mod := fields[0]
+		if !moduleNameRe.MatchString(mod) {
+			continue
+		}
+
+		// Extract expression coverage: the last percentage on the line
+		matches := pctRe.FindAllStringSubmatch(line, -1)
+		if len(matches) == 0 {
+			continue
+		}
+		lastMatch := matches[len(matches)-1]
+		exprPct, err := strconv.Atoi(lastMatch[1])
+		if err != nil {
+			continue
+		}
+
+		target := coverageTarget(mod)
+		if target < 0 {
+			// Skip types-only modules
+			continue
+		}
+
+		checked++
+		if exprPct < target {
+			fmt.Printf("FAIL: %s — %d%% expression coverage (target: %d%%)\n", mod, exprPct, target)
+			failures++
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: Reading coverage summary: %v\n", err)
+		return 1
+	}
+
+	fmt.Printf("\nChecked %d modules against tier targets.\n", checked)
+	if failures > 0 {
+		fmt.Printf("FAILED: %d module(s) below target.\n", failures)
+		return 1
+	}
+	fmt.Println("PASSED: All modules meet or exceed their coverage targets.")
+	return 0
 }
 
 // runFuzz handles: uv fuzz [MODE]
