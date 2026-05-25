@@ -191,9 +191,9 @@ func bootQEMU(cfg *qemu.Config, timeout time.Duration) int {
 	return 0
 }
 
-// execInVM boots the dev VM, runs cmd inside it, and returns the guest exit code.
-// This is the core primitive — most commands are thin wrappers around it.
-func execInVM(cmd string, profile qemu.VMProfile, timeout time.Duration) int {
+// execInVMLegacy boots the dev VM via raw QEMU arguments, runs cmd inside it,
+// and returns the guest exit code. Superseded by execInVM (vmctl path).
+func execInVMLegacy(cmd string, profile qemu.VMProfile, timeout time.Duration) int {
 	repoRoot, err := repo.Root()
 	if err != nil {
 		log.Fail(tag, err.Error())
@@ -239,11 +239,9 @@ func profileToResources(p qemu.VMProfile) vmctl.Resources {
 	}
 }
 
-// execInVMv2 is the vmctl-based replacement for execInVM. It constructs a
-// vmctl.VMSpec and delegates to QEMUHypervisor.Boot instead of manually
-// assembling QEMU arguments. Callers should migrate from execInVM to
-// execInVMv2 in future commits once the vmctl path is validated.
-func execInVMv2(cmd string, profile qemu.VMProfile, timeout time.Duration) int {
+// execInVM boots the dev VM via vmctl, runs cmd inside it, and returns the
+// guest exit code. This is the primary boot path used by all callers.
+func execInVM(cmd string, profile qemu.VMProfile, timeout time.Duration) int {
 	repoRoot, err := repo.Root()
 	if err != nil {
 		log.Fail(tag, err.Error())
@@ -299,7 +297,7 @@ func execInVMv2(cmd string, profile qemu.VMProfile, timeout time.Duration) int {
 		StatusFile: vmStatusFile,
 	}
 
-	log.Info(tag, fmt.Sprintf("exec (vmctl): %s", cmd))
+	log.Info(tag, fmt.Sprintf("exec: %s", cmd))
 	fmt.Fprintln(os.Stderr)
 
 	ctx := context.Background()

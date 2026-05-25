@@ -62,9 +62,9 @@ func canDisplayGUI() bool {
 	return false
 }
 
-// runRunFirecracker boots the runtime bundle in a Firecracker microVM.
+// runRunFirecrackerLegacy boots the runtime bundle in a Firecracker microVM.
 // mode is "tui" (serial console) or "headless" (daemon).
-func runRunFirecracker(mode, port string) int {
+func runRunFirecrackerLegacy(mode, port string) int {
 	if err := vmctl.PreflightFirecracker(); err != nil {
 		log.Fail(tag, err.Error())
 		return 1
@@ -171,10 +171,9 @@ func runRunFirecracker(mode, port string) int {
 	return exitCode
 }
 
-// runRunFirecrackerV2 boots the runtime bundle in a Firecracker microVM using
-// the vmctl package (FirecrackerHypervisor) instead of calling firecracker
-// directly. It is a parallel path to runRunFirecracker and does not replace it.
-func runRunFirecrackerV2(mode, port string) int {
+// runRunFirecracker boots the runtime bundle in a Firecracker microVM using
+// the vmctl package (FirecrackerHypervisor).
+func runRunFirecracker(mode, port string) int {
 	if err := vmctl.PreflightFirecracker(); err != nil {
 		log.Fail(tag, err.Error())
 		return 1
@@ -265,7 +264,7 @@ func runRunFirecrackerV2(mode, port string) int {
 		},
 	}
 
-	log.Info(tag, fmt.Sprintf("Firecracker V2 VM: 25%% host resources | mode: %s", mode))
+	log.Info(tag, fmt.Sprintf("Firecracker VM: 25%% host resources | mode: %s", mode))
 	fmt.Fprintln(os.Stderr)
 
 	// 6. Boot via FirecrackerHypervisor.
@@ -278,8 +277,8 @@ func runRunFirecrackerV2(mode, port string) int {
 	return result.ExitCode
 }
 
-// runRunQEMU boots the runtime bundle in a lightweight QEMU VM with VGA display.
-func runRunQEMU(port string) int {
+// runRunQEMULegacy boots the runtime bundle in a lightweight QEMU VM with VGA display.
+func runRunQEMULegacy(port string) int {
 	if !canDisplayGUI() {
 		log.Fail(tag, "No display available (DISPLAY/WAYLAND_DISPLAY not set). Use 'uv run tui' for terminal mode.")
 		return 1
@@ -400,10 +399,9 @@ func runRunQEMU(port string) int {
 	return 0
 }
 
-// runRunQEMUV2 boots the runtime bundle in a lightweight QEMU VM with VGA
+// runRunQEMU boots the runtime bundle in a lightweight QEMU VM with VGA
 // display using QEMUHypervisor.Boot from the vmctl package.
-// It is a parallel path to runRunQEMU and does not replace it.
-func runRunQEMUV2(port string) int {
+func runRunQEMU(port string) int {
 	if !canDisplayGUI() {
 		log.Fail(tag, "No display available (DISPLAY/WAYLAND_DISPLAY not set). Use 'uv run tui' for terminal mode.")
 		return 1

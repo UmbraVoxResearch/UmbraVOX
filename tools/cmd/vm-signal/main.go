@@ -99,14 +99,8 @@ func run(args []string) int {
 		// currently all build VMs use the same user-mode NAT NIC.
 		_ = fs.String("network-policy", "conf/vm-network-policy.conf", "network policy file (reserved, not yet implemented)")
 		outputDir := fs.String("output-dir", "", "JAR output directory")
-		timeoutStr := fs.String("timeout", "30m", "build timeout")
 		fs.Parse(args[1:])
-		timeout, err := time.ParseDuration(*timeoutStr)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "vm-signal: invalid --timeout %q: %v\n", *timeoutStr, err)
-			return 2
-		}
-		return runBuildJar(*outputDir, timeout)
+		return runBuildJar(*outputDir)
 
 	case "extract-hash":
 		fs := flag.NewFlagSet("extract-hash", flag.ExitOnError)
@@ -118,22 +112,13 @@ func run(args []string) int {
 
 	case "interactive":
 		fs := flag.NewFlagSet("interactive", flag.ExitOnError)
-		memory := fs.Int("memory", 0, "VM memory in MB (0 = auto-scale to 25% of host)")
-		cores := fs.Int("cores", 0, "VM CPU cores (0 = auto-scale to 25% of host)")
 		fs.Parse(args[1:])
-		return runRuntime("interactive", *memory, *cores, 0, "")
+		return runRuntime("interactive")
 
 	case "check":
 		fs := flag.NewFlagSet("check", flag.ExitOnError)
-		timeoutStr := fs.String("timeout", "120s", "health-check timeout")
-		endpoint := fs.String("endpoint", "http://localhost:8081/healthcheck", "health endpoint URL")
 		fs.Parse(args[1:])
-		timeout, err := time.ParseDuration(*timeoutStr)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "vm-signal: invalid --timeout %q: %v\n", *timeoutStr, err)
-			return 2
-		}
-		return runRuntime("check", 0, 0, timeout, *endpoint)
+		return runRuntime("check")
 
 	case "check-health":
 		fs := flag.NewFlagSet("check-health", flag.ExitOnError)
@@ -297,8 +282,8 @@ func checkJarResult(jarOutputDir string, qemuErr error) int {
 	return 1
 }
 
-// runBuildJar implements the build-jar subcommand (Stage 1).
-func runBuildJar(outputDirFlag string, timeout time.Duration) int {
+// runBuildJarLegacy implements the build-jar subcommand (Stage 1).
+func runBuildJarLegacy(outputDirFlag string, timeout time.Duration) int {
 	if err := preflightCheck(); err != nil {
 		return 1
 	}
@@ -378,11 +363,11 @@ func runBuildJar(outputDirFlag string, timeout time.Duration) int {
 	return checkJarResult(jarOutputDir, qemuErr)
 }
 
-// runRuntime implements the interactive and check subcommands (Stage 2).
+// runRuntimeLegacy implements the interactive and check subcommands (Stage 2).
 // memoryMB and cores override auto-scaling when non-zero.
 // timeout sets a deadline on the QEMU process (check mode only; 0 = no deadline).
 // endpoint overrides the health-check URL logged at startup (check mode only).
-func runRuntime(mode string, memoryMB, cores int, timeout time.Duration, endpoint string) int {
+func runRuntimeLegacy(mode string, memoryMB, cores int, timeout time.Duration, endpoint string) int {
 	if err := preflightCheck(); err != nil {
 		return 1
 	}
@@ -593,10 +578,10 @@ func runExtractHash(logFileFlag, nixFileFlag string, dryRun bool) int {
 	return 0
 }
 
-// runBuildJarV2 is the vmctl-based replacement for runBuildJar.
+// runBuildJar is the vmctl-based replacement for runBuildJarLegacy.
 // It constructs a VMSpec and delegates all QEMU argument assembly to
-// QEMUHypervisor.Boot, eliminating the hand-rolled arg slice in runBuildJar.
-func runBuildJarV2(outputDirFlag string) int {
+// QEMUHypervisor.Boot, eliminating the hand-rolled arg slice in runBuildJarLegacy.
+func runBuildJar(outputDirFlag string) int {
 	if err := preflightCheck(); err != nil {
 		return 1
 	}
@@ -680,10 +665,10 @@ func runBuildJarV2(outputDirFlag string) int {
 	return checkJarResult(jarOutputDir, hvErr)
 }
 
-// runRuntimeV2 is the vmctl-based replacement for runRuntime.
+// runRuntime is the vmctl-based replacement for runRuntimeLegacy.
 // It constructs a VMSpec and delegates all QEMU argument assembly to
-// QEMUHypervisor.Boot, eliminating the hand-rolled arg slice in runRuntime.
-func runRuntimeV2(mode string) int {
+// QEMUHypervisor.Boot, eliminating the hand-rolled arg slice in runRuntimeLegacy.
+func runRuntime(mode string) int {
 	if err := preflightCheck(); err != nil {
 		return 1
 	}

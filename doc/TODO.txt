@@ -127,18 +127,18 @@ ACTIVE WORK
     [x] Document tier architecture in doc/VM-DEVELOPMENT.md — done
     [x] Reference tier policy in AGENTS.md — done
 
-  [~] Phase 2: Unified boot path (VMSpec → vmctl.Boot)
+  [x] Phase 2: Unified boot path (VMSpec → vmctl.Boot)
     [x] Define VMSpec, DiskSpec, NetworkSpec, BootSpec types — done (vmctl.go)
     [x] execInVMv2 created (parallel vmctl path)
-    [ ] Replace execInVM in cmd_exec.go with vmctl.Boot(spec)
-    [ ] Replace runRunFirecracker/runRunQEMU in cmd_run.go with vmctl.Boot
-    [ ] Replace runDev in cmd_dev.go with vmctl.Boot
-    [ ] Replace bootBuilderVM in cmd_image.go with vmctl.Boot
-    [ ] Replace hand-rolled QEMU args in vm-signal/main.go with vmctl.Boot
-    [x] Eliminate duplicate findRepoRoot in vm-signal (use passed parameter)
+    [x] Replace execInVM in cmd_exec.go with vmctl.Boot(spec) — done (V2 switched as primary)
+    [x] Replace runRunFirecracker/runRunQEMU in cmd_run.go with vmctl.Boot — done
+    [x] Replace runDev in cmd_dev.go with vmctl.Boot — done
+    [x] Replace bootBuilderVM in cmd_image.go with vmctl.Boot — done
+    [x] Replace hand-rolled QEMU args in vm-signal/main.go with vmctl.Boot — done
+    [x] Eliminate duplicate findRepoRoot in vm-signal (use passed parameter) — already done
 
   [~] Phase 3: Declarative YAML definitions (reference tier names: base, network, builder, dev)
-    [ ] Add vmctl/config.go with YAML parsing into VMSpec
+    [x] Add vmctl/config.go with YAML parsing into VMSpec — done
     [x] Create vm-defs/ directory with YAML for each VM type (7 files created)
       [x] vm-defs/dev.yaml — tier: dev (full toolchain)
       [x] vm-defs/builder.yaml — tier: builder (nix + network)

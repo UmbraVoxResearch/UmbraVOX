@@ -336,9 +336,9 @@ func decompressBuilderImage(outputDir, vmCacheDir string) error {
 	return nil
 }
 
-// bootBuilderVM prepares disks, boots QEMU with the builder image, and
+// bootBuilderVMLegacy prepares disks, boots QEMU with the builder image, and
 // extracts the resulting VM image. Returns 0 on success.
-func bootBuilderVM(repoRoot, builderImg string) int {
+func bootBuilderVMLegacy(repoRoot, builderImg string) int {
 	vmCacheDir := filepath.Join(repoRoot, "build", "vm")
 	builderDir := filepath.Dir(builderImg)
 
@@ -443,9 +443,9 @@ func bootBuilderVM(repoRoot, builderImg string) int {
 	return 0
 }
 
-// bootBuilderVMV2 prepares disks, boots the builder VM via vmctl.QEMUHypervisor,
+// bootBuilderVM prepares disks, boots the builder VM via vmctl.QEMUHypervisor,
 // and extracts the resulting VM image. Returns 0 on success.
-func bootBuilderVMV2(repoRoot, builderImg string) int {
+func bootBuilderVM(repoRoot, builderImg string) int {
 	vmCacheDir := filepath.Join(repoRoot, "build", "vm")
 	builderDir := filepath.Dir(builderImg)
 

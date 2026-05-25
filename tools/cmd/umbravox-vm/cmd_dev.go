@@ -17,8 +17,8 @@ import (
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/vmctl"
 )
 
-// runDev handles: uv dev [--gui]
-func runDev(args []string) int {
+// runDevLegacy handles: uv dev [--gui] — original QEMU-direct implementation, kept for reference.
+func runDevLegacy(args []string) int {
 	gui := false
 	for _, a := range args {
 		if a == "--gui" || a == "gui" {
@@ -141,10 +141,10 @@ func runDev(args []string) int {
 	return 0
 }
 
-// runDevV2 handles: uv dev [--gui] — vmctl-based replacement for runDev.
+// runDev handles: uv dev [--gui] — vmctl-based implementation.
 // It constructs a VMSpec and delegates to QEMUHypervisor.Boot instead of
-// manually assembling QEMU arguments. runDev is kept intact as the original path.
-func runDevV2(args []string) int {
+// manually assembling QEMU arguments. runDevLegacy is kept intact as the original path.
+func runDev(args []string) int {
 	gui := false
 	for _, a := range args {
 		if a == "--gui" || a == "gui" {
