@@ -160,26 +160,20 @@ let
           <activeProfiles><activeProfile>no-snapshots</activeProfile></activeProfiles></settings>
           SETTINGSEOF
 
-          # Build JAR with Maven (network for dependency downloads)
+          # Build fat JAR with Maven (network for dependency downloads).
+          # The exclude-spam-filter profile activates Signal's own shade plugin,
+          # which produces a self-contained uber JAR with all deps + SPI merging.
           echo "=== Building Signal-Server JAR with Maven ==="
           mvn -B -ntp -s $SETTINGS package -pl service -am -DskipTests \
+            -P exclude-spam-filter \
+            -Djib.skip=true \
             -Dproject.build.outputTimestamp=${cfg.outputTimestamp} \
-            -Djib.container.creationTime=EPOCH \
             || {
               echo "BUILD_RESULT=FAIL"
               echo "Maven build failed."
               systemctl poweroff
               exit 1
             }
-
-          # Copy dependency JARs for classpath assembly
-          mvn -B -ntp dependency:copy-dependencies \
-            -pl service \
-            -Dmaven.repo.local=/root/.m2/repository \
-            -DoutputDirectory=target/dependency \
-            -DincludeScope=runtime \
-            -DskipTests \
-            || true
 
           echo "=== Build complete ==="
           JAR=$(find service/target -maxdepth 1 -name 'TextSecureServer-*.jar' -not -name '*-sources*' -not -name '*-tests*' | head -1)
@@ -192,13 +186,8 @@ let
           fi
 
           cp "$JAR" /output/signal-server.jar
-          # Copy dependency JARs for runtime classpath
-          if [ -d service/target/dependency ]; then
-            mkdir -p /output/lib
-            cp service/target/dependency/*.jar /output/lib/ 2>/dev/null || true
-            echo "Copied $(ls /output/lib/*.jar 2>/dev/null | wc -l) dependency JARs"
-          fi
           echo "BUILD_RESULT=PASS"
+          echo "JAR size: $(du -h /output/signal-server.jar | cut -f1)"
           echo "JAR copied to /output/signal-server.jar"
           ls -lh /output/signal-server.jar
 
@@ -282,10 +271,7 @@ let
       source = signalJarPath + "/signal-server.jar";
     };
 
-    # Copy dependency JARs for runtime classpath
-    environment.etc."signal-server/lib" = lib.mkIf (signalJarPath != null && builtins.pathExists (signalJarPath + "/lib")) {
-      source = signalJarPath + "/lib";
-    };
+
 
     systemd.services.signal-server = lib.mkIf (signalJarPath != null) {
       description = "Signal-Server (wire-compat test instance)";
@@ -308,16 +294,11 @@ let
             ${pkgs.postgresql_15}/bin/pg_isready -q && break
             echo "Waiting for PostgreSQL ($i/30)..." && sleep 1
           done
-          # Use classpath mode: thin JAR + dependency libs
-          CP="/etc/signal-server/signal-server.jar"
-          if [ -d /etc/signal-server/lib ]; then
-            CP="$CP:/etc/signal-server/lib/*"
-          fi
+          # Fat JAR mode (shade plugin bundles all deps + SPI merging)
           exec ${pkgs.jdk25_headless}/bin/java \
             -Dsecrets.bundle.filename=/etc/signal-server/secrets.yml \
             -Xmx512m \
-            -cp "$CP" \
-            org.whispersystems.textsecuregroupserver.WhisperServerService \
+            -jar /etc/signal-server/signal-server.jar \
             server /etc/signal-server/config.yml
         '';
         Restart = "on-failure";
