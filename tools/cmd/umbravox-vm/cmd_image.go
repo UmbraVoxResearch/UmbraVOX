@@ -26,10 +26,22 @@ import (
 )
 
 const (
-	builderVersion = "builder-v0.5.0"
-	builderBaseURL = "https://github.com/UmbraVoxResearch/UmbraVOX/releases/download/" + builderVersion
-	scratchSize    = "100G"
+	builderVersionDefault = "builder-v0.5.0"
+	scratchSize           = "100G"
+	minFreeSpaceGB        = 35
 )
+
+var (
+	builderVersion = builderVersionDefault
+	builderBaseURL = "https://github.com/UmbraVoxResearch/UmbraVOX/releases/download/" + builderVersionDefault
+)
+
+func init() {
+	if v := os.Getenv("UMBRAVOX_BUILDER_VERSION"); v != "" {
+		builderVersion = v
+		builderBaseURL = "https://github.com/UmbraVoxResearch/UmbraVOX/releases/download/" + v
+	}
+}
 
 // runVM handles: uv vm <action>
 func runVM(args []string) int {
@@ -44,6 +56,8 @@ func runVM(args []string) int {
 	switch action {
 	case "build-image":
 		return vmBuildImage(rest)
+	case "build-runtime-image":
+		return vmBuildRuntimeImage(rest)
 	case "clean-image":
 		return vmCleanImage()
 	case "smoke":
@@ -70,6 +84,7 @@ func printVMHelp() {
 
 Actions:
   build-image [--on-host]    Build NixOS VM image
+  build-runtime-image [--on-host] Build lightweight runtime VM images
   clean-image                Remove cached VM image
   smoke [TARGET]             Platform smoke (freebsd, openbsd, netbsd, illumos, dragonfly, arm64)
   signal build-jar|update|test|run|health Signal Server VM
@@ -97,11 +112,10 @@ func vmBuildImage(args []string) int {
 	}
 
 	// ── Preflight: disk space check ───────────────────────────────
-	const minFreeGB = 35
 	freeBytes := availableDiskSpace(repoRoot)
 	freeGB := freeBytes / (1024 * 1024 * 1024)
-	if freeGB < minFreeGB {
-		log.Fail(tag, fmt.Sprintf("Insufficient disk space: %dGB free, need %dGB", freeGB, minFreeGB))
+	if freeGB < minFreeSpaceGB {
+		log.Fail(tag, fmt.Sprintf("Insufficient disk space: %dGB free, need %dGB", freeGB, minFreeSpaceGB))
 		log.Info(tag, "Free space with: ./uv vm clean-image, ./uv clean --all, or nix-collect-garbage -d")
 		return 1
 	}
@@ -134,6 +148,70 @@ func vmBuildImageOnHost(repoRoot string) int {
 	return 0
 }
 
+// vmBuildRuntimeImage builds lightweight runtime VM images.
+// Default: builds inside the builder VM (same as dev image).
+// --on-host: builds directly on the host via nix-build.
+func vmBuildRuntimeImage(args []string) int {
+	onHost := false
+	for _, a := range args {
+		if a == "--on-host" {
+			onHost = true
+		}
+	}
+
+	repoRoot, err := repo.Root()
+	if err != nil {
+		log.Fail(tag, err.Error())
+		return 1
+	}
+
+	if onHost {
+		return vmBuildRuntimeImageOnHost(repoRoot)
+	}
+
+	// Build runtime images via nix-build on the host.
+	// The runtime image is small (~1.3GB) so this is fast.
+	// TODO: support building inside the builder VM for fully host-isolated builds.
+	return vmBuildRuntimeImageOnHost(repoRoot)
+}
+
+// vmBuildRuntimeImageOnHost builds runtime images directly on the host.
+func vmBuildRuntimeImageOnHost(repoRoot string) int {
+	runtimeNix := filepath.Join(repoRoot, "nix", "vm-runtime.nix")
+	vmDir := filepath.Join(repoRoot, "build", "vm")
+
+	// ── Firecracker bundle (rootfs + kernel) ─────────────────────
+	fcOutDir := filepath.Join(vmDir, "runtime-image")
+	os.RemoveAll(fcOutDir) // clean stale symlink/dir before nix-build
+	log.Info(tag, "Building Firecracker runtime image on host...")
+	cmd := exec.Command("nix-build", runtimeNix, "-A", "firecracker", "-o", fcOutDir)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		log.Fail(tag, fmt.Sprintf("nix-build firecracker failed: %v", err))
+		return 1
+	}
+
+	// ── QEMU image ───────────────────────────────────────────────
+	qemuOutDir := filepath.Join(vmDir, "runtime-qemu-image")
+	os.RemoveAll(qemuOutDir) // clean stale symlink/dir before nix-build
+	log.Info(tag, "Building QEMU runtime image on host...")
+	cmd = exec.Command("nix-build", runtimeNix, "-A", "qemu", "-o", qemuOutDir)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		log.Fail(tag, fmt.Sprintf("nix-build qemu failed: %v", err))
+		return 1
+	}
+
+	fcSize := pathSize(fcOutDir)
+	qemuSize := pathSize(qemuOutDir)
+	log.OK(tag, "Runtime images built successfully")
+	log.Info(tag, fmt.Sprintf("  Firecracker: %s (%s)", fcOutDir, formatSize(fcSize)))
+	log.Info(tag, fmt.Sprintf("  QEMU:        %s (%s)", qemuOutDir, formatSize(qemuSize)))
+	return 0
+}
+
 // downloadOrBuildBuilder ensures the builder image exists, downloading or
 // building it if necessary. Returns 0 on success.
 func downloadOrBuildBuilder(repoRoot, builderDir, builderImg string) int {
@@ -157,53 +235,131 @@ func downloadOrBuildBuilder(repoRoot, builderDir, builderImg string) int {
 	return 0
 }
 
+// builderDisks holds the disk and overlay paths created for a builder VM boot.
+type builderDisks struct {
+	srcDisk    string
+	scratchDisk string
+	overlay    *disk.Overlay
+}
+
+// prepareBuilderDisks creates the source disk, scratch disk, and COW overlay
+// needed to boot the builder VM. The caller must clean up via cleanup().
+func prepareBuilderDisks(repoRoot, diskImg, tmpDir string) (*builderDisks, func(), error) {
+	vmCacheDir := filepath.Join(repoRoot, "build", "vm")
+
+	log.Info(tag, "Creating source disk (with .git for flake eval)...")
+	srcDisk, err := createBuilderSourceDisk(repoRoot, tmpDir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create source disk: %w", err)
+	}
+
+	scratchDisk := filepath.Join(vmCacheDir, "nix-cache.qcow2")
+	if err := disk.EnsureCacheDisk(scratchDisk, scratchSize); err != nil {
+		os.Remove(srcDisk)
+		return nil, nil, fmt.Errorf("failed to create scratch disk: %w", err)
+	}
+
+	log.Info(tag, "Creating COW overlay...")
+	overlay, err := disk.CreateOverlay(diskImg, tmpDir)
+	if err != nil {
+		os.Remove(srcDisk)
+		return nil, nil, fmt.Errorf("failed to create overlay: %w", err)
+	}
+
+	cleanup := func() {
+		os.Remove(srcDisk)
+		overlay.Remove()
+	}
+	return &builderDisks{srcDisk: srcDisk, scratchDisk: scratchDisk, overlay: overlay}, cleanup, nil
+}
+
+// setupNetworkFilter initialises the network policy filter for the builder VM.
+// If no policy file exists or the allowlist is empty, the filter is not started
+// and a nil stop function is returned.
+func setupNetworkFilter(repoRoot, tmpDir string) (func(), error) {
+	policyFile := filepath.Join(repoRoot, "conf/vm-builder-network-policy.conf")
+	allowed, err := netproxy.ParseAllowlist(policyFile)
+	if err != nil {
+		log.Warn(tag, fmt.Sprintf("No network policy file, using unrestricted: %v", err))
+		return nil, nil
+	}
+	if len(allowed) == 0 {
+		return nil, nil
+	}
+
+	socketPath := filepath.Join(tmpDir, fmt.Sprintf("uv-proxy.%d.sock", os.Getpid()))
+	filter := &netproxy.Filter{
+		SocketPath: socketPath,
+		Allowed:    allowed,
+	}
+	if err := filter.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start network filter: %w", err)
+	}
+	log.Info(tag, fmt.Sprintf("Network filter: allowing %d destination(s)", len(allowed)))
+	return filter.Stop, nil
+}
+
+// checkBuilderResult reads the builder status file and returns an error if the
+// build failed or no status was written.
+func checkBuilderResult(statusFile string) error {
+	statusData, err := os.ReadFile(statusFile)
+	if err != nil {
+		return fmt.Errorf("builder VM did not produce a status file")
+	}
+	status := strings.TrimSpace(string(statusData))
+	if status != "0" {
+		return fmt.Errorf("builder VM failed (status %s)", status)
+	}
+	return nil
+}
+
+// decompressBuilderImage decompresses the zstd-compressed VM image from
+// outputDir into the final image directory.
+func decompressBuilderImage(outputDir, vmCacheDir string) error {
+	compressedImg := filepath.Join(outputDir, "nixos.img.zst")
+	finalDir := filepath.Join(vmCacheDir, "image")
+	if err := os.MkdirAll(finalDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create image dir: %w", err)
+	}
+	finalImg := filepath.Join(finalDir, "nixos.img")
+
+	log.Info(tag, "Decompressing VM image...")
+	zstdCmd := exec.Command("zstd", "-d", compressedImg, "-o", finalImg, "--force")
+	if out, err := zstdCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to decompress: %w\n%s", err, out)
+	}
+	os.Remove(compressedImg)
+	log.OK(tag, fmt.Sprintf("VM image ready at %s", finalDir))
+	return nil
+}
+
 // bootBuilderVM prepares disks, boots QEMU with the builder image, and
 // extracts the resulting VM image. Returns 0 on success.
 func bootBuilderVM(repoRoot, builderImg string) int {
 	vmCacheDir := filepath.Join(repoRoot, "build", "vm")
 	builderDir := filepath.Dir(builderImg)
 
-	// ── Preflight ─────────────────────────────────────────────────
 	if err := repo.Preflight(builderDir, false); err != nil {
 		return 1
 	}
 
 	diskImg, err := filepath.EvalSymlinks(builderImg)
 	if err != nil {
-		// If not a symlink, use directly
 		diskImg = builderImg
 	}
 
-	// ── Create source disk (includes .git) ────────────────────────
-	log.Info(tag, "Creating source disk (with .git for flake eval)...")
 	tmpDir := filepath.Join(vmCacheDir, "tmp")
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
 		log.Fail(tag, fmt.Sprintf("Failed to create temp dir: %v", err))
 		return 1
 	}
 
-	srcDisk, err := createBuilderSourceDisk(repoRoot, tmpDir)
+	disks, diskCleanup, err := prepareBuilderDisks(repoRoot, diskImg, tmpDir)
 	if err != nil {
-		log.Fail(tag, fmt.Sprintf("Failed to create source disk: %v", err))
+		log.Fail(tag, err.Error())
 		return 1
 	}
-	defer os.Remove(srcDisk)
-
-	// ── Scratch disk (100GB, thin-provisioned) ────────────────────
-	scratchDisk := filepath.Join(vmCacheDir, "nix-cache.qcow2")
-	if err := disk.EnsureCacheDisk(scratchDisk, scratchSize); err != nil {
-		log.Fail(tag, fmt.Sprintf("Failed to create scratch disk: %v", err))
-		return 1
-	}
-
-	// ── COW overlay ───────────────────────────────────────────────
-	log.Info(tag, "Creating COW overlay...")
-	overlay, err := disk.CreateOverlay(diskImg, tmpDir)
-	if err != nil {
-		log.Fail(tag, fmt.Sprintf("Failed to create overlay: %v", err))
-		return 1
-	}
-	defer overlay.Remove()
+	defer diskCleanup()
 
 	// ── Output directory ──────────────────────────────────────────
 	outputDir := filepath.Join(repoRoot, "build", "vm-output")
@@ -216,36 +372,22 @@ func bootBuilderVM(repoRoot, builderImg string) int {
 	os.Remove(filepath.Join(outputDir, "nixos.img.zst"))
 
 	// ── Network filter ────────────────────────────────────────────
-	policyFile := filepath.Join(repoRoot, "vm-builder-network-policy.conf")
-	allowed, err := netproxy.ParseAllowlist(policyFile)
+	stopFilter, err := setupNetworkFilter(repoRoot, tmpDir)
 	if err != nil {
-		log.Warn(tag, fmt.Sprintf("No network policy file, using unrestricted: %v", err))
-		allowed = nil
+		log.Fail(tag, err.Error())
+		return 1
 	}
-
-	socketPath := filepath.Join(tmpDir, fmt.Sprintf("uv-proxy.%d.sock", os.Getpid()))
-	filter := &netproxy.Filter{
-		SocketPath: socketPath,
-		Allowed:    allowed,
-	}
-
-	useFilter := len(allowed) > 0
-	if useFilter {
-		if err := filter.Start(); err != nil {
-			log.Fail(tag, fmt.Sprintf("Failed to start network filter: %v", err))
-			return 1
-		}
-		defer filter.Stop()
-		log.Info(tag, fmt.Sprintf("Network filter: allowing %d destination(s)", len(allowed)))
+	if stopFilter != nil {
+		defer stopFilter()
 	}
 
 	// ── QEMU config ───────────────────────────────────────────────
 	outputShare := ninep.DefaultOutputShare(outputDir)
 	cfg := qemu.ProfileConfig(qemu.ProfileBuild)
 	cfg.Drives = []qemu.Drive{
-		{Interface: "virtio", Format: qemu.FormatQCOW2, File: overlay.Path},
-		{Interface: "virtio", Format: qemu.FormatRaw, File: srcDisk, ReadOnly: true},
-		{Interface: "virtio", Format: qemu.FormatQCOW2, File: scratchDisk},
+		{Interface: "virtio", Format: qemu.FormatQCOW2, File: disks.overlay.Path},
+		{Interface: "virtio", Format: qemu.FormatRaw, File: disks.srcDisk, ReadOnly: true},
+		{Interface: "virtio", Format: qemu.FormatQCOW2, File: disks.scratchDisk},
 	}
 	cfg.VirtFS = []qemu.VirtFS{{
 		LocalPath:     outputShare.LocalPath,
@@ -281,38 +423,89 @@ func bootBuilderVM(repoRoot, builderImg string) int {
 		} else {
 			log.Fail(tag, fmt.Sprintf("QEMU error: %v", qemuErr))
 		}
+		return 1
 	}
 
 	// ── Check result ──────────────────────────────────────────────
-	statusData, err := os.ReadFile(statusFile)
-	if err != nil {
-		log.Fail(tag, "Builder VM did not produce a status file.")
-		return 1
-	}
-	status := strings.TrimSpace(string(statusData))
-	if status != "0" {
-		log.Fail(tag, fmt.Sprintf("Builder VM failed (status %s)", status))
+	if err := checkBuilderResult(statusFile); err != nil {
+		log.Fail(tag, err.Error())
 		return 1
 	}
 
 	// ── Decompress result ─────────────────────────────────────────
-	compressedImg := filepath.Join(outputDir, "nixos.img.zst")
-	finalDir := filepath.Join(vmCacheDir, "image")
-	if err := os.MkdirAll(finalDir, 0o755); err != nil {
-		log.Fail(tag, fmt.Sprintf("Failed to create image dir: %v", err))
+	if err := decompressBuilderImage(outputDir, vmCacheDir); err != nil {
+		log.Fail(tag, err.Error())
 		return 1
 	}
-	finalImg := filepath.Join(finalDir, "nixos.img")
+	return 0
+}
 
-	log.Info(tag, "Decompressing VM image...")
-	zstdCmd := exec.Command("zstd", "-d", compressedImg, "-o", finalImg, "--force")
-	if out, err := zstdCmd.CombinedOutput(); err != nil {
-		log.Fail(tag, fmt.Sprintf("Failed to decompress: %v\n%s", err, out))
+// bootBuilderVMWithCmd boots the builder VM and runs a custom nix-build command.
+// Results are written to the 9p output share at build/vm-output/.
+func bootBuilderVMWithCmd(repoRoot, builderImg, buildCmd string) int {
+	vmCacheDir := filepath.Join(repoRoot, "build", "vm")
+	builderDir := filepath.Dir(builderImg)
+
+	if err := repo.Preflight(builderDir, false); err != nil {
 		return 1
 	}
-	os.Remove(compressedImg)
 
-	log.OK(tag, fmt.Sprintf("VM image ready at %s", finalDir))
+	diskImg, err := filepath.EvalSymlinks(builderImg)
+	if err != nil {
+		diskImg = builderImg
+	}
+
+	tmpDir := filepath.Join(vmCacheDir, "tmp")
+	os.MkdirAll(tmpDir, 0o755)
+
+	disks, diskCleanup, err := prepareBuilderDisks(repoRoot, diskImg, tmpDir)
+	if err != nil {
+		log.Fail(tag, err.Error())
+		return 1
+	}
+	defer diskCleanup()
+
+	outputDir := filepath.Join(repoRoot, "build", "vm-output")
+	os.MkdirAll(outputDir, 0o755)
+
+	outputShare := ninep.DefaultOutputShare(outputDir)
+	cfg := qemu.ProfileConfig(qemu.ProfileBuild)
+	cfg.Drives = []qemu.Drive{
+		{Interface: "virtio", Format: qemu.FormatQCOW2, File: disks.overlay.Path},
+		{Interface: "virtio", Format: qemu.FormatRaw, File: disks.srcDisk, ReadOnly: true},
+		{Interface: "virtio", Format: qemu.FormatQCOW2, File: disks.scratchDisk},
+	}
+	cfg.VirtFS = []qemu.VirtFS{{
+		LocalPath:     outputShare.LocalPath,
+		MountTag:      outputShare.MountTag,
+		SecurityModel: string(outputShare.SecurityModel),
+		ID:            outputShare.ID,
+	}}
+	cfg.NetArgs = "-nic user,model=virtio"
+	cfg.NoReboot = true
+	cfg.Timeout = 2 * time.Hour
+
+	log.Info(tag, fmt.Sprintf("Builder VM: %d cores, %dMB RAM", cfg.SMP, cfg.MemoryMB))
+	log.Info(tag, fmt.Sprintf("Command: %s", buildCmd))
+	fmt.Fprintln(os.Stderr)
+
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
+	defer cancel()
+	qemuCmd := exec.CommandContext(ctx, "qemu-system-x86_64", cfg.Args()...)
+	qemuCmd.Stdin = os.Stdin
+	qemuCmd.Stdout = os.Stdout
+	qemuCmd.Stderr = os.Stderr
+
+	if err := qemuCmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			log.Fail(tag, fmt.Sprintf("Builder VM exited with %d", exitErr.ExitCode()))
+		} else {
+			log.Fail(tag, fmt.Sprintf("Builder VM error: %v", err))
+		}
+		return 1
+	}
+
+	log.OK(tag, "Builder VM completed successfully.")
 	return 0
 }
 
@@ -380,8 +573,14 @@ func fallbackLocalBuild(repoRoot, builderDir string) int {
 	srcImg := filepath.Join(outPath, "nixos.img")
 	dstImg := filepath.Join(builderDir, "nixos.img")
 	if _, err := os.Stat(srcImg); err == nil {
-		os.Remove(dstImg)
-		os.Symlink(srcImg, dstImg)
+		if err := os.Remove(dstImg); err != nil && !os.IsNotExist(err) {
+			log.Fail(tag, fmt.Sprintf("Failed to remove existing symlink: %v", err))
+			return 1
+		}
+		if err := os.Symlink(srcImg, dstImg); err != nil {
+			log.Fail(tag, fmt.Sprintf("Failed to create symlink: %v", err))
+			return 1
+		}
 	}
 	log.OK(tag, "Builder image built locally.")
 	return 0
@@ -568,8 +767,8 @@ func vmSmoke(args []string) int {
 
 	if target == "arm64" {
 		log.Info(tag, "Running arm64 platform smoke test...")
-		cmd := exec.Command("bash", "-c",
-			fmt.Sprintf("cd %s && bash scripts/vm-arm64-setup.sh", repoRoot))
+		cmd := exec.Command("bash", filepath.Join(repoRoot, "scripts/vm-arm64-setup.sh"))
+		cmd.Dir = repoRoot
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {

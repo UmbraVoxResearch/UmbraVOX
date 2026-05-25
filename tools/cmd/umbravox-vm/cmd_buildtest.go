@@ -49,10 +49,38 @@ func runBuild(args []string) int {
 		// Always run codegen before build to ensure generated C/Haskell/FFI
 		// files are in sync with .spec sources. This provides assurance that
 		// the generated code matches the specifications.
-		cmd = "cabal run codegen && cabal build all --enable-tests 2>&1 | tail -20"
+		cmd = `cabal run codegen && cabal build all --enable-tests 2>&1 | tail -20 && \
+  echo "=== Extracting runtime bundle ===" && \
+  mkdir -p /output/runtime/bin /output/runtime/lib && \
+  BIN=$(cabal list-bin exe:umbravox 2>/dev/null) && \
+  if [ -n "$BIN" ] && [ -f "$BIN" ]; then \
+    cp "$BIN" /output/runtime/bin/umbravox && \
+    INTERP=$(patchelf --print-interpreter "$BIN" 2>/dev/null) && \
+    [ -n "$INTERP" ] && cp "$INTERP" /output/runtime/lib/ ; \
+    ldd "$BIN" 2>/dev/null | awk '/=>/ && !/not found/ {print $3}' | while read lib; do \
+      [ -f "$lib" ] && cp "$lib" /output/runtime/lib/ ; \
+    done ; \
+    echo "Runtime bundle extracted: $(ls /output/runtime/bin/ /output/runtime/lib/ | wc -l) files" ; \
+  else \
+    echo "WARNING: could not extract runtime bundle (binary not found)" ; \
+  fi`
 	}
 
-	return execInVM(cmd, qemu.ProfileDev, 30*time.Minute)
+	code := execInVM(cmd, qemu.ProfileDev, 30*time.Minute)
+	if code == 0 && !docs {
+		// Move runtime bundle from VM output to build/runtime/
+		repoRoot, err := repo.Root()
+		if err == nil {
+			runtimeSrc := filepath.Join(repoRoot, "build", "vm-output", "runtime")
+			runtimeDst := filepath.Join(repoRoot, "build", "runtime")
+			if fi, err := os.Stat(runtimeSrc); err == nil && fi.IsDir() {
+				os.RemoveAll(runtimeDst)
+				os.Rename(runtimeSrc, runtimeDst)
+				log.Info(tag, "Runtime bundle saved to build/runtime/")
+			}
+		}
+	}
+	return code
 }
 
 // runTest handles: uv test [SUITE] [--list]

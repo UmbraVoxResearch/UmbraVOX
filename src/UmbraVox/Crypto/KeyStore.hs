@@ -36,7 +36,7 @@ import UmbraVox.BuildProfile (BuildPluginId(..), pluginEnabled)
 import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
 import UmbraVox.Crypto.HKDF (hkdfSHA256Extract, hkdfSHA256Expand)
 import UmbraVox.Crypto.Random (randomBytes)
-import UmbraVox.Crypto.SecureBytes (fromByteString, withSecureKey)
+import UmbraVox.Crypto.SecureBytes (SecureBytes, fromByteString, toByteString, withSecureKey)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 
 -- | Handle to an encrypted-at-rest key store.
@@ -187,7 +187,7 @@ saveIdentityKeyWithPassphrase path passphrase ik = do
     createDirectoryIfMissing True (takeDirectory path)
     nonce <- randomBytes nonceLen
     salt <- loadOrGenerateSalt path
-    let !plaintext = encodeIdentityKey ik
+    plaintext <- encodeIdentityKey ik
     sbKey <- fromByteString (deriveWrappingKey salt passphrase)
     blob <- withSecureKey sbKey $ \key -> do
         let !(ct, tag) = gcmEncrypt key nonce BS.empty plaintext
@@ -222,7 +222,7 @@ loadIdentityKeyWithPassphrase path passphrase = do
                         pure (gcmDecrypt key nonce BS.empty ct tag)
                     case mPlaintext of
                         Nothing        -> pure Nothing
-                        Just plaintext -> pure (decodeIdentityKey plaintext)
+                        Just plaintext -> decodeIdentityKey plaintext
 
 defaultIdentityPath :: IO FilePath
 defaultIdentityPath = do
@@ -231,22 +231,26 @@ defaultIdentityPath = do
         Nothing -> (</> ".umbravox") <$> getHomeDirectory
     pure (dataDir </> "identity.key")
 
-encodeIdentityKey :: IdentityKey -> ByteString
-encodeIdentityKey ik =
-    BS.concat
-        [ ikEd25519Secret ik
+encodeIdentityKey :: IdentityKey -> IO ByteString
+encodeIdentityKey ik = do
+    edSec <- toByteString (ikEd25519Secret ik)
+    xSec  <- toByteString (ikX25519Secret ik)
+    pure $ BS.concat
+        [ edSec
         , ikEd25519Public ik
-        , ikX25519Secret ik
+        , xSec
         , ikX25519Public ik
         ]
 
-decodeIdentityKey :: ByteString -> Maybe IdentityKey
+decodeIdentityKey :: ByteString -> IO (Maybe IdentityKey)
 decodeIdentityKey bs
-    | BS.length bs /= 128 = Nothing
-    | otherwise =
-        Just IdentityKey
-            { ikEd25519Secret = BS.take 32 bs
+    | BS.length bs /= 128 = pure Nothing
+    | otherwise = do
+        sbEdSecret <- fromByteString (BS.take 32 bs)
+        sbXSecret  <- fromByteString (BS.take 32 (BS.drop 64 bs))
+        pure $ Just IdentityKey
+            { ikEd25519Secret = sbEdSecret
             , ikEd25519Public = BS.take 32 (BS.drop 32 bs)
-            , ikX25519Secret  = BS.take 32 (BS.drop 64 bs)
+            , ikX25519Secret  = sbXSecret
             , ikX25519Public  = BS.drop 96 bs
             }

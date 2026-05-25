@@ -155,10 +155,38 @@ val pad_unpad_roundtrip : p:payload
     -> Lemma (requires Seq.length p <= max_single_payload)
              (ensures unpad (pad p) = Some p)
 let pad_unpad_roundtrip p =
-  (* Structural: pad produces header || p || padding with correct header,
-     unpad reads the header and extracts p.  Full proof requires
-     Seq slice/append lemmas. *)
-  admit ()
+  let plen = Seq.length p in
+  let header = encode_be16 plen in
+  let pl = pad_len plen in
+  let pb = inner_pad_byte plen in
+  let padding = Seq.create pl pb in
+  let body = Seq.append p padding in
+  let block = Seq.append header body in
+  (* block = pad p *)
+  assert (block == pad p);
+  let blen = Seq.length block in
+  (* pad_alignment and pad_minimum_size give us the guard conditions *)
+  pad_alignment p;
+  pad_minimum_size p;
+  assert (blen >= min_output);
+  assert (blen % block_size = 0);
+  (* Show: slice block 0 2 = header *)
+  (* header has length 2, body has length plen + pl *)
+  assert (Seq.length header = header_size);
+  Seq.lemma_eq_intro (Seq.slice block 0 header_size) header;
+  (* So decode_be16 (slice block 0 2) = decode_be16 header = plen *)
+  be16_roundtrip plen;
+  assert (decode_be16 header = plen);
+  (* Guard check: plen + header_size + 1 <= blen *)
+  (* blen = 2 + plen + pl, and pl >= 1, so plen + 2 + 1 <= 2 + plen + pl = blen *)
+  assert (plen + header_size + 1 <= blen);
+  (* Show: slice block header_size (header_size + plen) = p *)
+  (* block = append header (append p padding)
+     slice at offset 2 for length plen should give p *)
+  let inner = Seq.append p padding in
+  assert (block == Seq.append header inner);
+  (* For each index i in [0, plen), block[2+i] = inner[i] = p[i] *)
+  Seq.lemma_eq_intro (Seq.slice block header_size (header_size + plen)) p
 
 (** Big-endian uint16 codec round-trip. *)
 val be16_roundtrip : n:nat{n < 65536}

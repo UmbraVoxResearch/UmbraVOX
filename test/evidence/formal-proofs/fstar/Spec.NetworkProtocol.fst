@@ -165,11 +165,25 @@ let decode_rejects_short wire = ()
 
 (** Ping round-trip: decode(encode(Ping)) = Some Ping *)
 val ping_roundtrip : unit -> Lemma (decode (encode Ping) = Some Ping)
-let ping_roundtrip () = admit () (* requires Seq index lemmas *)
+let ping_roundtrip () =
+  (* encode Ping = append (create 1 msg_ping) (create 4 0uy), length = 5 *)
+  let wire = encode Ping in
+  assert (Seq.length wire = 5);
+  (* Seq.index on append: index < length of first seq => index into first *)
+  Seq.lemma_index_app1 (Seq.create 1 msg_ping) (Seq.create length_size 0uy) 0;
+  assert (Seq.index wire 0 = msg_ping);
+  (* decode checks length >= 5 (true), then checks index 0 = msg_ping (true) *)
+  ()
 
 (** Pong round-trip: decode(encode(Pong)) = Some Pong *)
 val pong_roundtrip : unit -> Lemma (decode (encode Pong) = Some Pong)
-let pong_roundtrip () = admit () (* requires Seq index lemmas *)
+let pong_roundtrip () =
+  (* encode Pong = append (create 1 msg_pong) (create 4 0uy), length = 5 *)
+  let wire = encode Pong in
+  assert (Seq.length wire = 5);
+  Seq.lemma_index_app1 (Seq.create 1 msg_pong) (Seq.create length_size 0uy) 0;
+  assert (Seq.index wire 0 = msg_pong);
+  ()
 
 (** -------------------------------------------------------------------- **)
 (** Correspondence to Haskell implementation                             **)

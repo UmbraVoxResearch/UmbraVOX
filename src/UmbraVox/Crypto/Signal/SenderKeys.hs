@@ -8,6 +8,12 @@
 -- AES-256-GCM.  Distribution messages carry the initial chain key
 -- and signing key so new members can join.
 --
+-- == M15.3 SecureBytes migration
+--
+-- 'sksChainKey', 'sksSigningKey', 'skdChainKey', and 'skdSigningKey'
+-- are stored as 'SecureBytes' (pinned, zeroed-on-free).  Functions
+-- that operate on these fields now live in IO.
+--
 -- See: doc/spec/signal-protocol.md
 module UmbraVox.Crypto.Signal.SenderKeys
     ( SenderKeyState(..)
@@ -31,6 +37,7 @@ import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
 import UmbraVox.Crypto.HKDF (hkdfExpand, hkdfExtract)
 import UmbraVox.Crypto.HMAC (hmacSHA256)
 import UmbraVox.Crypto.Random (randomBytes)
+import UmbraVox.Crypto.SecureBytes (SecureBytes, fromByteString, toByteString)
 
 ------------------------------------------------------------------------
 -- Error type
@@ -79,23 +86,27 @@ skippedSenderKeyMaxAgeSecs = 172800
 --
 -- Each group member maintains one of these per known sender (including
 -- themselves for their own sending chain).
+--
+-- 'sksChainKey' and 'sksSigningKey' are stored as 'SecureBytes'
+-- (pinned, zeroed-on-free) per M15.3.
 data SenderKeyState = SenderKeyState
     { sksSenderId    :: !ByteString
       -- ^ Opaque sender identifier (e.g. UUID or device+identity hash).
-    , sksChainKey    :: !ByteString
-      -- ^ Current 32-byte symmetric chain key.
+    , sksChainKey    :: !SecureBytes
+      -- ^ Current 32-byte symmetric chain key (M15.3: SecureBytes).
     , sksIteration   :: !Word32
       -- ^ Current chain iteration (message counter).
-    , sksSigningKey  :: !ByteString
-      -- ^ 32-byte signing/identity key for this sender (used as AAD
-      -- context, not for digital signatures in this layer).
+    , sksSigningKey  :: !SecureBytes
+      -- ^ 32-byte signing/identity key for this sender (M15.3:
+      -- SecureBytes).  Used as AAD context, not for digital signatures
+      -- in this layer.
     , sksSkippedKeys :: !(Map (ByteString, Word32) (ByteString, ByteString, Word64))
       -- ^ Skipped message keys indexed by (senderId, iteration).
       -- Each entry is (msgKey, chainKey, wallTimestamp).
       -- Allows decryption of out-of-order messages.
     , sksSkipSeq     :: !Word64
       -- ^ Monotonic counter for insertion-order eviction.
-    } deriving stock (Show, Eq)
+    }
 
 -- | An encrypted group message produced by the sender key chain.
 data SenderKeyMessage = SenderKeyMessage
@@ -111,16 +122,19 @@ data SenderKeyMessage = SenderKeyMessage
 
 -- | Initial key distribution message sent when a member joins a group
 -- or rotates their sender key.
+--
+-- 'skdChainKey' and 'skdSigningKey' carry secret material received from
+-- peers and are stored as 'SecureBytes' per M15.3.
 data SenderKeyDistributionMessage = SenderKeyDistributionMessage
     { skdSenderId   :: !ByteString
       -- ^ Sender identifier.
-    , skdChainKey   :: !ByteString
-      -- ^ Initial 32-byte chain key.
+    , skdChainKey   :: !SecureBytes
+      -- ^ Initial 32-byte chain key (M15.3: SecureBytes).
     , skdIteration  :: !Word32
       -- ^ Starting iteration (usually 0).
-    , skdSigningKey :: !ByteString
-      -- ^ 32-byte signing/identity key.
-    } deriving stock (Show, Eq)
+    , skdSigningKey :: !SecureBytes
+      -- ^ 32-byte signing/identity key (M15.3: SecureBytes).
+    }
 
 ------------------------------------------------------------------------
 -- KDF helper (same pattern as DoubleRatchet.kdfCK)
@@ -166,21 +180,27 @@ createSenderKeyDistribution
     :: ByteString  -- ^ Sender identifier
     -> IO (SenderKeyState, SenderKeyDistributionMessage)
 createSenderKeyDistribution senderId = do
-    chainKey   <- randomBytes 32
-    signingKey <- randomBytes 32
+    chainKeyRaw   <- randomBytes 32
+    signingKeyRaw <- randomBytes 32
+    chainKeySB   <- fromByteString chainKeyRaw
+    signingKeySB <- fromByteString signingKeyRaw
+    -- Distribution message gets its own copies so the SenderKeyState
+    -- and SenderKeyDistributionMessage do not alias.
+    distChainKey   <- fromByteString chainKeyRaw
+    distSigningKey <- fromByteString signingKeyRaw
     let st = SenderKeyState
             { sksSenderId    = senderId
-            , sksChainKey    = chainKey
+            , sksChainKey    = chainKeySB
             , sksIteration   = 0
-            , sksSigningKey  = signingKey
+            , sksSigningKey  = signingKeySB
             , sksSkippedKeys = Map.empty
             , sksSkipSeq     = 0
             }
         dist = SenderKeyDistributionMessage
             { skdSenderId   = senderId
-            , skdChainKey   = chainKey
+            , skdChainKey   = distChainKey
             , skdIteration  = 0
-            , skdSigningKey = signingKey
+            , skdSigningKey = distSigningKey
             }
     pure (st, dist)
 
@@ -189,25 +209,33 @@ createSenderKeyDistribution senderId = do
 -- Returns a 'SenderKeyState' that can be used to decrypt future
 -- messages from this sender.  The caller is responsible for storing
 -- this state indexed by sender ID.
+--
+-- Now in IO because it creates 'SecureBytes' copies of the key
+-- material from the distribution message.
 processSenderKeyDistribution
     :: SenderKeyDistributionMessage
-    -> Either SenderKeyError SenderKeyState
-processSenderKeyDistribution dist
-    | BS.length (skdChainKey dist) /= 32
-    = Left (InvalidDistribution "chain key must be 32 bytes")
-    | BS.length (skdSigningKey dist) /= 32
-    = Left (InvalidDistribution "signing key must be 32 bytes")
-    | BS.null (skdSenderId dist)
-    = Left (InvalidDistribution "sender ID must not be empty")
-    | otherwise
-    = Right SenderKeyState
-        { sksSenderId    = skdSenderId dist
-        , sksChainKey    = skdChainKey dist
-        , sksIteration   = skdIteration dist
-        , sksSigningKey  = skdSigningKey dist
-        , sksSkippedKeys = Map.empty
-        , sksSkipSeq     = 0
-        }
+    -> IO (Either SenderKeyError SenderKeyState)
+processSenderKeyDistribution dist = do
+    chainKeyBS   <- toByteString (skdChainKey dist)
+    signingKeyBS <- toByteString (skdSigningKey dist)
+    if BS.length chainKeyBS /= 32
+    then pure $ Left (InvalidDistribution "chain key must be 32 bytes")
+    else if BS.length signingKeyBS /= 32
+    then pure $ Left (InvalidDistribution "signing key must be 32 bytes")
+    else if BS.null (skdSenderId dist)
+    then pure $ Left (InvalidDistribution "sender ID must not be empty")
+    else do
+        -- Create fresh SecureBytes copies for the new state
+        ck <- fromByteString chainKeyBS
+        sk <- fromByteString signingKeyBS
+        pure $ Right SenderKeyState
+            { sksSenderId    = skdSenderId dist
+            , sksChainKey    = ck
+            , sksIteration   = skdIteration dist
+            , sksSigningKey  = sk
+            , sksSkippedKeys = Map.empty
+            , sksSkipSeq     = 0
+            }
 
 ------------------------------------------------------------------------
 -- Encryption
@@ -217,23 +245,28 @@ processSenderKeyDistribution dist
 --
 -- Advances the chain by one step (kdfCK), encrypts with AES-256-GCM,
 -- and returns the updated state and the sender key message.
+--
+-- Now in IO because it reads from and writes to 'SecureBytes' fields.
 encryptSenderKey
     :: SenderKeyState
     -> ByteString            -- ^ Plaintext
-    -> Either SenderKeyError (SenderKeyState, SenderKeyMessage)
+    -> IO (Either SenderKeyError (SenderKeyState, SenderKeyMessage))
 encryptSenderKey st plaintext
     | sksIteration st >= 0xFFFFFFFE
-    = Left ChainExhausted
-    | otherwise =
-        let !(newChainKey, msgKey) = senderKdfCK (sksChainKey st)
-            !nonce = makeSenderNonce (sksChainKey st) (sksIteration st)
+    = pure $ Left ChainExhausted
+    | otherwise = do
+        chainKeyBS   <- toByteString (sksChainKey st)
+        signingKeyBS <- toByteString (sksSigningKey st)
+        let !(newChainKeyBS, msgKey) = senderKdfCK chainKeyBS
+            !nonce = makeSenderNonce chainKeyBS (sksIteration st)
             -- AAD = senderId || signingKey || iteration (4 bytes BE)
             !aad = sksSenderId st
-                <> sksSigningKey st
+                <> signingKeyBS
                 <> encodeWord32BE (sksIteration st)
             !(ct, tag) = gcmEncrypt msgKey nonce aad plaintext
-            !st' = st
-                { sksChainKey  = newChainKey
+        newChainKeySB <- fromByteString newChainKeyBS
+        let !st' = st
+                { sksChainKey  = newChainKeySB
                 , sksIteration = sksIteration st + 1
                 }
             !msg = SenderKeyMessage
@@ -242,7 +275,7 @@ encryptSenderKey st plaintext
                 , skmCiphertext = ct
                 , skmTag        = tag
                 }
-        in Right (st', msg)
+        pure $ Right (st', msg)
 
 ------------------------------------------------------------------------
 -- Decryption
@@ -258,61 +291,67 @@ encryptSenderKey st plaintext
 --
 -- @nowSecs@ is the current wall-clock time in POSIX seconds, used for
 -- age-based eviction of cached skipped keys (48 hours).
+--
+-- Now in IO because it reads from and writes to 'SecureBytes' fields.
 decryptSenderKey
     :: SenderKeyState
     -> SenderKeyMessage
     -> Word64               -- ^ Current POSIX time (seconds)
-    -> Either SenderKeyError (SenderKeyState, ByteString)
+    -> IO (Either SenderKeyError (SenderKeyState, ByteString))
 decryptSenderKey st msg nowSecs
     | skmSenderId msg /= sksSenderId st
-    = Left (UnknownSender (skmSenderId msg))
+    = pure $ Left (UnknownSender (skmSenderId msg))
     | skmIteration msg < sksIteration st
     = trySkippedSenderKeys st msg nowSecs
     | skmIteration msg - sksIteration st > maxSenderKeySkip
-    = Left ChainTooFarAhead
-    | otherwise =
+    = pure $ Left ChainTooFarAhead
+    | otherwise = do
+        chainKeyBS   <- toByteString (sksChainKey st)
+        signingKeyBS <- toByteString (sksSigningKey st)
         -- Store intermediate keys in the skipped-key cache, then
         -- decrypt the target message.
-        let !(advancedChainKey, targetChainKey, targetMsgKey, skipped) =
-                advanceChain (sksChainKey st) (sksIteration st) (skmIteration msg)
+        let !(advancedChainKeyBS, targetChainKeyBS, targetMsgKey, skipped) =
+                advanceChain chainKeyBS (sksIteration st) (skmIteration msg)
                              (sksSenderId st) (sksSkippedKeys st) (sksSkipSeq st) nowSecs
-            !nonce = makeSenderNonce targetChainKey (skmIteration msg)
+            !nonce = makeSenderNonce targetChainKeyBS (skmIteration msg)
             !aad = sksSenderId st
-                <> sksSigningKey st
+                <> signingKeyBS
                 <> encodeWord32BE (skmIteration msg)
-        in case gcmDecrypt targetMsgKey nonce aad (skmCiphertext msg) (skmTag msg) of
-            Nothing -> Left DecryptionFailed
-            Just plaintext ->
+        case gcmDecrypt targetMsgKey nonce aad (skmCiphertext msg) (skmTag msg) of
+            Nothing -> pure $ Left DecryptionFailed
+            Just plaintext -> do
+                advancedChainKeySB <- fromByteString advancedChainKeyBS
                 let !evicted = evictSkippedSenderKeys nowSecs skipped
                     !st' = st
-                        { sksChainKey    = advancedChainKey
+                        { sksChainKey    = advancedChainKeySB
                         , sksIteration   = skmIteration msg + 1
                         , sksSkippedKeys = evicted
                         , sksSkipSeq     = sksSkipSeq st + fromIntegral (skmIteration msg - sksIteration st)
                         }
-                in Right (st', plaintext)
+                pure $ Right (st', plaintext)
 
 -- | Try to decrypt using a previously cached skipped message key.
 -- Evicts expired entries (older than 48 hours) before lookup.
 trySkippedSenderKeys :: SenderKeyState -> SenderKeyMessage -> Word64
-                     -> Either SenderKeyError (SenderKeyState, ByteString)
-trySkippedSenderKeys st msg nowSecs =
+                     -> IO (Either SenderKeyError (SenderKeyState, ByteString))
+trySkippedSenderKeys st msg nowSecs = do
+    signingKeyBS <- toByteString (sksSigningKey st)
     let !lookupKey = (sksSenderId st, skmIteration msg)
         -- Evict expired entries
         !pruned = Map.filter (\(_, _, ts) ->
             nowSecs <= ts || (nowSecs - ts) <= skippedSenderKeyMaxAgeSecs) (sksSkippedKeys st)
-    in case Map.lookup lookupKey pruned of
-        Nothing -> Left DecryptionFailed
+    case Map.lookup lookupKey pruned of
+        Nothing -> pure $ Left DecryptionFailed
         Just (msgKey, chainKey, _insertTime) ->
             let !nonce = makeSenderNonce chainKey (skmIteration msg)
                 !aad = sksSenderId st
-                    <> sksSigningKey st
+                    <> signingKeyBS
                     <> encodeWord32BE (skmIteration msg)
             in case gcmDecrypt msgKey nonce aad (skmCiphertext msg) (skmTag msg) of
-                Nothing -> Left DecryptionFailed
+                Nothing -> pure $ Left DecryptionFailed
                 Just plaintext ->
                     let !st' = st { sksSkippedKeys = Map.delete lookupKey pruned }
-                    in Right (st', plaintext)
+                    in pure $ Right (st', plaintext)
 
 -- | Advance the chain from @currentIter@ to @targetIter@, storing
 -- intermediate message keys in the skipped-key cache.

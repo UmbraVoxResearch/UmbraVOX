@@ -101,11 +101,16 @@ derivePresenceKey scanKey identityPub epoch =
 -- The record is signed with the provided Ed25519 secret key so that
 -- peers can verify authenticity without learning the signer's long-term
 -- identity (they verify against 'prStealthPubKey', not the identity key).
+--
+-- Returns 'Left' with a description if the Ed25519 implementation produces
+-- an unexpected output length (signature != 64 bytes or public key != 32 bytes).
+-- Under normal operation this branch is unreachable; exposing it as 'Either'
+-- allows callers to handle it without a process crash.
 createPresenceRecord :: ByteString  -- ^ Ed25519 secret key (32-byte seed)
                      -> ByteString  -- ^ Scan key (32 bytes)
                      -> ByteString  -- ^ Identity public key
                      -> ByteString  -- ^ Contact info (pre-encrypted by caller)
-                     -> IO PresenceRecord
+                     -> IO (Either String PresenceRecord)
 createPresenceRecord edSecret scanKey identityPub contactInfo = do
     now <- floor <$> getPOSIXTime :: IO Word64
     let !epoch = now `div` fromIntegral defaultTTL
@@ -117,16 +122,16 @@ createPresenceRecord edSecret scanKey identityPub contactInfo = do
                 <> putWord32BE defaultTTL
         !sig = ed25519Sign edSecret payload
         !pubKey = ed25519PublicKey edSecret
-    -- Sanity: signature must be 64 bytes
+    -- Sanity: signature must be 64 bytes, public key must be 32 bytes
     if BS.length sig /= 64 || BS.length pubKey /= 32
-        then error "createPresenceRecord: Ed25519 produced invalid signature/key"
-        else return PresenceRecord
+        then return (Left "createPresenceRecord: Ed25519 produced invalid signature/key")
+        else return (Right PresenceRecord
             { prStealthPubKey = stealthKey
             , prContactInfo   = contactInfo
             , prTimestamp     = now
             , prSignature    = sig
             , prTTL          = defaultTTL
-            }
+            })
 
 ------------------------------------------------------------------------
 -- Record verification

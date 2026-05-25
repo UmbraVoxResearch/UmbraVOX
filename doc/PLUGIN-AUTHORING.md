@@ -230,7 +230,7 @@ dispatch sessionRef line =
         (cmd        : _)     -> respond ("ERR unknown command: " ++ cmd)
 ```
 
-### Executable Wrapper (`app-<plugin>/Main.hs`)
+### Executable Wrapper (`app/<plugin>/Main.hs`)
 
 A thin wrapper that calls the bridge entry point:
 
@@ -291,7 +291,7 @@ Add an executable stanza to `UmbraVox.cabal`:
 executable umbravox-my-plugin
   import:           warnings, lang
   main-is:          Main.hs
-  hs-source-dirs:   app-my-plugin
+  hs-source-dirs:   app/my-plugin
   build-depends:
     base         >= 4.18  && < 5,
     UmbraVox
@@ -306,7 +306,7 @@ The executable name must match the `entrypoint` value in the manifest
 1. Create `plugins/<plugin-id>/manifest.uvx` with all required fields
 2. Implement `src/UmbraVox/Bridge/<Plugin>/Session.hs`
 3. Implement `src/UmbraVox/Bridge/<Plugin>/Main.hs`
-4. Create `app-<plugin>/Main.hs` executable wrapper
+4. Create `app/<plugin>/Main.hs` executable wrapper
 5. Add `TransportProviderId` constructor to `ProviderCatalog.hs`
 6. Add descriptor, endpoint schema, render, and parse cases
 7. Add `executable` stanza to `UmbraVox.cabal`

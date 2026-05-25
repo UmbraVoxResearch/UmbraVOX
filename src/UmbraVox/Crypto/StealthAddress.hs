@@ -34,6 +34,13 @@ import UmbraVox.Crypto.HKDF (hkdf)
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Crypto.SHA512 (sha512)
 
+{-# WARNING generateStealthKeys
+    "Uses variable-time scalarMul (via ed25519PublicKey) internally: leaks spend key bits via timing. Use FFI to constant-time C for production." #-}
+{-# WARNING deriveStealthAddress
+    "Uses variable-time scalarMul and x25519 internally: leaks ephemeral key material via timing. Use FFI to constant-time C for production." #-}
+{-# WARNING scanForPayment
+    "Uses variable-time scalarMul and x25519 internally: leaks scan and spend secret key bits via timing. Use FFI to constant-time C for production." #-}
+
 ------------------------------------------------------------------------
 -- Data types
 ------------------------------------------------------------------------

@@ -6,6 +6,37 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 
 ## [Unreleased]
 
+### v0.5.19 — Firecracker runtime VM, ./uv run redesign
+
+- Add nix/vm-runtime.nix: minimal NixOS image for runtime (<500MB)
+  - Firecracker variant: no GRUB, bare ext4 rootfs
+  - QEMU variant: lightweight with VGA support for GUI mode
+- Add tools/pkg/firecracker/ Go package (Config, Boot, CreateAppDisk)
+- Redesign ./uv run: default is now TUI via Firecracker (sub-second boot)
+  - ./uv run       — Firecracker TUI (default)
+  - ./uv run gui   — Lightweight QEMU with VGA display
+  - ./uv run headless — Firecracker daemon mode
+- Binary extraction: ./uv build now extracts runtime bundle to build/runtime/
+- Add ./uv vm build-runtime-image command
+- Add PreflightFirecracker check (KVM + firecracker binary)
+
+### v0.5.17 — GHC 9.14 upgrade, Signal Server JAR complete, directory consolidation
+- GHC upgraded from 9.6.7 to 9.14.1 (shell.nix, flake.nix, nix/vm-image.nix)
+- Cabal dependency bounds widened for GHC 9.14 compatibility
+- cabal.project.freeze removed (regenerated inside VM)
+- WARNING pragma placement fixed (must appear after imports in GHC 9.6+)
+- newDefaultAppConfig smart constructor added to avoid field mismatch breakage on future config changes
+- pkg-config and sqlite.dev added to VM image for cabal pkgconfig-depends
+- PKG_CONFIG_PATH setup added to vm-init Go binary
+- nix-ld enabled in Signal Server build VM (fixes protoc-gen-grpc-java)
+- JAVA_HOME set in Signal build VM service for JDK 25
+- Signal Server JAR built successfully (M19.4.6 complete)
+- app-signal-bridge/ and app-umbraclaw/ consolidated into app/ subdirectories
+- codegen/ moved into app/codegen/
+- 264GB of dead paths cleaned from nix store
+- Duplicate pkg-config entry removed from vm-image.nix
+- Docs updated for GHC 9.14 (QUICKSTART, VM-DEVELOPMENT, ARCHITECTURE)
+
 ### v0.5.16 — vm-init Go binary, command wiring, cloud-init helpers
 - vm-init Go binary (328 lines): replaces generated shell init script
   for in-guest VM setup (mount, copy, cache, env, exec/interactive modes)

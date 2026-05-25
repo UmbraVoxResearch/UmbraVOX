@@ -117,7 +117,7 @@ Rationale:
    vectors used for the codegen C differential tests.
 3. Compare HACL* output against both Haskell and codegen C output.
 4. Report any three-way disagreements as test failures.
-5. No changes to `Makefile`, `cabal`, or production FFI wiring needed.
+5. No changes to `./uv`, `cabal`, or production FFI wiring needed.
 
 ## 4. F*-to-C Correspondence Argument (M6.3.6)
 
@@ -146,7 +146,7 @@ NIST / RFC standard (authoritative definition)
               |
               | (F* type checker + Z3)
               v
-          Internal consistency verified (make verify)
+          Internal consistency verified (./uv verify)
 ```
 
 ### What this chain establishes
@@ -170,7 +170,7 @@ NIST / RFC standard (authoritative definition)
    CAVP and RFC appendices.
 
 5. **The F* specs model the same algorithms.** The F* formal models are
-   internally consistent (all green under `make verify`). They model the
+   internally consistent (all green under `./uv verify`). They model the
    same algorithms as the Haskell and C paths, using the same constants,
    round structures, and data flows.
 

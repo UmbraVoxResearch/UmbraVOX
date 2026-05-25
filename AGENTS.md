@@ -106,6 +106,47 @@ agents MUST use `./uv build` (or the VM exec path), never direct
 - Bypass VM network isolation
 - Can leave stale `dist-newstyle/` state that breaks subsequent builds
 
+### CRITICAL: Never Run nix-build on the Host
+
+**All nix-build operations happen inside the builder VM, not on the host.**
+
+This includes building VM images, runtime images, and any nix derivation.
+The only exception is `--on-host` which is an explicit opt-in for developers
+who understand the tradeoff.
+
+```bash
+# CORRECT — builds inside the builder VM
+./uv vm build-image              # Dev VM image
+./uv vm build-runtime-image      # Firecracker + QEMU runtime images
+
+# WRONG — touches the host nix store
+nix-build nix/vm-image.nix       # ← NEVER DO THIS
+nix-build nix/vm-runtime.nix     # ← NEVER DO THIS
+nix-shell --run "..."            # ← NEVER DO THIS (except nix-shell shell.nix for Go tools)
+```
+
+The builder VM has nix daemon + network + scratch disk. It downloads from
+cache.nixos.org and builds images natively. Results come back via the 9p
+output share. The host nix store is never written to.
+
+**Agents: when iterating on nix configs, do NOT test with `nix-build` on
+the host. Use `./uv vm build-image` or `./uv vm build-runtime-image`.
+If the build fails, debug inside `./uv dev` or by reading the VM console
+output — do not fall back to host nix commands.**
+
+### VM Architecture
+
+Three VM tiers, each built by the builder VM:
+
+| VM | Size | Built by | Used by |
+|----|------|----------|---------|
+| **Builder** | ~3GB | Downloaded or `nix-build nix/vm-builder.nix` (host, one-time) | `./uv vm build-image`, `./uv vm build-runtime-image` |
+| **Dev** | ~26GB | Builder VM | `./uv build`, `./uv test`, `./uv verify`, `./uv dev` |
+| **Runtime** | ~1.3GB | Builder VM | `./uv run` (Firecracker TUI/headless, QEMU GUI) |
+
+The builder VM is the only image that may be built on the host (bootstrap).
+All other images are built inside VMs.
+
 ### Debugging with Serial Console
 
 All VMs expose a serial console for interactive debugging:
@@ -180,7 +221,7 @@ The codegen pipeline produces C, Haskell, and FFI wrappers from
 `.spec` files:
 
 ```
-codegen/Specs/*.spec  →  codegen/CryptoGen.hs  →  csrc/generated/*.c
+app/codegen/Specs/*.spec  →  app/codegen/CryptoGen.hs  →  csrc/generated/*.c
                                                     src/UmbraVox/Generated/*.hs
                                                     csrc/generated/*_ffi.c
 ```
@@ -233,7 +274,7 @@ scripts/                       VM orchestration + test scripts
 
 ```bash
 # Build all 14 files:
-nix-shell --run "cd test/evidence/formal-proofs/coq && make"
+nix-shell --run "cd test/evidence/formal-proofs/coq && make"  # Coq's own Makefile, not the project build system
 
 # Coqprime files need -native-compiler no:
 coqc -native-compiler no -R . UmbraVox Ed25519GroupUniversal.v
@@ -254,7 +295,7 @@ Uses own crypto with Signal params — no libsignal dependency.
 
 ## Shell-to-Go Migration Status
 
-5 of 7 major shell scripts now have Go replacements:
+6 of 7 major shell scripts now have Go replacements:
 
 | Script | Go replacement | Status |
 |--------|---------------|--------|

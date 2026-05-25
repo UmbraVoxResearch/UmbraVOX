@@ -18,3 +18,26 @@ build/tools/
 *.tix
 .lia.cache
 .nia.cache
+
+# Nix build output symlinks
+result
+result-*
+
+# Compiled Go tool binaries
+tools/umbravox-vm
+tools/tar2ext4
+tools/release
+tools/vm-signal
+tools/vm-smoke
+
+# AI tool configuration (local, not project-level)
+.claude/
+.codex
+
+# Native libraries / object files
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe

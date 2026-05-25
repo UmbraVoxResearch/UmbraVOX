@@ -10,7 +10,7 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
-        hp = pkgs.haskell.packages.ghc96;
+        hp = pkgs.haskell.packages.ghc9141;
 
         # Minimal tools for VM orchestration (default shell)
         vmTools = with pkgs; [
@@ -184,10 +184,6 @@
         #   pkgs = import nixpkgs { system = "aarch64-linux"; };
         # };
 
-        packages.vm-seed-image = import ./nix/vm-seed.nix {
-          pkgs = import nixpkgs { system = "x86_64-linux"; };
-        };
-
         packages.vm-builder-image = import ./nix/vm-builder.nix {
           pkgs = import nixpkgs { system = "x86_64-linux"; };
         };
@@ -204,7 +200,23 @@
           mkdir -p $out
           cp ${vmImages.firecrackerRootfs}/nixos.img $out/rootfs.img
           cp ${vmImages.firecrackerKernel} $out/vmlinux
+          cp ${vmImages.firecrackerInitrd} $out/initrd
         '';
+
+        packages.firecracker-runtime-image = let
+          vmImages = import ./nix/vm-runtime.nix {
+            pkgs = import nixpkgs { system = "x86_64-linux"; };
+          };
+        in pkgs.runCommand "umbravox-firecracker-runtime" {} ''
+          mkdir -p $out
+          cp ${vmImages.firecrackerRootfs}/nixos.img $out/rootfs.img
+          cp ${vmImages.firecrackerKernel} $out/vmlinux
+          cp ${vmImages.firecrackerInitrd} $out/initrd
+        '';
+
+        packages.qemu-runtime-image = (import ./nix/vm-runtime.nix {
+          pkgs = import nixpkgs { system = "x86_64-linux"; };
+        }).qemu;
 
         packages.smoke-guest-image = let
           kernel = pkgs.linuxPackages.kernel;

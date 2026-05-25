@@ -25,8 +25,8 @@
 }:
 
 let
-  # GHC 9.6 with the 'network' package (only non-boot dependency)
-  ghc = pkgs.haskell.packages.ghc96.ghcWithPackages (hp: [ hp.network ]);
+  # GHC 9.14.1 with the 'network' package (only non-boot dependency)
+  ghc = pkgs.haskell.packages.ghc9141.ghcWithPackages (hp: [ hp.network ]);
 
   # Haskell tools
   cabal = pkgs.cabal-install;
@@ -42,7 +42,6 @@ let
   coq-bignums = pkgs.coqPackages.bignums;
   coqprime = pkgs.coqPackages.coqprime;
   tlaplus = pkgs.tlaplus;
-  tlc = pkgs.tlaplus;
   z3 = pkgs.z3;
   fstar = pkgs.fstar;
 
@@ -86,7 +85,7 @@ in pkgs.mkShell {
     fstar
     z3
 
-    # Go (for anthony DB tool)
+    # Go (for ./uv build system tools)
     pkgs.go
 
     # SQLite (direct DB access, fallback for anthony)

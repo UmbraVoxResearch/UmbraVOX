@@ -14,7 +14,7 @@ What is true today:
 
 - the active runtime crypto path is handwritten Haskell
 - the F* suite is a handwritten formal model layer and the current full
-  `make verify` run is green
+  `./uv verify` run is green
 - the generated Haskell namespace is wrapper-style and delegates to the active
   handwritten Haskell implementations
 - the generated C artifacts are currently link-probe stubs
@@ -176,16 +176,16 @@ independent cryptographic assurance.
 nix-shell
 
 # Verify all active F* specifications
-make verify
+./uv verify
 
-# Verify a single module
+# Verify a single module (inside VM dev shell)
 cabal run fstar-verify Spec.SHA256
 
 # Run the fast messaging-MVP gate
-make test
+./uv test
 
 # Run the generated/reference equivalence coverage
-cabal test umbravox-test --test-options='core'
+./uv test core
 ```
 
 ## Design Decisions
@@ -206,4 +206,4 @@ cabal test umbravox-test --test-options='core'
   properties from the GCM protocol logic.
 
 - **3-way requirement**: F* formal verification is a MANDATORY design
-  requirement for every cryptographic primitive (see TODO.txt).
+  requirement for every cryptographic primitive (see doc/TODO.txt).

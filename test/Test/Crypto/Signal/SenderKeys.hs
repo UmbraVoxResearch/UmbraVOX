@@ -19,7 +19,7 @@ runTests = do
 
     -- Test 1: Distribution round-trip
     (senderSt, dist) <- createSenderKeyDistribution (BS.pack [0x01, 0x02])
-    let recvResult = processSenderKeyDistribution dist
+    recvResult <- processSenderKeyDistribution dist
     case recvResult of
         Left err -> do
             putStrLn ("  FAIL: processSenderKeyDistribution returned error: " ++ show err)
@@ -29,12 +29,14 @@ runTests = do
 
             -- Test 2: Encrypt then decrypt
             let plaintext = BS.pack [0x48, 0x65, 0x6C, 0x6C, 0x6F]  -- "Hello"
-            case encryptSenderKey senderSt plaintext of
+            encResult <- encryptSenderKey senderSt plaintext
+            case encResult of
                 Left err -> do
                     putStrLn ("  FAIL: encryptSenderKey returned error: " ++ show err)
                     pure False
-                Right (_senderSt', skmsg) ->
-                    case decryptSenderKey recvSt skmsg 1000000 of
+                Right (_senderSt', skmsg) -> do
+                    decResult <- decryptSenderKey recvSt skmsg 1000000
+                    case decResult of
                         Left err -> do
                             putStrLn ("  FAIL: decryptSenderKey returned error: " ++ show err)
                             pure False

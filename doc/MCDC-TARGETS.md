@@ -114,11 +114,11 @@ below apply to HPC expression coverage reported by `hpc report --per-module`.
 
 ## 3. Enforcement
 
-The `make coverage-check` target parses HPC output and compares each
+The `./uv coverage-check` target parses HPC output and compares each
 module against its tier target.  It exits non-zero if any module falls
 below its target.
 
-The `make coverage-report` target generates the HPC HTML report and a
+The `./uv coverage-report` target generates the HPC HTML report and a
 summary file under `build/coverage/`.
 
 ---

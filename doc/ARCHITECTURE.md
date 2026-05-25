@@ -43,7 +43,7 @@ are unchanged by layout mode.
 All standard `./uv` commands (`build`, `test`, `verify`, `check`, etc.)
 route through an isolated NixOS QEMU VM by default.  The host only needs
 orchestration tools (QEMU, git, `./uv`) provided by `shell-minimal.nix`.
-The full development toolchain (GHC 9.6, Cabal, F*, Z3, Coq, AFL++, etc.)
+The full development toolchain (GHC 9.14, Cabal, F*, Z3, Coq, AFL++, etc.)
 lives inside the VM image built from `nix/vm-image.nix`.
 
 Host-local compile bypass is disabled. See `doc/VM-DEVELOPMENT.md` for
@@ -133,8 +133,8 @@ The codegen pipeline generates Haskell wrappers, C implementations, and FFI
 bridge modules from `.spec` files:
 
 ```text
-codegen/Specs/*.spec
-  -> codegen/CodeGen.hs
+app/codegen/Specs/*.spec
+  -> app/codegen/CodeGen.hs
   -> src/UmbraVox/Crypto/Generated/*.hs   (Haskell wrappers)
   -> csrc/generated/*.c                    (C implementations)
   -> src/UmbraVox/Crypto/Generated/FFI/*.hs (FFI bridge)

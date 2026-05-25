@@ -587,10 +587,12 @@ testWF6_decodeAEADWrongVersion :: IO Bool
 testWF6_decodeAEADWrongVersion = do
     let key = deriveEnvelopeKey (BS.replicate 32 0xDD)
         env = wrapEnvelope 1 0 (BS.replicate 32 0) 0 0 (BS.pack [0x41])
-        wire = encodeEnvelopeAEAD key 0 env
-        badWire = BS.cons 1 (BS.drop 1 wire)
-    assertEq "WF6: decodeEnvelopeAEAD wrong version returns Nothing"
-        Nothing (decodeEnvelopeAEAD key 0 badWire)
+    case encodeEnvelopeAEAD key 0 env of
+        Left err -> putStrLn ("  FAIL: WF6: encodeEnvelopeAEAD failed: " ++ err) >> pure False
+        Right wire ->
+            let badWire = BS.cons 1 (BS.drop 1 wire)
+            in assertEq "WF6: decodeEnvelopeAEAD wrong version returns Nothing"
+                   Nothing (decodeEnvelopeAEAD key 0 badWire)
 
 -- WF7: AEAD valid encode/decode roundtrip
 testWF7_decodeAEADRoundTrip :: IO Bool
@@ -599,11 +601,12 @@ testWF7_decodeAEADRoundTrip = do
         key     = deriveEnvelopeKey transportKey
         payload = BS.pack [0x48, 0x69]
         env     = wrapEnvelope 1 100 (BS.replicate 32 0xFF) 0xAA 0x5678 payload
-        wire    = encodeEnvelopeAEAD key 100 env
-    case decodeEnvelopeAEAD key 100 wire of
-        Nothing   -> putStrLn "  FAIL: WF7: decodeEnvelopeAEAD returned Nothing" >> pure False
-        Just env' -> assertEq "WF7: decodeEnvelopeAEAD roundtrip preserves payload"
-                         payload (envPayload env')
+    case encodeEnvelopeAEAD key 100 env of
+        Left err -> putStrLn ("  FAIL: WF7: encodeEnvelopeAEAD failed: " ++ err) >> pure False
+        Right wire -> case decodeEnvelopeAEAD key 100 wire of
+            Nothing   -> putStrLn "  FAIL: WF7: decodeEnvelopeAEAD returned Nothing" >> pure False
+            Just env' -> assertEq "WF7: decodeEnvelopeAEAD roundtrip preserves payload"
+                             payload (envPayload env')
 
 ------------------------------------------------------------------------
 -- Additional helpers

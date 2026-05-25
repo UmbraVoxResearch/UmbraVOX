@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/log"
 )
@@ -81,6 +82,25 @@ func Preflight(vmImagePath string, requireImage bool) error {
 
 	if !ok {
 		return fmt.Errorf("preflight checks failed")
+	}
+	return nil
+}
+
+// PreflightFirecracker checks that Firecracker and KVM are available.
+// Returns nil if ready, error with actionable message if not.
+func PreflightFirecracker() error {
+	var errs []string
+
+	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
+		errs = append(errs, "/dev/kvm not found (KVM required for Firecracker)")
+	}
+
+	if _, err := exec.LookPath("firecracker"); err != nil {
+		errs = append(errs, "firecracker not on PATH (install via nix or package manager)")
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("Firecracker preflight failed:\n  %s", strings.Join(errs, "\n  "))
 	}
 	return nil
 }

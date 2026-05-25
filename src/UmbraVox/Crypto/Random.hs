@@ -25,6 +25,7 @@ import System.Posix.Process (getProcessID)
 import System.Posix.Types (CPid(..))
 
 import UmbraVox.Crypto.HKDF (hkdfExtract)
+import UmbraVox.Crypto.SecureBytes (SecureBytes, fromByteString, toByteString, zeroAndFree)
 
 ------------------------------------------------------------------------
 -- RFC 8439 Section 2.1 — Quarter Round
@@ -172,7 +173,7 @@ serialise (w0,w1,w2,w3,w4,w5,w6,w7,w8,w9,w10,w11,w12,w13,w14,w15) =
 
 -- | CSPRNG internal state.
 data CSPRNGState = CSPRNGState
-    { csKey     :: !ByteString   -- ^ 32-byte ChaCha20 key
+    { csKey     :: !SecureBytes  -- ^ 32-byte ChaCha20 key (pinned, zeroed on free)
     , csCounter :: !Word64       -- ^ Block counter (Word64 to prevent overflow)
     , csNonce   :: !ByteString   -- ^ 12-byte nonce (from entropy)
     , csBuffer  :: !ByteString   -- ^ Remaining bytes from last block
@@ -285,8 +286,9 @@ seedCSPRNG = do
         !baseSalt = BS.pack [0..31]
         !salt    = baseSalt `xorBS` encodePidTime pid time
         -- HKDF-Extract: concentrate entropy with the process-unique salt
-        !key     = BS.take 32 (hkdfExtract salt rawKey)
+        !keyBS   = BS.take 32 (hkdfExtract salt rawKey)
         !pidInt  = fromIntegral pid :: Int
+    key <- fromByteString keyBS
     return CSPRNGState
         { csKey = key, csCounter = 0, csNonce = nonce
         , csBuffer = BS.empty, csOutputs = 0, csPID = pidInt }
@@ -297,11 +299,15 @@ reseedCSPRNG :: CSPRNGState -> IO CSPRNGState
 reseedCSPRNG old = do
     entropy <- readEntropy 44  -- 32 fresh + 12 nonce
     pid <- fromIntegral <$> getProcessID
+    oldKeyBS <- toByteString (csKey old)
     let !freshKey   = BS.take 32 entropy
         !freshNonce = BS.drop 32 entropy
         -- HKDF-Extract: salt = old key, ikm = fresh entropy
-        !prk    = hkdfExtract (csKey old) freshKey
-        !newKey = BS.take 32 prk
+        !prk      = hkdfExtract oldKeyBS freshKey
+        !newKeyBS = BS.take 32 prk
+    newKey <- fromByteString newKeyBS
+    -- Deterministically zero the old key before it becomes unreachable.
+    zeroAndFree (csKey old)
     return CSPRNGState
         { csKey = newKey, csCounter = 0, csNonce = freshNonce
         , csBuffer = BS.empty, csOutputs = 0, csPID = pid }
@@ -310,41 +316,70 @@ reseedCSPRNG old = do
 ensureState :: CSPRNGState -> IO CSPRNGState
 ensureState s = do
     pid <- fromIntegral <$> getProcessID
-    if csPID s /= pid then seedCSPRNG                   -- fork detected
+    if csPID s /= pid then do
+        -- Fork detected — zero old key and create fresh state.
+        zeroAndFree (csKey s)
+        seedCSPRNG
     else if csOutputs s >= reseedInterval then reseedCSPRNG s  -- reseed limit
     else return s
 
 -- | Draw bytes from the buffer and generate new ChaCha20 blocks as needed.
-generate :: Int -> CSPRNGState -> (ByteString, CSPRNGState)
+generate :: Int -> CSPRNGState -> IO (ByteString, CSPRNGState)
 generate n st
-    | n <= 0    = (BS.empty, st)
+    | n <= 0    = pure (BS.empty, st)
     | bufLen >= n =
         let !result = BS.take n (csBuffer st)
             !rest   = BS.drop n (csBuffer st)
-        in (result, st { csBuffer = rest, csOutputs = csOutputs st + n })
-    | otherwise =
+        in pure (result, st { csBuffer = rest, csOutputs = csOutputs st + n })
+    | otherwise = do
         let !fromBuf = csBuffer st
             !needed  = n - bufLen
-            !(blocks, st') = generateBlocks needed (st { csBuffer = BS.empty })
-            !combined = BS.append fromBuf blocks
+        (blocks, st') <- generateBlocks needed (st { csBuffer = BS.empty })
+        let !combined = BS.append fromBuf blocks
             !result   = BS.take n combined
             !leftover = BS.drop n combined
-        in (result, st' { csBuffer = leftover
-                        , csOutputs = csOutputs st + n })
+        pure (result, st' { csBuffer = leftover
+                          , csOutputs = csOutputs st + n })
   where
     !bufLen = BS.length (csBuffer st)
 
 -- | Generate enough ChaCha20 blocks to cover the requested byte count.
-generateBlocks :: Int -> CSPRNGState -> (ByteString, CSPRNGState)
-generateBlocks needed st = go needed [] st
+--
+-- Finding: @csCounter@ is @Word64@ but @chacha20Block@ accepts @Word32@;
+--   the @fromIntegral@ cast silently truncates if the counter exceeds 2^32.
+-- Vulnerability: None in practice.  The reseed interval is 2^20 bytes
+--   (see 'reseedInterval').  Each ChaCha20 block is 64 bytes, so at most
+--   2^20 / 64 = 16,384 blocks are produced per seed epoch — orders of
+--   magnitude below the 2^32 Word32 ceiling.  The counter is also reset to
+--   zero on every reseed (see 'reseedCSPRNG' and 'seedCSPRNG').
+-- Fix: Explicit bounds assertion below guards the @fromIntegral@ cast and
+--   will throw a pure error if the invariant is ever violated, e.g. if the
+--   reseed interval is accidentally raised without updating this guard.
+-- Verified: Maximum counter value per epoch = reseedInterval `div` 64 =
+--   16384, well within Word32 range (max 4,294,967,295).
+generateBlocks :: Int -> CSPRNGState -> IO (ByteString, CSPRNGState)
+generateBlocks needed st = do
+    keyBS <- toByteString (csKey st)
+    pure $ go keyBS needed [] st
   where
-    go :: Int -> [ByteString] -> CSPRNGState -> (ByteString, CSPRNGState)
-    go remaining acc s
+    go :: ByteString -> Int -> [ByteString] -> CSPRNGState -> (ByteString, CSPRNGState)
+    go _   remaining acc s
         | remaining <= 0 = (BS.concat (reverse acc), s)
-        | otherwise =
-            let !block = chacha20Block (csKey s) (csNonce s) (fromIntegral (csCounter s))
-            in go (remaining - 64) (block : acc)
-                  (s { csCounter = csCounter s + 1 })
+    go key remaining acc s =
+            -- Safety: csCounter is Word64 but chacha20Block takes Word32.
+            -- The reseed interval (2^20 bytes / 64 bytes per block = 16384
+            -- blocks) guarantees the counter never approaches 2^32.  The
+            -- assertion below makes that invariant explicit and will catch
+            -- any future configuration change that would violate it.
+            let !ctr = csCounter s
+                !block = if ctr > 0xFFFFFFFF
+                           then error $ "generateBlocks: counter overflow — "
+                                     ++ "csCounter exceeded Word32 range ("
+                                     ++ show ctr ++ "); reduce reseedInterval"
+                           else chacha20Block key (csNonce s)
+                                             (fromIntegral ctr)
+            in go key (remaining - 64) (block : acc)
+                  (s { csCounter = ctr + 1 })
 
 -- | Generate the specified number of cryptographically secure random bytes.
 --
@@ -363,5 +398,5 @@ randomBytes n
         initCSPRNG
         modifyMVar globalCSPRNG $ \st -> do
             st' <- ensureState st
-            let !(result, st'') = generate n st'
+            (result, st'') <- generate n st'
             return (st'', result)

@@ -103,7 +103,7 @@ These can never be proved unconditionally in any proof system.
 **Verification:**
 ```
 cabal test umbravox-test --test-options='differential-oracle'
-make assurance-fast
+./uv assurance-fast
 ```
 
 ---
@@ -120,11 +120,11 @@ make assurance-fast
 - `REVIEWER-GUIDE.md`: reproduction steps, claims NOT made, scope limitations
 
 **New automation:**
-- `make assurance-fast`: 5 hygiene checks (runs in seconds)
-- `make assurance`: full release-grade suite (runs in minutes)
+- `./uv assurance-fast`: 5 hygiene checks (runs in seconds)
+- `./uv assurance`: full release-grade suite (runs in minutes)
 - `check-assumption-ledger.sh`: 6 consistency checks (assume val counts, duplicates, orphans, format)
 - `check-proof-hygiene.sh`: 4 audit hygiene checks (admit-free, assume accounting, Coq Admitted, AUDIT NOTE markers)
-- `assurance-fast` wired into `make quality` gate
+- `assurance-fast` wired into `./uv` gate
 
 **Organizational changes:**
 - `Ed25519GroupLaw.v` moved to `coq/draft/` (aspirational, not evidence)
@@ -142,8 +142,8 @@ make assurance-fast
 ### Verification commands
 
 ```
-make assurance-fast    # hygiene checks (seconds)
-make assurance         # full release-grade suite (minutes)
+./uv assurance-fast    # hygiene checks (seconds)
+./uv assurance         # full release-grade suite (minutes)
 ```
 
 ---
@@ -190,4 +190,4 @@ All issues documented in commit history (`v0.1.1..v0.1.2`).
 - **`Qed`**: Machine-checked Coq proofs. Number should only increase.
 - **`Admitted`**: Unfinished Coq proofs accepted without proof. Must remain 0.
 - **Infra tests**: Infrastructure and integration tests in `test/`.
-- **Assurance checks**: Automated hygiene checks from `make assurance-fast`.
+- **Assurance checks**: Automated hygiene checks from `./uv assurance-fast`.

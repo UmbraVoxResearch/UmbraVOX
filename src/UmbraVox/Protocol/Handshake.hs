@@ -30,6 +30,7 @@ import UmbraVox.Crypto.Signal.PQXDH
 import UmbraVox.Crypto.ChaChaPoly (chachaPolyEncrypt, chachaPolyDecrypt)
 import UmbraVox.Crypto.Curve25519 (x25519)
 import UmbraVox.Crypto.HKDF (hkdfSHA256)
+import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.X3DH
     (KeyPair(..), IdentityKey(..), generateIdentityKey, generateKeyPair,
      signPreKey)
@@ -69,12 +70,13 @@ getW32BESafe bs
 genIdentity :: IO IdentityKey
 genIdentity = do
     edSec <- randomBytes 32; xSec <- randomBytes 32
-    pure $! generateIdentityKey edSec xSec
+    generateIdentityKey edSec xSec
 
 genSignedPreKey :: IdentityKey -> IO (KeyPair, BS.ByteString)
 genSignedPreKey ik = do
     spkSec <- randomBytes 32
-    let !spk = generateKeyPair spkSec; !sig = signPreKey ik (kpPublic spk)
+    spk <- generateKeyPair spkSec
+    sig <- signPreKey ik (kpPublic spk)
     pure (spk, sig)
 
 genPQPreKey :: IO (MLKEMEncapKey, MLKEMDecapKey)
@@ -98,10 +100,11 @@ bundleVersion :: Word8
 bundleVersion = 0x01
 
 serializeBundle :: IdentityKey -> BS.ByteString -> BS.ByteString
-                -> MLKEMEncapKey -> Maybe BS.ByteString -> BS.ByteString
-serializeBundle ik spkPub spkSig (MLKEMEncapKey pqpk) mOpk =
-    let !pqSig = ed25519Sign (ikEd25519Secret ik) pqpk
-    in BS.concat
+                -> MLKEMEncapKey -> Maybe BS.ByteString -> IO BS.ByteString
+serializeBundle ik spkPub spkSig (MLKEMEncapKey pqpk) mOpk = do
+    edSec <- toByteString (ikEd25519Secret ik)
+    let !pqSig = ed25519Sign edSec pqpk
+    pure $ BS.concat
         [ BS.singleton bundleVersion
         , ikX25519Public ik, ikEd25519Public ik, spkPub, spkSig
         , putW32BE (fromIntegral (BS.length pqpk)), pqpk
@@ -150,7 +153,8 @@ handshakeInitiator :: AnyTransport -> IdentityKey -> IO ChatSession
 handshakeInitiator t aliceIK = do
     bundle <- recvBundle t
     ekRand <- randomBytes 32; mlkemRand <- randomBytes 32
-    result <- case pqxdhInitiate aliceIK bundle ekRand mlkemRand of
+    mResult <- pqxdhInitiate aliceIK bundle ekRand mlkemRand
+    result <- case mResult of
         Nothing -> fail "PQXDH: SPK signature verification failed"
         Just r  -> pure r
     let MLKEMCiphertext ctBS = pqxdhPQCiphertext result
@@ -161,8 +165,9 @@ handshakeInitiator t aliceIK = do
     -- Alice's long-term identity key from the initial PQXDH message and
     -- correlate her across sessions.  By encrypting IK under DH(ek, SPK),
     -- only Bob (who holds the SPK secret) can recover Alice's identity.
-    let !ek = generateKeyPair ekRand
-    encIK <- case x25519 (kpSecret ek) (pqpkbSignedPreKey bundle) of
+    ek <- generateKeyPair ekRand
+    ekSecretBS <- toByteString (kpSecret ek)
+    encIK <- case x25519 ekSecretBS (pqpkbSignedPreKey bundle) of
         Nothing -> fail "PQXDH: ephemeral DH for IK wrapping returned all-zero"
         Just dhSecret -> do
             let !wrapKey = deriveIKWrapKey dhSecret
@@ -184,8 +189,9 @@ handshakeInitiator t aliceIK = do
     unless (verifyKeyConfirmation (pqxdhSharedSecret result) "responder"
                                   transcriptHash peerMAC) $
         fail "PQXDH: key confirmation failed (possible MitM detected)"
+    xSecretBS <- toByteString (ikX25519Secret aliceIK)
     mSession <- initChatSession (pqxdhSharedSecret result)
-                                (ikX25519Secret aliceIK) (pqpkbSignedPreKey bundle)
+                                xSecretBS (pqpkbSignedPreKey bundle)
     case mSession of
         Nothing -> fail "PQXDH: ratchet init DH returned all-zero (low-order point rejected)"
         Just s  -> pure s
@@ -194,12 +200,14 @@ handshakeResponder :: AnyTransport -> IdentityKey -> (BS.ByteString -> IO Bool) 
 handshakeResponder t bobIK trustCheck = do
     (spk, spkSig) <- genSignedPreKey bobIK
     (pqEK, pqDK) <- genPQPreKey
-    anySend t . encodeMessage $ serializeBundle bobIK (kpPublic spk) spkSig pqEK Nothing
+    bundleBS <- serializeBundle bobIK (kpPublic spk) spkSig pqEK Nothing
+    anySend t . encodeMessage $ bundleBS
     (encAliceIK, aliceEKPub, pqCt) <- recvInitialMessage t
     -- M27.2.4: Unwrap the initiator's encrypted identity key using
     -- DH(spkSecret, aliceEphemeralPub).  The identity key was encrypted
     -- by the initiator to prevent passive observers from learning it.
-    aliceIKPub <- case x25519 (kpSecret spk) aliceEKPub of
+    spkSecretBS <- toByteString (kpSecret spk)
+    aliceIKPub <- case x25519 spkSecretBS aliceEKPub of
         Nothing -> fail "PQXDH: ephemeral DH for IK unwrapping returned all-zero"
         Just dhSecret -> do
             let !wrapKey = deriveIKWrapKey dhSecret
@@ -213,8 +221,9 @@ handshakeResponder t bobIK trustCheck = do
     -- M23.3.5: check trust before expensive PQXDH computation
     trusted <- trustCheck aliceIKPub
     unless trusted $ fail "Connection rejected: peer not trusted"
-    shared <- case pqxdhRespond bobIK (kpSecret spk) Nothing pqDK
-                                aliceIKPub aliceEKPub pqCt of
+    mShared <- pqxdhRespond bobIK spkSecretBS Nothing pqDK
+                            aliceIKPub aliceEKPub pqCt
+    shared <- case mShared of
                   Nothing -> fail "PQXDH: DH returned all-zero (low-order point rejected)"
                   Just s  -> pure s
     -- M27.6.7: Key confirmation — reconstruct the transcript from the
@@ -233,7 +242,7 @@ handshakeResponder t bobIK trustCheck = do
         fail "PQXDH: key confirmation failed (possible MitM detected)"
     let !ourMAC = keyConfirmMAC shared "responder" transcriptHash
     anySend t . encodeMessage $ ourMAC
-    initChatSessionBob shared (kpSecret spk)
+    initChatSessionBob shared spkSecretBS
 
 recvBundle :: AnyTransport -> IO PQPreKeyBundle
 recvBundle t = do

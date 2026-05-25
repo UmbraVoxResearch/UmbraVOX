@@ -66,6 +66,7 @@ import UmbraVox.TUI.PaginatedList (slicePage, psItems, psPage, psTotalPages)
 import UmbraVox.TUI.Text (displayWidth, trimToWidth, splitAtWidth)
 import UmbraVox.Protocol.QRCode (generateSafetyNumber, renderSafetyNumber,
                                     renderFingerprint, generateQRCode, renderQRCode)
+import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 import UmbraVox.Chat.Session (ChatSession(..))
 import UmbraVox.Crypto.Signal.DoubleRatchet (RatchetState(..))
@@ -917,8 +918,8 @@ exportKeysOverlayLines st = do
     case mIk of
         Nothing -> pure ["No identity generated yet.", "", "[ Close ]" ]
         Just ik -> do
-            let payload = encodeIdentityHex ik
-                qrPayload = encodeIdentityNumeric payload
+            payload <- encodeIdentityHex ik
+            let qrPayload = encodeIdentityNumeric payload
                 qrLines = renderQRCode (generateQRCode qrPayload)
             pure $
                 [ "Export Identity Keys (private + public)"
@@ -931,15 +932,18 @@ exportKeysOverlayLines st = do
                 , "QR code:"
                 ] ++ map ("  " ++) qrLines ++ ["", "[ Close ]"]
 
-encodeIdentityHex :: IdentityKey -> String
-encodeIdentityHex ik = C8.unpack (hexLower bytes)
+encodeIdentityHex :: IdentityKey -> IO String
+encodeIdentityHex ik = do
+    edSec <- toByteString (ikEd25519Secret ik)
+    xSec  <- toByteString (ikX25519Secret ik)
+    let bytes = BS.concat
+            [ edSec
+            , ikEd25519Public ik
+            , xSec
+            , ikX25519Public ik
+            ]
+    pure $ C8.unpack (hexLower bytes)
   where
-    bytes = BS.concat
-        [ ikEd25519Secret ik
-        , ikEd25519Public ik
-        , ikX25519Secret ik
-        , ikX25519Public ik
-        ]
     hexLower = BS.concatMap (\b -> BS.pack [hexNibble (b `div` 16), hexNibble (b `mod` 16)])
     hexNibble n
         | n < 10 = 48 + n

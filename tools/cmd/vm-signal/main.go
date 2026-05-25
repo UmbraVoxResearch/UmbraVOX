@@ -13,7 +13,7 @@
 package main
 
 import (
-	"bufio"
+	"context"
 	"flag"
 	"fmt"
 	"net/http"
@@ -21,10 +21,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/qemu"
 )
 
 // ANSI color helpers.
@@ -49,9 +49,9 @@ Subcommands:
   check-health   Stage 2: host-side health endpoint verification
 
 Flags for 'build-jar':
-  --network-policy <path>   Network policy file (default: vm-network-policy.conf)
+  --network-policy <path>   Network policy file (reserved, not yet implemented)
   --output-dir <path>       JAR output directory (default: build/signal-server-jar)
-  --timeout <duration>      Build timeout (default: 30m)
+  --timeout <duration>      Kill QEMU after this duration (default: 30m)
 
 Flags for 'extract-hash':
   --log <path>              Build log file (default: build/signal-server-build.log)
@@ -93,11 +93,18 @@ func run(args []string) int {
 	switch subcmd {
 	case "build-jar":
 		fs := flag.NewFlagSet("build-jar", flag.ExitOnError)
-		_ = fs.String("network-policy", "vm-network-policy.conf", "network policy file")
+		// TODO: --network-policy is reserved for future per-build egress filtering;
+		// currently all build VMs use the same user-mode NAT NIC.
+		_ = fs.String("network-policy", "conf/vm-network-policy.conf", "network policy file (reserved, not yet implemented)")
 		outputDir := fs.String("output-dir", "", "JAR output directory")
-		_ = fs.String("timeout", "30m", "build timeout")
+		timeoutStr := fs.String("timeout", "30m", "build timeout")
 		fs.Parse(args[1:])
-		return runBuildJar(*outputDir)
+		timeout, err := time.ParseDuration(*timeoutStr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "vm-signal: invalid --timeout %q: %v\n", *timeoutStr, err)
+			return 2
+		}
+		return runBuildJar(*outputDir, timeout)
 
 	case "extract-hash":
 		fs := flag.NewFlagSet("extract-hash", flag.ExitOnError)
@@ -109,17 +116,22 @@ func run(args []string) int {
 
 	case "interactive":
 		fs := flag.NewFlagSet("interactive", flag.ExitOnError)
-		_ = fs.Int("memory", 4096, "VM memory in MB")
-		_ = fs.Int("cores", 2, "VM CPU cores")
+		memory := fs.Int("memory", 0, "VM memory in MB (0 = auto-scale to 25% of host)")
+		cores := fs.Int("cores", 0, "VM CPU cores (0 = auto-scale to 25% of host)")
 		fs.Parse(args[1:])
-		return runRuntime("interactive")
+		return runRuntime("interactive", *memory, *cores, 0, "")
 
 	case "check":
 		fs := flag.NewFlagSet("check", flag.ExitOnError)
-		_ = fs.String("timeout", "120s", "health-check timeout")
-		_ = fs.String("endpoint", "http://localhost:8081/healthcheck", "health endpoint URL")
+		timeoutStr := fs.String("timeout", "120s", "health-check timeout")
+		endpoint := fs.String("endpoint", "http://localhost:8081/healthcheck", "health endpoint URL")
 		fs.Parse(args[1:])
-		return runRuntime("check")
+		timeout, err := time.ParseDuration(*timeoutStr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "vm-signal: invalid --timeout %q: %v\n", *timeoutStr, err)
+			return 2
+		}
+		return runRuntime("check", 0, 0, timeout, *endpoint)
 
 	case "check-health":
 		fs := flag.NewFlagSet("check-health", flag.ExitOnError)
@@ -205,44 +217,6 @@ func preflightCheck() error {
 	return nil
 }
 
-// scaleResources returns (cores, memMB) scaled to 1/fraction of the host.
-func scaleResources(fraction int) (int, int) {
-	hostCores := runtime.NumCPU()
-	hostMemMB := readHostMemoryMB()
-	vmCores := hostCores / fraction
-	vmMemMB := hostMemMB / fraction
-	if vmCores < 2 {
-		vmCores = 2
-	}
-	if vmMemMB < 2048 {
-		vmMemMB = 2048
-	}
-	return vmCores, vmMemMB
-}
-
-// readHostMemoryMB reads total host memory from /proc/meminfo.
-func readHostMemoryMB() int {
-	f, err := os.Open("/proc/meminfo")
-	if err != nil {
-		return 8192
-	}
-	defer f.Close()
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "MemTotal:") {
-			fields := strings.Fields(line)
-			if len(fields) >= 2 {
-				kb, err := strconv.Atoi(fields[1])
-				if err == nil {
-					return kb / 1024
-				}
-			}
-		}
-	}
-	return 8192
-}
-
 // createOverlay creates a COW qcow2 overlay backed by baseImage in dir.
 func createOverlay(baseImage, dir string) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -264,8 +238,120 @@ func createOverlay(baseImage, dir string) (string, error) {
 	return overlayPath, nil
 }
 
+// resolveJarOutputDir returns the absolute path for the JAR output directory.
+func resolveJarOutputDir(repoRoot, outputDirFlag string) string {
+	if outputDirFlag == "" {
+		return filepath.Join(repoRoot, "build", "signal-server-jar")
+	}
+	if filepath.IsAbs(outputDirFlag) {
+		return outputDirFlag
+	}
+	return filepath.Join(repoRoot, outputDirFlag)
+}
+
+// findNixBuild locates the nix-build binary on PATH or at the default Nix
+// profile location. Returns an error if not found.
+func findNixBuild() (string, error) {
+	nixBuild, err := exec.LookPath("nix-build")
+	if err == nil {
+		return nixBuild, nil
+	}
+	nixBuild = "/nix/var/nix/profiles/default/bin/nix-build"
+	if _, err := os.Stat(nixBuild); err != nil {
+		return "", fmt.Errorf("nix-build not found on PATH")
+	}
+	return nixBuild, nil
+}
+
+// parseSandboxBuildDir extracts UMBRAVOX_NIX_SANDBOX_BUILD_DIR from the
+// nix-vm-build-config.sh output, returning fallback if not found.
+func parseSandboxBuildDir(cfgOutput, fallback string) string {
+	for _, line := range strings.Split(cfgOutput, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "export ") {
+			line = strings.TrimPrefix(line, "export ")
+		}
+		if strings.HasPrefix(line, "UMBRAVOX_NIX_SANDBOX_BUILD_DIR=") {
+			val := strings.TrimPrefix(line, "UMBRAVOX_NIX_SANDBOX_BUILD_DIR=")
+			val = strings.Trim(val, "\"'")
+			if val != "" {
+				return val
+			}
+		}
+	}
+	return fallback
+}
+
+// ensureBuildImage builds the signal-server build VM image via nix-build if it
+// does not already exist at buildImagePath.
+func ensureBuildImage(repoRoot, buildImagePath, tmpDir string) error {
+	if fi, err := os.Stat(buildImagePath); err == nil && fi.IsDir() {
+		return nil
+	}
+
+	logMsg(yellow, "Build VM image not found, building now...")
+	os.RemoveAll(buildImagePath)
+
+	cfgScript := filepath.Join(repoRoot, "scripts", "nix-vm-build-config.sh")
+	if info, err := os.Stat(cfgScript); err == nil && info.Mode()&0o111 == 0 {
+		os.Chmod(cfgScript, 0o755)
+	}
+
+	nixBuild, err := findNixBuild()
+	if err != nil {
+		logMsg(yellow, "Install Nix or add /nix/var/nix/profiles/default/bin to PATH.")
+		return err
+	}
+
+	cfgCmd := exec.Command(cfgScript, "shell")
+	cfgOut, err := cfgCmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to run nix-vm-build-config.sh: %w", err)
+	}
+	sandboxBuildDir := parseSandboxBuildDir(string(cfgOut), tmpDir+"/sandbox")
+
+	os.MkdirAll(tmpDir, 0o755)
+
+	logMsg(blue, fmt.Sprintf("Using TMPDIR=%s", tmpDir))
+	logMsg(blue, "Building via nix (this may take several minutes)...")
+
+	nixCmd := exec.Command(nixBuild,
+		filepath.Join(repoRoot, "nix", "vm-signal-server.nix"),
+		"-A", "buildVm",
+		"--option", "build-dir", tmpDir,
+		"--option", "sandbox-build-dir", sandboxBuildDir,
+		"-o", buildImagePath)
+	nixCmd.Stdout = os.Stdout
+	nixCmd.Stderr = os.Stderr
+	nixCmd.Env = append(os.Environ(), "TMPDIR="+tmpDir)
+	if err := nixCmd.Run(); err != nil {
+		return fmt.Errorf("nix-build failed: %w", err)
+	}
+	return nil
+}
+
+// checkJarResult reports success or failure based on whether the JAR file was
+// produced, returning 0 on success.
+func checkJarResult(jarOutputDir string, qemuErr error) int {
+	jarPath := filepath.Join(jarOutputDir, "signal-server.jar")
+	if _, err := os.Stat(jarPath); err == nil {
+		fmt.Fprintln(os.Stderr)
+		logMsg(green, "Signal-Server JAR built successfully!")
+		logMsg(green, fmt.Sprintf("Location: %s", jarPath))
+		fmt.Fprintln(os.Stderr)
+		logMsg(blue, "Now rebuild the runtime VM image:")
+		logMsg(blue, "  ./uv vm signal build-jar")
+		return 0
+	}
+
+	fmt.Fprintln(os.Stderr)
+	logMsg(red, "Build failed -- no JAR produced.")
+	logMsg(red, "Check the VM console output above for errors.")
+	return 1
+}
+
 // runBuildJar implements the build-jar subcommand (Stage 1).
-func runBuildJar(outputDirFlag string) int {
+func runBuildJar(outputDirFlag string, timeout time.Duration) int {
 	if err := preflightCheck(); err != nil {
 		return 1
 	}
@@ -279,80 +365,11 @@ func runBuildJar(outputDirFlag string) int {
 		return 1
 	}
 
-	jarOutputDir := filepath.Join(repoRoot, "build", "signal-server-jar")
-	if outputDirFlag != "" {
-		if filepath.IsAbs(outputDirFlag) {
-			jarOutputDir = outputDirFlag
-		} else {
-			jarOutputDir = filepath.Join(repoRoot, outputDirFlag)
-		}
-	}
+	jarOutputDir := resolveJarOutputDir(repoRoot, outputDirFlag)
 
-	// Build the VM image via nix-build if it doesn't exist
-	if fi, err := os.Stat(buildImagePath); err != nil || !fi.IsDir() {
-		logMsg(yellow, "Build VM image not found, building now...")
-
-		// Fix symlink/directory issue: always clean before nix-build
-		os.RemoveAll(buildImagePath)
-
-		// Source nix-vm-build-config.sh for build settings
-		cfgScript := filepath.Join(repoRoot, "scripts", "nix-vm-build-config.sh")
-		if info, err := os.Stat(cfgScript); err == nil && info.Mode()&0o111 == 0 {
-			os.Chmod(cfgScript, 0o755)
-		}
-
-		// Find nix-build
-		nixBuild, err := exec.LookPath("nix-build")
-		if err != nil {
-			nixBuild = "/nix/var/nix/profiles/default/bin/nix-build"
-			if _, err := os.Stat(nixBuild); err != nil {
-				logMsg(red, "nix-build not found on PATH")
-				logMsg(yellow, "Install Nix or add /nix/var/nix/profiles/default/bin to PATH.")
-				return 1
-			}
-		}
-
-		// Read config from nix-vm-build-config.sh
-		cfgCmd := exec.Command(cfgScript, "shell")
-		cfgOut, err := cfgCmd.Output()
-		if err != nil {
-			logMsg(red, fmt.Sprintf("Failed to run nix-vm-build-config.sh: %v", err))
-			return 1
-		}
-		// Parse environment exports
-		sandboxBuildDir := tmpDir + "/sandbox"
-		for _, line := range strings.Split(string(cfgOut), "\n") {
-			line = strings.TrimSpace(line)
-			if strings.HasPrefix(line, "export ") {
-				line = strings.TrimPrefix(line, "export ")
-			}
-			if strings.HasPrefix(line, "UMBRAVOX_NIX_SANDBOX_BUILD_DIR=") {
-				val := strings.TrimPrefix(line, "UMBRAVOX_NIX_SANDBOX_BUILD_DIR=")
-				val = strings.Trim(val, "\"'")
-				if val != "" {
-					sandboxBuildDir = val
-				}
-			}
-		}
-
-		os.MkdirAll(tmpDir, 0o755)
-
-		logMsg(blue, fmt.Sprintf("Using TMPDIR=%s", tmpDir))
-		logMsg(blue, "Building via nix (this may take several minutes)...")
-
-		nixCmd := exec.Command(nixBuild,
-			filepath.Join(repoRoot, "nix", "vm-signal-server.nix"),
-			"-A", "buildVm",
-			"--option", "build-dir", tmpDir,
-			"--option", "sandbox-build-dir", sandboxBuildDir,
-			"-o", buildImagePath)
-		nixCmd.Stdout = os.Stdout
-		nixCmd.Stderr = os.Stderr
-		nixCmd.Env = append(os.Environ(), "TMPDIR="+tmpDir)
-		if err := nixCmd.Run(); err != nil {
-			logMsg(red, fmt.Sprintf("nix-build failed: %v", err))
-			return 1
-		}
+	if err := ensureBuildImage(repoRoot, buildImagePath, tmpDir); err != nil {
+		logMsg(red, err.Error())
+		return 1
 	}
 
 	diskImg, err := filepath.EvalSymlinks(filepath.Join(buildImagePath, "nixos.img"))
@@ -374,7 +391,7 @@ func runBuildJar(outputDirFlag string) int {
 	}
 
 	// Build VM gets 50% of host resources (Maven is hungry)
-	vmCores, vmMemMB := scaleResources(2)
+	vmCores, vmMemMB := qemu.ScaleToHost(qemu.ProfileDev)
 
 	logMsg(blue, "Stage 1: Building Signal-Server JAR in VM...")
 	logMsg(blue, fmt.Sprintf("VM resources: %d cores, %dMB RAM", vmCores, vmMemMB))
@@ -394,36 +411,27 @@ func runBuildJar(outputDirFlag string) int {
 		"-no-reboot",
 	}
 
-	cmd := exec.Command("qemu-system-x86_64", qemuArgs...)
+	var cmd *exec.Cmd
+	if timeout > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		cmd = exec.CommandContext(ctx, "qemu-system-x86_64", qemuArgs...)
+	} else {
+		cmd = exec.Command("qemu-system-x86_64", qemuArgs...)
+	}
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	qemuErr := cmd.Run()
-
-	// Check if JAR was produced
-	jarPath := filepath.Join(jarOutputDir, "signal-server.jar")
-	if _, err := os.Stat(jarPath); err == nil {
-		fmt.Fprintln(os.Stderr)
-		logMsg(green, "Signal-Server JAR built successfully!")
-		logMsg(green, fmt.Sprintf("Location: %s", jarPath))
-		fmt.Fprintln(os.Stderr)
-		logMsg(blue, "Now rebuild the runtime VM image:")
-		logMsg(blue, "  ./uv vm signal build-jar")
-		return 0
-	}
-
-	fmt.Fprintln(os.Stderr)
-	logMsg(red, "Build failed -- no JAR produced.")
-	logMsg(red, "Check the VM console output above for errors.")
-	if qemuErr != nil {
-		return 1
-	}
-	return 1
+	return checkJarResult(jarOutputDir, qemuErr)
 }
 
 // runRuntime implements the interactive and check subcommands (Stage 2).
-func runRuntime(mode string) int {
+// memoryMB and cores override auto-scaling when non-zero.
+// timeout sets a deadline on the QEMU process (check mode only; 0 = no deadline).
+// endpoint overrides the health-check URL logged at startup (check mode only).
+func runRuntime(mode string, memoryMB, cores int, timeout time.Duration, endpoint string) int {
 	if err := preflightCheck(); err != nil {
 		return 1
 	}
@@ -458,8 +466,14 @@ func runRuntime(mode string) int {
 	}
 	defer os.Remove(overlay)
 
-	// Runtime VM: 25% of host
-	vmCores, vmMemMB := scaleResources(4)
+	// Runtime VM: 25% of host by default; flags override individual values.
+	vmCores, vmMemMB := qemu.ScaleToHost(qemu.ProfileRuntime)
+	if cores > 0 {
+		vmCores = cores
+	}
+	if memoryMB > 0 {
+		vmMemMB = memoryMB
+	}
 
 	logMsg(blue, "Stage 2: Booting Signal-Server runtime VM...")
 	logMsg(blue, fmt.Sprintf("VM resources: %d cores, %dMB RAM", vmCores, vmMemMB))
@@ -472,6 +486,15 @@ func runRuntime(mode string) int {
 		logMsg(yellow, "Signal-Server JAR: not built (backing services only)")
 	}
 	logMsg(blue, fmt.Sprintf("Mode: %s", mode))
+	if mode == "check" {
+		if endpoint == "" {
+			endpoint = "http://localhost:8081/healthcheck"
+		}
+		logMsg(blue, fmt.Sprintf("Health endpoint: %s", endpoint))
+		if timeout > 0 {
+			logMsg(blue, fmt.Sprintf("Timeout: %s", timeout))
+		}
+	}
 	fmt.Fprintln(os.Stderr)
 
 	qemuArgs := []string{
@@ -488,7 +511,14 @@ func runRuntime(mode string) int {
 		qemuArgs = append(qemuArgs, "-no-reboot")
 	}
 
-	cmd := exec.Command("qemu-system-x86_64", qemuArgs...)
+	var cmd *exec.Cmd
+	if timeout > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		cmd = exec.CommandContext(ctx, "qemu-system-x86_64", qemuArgs...)
+	} else {
+		cmd = exec.Command("qemu-system-x86_64", qemuArgs...)
+	}
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

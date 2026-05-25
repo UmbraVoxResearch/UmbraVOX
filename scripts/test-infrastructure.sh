@@ -167,15 +167,15 @@ echo ""
 # ── Section 4: Network policy ────────────────────────────────────────
 echo -e "${BLUE}[4/8] Network policy tests${NC}"
 
-if [ -f vm-network-policy.conf ]; then
-    check "vm-network-policy.conf exists" "PASS"
+if [ -f conf/vm-network-policy.conf ]; then
+    check "conf/vm-network-policy.conf exists" "PASS"
 else
-    check "vm-network-policy.conf exists" "FAIL"
+    check "conf/vm-network-policy.conf exists" "FAIL"
 fi
 
 # Default policy must deny all — no uncommented ALLOW rules
-if [ -f vm-network-policy.conf ]; then
-    allow_count=$(grep -cE '^\s*ALLOW' vm-network-policy.conf 2>/dev/null || true)
+if [ -f conf/vm-network-policy.conf ]; then
+    allow_count=$(grep -cE '^\s*ALLOW' conf/vm-network-policy.conf 2>/dev/null || true)
     if [ "${allow_count:-0}" -eq 0 ]; then
         check "Default policy has no uncommented ALLOW rules (deny-all)" "PASS"
     else
@@ -186,15 +186,15 @@ else
 fi
 
 # Policy file must not be world-writable (host-only control)
-if [ -f vm-network-policy.conf ]; then
-    perms=$(stat -c '%a' vm-network-policy.conf 2>/dev/null || stat -f '%Lp' vm-network-policy.conf 2>/dev/null)
+if [ -f conf/vm-network-policy.conf ]; then
+    perms=$(stat -c '%a' conf/vm-network-policy.conf 2>/dev/null || stat -f '%Lp' conf/vm-network-policy.conf 2>/dev/null)
     if echo "$perms" | grep -qE '[2367]$'; then
-        check "vm-network-policy.conf is not world-writable" "FAIL (perms: $perms)"
+        check "conf/vm-network-policy.conf is not world-writable" "FAIL (perms: $perms)"
     else
-        check "vm-network-policy.conf is not world-writable" "PASS"
+        check "conf/vm-network-policy.conf is not world-writable" "PASS"
     fi
 else
-    check "vm-network-policy.conf is not world-writable" "SKIP"
+    check "conf/vm-network-policy.conf is not world-writable" "SKIP"
 fi
 
 echo ""

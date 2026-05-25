@@ -5,7 +5,7 @@ Purpose: active work only.
 - Deferred/blocked items → TODO-DEFERRED.txt
 
 Status: [ ] pending, [~] in progress
-Last updated: 2026-05-23
+Last updated: 2026-05-24
 
 Rules
 -----
@@ -16,7 +16,7 @@ Rules
 - Deferred/blocked items go in TODO-DEFERRED.txt.
 
 ================================================================================
-PROJECT STATUS (v0.5.16)
+PROJECT STATUS (v0.5.17)
 ================================================================================
 
 Build system:     ./uv (Go binary, 13 commands)
@@ -24,9 +24,10 @@ Codegen:          4-phase pipeline (array, loops, functions, conditionals)
 Quality gates:    6 gates (lint, format, license, complexity, headers, ct-branches)
 Test suites:      17 named suites, 160+ test modules
 CI:               Linux (gate), macOS (informational), Windows (best-effort)
-Signal Server:    v20260521.0.0 pinned, JDK 25, central config
+Signal Server:    v20260521.0.0 pinned, JDK 25, central config, JAR built
 Shell migration:  6/7 scripts replaced with Go
 Review findings:  18/18 resolved
+Firecracker VM:   runtime image in progress (phases 1-5 active)
 Platform targets: Linux, macOS, Windows, FreeBSD, OpenBSD, NetBSD,
                   DragonFlyBSD, illumos, arm64 + 7 future targets
 
@@ -66,11 +67,24 @@ ACTIVE WORK
     Pinned to real CalVer tag v20260521.0.0 (was fictional v9.99.1).
     Central config: nix/signal-server.json (version, tag, JDK, hash).
     Update to new version: ./uv vm signal update
-  [~] M19.4.6 Complete Signal-Server JAR build
+  [x] M19.4.6 Complete Signal-Server JAR build
     Steps: ./uv vm signal build-jar (direct Maven build in VM)
     JDK 25 required (configured in signal-server.json).
     Deterministic build flags applied (outputTimestamp, EPOCH).
+    JAR built successfully with JDK 25 in build VM (nix-ld fix for protoc).
   [~] M19.4.7 Health endpoint verification (blocked on M19.4.6)
+
+[~] Firecracker Runtime VM (./uv run)
+  [~] Phase 1: nix/vm-runtime.nix — minimal NixOS image (<500MB)
+      Firecracker variant (no GRUB, /dev/vda ext4) + QEMU variant (GRUB, VGA)
+  [~] Phase 2: Binary extraction after ./uv build
+      Extract umbravox binary + ldd closure to build/runtime/
+  [~] Phase 3: tools/pkg/firecracker/ Go package
+      Config, WriteConfigFile, Boot, CreateAppDisk, ScaleToHost
+  [~] Phase 4: ./uv run integration
+      Default: tui (Firecracker), gui (lightweight QEMU), headless (Firecracker)
+  [~] Phase 5: ./uv vm build-runtime-image command
+  [ ] Phase 6: Verification — image <500MB, boot <2s, all modes work
 
 ================================================================================
 CODE REVIEW FINDINGS (v0.5.3 audit)
@@ -186,3 +200,71 @@ In-guest scripts (run inside VM):
     Hosted mode runs on Linux/Windows/macOS. Native Dis VM target
     would require Limbo port of crypto primitives.
     Research target for distributed messaging over Styx protocol.
+
+================================================================================
+PROJECT REVIEW FINDINGS (v0.5.17 audit, 2026-05-24)
+================================================================================
+
+--- HASKELL CODE ---
+
+[x] [HIGH] PQWrapper.hs:74 — unsafePerformIO in pqEncrypt without NOINLINE pragma — fixed (added pragma)
+    Risk: GHC can CSE/share the call, reusing same random bytes.
+    Fix: add {-# NOINLINE pqEncrypt #-} or move to IO.
+
+[x] [HIGH] 12 Consensus/Chat/Network/Storage modules contain reachable error "not implemented" — fixed (moved behind stubs flag)
+    Files: LeaderElection, Protocol, Truncation, ForkChoice, Validation,
+           Transaction, Sync, Gossip, ChainDB, Index, Checkpoint, StateDB
+    Fix: guard behind stubs flag or return typed errors.
+
+[x] [HIGH] TUI/Actions/Session.hs:110 — reachable error "bridge not implemented" — fixed (returns SendUnavailable)
+    Fix: return Left or typed error instead of crashing.
+
+[x] [MEDIUM] Protocol/WireFormat.hs:265 — error on sequence overflow (should be Left) — fixed (returns Either)
+[x] [MEDIUM] Network/Presence.hs:122 — error on signature failure (should be Either) — fixed (returns Either)
+[x] [MEDIUM] MLKEM.hs — no WARNING pragmas on secret-key operations — fixed (added 3 pragmas)
+[N/A] [MEDIUM] SHA256/SHA512/Keccak — no per-function WARNING pragmas (hash functions on public data)
+[x] [MEDIUM] StealthAddress — no per-function WARNING pragmas — fixed (added 3 pragmas)
+[x] [MEDIUM] Random.hs:345 — silent Word64→Word32 truncation — fixed (bounds check added)
+[x] [LOW] Protocol/Encoding.hs:67 — head defaultPorts — fixed (uses defaultPort)
+[x] [LOW] TUI/RuntimeSettings.hs:220 — head modes — fixed (uses minBound)
+[x] [LOW] App/SwapCheck.hs — false positive (used by app/Main.hs)
+
+--- GO CODE ---
+
+[x] [HIGH] cmd_image.go:614 — shell injection via bash -c with repoRoot (arm64 branch) — fixed (uses cmd.Dir)
+    Fix: use cmd.Dir like other targets.
+[x] [HIGH] cmd_release.go:110 — shell injection via fmt.Sprintf into nix-shell --run — fixed (env var, not interpolation)
+    Fix: use exec.Command with separate args.
+[x] [MEDIUM] vm-signal/main.go — 6 parsed flags silently discarded (--network-policy, etc.) — fixed (wired to behavior)
+    Fix: wire flags to actual behavior or remove from help text.
+[x] [MEDIUM] cmd_image.go:341 — QEMU error ignored before checking builder result — fixed (returns 1 on failure)
+    Fix: return 1 on QEMU failure before checking status file.
+[x] [MEDIUM] cmd_image.go:424 — symlink errors silently dropped in fallbackLocalBuild — fixed (error handling added)
+[x] [MEDIUM] release/main.go:179 — exec.Command error discarded for linkage check — fixed (linkageErr handled)
+[x] [LOW] vm-signal duplicates readHostMemoryMB/scaleResources from pkg/qemu — fixed (uses pkg/qemu)
+[x] [LOW] cmd_image.go:29 — hardcoded builderVersion — fixed (env var override)
+
+--- CRYPTO ---
+
+[x] [HIGH] X3DH/DoubleRatchet — secret keys migrated to SecureBytes (M15.3 complete)
+    All 15 secret fields across X3DH, DoubleRatchet, SenderKeys, Random wrapped
+    in SecureBytes (pinned, mlock'd, zero-on-finalize). 18 files, 774 insertions.
+[x] [MEDIUM] constant_time.c:17 — final diff==0 branch — fixed (branchless (diff-1)>>8)
+[N/A] [MEDIUM] X3DH.hs:181 — SPK signature format deviates from Signal spec
+    Intentional: binds identity key into SPK signature for cross-identity MitM protection.
+    Documented in source. Not a bug.
+[N/A] [LOW] Random.hs:285 — baseSalt is predictable constant
+    Correct by design: HKDF-Extract handles non-secret salts per RFC 5869 Section 3.1.
+    Salt is XOR'd with PID+time for per-process uniqueness.
+
+--- BUILD SYSTEM / CI ---
+
+[x] [MEDIUM] ci-linux.yml — inline checks don't call ./uv check; complexity + generated-headers gates missing from CI — fixed (added complexity + generated-headers)
+[x] [MEDIUM] builder-image.yml — timestamp-derived tag doesn't match hardcoded builderVersion — fixed (aligned)
+[x] [MEDIUM] Signal runtime VM firewall disabled (vm-signal-server.nix:342) — fixed (mkForce)
+[x] [LOW] All 5 CI workflows use unpinned nix_path=channel:nixos-unstable — fixed (pinned to flake.lock)
+[x] [LOW] flake.nix references vm-seed.nix which may not exist — fixed (removed stale reference)
+[x] [LOW] shell.nix stale "anthony" comment on Go dependency — fixed (updated)
+[x] [LOW] shell.nix unused tlc alias — fixed (removed)
+[x] [LOW] cabal stm bound < 2.6 — fixed (< 2.7)
+[x] [LOW] checkGeneratedHeaders fails if csrc/generated/ doesn't exist — fixed (graceful skip when no files)
