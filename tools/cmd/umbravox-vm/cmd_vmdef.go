@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/vmctl"
+	"github.com/UmbraVoxResearch/vmctl"
 )
 
 // loadVMDef loads a vm-def YAML by name from the vm-defs/ directory rooted at

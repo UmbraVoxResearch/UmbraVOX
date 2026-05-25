@@ -14,7 +14,7 @@ import (
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/netpol"
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/ninep"
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/repo"
-	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/vmctl"
+	"github.com/UmbraVoxResearch/vmctl"
 )
 
 // runRun handles: uv run [gui|tui|headless] [--port PORT]

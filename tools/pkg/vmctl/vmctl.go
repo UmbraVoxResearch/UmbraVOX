@@ -41,6 +41,7 @@ const (
 	NetworkNone     NetworkMode = iota // no network
 	NetworkUserMode                    // QEMU user-mode (SLIRP) networking
 	NetworkTAP                         // TAP-based bridged networking
+	NetworkSlirp                       // slirp4netns rootless TAP networking (Firecracker)
 )
 
 // DiskFormat enumerates supported disk image formats.

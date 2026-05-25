@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/vmctl"
+	"github.com/UmbraVoxResearch/vmctl"
 )
 
 // CreateSourceDisk exports the worktree at repoRoot into an ext2 disk image.

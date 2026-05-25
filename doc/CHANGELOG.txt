@@ -18,7 +18,13 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
   - QEMU hypervisor backend: full VMProfile wiring, console, 9p share
   - Firecracker hypervisor backend: config generation, jailer, kernel/rootfs
   - Direct hypervisor backend: host-native execution path
-- vmctl Phase 2 started
+- vmctl framework Phase 2 complete: vmctl extracted as separate Go module
+  - github.com/UmbraVoxResearch/vmctl: standalone importable module
+  - All legacy boot functions deleted (881 lines removed)
+  - All boot paths now route through vmctl.Boot() (7 hypervisor-aware implementations)
+  - YAML vm-def loading wired into ./uv commands
+  - slirp4netns support for rootless Firecracker networking
+  - Phase 4 verified: vmctl is stdlib-only, zero UmbraVOX imports
   - execInVMv2: structured exec context replacing ad-hoc shell heredocs
   - vm-signal dedup: signal delivery deduplication across concurrent VM ops
 - --direct flag added to vm exec commands with interactive confirmation prompt
@@ -66,13 +72,35 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
   with ownership, trigger, and VM-isolation requirements per tier
 - doc/CI-TESTING.md: CI pipeline reference; maps workflow jobs to test tiers and
   quality gates; documents nightly and pre-release gate differences
+- doc/CI-INTEGRATION.md: complete runner setup guide for external CI/CD systems
+  - vmctl module import and boot orchestration patterns
+  - Per-platform image build and caching strategies
+  - Host prerequisite validation (KVM, memory, disk space)
+  - Failure propagation and logging for CI logs
 - doc/assurance-matrix.md: updated with vmctl Phase 1 evidence, CI pipeline coverage,
   and current test count (851); links to doc/TEST-LEVELS.md and doc/CI-TESTING.md
+- vmctl README.md: module reuse guide for external projects
+  - Standalone import patterns (github.com/UmbraVoxResearch/vmctl)
+  - Boot() interface and hypervisor backend selection
+  - YAML vm-def integration for named configurations
+  - Example: orchestrating Firecracker + slirp4netns in headless environments
 
-#### Formal Verification
+#### Formal Verification and Completion
 - All 30 F* assume val declarations documented with structured ASSUME JUSTIFICATION
   blocks covering axiom category, rationale, and external evidence references
   (carried from v0.5.18; confirmed complete and stable in v0.6.0)
+- 81+ TODO items completed across all milestones
+  - vmctl extraction and stdlib-only verification
+  - Phase 4 hypervisor abstraction hardening
+  - Legacy boot function removal and consolidation
+  - YAML vm-def wiring into CLI
+  - Rootless networking support (slirp4netns)
+  - CI runner setup documentation
+  - vmctl module reusability guide
+- 3 future-work items remaining
+  - M1.1.3 deferred: Anthony CLI abstraction removal (direct SQLite integration planned)
+  - Platform expansion: illumos (OmniOS/SmartOS/OpenIndiana) + major BSDs
+  - Cross-target CI/release lanes for non-Linux platforms
 
 ### v0.5.22 — Shell-to-Go migration complete, release coverage, VM hardening
 

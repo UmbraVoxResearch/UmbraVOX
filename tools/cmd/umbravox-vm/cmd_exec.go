@@ -15,7 +15,7 @@ import (
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/ninep"
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/qemu"
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/repo"
-	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/vmctl"
+	"github.com/UmbraVoxResearch/vmctl"
 )
 
 const tag = "UV"

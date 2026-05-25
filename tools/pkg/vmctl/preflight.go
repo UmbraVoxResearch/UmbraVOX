@@ -35,7 +35,15 @@ func PreflightQEMU() error {
 }
 
 // PreflightFirecracker checks that firecracker is on PATH and /dev/kvm exists.
+// It also checks for slirp4netns availability and logs a warning if missing,
+// but does not fail — network is optional and degrades gracefully.
 func PreflightFirecracker() error {
+	return PreflightFirecrackerWithLogger(nil)
+}
+
+// PreflightFirecrackerWithLogger is like PreflightFirecracker but accepts an
+// optional Logger so callers can receive the slirp4netns warning at runtime.
+func PreflightFirecrackerWithLogger(log Logger) error {
 	var errs []string
 
 	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
@@ -48,6 +56,16 @@ func PreflightFirecracker() error {
 	if len(errs) > 0 {
 		return fmt.Errorf("Firecracker preflight failed:\n  %s", strings.Join(errs, "\n  "))
 	}
+
+	// Warn (but do not fail) if slirp4netns is absent — NetworkSlirp will
+	// degrade to NetworkNone gracefully.
+	if _, err := exec.LookPath("slirp4netns"); err != nil {
+		msg := "slirp4netns not on PATH; NetworkSlirp will be skipped (network optional)"
+		if log != nil {
+			log.Warn("preflight", msg)
+		}
+	}
+
 	return nil
 }
 

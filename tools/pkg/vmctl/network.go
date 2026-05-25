@@ -14,6 +14,8 @@ func (m NetworkMode) String() string {
 		return "user"
 	case NetworkTAP:
 		return "tap"
+	case NetworkSlirp:
+		return "slirp"
 	default:
 		return "unknown"
 	}

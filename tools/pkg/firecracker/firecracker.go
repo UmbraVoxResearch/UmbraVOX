@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/vmctl"
+	"github.com/UmbraVoxResearch/vmctl"
 )
 
 // Config holds parameters for a Firecracker microVM.

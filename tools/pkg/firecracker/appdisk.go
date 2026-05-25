@@ -3,7 +3,7 @@
 package firecracker
 
 import (
-	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/vmctl"
+	"github.com/UmbraVoxResearch/vmctl"
 )
 
 // CreateAppDisk creates a compact ext4 image at outputPath containing the

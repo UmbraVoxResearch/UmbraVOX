@@ -6,7 +6,7 @@
 package disk
 
 import (
-	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/vmctl"
+	"github.com/UmbraVoxResearch/vmctl"
 )
 
 // Overlay represents a COW qcow2 overlay backed by a base image.

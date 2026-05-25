@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/repo"
-	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/vmctl"
+	"github.com/UmbraVoxResearch/vmctl"
 )
 
 // ANSI color helpers.

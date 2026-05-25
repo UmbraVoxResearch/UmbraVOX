@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // FirecrackerHypervisor implements the Hypervisor interface using Firecracker microVMs.
@@ -21,8 +22,9 @@ type FirecrackerHypervisor struct {
 }
 
 // Preflight checks that firecracker is on PATH and /dev/kvm exists.
+// It also warns (but does not fail) if slirp4netns is absent.
 func (h *FirecrackerHypervisor) Preflight() error {
-	return PreflightFirecracker()
+	return PreflightFirecrackerWithLogger(h.Logger)
 }
 
 // Boot converts the VMSpec into a Firecracker configuration, launches the
@@ -89,6 +91,24 @@ func (h *FirecrackerHypervisor) Boot(ctx context.Context, spec *VMSpec, tmpDir s
 		})
 	}
 
+	// Set up slirp4netns networking when requested.
+	if spec.Network.Mode == NetworkSlirp {
+		tapName, slirpCleanup, slirpErr := h.setupSlirpNetwork(ctx, tmpDir)
+		if slirpErr != nil {
+			// Graceful degradation: log warning and continue without network.
+			if h.Logger != nil {
+				h.Logger.Warn("firecracker", fmt.Sprintf("slirp4netns setup failed, proceeding without network: %v", slirpErr))
+			}
+		} else {
+			defer slirpCleanup()
+			cfg.NetworkInterfaces = append(cfg.NetworkInterfaces, fcNetworkInterface{
+				IfaceID:     "eth0",
+				GuestMAC:    "AA:FC:00:00:00:01",
+				HostDevName: tapName,
+			})
+		}
+	}
+
 	if h.Logger != nil {
 		h.Logger.Info("firecracker", fmt.Sprintf("launching microVM (%d cores, %d MB RAM)", res.Cores, res.MemoryMB))
 	}
@@ -146,6 +166,63 @@ func (h *FirecrackerHypervisor) Supports(feature Feature) bool {
 	}
 }
 
+// setupSlirpNetwork starts slirp4netns in the background to provide rootless
+// TAP-based networking for Firecracker. It returns the TAP device name and a
+// cleanup function that stops slirp4netns when the VM exits.
+//
+// slirp4netns creates a TAP device inside the current network namespace and
+// routes packets through the host stack without requiring root privileges.
+//
+// Returns an error if slirp4netns is not on PATH or fails to start. Callers
+// should treat errors as non-fatal and proceed without network.
+func (h *FirecrackerHypervisor) setupSlirpNetwork(ctx context.Context, tmpDir string) (tapName string, cleanup func(), err error) {
+	if _, lookErr := exec.LookPath("slirp4netns"); lookErr != nil {
+		return "", nil, fmt.Errorf("slirp4netns not found on PATH: %w", lookErr)
+	}
+
+	tapName = "vmtap0"
+	pidFile := filepath.Join(tmpDir, "slirp4netns.pid")
+
+	// slirp4netns <pid> <tap-device>
+	// Using "--configure" sets up the TAP device address automatically.
+	// "--disable-host-loopback" restricts access to 127.0.0.1 on the host.
+	// We pass the current process PID so slirp4netns attaches to our netns.
+	cmd := exec.CommandContext(ctx, "slirp4netns",
+		"--configure",
+		"--mtu=1500",
+		"--disable-host-loopback",
+		fmt.Sprintf("--pid-file=%s", pidFile),
+		fmt.Sprintf("%d", os.Getpid()),
+		tapName,
+	)
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+
+	if startErr := cmd.Start(); startErr != nil {
+		return "", nil, fmt.Errorf("start slirp4netns: %w", startErr)
+	}
+
+	if h.Logger != nil {
+		h.Logger.Info("firecracker", fmt.Sprintf("slirp4netns started (TAP: %s, pid: %d)", tapName, cmd.Process.Pid))
+	}
+
+	// Give slirp4netns a moment to configure the TAP device before Firecracker
+	// reads the config.
+	time.Sleep(200 * time.Millisecond)
+
+	cleanup = func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+		}
+		if h.Logger != nil {
+			h.Logger.Info("firecracker", "slirp4netns stopped")
+		}
+	}
+
+	return tapName, cleanup, nil
+}
+
 // resolveRootfs returns a path to an uncompressed, writable rootfs image.
 // If the source path ends in .zst, it is decompressed into tmpDir and a
 // cleanup function is returned. Otherwise the original path is copied to
@@ -184,9 +261,16 @@ func (h *FirecrackerHypervisor) resolveRootfs(src, tmpDir string) (path string, 
 // the firecracker package which imports vmctl). ---
 
 type fcConfig struct {
-	BootSource    fcBootSource    `json:"boot-source"`
-	Drives        []fcDrive       `json:"drives"`
-	MachineConfig fcMachineConfig `json:"machine-config"`
+	BootSource        fcBootSource       `json:"boot-source"`
+	Drives            []fcDrive          `json:"drives"`
+	MachineConfig     fcMachineConfig    `json:"machine-config"`
+	NetworkInterfaces []fcNetworkInterface `json:"network-interfaces,omitempty"`
+}
+
+type fcNetworkInterface struct {
+	IfaceID     string `json:"iface_id"`
+	GuestMAC    string `json:"guest_mac,omitempty"`
+	HostDevName string `json:"host_dev_name"`
 }
 
 type fcBootSource struct {

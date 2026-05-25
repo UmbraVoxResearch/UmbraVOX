@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/vmctl"
+	"github.com/UmbraVoxResearch/vmctl"
 )
 
 // DriveFormat enumerates supported QEMU disk image formats.

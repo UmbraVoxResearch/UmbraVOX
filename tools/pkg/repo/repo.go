@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/log"
-	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/vmctl"
+	"github.com/UmbraVoxResearch/vmctl"
 )
 
 // Root walks up from the executable path (then cwd) to find the repo root.
