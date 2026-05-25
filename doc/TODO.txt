@@ -152,7 +152,7 @@ ACTIVE WORK
     [x] Accept Logger interface instead of importing pkg/log — done (Logger interface in vmctl.go)
     [x] Accept repo root as parameter instead of importing pkg/repo — vmctl takes all paths as params
     [x] Move to tools/vmctl/ with own go.mod — done (v0.6.0)
-    [ ] UmbraVOX imports vmctl as dependency — depends on above
+    [x] UmbraVOX imports vmctl as dependency — done (replace directive in go.mod)
 
   [x] Phase 5: CI integration
     [x] Add --direct flag to ./uv test (host-based, no VM)
@@ -160,9 +160,9 @@ ACTIVE WORK
     [x] Create ci-nightly.yml — done
     [x] Create ci-prerelease.yml — done
     [x] Create vm-defs/ci-test.yaml — done
-    [x] Update ci-linux.yml to use ./uv test --direct — already done in earlier commit
-    [~] Document CI setup in doc/CI-INTEGRATION.md — being done by another agent
-    [ ] Add slirp4netns support for rootless Firecracker networking — future work
+    [x] Update ci-linux.yml to use ./uv test --direct — done
+    [x] Document CI setup in doc/CI-INTEGRATION.md — done
+    [x] Add slirp4netns support for rootless Firecracker networking — done (graceful degradation)
 
 ================================================================================
 CODE REVIEW FINDINGS (v0.5.3 audit)
