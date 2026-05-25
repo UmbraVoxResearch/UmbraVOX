@@ -32,6 +32,7 @@ import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
 import UmbraVox.Crypto.KeyStore (saveIdentityKeyAt)
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
+import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.DoubleRatchet
     ( RatchetState(..)
     , ratchetInitAlice, ratchetInitBob

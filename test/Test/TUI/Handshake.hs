@@ -155,8 +155,8 @@ propSerializeDeserializeRoundtrip = checkPropertyIO "serialize/deserialize bundl
         (spkPub, g3) = nextBytes 32 g2
         (spkSig, g4) = nextBytes 64 g3
         (pqKey, _)   = nextBytes 1184 g4  -- ML-KEM-768 encap key size
-        ik = generateIdentityKey edSec xSec
-        blob = serializeBundle ik spkPub spkSig (MLKEMEncapKey pqKey) Nothing
+    ik <- generateIdentityKey edSec xSec
+    blob <- serializeBundle ik spkPub spkSig (MLKEMEncapKey pqKey) Nothing
     case deserializeBundle blob of
         Nothing -> pure False
         Just bundle -> pure $

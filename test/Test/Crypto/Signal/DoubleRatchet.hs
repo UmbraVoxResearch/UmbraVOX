@@ -69,11 +69,12 @@ bobSPKPublic = case x25519 bobSPKSecret x25519Basepoint of
 
 testInitAndSingleMessage :: IO Bool
 testInitAndSingleMessage = do
-    case ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret of
+    mAlice <- ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret
+    case mAlice of
         Nothing    -> putStrLn "  FAIL: ratchetInitAlice returned Nothing" >> pure False
         Just alice -> do
-            let bob = ratchetInitBob sharedSecret bobSPKSecret
-                msg = strToBS "Hello, Bob!"
+            bob <- ratchetInitBob sharedSecret bobSPKSecret
+            let msg = strToBS "Hello, Bob!"
             encResult <- ratchetEncrypt alice msg
             case encResult of
                 Left err -> putStrLn ("  FAIL: ratchetEncrypt: " ++ show err) >> pure False
@@ -90,11 +91,12 @@ testInitAndSingleMessage = do
 
 testMultipleMessagesOneDirection :: IO Bool
 testMultipleMessagesOneDirection = do
-    case ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret of
+    mAlice <- ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret
+    case mAlice of
         Nothing    -> putStrLn "  FAIL: ratchetInitAlice returned Nothing" >> pure False
         Just alice0 -> do
-            let bob0 = ratchetInitBob sharedSecret bobSPKSecret
-                msg1 = strToBS "Message 1"
+            bob0 <- ratchetInitBob sharedSecret bobSPKSecret
+            let msg1 = strToBS "Message 1"
                 msg2 = strToBS "Message 2"
                 msg3 = strToBS "Message 3"
             r1 <- ratchetEncrypt alice0 msg1
@@ -135,11 +137,12 @@ testMultipleMessagesOneDirection = do
 
 testBidirectional :: IO Bool
 testBidirectional = do
-    case ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret of
+    mAlice <- ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret
+    case mAlice of
         Nothing    -> putStrLn "  FAIL: ratchetInitAlice returned Nothing" >> pure False
         Just alice0 -> do
-            let bob0   = ratchetInitBob sharedSecret bobSPKSecret
-                msgAB  = strToBS "Hello from Alice"
+            bob0 <- ratchetInitBob sharedSecret bobSPKSecret
+            let msgAB  = strToBS "Hello from Alice"
             encAB <- ratchetEncrypt alice0 msgAB
             case encAB of
                 Left err -> putStrLn ("  FAIL: Bidi enc A->B: " ++ show err) >> pure False
@@ -169,11 +172,12 @@ testBidirectional = do
 
 testOutOfOrder :: IO Bool
 testOutOfOrder = do
-    case ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret of
+    mAlice <- ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret
+    case mAlice of
         Nothing    -> putStrLn "  FAIL: ratchetInitAlice returned Nothing" >> pure False
         Just alice0 -> do
-            let bob0 = ratchetInitBob sharedSecret bobSPKSecret
-                msg1 = strToBS "First"
+            bob0 <- ratchetInitBob sharedSecret bobSPKSecret
+            let msg1 = strToBS "First"
                 msg2 = strToBS "Second"
                 msg3 = strToBS "Third"
             e1 <- ratchetEncrypt alice0 msg1
@@ -222,10 +226,11 @@ propBidirectional g0 = do
     case mBobPub of
         Nothing -> pure True  -- degenerate key; skip
         Just bobPub ->
-            case ratchetInitAlice sk bobPub aliceSk of
+            do mAlice <- ratchetInitAlice sk bobPub aliceSk
+               case mAlice of
                 Nothing    -> pure False  -- should not happen for random keys
                 Just alice0 -> do
-                    let bob0 = ratchetInitBob sk bobSk
+                    bob0 <- ratchetInitBob sk bobSk
                     -- Send 5 messages A->B
                     let (msgs, g4) = genMessages 5 g3
                     result <- sendAndRecv alice0 bob0 msgs
@@ -268,11 +273,12 @@ propBidirectional g0 = do
 
 testTamperedCiphertext :: IO Bool
 testTamperedCiphertext = do
-    case ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret of
+    mAlice <- ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret
+    case mAlice of
         Nothing    -> putStrLn "  FAIL: ratchetInitAlice returned Nothing" >> pure False
         Just alice -> do
-            let bob = ratchetInitBob sharedSecret bobSPKSecret
-                msg = strToBS "Secret message"
+            bob <- ratchetInitBob sharedSecret bobSPKSecret
+            let msg = strToBS "Secret message"
             encResult <- ratchetEncrypt alice msg
             case encResult of
                 Left err -> putStrLn ("  FAIL: tamper enc: " ++ show err) >> pure False

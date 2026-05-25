@@ -115,11 +115,12 @@ testWithPersistentEncryptRoundTrip :: IO Bool
 testWithPersistentEncryptRoundTrip =
     withTempDir $ \dir -> do
         let path = dir </> "counter"
-        case ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret of
+        mAlice <- ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret
+        case mAlice of
             Nothing    -> putStrLn "  FAIL: ratchetInitAlice returned Nothing" >> pure False
             Just alice -> do
-                let bob = ratchetInitBob sharedSecret bobSPKSecret
-                    msg = strToBS "Hello persistent world"
+                bob <- ratchetInitBob sharedSecret bobSPKSecret
+                let msg = strToBS "Hello persistent world"
                 encResult <- withPersistentEncrypt False path alice msg
                 case encResult of
                     Left err ->
@@ -146,7 +147,8 @@ testSimulatedCrash :: IO Bool
 testSimulatedCrash =
     withTempDir $ \dir -> do
         let path = dir </> "counter"
-        case ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret of
+        mAlice <- ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret
+        case mAlice of
             Nothing    -> putStrLn "  FAIL: ratchetInitAlice returned Nothing" >> pure False
             Just alice -> do
                 let msg        = strToBS "message before crash"

@@ -34,6 +34,7 @@ import UmbraVox.Crypto.MLKEM
     )
 import UmbraVox.Crypto.SHA256 (sha256)
 import UmbraVox.Crypto.SHA512 (sha512)
+import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.DoubleRatchet
     ( RatchetState(..), RatchetError(..)
     , ratchetInitAlice, ratchetInitBob, ratchetEncrypt, ratchetDecrypt

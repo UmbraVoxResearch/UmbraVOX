@@ -46,6 +46,7 @@ import UmbraVox.Crypto.MLKEM
     , mlkemKeyGen
     )
 import UmbraVox.Crypto.Random (randomBytes)
+import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.DoubleRatchet
     ( RatchetState(..), RatchetHeader(..)
     , ratchetInitAlice, ratchetInitBob
@@ -353,16 +354,17 @@ testPL004PQDowngrade = do
     -- Generate Bob's identity and prekey bundle
     bobEdSec <- randomBytes 32
     bobXSec  <- randomBytes 32
-    let !bobIK  = generateIdentityKey bobEdSec bobXSec
+    !bobIK  <- generateIdentityKey bobEdSec bobXSec
     bobSPKSec <- randomBytes 32
-    let !bobSPK = generateKeyPair bobSPKSec
-        !bobSPKSig = signPreKey bobIK (kpPublic bobSPK)
+    !bobSPK <- generateKeyPair bobSPKSec
+    bobSPKSig <- signPreKey bobIK (kpPublic bobSPK)
     (bobPQEncap, _bobPQDecap) <- do
         d <- randomBytes 32; z <- randomBytes 32
         pure (mlkemKeyGen d z)
 
     let MLKEMEncapKey bobPQEncapBytes = bobPQEncap
-        bobPQSig = ed25519Sign (ikEd25519Secret bobIK) bobPQEncapBytes
+    bobEdSec' <- toByteString (ikEd25519Secret bobIK)
+    let bobPQSig = ed25519Sign bobEdSec' bobPQEncapBytes
     let !legitBundle = PQPreKeyBundle
             { pqpkbIdentityKey     = ikX25519Public bobIK
             , pqpkbSignedPreKey    = kpPublic bobSPK
@@ -385,7 +387,7 @@ testPL004PQDowngrade = do
     -- Alice's identity
     aliceEdSec <- randomBytes 32
     aliceXSec  <- randomBytes 32
-    let !aliceIK = generateIdentityKey aliceEdSec aliceXSec
+    !aliceIK <- generateIdentityKey aliceEdSec aliceXSec
 
     ekSecret1 <- randomBytes 32
     mlkemR1   <- randomBytes 32
@@ -600,10 +602,10 @@ testPL009X3DHOPKReuse = do
     -- Bob's identity and keys
     bobEdSec <- randomBytes 32
     bobXSec  <- randomBytes 32
-    let !bobIK   = generateIdentityKey bobEdSec bobXSec
+    !bobIK   <- generateIdentityKey bobEdSec bobXSec
     bobSPKSec <- randomBytes 32
-    let !bobSPK  = generateKeyPair bobSPKSec
-        !bobSPKSig = signPreKey bobIK (kpPublic bobSPK)
+    !bobSPK  <- generateKeyPair bobSPKSec
+    bobSPKSig <- signPreKey bobIK (kpPublic bobSPK)
 
     -- OPK that will be "reused"
     opkSec <- randomBytes 32
@@ -620,18 +622,18 @@ testPL009X3DHOPKReuse = do
     -- Alice's identity
     aliceEdSec <- randomBytes 32
     aliceXSec  <- randomBytes 32
-    let !aliceIK = generateIdentityKey aliceEdSec aliceXSec
+    !aliceIK <- generateIdentityKey aliceEdSec aliceXSec
 
     -- Session 1: Alice initiates with ekSecret1
     let ekSecret1 = BS.replicate 32 0x11
-    let mRes1 = x3dhInitiate aliceIK bundle ekSecret1
+    mRes1 <- x3dhInitiate aliceIK bundle ekSecret1
 
     -- Session 2: Alice initiates again with same ekSecret (extreme reuse scenario)
-    let mRes2 = x3dhInitiate aliceIK bundle ekSecret1
+    mRes2 <- x3dhInitiate aliceIK bundle ekSecret1
 
     -- Session 3: Alice initiates with different ekSecret (different ek)
     let ekSecret3 = BS.replicate 32 0x22
-    let mRes3 = x3dhInitiate aliceIK bundle ekSecret3
+    mRes3 <- x3dhInitiate aliceIK bundle ekSecret3
 
     case (mRes1, mRes2, mRes3) of
         (Just r1, Just r2, Just r3) -> do
@@ -674,9 +676,9 @@ testPL010PQXDHPrekeyReuse = do
     -- Bob's PQXDH bundle
     bobEdSec <- randomBytes 32
     bobXSec  <- randomBytes 32
-    let !bobIK = generateIdentityKey bobEdSec bobXSec
+    !bobIK <- generateIdentityKey bobEdSec bobXSec
     bobSPKSec <- randomBytes 32
-    let !bobSPK = generateKeyPair bobSPKSec
+    !bobSPK <- generateKeyPair bobSPKSec
         !bobSPKSig = signPreKey bobIK (kpPublic bobSPK)
     (bobPQEncap, _bobPQDecap) <- do
         d <- randomBytes 32; z <- randomBytes 32
@@ -697,7 +699,7 @@ testPL010PQXDHPrekeyReuse = do
     -- Alice
     aliceEdSec <- randomBytes 32
     aliceXSec  <- randomBytes 32
-    let !aliceIK = generateIdentityKey aliceEdSec aliceXSec
+    !aliceIK <- generateIdentityKey aliceEdSec aliceXSec
 
     let ekSec     = BS.replicate 32 0xAA
         mlkemRand1 = BS.replicate 32 0xBB
@@ -830,9 +832,9 @@ testPL021X3DHIdentityKeySubstitution :: IO Bool
 testPL021X3DHIdentityKeySubstitution = do
     bobEdSec <- randomBytes 32
     bobXSec <- randomBytes 32
-    let !bobIK = generateIdentityKey bobEdSec bobXSec
+    !bobIK <- generateIdentityKey bobEdSec bobXSec
     bobSPKSec <- randomBytes 32
-    let !bobSPK = generateKeyPair bobSPKSec
+    !bobSPK <- generateKeyPair bobSPKSec
         !bobSPKSig = signPreKey bobIK (kpPublic bobSPK)
 
     -- Generate a substitute Ed25519 public key (attacker's, without matching secret)
@@ -850,7 +852,7 @@ testPL021X3DHIdentityKeySubstitution = do
 
     aliceEdSec <- randomBytes 32
     aliceXSec  <- randomBytes 32
-    let !aliceIK = generateIdentityKey aliceEdSec aliceXSec
+    !aliceIK <- generateIdentityKey aliceEdSec aliceXSec
 
     let ekSecret = BS.replicate 32 0x99
     let mResult = x3dhInitiate aliceIK tamperedBundle ekSecret
@@ -888,9 +890,9 @@ testPL022PQXDHSignatureBypass :: IO Bool
 testPL022PQXDHSignatureBypass = do
     bobEdSec <- randomBytes 32
     bobXSec  <- randomBytes 32
-    let !bobIK = generateIdentityKey bobEdSec bobXSec
+    !bobIK <- generateIdentityKey bobEdSec bobXSec
     bobSPKSec <- randomBytes 32
-    let !bobSPK = generateKeyPair bobSPKSec
+    !bobSPK <- generateKeyPair bobSPKSec
         !validSig = signPreKey bobIK (kpPublic bobSPK)
         !zeroSig  = BS.replicate 64 0x00
 
@@ -914,7 +916,7 @@ testPL022PQXDHSignatureBypass = do
 
     aliceEdSec <- randomBytes 32
     aliceXSec  <- randomBytes 32
-    let !aliceIK = generateIdentityKey aliceEdSec aliceXSec
+    !aliceIK <- generateIdentityKey aliceEdSec aliceXSec
 
     ekSec     <- randomBytes 32
     mlkemRand <- randomBytes 32

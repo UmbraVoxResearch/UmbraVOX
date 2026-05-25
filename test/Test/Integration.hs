@@ -8,6 +8,7 @@ import qualified Data.ByteString as BS
 
 import Test.Util
 import UmbraVox.Crypto.Ed25519 (ed25519Sign)
+import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.MLKEM (mlkemKeyGen, MLKEMEncapKey(..), MLKEMDecapKey)
 import UmbraVox.Crypto.Signal.DoubleRatchet
     (RatchetState, ratchetInitAlice, ratchetInitBob,
@@ -58,8 +59,8 @@ data SessionSetup = SessionSetup
     }
 
 -- | Generate all key material from a deterministic PRNG.
-makeSetup :: PRNG -> SessionSetup
-makeSetup g0 =
+makeSetup :: PRNG -> IO SessionSetup
+makeSetup g0 = do
     let (aEdSec,  g1) = nextBytes 32 g0
         (aXSec,   g2) = nextBytes 32 g1
         (bEdSec,  g3) = nextBytes 32 g2
@@ -70,13 +71,14 @@ makeSetup g0 =
         (mlkemZ,  g8) = nextBytes 32 g7
         (mlkRand, g9) = nextBytes 32 g8
         (aDHSec,  _)  = nextBytes 32 g9
-        aliceIK = generateIdentityKey aEdSec aXSec
-        bobIK   = generateIdentityKey bEdSec bXSec
-        spkKP   = generateKeyPair spkSec
-        spkSig  = signPreKey bobIK (kpPublic spkKP)
-        (pqEK, pqDK) = mlkemKeyGen mlkemD mlkemZ
+    aliceIK <- generateIdentityKey aEdSec aXSec
+    bobIK   <- generateIdentityKey bEdSec bXSec
+    spkKP   <- generateKeyPair spkSec
+    spkSig  <- signPreKey bobIK (kpPublic spkKP)
+    let (pqEK, pqDK) = mlkemKeyGen mlkemD mlkemZ
         MLKEMEncapKey pqEKBytes = pqEK
-        pqSig   = ed25519Sign (ikEd25519Secret bobIK) pqEKBytes
+    bobEdSec <- toByteString (ikEd25519Secret bobIK)
+    let pqSig   = ed25519Sign bobEdSec pqEKBytes
         bundle  = PQPreKeyBundle
             { pqpkbIdentityKey     = ikX25519Public bobIK
             , pqpkbSignedPreKey    = kpPublic spkKP
@@ -86,31 +88,36 @@ makeSetup g0 =
             , pqpkbPQPreKey        = pqEK
             , pqpkbPQKeySignature  = pqSig
             }
-    in SessionSetup aliceIK bobIK spkSec (kpPublic spkKP)
+    pure $ SessionSetup aliceIK bobIK spkSec (kpPublic spkKP)
                     ekSec mlkRand pqDK bundle aDHSec
 
 -- | Run PQXDH and initialize Double Ratchet for both parties.
-initSession :: SessionSetup -> Maybe (RatchetState, RatchetState)
-initSession ss =
-    case pqxdhInitiate (ssAliceIK ss) (ssBundle ss) (ssEKSecret ss) (ssMLKEMRand ss) of
-        Nothing -> Nothing
-        Just result ->
-            case pqxdhRespond (ssBobIK ss) (ssSPKSecret ss) Nothing
+initSession :: SessionSetup -> IO (Maybe (RatchetState, RatchetState))
+initSession ss = do
+    mResult <- pqxdhInitiate (ssAliceIK ss) (ssBundle ss) (ssEKSecret ss) (ssMLKEMRand ss)
+    case mResult of
+        Nothing -> pure Nothing
+        Just result -> do
+            mBobSS <- pqxdhRespond (ssBobIK ss) (ssSPKSecret ss) Nothing
                     (ssPQDK ss) (ikX25519Public (ssAliceIK ss))
                     (pqxdhEphemeralKey result)
-                    (pqxdhPQCiphertext result) of
-                Nothing    -> Nothing  -- low-order point in PQXDH respond
-                Just bobSS ->
-                    case ratchetInitAlice (pqxdhSharedSecret result)
-                             (ssSPKPublic ss) (ssAliceDHSec ss) of
-                        Nothing    -> Nothing  -- low-order point in DH ratchet init
-                        Just alice ->
-                            let bob = ratchetInitBob bobSS (ssSPKSecret ss)
-                            in Just (alice, bob)
+                    (pqxdhPQCiphertext result)
+            case mBobSS of
+                Nothing    -> pure Nothing  -- low-order point in PQXDH respond
+                Just bobSS -> do
+                    mAlice <- ratchetInitAlice (pqxdhSharedSecret result)
+                             (ssSPKPublic ss) (ssAliceDHSec ss)
+                    case mAlice of
+                        Nothing    -> pure Nothing  -- low-order point in DH ratchet init
+                        Just alice -> do
+                            bob <- ratchetInitBob bobSS (ssSPKSecret ss)
+                            pure (Just (alice, bob))
 
 -- | Fixed session from seed 42.
-setupFixedSession :: Maybe (RatchetState, RatchetState)
-setupFixedSession = initSession (makeSetup (mkPRNG 42))
+setupFixedSession :: IO (Maybe (RatchetState, RatchetState))
+setupFixedSession = do
+    ss <- makeSetup (mkPRNG 42)
+    initSession ss
 
 ------------------------------------------------------------------------
 -- Test 1: PQXDH + DoubleRatchet — 100 bidirectional messages
@@ -118,7 +125,8 @@ setupFixedSession = initSession (makeSetup (mkPRNG 42))
 
 testPQXDHDoubleRatchet :: IO Bool
 testPQXDHDoubleRatchet =
-    case setupFixedSession of
+    mSession <- setupFixedSession
+    case mSession of
         Nothing -> putStrLn "  FAIL: PQXDH key agreement failed" >> pure False
         Just (alice0, bob0) -> do
             r <- exchangeMessages alice0 bob0 100 (mkPRNG 99)
@@ -158,7 +166,8 @@ exchangeMessages alice bob n g0 = do
 
 testSessionResumption :: IO Bool
 testSessionResumption =
-    case setupFixedSession of
+    mSession <- setupFixedSession
+    case mSession of
         Nothing -> putStrLn "  FAIL: session setup failed" >> pure False
         Just (alice0, bob0) -> do
             r <- sendN alice0 bob0 50 (mkPRNG 200)
@@ -191,7 +200,8 @@ sendN s r n g = do
 
 testOutOfOrderDelivery :: IO Bool
 testOutOfOrderDelivery =
-    case setupFixedSession of
+    mSession <- setupFixedSession
+    case mSession of
         Nothing -> putStrLn "  FAIL: session setup failed" >> pure False
         Just (alice0, bob0) -> do
             (_, batch) <- encryptBatch alice0 10 (mkPRNG 400)
@@ -227,7 +237,8 @@ deliverAll st ((hdr, ct, tag, expected):rest) = do
 
 testKeyExhaustion :: IO Bool
 testKeyExhaustion =
-    case setupFixedSession of
+    mSession <- setupFixedSession
+    case mSession of
         Nothing -> putStrLn "  FAIL: session setup failed" >> pure False
         Just (alice0, bob0) -> do
             r <- sendN alice0 bob0 1001 (mkPRNG 500)

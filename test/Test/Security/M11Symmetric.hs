@@ -20,6 +20,7 @@ import UmbraVox.Crypto.Poly1305 (poly1305)
 import UmbraVox.Crypto.Random (chacha20Encrypt)
 import UmbraVox.Storage.Encryption
     ( testStorageKey, encryptField, isEncryptedField )
+import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.DoubleRatchet
     ( RatchetState(..), ratchetInitAlice )
 
@@ -110,7 +111,8 @@ testSY002GcmCounterWrap = do
     let sharedSecret  = BS.replicate 32 0xAA
         bobSPK        = BS.replicate 32 0xBB
         aliceDHSecret = BS.replicate 32 0xCC
-        baseState     = case ratchetInitAlice sharedSecret bobSPK aliceDHSecret of
+    mBaseState <- ratchetInitAlice sharedSecret bobSPK aliceDHSecret
+    let baseState     = case mBaseState of
                             Just s  -> s
                             Nothing -> error "testSY002: ratchetInitAlice returned Nothing"
         nearExhausted = baseState { rsSendN = (0xFFFFFFFE :: Word32) }
@@ -442,11 +444,12 @@ testSY024RatchetChainKeyNonZero = do
     let sharedSecret  = BS.pack [0x01..0x20]   -- 32 non-zero bytes
         bobSPK        = BS.pack [0x21..0x40]
         aliceDHSecret = BS.pack [0x41..0x60]
-        st = case ratchetInitAlice sharedSecret bobSPK aliceDHSecret of
+    mSt <- ratchetInitAlice sharedSecret bobSPK aliceDHSecret
+    let st = case mSt of
                  Just s  -> s
                  Nothing -> error "testSY024: ratchetInitAlice returned Nothing"
-        chainKey = rsSendChain st
-        allZero  = BS.all (== 0) chainKey
+    chainKey <- toByteString (rsSendChain st)
+    let allZero  = BS.all (== 0) chainKey
     ok1 <- assertEq "SY-024 Ratchet chain key: rsSendChain is 32 bytes"
                32 (BS.length chainKey)
     ok2 <- assertEq "SY-024 Ratchet chain key: rsSendChain is not all-zero"

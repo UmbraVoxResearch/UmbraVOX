@@ -27,6 +27,7 @@ import UmbraVox.Crypto.Signal.PQXDH
     ( PQPreKeyBundle(..), PQXDHResult(..)
     , pqxdhInitiate
     )
+import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.X3DH
     ( IdentityKey(..), KeyPair(..), PreKeyBundle(..), X3DHResult(..)
     , generateIdentityKey, generateKeyPair, signPreKey

@@ -38,6 +38,7 @@ import UmbraVox.App.Startup
     )
 import UmbraVox.BuildProfile (PluginLaunchSpec(..), pprLaunchSpec)
 import UmbraVox.Network.ProviderCatalog (ctpLoadStatus)
+import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.X3DH
     ( ikEd25519Secret, ikX25519Secret, ikX25519Public )
 import UmbraVox.Storage.Anthony
@@ -97,10 +98,14 @@ testResolveIdentityStable = do
     ik1 <- resolveIdentityAt path
     ik2 <- resolveIdentityAt path
     cleanup path
+    edSec1 <- toByteString (ikEd25519Secret ik1)
+    edSec2 <- toByteString (ikEd25519Secret ik2)
+    xSec1  <- toByteString (ikX25519Secret ik1)
+    xSec2  <- toByteString (ikX25519Secret ik2)
     ok1 <- assertEq "resolveIdentityAt keeps ed secret stable" True
-        (ikEd25519Secret ik1 == ikEd25519Secret ik2)
+        (edSec1 == edSec2)
     ok2 <- assertEq "resolveIdentityAt keeps x secret stable" True
-        (ikX25519Secret ik1 == ikX25519Secret ik2)
+        (xSec1 == xSec2)
     pure (ok1 && ok2)
 
 testPackagedPluginCatalogCache :: IO Bool

@@ -78,10 +78,11 @@ setupSession :: ByteString    -- ^ shared secret (32 bytes)
              -> IO (Maybe (RatchetState, RatchetState))
 setupSession sharedSecret bobSPKSecret aliceDHSecret = do
     let bobSPKPub = mustX25519 bobSPKSecret x25519Basepoint
-    case ratchetInitAlice sharedSecret bobSPKPub aliceDHSecret of
+    mAlice <- ratchetInitAlice sharedSecret bobSPKPub aliceDHSecret
+    case mAlice of
         Nothing -> pure Nothing
         Just aliceSt0 -> do
-            let bobSt0 = ratchetInitBob sharedSecret bobSPKSecret
+            bobSt0 <- ratchetInitBob sharedSecret bobSPKSecret
             enc <- ratchetEncrypt aliceSt0 (BS.singleton 0x01)
             case enc of
                 Left _  -> pure Nothing
@@ -289,28 +290,32 @@ testFS003OneShotEphemeral = do
     let prng0   = mkPRNG 0x0003
         (ek1bs, prng1) = nextBytes 32 prng0
         (ek2bs, _)     = nextBytes 32 prng1
-        aliceIK = generateIdentityKey
+    aliceIK <- generateIdentityKey
                       (BS.replicate 32 0xA1) (BS.replicate 32 0xA2)
-        bobIK   = generateIdentityKey
+    bobIK   <- generateIdentityKey
                       (BS.replicate 32 0xB1) (BS.replicate 32 0xB2)
-        spkSec  = BS.replicate 32 0xD1
-        spk     = generateKeyPair spkSec
-        spkSig  = signPreKey bobIK (kpPublic spk)
-        bundle  = PreKeyBundle
+    let spkSec  = BS.replicate 32 0xD1
+    spk     <- generateKeyPair spkSec
+    spkSig  <- signPreKey bobIK (kpPublic spk)
+    let bundle  = PreKeyBundle
             { pkbIdentityKey      = ikX25519Public bobIK
             , pkbSignedPreKey     = kpPublic spk
             , pkbSPKSignature     = spkSig
             , pkbIdentityEd25519  = ikEd25519Public bobIK
             , pkbOneTimePreKey    = Nothing
             }
-    case (x3dhInitiate aliceIK bundle ek1bs, x3dhInitiate aliceIK bundle ek2bs) of
+    mr1 <- x3dhInitiate aliceIK bundle ek1bs
+    mr2 <- x3dhInitiate aliceIK bundle ek2bs
+    case (mr1, mr2) of
         (Just r1, Just r2) -> do
             ok1 <- assertEq "FS-003 different ekSecrets -> different ephemeral keys"
                        True (x3dhEphemeralKey r1 /= x3dhEphemeralKey r2)
             ok2 <- assertEq "FS-003 different ekSecrets -> different shared secrets"
                        True (x3dhSharedSecret r1 /= x3dhSharedSecret r2)
             -- Same ekSecret must give same result (confirms reuse risk)
-            case (x3dhInitiate aliceIK bundle ek1bs, x3dhInitiate aliceIK bundle ek1bs) of
+            mr3 <- x3dhInitiate aliceIK bundle ek1bs
+            mr4 <- x3dhInitiate aliceIK bundle ek1bs
+            case (mr3, mr4) of
                 (Just r3, Just r4) -> do
                     ok3 <- assertEq "FS-003 same ekSecret -> same ephemeral key (reuse risk demonstrated)"
                                True (x3dhEphemeralKey r3 == x3dhEphemeralKey r4)
@@ -353,7 +358,8 @@ testFS004SessionKeyIndependence = do
         spkSec = BS.replicate 32 0xE5
         dhSec  = BS.replicate 32 0xE6
         bobSPKPub = mustX25519 spkSec x25519Basepoint
-    case ratchetInitAlice ss bobSPKPub dhSec of
+    mSt <- ratchetInitAlice ss bobSPKPub dhSec
+    case mSt of
         Nothing -> putStrLn "  FAIL: FS-004 ratchetInitAlice failed" >> pure False
         Just st0 -> do
             let pt = BS.replicate 16 0xAB  -- same plaintext for all 4 messages
@@ -488,7 +494,8 @@ testMT001CiphertextLength = do
         spkSec = BS.replicate 32 0x1B
         dhSec  = BS.replicate 32 0x1C
         bobSPKPub = mustX25519 spkSec x25519Basepoint
-    case ratchetInitAlice ss bobSPKPub dhSec of
+    mSt <- ratchetInitAlice ss bobSPKPub dhSec
+    case mSt of
         Nothing -> putStrLn "  FAIL: MT-001 ratchetInitAlice failed" >> pure False
         Just st0 -> do
             -- 1-byte plaintext
@@ -544,10 +551,11 @@ testMT002MessageTimingInfo = do
         spkSec = BS.replicate 32 0x2B
         dhSec  = BS.replicate 32 0x2C
         bobSPKPub = mustX25519 spkSec x25519Basepoint
-    case ratchetInitAlice ss bobSPKPub dhSec of
+    mSt <- ratchetInitAlice ss bobSPKPub dhSec
+    case mSt of
         Nothing -> putStrLn "  FAIL: MT-002 ratchetInitAlice failed" >> pure False
         Just st0 -> do
-            let bobSt0 = ratchetInitBob ss spkSec
+            bobSt0 <- ratchetInitBob ss spkSec
             enc1 <- ratchetEncrypt st0 (BS.singleton 0x01)
             case enc1 of
                 Left _  -> pure False
@@ -606,12 +614,14 @@ testMT003NonceNotSequential = do
         spkSec = BS.replicate 32 0x3B
         dhSec  = BS.replicate 32 0x3C
         bobSPKPub = mustX25519 spkSec x25519Basepoint
-    case ratchetInitAlice ssA bobSPKPub dhSec of
+    mStA <- ratchetInitAlice ssA bobSPKPub dhSec
+    case mStA of
         Nothing -> putStrLn "  FAIL: MT-003 session A init failed" >> pure False
         Just stA0 -> do
             -- Session B: chain key derived from ss_B (different shared secret)
             let ssB = BS.replicate 32 0x3D
-            case ratchetInitAlice ssB bobSPKPub dhSec of
+            mStB <- ratchetInitAlice ssB bobSPKPub dhSec
+            case mStB of
                 Nothing -> putStrLn "  FAIL: MT-003 session B init failed" >> pure False
                 Just stB0 -> do
                     let pt = BS.singleton 0x42

@@ -32,6 +32,7 @@ import UmbraVox.Crypto.Signal.X3DH
     ( KeyPair(..), IdentityKey(..), PreKeyBundle(..), X3DHResult(..)
     , generateKeyPair, generateIdentityKey, signPreKey, x3dhInitiate
     )
+import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.DoubleRatchet
     ( RatchetState(..), RatchetHeader(..), RatchetError(..)
     , ratchetInitAlice, ratchetInitBob, ratchetEncrypt, ratchetDecrypt

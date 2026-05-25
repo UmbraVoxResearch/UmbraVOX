@@ -23,6 +23,7 @@ import UmbraVox.Crypto.MLKEM (mlkemKeyGen, mlkemEncaps, mlkemDecaps, MLKEMEncapK
 import UmbraVox.Crypto.HMAC (hmacSHA256, hmacSHA512)
 import UmbraVox.Crypto.HKDF (hkdf)
 import UmbraVox.Crypto.Poly1305 (poly1305)
+import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.DoubleRatchet
     (ratchetInitAlice, ratchetInitBob, ratchetEncrypt, ratchetDecrypt)
 import UmbraVox.Crypto.Signal.X3DH
@@ -262,11 +263,12 @@ fuzzDoubleRatchet = checkPropertyIO "Double Ratchet: encrypt/decrypt round-trip"
             (msg3, _)  = nextBytesRange 1 200 g5
         case mBobSPKPub of
             Nothing -> pure True  -- degenerate key; skip
-            Just bobSPKPublic ->
-                case ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret of
+            Just bobSPKPublic -> do
+                mAlice <- ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret
+                case mAlice of
                     Nothing -> pure False  -- should not happen for random keys
                     Just alice0 -> do
-                        let bob0 = ratchetInitBob sharedSecret bobSPKSecret
+                        bob0 <- ratchetInitBob sharedSecret bobSPKSecret
                         -- Encrypt and decrypt 3 messages
                         e1 <- ratchetEncrypt alice0 msg1
                         case e1 of
@@ -302,31 +304,31 @@ fuzzDoubleRatchet = checkPropertyIO "Double Ratchet: encrypt/decrypt round-trip"
 ------------------------------------------------------------------------
 
 fuzzPQXDH :: IO Bool
-fuzzPQXDH = checkProperty "PQXDH: initiate/respond derive same secret" iterations prop
+fuzzPQXDH = checkPropertyIO "PQXDH: initiate/respond derive same secret" iterations prop
   where
-    prop g =
-        let -- Generate Alice's identity key
+    prop g = do
+        let -- Generate deterministic key material
             (aliceEdSec, g1)  = nextBytes 32 g
             (aliceXSec, g2)   = nextBytes 32 g1
-            aliceIK           = generateIdentityKey aliceEdSec aliceXSec
-            -- Generate Bob's identity key
             (bobEdSec, g3)    = nextBytes 32 g2
             (bobXSec, g4)     = nextBytes 32 g3
-            bobIK             = generateIdentityKey bobEdSec bobXSec
-            -- Generate Bob's signed pre-key
             (spkSecret, g5)   = nextBytes 32 g4
-            spk               = generateKeyPair spkSecret
-            spkSig            = signPreKey bobIK (kpPublic spk)
-            -- Generate Bob's one-time pre-key
             (opkSecret, g6)   = nextBytes 32 g5
-            opk               = generateKeyPair opkSecret
-            -- Generate Bob's ML-KEM keys
             (mlkemD, g7)      = nextBytes 32 g6
             (mlkemZ, g8)      = nextBytes 32 g7
-            (ek, dk)          = mlkemKeyGen mlkemD mlkemZ
+            (ekSecret, g9)    = nextBytes 32 g8
+            (mlkemRand, _)    = nextBytes 32 g9
+        aliceIK <- generateIdentityKey aliceEdSec aliceXSec
+        bobIK   <- generateIdentityKey bobEdSec bobXSec
+        spk     <- generateKeyPair spkSecret
+        spkSig  <- signPreKey bobIK (kpPublic spk)
+        opk     <- generateKeyPair opkSecret
+        let (ek, dk)          = mlkemKeyGen mlkemD mlkemZ
             MLKEMEncapKey ekBytes = ek
-            pqSig             = ed25519Sign (ikEd25519Secret bobIK) ekBytes
-            -- Build PQ prekey bundle
+        bobEdSec' <- toByteString (ikEd25519Secret bobIK)
+        spkSec'   <- toByteString (kpSecret spk)
+        opkSec'   <- toByteString (kpSecret opk)
+        let pqSig   = ed25519Sign bobEdSec' ekBytes
             bundle = PQPreKeyBundle
                 { pqpkbIdentityKey     = ikX25519Public bobIK
                 , pqpkbSignedPreKey    = kpPublic spk
@@ -336,25 +338,23 @@ fuzzPQXDH = checkProperty "PQXDH: initiate/respond derive same secret" iteration
                 , pqpkbPQPreKey        = ek
                 , pqpkbPQKeySignature  = pqSig
                 }
-            -- Alice's ephemeral secret and ML-KEM randomness
-            (ekSecret, g9)    = nextBytes 32 g8
-            (mlkemRand, _)    = nextBytes 32 g9
-        in case pqxdhInitiate aliceIK bundle ekSecret mlkemRand of
-            Nothing -> False  -- SPK signature should verify
-            Just result ->
+        mResult <- pqxdhInitiate aliceIK bundle ekSecret mlkemRand
+        case mResult of
+            Nothing -> pure False  -- SPK signature should verify
+            Just result -> do
                 let aliceSecret = pqxdhSharedSecret result
-                    mBobSecret  = pqxdhRespond
+                mBobSecret <- pqxdhRespond
                         bobIK
-                        (kpSecret spk)
-                        (Just (kpSecret opk))
+                        spkSec'
+                        (Just opkSec')
                         dk
                         (ikX25519Public aliceIK)
                         (pqxdhEphemeralKey result)
                         (pqxdhPQCiphertext result)
-                in case mBobSecret of
-                    Nothing        -> False  -- DH all-zero should not occur with random keys
-                    Just bobSecret -> aliceSecret == bobSecret
-                                      && BS.length aliceSecret == 32
+                case mBobSecret of
+                    Nothing        -> pure False  -- DH all-zero should not occur with random keys
+                    Just bobSecret -> pure (aliceSecret == bobSecret
+                                      && BS.length aliceSecret == 32)
 
 ------------------------------------------------------------------------
 -- Helpers

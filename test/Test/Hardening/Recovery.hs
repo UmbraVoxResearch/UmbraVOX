@@ -24,6 +24,7 @@ import UmbraVox.Crypto.KeyStore
     ( openKeyStore, saveIdentityKeyAt, loadIdentityKeyAt )
 import UmbraVox.App.Startup (resolveIdentityAt)
 import UmbraVox.Chat.Session (sendChatMessage)
+import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.X3DH
     ( IdentityKey(..), generateIdentityKey )
 import UmbraVox.Network.Transport.Loopback (newLoopbackPair)
@@ -68,7 +69,7 @@ testIdentityStoreRoundTrip :: IO Bool
 testIdentityStoreRoundTrip = do
     tmp <- getProjectTmpDir
     let path = tmp </> "umbravox-identity-roundtrip.key"
-        ik = fixtureIdentity 11 22
+    ik <- fixtureIdentity 11 22
     saveIdentityKeyAt path ik
     loaded <- loadIdentityKeyAt path
     cleanup path
@@ -80,7 +81,7 @@ testIdentityStorePersistsAcrossOpen :: IO Bool
 testIdentityStorePersistsAcrossOpen = do
     tmp <- getProjectTmpDir
     let path = tmp </> "umbravox-keystore" </> "identity.key"
-        ik = fixtureIdentity 33 44
+    ik <- fixtureIdentity 33 44
     _ <- openKeyStore path BS.empty
     saveIdentityKeyAt path ik
     _ <- openKeyStore path BS.empty
@@ -237,15 +238,19 @@ withDB name action = do
     cleanup path
     pure result
 
-fixtureIdentity :: Word8 -> Word8 -> IdentityKey
+fixtureIdentity :: Word8 -> Word8 -> IO IdentityKey
 fixtureIdentity edSeed xSeed =
     generateIdentityKey (BS.replicate 32 edSeed) (BS.replicate 32 xSeed)
 
 identityEq :: String -> IdentityKey -> IdentityKey -> IO Bool
 identityEq name expected got = do
-    ok1 <- assertEq (name ++ " (ed secret)") (ikEd25519Secret expected) (ikEd25519Secret got)
+    edSecExpected <- toByteString (ikEd25519Secret expected)
+    edSecGot      <- toByteString (ikEd25519Secret got)
+    xSecExpected  <- toByteString (ikX25519Secret expected)
+    xSecGot       <- toByteString (ikX25519Secret got)
+    ok1 <- assertEq (name ++ " (ed secret)") edSecExpected edSecGot
     ok2 <- assertEq (name ++ " (ed public)") (ikEd25519Public expected) (ikEd25519Public got)
-    ok3 <- assertEq (name ++ " (x secret)") (ikX25519Secret expected) (ikX25519Secret got)
+    ok3 <- assertEq (name ++ " (x secret)") xSecExpected xSecGot
     ok4 <- assertEq (name ++ " (x public)") (ikX25519Public expected) (ikX25519Public got)
     pure (ok1 && ok2 && ok3 && ok4)
 

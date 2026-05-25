@@ -51,7 +51,7 @@ protocolSelfConsistencyTests = do
 
 -- | Generate deterministic key material from a seed byte.
 -- Each participant gets unique secrets derived from different seed offsets.
-mkIdentity :: Word8 -> IdentityKey
+mkIdentity :: Word8 -> IO IdentityKey
 mkIdentity seed = generateIdentityKey
     (BS.pack [seed, seed+1 .. seed+31])
     (BS.pack [seed+32, seed+33 .. seed+63])
@@ -66,12 +66,12 @@ mkIdentity seed = generateIdentityKey
 testX3DHFullExchange :: IO Bool
 testX3DHFullExchange = do
     putStrLn "  [X3DH-SelfConsistency] Full exchange without OPK"
-    let aliceIK = mkIdentity 0x01
-        bobIK   = mkIdentity 0x41
-        spkSecret = BS.pack [0x81 .. 0xA0]
-        spk     = generateKeyPair spkSecret
-        spkSig  = signPreKey bobIK (kpPublic spk)
-        ekSecret = BS.pack [0xA1 .. 0xC0]
+    aliceIK <- mkIdentity 0x01
+    bobIK   <- mkIdentity 0x41
+    let spkSecret = BS.pack [0x81 .. 0xA0]
+    spk     <- generateKeyPair spkSecret
+    spkSig  <- signPreKey bobIK (kpPublic spk)
+    let ekSecret = BS.pack [0xA1 .. 0xC0]
         bundle  = PreKeyBundle
             { pkbIdentityKey     = ikX25519Public bobIK
             , pkbSignedPreKey    = kpPublic spk
@@ -79,13 +79,15 @@ testX3DHFullExchange = do
             , pkbIdentityEd25519 = ikEd25519Public bobIK
             , pkbOneTimePreKey   = Nothing
             }
-    case x3dhInitiate aliceIK bundle ekSecret of
+    mResult <- x3dhInitiate aliceIK bundle ekSecret
+    case mResult of
         Nothing -> do
             putStrLn "    FAIL: x3dhInitiate returned Nothing"
             return False
         Just result -> do
-            case x3dhRespond bobIK spkSecret Nothing
-                    (ikX25519Public aliceIK) (x3dhEphemeralKey result) of
+            mBobSecret <- x3dhRespond bobIK spkSecret Nothing
+                    (ikX25519Public aliceIK) (x3dhEphemeralKey result)
+            case mBobSecret of
                 Nothing -> do
                     putStrLn "    FAIL: x3dhRespond returned Nothing"
                     return False
@@ -105,14 +107,14 @@ testX3DHFullExchange = do
 testX3DHFullExchangeWithOPK :: IO Bool
 testX3DHFullExchangeWithOPK = do
     putStrLn "  [X3DH-SelfConsistency] Full exchange with OPK"
-    let aliceIK = mkIdentity 0x01
-        bobIK   = mkIdentity 0x41
-        spkSecret = BS.pack [0x81 .. 0xA0]
-        spk     = generateKeyPair spkSecret
-        spkSig  = signPreKey bobIK (kpPublic spk)
-        opkSecret = BS.pack [0xC1 .. 0xE0]
-        opk     = generateKeyPair opkSecret
-        ekSecret = BS.pack [0xA1 .. 0xC0]
+    aliceIK <- mkIdentity 0x01
+    bobIK   <- mkIdentity 0x41
+    let spkSecret = BS.pack [0x81 .. 0xA0]
+    spk     <- generateKeyPair spkSecret
+    spkSig  <- signPreKey bobIK (kpPublic spk)
+    let opkSecret = BS.pack [0xC1 .. 0xE0]
+    opk     <- generateKeyPair opkSecret
+    let ekSecret = BS.pack [0xA1 .. 0xC0]
         bundle  = PreKeyBundle
             { pkbIdentityKey     = ikX25519Public bobIK
             , pkbSignedPreKey    = kpPublic spk
@@ -120,13 +122,15 @@ testX3DHFullExchangeWithOPK = do
             , pkbIdentityEd25519 = ikEd25519Public bobIK
             , pkbOneTimePreKey   = Just (kpPublic opk)
             }
-    case x3dhInitiate aliceIK bundle ekSecret of
+    mResult <- x3dhInitiate aliceIK bundle ekSecret
+    case mResult of
         Nothing -> do
             putStrLn "    FAIL: x3dhInitiate returned Nothing"
             return False
         Just result -> do
-            case x3dhRespond bobIK spkSecret (Just opkSecret)
-                    (ikX25519Public aliceIK) (x3dhEphemeralKey result) of
+            mBobSecret <- x3dhRespond bobIK spkSecret (Just opkSecret)
+                    (ikX25519Public aliceIK) (x3dhEphemeralKey result)
+            case mBobSecret of
                 Nothing -> do
                     putStrLn "    FAIL: x3dhRespond returned Nothing"
                     return False
@@ -149,7 +153,8 @@ testX3DHFullExchangeWithOPK = do
 testDoubleRatchetMultiMessage :: IO Bool
 testDoubleRatchetMultiMessage = do
     putStrLn "  [Ratchet-SelfConsistency] 5 messages A->B (same direction)"
-    case setupRatchetSession of
+    mSession <- setupRatchetSession
+    case mSession of
         Nothing -> do
             putStrLn "    FAIL: ratchet session setup failed"
             return False
@@ -197,7 +202,8 @@ testDoubleRatchetMultiMessage = do
 testDoubleRatchetBidirectional :: IO Bool
 testDoubleRatchetBidirectional = do
     putStrLn "  [Ratchet-SelfConsistency] Bidirectional: A(3) B(2) A(2)"
-    case setupRatchetSession of
+    mSession <- setupRatchetSession
+    case mSession of
         Nothing -> do
             putStrLn "    FAIL: ratchet session setup failed"
             return False
@@ -234,7 +240,8 @@ testDoubleRatchetBidirectional = do
 testDoubleRatchetOutOfOrder :: IO Bool
 testDoubleRatchetOutOfOrder = do
     putStrLn "  [Ratchet-SelfConsistency] Out-of-order: send 3, deliver 2-1-3"
-    case setupRatchetSession of
+    mSession <- setupRatchetSession
+    case mSession of
         Nothing -> do
             putStrLn "    FAIL: ratchet session setup failed"
             return False
@@ -302,14 +309,14 @@ testDoubleRatchetOutOfOrder = do
 
 -- | Set up a ratchet session via X3DH with deterministic keys.
 -- Returns (aliceState, bobState) or Nothing on failure.
-setupRatchetSession :: Maybe (RatchetState, RatchetState)
-setupRatchetSession =
-    let aliceIK   = mkIdentity 0x01
-        bobIK     = mkIdentity 0x41
-        spkSecret = BS.pack [0x81 .. 0xA0]
-        spk       = generateKeyPair spkSecret
-        spkSig    = signPreKey bobIK (kpPublic spk)
-        ekSecret  = BS.pack [0xA1 .. 0xC0]
+setupRatchetSession :: IO (Maybe (RatchetState, RatchetState))
+setupRatchetSession = do
+    aliceIK   <- mkIdentity 0x01
+    bobIK     <- mkIdentity 0x41
+    let spkSecret = BS.pack [0x81 .. 0xA0]
+    spk       <- generateKeyPair spkSecret
+    spkSig    <- signPreKey bobIK (kpPublic spk)
+    let ekSecret  = BS.pack [0xA1 .. 0xC0]
         bundle    = PreKeyBundle
             { pkbIdentityKey     = ikX25519Public bobIK
             , pkbSignedPreKey    = kpPublic spk
@@ -318,12 +325,17 @@ setupRatchetSession =
             , pkbOneTimePreKey   = Nothing
             }
         aliceDHSecret = BS.pack [0xD1 .. 0xF0]
-    in do
-        x3dhResult <- x3dhInitiate aliceIK bundle ekSecret
-        let sharedSecret = x3dhSharedSecret x3dhResult
-        aliceState <- ratchetInitAlice sharedSecret (kpPublic spk) aliceDHSecret
-        let bobState = ratchetInitBob sharedSecret spkSecret
-        Just (aliceState, bobState)
+    mX3dhResult <- x3dhInitiate aliceIK bundle ekSecret
+    case mX3dhResult of
+        Nothing -> pure Nothing
+        Just x3dhResult -> do
+            let sharedSecret = x3dhSharedSecret x3dhResult
+            mAliceState <- ratchetInitAlice sharedSecret (kpPublic spk) aliceDHSecret
+            case mAliceState of
+                Nothing -> pure Nothing
+                Just aliceState -> do
+                    bobState <- ratchetInitBob sharedSecret spkSecret
+                    pure (Just (aliceState, bobState))
 
 -- | Send a batch of messages from sender to receiver, verifying each.
 -- Returns updated states or Nothing on failure.

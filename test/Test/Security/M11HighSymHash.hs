@@ -24,6 +24,7 @@ import UmbraVox.Crypto.Poly1305 (poly1305)
 import UmbraVox.Crypto.Random (chacha20Encrypt)
 import UmbraVox.Crypto.SHA256 (sha256)
 import UmbraVox.Crypto.SHA512 (sha512)
+import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.DoubleRatchet
     ( RatchetState(..), ratchetInitAlice, ratchetEncrypt )
 import UmbraVox.Storage.Encryption
@@ -138,7 +139,7 @@ testSY009ChaCha20CounterRollover = do
     let sharedSecret  = BS.replicate 32 0xAA
         bobSPK        = BS.replicate 32 0xBB
         aliceDHSecret = BS.replicate 32 0xCC
-        mSt = ratchetInitAlice sharedSecret bobSPK aliceDHSecret
+    mSt <- ratchetInitAlice sharedSecret bobSPK aliceDHSecret
     ok4 <- case mSt of
         Nothing -> putStrLn "  SKIP: SY-009 ratchet guard: ratchetInitAlice returned Nothing" >> pure True
         Just st ->
@@ -266,21 +267,21 @@ testSY016HMACKeyReuseAcrossContexts = do
     let sharedSecret  = BS.pack [0x11..0x30]
         bobSPK        = BS.pack [0x31..0x50]
         aliceDHSecret = BS.pack [0x51..0x70]
-        mSt = ratchetInitAlice sharedSecret bobSPK aliceDHSecret
+    mSt <- ratchetInitAlice sharedSecret bobSPK aliceDHSecret
 
     ok4 <- case mSt of
         Nothing ->
             putStrLn "  SKIP: SY-016 ratchet key separation: ratchetInitAlice returned Nothing" >>
             pure True
         Just st0 -> do
-            let chain0 = rsSendChain st0
+            chain0 <- toByteString (rsSendChain st0)
             enc1 <- ratchetEncrypt st0 (BS.singleton 0xAA)
             case enc1 of
                 Left _ ->
                     putStrLn "  SKIP: SY-016 ratchet key separation: ratchetEncrypt returned Left" >>
                     pure True
                 Right (st1, _, ct1, _) -> do
-                    let chain1 = rsSendChain st1
+                    chain1 <- toByteString (rsSendChain st1)
                     -- Chain key must have advanced
                     ok_a <- assertEq "SY-016 HMAC key reuse: chain key advances after encrypt"
                                 True (chain0 /= chain1)
@@ -455,7 +456,7 @@ testSY025RatchetNonceFromChainKey = do
     let sharedSecret  = BS.pack [0x01..0x20]
         bobSPK        = BS.pack [0x21..0x40]
         aliceDHSecret = BS.pack [0x41..0x60]
-        mSt = ratchetInitAlice sharedSecret bobSPK aliceDHSecret
+    mSt <- ratchetInitAlice sharedSecret bobSPK aliceDHSecret
 
     case mSt of
         Nothing -> do
@@ -493,8 +494,8 @@ testSY025RatchetNonceFromChainKey = do
                                        True (tag1 /= tag2)
 
                             -- (d) Chain keys differ across encrypt calls (nonce inputs differ)
-                            let chain0 = rsSendChain st0
-                                chain1 = rsSendChain st1
+                            chain0 <- toByteString (rsSendChain st0)
+                            chain1 <- toByteString (rsSendChain st1)
                             ok5 <- assertEq "SY-025 nonce from chain key: chain keys differ per message"
                                        True (chain0 /= chain1)
 

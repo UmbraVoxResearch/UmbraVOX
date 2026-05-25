@@ -19,6 +19,7 @@ import Test.Util (assertEq, strToBS)
 
 import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
 import UmbraVox.Crypto.HKDF (hkdfSHA256Extract, hkdfSHA256Expand)
+import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.DoubleRatchet
     ( RatchetState(..), RatchetHeader(..), RatchetError(..)
     , ratchetInitAlice, ratchetInitBob

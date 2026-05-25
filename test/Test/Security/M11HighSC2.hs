@@ -41,6 +41,7 @@ import UmbraVox.Crypto.MLKEM
     ( MLKEMCiphertext(..)
     , mlkemKeyGen, mlkemEncaps, mlkemDecaps
     )
+import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.DoubleRatchet
     ( RatchetHeader(..)
     , ratchetInitAlice, ratchetInitBob

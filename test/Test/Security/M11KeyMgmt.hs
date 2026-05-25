@@ -44,6 +44,7 @@ import UmbraVox.App.RuntimeLog (redactedFieldKeys)
 import UmbraVox.Crypto.Curve25519 (x25519)
 import UmbraVox.Crypto.KeyStore (saveIdentityKeyAt)
 import UmbraVox.Crypto.Random (randomBytes)
+import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.DoubleRatchet
     ( RatchetState(..), RatchetError(..)
     , ratchetInitAlice
@@ -321,16 +322,16 @@ testKM006ForkReseed = do
 
 testKM016EphemeralKeyReuse :: IO Bool
 testKM016EphemeralKeyReuse = do
-    let aliceIK = generateIdentityKey
+    aliceIK <- generateIdentityKey
                       (BS.replicate 32 0xA1)
                       (BS.replicate 32 0xA2)
-        bobIK   = generateIdentityKey
+    bobIK   <- generateIdentityKey
                       (BS.replicate 32 0xB1)
                       (BS.replicate 32 0xB2)
-        spkSec  = BS.replicate 32 0xC1
-        spk     = generateKeyPair spkSec
-        spkSig  = signPreKey bobIK (kpPublic spk)
-        bundle  = PreKeyBundle
+    let spkSec  = BS.replicate 32 0xC1
+    spk     <- generateKeyPair spkSec
+    spkSig  <- signPreKey bobIK (kpPublic spk)
+    let bundle  = PreKeyBundle
             { pkbIdentityKey     = ikX25519Public bobIK
             , pkbSignedPreKey    = kpPublic spk
             , pkbSPKSignature    = spkSig
@@ -339,8 +340,9 @@ testKM016EphemeralKeyReuse = do
             }
         ekSecret1 = BS.replicate 32 0xE1
         ekSecret2 = BS.replicate 32 0xE2
-    case (x3dhInitiate aliceIK bundle ekSecret1,
-          x3dhInitiate aliceIK bundle ekSecret2) of
+    mr1 <- x3dhInitiate aliceIK bundle ekSecret1
+    mr2 <- x3dhInitiate aliceIK bundle ekSecret2
+    case (mr1, mr2) of
         (Just r1, Just r2) ->
             assertEq "KM-016 X3DH: distinct ekSecrets produce distinct ephemeral keys"
                 True

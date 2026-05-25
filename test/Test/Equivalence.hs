@@ -43,6 +43,7 @@ import qualified UmbraVox.Crypto.Random as Random
 import qualified UmbraVox.Crypto.SHA256 as SHA256
 import qualified UmbraVox.Crypto.SHA512 as SHA512
 import UmbraVox.Crypto.Ed25519 (ed25519Sign)
+import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.PQXDH (PQPreKeyBundle(..))
 import UmbraVox.Crypto.Signal.X3DH
     (IdentityKey(..), generateIdentityKey, generateKeyPair,
@@ -172,10 +173,11 @@ testCBORRoundTrip = do
 -- IK_x25519(32) | IK_ed25519(32) | SPK_pub(32) | SPK_sig(64)
 -- | len(PQPK) as Word32 BE | PQPK | PQ_sig(64) | OPK flag+data
 serializeBundle :: IdentityKey -> ByteString -> ByteString
-               -> MLKEMEncapKey -> Maybe ByteString -> ByteString
-serializeBundle ik spkPub spkSig (MLKEMEncapKey pqpk) mOpk =
-    let pqSig = ed25519Sign (ikEd25519Secret ik) pqpk
-    in BS.concat
+               -> MLKEMEncapKey -> Maybe ByteString -> IO ByteString
+serializeBundle ik spkPub spkSig (MLKEMEncapKey pqpk) mOpk = do
+    edSec <- toByteString (ikEd25519Secret ik)
+    let pqSig = ed25519Sign edSec pqpk
+    pure $ BS.concat
         [ ikX25519Public ik, ikEd25519Public ik
         , spkPub, spkSig
         , putW32BE (fromIntegral (BS.length pqpk))
@@ -238,39 +240,41 @@ getW32BE bs =
 
 testSerializationConsistency :: IO Bool
 testSerializationConsistency = do
-    ok1 <- checkProperty "Bundle serialize/deserialize round-trip" 10
-        (\g -> let (edSec, g1) = nextBytes 32 g
+    ok1 <- checkPropertyIO "Bundle serialize/deserialize round-trip" 10
+        (\g -> do
+               let (edSec, g1) = nextBytes 32 g
                    (xSec,  g2) = nextBytes 32 g1
                    (spkS,  g3) = nextBytes 32 g2
                    (mlD,   g4) = nextBytes 32 g3
-                   (mlZ,   g5) = nextBytes 32 g4
-                   ik = generateIdentityKey edSec xSec
-                   spk = generateKeyPair spkS
-                   sig = signPreKey ik (kpPublic spk)
-                   (pqEK, _) = mlkemKeyGen mlD mlZ
-                   blob = serializeBundle ik (kpPublic spk) sig pqEK Nothing
-               in case deserializeBundle blob of
+                   (mlZ,   _g5) = nextBytes 32 g4
+               ik  <- generateIdentityKey edSec xSec
+               spk <- generateKeyPair spkS
+               sig <- signPreKey ik (kpPublic spk)
+               let (pqEK, _) = mlkemKeyGen mlD mlZ
+               blob <- serializeBundle ik (kpPublic spk) sig pqEK Nothing
+               pure $ case deserializeBundle blob of
                    Nothing -> False
                    Just b  -> pqpkbIdentityKey b == ikX25519Public ik
                            && pqpkbSignedPreKey b == kpPublic spk
                            && pqpkbSPKSignature b == sig
                            && pqpkbOneTimePreKey b == Nothing)
     -- With OPK
-    ok2 <- checkProperty "Bundle round-trip with OPK" 10
-        (\g -> let (edSec, g1) = nextBytes 32 g
+    ok2 <- checkPropertyIO "Bundle round-trip with OPK" 10
+        (\g -> do
+               let (edSec, g1) = nextBytes 32 g
                    (xSec,  g2) = nextBytes 32 g1
                    (spkS,  g3) = nextBytes 32 g2
                    (opkS,  g4) = nextBytes 32 g3
                    (mlD,   g5) = nextBytes 32 g4
                    (mlZ,   _)  = nextBytes 32 g5
-                   ik  = generateIdentityKey edSec xSec
-                   spk = generateKeyPair spkS
-                   opk = generateKeyPair opkS
-                   sig = signPreKey ik (kpPublic spk)
-                   (pqEK, _) = mlkemKeyGen mlD mlZ
-                   blob = serializeBundle ik (kpPublic spk) sig pqEK
+               ik  <- generateIdentityKey edSec xSec
+               spk <- generateKeyPair spkS
+               opk <- generateKeyPair opkS
+               sig <- signPreKey ik (kpPublic spk)
+               let (pqEK, _) = mlkemKeyGen mlD mlZ
+               blob <- serializeBundle ik (kpPublic spk) sig pqEK
                               (Just (kpPublic opk))
-               in case deserializeBundle blob of
+               pure $ case deserializeBundle blob of
                    Nothing -> False
                    Just b  -> pqpkbOneTimePreKey b == Just (kpPublic opk)
                            && pqpkbIdentityKey b == ikX25519Public ik)

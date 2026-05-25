@@ -25,6 +25,7 @@ import UmbraVox.App.RuntimeLog (redactedFieldKeys)
 import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
 import UmbraVox.Crypto.Export (encryptExport, decryptExport)
 import UmbraVox.Crypto.HKDF (hkdfSHA256Extract)
+import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.DoubleRatchet
     ( RatchetState(..), RatchetHeader(..), RatchetError(..)
     , ratchetInitAlice, ratchetInitBob

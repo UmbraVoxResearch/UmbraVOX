@@ -33,6 +33,7 @@ import UmbraVox.Crypto.MLKEM
     , mlkemKeyGen, mlkemEncaps, mlkemDecaps
     )
 import UmbraVox.Crypto.Random (chacha20Encrypt)
+import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.DoubleRatchet
     ( RatchetState(..), RatchetHeader(..), RatchetError(..)
     , ratchetInitAlice, ratchetInitBob
@@ -257,12 +258,13 @@ testSY024RatchetChainKeyNotZero = do
         spkPub = mustX25519 spkSec x25519Basepoint
 
     -- (a) Alice's initial send chain key is not all-zeros
-    case ratchetInitAlice ss1 spkPub dhSec of
+    mAliceSt <- ratchetInitAlice ss1 spkPub dhSec
+    case mAliceSt of
         Nothing -> do
             putStrLn "  FAIL: SY-024 ratchetInitAlice returned Nothing"
             pure False
         Just aliceSt -> do
-            let ck = rsSendChain aliceSt
+            ck <- toByteString (rsSendChain aliceSt)
             ok1 <- assertEq "SY-024 Alice send chain key: not all-zeros"
                        True (ck /= BS.replicate 32 0x00)
             ok2 <- assertEq "SY-024 Alice send chain key: 32 bytes"
@@ -272,19 +274,22 @@ testSY024RatchetChainKeyNotZero = do
             --     per DoubleRatchet.hs, Bob's rsRecvChain is a safe zero placeholder
             --     that is overwritten by dhRatchet before any decrypt attempt.
             --     rsDHRecv = Nothing prevents decryption with this value.
-            let bobSt = ratchetInitBob ss1 spkSec
-                ckB   = rsRecvChain bobSt
+            bobSt <- ratchetInitBob ss1 spkSec
+            ckB   <- toByteString (rsRecvChain bobSt)
             ok3 <- assertEq "SY-024 Bob recv chain key: zero placeholder (M7.2.3 design)"
                        (BS.replicate 32 0x00) ckB
 
             -- (c) Different shared secrets produce different chain keys
-            case ratchetInitAlice ss2 spkPub dhSec of
+            mAliceSt2 <- ratchetInitAlice ss2 spkPub dhSec
+            case mAliceSt2 of
                 Nothing -> do
                     putStrLn "  FAIL: SY-024 second ratchetInitAlice returned Nothing"
                     pure False
                 Just aliceSt2 -> do
+                    ck1 <- toByteString (rsSendChain aliceSt)
+                    ck2 <- toByteString (rsSendChain aliceSt2)
                     ok4 <- assertEq "SY-024 different shared secrets -> different chain keys"
-                               True (rsSendChain aliceSt /= rsSendChain aliceSt2)
+                               True (ck1 /= ck2)
                     pure (ok1 && ok2 && ok3 && ok4)
 
 ------------------------------------------------------------------------
@@ -1041,12 +1046,13 @@ testKM017SkippedKeyLRUEviction = do
         dhSec  = BS.replicate 32 0xA3
         spkPub = mustX25519 spkSec x25519Basepoint
 
-    case ratchetInitAlice ss spkPub dhSec of
+    mAliceSt <- ratchetInitAlice ss spkPub dhSec
+    case mAliceSt of
         Nothing -> do
             putStrLn "  FAIL: KM-017 ratchetInitAlice returned Nothing"
             pure False
         Just aliceSt0 -> do
-            let bobSt0 = ratchetInitBob ss spkSec
+            bobSt0 <- ratchetInitBob ss spkSec
 
             -- Alice sends msg0, msg1, msg2
             enc0 <- ratchetEncrypt aliceSt0 (strToBS "msg0")
@@ -1167,7 +1173,8 @@ testSM002DoubleMsg1EncryptDiffers = do
         dhSec  = BS.replicate 32 0xB3
         spkPub = mustX25519 spkSec x25519Basepoint
 
-    case ratchetInitAlice ss spkPub dhSec of
+    mSt <- ratchetInitAlice ss spkPub dhSec
+    case mSt of
         Nothing -> do
             putStrLn "  FAIL: SM-002 ratchetInitAlice returned Nothing"
             pure False
@@ -1217,7 +1224,8 @@ testSM004RatchetStateBeforeFirstSend = do
         dhSec  = BS.replicate 32 0xC3
         spkPub = mustX25519 spkSec x25519Basepoint
 
-    case ratchetInitAlice ss spkPub dhSec of
+    mSt <- ratchetInitAlice ss spkPub dhSec
+    case mSt of
         Nothing -> do
             putStrLn "  FAIL: SM-004 ratchetInitAlice returned Nothing"
             pure False
@@ -1266,12 +1274,12 @@ testSM004RatchetStateBeforeFirstSend = do
 
 testSM007X3DHCleanStateOnSPKFailure :: IO Bool
 testSM007X3DHCleanStateOnSPKFailure = do
-    let aliceIK = generateIdentityKey (BS.replicate 32 0xA1) (BS.replicate 32 0xA2)
-        bobIK   = generateIdentityKey (BS.replicate 32 0xB1) (BS.replicate 32 0xB2)
-        spkSec  = BS.replicate 32 0xC1
-        spk     = generateKeyPair spkSec
-        spkSig  = signPreKey bobIK (kpPublic spk)
-        ekSec   = BS.replicate 32 0xE1
+    aliceIK <- generateIdentityKey (BS.replicate 32 0xA1) (BS.replicate 32 0xA2)
+    bobIK   <- generateIdentityKey (BS.replicate 32 0xB1) (BS.replicate 32 0xB2)
+    let spkSec  = BS.replicate 32 0xC1
+    spk     <- generateKeyPair spkSec
+    spkSig  <- signPreKey bobIK (kpPublic spk)
+    let ekSec   = BS.replicate 32 0xE1
 
         -- Valid bundle
         goodBundle = PreKeyBundle
@@ -1286,7 +1294,8 @@ testSM007X3DHCleanStateOnSPKFailure = do
         badBundle = goodBundle { pkbSPKSignature = badSig }
 
     -- (a) Tampered SPK signature -> Nothing (clean failure)
-    ok1 <- case x3dhInitiate aliceIK badBundle ekSec of
+    mBadR <- x3dhInitiate aliceIK badBundle ekSec
+    ok1 <- case mBadR of
         Nothing -> do
             putStrLn "  PASS: SM-007 tampered SPK sig: x3dhInitiate returns Nothing"
             pure True
@@ -1295,7 +1304,8 @@ testSM007X3DHCleanStateOnSPKFailure = do
             pure False
 
     -- (b) Valid bundle -> success
-    case x3dhInitiate aliceIK goodBundle ekSec of
+    mGoodR <- x3dhInitiate aliceIK goodBundle ekSec
+    case mGoodR of
         Nothing -> do
             putStrLn "  FAIL: SM-007 valid bundle returned Nothing"
             pure False
@@ -1303,8 +1313,9 @@ testSM007X3DHCleanStateOnSPKFailure = do
             ok2 <- assertEq "SM-007 valid bundle: shared secret is 32 bytes"
                        32 (BS.length (x3dhSharedSecret r))
 
-            -- (c) Same ekSec on both calls — ephemeral key is the same (pure function)
-            case x3dhInitiate aliceIK goodBundle ekSec of
+            -- (c) Same ekSec on both calls — ephemeral key is the same
+            mGoodR2 <- x3dhInitiate aliceIK goodBundle ekSec
+            case mGoodR2 of
                 Nothing -> do
                     putStrLn "  FAIL: SM-007 second valid call returned Nothing"
                     pure False
@@ -1348,10 +1359,14 @@ testSM009SessionResurrection = do
         spkPub = mustX25519 spkSec x25519Basepoint
         pt     = strToBS "session resurrection test payload"
 
-    case (ratchetInitAlice ss spkPub dhSec, ratchetInitAlice ss spkPub dhSec) of
+    mSt1 <- ratchetInitAlice ss spkPub dhSec
+    mSt2 <- ratchetInitAlice ss spkPub dhSec
+    case (mSt1, mSt2) of
         (Just st1, Just st2) -> do
+            sc1 <- toByteString (rsSendChain st1)
+            sc2 <- toByteString (rsSendChain st2)
             ok1 <- assertEq "SM-009 same inputs -> same initial send chain key"
-                       (rsSendChain st1) (rsSendChain st2)
+                       sc1 sc2
 
             enc1 <- ratchetEncrypt st1 pt
             enc2 <- ratchetEncrypt st2 pt
@@ -1400,12 +1415,13 @@ testSM011RatchetAdvanceBeforeDecrypt = do
         dhSec  = BS.replicate 32 0xE3
         spkPub = mustX25519 spkSec x25519Basepoint
 
-    case ratchetInitAlice ss spkPub dhSec of
+    mSt <- ratchetInitAlice ss spkPub dhSec
+    case mSt of
         Nothing -> do
             putStrLn "  FAIL: SM-011 ratchetInitAlice returned Nothing"
             pure False
         Just aliceSt0 -> do
-            let bobSt0 = ratchetInitBob ss spkSec
+            bobSt0 <- ratchetInitBob ss spkSec
 
             enc1 <- ratchetEncrypt aliceSt0 (strToBS "msg1-payload")
             case enc1 of
@@ -1527,14 +1543,15 @@ testFS015BreakInRecovery = do
         dhSec  = BS.replicate 32 0xF3
         spkPub = mustX25519 spkSec x25519Basepoint
 
-    case ratchetInitAlice ss spkPub dhSec of
+    mSt <- ratchetInitAlice ss spkPub dhSec
+    case mSt of
         Nothing -> do
             putStrLn "  FAIL: FS-015 ratchetInitAlice returned Nothing"
             pure False
         Just aliceSt0 -> do
-            let bobSt0 = ratchetInitBob ss spkSec
+            bobSt0 <- ratchetInitBob ss spkSec
             -- Record Alice's chain key before DH ratchet
-            let ckBefore = rsSendChain aliceSt0
+            ckBefore <- toByteString (rsSendChain aliceSt0)
 
             enc0 <- ratchetEncrypt aliceSt0 (strToBS "msg0")
             case enc0 of
@@ -1552,7 +1569,7 @@ testFS015BreakInRecovery = do
                                     case decAlice of
                                         Right (Just (aliceSt2, _)) -> do
                                             -- Alice's chain key after the DH ratchet
-                                            let ckAfter = rsSendChain aliceSt2
+                                            ckAfter <- toByteString (rsSendChain aliceSt2)
                                             ok1 <- assertEq "FS-015 DH ratchet changes Alice's send chain key"
                                                        True (ckBefore /= ckAfter)
                                             ok2 <- assertEq "FS-015 post-DH-ratchet chain key is 32 bytes"

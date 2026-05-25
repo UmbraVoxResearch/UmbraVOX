@@ -192,10 +192,10 @@ testSerializeDeserializeRoundTrip = do
         (spkSig, g4) = nextBytes 64 g3
         (pqKey, g5)  = nextBytes 1184 g4
         (opkKey, _)  = nextBytes 32 g5
-        ik = generateIdentityKey edSec xSec
+    ik <- generateIdentityKey edSec xSec
 
     -- Without OPK
-    let blob1 = serializeBundle ik spkPub spkSig (MLKEMEncapKey pqKey) Nothing
+    blob1 <- serializeBundle ik spkPub spkSig (MLKEMEncapKey pqKey) Nothing
     case deserializeBundle blob1 of
         Nothing -> putStrLn "  FAIL: round-trip without OPK: Nothing" >> pure False
         Just b1 -> do
@@ -207,7 +207,7 @@ testSerializeDeserializeRoundTrip = do
                    && pqpkbPQPreKey b1         == MLKEMEncapKey pqKey
 
             -- With OPK
-            let blob2 = serializeBundle ik spkPub spkSig (MLKEMEncapKey pqKey) (Just opkKey)
+            blob2 <- serializeBundle ik spkPub spkSig (MLKEMEncapKey pqKey) (Just opkKey)
             case deserializeBundle blob2 of
                 Nothing -> putStrLn "  FAIL: round-trip with OPK: Nothing" >> pure False
                 Just b2 -> do

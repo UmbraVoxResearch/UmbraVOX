@@ -17,6 +17,7 @@ import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
 import UmbraVox.Crypto.MLKEM (mlkemKeyGen, mlkemEncaps, mlkemDecaps)
 import UmbraVox.Crypto.Poly1305 (poly1305)
 import UmbraVox.Crypto.Random (randomBytes)
+import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.DoubleRatchet
 import UmbraVox.Crypto.StealthAddress
     (StealthAddress(..), deriveStealthAddress)
@@ -105,8 +106,9 @@ testNonceUniqueness = do
         mBobSPKPub = x25519 bobSPKSecret x25519Basepoint
     case mBobSPKPub of
         Nothing -> putStrLn "  FAIL: nonce uniqueness: x25519 basepoint returned Nothing" >> pure False
-        Just bobSPKPub ->
-            case ratchetInitAlice sharedSecret bobSPKPub aliceDHSecret of
+        Just bobSPKPub -> do
+            mAlice <- ratchetInitAlice sharedSecret bobSPKPub aliceDHSecret
+            case mAlice of
                 Nothing -> putStrLn "  FAIL: nonce uniqueness: ratchetInitAlice returned Nothing" >> pure False
                 Just aliceState -> do
                     -- Encrypt 1000 messages, collect (header, ct, tag) triples
@@ -146,12 +148,13 @@ testForwardSecrecy = do
         mBobSPKPub = x25519 bobSPKSecret x25519Basepoint
     case mBobSPKPub of
         Nothing -> putStrLn "  FAIL: forward secrecy: x25519 returned Nothing" >> pure False
-        Just bobSPKPublic ->
-            case ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret of
+        Just bobSPKPublic -> do
+            mAlice <- ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret
+            case mAlice of
                 Nothing -> putStrLn "  FAIL: forward secrecy: ratchetInitAlice returned Nothing" >> pure False
                 Just aliceState -> do
-                    let bobState = ratchetInitBob sharedSecret bobSPKSecret
-                        oldSendChain = rsSendChain aliceState
+                    bobState <- ratchetInitBob sharedSecret bobSPKSecret
+                    oldSendChain <- toByteString (rsSendChain aliceState)
                     -- Alice sends a message (triggers chain advancement)
                     enc1 <- ratchetEncrypt aliceState (strToBS "msg1")
                     case enc1 of
@@ -174,8 +177,8 @@ testForwardSecrecy = do
                                                 Left e -> putStrLn ("  FAIL: fwd secrecy dec2: " ++ show e) >> pure False
                                                 Right Nothing -> putStrLn "  FAIL: fwd secrecy dec2: Nothing" >> pure False
                                                 Right (Just (alice2, _pt2)) -> do
-                                                    let newSendChain = rsSendChain alice2
-                                                        keysChanged = oldSendChain /= newSendChain
+                                                    newSendChain <- toByteString (rsSendChain alice2)
+                                                    let keysChanged = oldSendChain /= newSendChain
                                                     assertEq "forward secrecy: chain key changes after DH ratchet" True keysChanged
 
 ------------------------------------------------------------------------
@@ -193,11 +196,17 @@ testKeyIndependence = do
         mBobSPKPub = x25519 bobSPKSecret x25519Basepoint
     case mBobSPKPub of
         Nothing -> putStrLn "  FAIL: key independence: x25519 returned Nothing" >> pure False
-        Just bobSPKPub ->
-            case (ratchetInitAlice ss1 bobSPKPub aliceDH1, ratchetInitAlice ss2 bobSPKPub aliceDH2) of
+        Just bobSPKPub -> do
+            mState1 <- ratchetInitAlice ss1 bobSPKPub aliceDH1
+            mState2 <- ratchetInitAlice ss2 bobSPKPub aliceDH2
+            case (mState1, mState2) of
                 (Just state1, Just state2) -> do
-                    let rootDiff  = rsRootKey state1 /= rsRootKey state2
-                        chainDiff = rsSendChain state1 /= rsSendChain state2
+                    rk1 <- toByteString (rsRootKey state1)
+                    rk2 <- toByteString (rsRootKey state2)
+                    sc1 <- toByteString (rsSendChain state1)
+                    sc2 <- toByteString (rsSendChain state2)
+                    let rootDiff  = rk1 /= rk2
+                        chainDiff = sc1 /= sc2
                     assertEq "key independence: root keys differ" True rootDiff
                         >>= \ok1 -> assertEq "key independence: send chains differ" True chainDiff
                         >>= \ok2 -> pure (ok1 && ok2)

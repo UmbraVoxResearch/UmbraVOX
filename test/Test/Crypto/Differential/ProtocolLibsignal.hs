@@ -83,6 +83,9 @@ import UmbraVox.Crypto.HMAC (hmacSHA256)
 -- HKDF for cross-checking KDF derivations
 import UmbraVox.Crypto.HKDF (hkdfSHA256Extract, hkdfSHA256Expand)
 
+-- SecureBytes extraction (M15.3)
+import UmbraVox.Crypto.SecureBytes (toByteString)
+
 ------------------------------------------------------------------------
 -- Entry point
 ------------------------------------------------------------------------
@@ -151,7 +154,8 @@ protocolLibsignalTests = do
 ------------------------------------------------------------------------
 
 -- | Generate deterministic identity key from a seed byte.
-mkIdentity :: Word8 -> IdentityKey
+-- M15.3: generateIdentityKey is now IO (SecureBytes allocation).
+mkIdentity :: Word8 -> IO IdentityKey
 mkIdentity seed = generateIdentityKey
     (BS.pack [seed, seed+1 .. seed+31])
     (BS.pack [seed+32, seed+33 .. seed+63])
@@ -171,28 +175,31 @@ opkSecret  = BS.pack [0xC1 .. 0xE0]
 testX3DHCrossImplNoOPK :: IO Bool
 testX3DHCrossImplNoOPK = do
     putStrLn "  [X3DH-Diff] Cross-impl no-OPK: native initiator vs responder"
-    let aliceIK = mkIdentity 0x01
-        bobIK   = mkIdentity 0x41
-        spk     = generateKeyPair spkSecret
-        spkSig  = signPreKey bobIK (kpPublic spk)
-        bundle  = PreKeyBundle
+    aliceIK <- mkIdentity 0x01
+    bobIK   <- mkIdentity 0x41
+    spk     <- generateKeyPair spkSecret
+    spkSig  <- signPreKey bobIK (kpPublic spk)
+    let bundle  = PreKeyBundle
             { pkbIdentityKey     = ikX25519Public bobIK
             , pkbSignedPreKey    = kpPublic spk
             , pkbSPKSignature    = spkSig
             , pkbIdentityEd25519 = ikEd25519Public bobIK
             , pkbOneTimePreKey   = Nothing
             }
-    case x3dhInitiate aliceIK bundle ekSecret of
+    mResult <- x3dhInitiate aliceIK bundle ekSecret
+    case mResult of
         Nothing -> do
             putStrLn "    FAIL: x3dhInitiate returned Nothing"
             return False
         Just result -> do
             -- Compute same DH operations manually to verify
-            let ek = generateKeyPair ekSecret
+            ek <- generateKeyPair ekSecret
+            aliceXSec <- toByteString (ikX25519Secret aliceIK)
+            ekSec     <- toByteString (kpSecret ek)
             case sequenceMaybe
-                    [ x25519 (ikX25519Secret aliceIK) (pkbSignedPreKey bundle)
-                    , x25519 (kpSecret ek) (pkbIdentityKey bundle)
-                    , x25519 (kpSecret ek) (pkbSignedPreKey bundle)
+                    [ x25519 aliceXSec (pkbSignedPreKey bundle)
+                    , x25519 ekSec (pkbIdentityKey bundle)
+                    , x25519 ekSec (pkbSignedPreKey bundle)
                     ] of
                 Nothing -> do
                     putStrLn "    FAIL: manual DH computation returned Nothing"
@@ -206,8 +213,9 @@ testX3DHCrossImplNoOPK = do
                     r2 <- assertEq "X3DH no-OPK: native secret length"
                               32 (BS.length (x3dhSharedSecret result))
                     -- Verify native initiator/responder agree
-                    case x3dhRespond bobIK spkSecret Nothing
-                            (ikX25519Public aliceIK) (x3dhEphemeralKey result) of
+                    mBobSecret <- x3dhRespond bobIK spkSecret Nothing
+                            (ikX25519Public aliceIK) (x3dhEphemeralKey result)
+                    case mBobSecret of
                         Nothing -> do
                             putStrLn "    FAIL: x3dhRespond returned Nothing"
                             return False
@@ -223,12 +231,12 @@ testX3DHCrossImplNoOPK = do
 testX3DHCrossImplWithOPK :: IO Bool
 testX3DHCrossImplWithOPK = do
     putStrLn "  [X3DH-Diff] Cross-impl with-OPK: verify 4th DH term effect"
-    let aliceIK = mkIdentity 0x01
-        bobIK   = mkIdentity 0x41
-        spk     = generateKeyPair spkSecret
-        spkSig  = signPreKey bobIK (kpPublic spk)
-        opk     = generateKeyPair opkSecret
-        -- Bundle without OPK
+    aliceIK <- mkIdentity 0x01
+    bobIK   <- mkIdentity 0x41
+    spk     <- generateKeyPair spkSecret
+    spkSig  <- signPreKey bobIK (kpPublic spk)
+    opk     <- generateKeyPair opkSecret
+    let -- Bundle without OPK
         bundleNoOPK = PreKeyBundle
             { pkbIdentityKey     = ikX25519Public bobIK
             , pkbSignedPreKey    = kpPublic spk
@@ -238,16 +246,18 @@ testX3DHCrossImplWithOPK = do
             }
         -- Bundle with OPK
         bundleWithOPK = bundleNoOPK { pkbOneTimePreKey = Just (kpPublic opk) }
-    case (x3dhInitiate aliceIK bundleNoOPK ekSecret,
-          x3dhInitiate aliceIK bundleWithOPK ekSecret) of
+    mResNoOPK   <- x3dhInitiate aliceIK bundleNoOPK ekSecret
+    mResWithOPK <- x3dhInitiate aliceIK bundleWithOPK ekSecret
+    case (mResNoOPK, mResWithOPK) of
         (Just resNoOPK, Just resWithOPK) -> do
             -- Secrets must differ when OPK is added
             r1 <- if x3dhSharedSecret resNoOPK /= x3dhSharedSecret resWithOPK
                   then putStrLn "    PASS: OPK changes shared secret" >> return True
                   else putStrLn "    FAIL: OPK did not change shared secret" >> return False
             -- Both must still agree with responder
-            case x3dhRespond bobIK spkSecret (Just opkSecret)
-                    (ikX25519Public aliceIK) (x3dhEphemeralKey resWithOPK) of
+            mBobSecret <- x3dhRespond bobIK spkSecret (Just opkSecret)
+                    (ikX25519Public aliceIK) (x3dhEphemeralKey resWithOPK)
+            case mBobSecret of
                 Nothing -> do
                     putStrLn "    FAIL: x3dhRespond with OPK returned Nothing"
                     return False
@@ -264,12 +274,16 @@ testX3DHCrossImplWithOPK = do
 testX3DHDHOutputsMatch :: IO Bool
 testX3DHDHOutputsMatch = do
     putStrLn "  [X3DH-Diff] DH output consistency check"
-    let aliceIK = mkIdentity 0x01
-        bobIK   = mkIdentity 0x41
-        spk     = generateKeyPair spkSecret
-        ek      = generateKeyPair ekSecret
+    aliceIK <- mkIdentity 0x01
+    bobIK   <- mkIdentity 0x41
+    spk     <- generateKeyPair spkSecret
+    ek      <- generateKeyPair ekSecret
+    -- Extract secrets from SecureBytes for manual DH (M15.3)
+    aliceXSec <- toByteString (ikX25519Secret aliceIK)
+    bobXSec   <- toByteString (ikX25519Secret bobIK)
+    ekSec     <- toByteString (kpSecret ek)
     -- Compute DH1: IK_A * SPK_B
-    case x25519 (ikX25519Secret aliceIK) (kpPublic spk) of
+    case x25519 aliceXSec (kpPublic spk) of
         Nothing -> do
             putStrLn "    FAIL: DH1 returned Nothing"
             return False
@@ -282,19 +296,19 @@ testX3DHDHOutputsMatch = do
                 Just dh1Bob -> do
                     r1 <- assertEq "DH1 commutativity" dh1 dh1Bob
                     -- DH2: EK_A * IK_B
-                    case x25519 (kpSecret ek) (ikX25519Public bobIK) of
+                    case x25519 ekSec (ikX25519Public bobIK) of
                         Nothing -> do
                             putStrLn "    FAIL: DH2 returned Nothing"
                             return False
                         Just dh2 ->
-                            case x25519 (ikX25519Secret bobIK) (kpPublic ek) of
+                            case x25519 bobXSec (kpPublic ek) of
                                 Nothing -> do
                                     putStrLn "    FAIL: DH2 (Bob) returned Nothing"
                                     return False
                                 Just dh2Bob -> do
                                     r2 <- assertEq "DH2 commutativity" dh2 dh2Bob
                                     -- DH3: EK_A * SPK_B
-                                    case x25519 (kpSecret ek) (kpPublic spk) of
+                                    case x25519 ekSec (kpPublic spk) of
                                         Nothing -> do
                                             putStrLn "    FAIL: DH3 returned Nothing"
                                             return False
@@ -772,8 +786,9 @@ testRatchetInitStateFields = do
             putStrLn "    FAIL: signalRatchetInitAlice returned Nothing"
             return False
         Just signalAlice -> do
-            -- Native init
-            case ratchetInitAlice ss bobSPKPub aliceDH of
+            -- Native init (M15.3: now IO)
+            mNativeAlice <- ratchetInitAlice ss bobSPKPub aliceDH
+            case mNativeAlice of
                 Nothing -> do
                     putStrLn "    FAIL: ratchetInitAlice returned Nothing"
                     return False
@@ -790,7 +805,9 @@ testRatchetInitStateFields = do
                     r3 <- assertEq "Native sendN == 0" 0 (rsSendN nativeAlice)
                     r4 <- assertEq "Signal sendN == 0" 0 (srsSendN signalAlice)
                     -- Root keys will differ (different HKDF)
-                    r5 <- if rsRootKey nativeAlice /= srsRootKey signalAlice
+                    -- M15.3: rsRootKey is SecureBytes, extract for comparison
+                    nativeRK <- toByteString (rsRootKey nativeAlice)
+                    r5 <- if nativeRK /= srsRootKey signalAlice
                           then putStrLn "    PASS: rootKeys differ (expected: different HKDF)" >> return True
                           else putStrLn "    FAIL: rootKeys identical (unexpected)" >> return False
                     return (and [r1, r2, r3, r4, r5])

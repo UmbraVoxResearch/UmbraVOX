@@ -42,7 +42,7 @@ mkSessionPair g0 = do
     let alice = case mAlice of
                     Just s  -> s
                     Nothing -> error "mkSessionPair: initChatSession returned Nothing"
-    let bobRatchet = ratchetInitBob sharedSecret bobDHSec
+    bobRatchet <- ratchetInitBob sharedSecret bobDHSec
     pure (alice, BobState bobRatchet)
 
 -- | Wrapper to hold Bob's ratchet state for use with recvChatMessage.

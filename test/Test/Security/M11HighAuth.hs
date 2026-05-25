@@ -22,6 +22,7 @@ import UmbraVox.Crypto.Ed25519
 import UmbraVox.Crypto.MLKEM (mlkemKeyGen, MLKEMEncapKey(..))
 import UmbraVox.Crypto.Signal.PQXDH
     ( PQPreKeyBundle(..), pqxdhInitiate )
+import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.X3DH
     ( IdentityKey(..), KeyPair(..), PreKeyBundle(..)
     , generateIdentityKey, generateKeyPair, signPreKey, x3dhInitiate

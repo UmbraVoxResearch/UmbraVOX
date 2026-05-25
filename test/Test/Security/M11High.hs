@@ -25,6 +25,7 @@ import UmbraVox.Crypto.Keccak (sha3_256)
 import UmbraVox.Crypto.Poly1305 (poly1305)
 import UmbraVox.Crypto.SHA256 (sha256)
 import UmbraVox.Crypto.SHA512 (sha512)
+import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.DoubleRatchet
     ( RatchetState(..), RatchetHeader(..), RatchetError(..), maxTotalSkipped
     , ratchetInitAlice, ratchetInitBob
@@ -403,14 +404,14 @@ testSC012SHA3MultiBlock = do
 
 testPL006X3DHSharedSecretAgreement :: IO Bool
 testPL006X3DHSharedSecretAgreement = do
-    let aliceIK = generateIdentityKey
+    aliceIK <- generateIdentityKey
                       (BS.replicate 32 0xA1) (BS.replicate 32 0xA2)
-        bobIK   = generateIdentityKey
+    bobIK   <- generateIdentityKey
                       (BS.replicate 32 0xB1) (BS.replicate 32 0xB2)
-        spkSec  = BS.replicate 32 0xC1
-        spk     = generateKeyPair spkSec
-        spkSig  = signPreKey bobIK (kpPublic spk)
-        bundle  = PreKeyBundle
+    let spkSec  = BS.replicate 32 0xC1
+    spk     <- generateKeyPair spkSec
+    spkSig  <- signPreKey bobIK (kpPublic spk)
+    let bundle  = PreKeyBundle
             { pkbIdentityKey     = ikX25519Public bobIK
             , pkbSignedPreKey    = kpPublic spk
             , pkbSPKSignature    = spkSig
@@ -419,14 +420,15 @@ testPL006X3DHSharedSecretAgreement = do
             }
         ekSec = BS.replicate 32 0xE1
 
-    case x3dhInitiate aliceIK bundle ekSec of
+    mResult <- x3dhInitiate aliceIK bundle ekSec
+    case mResult of
         Nothing -> do
             putStrLn "  FAIL: PL-006 x3dhInitiate returned Nothing"
             pure False
         Just result -> do
             let aliceSS = x3dhSharedSecret result
                 aliceEK = x3dhEphemeralKey result
-                mBobSS  = x3dhRespond bobIK spkSec Nothing
+            mBobSS  <- x3dhRespond bobIK spkSec Nothing
                               (ikX25519Public aliceIK) aliceEK
             case mBobSS of
                 Nothing -> putStrLn "  FAIL: PL-006 x3dhRespond returned Nothing" >> pure False
@@ -436,14 +438,16 @@ testPL006X3DHSharedSecretAgreement = do
                     ok2 <- assertEq "PL-006 X3DH: shared secret is 32 bytes"
                                32 (BS.length aliceSS)
                     -- Different peer identity produces different secret (UKS binding)
-                    let carol = generateIdentityKey
+                    carol <- generateIdentityKey
                                     (BS.replicate 32 0xCC) (BS.replicate 32 0xCD)
-                        bundleCarol = bundle
+                    carolSig <- signPreKey carol (kpPublic spk)
+                    let bundleCarol = bundle
                             { pkbIdentityKey     = ikX25519Public carol
                             , pkbIdentityEd25519 = ikEd25519Public carol
-                            , pkbSPKSignature    = signPreKey carol (kpPublic spk)
+                            , pkbSPKSignature    = carolSig
                             }
-                    let ok3res = case x3dhInitiate aliceIK bundleCarol ekSec of
+                    mCarolR <- x3dhInitiate aliceIK bundleCarol ekSec
+                    let ok3res = case mCarolR of
                             Nothing      -> True  -- carol's bundle rejected (OK)
                             Just carolR  -> x3dhSharedSecret carolR /= aliceSS
                     ok3 <- assertEq "PL-006 X3DH: different peer -> different or rejected (UKS guard)"
@@ -481,14 +485,14 @@ testPL008SkippedKeyEviction = do
         bobSPKSecret  = BS.replicate 32 0xBB
         aliceDHSecret = BS.replicate 32 0xCC
         bobSPKPub     = mustX25519 bobSPKSecret x25519Basepoint
-        mAliceSt0     = ratchetInitAlice sharedSecret bobSPKPub aliceDHSecret
-        bobSt0        = ratchetInitBob sharedSecret bobSPKSecret
+    mAliceSt0     <- ratchetInitAlice sharedSecret bobSPKPub aliceDHSecret
 
     case mAliceSt0 of
         Nothing -> do
             putStrLn "  FAIL: PL-008 ratchetInitAlice returned Nothing"
             pure False
         Just aliceSt0 -> do
+            bobSt0 <- ratchetInitBob sharedSecret bobSPKSecret
             -- Alice sends one message to initialise Bob's ratchet
             encRes0 <- ratchetEncrypt aliceSt0 (BS.singleton 0x42)
             case encRes0 of
@@ -740,12 +744,13 @@ testPL027FarAheadSeqRejection = do
         bobSPKSecret  = BS.replicate 32 0x22
         aliceDHSecret = BS.replicate 32 0x33
         bobSPKPub     = mustX25519 bobSPKSecret x25519Basepoint
-        mAliceSt0     = ratchetInitAlice sharedSecret bobSPKPub aliceDHSecret
-        bobSt0        = ratchetInitBob sharedSecret bobSPKSecret
+
+    mAliceSt0     <- ratchetInitAlice sharedSecret bobSPKPub aliceDHSecret
 
     case mAliceSt0 of
         Nothing -> pure False
         Just aliceSt0 -> do
+            bobSt0 <- ratchetInitBob sharedSecret bobSPKSecret
             enc0 <- ratchetEncrypt aliceSt0 (BS.singleton 0x01)
             case enc0 of
                 Left _ -> pure False
@@ -810,7 +815,7 @@ testSY007GCMBirthdayRatchetAdvances = do
         bobSPKSecret  = BS.replicate 32 0xEE
         aliceDHSecret = BS.replicate 32 0xFF
         bobSPKPub     = mustX25519 bobSPKSecret x25519Basepoint
-        mAliceSt0     = ratchetInitAlice sharedSecret bobSPKPub aliceDHSecret
+    mAliceSt0     <- ratchetInitAlice sharedSecret bobSPKPub aliceDHSecret
 
     case mAliceSt0 of
         Nothing -> do
@@ -1114,14 +1119,14 @@ testAS007Ed25519SignatureMalleability = do
 
 testKM016EphemeralKeyReuse :: IO Bool
 testKM016EphemeralKeyReuse = do
-    let aliceIK = generateIdentityKey
+    aliceIK <- generateIdentityKey
                       (BS.replicate 32 0xA1) (BS.replicate 32 0xA2)
-        bobIK   = generateIdentityKey
+    bobIK   <- generateIdentityKey
                       (BS.replicate 32 0xB1) (BS.replicate 32 0xB2)
-        spkSec  = BS.replicate 32 0xC1
-        spk     = generateKeyPair spkSec
-        spkSig  = signPreKey bobIK (kpPublic spk)
-        bundle  = PreKeyBundle
+    let spkSec  = BS.replicate 32 0xC1
+    spk     <- generateKeyPair spkSec
+    spkSig  <- signPreKey bobIK (kpPublic spk)
+    let bundle  = PreKeyBundle
             { pkbIdentityKey     = ikX25519Public bobIK
             , pkbSignedPreKey    = kpPublic spk
             , pkbSPKSignature    = spkSig
@@ -1131,16 +1136,18 @@ testKM016EphemeralKeyReuse = do
         ekSecret1 = BS.replicate 32 0xE1
         ekSecret2 = BS.replicate 32 0xE2
 
-    case (x3dhInitiate aliceIK bundle ekSecret1,
-          x3dhInitiate aliceIK bundle ekSecret2) of
+    mr1 <- x3dhInitiate aliceIK bundle ekSecret1
+    mr2 <- x3dhInitiate aliceIK bundle ekSecret2
+    case (mr1, mr2) of
         (Just r1, Just r2) -> do
             ok1 <- assertEq "KM-016 distinct ekSecrets -> distinct ephemeral keys"
                        True (x3dhEphemeralKey r1 /= x3dhEphemeralKey r2)
             ok2 <- assertEq "KM-016 distinct ekSecrets -> distinct shared secrets"
                        True (x3dhSharedSecret r1 /= x3dhSharedSecret r2)
             -- Reuse scenario: same ekSecret -> same result (confirms risk)
-            case (x3dhInitiate aliceIK bundle ekSecret1,
-                  x3dhInitiate aliceIK bundle ekSecret1) of
+            mr3 <- x3dhInitiate aliceIK bundle ekSecret1
+            mr4 <- x3dhInitiate aliceIK bundle ekSecret1
+            case (mr3, mr4) of
                 (Just r3, Just r4) -> do
                     ok3 <- assertEq "KM-016 same ekSecret -> same ephemeral key (reuse risk)"
                                True (x3dhEphemeralKey r3 == x3dhEphemeralKey r4)
