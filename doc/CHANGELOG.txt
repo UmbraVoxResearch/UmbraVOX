@@ -6,6 +6,74 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 
 ## [Unreleased]
 
+### v0.6.0 — vmctl framework, 4-tier NixOS images, 3-tier CI, 851 tests on GHC 9.14.1
+
+#### VM Infrastructure
+- vmctl framework Phase 1 complete
+  - Core types and resource model (tools/pkg/vmctl/types.go)
+  - Resource lifecycle management (acquire, release, cleanup)
+  - Preflight checks: KVM availability, disk space, binary presence
+  - Nix integration: image derivation evaluation and build coordination
+  - Disk layer: image creation, source disk assembly, cloud-init seed disks
+  - QEMU hypervisor backend: full VMProfile wiring, console, 9p share
+  - Firecracker hypervisor backend: config generation, jailer, kernel/rootfs
+  - Direct hypervisor backend: host-native execution path
+- vmctl Phase 2 started
+  - execInVMv2: structured exec context replacing ad-hoc shell heredocs
+  - vm-signal dedup: signal delivery deduplication across concurrent VM ops
+- --direct flag added to vm exec commands with interactive confirmation prompt
+- vm-defs/ YAML declarations: 7 files defining named VM configurations
+  (build, dev, runtime, signal-build, signal-run, smoke, e2e)
+
+#### NixOS Image Hierarchy
+- 4-tier NixOS image hierarchy replacing flat vm-image.nix
+  - nix/vm-base.nix: minimal bootable NixOS with kernel, systemd, nix daemon
+  - nix/vm-network.nix: extends base with firewall, SSH, 9p virtio, network policy
+  - nix/vm-builder.nix: extends network with GHC 9.14.1, cabal, protoc, JDK 25
+  - nix/vm-dev.nix: extends builder with coqprime, coq-bignums, debug tools, TUI
+
+#### CI Pipeline
+- 3-tier CI pipeline
+  - PR workflow: fast gate (lint, format, complexity, license, generated-headers,
+    constant-time branches), unit + integration tests, F* verification
+  - Nightly workflow: full test suite, VM smoke, Firecracker smoke, Coq proofs,
+    differential oracle suite, coverage report
+  - Pre-release workflow: all nightly gates plus assurance matrix freshness,
+    release packaging for all 12 platform targets, reproducibility check
+
+#### Build System
+- ./uv test all: runs all 17 test suites in dependency order, exits non-zero on
+  first failure, emits per-suite pass/fail summary
+- ./uv test e2e: end-to-end VM pipeline test (boot, build, smoke, verify, shutdown)
+  in an ephemeral QEMU guest with 9p output extraction
+
+#### Testing
+- 851 tests passing on GHC 9.14.1 (up from prior baseline)
+- All tests run via ./uv test all inside VM; no direct cabal invocation
+
+#### Shell-to-Go Migration
+- 11 of 12 shell scripts converted to Go binaries (tools/cmd/)
+  - Remaining: scripts/vm-network-setup.sh (requires privileged TAP/bridge setup)
+
+#### Signal Server
+- Signal Server 333MB fat JAR produced via Maven shade plugin
+  - shade plugin replaces exclude-spam-filter profile approach
+  - All transitive JARs included; classpath assembly verified inside build VM
+
+#### Documentation
+- doc/BUILD-PATHS.md: canonical map of all build artifact output paths and cache policy
+- doc/TEST-LEVELS.md: four-tier test taxonomy (unit / integration / smoke / e2e)
+  with ownership, trigger, and VM-isolation requirements per tier
+- doc/CI-TESTING.md: CI pipeline reference; maps workflow jobs to test tiers and
+  quality gates; documents nightly and pre-release gate differences
+- doc/assurance-matrix.md: updated with vmctl Phase 1 evidence, CI pipeline coverage,
+  and current test count (851); links to doc/TEST-LEVELS.md and doc/CI-TESTING.md
+
+#### Formal Verification
+- All 30 F* assume val declarations documented with structured ASSUME JUSTIFICATION
+  blocks covering axiom category, rationale, and external evidence references
+  (carried from v0.5.18; confirmed complete and stable in v0.6.0)
+
 ### v0.5.22 — Shell-to-Go migration complete, release coverage, VM hardening
 
 - Shell-to-Go migration: 5 more scripts replaced with Go binaries
@@ -771,7 +839,8 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 ### Added
 - Tagged release baseline `v0.0.6` and stabilized active MVP hardening branch state.
 
-[Unreleased]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.4.0...v0.6.0
 [0.4.0]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/UmbraVoxResearch/UmbraVOX/compare/v0.1.8...v0.2.0

@@ -129,23 +129,24 @@ ACTIVE WORK
 
   [~] Phase 2: Unified boot path (VMSpec → vmctl.Boot)
     [x] Define VMSpec, DiskSpec, NetworkSpec, BootSpec types — done (vmctl.go)
+    [x] execInVMv2 created (parallel vmctl path)
     [ ] Replace execInVM in cmd_exec.go with vmctl.Boot(spec)
     [ ] Replace runRunFirecracker/runRunQEMU in cmd_run.go with vmctl.Boot
     [ ] Replace runDev in cmd_dev.go with vmctl.Boot
     [ ] Replace bootBuilderVM in cmd_image.go with vmctl.Boot
     [ ] Replace hand-rolled QEMU args in vm-signal/main.go with vmctl.Boot
-    [ ] Eliminate duplicate findRepoRoot in vm-signal (use passed parameter)
+    [x] Eliminate duplicate findRepoRoot in vm-signal (use passed parameter)
 
-  [ ] Phase 3: Declarative YAML definitions (reference tier names: base, network, builder, dev)
+  [~] Phase 3: Declarative YAML definitions (reference tier names: base, network, builder, dev)
     [ ] Add vmctl/config.go with YAML parsing into VMSpec
-    [ ] Create vm-defs/ directory with YAML for each VM type
-      [ ] vm-defs/dev.yaml — tier: dev (full toolchain)
-      [ ] vm-defs/builder.yaml — tier: builder (nix + network)
-      [ ] vm-defs/runtime-fc.yaml — tier: base (Firecracker runtime)
-      [ ] vm-defs/runtime-qemu.yaml — tier: base (QEMU runtime with VGA)
-      [ ] vm-defs/ci-test.yaml — tier: network (CI Firecracker with network)
-      [ ] vm-defs/signal-build.yaml — tier: builder (Signal Server build)
-      [ ] vm-defs/signal-runtime.yaml — tier: network (Signal Server runtime)
+    [x] Create vm-defs/ directory with YAML for each VM type (7 files created)
+      [x] vm-defs/dev.yaml — tier: dev (full toolchain)
+      [x] vm-defs/builder.yaml — tier: builder (nix + network)
+      [x] vm-defs/runtime-fc.yaml — tier: base (Firecracker runtime)
+      [x] vm-defs/runtime-qemu.yaml — tier: base (QEMU runtime with VGA)
+      [x] vm-defs/ci-test.yaml — tier: network (CI Firecracker with network)
+      [x] vm-defs/signal-build.yaml — tier: builder (Signal Server build)
+      [x] vm-defs/signal-runtime.yaml — tier: network (Signal Server runtime)
     [ ] ./uv commands load YAML, overlay CLI flags, call vmctl.Boot
 
   [~] Phase 4: Extract to separate Go module
@@ -158,8 +159,8 @@ ACTIVE WORK
   [~] Phase 5: CI integration
     [x] Add --direct flag to ./uv test (host-based, no VM)
     [x] Add --direct flag to ./uv build
-    [ ] Create .github/workflows/ci-e2e.yml (nightly, self-hosted, KVM)
-    [ ] Create vm-defs/ci-test.yaml (Firecracker + network for fast CI)
+    [x] Create .github/workflows/ci-e2e.yml → ci-nightly.yml created
+    [x] Create vm-defs/ci-test.yaml (Firecracker + network for fast CI)
     [x] Update ci-linux.yml to use ./uv test --direct — already done in earlier commit
     [ ] Add slirp4netns support for rootless Firecracker networking
     [ ] Document CI setup in doc/CI-INTEGRATION.md
