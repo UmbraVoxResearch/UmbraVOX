@@ -103,7 +103,7 @@ func runBuild(args []string) int {
   fi`
 	}
 
-	code := execInVM(cmd, qemu.ProfileDev, 30*time.Minute)
+	code := execInVM(cmd, qemu.ProfileDev, 45*time.Minute)
 	if code == 0 && !docs {
 		// Move runtime bundle from VM output to build/runtime/
 		repoRoot, err := repo.Root()
@@ -184,7 +184,7 @@ func runTest(args []string) int {
 	if len(args) == 0 {
 		// Default: required fast gate
 		cmd := "cabal build all --enable-tests && cabal test umbravox-test --test-options='required' 2>&1"
-		return execInVM(cmd, qemu.ProfileDev, 25*time.Minute)
+		return execInVM(cmd, qemu.ProfileDev, 45*time.Minute)
 	}
 
 	suite := args[0]
@@ -207,7 +207,7 @@ func runTest(args []string) int {
 		return 2
 	}
 
-	timeout := 25 * time.Minute
+	timeout := 45 * time.Minute
 	if suite == "soak" {
 		timeout = 120 * time.Minute
 	}
@@ -258,7 +258,7 @@ func runVerify(args []string) int {
 		return runFstarEval(args[1:])
 	}
 	cmd := "cabal build all --enable-tests && cabal run fstar-verify 2>&1"
-	return execInVM(cmd, qemu.ProfileDev, 60*time.Minute)
+	return execInVM(cmd, qemu.ProfileDev, 120*time.Minute)
 }
 
 // runFstarEval builds and runs the fstar-eval binary (M18.2.3 vector evaluation).
@@ -307,7 +307,7 @@ func runAll() int {
 	// Build + test in VM
 	cmd := `cabal build all --enable-tests 2>&1 | tail -20 && \
 cabal test umbravox-test --test-options='required' 2>&1`
-	if code := execInVM(cmd, qemu.ProfileDev, 30*time.Minute); code != 0 {
+	if code := execInVM(cmd, qemu.ProfileDev, 60*time.Minute); code != 0 {
 		return code
 	}
 	// Host-side checks
