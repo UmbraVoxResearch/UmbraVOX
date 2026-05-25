@@ -5,10 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -104,120 +101,6 @@ func prepareVMDisks(repoRoot, cmd string) (srcDisk, overlayPath, cacheDisk, outp
 		overlay.Remove()
 	}
 	return
-}
-
-// readGuestStatus reads the guest exit code from the status file written by
-// the in-guest init script. If the status file is missing or invalid, it
-// falls back to the QEMU process exit code.
-func readGuestStatus(outputDir string, qemuExit int) int {
-	vmStatusFile := filepath.Join(outputDir, "vm-exec-status")
-	data, err := os.ReadFile(vmStatusFile)
-	if err == nil {
-		raw := strings.TrimSpace(strings.SplitN(string(data), "\n", 2)[0])
-		if matched, _ := regexp.MatchString(`^[0-9]+$`, raw); matched {
-			status, _ := strconv.Atoi(raw)
-			if status == 0 {
-				log.OK(tag, "Guest command completed successfully.")
-			} else {
-				log.Fail(tag, fmt.Sprintf("Guest command failed with exit %d.", status))
-			}
-			return status
-		}
-		log.Warn(tag, fmt.Sprintf("Invalid vm-exec-status: '%s'; using QEMU exit.", raw))
-	} else {
-		log.Warn(tag, "Missing vm-exec-status; using QEMU exit.")
-	}
-	return qemuExit
-}
-
-// buildExecQEMUConfig assembles the QEMU configuration for an exec-mode VM
-// boot from the prepared disk paths, network policy, and profile.
-func buildExecQEMUConfig(repoRoot, srcDisk, overlayPath, cacheDisk, outputDir string, profile qemu.VMProfile, timeout time.Duration) (*qemu.Config, error) {
-	policyFile := filepath.Join(repoRoot, "conf/vm-network-policy.conf")
-	policy, err := netpol.ParseFile(policyFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse network policy: %w", err)
-	}
-	netArgs, err := policy.QEMUNetArgs()
-	if err != nil {
-		return nil, fmt.Errorf("network policy error: %w", err)
-	}
-
-	outputShare := ninep.DefaultOutputShare(outputDir)
-	cfg := qemu.ProfileConfig(profile)
-	cfg.Drives = []qemu.Drive{
-		{Interface: "virtio", Format: qemu.FormatQCOW2, File: overlayPath},
-		{Interface: "virtio", Format: qemu.FormatRaw, File: srcDisk, ReadOnly: true},
-		{Interface: "virtio", Format: qemu.FormatQCOW2, File: cacheDisk},
-	}
-	cfg.VirtFS = []qemu.VirtFS{{
-		LocalPath:     outputShare.LocalPath,
-		MountTag:      outputShare.MountTag,
-		SecurityModel: string(outputShare.SecurityModel),
-		ID:            outputShare.ID,
-	}}
-	cfg.NetArgs = netArgs
-	cfg.NoReboot = true
-	cfg.Timeout = timeout
-
-	log.Info(tag, fmt.Sprintf("VM: %d cores, %dMB RAM | net: %s", cfg.SMP, cfg.MemoryMB, netArgs))
-	return &cfg, nil
-}
-
-// bootQEMU starts the QEMU process with the given config and timeout, returning
-// the process exit code (0 if QEMU exits cleanly).
-func bootQEMU(cfg *qemu.Config, timeout time.Duration) int {
-	qemuArgs := cfg.Args()
-	var qemuCmd *exec.Cmd
-	if timeout > 0 {
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
-		qemuCmd = exec.CommandContext(ctx, "qemu-system-x86_64", qemuArgs...)
-	} else {
-		qemuCmd = exec.Command("qemu-system-x86_64", qemuArgs...)
-	}
-	qemuCmd.Stdin = os.Stdin
-	qemuCmd.Stdout = os.Stdout
-	qemuCmd.Stderr = os.Stderr
-
-	qemuErr := qemuCmd.Run()
-	if qemuErr != nil {
-		if exitErr, ok := qemuErr.(*exec.ExitError); ok {
-			return exitErr.ExitCode()
-		}
-		log.Fail(tag, fmt.Sprintf("Failed to run QEMU: %v", qemuErr))
-		return 1
-	}
-	return 0
-}
-
-// execInVMLegacy boots the dev VM via raw QEMU arguments, runs cmd inside it,
-// and returns the guest exit code. Superseded by execInVM (vmctl path).
-func execInVMLegacy(cmd string, profile qemu.VMProfile, timeout time.Duration) int {
-	repoRoot, err := repo.Root()
-	if err != nil {
-		log.Fail(tag, err.Error())
-		return 1
-	}
-
-	srcDisk, overlayPath, cacheDisk, outputDir, cleanup, err := prepareVMDisks(repoRoot, cmd)
-	if err != nil {
-		log.Fail(tag, err.Error())
-		return 1
-	}
-	defer cleanup()
-
-	cfg, err := buildExecQEMUConfig(repoRoot, srcDisk, overlayPath, cacheDisk, outputDir, profile, timeout)
-	if err != nil {
-		log.Fail(tag, err.Error())
-		return 1
-	}
-
-	log.Info(tag, fmt.Sprintf("exec: %s", cmd))
-	fmt.Fprintln(os.Stderr)
-
-	qemuExit := bootQEMU(cfg, timeout)
-	return readGuestStatus(outputDir, qemuExit)
 }
 
 // profileToResources converts a qemu.VMProfile to vmctl.Resources,
