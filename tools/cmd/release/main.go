@@ -312,7 +312,7 @@ func (c *releaseCtx) buildPlatform(platform string) string {
 	tryCopyBinary(stage)
 
 	writeContentsSHA256(stage)
-	writePlatformScriptSHA256(stage, c.root)
+	writePlatformScriptSHA256(stage)
 	appendPlatformManifestFooter(stage)
 
 	createTarGz(stage, artifact)
@@ -395,17 +395,16 @@ func appendPlatformManifestFooter(stage string) {
 	fmt.Fprintln(f, "release_script_sha256_file=RELEASE-SCRIPT.SHA256")
 }
 
-// writePlatformScriptSHA256 hashes scripts/release-package-platform.sh (the
-// shell predecessor) so provenance is recorded, falling back to this binary.
-func writePlatformScriptSHA256(stage, root string) {
-	scriptPath := filepath.Join(root, "scripts", "release-package-platform.sh")
-	if _, err := os.Stat(scriptPath); err != nil {
-		// Fall back to the Go executable itself.
-		if self, err2 := os.Executable(); err2 == nil {
-			scriptPath = self
-		} else {
-			scriptPath = "tools/cmd/release/main.go"
-		}
+// writePlatformScriptSHA256 hashes the Go release binary (tools/cmd/release)
+// for provenance. The shell predecessor scripts/release-package-platform.sh
+// has been superseded by this Go implementation.
+func writePlatformScriptSHA256(stage string) {
+	// Primary: hash the running Go binary itself.
+	scriptPath := ""
+	if self, err := os.Executable(); err == nil {
+		scriptPath = self
+	} else {
+		scriptPath = "tools/cmd/release/main.go"
 	}
 	h := fileSHA256(scriptPath)
 	writeFile(filepath.Join(stage, "RELEASE-SCRIPT.SHA256"), fmt.Sprintf("%s  %s\n", h, scriptPath))

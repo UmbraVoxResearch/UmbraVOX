@@ -106,14 +106,30 @@ func buildRelease(repoRoot, pkgArg string) int {
 
 func buildPlatformRelease(repoRoot, platform string) int {
 	log.Info(tag, fmt.Sprintf("Building platform release: %s", platform))
-	cmd := exec.Command("nix-shell",
-		filepath.Join(repoRoot, "shell-minimal.nix"),
-		"--run", "./scripts/release-package-platform.sh \"$UMBRAVOX_RELEASE_PLATFORM\"")
+
+	releaseBin := filepath.Join(repoRoot, "build", "tools", "release")
+	if _, err := os.Stat(releaseBin); os.IsNotExist(err) {
+		log.Info(tag, "Building release tool...")
+		buildCmd := exec.Command("go", "build", "-trimpath", "-ldflags=-s -w", "-o", releaseBin, "./cmd/release/")
+		buildCmd.Dir = filepath.Join(repoRoot, "tools")
+		buildCmd.Env = append(os.Environ(),
+			"GOMODCACHE="+filepath.Join(repoRoot, "build", "go", "mod"),
+			"GOCACHE="+filepath.Join(repoRoot, "build", "go", "cache"))
+		if out, err := buildCmd.CombinedOutput(); err != nil {
+			log.Fail(tag, fmt.Sprintf("Failed to build release tool: %v\n%s", err, out))
+			return 1
+		}
+	}
+
+	cmd := exec.Command(releaseBin, platform)
 	cmd.Dir = repoRoot
-	cmd.Env = append(os.Environ(), "UMBRAVOX_RELEASE_PLATFORM="+platform)
+	cmd.Env = append(os.Environ(), "UMBRAVOX_ROOT="+repoRoot)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return exitErr.ExitCode()
+		}
 		log.Fail(tag, fmt.Sprintf("Platform release %s failed: %v", platform, err))
 		return 1
 	}
@@ -123,16 +139,14 @@ func buildPlatformRelease(repoRoot, platform string) int {
 
 func releaseSmoke(repoRoot, platform string) int {
 	log.Info(tag, fmt.Sprintf("Running release smoke test: %s", platform))
-	cmd := exec.Command("bash", filepath.Join(repoRoot, "scripts", "release-smoke-microvm.sh"), "qemu")
-	cmd.Dir = repoRoot
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Env = append(os.Environ(), fmt.Sprintf("UMBRAVOX_QEMU_PROFILE=%s", platform))
-	if err := cmd.Run(); err != nil {
-		log.Fail(tag, fmt.Sprintf("Release smoke %s failed: %v", platform, err))
+	// Delegate to the Go implementation (./uv vm smoke release qemu).
+	// Set UMBRAVOX_QEMU_PROFILE so the pinned-boot profile helper resolves
+	// correctly, then call vmSmokeRelease directly — no shell required.
+	if err := os.Setenv("UMBRAVOX_QEMU_PROFILE", platform); err != nil {
+		log.Fail(tag, fmt.Sprintf("Failed to set UMBRAVOX_QEMU_PROFILE: %v", err))
 		return 1
 	}
-	return 0
+	return vmSmokeRelease([]string{"qemu"})
 }
 
 func releaseCompliance(repoRoot string) int {

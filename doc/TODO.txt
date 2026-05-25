@@ -25,7 +25,7 @@ Quality gates:    6 gates (lint, format, license, complexity, headers, ct-branch
 Test suites:      17 named suites, 160+ test modules
 CI:               Linux (gate), macOS (informational), Windows (best-effort)
 Signal Server:    v20260521.0.0 pinned, JDK 25, central config, JAR built
-Shell migration:  6/7 scripts replaced with Go
+Shell migration:  11/12 scripts replaced with Go (lib-vm.sh partial)
 Review findings:  18/18 resolved
 Firecracker VM:   runtime image in progress (phases 1-5 active)
 Platform targets: Linux, macOS, Windows, FreeBSD, OpenBSD, NetBSD,
@@ -89,8 +89,9 @@ ACTIVE WORK
   [~] Phase 4: ./uv run integration
       Default: tui (Firecracker), gui (lightweight QEMU), headless (Firecracker)
   [~] Phase 5: ./uv vm build-runtime-image command
-  [ ] Phase 6: Verification — image <500MB, boot <2s, all modes work
-      Note: init-path fix implemented in code (vm-init binary); needs VM rebuild to test.
+  [~] Phase 6: Verification — image <500MB, boot <2s, all modes work
+      Note: Firecracker boots successfully; UmbraVOX binary launches; init-path works.
+      Remaining: confirm image size <500MB and sub-2s boot time under load.
 
 ================================================================================
 CODE REVIEW FINDINGS (v0.5.3 audit)
@@ -175,6 +176,11 @@ Priority order (by scan finding density):
   [x] test-coqprime-vm.sh → done (tools/cmd/test-coqprime created in v0.5.14)
   [x] release-package.sh + lib-release.sh → done (tools/cmd/release created in v0.5.14)
   [x] fstar-eval-vectors.sh → done (tools/cmd/fstar-eval created in v0.5.15, wired as ./uv verify vectors)
+  [x] coverage-check.sh → done (inline in tools/cmd/umbravox-vm/cmd_evidence.go)
+  [x] pre-release-check.sh → done (./uv check pre-release)
+  [x] release-gate-assurance.sh → done (./uv check assurance)
+  [x] release-smoke-microvm.sh → done (./uv vm smoke release)
+  [x] release-package-platform.sh → done (release tool buildPlatform)
   [ ] Platform setup scripts (freebsd/openbsd/netbsd/dragonfly/illumos) → keep shell (platform-specific)
 
 In-guest scripts (run inside VM):

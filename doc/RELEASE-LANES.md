@@ -168,7 +168,7 @@ Current command behavior:
   checks and exits non-zero if the Linux x86_64 lane is blocked.
 - `./uv platform-sanity` and `./uv sanity` verify build tool wiring for the
   helper scripts and current lane targets.
-- `scripts/release-smoke-microvm.sh <qemu|firecracker>` verifies artifact +
+- `./uv vm smoke release <qemu|firecracker>` verifies artifact +
   host prerequisites and can then either:
   run a host-provided runner hook via `UMBRAVOX_QEMU_SMOKE_RUNNER` or
   `UMBRAVOX_FIRECRACKER_SMOKE_RUNNER`, or

@@ -16,7 +16,7 @@ echo ""
 
 # 1. Pre-release checks (8 gates)
 echo -e "${BLUE}[1/6]${NC} Pre-release checks..."
-if bash scripts/pre-release-check.sh > /dev/null 2>&1; then
+if ./uv check pre-release > /dev/null 2>&1; then
     echo -e "  ${GREEN}PASS${NC} (8/8 gates)"
     ((PASS++))
 else

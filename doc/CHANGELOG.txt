@@ -6,6 +6,23 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 
 ## [Unreleased]
 
+### v0.5.22 — Shell-to-Go migration complete, release coverage, VM hardening
+
+- Shell-to-Go migration: 5 more scripts replaced with Go binaries
+  - tools/cmd/coverage-check (replaces scripts/coverage-check.sh)
+  - tools/cmd/pre-release-check (replaces scripts/pre-release-check.sh)
+  - tools/cmd/release-gate-assurance (replaces scripts/release-gate-assurance.sh)
+  - tools/cmd/release-smoke-microvm (replaces scripts/release-smoke-microvm.sh)
+  - tools/cmd/release-package-platform (replaces scripts/release-package-platform.sh)
+- New quality gates: ./uv check assurance, ./uv check pre-release
+- New smoke target: ./uv vm smoke release
+- Release tool now covers all 12 platform targets
+- Signal Server fat JAR assembled via exclude-spam-filter Maven profile (333MB)
+- Firecracker TUI verified: binary launches successfully end-to-end
+- All Go binaries stripped with -trimpath -ldflags="-s -w"
+- Rootfs compressed with zstd (reduced image size)
+- Metadata audit: no credential leakage confirmed across all build artifacts
+
 ### v0.5.19 — Firecracker runtime VM, ./uv run redesign
 
 - Add nix/vm-runtime.nix: minimal NixOS image for runtime (<500MB)

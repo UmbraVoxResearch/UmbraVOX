@@ -139,11 +139,11 @@ These targets invoke `cabal`, `ghc`, `coqc`, `fstar.exe`, or `nix-shell`
 | `release-manifest` | `cabal run umbravox -- release-manifest` | Runs cabal on host |
 | `release-checksums` | `cabal run umbravox -- release-checksums` | Runs cabal on host |
 | `screenshot-local` | Needs `tmux` only (no compiler) | OK if binary pre-built |
-| `release-freebsd` | `nix-shell --run "scripts/release-package-platform.sh freebsd"` | Uses shell.nix (pulls GHC) |
-| `release-openbsd` | `nix-shell --run "scripts/release-package-platform.sh openbsd"` | Uses shell.nix |
-| `release-netbsd` | `nix-shell --run "scripts/release-package-platform.sh netbsd"` | Uses shell.nix |
-| `release-illumos` | `nix-shell --run "scripts/release-package-platform.sh illumos"` | Uses shell.nix |
-| `release-linux-arm64` | `nix-shell --run "scripts/release-package-platform.sh linux-arm64"` | Uses shell.nix |
+| `release-freebsd` | `./uv release freebsd` | Uses Go release tool |
+| `release-openbsd` | `./uv release openbsd` | Uses Go release tool |
+| `release-netbsd` | `./uv release netbsd` | Uses Go release tool |
+| `release-illumos` | `./uv release illumos` | Uses Go release tool |
+| `release-linux-arm64` | `./uv release arm64` | Uses Go release tool |
 | `build-haskell` | `cabal run umbravox -- build` or `./uv build` | Runs on host |
 | `test-haskell` | `cabal run umbravox -- test` or `./uv test` | Runs on host |
 | `verify-haskell` | `cabal run umbravox -- verify` or `./uv verify` | Runs on host |

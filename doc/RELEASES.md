@@ -29,11 +29,11 @@ microVM entrypoints that now support direct pinned boot for both VMMs:
 
 - `./uv release --smoke linux` performs an isolated Linux bundle smoke check
   with `podman` or `docker` when available.
-- Smoke scripts are also available directly under `scripts/`:
+- Additional smoke entrypoints:
   - `scripts/release-smoke-linux.sh` -- container-based Linux bundle smoke.
   - `scripts/release-smoke-appimage.sh` -- experimental AppImage scaffold smoke.
-  - `scripts/release-smoke-microvm.sh qemu` -- QEMU microVM smoke entrypoint.
-  - `scripts/release-smoke-microvm.sh firecracker` -- Firecracker microVM smoke.
+  - `./uv vm smoke release qemu` -- QEMU microVM smoke (Go implementation).
+  - `./uv vm smoke release firecracker` -- Firecracker microVM smoke (Go implementation).
   - `scripts/release-smoke-qemu-profile.sh` -- QEMU with `QEMU_SMOKE_PROFILE`.
 
 ## Orchestration Migration
@@ -61,7 +61,7 @@ current operational glue rather than the desired end state.
 
 ## Assurance Release Gate
 
-The assurance gate (available via `scripts/release-gate-assurance.sh` or
+The assurance gate (available via `./uv check assurance` or
 the Haskell entrypoint) verifies that the assurance matrix is present,
 complete, and not stale relative to crypto source changes. This gate
 should be included in release checklists to ensure that material assurance
@@ -282,15 +282,15 @@ nix-shell
 ./uv release --compliance
 scripts/release-smoke-linux.sh
 scripts/release-smoke-appimage.sh
-scripts/release-smoke-microvm.sh qemu
-scripts/release-smoke-microvm.sh firecracker
+./uv vm smoke release qemu
+./uv vm smoke release firecracker
 UMBRAVOX_QEMU_PROFILE=bundle-basic \
 UMBRAVOX_QEMU_KERNEL=/path/to/bzImage \
 UMBRAVOX_QEMU_INITRD=/path/to/initrd \
 UMBRAVOX_QEMU_ROOTFS=/path/to/rootfs.img \
-./scripts/release-smoke-microvm.sh qemu
+./uv vm smoke release qemu
 UMBRAVOX_FIRECRACKER_KERNEL=/path/to/vmlinux \
 UMBRAVOX_FIRECRACKER_ROOTFS=/path/to/rootfs.img \
 UMBRAVOX_FIRECRACKER_CONFIG=/path/to/firecracker.json \
-./scripts/release-smoke-microvm.sh firecracker
+./uv vm smoke release firecracker
 ```
