@@ -9,10 +9,13 @@ import (
 	"strings"
 )
 
-// PreflightKVM checks that /dev/kvm is present.
+// PreflightKVM checks that /dev/kvm is present and accessible.
 func PreflightKVM() error {
-	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
-		return fmt.Errorf("/dev/kvm not found (KVM required)")
+	if _, err := os.Stat("/dev/kvm"); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("/dev/kvm not found (KVM required)")
+		}
+		return fmt.Errorf("/dev/kvm inaccessible (check permissions or KVM module): %w", err)
 	}
 	return nil
 }
@@ -21,8 +24,12 @@ func PreflightKVM() error {
 func PreflightQEMU() error {
 	var errs []string
 
-	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
-		errs = append(errs, "/dev/kvm not found (KVM required)")
+	if _, err := os.Stat("/dev/kvm"); err != nil {
+		if os.IsNotExist(err) {
+			errs = append(errs, "/dev/kvm not found (KVM required)")
+		} else {
+			errs = append(errs, fmt.Sprintf("/dev/kvm inaccessible (check permissions or KVM module): %v", err))
+		}
 	}
 	if _, err := exec.LookPath("qemu-system-x86_64"); err != nil {
 		errs = append(errs, "qemu-system-x86_64 not on PATH")
@@ -46,8 +53,12 @@ func PreflightFirecracker() error {
 func PreflightFirecrackerWithLogger(log Logger) error {
 	var errs []string
 
-	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
-		errs = append(errs, "/dev/kvm not found (KVM required for Firecracker)")
+	if _, err := os.Stat("/dev/kvm"); err != nil {
+		if os.IsNotExist(err) {
+			errs = append(errs, "/dev/kvm not found (KVM required for Firecracker)")
+		} else {
+			errs = append(errs, fmt.Sprintf("/dev/kvm inaccessible (check permissions or KVM module): %v", err))
+		}
 	}
 	if _, err := exec.LookPath("firecracker"); err != nil {
 		errs = append(errs, "firecracker not on PATH (install via nix or package manager)")
