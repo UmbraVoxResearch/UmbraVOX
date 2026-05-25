@@ -797,7 +797,7 @@ func vmSignal(args []string) int {
 	signalBin := filepath.Join(repoRoot, "build", "tools", "vm-signal")
 	if _, err := os.Stat(signalBin); os.IsNotExist(err) {
 		log.Info(tag, "Building vm-signal tool...")
-		buildCmd := exec.Command("go", "build", "-o", signalBin, "./cmd/vm-signal/")
+		buildCmd := exec.Command("go", "build", "-trimpath", "-ldflags=-s -w", "-o", signalBin, "./cmd/vm-signal/")
 		buildCmd.Dir = filepath.Join(repoRoot, "tools")
 		buildCmd.Env = append(os.Environ(),
 			"GOMODCACHE="+filepath.Join(repoRoot, "build", "go", "mod"),
@@ -822,7 +822,7 @@ func vmSignal(args []string) int {
 		testBin := filepath.Join(repoRoot, "build", "tools", "signal-test")
 		if _, err := os.Stat(testBin); os.IsNotExist(err) {
 			log.Info(tag, "Building signal-test tool...")
-			buildCmd := exec.Command("go", "build", "-o", testBin, "./cmd/signal-test/")
+			buildCmd := exec.Command("go", "build", "-trimpath", "-ldflags=-s -w", "-o", testBin, "./cmd/signal-test/")
 			buildCmd.Dir = filepath.Join(repoRoot, "tools")
 			buildCmd.Env = append(os.Environ(),
 				"GOMODCACHE="+filepath.Join(repoRoot, "build", "go", "mod"),

@@ -81,6 +81,28 @@ to remove all cached images and free disk space.
 - Coq proofs (`coqc`)
 - Signal-Server (Maven/Java)
 
+### Go Bootstrap Exceptions
+
+Two Go compilations are permitted on the host — both are bootstrap
+prerequisites that must exist before any VM can boot:
+
+1. **`umbravox-vm`** (`uv` line 13): The orchestration binary compiled by
+   the bootstrap wrapper. This is the chicken-and-egg case: no VM can
+   start without `umbravox-vm`, so it must be built on the host. Uses
+   `-trimpath -ldflags="-s -w"` for reproducibility.
+
+2. **`vm-init`** (`tools/pkg/disk/source.go:68`): Cross-compiled
+   (`CGO_ENABLED=0 GOOS=linux GOARCH=amd64`) on the host and embedded
+   into the source disk image. The source disk must be created before the
+   VM boots, so this binary cannot be built inside the VM it will run in.
+   Static, stripped, with `-trimpath`. Falls back to a shell script if
+   the cross-compile fails.
+
+All other Go tool binaries (`vm-signal`, `vm-smoke`, `signal-test`,
+`fstar-eval`, `release`, `test-coqprime`) should be compiled inside the
+dev VM, which has Go in its toolchain. The on-demand host builds in
+`cmd_image.go` and `cmd_buildtest.go` are technical debt to be migrated.
+
 ### CRITICAL: Always Use `./uv` Commands
 
 **Never run `cabal build`, `cabal test`, or `nix-shell --run` directly.**

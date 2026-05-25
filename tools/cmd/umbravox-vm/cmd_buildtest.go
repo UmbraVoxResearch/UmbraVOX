@@ -157,7 +157,7 @@ func runFstarEval(args []string) int {
 	evalBin := filepath.Join(repoRoot, "build", "tools", "fstar-eval")
 	if _, err := os.Stat(evalBin); os.IsNotExist(err) {
 		log.Info(tag, "Building fstar-eval tool...")
-		buildCmd := exec.Command("go", "build", "-o", evalBin, "./cmd/fstar-eval/")
+		buildCmd := exec.Command("go", "build", "-trimpath", "-ldflags=-s -w", "-o", evalBin, "./cmd/fstar-eval/")
 		buildCmd.Dir = filepath.Join(repoRoot, "tools")
 		buildCmd.Env = append(os.Environ(),
 			"GOMODCACHE="+filepath.Join(repoRoot, "build", "go", "mod"),
