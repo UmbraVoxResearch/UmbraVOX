@@ -157,9 +157,12 @@ let serialize_has_mac fields key = ()
 (** MAC integrity (computational assumption)                             **)
 (** -------------------------------------------------------------------- **)
 
-(** Axiom: HMAC-SHA-256 is unforgeable under chosen message attack.
-    Any modification to the header or payload portion of the envelope
-    is detected by the MAC verification in deserialization. *)
+(* ASSUME JUSTIFICATION: hmac_unforgeability
+   Category: Cryptographic assumption
+   Reference: RFC 2104 (HMAC); Bellare et al., "Keying Hash Functions for Message Authentication" (1996)
+   Status: Standard cryptographic assumption, not provable in F*.
+   HMAC-SHA-256 is unforgeable under chosen message attack (UF-CMA): any modification
+   to the header or payload is detected by MAC verification with overwhelming probability. *)
 assume val hmac_unforgeability : key:mac_key -> msg:seq UInt8.t
     -> Lemma (True) (* Computational assumption, not provable in F* *)
 

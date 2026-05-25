@@ -11,6 +11,7 @@ import qualified Data.ByteString as BS
 
 import Test.Util
 import UmbraVox.Crypto.Ed25519 (ed25519Sign)
+import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.PQXDH
     ( PQPreKeyBundle(..), pqxdhInitiate, pqxdhRespond, PQXDHResult(..) )
 import UmbraVox.Crypto.Signal.X3DH
@@ -41,24 +42,25 @@ runTests = do
 testPQXDHAgreement :: IO Bool
 testPQXDHAgreement = do
     -- Alice identity
-    let aliceIK = generateIdentityKey
+    aliceIK <- generateIdentityKey
             (hexDecode "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
             (hexDecode "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
     -- Bob identity
-    let bobIK = generateIdentityKey
+    bobIK <- generateIdentityKey
             (hexDecode "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb")
             (hexDecode "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb")
     -- Bob SPK
     let spkSec = hexDecode "b8b4e236805318e93f48bfbb365656ec1d068bf3d8cabb64dd1ba4523cec3a2a"
-        spk    = generateKeyPair spkSec
-        spkSig = signPreKey bobIK (kpPublic spk)
+    spk    <- generateKeyPair spkSec
+    spkSig <- signPreKey bobIK (kpPublic spk)
     -- Bob ML-KEM keypair (deterministic from seeds)
     let mlkemD = BS.replicate 32 0x42
         mlkemZ = BS.replicate 32 0x43
         (ekPQ, dkPQ) = mlkemKeyGen mlkemD mlkemZ
     -- Bob prekey bundle
     let MLKEMEncapKey ekPQBytes = ekPQ
-        pqSig = ed25519Sign (ikEd25519Secret bobIK) ekPQBytes
+    bobEdSec <- toByteString (ikEd25519Secret bobIK)
+    let pqSig = ed25519Sign bobEdSec ekPQBytes
     let bundle = PQPreKeyBundle
             { pqpkbIdentityKey     = ikX25519Public bobIK
             , pqpkbSignedPreKey    = kpPublic spk
@@ -71,16 +73,18 @@ testPQXDHAgreement = do
     -- Alice initiates
     let ekSecret   = hexDecode "4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d"
         mlkemRand  = BS.replicate 32 0x55
-    case pqxdhInitiate aliceIK bundle ekSecret mlkemRand of
+    mResult <- pqxdhInitiate aliceIK bundle ekSecret mlkemRand
+    case mResult of
         Nothing -> do
             putStrLn "  FAIL: PQXDH agreement (initiation returned Nothing)"
             pure False
         Just result -> do
-            -- Bob responds (pqxdhRespond now returns Maybe ByteString)
-            case pqxdhRespond bobIK spkSec Nothing dkPQ
+            -- Bob responds (pqxdhRespond now returns IO (Maybe ByteString))
+            mBobSecret <- pqxdhRespond bobIK spkSec Nothing dkPQ
                     (ikX25519Public aliceIK)
                     (pqxdhEphemeralKey result)
-                    (pqxdhPQCiphertext result) of
+                    (pqxdhPQCiphertext result)
+            case mBobSecret of
                 Nothing -> do
                     putStrLn "  FAIL: PQXDH agreement (Bob response returned Nothing)"
                     pure False
@@ -94,22 +98,23 @@ testPQXDHAgreement = do
 -- | Invalid SPK signature causes pqxdhInitiate to return Nothing.
 testInvalidSPKReturnsNothing :: IO Bool
 testInvalidSPKReturnsNothing = do
-    let aliceIK = generateIdentityKey
+    aliceIK <- generateIdentityKey
             (hexDecode "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
             (hexDecode "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
-    let bobIK = generateIdentityKey
+    bobIK <- generateIdentityKey
             (hexDecode "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb")
             (hexDecode "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb")
     let spkSec = hexDecode "b8b4e236805318e93f48bfbb365656ec1d068bf3d8cabb64dd1ba4523cec3a2a"
-        spk    = generateKeyPair spkSec
-        spkSig = signPreKey bobIK (kpPublic spk)
-        -- Corrupt the signature
+    spk    <- generateKeyPair spkSec
+    spkSig <- signPreKey bobIK (kpPublic spk)
+    let -- Corrupt the signature
         badSig = BS.take 5 spkSig <> BS.singleton 0xff <> BS.drop 6 spkSig
     let mlkemD = BS.replicate 32 0x42
         mlkemZ = BS.replicate 32 0x43
         (ekPQ, _) = mlkemKeyGen mlkemD mlkemZ
         MLKEMEncapKey ekPQBytes2 = ekPQ
-        pqSig2 = ed25519Sign (ikEd25519Secret bobIK) ekPQBytes2
+    bobEdSec <- toByteString (ikEd25519Secret bobIK)
+    let pqSig2 = ed25519Sign bobEdSec ekPQBytes2
     let bundle = PQPreKeyBundle
             { pqpkbIdentityKey     = ikX25519Public bobIK
             , pqpkbSignedPreKey    = kpPublic spk
@@ -121,7 +126,8 @@ testInvalidSPKReturnsNothing = do
             }
     let ekSecret  = hexDecode "4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d"
         mlkemRand = BS.replicate 32 0x55
-        rejected = case pqxdhInitiate aliceIK bundle ekSecret mlkemRand of
+    mResult <- pqxdhInitiate aliceIK bundle ekSecret mlkemRand
+    let rejected = case mResult of
             Nothing -> True
             Just _  -> False
     assertEq "invalid SPK returns Nothing" True rejected
@@ -129,20 +135,21 @@ testInvalidSPKReturnsNothing = do
 -- | M10.2.1: zeroed PQ prekey signature is rejected; valid one passes.
 testPQXDHPQKeySigVerification :: IO Bool
 testPQXDHPQKeySigVerification = do
-    let aliceIK = generateIdentityKey
+    aliceIK <- generateIdentityKey
             (hexDecode "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
             (hexDecode "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
-    let bobIK = generateIdentityKey
+    bobIK <- generateIdentityKey
             (hexDecode "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb")
             (hexDecode "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb")
     let spkSec = hexDecode "b8b4e236805318e93f48bfbb365656ec1d068bf3d8cabb64dd1ba4523cec3a2a"
-        spk    = generateKeyPair spkSec
-        spkSig = signPreKey bobIK (kpPublic spk)
+    spk    <- generateKeyPair spkSec
+    spkSig <- signPreKey bobIK (kpPublic spk)
     let mlkemD = BS.replicate 32 0x42
         mlkemZ = BS.replicate 32 0x43
         (ekPQ, _) = mlkemKeyGen mlkemD mlkemZ
         MLKEMEncapKey ekPQBytes = ekPQ
-        validPQSig = ed25519Sign (ikEd25519Secret bobIK) ekPQBytes
+    bobEdSec <- toByteString (ikEd25519Secret bobIK)
+    let validPQSig = ed25519Sign bobEdSec ekPQBytes
         zeroPQSig  = BS.replicate 64 0x00
     let mkBundle pqSig = PQPreKeyBundle
             { pqpkbIdentityKey     = ikX25519Public bobIK
@@ -155,10 +162,12 @@ testPQXDHPQKeySigVerification = do
             }
     let ekSecret  = hexDecode "4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d"
         mlkemRand = BS.replicate 32 0x55
-        rejectedZero = case pqxdhInitiate aliceIK (mkBundle zeroPQSig) ekSecret mlkemRand of
+    rejZero <- pqxdhInitiate aliceIK (mkBundle zeroPQSig) ekSecret mlkemRand
+    accValid <- pqxdhInitiate aliceIK (mkBundle validPQSig) ekSecret mlkemRand
+    let rejectedZero = case rejZero of
             Nothing -> True
             Just _  -> False
-        acceptedValid = case pqxdhInitiate aliceIK (mkBundle validPQSig) ekSecret mlkemRand of
+        acceptedValid = case accValid of
             Nothing -> False
             Just _  -> True
     r1 <- assertEq "M10.2.1: zeroed PQ prekey sig is rejected" True rejectedZero
@@ -188,17 +197,18 @@ mlkemZSeed    = BS.replicate 32 0xEE
 mlkemRandSeed = BS.replicate 32 0xFF
 
 -- | Build a valid PQXDH prekey bundle for Bob with deterministic keys.
--- Returns (bundle, spkSecret, dkPQ, bobIK) so both sides can compute.
+-- Returns (bundle, spkSecret, bobIK) so both sides can compute.
 mkDeterministicBundle :: Maybe BS.ByteString
                       -- ^ OPK public key to include (Nothing = no OPK)
-                      -> (PQPreKeyBundle, BS.ByteString, IdentityKey)
-mkDeterministicBundle mOPKPub =
-    let bobIK  = generateIdentityKey bobEdSeed bobXSeed
-        spk    = generateKeyPair spkSeed
-        spkSig = signPreKey bobIK (kpPublic spk)
-        (ekPQ, _dkPQ) = mlkemKeyGen mlkemDSeed mlkemZSeed
+                      -> IO (PQPreKeyBundle, BS.ByteString, IdentityKey)
+mkDeterministicBundle mOPKPub = do
+    bobIK  <- generateIdentityKey bobEdSeed bobXSeed
+    spk    <- generateKeyPair spkSeed
+    spkSig <- signPreKey bobIK (kpPublic spk)
+    let (ekPQ, _dkPQ) = mlkemKeyGen mlkemDSeed mlkemZSeed
         MLKEMEncapKey ekPQBytes = ekPQ
-        pqSig  = ed25519Sign (ikEd25519Secret bobIK) ekPQBytes
+    bobEdSec <- toByteString (ikEd25519Secret bobIK)
+    let pqSig  = ed25519Sign bobEdSec ekPQBytes
         bundle = PQPreKeyBundle
             { pqpkbIdentityKey     = ikX25519Public bobIK
             , pqpkbSignedPreKey    = kpPublic spk
@@ -208,7 +218,7 @@ mkDeterministicBundle mOPKPub =
             , pqpkbPQPreKey        = ekPQ
             , pqpkbPQKeySignature  = pqSig
             }
-    in (bundle, spkSeed, bobIK)
+    pure (bundle, spkSeed, bobIK)
 
 ------------------------------------------------------------------------
 -- Test: PQXDH round-trip (initiate + respond, verify shared secrets match)
@@ -218,18 +228,20 @@ mkDeterministicBundle mOPKPub =
 -- the same 32-byte shared secret.
 testPQXDHRoundTrip :: IO Bool
 testPQXDHRoundTrip = do
-    let aliceIK = generateIdentityKey aliceEdSeed aliceXSeed
-        (bundle, spkSec, bobIK) = mkDeterministicBundle Nothing
-        (_ekPQ, dkPQ) = mlkemKeyGen mlkemDSeed mlkemZSeed
-    case pqxdhInitiate aliceIK bundle ekSeed mlkemRandSeed of
+    aliceIK <- generateIdentityKey aliceEdSeed aliceXSeed
+    (bundle, spkSec, bobIK) <- mkDeterministicBundle Nothing
+    let (_ekPQ, dkPQ) = mlkemKeyGen mlkemDSeed mlkemZSeed
+    mResult <- pqxdhInitiate aliceIK bundle ekSeed mlkemRandSeed
+    case mResult of
         Nothing -> do
             putStrLn "  FAIL: PQXDH round-trip (initiation returned Nothing)"
             pure False
-        Just result ->
-            case pqxdhRespond bobIK spkSec Nothing dkPQ
+        Just result -> do
+            mBobSecret <- pqxdhRespond bobIK spkSec Nothing dkPQ
                     (ikX25519Public aliceIK)
                     (pqxdhEphemeralKey result)
-                    (pqxdhPQCiphertext result) of
+                    (pqxdhPQCiphertext result)
+            case mBobSecret of
                 Nothing -> do
                     putStrLn "  FAIL: PQXDH round-trip (respond returned Nothing)"
                     pure False
@@ -252,19 +264,21 @@ testPQXDHRoundTrip = do
 -- (c) the secret differs from the no-OPK case.
 testPQXDHWithOPK :: IO Bool
 testPQXDHWithOPK = do
-    let aliceIK = generateIdentityKey aliceEdSeed aliceXSeed
-        opk     = generateKeyPair opkSeed
-        (bundleOPK, spkSec, bobIK) = mkDeterministicBundle (Just (kpPublic opk))
-        (_ekPQ, dkPQ) = mlkemKeyGen mlkemDSeed mlkemZSeed
-    case pqxdhInitiate aliceIK bundleOPK ekSeed mlkemRandSeed of
+    aliceIK <- generateIdentityKey aliceEdSeed aliceXSeed
+    opk     <- generateKeyPair opkSeed
+    (bundleOPK, spkSec, bobIK) <- mkDeterministicBundle (Just (kpPublic opk))
+    let (_ekPQ, dkPQ) = mlkemKeyGen mlkemDSeed mlkemZSeed
+    mResult <- pqxdhInitiate aliceIK bundleOPK ekSeed mlkemRandSeed
+    case mResult of
         Nothing -> do
             putStrLn "  FAIL: PQXDH with OPK (initiation returned Nothing)"
             pure False
-        Just result ->
-            case pqxdhRespond bobIK spkSec (Just opkSeed) dkPQ
+        Just result -> do
+            mBobSecret <- pqxdhRespond bobIK spkSec (Just opkSeed) dkPQ
                     (ikX25519Public aliceIK)
                     (pqxdhEphemeralKey result)
-                    (pqxdhPQCiphertext result) of
+                    (pqxdhPQCiphertext result)
+            case mBobSecret of
                 Nothing -> do
                     putStrLn "  FAIL: PQXDH with OPK (respond returned Nothing)"
                     pure False
@@ -274,8 +288,9 @@ testPQXDHWithOPK = do
                     r2 <- assertEq "PQXDH with OPK: OPK consumed"
                             (Just (kpPublic opk)) (pqxdhUsedOPK result)
                     -- Also run without OPK to confirm different secret
-                    let (bundleNoOPK, _, _) = mkDeterministicBundle Nothing
-                    case pqxdhInitiate aliceIK bundleNoOPK ekSeed mlkemRandSeed of
+                    (bundleNoOPK, _, _) <- mkDeterministicBundle Nothing
+                    mNoOPK <- pqxdhInitiate aliceIK bundleNoOPK ekSeed mlkemRandSeed
+                    case mNoOPK of
                         Nothing -> do
                             putStrLn "  FAIL: PQXDH with OPK (no-OPK baseline returned Nothing)"
                             pure False
@@ -297,15 +312,16 @@ testPQXDHWithOPK = do
 --              pqxdhInitiate must return Nothing.
 testPQXDHBadPQSignature :: IO Bool
 testPQXDHBadPQSignature = do
-    let aliceIK = generateIdentityKey aliceEdSeed aliceXSeed
-        (bundle, _spkSec, _bobIK) = mkDeterministicBundle Nothing
-        -- Corrupt the PQ key signature by flipping a bit in byte 10
+    aliceIK <- generateIdentityKey aliceEdSeed aliceXSeed
+    (bundle, _spkSec, _bobIK) <- mkDeterministicBundle Nothing
+    let -- Corrupt the PQ key signature by flipping a bit in byte 10
         origSig  = pqpkbPQKeySignature bundle
         badSig   = BS.take 10 origSig
                    <> BS.singleton (0xFF - BS.index origSig 10)
                    <> BS.drop 11 origSig
         tampered = bundle { pqpkbPQKeySignature = badSig }
-        rejected = case pqxdhInitiate aliceIK tampered ekSeed mlkemRandSeed of
+    mResult <- pqxdhInitiate aliceIK tampered ekSeed mlkemRandSeed
+    let rejected = case mResult of
             Nothing -> True
             Just _  -> False
     assertEq "PQXDH bad PQ signature: initiation rejected" True rejected
@@ -319,21 +335,23 @@ testPQXDHBadPQSignature = do
 -- into the key derivation.
 testPQXDHBadIdentityKey :: IO Bool
 testPQXDHBadIdentityKey = do
-    let aliceIK    = generateIdentityKey aliceEdSeed aliceXSeed
-        -- "Evil" Alice with different key material
-        evilEdSeed = BS.pack [0xF1..0xFF] <> BS.pack [0x01..0x11]  -- 32 bytes
+    aliceIK    <- generateIdentityKey aliceEdSeed aliceXSeed
+    -- "Evil" Alice with different key material
+    let evilEdSeed = BS.pack [0xF1..0xFF] <> BS.pack [0x01..0x11]  -- 32 bytes
         evilXSeed  = BS.pack [0xE1..0xFF] <> BS.singleton 0x00     -- 32 bytes
-        evilIK     = generateIdentityKey evilEdSeed evilXSeed
-        (bundle, spkSec, bobIK) = mkDeterministicBundle Nothing
-        (_ekPQ, dkPQ) = mlkemKeyGen mlkemDSeed mlkemZSeed
+    evilIK     <- generateIdentityKey evilEdSeed evilXSeed
+    (bundle, spkSec, bobIK) <- mkDeterministicBundle Nothing
+    let (_ekPQ, dkPQ) = mlkemKeyGen mlkemDSeed mlkemZSeed
     -- Real Alice initiates
-    case pqxdhInitiate aliceIK bundle ekSeed mlkemRandSeed of
+    mReal <- pqxdhInitiate aliceIK bundle ekSeed mlkemRandSeed
+    case mReal of
         Nothing -> do
             putStrLn "  FAIL: PQXDH bad identity key (real initiation returned Nothing)"
             pure False
-        Just realResult ->
+        Just realResult -> do
             -- Evil Alice initiates with same bundle and ephemeral
-            case pqxdhInitiate evilIK bundle ekSeed mlkemRandSeed of
+            mEvil <- pqxdhInitiate evilIK bundle ekSeed mlkemRandSeed
+            case mEvil of
                 Nothing -> do
                     -- Evil initiation failed entirely -- still passes the test
                     putStrLn "  PASS: PQXDH bad identity key (evil initiation rejected)"
@@ -343,10 +361,11 @@ testPQXDHBadIdentityKey = do
                     r1 <- assertEq "PQXDH bad identity key: secrets differ"
                             True (pqxdhSharedSecret realResult /= pqxdhSharedSecret evilResult)
                     -- Also verify Bob only agrees with real Alice
-                    case pqxdhRespond bobIK spkSec Nothing dkPQ
+                    mBobSecret <- pqxdhRespond bobIK spkSec Nothing dkPQ
                             (ikX25519Public aliceIK)
                             (pqxdhEphemeralKey realResult)
-                            (pqxdhPQCiphertext realResult) of
+                            (pqxdhPQCiphertext realResult)
+                    case mBobSecret of
                         Nothing -> do
                             putStrLn "  FAIL: PQXDH bad identity key (Bob respond failed)"
                             pure False
@@ -358,18 +377,18 @@ testPQXDHBadIdentityKey = do
                             pure (r1 && r2 && r3)
 
 ------------------------------------------------------------------------
--- Test: Deterministic — same inputs produce same outputs
+-- Test: Deterministic -- same inputs produce same outputs
 ------------------------------------------------------------------------
 
 -- | Running pqxdhInitiate twice with identical inputs must produce
 -- byte-identical results (shared secret, ephemeral key, PQ ciphertext).
 testPQXDHDeterministic :: IO Bool
 testPQXDHDeterministic = do
-    let aliceIK = generateIdentityKey aliceEdSeed aliceXSeed
-        (bundle, _spkSec, _bobIK) = mkDeterministicBundle Nothing
-    case ( pqxdhInitiate aliceIK bundle ekSeed mlkemRandSeed
-         , pqxdhInitiate aliceIK bundle ekSeed mlkemRandSeed
-         ) of
+    aliceIK <- generateIdentityKey aliceEdSeed aliceXSeed
+    (bundle, _spkSec, _bobIK) <- mkDeterministicBundle Nothing
+    mr1 <- pqxdhInitiate aliceIK bundle ekSeed mlkemRandSeed
+    mr2 <- pqxdhInitiate aliceIK bundle ekSeed mlkemRandSeed
+    case (mr1, mr2) of
         (Just r1, Just r2) -> do
             d1 <- assertEq "PQXDH deterministic: shared secrets match"
                     (pqxdhSharedSecret r1) (pqxdhSharedSecret r2)

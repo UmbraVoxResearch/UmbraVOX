@@ -66,11 +66,16 @@ mkInitialState =
     let (s, r) = deriveRouteTokens testHandshakeHash testTransportKey
                                    testMyIdHash testPeerIdHash
     in RouteTokenState
-        { rtsCurrentSend  = s
-        , rtsCurrentRecv  = r
-        , rtsPrevRecv     = Nothing
-        , rtsEpochCounter = 0
-        , rtsMsgCounter   = 0
+        { rtsCurrentSend   = s
+        , rtsCurrentRecv   = r
+        , rtsPrevRecv      = Nothing
+        , rtsEpochCounter  = 0
+        , rtsMsgCounter    = 0
+        , rtsLastRotation  = 0
+        , rtsHandshakeHash = testHandshakeHash
+        , rtsTransportKey  = testTransportKey
+        , rtsMyIdHash      = testMyIdHash
+        , rtsPeerIdHash    = testPeerIdHash
         }
 
 ------------------------------------------------------------------------
@@ -95,7 +100,7 @@ testRotationAtMessageCount :: IO Bool
 testRotationAtMessageCount = do
     let rts = mkInitialState { rtsMsgCounter = 100 }
         -- wallNow=0, wallBase=0 so wall-clock does not trigger
-        rotated = rotateTokens rts 0 0
+        rotated = rotateTokens rts 0
     r1 <- assertEq "msg-count rotation: epoch incremented"
               (rtsEpochCounter rts + 1) (rtsEpochCounter rotated)
     r2 <- assertEq "msg-count rotation: counter reset" 0 (rtsMsgCounter rotated)
@@ -106,9 +111,9 @@ testRotationAtMessageCount = do
 -- | Rotation triggers when wall-clock epoch (600s) elapses.
 testRotationAtWallClock :: IO Bool
 testRotationAtWallClock = do
-    let rts = mkInitialState { rtsMsgCounter = 5 }
-        -- wallNow - wallBase = 600
-        rotated = rotateTokens rts 700 100
+    let rts = mkInitialState { rtsMsgCounter = 5, rtsLastRotation = 100 }
+        -- wallNow - rtsLastRotation = 600
+        rotated = rotateTokens rts 700
     r1 <- assertEq "wall-clock rotation: epoch incremented"
               (rtsEpochCounter rts + 1) (rtsEpochCounter rotated)
     r2 <- assertEq "wall-clock rotation: counter reset" 0 (rtsMsgCounter rotated)
@@ -119,7 +124,7 @@ testGracePeriodAccepted :: IO Bool
 testGracePeriodAccepted = do
     let rts0 = mkInitialState { rtsMsgCounter = 100 }
         oldRecv = rtsCurrentRecv rts0
-        rotated = rotateTokens rts0 0 0
+        rotated = rotateTokens rts0 0
     check "grace period: old token present" (rtsPrevRecv rotated == Just oldRecv)
 
 -- | After a second rotation the initial recv token is no longer in the
@@ -129,7 +134,7 @@ testGracePeriodExpired = do
     let rts0 = mkInitialState { rtsMsgCounter = 100 }
         oldRecv = rtsCurrentRecv rts0
         -- First rotation: oldRecv -> prevRecv
-        rts1 = rotateTokens rts0 0 0
+        rts1 = rotateTokens rts0 0
         -- Derive new epoch tokens for rts1's epoch counter
         (newSend, newRecv) = deriveEpochTokens testHandshakeHash testTransportKey
                                                testMyIdHash testPeerIdHash
@@ -139,7 +144,7 @@ testGracePeriodExpired = do
                      , rtsMsgCounter  = 100
                      }
         -- Second rotation: newRecv -> prevRecv, oldRecv gone
-        rts3 = rotateTokens rts2 0 0
+        rts3 = rotateTokens rts2 0
     r1 <- check "grace expired: old token not in prevRecv"
               (rtsPrevRecv rts3 /= Just oldRecv)
     r2 <- assertEq "grace expired: prevRecv is newRecv"

@@ -167,7 +167,7 @@ Note: Some findings overlap across categories (e.g., constant-time crypto appear
 ### ME-019: SSRF — IPv6 private addresses not blocked (Chat/API.hs:282-304)
 ### ME-020: DHT value store no entry count limit (Network/DHT/Store.hs:58-62)
 ### ME-021: Legacy plaintext pass-through undermines encryption (Storage/Anthony.hs:205-213)
-### ME-022: Codegen output paths not validated against allowlist (codegen/CryptoGen.hs:508-531)
+### ME-022: Codegen output paths not validated against allowlist (app/codegen/CryptoGen.hs:508-531)
 ### ME-023: VM auto-login as root with no password (nix/vm-base.nix:17-18)
 ### ME-024: AGENT_SKIP_CHECKSUM bypass (scripts/vm-integration-agent.sh:212-213)
 ### ME-025: Makefile eval of config script output (Makefile:1193-1194)

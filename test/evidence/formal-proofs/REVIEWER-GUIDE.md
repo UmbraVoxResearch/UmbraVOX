@@ -15,16 +15,16 @@ formal verification evidence in UmbraVOX.
 nix-shell shell.nix
 
 # Hygiene checks only (seconds)
-make assurance-fast
+./uv assurance-fast
 
 # Full evidence suite (minutes)
-make assurance
+./uv assurance
 ```
 
-`make assurance-fast` runs grep-based invariant checks (no admit, assumption
+`./uv assurance-fast` runs grep-based invariant checks (no admit, assumption
 counts, Qed counts) and is suitable for CI or a first-pass audit.
 
-`make assurance` additionally runs F\* type-checking, Coq compilation, and
+`./uv assurance` additionally runs F\* type-checking, Coq compilation, and
 the Haskell infrastructure test suite.
 
 ---
@@ -36,7 +36,7 @@ the Haskell infrastructure test suite.
 | F\*                | 2026.03.24\~dev                | SMT-backed verification via Z3       |
 | Z3                 | 4.16.0                         | SMT solver (backend for F\*)         |
 | Rocq/Coq           | 9.1.1 (stdlib 9.0.0)          | Kernel-checked computational proofs  |
-| GHC                | 9.6.7                          | Haskell compiler                     |
+| GHC                | 9.14.1                         | Haskell compiler                     |
 | Cabal              | (bundled with GHC)             | Haskell build/test runner            |
 
 All tools are provided by `nix-shell shell.nix`. No manual installation is
@@ -118,7 +118,7 @@ To set correct expectations for an audit:
 
 A recommended audit workflow:
 
-1. **Run `make assurance-fast`** -- verifies hygiene invariants (zero
+1. **Run `./uv assurance-fast`** -- verifies hygiene invariants (zero
    admits, expected assumption count, expected Qed count). Takes seconds.
 
 2. **Read `ASSURANCE-MATRIX.md`** -- per-module verification status, showing
@@ -131,7 +131,7 @@ A recommended audit workflow:
 4. **Check `ASSUMPTIONS.md`** -- the full ledger of all `assume val`
    declarations with categories, justifications, and discharge paths.
 
-5. **Run `make assurance`** -- the full reproducible evidence suite. This
+5. **Run `./uv assurance`** -- the full reproducible evidence suite. This
    type-checks all F\* specs, compiles all Coq proofs, and runs the
    Haskell infrastructure tests.
 

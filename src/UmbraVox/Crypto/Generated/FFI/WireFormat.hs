@@ -49,7 +49,7 @@ deriveEnvelopeKey transportKey = do
     _ <- c_wireformat_link_probe
     pure (Reference.deriveEnvelopeKey transportKey)
 
-encodeEnvelopeAEAD :: ByteString -> Word32 -> Envelope -> IO ByteString
+encodeEnvelopeAEAD :: ByteString -> Word32 -> Envelope -> IO (Either String ByteString)
 encodeEnvelopeAEAD key seqNum env = do
     _ <- c_wireformat_link_probe
     pure (Reference.encodeEnvelopeAEAD key seqNum env)

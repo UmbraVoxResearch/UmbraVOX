@@ -22,7 +22,7 @@ let
     then fstarCacheDir
     else null;
 
-  hp = pkgs.haskell.packages.ghc96;
+  hp = pkgs.haskell.packages.ghc9141;
 
   # Rocq 9.1.1 separates the stdlib (ZArith, Arith, etc.) from the core.
   # Conditionally include the stdlib package: try coqPackages.stdlib first
@@ -55,6 +55,8 @@ let
     z3
     go
     sqlite
+    sqlite.dev
+    pkg-config
     aflplusplus
     graphviz
     jq
@@ -63,7 +65,6 @@ let
     zip
     gnumake
     git
-    pkg-config
     genext2fs
     bashInteractive
     coreutils
@@ -244,4 +245,7 @@ in {
 
   # Firecracker: uncompressed vmlinux kernel (ELF, not bzImage)
   firecrackerKernel = "${firecrackerNixos.config.system.build.kernel.dev}/vmlinux";
+
+  # Firecracker: initrd (needed to load virtio_mmio/virtio_blk before root mount)
+  firecrackerInitrd = "${firecrackerNixos.config.system.build.initialRamdisk}/initrd";
 }

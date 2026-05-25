@@ -57,17 +57,19 @@ let prepare_key_bounded
     (* Seq.length key <= block_size follows directly from the else-branch guard *)
     pad_right block_size key
 
-(** Prepare the key for HMAC (unconstrained hash version, for generic lemmas).
-    The assumption that hashed fits in block_size is stated as a TODO axiom
-    when h is abstract. *)
-let prepare_key (h : hash_fn) (block_size : nat{block_size > 0})
+(** Prepare the key for HMAC (hash-length-aware version, for generic lemmas).
+    Requires a bounded hash function so that hash output <= block_size is
+    provable from the type. *)
+let prepare_key (#hash_len : nat{hash_len > 0})
+                (h : bounded_hash_fn hash_len)
+                (block_size : nat{block_size > 0 /\ hash_len <= block_size})
                 (key : seq UInt8.t)
     : Tot (s:seq UInt8.t{Seq.length s = block_size}) =
   if Seq.length key > block_size then
     let hashed = h key in
-    (* Unbounded path only; bounded variants carry length via type.
-       AUDIT NOTE: intentional assume — hash output <= block_size *)
-    assume (Seq.length hashed <= block_size);
+    (* h is a bounded_hash_fn hash_len, so Seq.length hashed = hash_len <= block_size *)
+    assert (Seq.length hashed = hash_len);
+    assert (Seq.length hashed <= block_size);
     pad_right block_size hashed
   else (
     (* else branch: not (Seq.length key > block_size), so Seq.length key <= block_size *)
@@ -98,10 +100,14 @@ let opad (block_size : nat) : seq UInt8.t =
   Seq.create block_size 0x5cuy
 
 (** Generic HMAC construction *)
-val hmac : h:hash_fn -> block_size:nat{block_size > 0}
+val hmac : #hash_len:nat{hash_len > 0}
+        -> h:bounded_hash_fn hash_len
+        -> block_size:nat{block_size > 0 /\ hash_len <= block_size}
         -> key:seq UInt8.t -> msg:seq UInt8.t
         -> Tot (seq UInt8.t)
-let hmac (h : hash_fn) (block_size : nat{block_size > 0})
+let hmac (#hash_len : nat{hash_len > 0})
+         (h : bounded_hash_fn hash_len)
+         (block_size : nat{block_size > 0 /\ hash_len <= block_size})
          (key : seq UInt8.t) (msg : seq UInt8.t)
     : seq UInt8.t =
   let key' = prepare_key h block_size key in
@@ -176,25 +182,29 @@ let hmac_sha512_bounded (key : seq UInt8.t) (msg : seq UInt8.t)
     called without the `Seq.length msg < pow2 61` precondition. *)
 val hmac_sha256 : key:seq UInt8.t -> msg:seq UInt8.t -> Tot (seq UInt8.t)
 let hmac_sha256 (key : seq UInt8.t) (msg : seq UInt8.t) : seq UInt8.t =
-  hmac sha256_total 64 key msg
+  hmac #32 sha256_total 64 key msg
 
 (** HMAC-SHA-512: block size = 128 bytes, output = 64 bytes. *)
 val hmac_sha512 : key:seq UInt8.t -> msg:seq UInt8.t -> Tot (seq UInt8.t)
 let hmac_sha512 (key : seq UInt8.t) (msg : seq UInt8.t) : seq UInt8.t =
-  hmac sha512_total 128 key msg
+  hmac #64 sha512_total 128 key msg
 
 (** -------------------------------------------------------------------- **)
 (** Correctness properties                                               **)
 (** -------------------------------------------------------------------- **)
 
 (** Key preparation always produces a block_size-length key *)
-val prepare_key_length : h:hash_fn -> block_size:nat{block_size > 0}
+val prepare_key_length : #hash_len:nat{hash_len > 0}
+    -> h:bounded_hash_fn hash_len
+    -> block_size:nat{block_size > 0 /\ hash_len <= block_size}
     -> key:seq UInt8.t
     -> Lemma (Seq.length (prepare_key h block_size key) = block_size)
-let prepare_key_length h block_size key = ()
+let prepare_key_length #hash_len h block_size key = ()
 
 (** HMAC is defined as two nested hash invocations *)
-val hmac_structure_lemma : h:hash_fn -> block_size:nat{block_size > 0}
+val hmac_structure_lemma : #hash_len:nat{hash_len > 0}
+    -> h:bounded_hash_fn hash_len
+    -> block_size:nat{block_size > 0 /\ hash_len <= block_size}
     -> key:seq UInt8.t -> msg:seq UInt8.t
     -> Lemma (
         let key' = prepare_key h block_size key in
@@ -202,7 +212,7 @@ val hmac_structure_lemma : h:hash_fn -> block_size:nat{block_size > 0}
         let opad_key = xor_bytes key' (opad block_size) in
         hmac h block_size key msg ==
           h (Seq.append opad_key (h (Seq.append ipad_key msg))))
-let hmac_structure_lemma h block_size key msg = ()
+let hmac_structure_lemma #hash_len h block_size key msg = ()
 
 (** -------------------------------------------------------------------- **)
 (** PRF security assumption                                              **)
@@ -219,9 +229,11 @@ let hmac_structure_lemma h block_size key msg = ()
     hash is a PRF. *)
 (** PLACEHOLDER: proves True, not actual PRF indistinguishability.
     Computational assumption, not provable in F*. *)
-val hmac_prf_placeholder : h:hash_fn -> block_size:nat{block_size > 0}
+val hmac_prf_placeholder : #hash_len:nat{hash_len > 0}
+    -> h:bounded_hash_fn hash_len
+    -> block_size:nat{block_size > 0 /\ hash_len <= block_size}
     -> Lemma (True)
-let hmac_prf_placeholder h block_size = ()
+let hmac_prf_placeholder #hash_len h block_size = ()
 
 (** -------------------------------------------------------------------- **)
 (** KAT Test Vectors (RFC 4231)                                          **)

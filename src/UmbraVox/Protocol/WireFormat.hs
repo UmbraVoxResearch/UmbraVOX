@@ -252,17 +252,21 @@ seqNonceSafe seqNum
 --
 -- For handshake messages (type 2): delegates to 'encodeEnvelope' (HMAC-SHA-256),
 -- since no session key exists yet during the handshake.
+--
+-- Returns 'Left' with a description when the sequence number has exceeded the
+-- re-keying threshold (2^31), allowing callers to handle the error without a
+-- process crash.  The caller must initiate re-keying before encoding further.
 encodeEnvelopeAEAD :: ByteString  -- ^ 32-byte envelope key (from 'deriveEnvelopeKey')
                    -> Word32      -- ^ sequence number (used to derive nonce)
                    -> Envelope    -- ^ envelope to encode
-                   -> ByteString
+                   -> Either String ByteString
 encodeEnvelopeAEAD envelopeKey seqNum env
     | envType env == 2 =
         -- Handshake messages use HMAC authentication (no session key yet)
-        encodeEnvelope envelopeKey env
+        Right (encodeEnvelope envelopeKey env)
     | seqNum >= seqNonceMaxSeq =
         -- M27.3.4: Refuse to encrypt past 2^31 messages; caller must re-key
-        error "encodeEnvelopeAEAD: sequence number exceeds re-keying threshold (2^31)"
+        Left "encodeEnvelopeAEAD: sequence number exceeds re-keying threshold (2^31)"
     | otherwise =
         let -- M27.6.4: AAD contains only the version byte; type is encrypted
             !aad = BS.singleton (envVersion env)
@@ -281,7 +285,7 @@ encodeEnvelopeAEAD envelopeKey seqNum env
                 ]
             !nonce = seqNonce seqNum
             (!ciphertext, !tag) = chachaPolyEncrypt envelopeKey nonce aad plaintext
-        in aad <> ciphertext <> tag
+        in Right (aad <> ciphertext <> tag)
 
 -- | Decode an AEAD-encrypted envelope.
 --

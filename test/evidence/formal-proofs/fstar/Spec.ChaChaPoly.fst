@@ -223,10 +223,13 @@ val tag_forgery_ct
        let (| ct, tag |) = chachapoly_encrypt key nonce aad pt in
        let ct' = flip_byte ct i in
        chachapoly_decrypt key nonce aad ct' tag = None)
-(** Irreducible cryptographic axiom: Poly1305 UF-CMA guarantee.  Flipping any
-    byte of the ciphertext changes the Poly1305 input; by the delta-universal
-    property, the recomputed tag differs with probability >= 1 - (L+1)/p > 1 - 2^-106.
-    This is a standard cryptographic assumption, not provable from first principles. *)
+(* ASSUME JUSTIFICATION: tag_forgery_ct_axiom
+   Category: Cryptographic assumption
+   Reference: RFC 8439 Section 2.5; Bernstein, "The Poly1305-AES message-authentication code" (2005)
+   Status: Standard cryptographic assumption, not provable in F*.
+   Poly1305 is a delta-universal MAC: flipping any byte of the ciphertext changes
+   the Poly1305 input, and the recomputed tag differs with probability >= 1 - 2^-106
+   by the UF-CMA (Unforgeability under Chosen Message Attack) property. *)
 assume val tag_forgery_ct_axiom
     : key:seq UInt8.t{Seq.length key = key_size}
    -> nonce:seq UInt8.t{Seq.length nonce = nonce_size}

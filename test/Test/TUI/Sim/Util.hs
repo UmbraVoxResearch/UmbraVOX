@@ -19,15 +19,8 @@ import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.List (isInfixOf)
 import qualified Data.ByteString as BS
 import qualified Data.Map.Strict as Map
-import qualified Data.Set as Set
+import UmbraVox.App.Startup (newDefaultAppConfig)
 import UmbraVox.App.State (newCoreState)
-import UmbraVox.BuildProfile (loadPackagedPluginCatalog, loadPackagedPluginRuntimeCatalog)
-import UmbraVox.Network.ProviderCatalog
-    ( loadTransportProviderCatalog
-    , loadTransportProviderRuntimeCatalog
-    )
-import UmbraVox.Plugin.Registry (defaultPersistencePlugins)
-import UmbraVox.Storage.InMemory (newInMemoryStorage)
 import UmbraVox.TUI.Types
 import UmbraVox.TUI.Layout (calcLayout)
 import UmbraVox.Chat.OutboundQueue (newQueue, maxQueueDepth, maxMessageAge)
@@ -77,42 +70,10 @@ calcTestLayout = calcLayout 40 120
 
 mkTestConfig :: IO AppConfig
 mkTestConfig = do
-    packagedPluginCatalog <- loadPackagedPluginCatalog
-    packagedPluginRuntimeCatalog <- loadPackagedPluginRuntimeCatalog
-    transportProviderCatalog <- loadTransportProviderCatalog
-    transportProviderRuntimeCatalog <- loadTransportProviderRuntimeCatalog
-    initialStorage <- newInMemoryStorage
-    AppConfig
-        <$> newIORef 1111        -- cfgListenPort
-        <*> newIORef "testuser"  -- cfgDisplayName
-        <*> newIORef Nothing     -- cfgIdentity
-        <*> newIORef Map.empty   -- cfgSessions
-        <*> newIORef 1           -- cfgNextId
-        <*> newIORef False       -- cfgDebugLogging
-        <*> newIORef "build/test-runtime.log" -- cfgDebugLogPath
-        <*> newIORef False       -- cfgMDNSEnabled
-        <*> newIORef False       -- cfgPEXEnabled
-        <*> newIORef False       -- cfgDBEnabled
-        <*> newIORef ""          -- cfgDBPath
-        <*> newIORef Nothing     -- cfgPersistencePreference
-        <*> newIORef packagedPluginCatalog -- cfgPackagedPluginCatalog
-        <*> newIORef packagedPluginRuntimeCatalog -- cfgPackagedPluginRuntimeCatalog
-        <*> newIORef transportProviderCatalog -- cfgTransportProviderCatalog
-        <*> newIORef transportProviderRuntimeCatalog -- cfgTransportProviderRuntimeCatalog
-        <*> newIORef Nothing     -- cfgListenerThread
-        <*> newIORef Nothing     -- cfgMDNSThread
-        <*> newIORef []          -- cfgMDNSPeers
-        <*> newIORef 30          -- cfgRetentionDays
-        <*> newIORef False       -- cfgAutoSaveMessages
-        <*> newIORef Nothing     -- cfgAnthonyDB
-        <*> newIORef Promiscuous -- cfgConnectionMode
-        <*> newIORef []          -- cfgTrustedKeys
-        <*> newIORef Set.empty   -- cfgTofoKeys
-        <*> newIORef True        -- cfgEphemeral: tests use ephemeral mode by default
-        <*> newIORef initialStorage  -- cfgStorage: in-memory backend
-        <*> newIORef defaultPersistencePlugins  -- cfgPluginRegistry
-        <*> newMVar ()      -- cfgLogLock
-        <*> newIORef 0      -- cfgLogWriterPID
+    cfg <- newDefaultAppConfig
+    writeIORef (cfgDisplayName cfg) "testuser"
+    writeIORef (cfgDebugLogPath cfg) "build/test-runtime.log"
+    return cfg
 
 -- | Add a loopback session with empty history.
 addTestSession :: AppConfig -> String -> IO SessionId

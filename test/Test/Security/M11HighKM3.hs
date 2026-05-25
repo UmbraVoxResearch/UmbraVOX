@@ -418,7 +418,7 @@ testKM017SkippedKeyEviction = do
     -- The first 5 entries (insertSeq 0..4) should have been evicted.
     let lowestSeqStillPresent = minimum
             [ seq'
-            | (_, (_, _, seq')) <- Map.toList evicted
+            | (_, (_, _, seq', _)) <- Map.toList evicted
             ]
     ok5 <- assertEq "KM-017 oldest entries (insertSeq 0..4) evicted; minimum is 5"
                True (lowestSeqStillPresent >= 5)

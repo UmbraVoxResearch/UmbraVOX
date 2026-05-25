@@ -208,6 +208,12 @@ let encode_decode_inverse gamma c s =
 (**   similarly for V.                                                    **)
 (** -------------------------------------------------------------------- **)
 
+(* ASSUME JUSTIFICATION: dleq_correctness
+   Category: Algebraic property
+   Reference: RFC 9381 Section 5.1; Chaum-Pedersen, "Wallet Databases with Observers" (1992)
+   Status: Standard algebraic property, not provable in F*.
+   DLEQ correctness follows from the group law: s = k - c*x mod L implies s*B + c*pk = k*B
+   and s*H + c*Gamma = k*H, so the verifier recomputes the same challenge c. *)
 assume val dleq_correctness :
     sk:secret_key -> msg:seq UInt8.t
     -> Lemma (
@@ -342,6 +348,12 @@ let vrf_uniqueness sk msg = ()
     determined as H^sk; two valid proofs must share the same Gamma, hence
     the same beta = SHA-512(Gamma).  This binding property is undischargeable
     in F* without a model of discrete-log hardness. *)
+(* ASSUME JUSTIFICATION: vrf_strong_uniqueness
+   Category: Cryptographic assumption
+   Reference: RFC 9381 Section 3 (VRF uniqueness); discrete logarithm hardness on Ed25519
+   Status: Standard cryptographic assumption, not provable in F*.
+   Any valid proof for (pk, msg) must encode the same Gamma = H^sk, since forging a
+   different Gamma would require solving the discrete logarithm problem on Ed25519. *)
 assume val vrf_strong_uniqueness : sk:secret_key -> msg:seq UInt8.t
     -> pi1:vrf_proof -> pi2:vrf_proof
     -> Lemma (
@@ -420,13 +432,13 @@ let vrf_pseudorandomness_placeholder sk msg = ()
 (** and ECVRF point injection).                                          **)
 (** -------------------------------------------------------------------- **)
 
-(** CRYPTOGRAPHIC HARDNESS ASSUMPTION: Collision resistance of the VRF output.
-    If msg1 <> msg2, then hash_to_try_and_increment(pk, msg1) <> hash_to_try_and_increment(pk, msg2)
-    by collision resistance of the hash-to-curve map.  Hence Gamma1 = H1^sk <> H2^sk = Gamma2
-    (injectivity of scalar multiplication by a non-zero scalar).  Finally,
-    SHA-512(Gamma1) <> SHA-512(Gamma2) by SHA-512 collision resistance.
-    This chain of assumptions is undischargeable without models of hash
-    collision resistance and the group structure of Ed25519. *)
+(* ASSUME JUSTIFICATION: vrf_collision_resistance
+   Category: Cryptographic assumption
+   Reference: RFC 9381 Section 3; NIST FIPS 180-4 (SHA-512 collision resistance)
+   Status: Standard cryptographic assumption, not provable in F*.
+   Distinct messages map to distinct hash-to-curve points (collision resistance), which
+   yield distinct Gamma points under scalar multiplication, and finally distinct outputs
+   via SHA-512 collision resistance. *)
 assume val vrf_collision_resistance : sk:secret_key -> msg1:seq UInt8.t -> msg2:seq UInt8.t
     -> Lemma (
         requires msg1 <> msg2)

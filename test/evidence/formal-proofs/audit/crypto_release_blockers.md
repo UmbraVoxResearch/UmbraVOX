@@ -65,7 +65,7 @@ Date: 2026-05-17 | Version: v0.1.3+
 
 11. Print Assumptions output for all Coq theorems
     - Spot-checked (all "closed under global context")
-    - Should be automated in make assurance
+    - Should be automated in ./uv assurance
     - Priority: MEDIUM
 
 ## Summary

@@ -41,6 +41,13 @@ import Data.Word (Word8)
 import UmbraVox.Crypto.ConstantTime (constantEq)
 import UmbraVox.Crypto.Keccak (sha3_256, sha3_512, shake128, shake256)
 
+{-# WARNING mlkemKeyGen
+    "Variable-time: GHC Integer arithmetic is not constant-time. Decapsulation key generation leaks secret key bits via timing. Use FFI to constant-time C for production." #-}
+{-# WARNING mlkemEncaps
+    "Variable-time: polynomial arithmetic and SHAKE sampling are not constant-time. Use FFI to constant-time C for production." #-}
+{-# WARNING mlkemDecaps
+    "Variable-time: implicit rejection branch and polynomial arithmetic leak decapsulation key bits via timing. Use FFI to constant-time C for production." #-}
+
 ------------------------------------------------------------------------
 -- ML-KEM-768 parameters (FIPS 203, Table 2)
 ------------------------------------------------------------------------

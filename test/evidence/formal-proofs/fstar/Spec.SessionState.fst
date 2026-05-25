@@ -172,8 +172,12 @@ let presence_flag_valid p = ()
 (** MAC integrity (computational assumption)                             **)
 (** -------------------------------------------------------------------- **)
 
-(** Axiom: HMAC-SHA-256 protects the serialized body against tampering.
-    Any modification to the body is detected by MAC verification. *)
+(* ASSUME JUSTIFICATION: hmac_integrity
+   Category: Cryptographic assumption
+   Reference: RFC 2104 (HMAC); NIST FIPS 198-1 (HMAC standard)
+   Status: Standard cryptographic assumption, not provable in F*.
+   HMAC-SHA-256 provides integrity protection: any modification to the serialized
+   session state body is detected by MAC verification with overwhelming probability. *)
 assume val hmac_integrity : key:mac_key -> body:seq UInt8.t
     -> Lemma (True) (* Computational assumption *)
 

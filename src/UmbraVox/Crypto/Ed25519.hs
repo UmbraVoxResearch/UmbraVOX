@@ -23,6 +23,14 @@ module UmbraVox.Crypto.Ed25519
     , clampScalar
     ) where
 
+import Data.Bits ((.&.), (.|.), shiftL, shiftR, testBit)
+import Data.ByteString (ByteString)
+import qualified Data.ByteString as BS
+import Data.Word (Word8)
+
+import UmbraVox.Crypto.ConstantTime (constantEq)
+import UmbraVox.Crypto.SHA512 (sha512)
+
 {-# WARNING scalarMul
     "Variable-time double-and-add: leaks scalar bits via timing. Use FFI to constant-time C (e.g. libsodium) for production." #-}
 {-# WARNING ed25519Sign
@@ -31,14 +39,6 @@ module UmbraVox.Crypto.Ed25519
     "Uses variable-time scalarMul internally. Use FFI to constant-time C for production." #-}
 {-# WARNING ed25519PublicKey
     "Uses variable-time scalarMul internally: leaks secret key bits via timing. Use FFI to constant-time C for production." #-}
-
-import Data.Bits ((.&.), (.|.), shiftL, shiftR, testBit)
-import Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
-import Data.Word (Word8)
-
-import UmbraVox.Crypto.ConstantTime (constantEq)
-import UmbraVox.Crypto.SHA512 (sha512)
 
 ------------------------------------------------------------------------
 -- Field prime p = 2^255 - 19

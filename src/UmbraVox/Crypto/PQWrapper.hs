@@ -68,6 +68,7 @@ deriveKeyNonce sharedSecret =
 -- Input: recipient ML-KEM-768 encapsulation key (1184 bytes) and plaintext.
 -- Output: kemCiphertext (1088) || gcmCiphertext || gcmTag (16).
 pqEncrypt :: ByteString -> ByteString -> ByteString
+{-# NOINLINE pqEncrypt #-}
 pqEncrypt encapKeyBS plaintext =
     -- unsafePerformIO is safe here: randomBytes is the only effect and
     -- each call produces an independent, unobservable random draw.

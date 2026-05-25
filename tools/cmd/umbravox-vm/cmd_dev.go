@@ -86,7 +86,7 @@ func runDev(args []string) int {
 	}
 
 	// Network
-	policyFile := filepath.Join(repoRoot, "vm-network-policy.conf")
+	policyFile := filepath.Join(repoRoot, "conf/vm-network-policy.conf")
 	policy, err := netpol.ParseFile(policyFile)
 	if err != nil {
 		log.Fail(tag, fmt.Sprintf("Failed to parse network policy: %v", err))

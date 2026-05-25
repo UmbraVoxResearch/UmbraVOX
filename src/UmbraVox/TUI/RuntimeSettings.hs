@@ -217,7 +217,7 @@ cycleConnectionMode st = do
             let modes = [minBound .. maxBound] :: [ConnectionMode]
                 next = case dropWhile (/= current) modes of
                     (_:m:_) -> m
-                    _       -> head modes
+                    _       -> minBound
             writeIORef (cfgConnectionMode cfg) next
             applyConnectionModeSideEffects st next
             disconnected <- disconnectRemoteSessions st

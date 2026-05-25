@@ -314,16 +314,13 @@ let scan_correctness eph_secret scan_secret spend_pub =
 (** different P = s*G_ed + spend_pub (injectivity of scalar mult).      **)
 (** -------------------------------------------------------------------- **)
 
-(** CRYPTOGRAPHIC HARDNESS ASSUMPTION: Unlinkability of stealth addresses.
-    The core argument is:
-      eph1 <> eph2 => x25519_base(eph1) <> x25519_base(eph2)
-    which relies on injectivity of X25519 basepoint multiplication (after
-    clamping).  This is a property of the Curve25519 group structure that
-    cannot be discharged without a concrete model of the curve arithmetic.
-    The stronger claim (sa_address differs) additionally requires the
-    decisional Diffie-Hellman assumption on Curve25519: different shared
-    secrets S1 <> S2 lead to different HKDF outputs and hence different
-    stealth scalars s1 <> s2.  Both properties are undischargeable in F*. *)
+(* ASSUME JUSTIFICATION: unlinkability
+   Category: Cryptographic assumption
+   Reference: RFC 7748 (X25519); Bernstein, "Curve25519: new Diffie-Hellman speed records" (2006)
+   Status: Standard cryptographic assumption, not provable in F*.
+   Stealth address unlinkability relies on injectivity of X25519 basepoint multiplication
+   and the decisional Diffie-Hellman assumption: distinct ephemeral secrets yield distinct
+   shared secrets and thus distinct stealth addresses. *)
 assume val unlinkability
     : eph1:bytes32
    -> eph2:bytes32

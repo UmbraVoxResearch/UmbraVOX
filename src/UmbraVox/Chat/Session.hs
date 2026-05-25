@@ -49,9 +49,10 @@ initChatSession :: ByteString  -- ^ Shared secret from key agreement (32 bytes)
                 -> ByteString  -- ^ Our DH secret key (32 bytes)
                 -> ByteString  -- ^ Peer's DH public key (32 bytes)
                 -> IO (Maybe ChatSession)
-initChatSession sharedSecret ourDHSecret peerDHPub =
-    pure (fmap (\st -> ChatSession { csRatchet = st, csRouteTokens = Nothing })
-               (ratchetInitAlice sharedSecret peerDHPub ourDHSecret))
+initChatSession sharedSecret ourDHSecret peerDHPub = do
+    -- M15.3: ratchetInitAlice is now IO
+    mSt <- ratchetInitAlice sharedSecret peerDHPub ourDHSecret
+    pure (fmap (\st -> ChatSession { csRatchet = st, csRouteTokens = Nothing }) mSt)
 
 -- | Initialize a chat session for Bob (the responder).
 --
@@ -61,7 +62,8 @@ initChatSessionBob :: ByteString  -- ^ Shared secret from key agreement (32 byte
                    -> ByteString  -- ^ Bob's SPK secret key (32 bytes)
                    -> IO ChatSession
 initChatSessionBob sharedSecret bobSPKSecret = do
-    let !st = ratchetInitBob sharedSecret bobSPKSecret
+    -- M15.3: ratchetInitBob is now IO
+    st <- ratchetInitBob sharedSecret bobSPKSecret
     pure ChatSession { csRatchet = st, csRouteTokens = Nothing }
 
 -- | Encrypt and send a chat message.

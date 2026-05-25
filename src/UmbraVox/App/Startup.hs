@@ -51,7 +51,8 @@ import UmbraVox.Crypto.KeyStore
     , loadIdentityKeyAt, saveIdentityKeyAt
     )
 import UmbraVox.Crypto.Random (randomBytes)
-import UmbraVox.Crypto.Signal.X3DH (IdentityKey, ikEd25519Secret)
+import UmbraVox.Crypto.SecureBytes (toByteString)
+import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..), ikEd25519Secret)
 import UmbraVox.Storage.Anthony
     ( AnthonyDB, loadConversations, loadMessages
     , loadTrustedKeys, openDB, openDBWithKey, saveSetting
@@ -315,7 +316,8 @@ restorePersistentStateAtUnsafe cfg path = do
                 else do
                     let saltPath = path ++ ".salt"
                     getOrCreateSalt saltPath
-            let storageKey = deriveStorageKey salt (ikEd25519Secret ik)
+            edSecBS <- toByteString (ikEd25519Secret ik)
+            let storageKey = deriveStorageKey salt edSecBS
             openDBWithKey path storageKey
         Nothing ->
             openDB path

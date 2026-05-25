@@ -40,6 +40,7 @@ import UmbraVox.Crypto.GCM (gcmDecrypt, gcmEncrypt)
 import UmbraVox.Crypto.HKDF (hkdfExpand, hkdfExtract)
 import UmbraVox.Crypto.HMAC (hmacSHA256)
 import UmbraVox.Crypto.Random (randomBytes)
+import UmbraVox.Crypto.SecureBytes (SecureBytes, fromByteString, toByteString)
 
 ------------------------------------------------------------------------
 -- Error type
@@ -100,8 +101,8 @@ data RatchetError
 
 -- | Full Double Ratchet state for one party.
 --
--- SecureBytes migration (M15.3.3): the following fields hold live key
--- material and should eventually be wrapped in 'UmbraVox.Crypto.SecureBytes.SecureBytes'
+-- SecureBytes migration (M15.3): the following fields hold live key
+-- material and are wrapped in 'UmbraVox.Crypto.SecureBytes.SecureBytes'
 -- so that their memory is zeroed when the ratchet state is discarded:
 --
 --   * 'rsDHSend' — the fst (X25519 secret) half of the sending DH keypair.
@@ -109,24 +110,22 @@ data RatchetError
 --   * 'rsSendChain' — the 32-byte sending chain key.
 --   * 'rsRecvChain' — the 32-byte receiving chain key.
 --
--- Changing these fields requires updating 'RatchetPersist' serialisation,
--- the @Map@ key type for 'rsSkippedKeys', and every pattern-match site —
--- treat this as a coordinated refactor, not a drop-in replacement.
+-- KDF functions ('kdfRK', 'kdfCK') extract ByteString temporarily via
+-- 'toByteString' for HMAC operations, then wrap results back in
+-- 'fromByteString'.  This makes several previously pure functions monadic
+-- (IO), which is acceptable for the security benefit.
 data RatchetState = RatchetState
-    { rsDHSend      :: !(ByteString, ByteString)
-      -- ^ (secret, public) X25519 sending keypair
-      -- TODO(M15.3): wrap the secret half in SecureBytes (see module note above)
+    { rsDHSend      :: !(SecureBytes, ByteString)
+      -- ^ (secret, public) X25519 sending keypair.
+      -- M15.3: secret half is SecureBytes; public half remains ByteString.
     , rsDHRecv      :: !(Maybe ByteString)
       -- ^ Peer's current X25519 public key (Nothing before first message)
-    , rsRootKey     :: !ByteString
-      -- ^ 32-byte root key
-      -- TODO(M15.3): wrap in SecureBytes (see module note above)
-    , rsSendChain   :: !ByteString
-      -- ^ 32-byte sending chain key
-      -- TODO(M15.3): wrap in SecureBytes (see module note above)
-    , rsRecvChain   :: !ByteString
-      -- ^ 32-byte receiving chain key
-      -- TODO(M15.3): wrap in SecureBytes (see module note above)
+    , rsRootKey     :: !SecureBytes
+      -- ^ 32-byte root key (M15.3: SecureBytes — zeroed on finalization)
+    , rsSendChain   :: !SecureBytes
+      -- ^ 32-byte sending chain key (M15.3: SecureBytes — zeroed on finalization)
+    , rsRecvChain   :: !SecureBytes
+      -- ^ 32-byte receiving chain key (M15.3: SecureBytes — zeroed on finalization)
     , rsSendN       :: !Word32
       -- ^ Sending message counter
     , rsRecvN       :: !Word32
@@ -154,7 +153,7 @@ data RatchetState = RatchetState
       -- (M23.3.3).  Used to detect replay of old ratchet messages with
       -- reused DH keys.  Capped at 'maxSeenDHKeys' entries; oldest are
       -- evicted when the limit is exceeded.
-    } deriving stock (Show, Eq)
+    }
 
 -- | Header attached to each ratchet message.
 data RatchetHeader = RatchetHeader
@@ -228,21 +227,34 @@ evictByAge currentTimeSecs = Map.filter (\(_, _, _, ts) -> currentTimeSecs - ts 
 --
 -- Salt = root key, IKM = DH output, Info = "UmbraVox_Ratchet_v1"
 -- Output = 64 bytes: first 32 = new root key, last 32 = new chain key.
-kdfRK :: ByteString -> ByteString -> (ByteString, ByteString)
-kdfRK rootKey dhOut =
+--
+-- M15.3: Now monadic (IO) — extracts the root key via 'toByteString',
+-- derives the output, and wraps results back in 'fromByteString'.
+kdfRK :: SecureBytes -> ByteString -> IO (SecureBytes, SecureBytes)
+kdfRK rootKeySB dhOut = do
+    rootKey <- toByteString rootKeySB
     let !prk = hkdfExtract rootKey dhOut
         !okm = hkdfExpand prk ratchetInfo 64
-    in (BS.take 32 okm, BS.drop 32 okm)
+    newRoot  <- fromByteString (BS.take 32 okm)
+    newChain <- fromByteString (BS.drop 32 okm)
+    pure (newRoot, newChain)
 
 -- | Derive a message key and new chain key from the current chain key.
 --
 -- messageKey  = HMAC-SHA256(chainKey, 0x01)
 -- newChainKey = HMAC-SHA256(chainKey, 0x02)
-kdfCK :: ByteString -> (ByteString, ByteString)
-kdfCK chainKey =
+--
+-- M15.3: Now monadic (IO) — extracts the chain key via 'toByteString'.
+-- Returns (newChainKey :: SecureBytes, msgKey :: ByteString).
+-- The msgKey is a plain ByteString because it is used immediately for
+-- GCM encryption/decryption and is short-lived.
+kdfCK :: SecureBytes -> IO (SecureBytes, ByteString)
+kdfCK chainKeySB = do
+    chainKey <- toByteString chainKeySB
     let !msgKey      = hmacSHA256 chainKey (BS.singleton 0x01)
         !newChainKey = hmacSHA256 chainKey (BS.singleton 0x02)
-    in (newChainKey, msgKey)
+    newChainSB <- fromByteString newChainKey
+    pure (newChainSB, msgKey)
 
 ------------------------------------------------------------------------
 -- Key pair generation (deterministic from secret)
@@ -251,16 +263,24 @@ kdfCK chainKey =
 -- | Generate an X25519 key pair from a 32-byte secret.
 -- The basepoint multiplication cannot produce an all-zero result for any
 -- non-zero secret, so the 'Just' match here is safe by construction.
-generateDH :: ByteString -> (ByteString, ByteString)
+--
+-- M15.3: Now monadic (IO) — wraps the secret in SecureBytes.
+generateDH :: ByteString -> IO (SecureBytes, ByteString)
 generateDH secret =
     case x25519 secret x25519Basepoint of
-        Just !pub -> (secret, pub)
+        Just !pub -> do
+            secretSB <- fromByteString secret
+            pure (secretSB, pub)
         Nothing   -> error "generateDH: x25519 with basepoint returned all-zero (impossible)"
 
 -- | Perform X25519 Diffie-Hellman.
 -- Returns Nothing if the DH output is all-zero (low-order point).
-dh :: (ByteString, ByteString) -> ByteString -> Maybe ByteString
-dh (secret, _) theirPublic = x25519 secret theirPublic
+--
+-- M15.3: Now monadic (IO) — extracts the secret via 'toByteString'.
+dhIO :: (SecureBytes, ByteString) -> ByteString -> IO (Maybe ByteString)
+dhIO (secretSB, _) theirPublic = do
+    secret <- toByteString secretSB
+    pure (x25519 secret theirPublic)
 
 ------------------------------------------------------------------------
 -- Initialization
@@ -279,22 +299,27 @@ dh (secret, _) theirPublic = x25519 secret theirPublic
 -- Returns Nothing if the initial DH with Bob's SPK yields an all-zero
 -- result (low-order point attack; rejects the session rather than
 -- silently producing a weak key).
+--
+-- M15.3: Now monadic (IO) — key fields are wrapped in SecureBytes.
 ratchetInitAlice :: ByteString  -- ^ X3DH shared secret (32 bytes)
                  -> ByteString  -- ^ Bob's signed pre-key (32 bytes)
                  -> ByteString  -- ^ Alice's fresh DH secret (32 bytes)
-                 -> Maybe RatchetState
-ratchetInitAlice sharedSecret bobSPK aliceDHSecret =
-    let !aliceKP = generateDH aliceDHSecret
-    in case dh aliceKP bobSPK of
-        Nothing -> Nothing
-        Just !dhOutput ->
-            let !(rootKey1, sendChain) = kdfRK sharedSecret dhOutput
-            in Just RatchetState
+                 -> IO (Maybe RatchetState)
+ratchetInitAlice sharedSecret bobSPK aliceDHSecret = do
+    aliceKP <- generateDH aliceDHSecret
+    mDhOutput <- dhIO aliceKP bobSPK
+    case mDhOutput of
+        Nothing -> pure Nothing
+        Just !dhOutput -> do
+            sharedSecretSB <- fromByteString sharedSecret
+            (rootKey1, sendChain) <- kdfRK sharedSecretSB dhOutput
+            recvChain <- fromByteString (BS.replicate 32 0)
+            pure $ Just RatchetState
                 { rsDHSend      = aliceKP
                 , rsDHRecv      = Just bobSPK
                 , rsRootKey     = rootKey1
                 , rsSendChain   = sendChain
-                , rsRecvChain   = BS.replicate 32 0
+                , rsRecvChain   = recvChain
                   -- SAFETY (M7.2.3): This zero placeholder is never used for
                   -- decryption.  Bob's first message triggers dhRatchet, which
                   -- overwrites rsRecvChain via kdfRK before any kdfCK derivation.
@@ -313,22 +338,27 @@ ratchetInitAlice sharedSecret bobSPK aliceDHSecret =
 -- Bob uses his signed pre-key as the initial DH keypair.  The peer DH
 -- public key is left empty — it will be populated from the header of
 -- Alice's first message, which triggers the initial DH ratchet step.
+--
+-- M15.3: Now monadic (IO) — key fields are wrapped in SecureBytes.
 ratchetInitBob :: ByteString  -- ^ X3DH shared secret (32 bytes)
                -> ByteString  -- ^ Bob's signed pre-key secret (32 bytes)
-               -> RatchetState
-ratchetInitBob sharedSecret bobSPKSecret =
-    let !bobKP = generateDH bobSPKSecret
-    in RatchetState
+               -> IO RatchetState
+ratchetInitBob sharedSecret bobSPKSecret = do
+    bobKP <- generateDH bobSPKSecret
+    rootKeySB   <- fromByteString sharedSecret
+    sendChainSB <- fromByteString (BS.replicate 32 0)
+    recvChainSB <- fromByteString (BS.replicate 32 0)
+    pure RatchetState
         { rsDHSend      = bobKP
         , rsDHRecv      = Nothing   -- Set from first message header
-        , rsRootKey     = sharedSecret
-        , rsSendChain   = BS.replicate 32 0
+        , rsRootKey     = rootKeySB
+        , rsSendChain   = sendChainSB
           -- SAFETY (M7.2.3): Zero placeholder — Bob cannot encrypt until
           -- Alice's first message arrives and triggers dhRatchet, which
           -- derives real send/recv chain keys via kdfRK.  rsDHRecv starts
           -- as Nothing, so ratchetEncrypt cannot produce valid ciphertext
           -- with this value.
-        , rsRecvChain   = BS.replicate 32 0
+        , rsRecvChain   = recvChainSB
           -- SAFETY (M7.2.3): Same as rsSendChain above — overwritten by
           -- dhRatchet before any decryption attempt.
         , rsSendN       = 0
@@ -363,16 +393,15 @@ ratchetEncrypt st plaintext =
     if rsSendN st >= 0xFFFFFFFE
         then pure (Left CounterExhausted)
         else do
-            let -- Derive message key from sending chain
-                !(newChainKey, msgKey) = kdfCK (rsSendChain st)
-                -- Build header
+            -- M15.3: kdfCK and makeNonce are now IO due to SecureBytes
+            (newChainKey, msgKey) <- kdfCK (rsSendChain st)
+            nonce <- makeNonce (rsSendChain st) (rsSendN st)
+            let -- Build header
                 !header = RatchetHeader
                     { rhDHPublic   = snd (rsDHSend st)
                     , rhPrevChainN = rsPrevChainN st
                     , rhMsgN       = rsSendN st
                     }
-                -- Build nonce from chain key and message counter (M10.2.3, M10.2.5)
-                !nonce = makeNonce (rsSendChain st) (rsSendN st)
                 -- Encrypt with AES-256-GCM
                 !aad = encodeHeader header
                 !(ct, tag) = gcmEncrypt msgKey nonce aad plaintext
@@ -416,7 +445,8 @@ ratchetDecrypt st header ct tag =
             -- M27.6.9: Get current wall-clock time for skipped-key expiry
             nowSecs <- round <$> getPOSIXTime
             -- Try skipped keys first
-            case trySkippedKeys st nowSecs header ct tag of
+            mSkipped <- trySkippedKeys st nowSecs header ct tag
+            case mSkipped of
                 Just result -> pure (Right (Just result))
                 Nothing -> do
                     -- Determine whether a DH ratchet is needed
@@ -448,18 +478,19 @@ ratchetDecrypt st header ct tag =
                                     st1 <- if needsDHRatchet
                                                then dhRatchet st header nowSecs
                                                else pure (Just st)
-                                    pure $ Right $ case st1 of
-                                        Nothing -> Nothing  -- Too many skipped keys
-                                        Just st2 ->
+                                    case st1 of
+                                        Nothing -> pure (Right Nothing)  -- Too many skipped keys
+                                        Just st2 -> do
                                             -- Skip any missed messages in current receiving chain
-                                            case skipMessageKeys st2 (rhMsgN header) nowSecs of
-                                                Nothing -> Nothing  -- Too many skipped keys
-                                                Just st3 ->
-                                                    -- Derive message key from receiving chain
-                                                    let !(newChainKey, msgKey) = kdfCK (rsRecvChain st3)
-                                                        !nonce = makeNonce (rsRecvChain st3) (rsRecvN st3)
-                                                        !aad = encodeHeader header
-                                                    in case gcmDecrypt msgKey nonce aad ct tag of
+                                            st3m <- skipMessageKeys st2 (rhMsgN header) nowSecs
+                                            case st3m of
+                                                Nothing -> pure (Right Nothing)  -- Too many skipped keys
+                                                Just st3 -> do
+                                                    -- M15.3: kdfCK and makeNonce are now IO
+                                                    (newChainKey, msgKey) <- kdfCK (rsRecvChain st3)
+                                                    nonce <- makeNonce (rsRecvChain st3) (rsRecvN st3)
+                                                    let !aad = encodeHeader header
+                                                    pure $ Right $ case gcmDecrypt msgKey nonce aad ct tag of
                                                         Just plaintext ->
                                                             let !st4 = st3
                                                                     { rsRecvChain = newChainKey
@@ -506,9 +537,10 @@ recordDHKey st peerPub =
 -- replay detection.  The replay check itself is in 'ratchetDecrypt',
 -- before this function is called.
 dhRatchet :: RatchetState -> RatchetHeader -> Word64 -> IO (Maybe RatchetState)
-dhRatchet st header nowSecs =
+dhRatchet st header nowSecs = do
     -- Skip any remaining messages in old receiving chain
-    case skipMessageKeys st (rhPrevChainN header) nowSecs of
+    st1m <- skipMessageKeys st (rhPrevChainN header) nowSecs
+    case st1m of
         Nothing -> pure Nothing
         Just st1 -> do
             let -- M23.3.3: record the new DH key before advancing
@@ -524,18 +556,21 @@ dhRatchet st header nowSecs =
                 !peerPub = case rsDHRecv st2 of
                     Just pk -> pk
                     Nothing -> error "dhRatchet: impossible: rsDHRecv is Nothing after assignment"
-            case dh (rsDHSend st2) peerPub of
+            -- M15.3: dhIO and kdfRK are now IO
+            mDhOutput1 <- dhIO (rsDHSend st2) peerPub
+            case mDhOutput1 of
                 Nothing -> pure Nothing
                 Just !dhOutput1 -> do
-                    let !(rootKey1, recvChain) = kdfRK (rsRootKey st2) dhOutput1
+                    (rootKey1, recvChain) <- kdfRK (rsRootKey st2) dhOutput1
                     -- Generate new sending keypair from CSPRNG
                     newDHSecret <- randomBytes 32
-                    let !newDHKP = generateDH newDHSecret
-                    case dh newDHKP peerPub of
+                    newDHKP <- generateDH newDHSecret
+                    mDhOutput2 <- dhIO newDHKP peerPub
+                    case mDhOutput2 of
                         Nothing -> pure Nothing
-                        Just !dhOutput2 ->
-                            let !(rootKey2, sendChain) = kdfRK rootKey1 dhOutput2
-                            in pure $ Just st2
+                        Just !dhOutput2 -> do
+                            (rootKey2, sendChain) <- kdfRK rootKey1 dhOutput2
+                            pure $ Just st2
                                 { rsDHSend    = newDHKP
                                 , rsRootKey   = rootKey2
                                 , rsSendChain = sendChain
@@ -549,22 +584,27 @@ dhRatchet st header nowSecs =
 -- | Try to decrypt using a previously skipped message key.
 -- M27.6.9: Entries older than 'skippedKeyMaxAgeSecs' (48 hours) are
 -- rejected and evicted from the cache before lookup.
+--
+-- M15.3: Now monadic (IO) — makeNonce requires IO for SecureBytes.
+-- The stored chain key (ByteString) is temporarily wrapped in SecureBytes
+-- for nonce re-derivation.
 trySkippedKeys :: RatchetState -> Word64 -> RatchetHeader -> ByteString -> ByteString
-               -> Maybe (RatchetState, ByteString)
-trySkippedKeys st nowSecs header ct tag =
+               -> IO (Maybe (RatchetState, ByteString))
+trySkippedKeys st nowSecs header ct tag = do
     let !lookupKey = (rhDHPublic header, rhMsgN header)
         -- M27.6.9: evict expired entries based on wall-clock timestamp
         !pruned = Map.filter (\(_, _, _, ts) ->
             nowSecs <= ts || (nowSecs - ts) <= skippedKeyMaxAgeSecs) (rsSkippedKeys st)
         !st0 = st { rsSkippedKeys = pruned }
-    in case Map.lookup lookupKey pruned of
-        Nothing -> Nothing
-        Just (msgKey, chainKey, _insertSeq, _insertTime) ->
+    case Map.lookup lookupKey pruned of
+        Nothing -> pure Nothing
+        Just (msgKey, chainKey, _insertSeq, _insertTime) -> do
             -- Re-derive nonce from the stored chain key, matching the nonce
             -- used during encryption (M10.2.5: nonce comes from chain key).
-            let !nonce = makeNonce chainKey (rhMsgN header)
-                !aad = encodeHeader header
-            in case gcmDecrypt msgKey nonce aad ct tag of
+            chainKeySB <- fromByteString chainKey
+            nonce <- makeNonce chainKeySB (rhMsgN header)
+            let !aad = encodeHeader header
+            pure $ case gcmDecrypt msgKey nonce aad ct tag of
                 Just plaintext ->
                     let !st' = st0 { rsSkippedKeys = Map.delete lookupKey pruned }
                     in Just (st', plaintext)
@@ -575,32 +615,31 @@ trySkippedKeys st nowSecs header ct tag =
 -- skipped, or if the peer's DH key is not yet known (rsDHRecv is Nothing).
 -- M27.6.9: @nowSecs@ is the current wall-clock time in seconds, stored
 -- alongside each skipped key for time-based expiry.
-skipMessageKeys :: RatchetState -> Word32 -> Word64 -> Maybe RatchetState
+--
+-- M15.3: Now monadic (IO) — kdfCK requires IO for SecureBytes extraction.
+-- The old chain key ByteString stored in skipped keys is extracted via
+-- 'toByteString' for nonce re-derivation in 'trySkippedKeys'.
+skipMessageKeys :: RatchetState -> Word32 -> Word64 -> IO (Maybe RatchetState)
 skipMessageKeys st until' nowSecs
-    | rsRecvN st >= until'          = Just st
-    | until' - rsRecvN st > maxSkip = Nothing
+    | rsRecvN st >= until'          = pure (Just st)
+    | until' - rsRecvN st > maxSkip = pure Nothing
     | otherwise = case rsDHRecv st of
-        -- Cannot store skipped keys without a known peer DH public key.
-        -- This path can be triggered by garbage input (fuzz/bit-flip); the
-        -- graceful response is to reject rather than crash.
-        Nothing -> Nothing
-        Just _  ->
-            let !result = go st
-                -- M7.3.6: enforce total skipped-key cap across all DH ratchets
-                -- M23.3.4: eviction is now O(log n) via a secondary index on
-                -- insertion sequence.
-                -- M27.6.9: also evict entries that are too old (by wall-clock
-                -- time) to prevent stale skipped keys from persisting.
+        Nothing -> pure Nothing
+        Just _  -> do
+            result <- go st
+            let -- M7.3.6: enforce total skipped-key cap across all DH ratchets
                 !aged   = evictByAge nowSecs (rsSkippedKeys result)
                 !pruned = evictOldest aged
-            in Just result { rsSkippedKeys = pruned }
+            pure $ Just result { rsSkippedKeys = pruned }
   where
     go s
-        | rsRecvN s >= until' = s
-        | otherwise =
-            let !oldChainKey = rsRecvChain s
-                !(newChainKey, msgKey) = kdfCK oldChainKey
-                !peerKey = case rsDHRecv s of
+        | rsRecvN s >= until' = pure s
+        | otherwise = do
+            -- M15.3: extract chain key for HMAC, then store the ByteString
+            -- copy in the skipped-keys map for nonce re-derivation
+            oldChainKeyBS <- toByteString (rsRecvChain s)
+            (newChainKey, msgKey) <- kdfCK (rsRecvChain s)
+            let !peerKey = case rsDHRecv s of
                     Just pk -> pk
                     Nothing -> error "skipMessageKeys: impossible: rsDHRecv is Nothing (guarded above)"
                 !key = (peerKey, rsRecvN s)
@@ -609,8 +648,8 @@ skipMessageKeys st until' nowSecs
                 -- can re-derive the nonce, evictOldest can find the truly
                 -- oldest entry by insertion order, and evictByAge can
                 -- expire stale entries by wall-clock time (M27.6.9).
-                !skipped = Map.insert key (msgKey, oldChainKey, seq', nowSecs) (rsSkippedKeys s)
-            in go s
+                !skipped = Map.insert key (msgKey, oldChainKeyBS, seq', nowSecs) (rsSkippedKeys s)
+            go s
                 { rsRecvChain   = newChainKey
                 , rsRecvN       = rsRecvN s + 1
                 , rsSkippedKeys = skipped
@@ -728,10 +767,12 @@ evictOldest m
 -- Verified:  Both 'ratchetEncrypt' and 'ratchetDecrypt' call 'makeNonce' with
 --            the chain key; the zero-salt change is transparent to callers
 --            and both sides derive the same nonce from the same chain key.
-makeNonce :: ByteString  -- ^ Chain key (NOT the message key)
-          -> Word32      -- ^ Message counter
-          -> ByteString
-makeNonce chainKey counter =
+-- M15.3: Now monadic (IO) — extracts chain key via 'toByteString'.
+makeNonce :: SecureBytes  -- ^ Chain key (NOT the message key)
+          -> Word32       -- ^ Message counter
+          -> IO ByteString
+makeNonce chainKeySB counter = do
+    chainKey <- toByteString chainKeySB
     -- Derive 8-byte nonce base from chain key via HKDF with zero salt (Signal
     -- convention: zero salt so HKDF-Extract acts as a keyed PRF on chainKey).
     let !prk  = hkdfExtract (BS.replicate 32 0) chainKey
@@ -739,7 +780,7 @@ makeNonce chainKey counter =
         -- XOR the base with the 8-byte LE counter for per-message uniqueness
         !ctr  = encodeWord64LE (fromIntegral counter)
         !mixed = BS.pack (BS.zipWith xor base ctr)
-    in BS.replicate 4 0 <> mixed
+    pure (BS.replicate 4 0 <> mixed)
 
 -- | Encode a Word32 as 4-byte big-endian.
 encodeWord32BE :: Word32 -> ByteString

@@ -14,9 +14,9 @@ with the standard GHC provided by the project:
 
     ghc -O2 -isrc -o build/fuzz/fuzz-gcm test/fuzz/harness-gcm-decrypt.hs
 
-Or use the Makefile target:
+Or use the build system:
 
-    make fuzz-afl
+    ./uv fuzz-afl
 
 ## Harnesses
 
@@ -45,7 +45,7 @@ test vector. AFL++ uses these as the initial seed corpus for mutation.
 Build harnesses, generate seeds, then run:
 
     # Build
-    make fuzz-afl
+    ./uv fuzz-afl
 
     # Generate seed corpus from test vectors
     bash test/fuzz/seed-from-vectors.sh

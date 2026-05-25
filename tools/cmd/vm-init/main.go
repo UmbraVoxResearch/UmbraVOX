@@ -76,10 +76,34 @@ func main() {
 	}
 }
 
-// setupEnvironment sets the baseline PATH and HOME.
+// setupEnvironment sets the baseline PATH, HOME, and pkg-config paths.
 func setupEnvironment() {
 	os.Setenv("HOME", "/root")
 	os.Setenv("PATH", "/run/current-system/sw/bin:/run/current-system/sw/sbin:"+os.Getenv("PATH"))
+	// NixOS puts .pc files under the system profile; cabal's pkgconfig-depends
+	// needs PKG_CONFIG_PATH set so pkg-config can locate them (e.g. sqlite3.pc).
+	setPkgConfigPath()
+}
+
+// setPkgConfigPath discovers NixOS pkg-config directories under the system
+// profile and sets PKG_CONFIG_PATH so cabal/pkg-config can find .pc files.
+func setPkgConfigPath() {
+	var dirs []string
+	candidates := []string{
+		"/run/current-system/sw/lib/pkgconfig",
+		"/run/current-system/sw/share/pkgconfig",
+	}
+	for _, d := range candidates {
+		if fi, err := os.Stat(d); err == nil && fi.IsDir() {
+			dirs = append(dirs, d)
+		}
+	}
+	if existing := os.Getenv("PKG_CONFIG_PATH"); existing != "" {
+		dirs = append(dirs, existing)
+	}
+	if len(dirs) > 0 {
+		os.Setenv("PKG_CONFIG_PATH", strings.Join(dirs, ":"))
+	}
 }
 
 // setupCabalConfig writes an offline cabal configuration.
@@ -286,6 +310,8 @@ func execBash() {
 }
 
 // writeGUIProfile writes a login profile for GUI/VGA console mode.
+// If .vm-exec-cmd exists on the source disk, the command is appended
+// to the profile so it auto-runs on VGA login (used by ./uv run gui).
 func writeGUIProfile() {
 	os.MkdirAll("/etc/profile.d", 0o755)
 	profile := `export HOME=/root
@@ -294,6 +320,13 @@ export PATH="/work/umbravox/scripts:/run/current-system/sw/bin:/run/current-syst
 unset LD_LIBRARY_PATH 2>/dev/null || true
 cd /work/umbravox 2>/dev/null || true
 `
+	// Auto-run command if provided (./uv run gui injects .vm-exec-cmd)
+	if cmdBytes, err := os.ReadFile(filepath.Join(srcMount, ".vm-exec-cmd")); err == nil {
+		cmd := strings.TrimSpace(string(cmdBytes))
+		if cmd != "" {
+			profile += fmt.Sprintf("\n# Auto-run from ./uv run gui\n%s\n# Shut down VM when app exits\nsystemctl poweroff\n", cmd)
+		}
+	}
 	os.WriteFile("/etc/profile.d/umbravox-dev.sh", []byte(profile), 0o644)
 }
 

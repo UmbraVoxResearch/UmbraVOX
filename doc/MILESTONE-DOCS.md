@@ -12,7 +12,7 @@ Last updated: 2026-05-22
 
 ### What was implemented
 - M20.1: Eliminated unsafePerformIO globals, broke Network-TUI dependency via
-  ListenerCallbacks, moved Bridge/Signal/Main.hs to app-signal-bridge/.
+  ListenerCallbacks, moved Bridge/Signal/Main.hs to app/signal-bridge/.
 - M20.2: 11 `*Safe` crypto variants added, 24 stub modules documented with
   error handling hardening.
 - M20.3: Consensus/economics stubs gated behind cabal flag, transport stubs
@@ -29,11 +29,11 @@ Last updated: 2026-05-22
 
 ### Key files
 - `src/UmbraVox/Network/Listener.hs` (ListenerCallbacks decoupling)
-- `app-signal-bridge/Main.hs` (extracted bridge entrypoint)
+- `app/signal-bridge/Main.hs` (extracted bridge entrypoint)
 - `src/UmbraVox/Crypto/*.hs` (*Safe variants across all crypto modules)
 - `src/UmbraVox/Consensus/` (gated stubs)
 - `src/UmbraVox/Economics/` (gated stubs)
-- `Makefile` (VM-default targets, run_named_suite macro -- legacy, now `./uv`)
+- `./uv` (VM-default targets, run_named_suite macro -- formerly Makefile)
 - `flake.nix` (VM-only devShell)
 - `coq/` (Coq proof files, 14 files, 475 Qed)
 
@@ -77,9 +77,9 @@ Last updated: 2026-05-22
 - `src/UmbraVox/Network/PeerManager.hs` (peer scoring/banning)
 - `src/UmbraVox/Network/Dandelion.hs` (Dandelion++ routing)
 - `src/UmbraVox/Network/Protocol.hs` (P2P wire protocol)
-- `codegen/Specs/` (18 .spec files)
+- `app/codegen/Specs/` (18 .spec files)
 - `csrc/generated/` (18 generated C files)
-- `codegen/Main.hs`, `codegen/CryptoGen.hs`, `codegen/TestGen.hs` (codegen pipeline)
+- `app/codegen/Main.hs`, `app/codegen/CryptoGen.hs`, `app/codegen/TestGen.hs` (codegen pipeline)
 
 ### Tests
 - `test/Test/Crypto/VRF.hs`
@@ -291,7 +291,7 @@ Last updated: 2026-05-22
 - `src/UmbraVox/App/` (RuntimeLog denylist redaction)
 - `csrc/constant_time.c` (C FFI for constant-time comparison)
 - `csrc/sqlite3_shim.c` (hand-rolled SQLite3 FFI)
-- `Makefile` (cc-options hardening -- legacy, now `./uv`)
+- `UmbraVox.cabal` (cc-options hardening -- formerly in Makefile)
 - `nix/vm-image.nix` (VM firewall default, base image SHA-256 pins)
 
 ### Tests

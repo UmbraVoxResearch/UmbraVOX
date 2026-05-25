@@ -4,7 +4,7 @@
 
 UmbraVOX uses a VM-first development model.  All `./uv build`, `./uv test`,
 `./uv verify`, and other standard build commands route through an isolated
-NixOS QEMU VM by default.  The full development toolchain (GHC 9.6, Cabal,
+NixOS QEMU VM by default.  The full development toolchain (GHC 9.14, Cabal,
 F\*, Z3, Coq, AFL++, valgrind, gcc, etc.) runs inside the VM.  The host
 machine only needs orchestration tools: QEMU, git, `./uv` (Go binary), and
 basic POSIX utilities (provided by `shell-minimal.nix`).
@@ -44,7 +44,7 @@ nix-shell shell-minimal.nix
 ```
 Host (shell-minimal.nix)          NixOS VM (nix/vm-image.nix)
 ========================          ============================
-QEMU, git, ./uv                   GHC 9.6, Cabal, F*, Z3, Coq
+QEMU, git, ./uv                   GHC 9.14, Cabal, F*, Z3, Coq
 genext2fs, e2fsprogs               gcc, gdb, valgrind, AFL++
                                    graphviz, jq, patchelf
      |                                  |
@@ -170,20 +170,20 @@ shared output directory (`build/vm-output/screenshots/`).
 ### Network Policy
 
 The VM has **no network access by default** (`-nic none`).  Network access
-is controlled by `vm-network-policy.conf` in the repository root, which is
+is controlled by `conf/vm-network-policy.conf` in the repository root, which is
 read by `scripts/vm-network-policy.sh` before QEMU launches.
 
 The default smoke/development boot path is offline-first and does not wait for
 `network.target` before starting UmbraVOX guest init/smoke units.
 
 ```
-# vm-network-policy.conf — deny-all by default
+# conf/vm-network-policy.conf — deny-all by default
 # Uncomment ALLOW rules to permit specific outbound connections:
 # ALLOW tcp 93.184.216.34 443
 ```
 
 The policy file is host-side only — the VM guest cannot modify it.  See
-`vm-network-policy.conf` for the full syntax and per-VM-type sections.
+`conf/vm-network-policy.conf` for the full syntax and per-VM-type sections.
 
 ### SOCKS5 Transport Test
 
@@ -287,6 +287,32 @@ UMBRAVOX_SEED_URL=https://internal-mirror.example.com/nixos-seed.qcow2 \
 
 This is useful for air-gapped networks, corporate mirrors, or local
 caches. The SHA-256 verification still applies regardless of the URL.
+
+## Runtime VM (Firecracker)
+
+The project uses two VM tiers:
+
+1. **Dev VM** (QEMU, ~26GB) — full toolchain (GHC 9.14, Cabal, F*, Z3, Coq)
+   Used by: `./uv build`, `./uv test`, `./uv verify`, `./uv dev`
+
+2. **Runtime VM** (Firecracker, <500MB) — minimal (glibc, sqlite, ncurses)
+   Used by: `./uv run`, `./uv run tui`, `./uv run headless`
+
+3. **Runtime VM** (QEMU lightweight, <1GB) — minimal + VGA display
+   Used by: `./uv run gui`
+
+### Building Runtime Images
+
+    ./uv vm build-runtime-image
+
+### Running
+
+    ./uv run              # Default: Firecracker TUI (sub-second boot)
+    ./uv run gui          # Lightweight QEMU with VGA display
+    ./uv run headless     # Firecracker daemon mode
+
+The runtime VM boots the pre-built binary from `build/runtime/`. If no
+binary exists, run `./uv build` first.
 
 ## Troubleshooting
 

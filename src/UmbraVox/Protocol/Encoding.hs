@@ -64,7 +64,7 @@ splitOn delim s =
 safeReadPort :: String -> Int
 safeReadPort str = case reads str of
     [(p, "")] -> p
-    _         -> head defaultPorts
+    _         -> defaultPort
 
 -- | Default port sequence to try when connecting without an explicit port.
 -- Tries the primary UmbraVOX port first, then common alternatives.

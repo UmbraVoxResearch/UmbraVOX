@@ -108,8 +108,9 @@ func buildPlatformRelease(repoRoot, platform string) int {
 	log.Info(tag, fmt.Sprintf("Building platform release: %s", platform))
 	cmd := exec.Command("nix-shell",
 		filepath.Join(repoRoot, "shell-minimal.nix"),
-		"--run", fmt.Sprintf("./scripts/release-package-platform.sh %s", platform))
+		"--run", "./scripts/release-package-platform.sh \"$UMBRAVOX_RELEASE_PLATFORM\"")
 	cmd.Dir = repoRoot
+	cmd.Env = append(os.Environ(), "UMBRAVOX_RELEASE_PLATFORM="+platform)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {

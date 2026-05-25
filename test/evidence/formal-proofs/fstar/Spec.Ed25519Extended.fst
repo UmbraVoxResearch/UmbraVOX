@@ -162,13 +162,23 @@ val negate_identity : unit
     -> Lemma (point_negate point_identity == point_identity)
 let negate_identity () = ()
 
-(** Cofactor clearing ensures prime-order subgroup membership. *)
+(* ASSUME JUSTIFICATION: cofactor_clearing
+   Category: Algebraic property
+   Reference: RFC 8032 Section 5.1; Bernstein et al., "Twisted Edwards Curves" (2008)
+   Status: Standard algebraic property of Ed25519, not provable in F*.
+   Multiplying any point by the cofactor (8) projects it into the prime-order subgroup
+   of order q, so [q]([8]P) = identity. Requires a model of the Ed25519 group law. *)
 assume val cofactor_clearing : p:ext_point
     -> Lemma (
         let p8 = scalar_mult cofactor p in
         scalar_mult group_order p8 == point_identity)
 
-(** Encode/decode round-trip for valid points. *)
+(* ASSUME JUSTIFICATION: encode_decode_roundtrip
+   Category: Algebraic property
+   Reference: RFC 8032 Section 5.1.2-5.1.3
+   Status: Standard encoding property, not provable in F* without concrete field arithmetic.
+   Point compression and decompression are inverses for valid on-curve points; proving
+   this requires square-root recovery in GF(2^255-19) which is beyond Z3's capacity. *)
 assume val encode_decode_roundtrip : p:ext_point
     -> Lemma (decode_point (encode_point p) == Some p)
 

@@ -21,6 +21,7 @@ import qualified Data.Sequence as Seq
 import Data.Word (Word32, Word64)
 
 import UmbraVox.Crypto.Signal.DoubleRatchet (RatchetState(..))
+import UmbraVox.Crypto.SecureBytes (SecureBytes, fromByteString, toByteString)
 import UmbraVox.Protocol.Encoding (putWord32BE, getWord32BE, putWord64BE)
 
 ------------------------------------------------------------------------
@@ -37,7 +38,7 @@ data SessionState = SessionState
       -- ^ Unix timestamp when the session was created.
     , ssMessageCount :: !Word64
       -- ^ Total messages exchanged in this session.
-    } deriving stock (Show, Eq)
+    }
 
 ------------------------------------------------------------------------
 -- Initialization
@@ -49,26 +50,33 @@ data SessionState = SessionState
 -- ratchet state (the initiator performs the first DH ratchet step).
 -- Peer identity and timestamps must be set by the caller after
 -- construction.
-initSession :: ByteString -> SessionState
-initSession sharedSecret = SessionState
-    { ssRatchetState = RatchetState
-        { rsDHSend      = (BS.replicate 32 0, BS.replicate 32 0)
-        , rsDHRecv      = Nothing
-        , rsRootKey     = sharedSecret
-        , rsSendChain   = BS.replicate 32 0
-        , rsRecvChain   = BS.replicate 32 0
-        , rsSendN       = 0
-        , rsRecvN       = 0
-        , rsPrevChainN  = 0
-        , rsSkippedKeys = Map.empty
-        , rsSkipSeq     = 0
-        , rsNonceCounter = 0
-        , rsSeenDHKeys  = Seq.empty
+--
+-- M15.3: Now monadic (IO) — RatchetState key fields are SecureBytes.
+initSession :: ByteString -> IO SessionState
+initSession sharedSecret = do
+    dhSecretSB  <- fromByteString (BS.replicate 32 0)
+    rootKeySB   <- fromByteString sharedSecret
+    sendChainSB <- fromByteString (BS.replicate 32 0)
+    recvChainSB <- fromByteString (BS.replicate 32 0)
+    pure SessionState
+        { ssRatchetState = RatchetState
+            { rsDHSend      = (dhSecretSB, BS.replicate 32 0)
+            , rsDHRecv      = Nothing
+            , rsRootKey     = rootKeySB
+            , rsSendChain   = sendChainSB
+            , rsRecvChain   = recvChainSB
+            , rsSendN       = 0
+            , rsRecvN       = 0
+            , rsPrevChainN  = 0
+            , rsSkippedKeys = Map.empty
+            , rsSkipSeq     = 0
+            , rsNonceCounter = 0
+            , rsSeenDHKeys  = Seq.empty
+            }
+        , ssPeerIdentity = BS.empty
+        , ssCreatedAt    = 0
+        , ssMessageCount = 0
         }
-    , ssPeerIdentity = BS.empty
-    , ssCreatedAt    = 0
-    , ssMessageCount = 0
-    }
 
 ------------------------------------------------------------------------
 -- Serialization
@@ -94,12 +102,17 @@ initSession sharedSecret = SessionState
 --   [4: peerIdentity len][peerIdentity]
 --   [8: createdAt][8: messageCount]
 -- @
-serializeSession :: SessionState -> ByteString
-serializeSession ss =
+-- M15.3: Now monadic (IO) — must extract ByteString from SecureBytes fields.
+serializeSession :: SessionState -> IO ByteString
+serializeSession ss = do
     let rs = ssRatchetState ss
-        -- DH send keypair
-        (dhSec, dhPub) = rsDHSend rs
-        -- DH recv
+        -- DH send keypair (secret is SecureBytes, public is ByteString)
+        (dhSecSB, dhPub) = rsDHSend rs
+    dhSec <- toByteString dhSecSB
+    rootKey   <- toByteString (rsRootKey rs)
+    sendChain <- toByteString (rsSendChain rs)
+    recvChain <- toByteString (rsRecvChain rs)
+    let -- DH recv
         dhRecvBytes = case rsDHRecv rs of
             Nothing  -> BS.singleton 0
             Just pk  -> BS.singleton 1 <> putBlob pk
@@ -111,13 +124,13 @@ serializeSession ss =
               <> putBlob mk <> putBlob ck <> putWord64BE iseq <> putWord64BE wallTs
             | ((k, n), (mk, ck, iseq, wallTs)) <- skippedList
             ]
-    in mconcat
+    pure $ mconcat
         [ putBlob dhSec
         , putBlob dhPub
         , dhRecvBytes
-        , putBlob (rsRootKey rs)
-        , putBlob (rsSendChain rs)
-        , putBlob (rsRecvChain rs)
+        , putBlob rootKey
+        , putBlob sendChain
+        , putBlob recvChain
         , putWord32BE (rsSendN rs)
         , putWord32BE (rsRecvN rs)
         , putWord32BE (rsPrevChainN rs)
@@ -133,8 +146,49 @@ serializeSession ss =
 -- | Deserialize a session state from bytes.
 --
 -- Returns 'Nothing' if the input is malformed or truncated.
-deserializeSession :: ByteString -> Maybe SessionState
-deserializeSession bs0 = do
+--
+-- M15.3: Now monadic (IO) — wraps key fields in SecureBytes.
+deserializeSession :: ByteString -> IO (Maybe SessionState)
+deserializeSession bs0 =
+    case parseSessionBytes bs0 of
+        Nothing -> pure Nothing
+        Just (dhSec, dhPub, mDHRecv, rootKey, sendChain, recvChain,
+              sendN, recvN, prevChainN, skipSeq, nonceCtr, skipped,
+              peerIdent, createdAt, msgCount) -> do
+            dhSecSB    <- fromByteString dhSec
+            rootKeySB  <- fromByteString rootKey
+            sendChainSB <- fromByteString sendChain
+            recvChainSB <- fromByteString recvChain
+            pure $ Just SessionState
+                { ssRatchetState = RatchetState
+                    { rsDHSend      = (dhSecSB, dhPub)
+                    , rsDHRecv      = mDHRecv
+                    , rsRootKey     = rootKeySB
+                    , rsSendChain   = sendChainSB
+                    , rsRecvChain   = recvChainSB
+                    , rsSendN       = sendN
+                    , rsRecvN       = recvN
+                    , rsPrevChainN  = prevChainN
+                    , rsSkippedKeys = skipped
+                    , rsSkipSeq     = skipSeq
+                    , rsNonceCounter = nonceCtr
+                    , rsSeenDHKeys  = Seq.empty
+                    }
+                , ssPeerIdentity = peerIdent
+                , ssCreatedAt    = createdAt
+                , ssMessageCount = msgCount
+                }
+
+-- | Pure binary parsing helper for 'deserializeSession'.
+-- Returns Nothing if the input is malformed or truncated.
+parseSessionBytes :: ByteString
+                  -> Maybe ( ByteString, ByteString, Maybe ByteString
+                           , ByteString, ByteString, ByteString
+                           , Word32, Word32, Word32
+                           , Word64, Word64
+                           , Map.Map (ByteString, Word32) (ByteString, ByteString, Word64, Word64)
+                           , ByteString, Word64, Word64 )
+parseSessionBytes bs0 = do
     (dhSec, bs1)   <- getBlob bs0
     (dhPub, bs2)   <- getBlob bs1
     (flag, bs3)    <- getByte bs2
@@ -157,25 +211,9 @@ deserializeSession bs0 = do
     (peerIdent, bs15)  <- getBlob bs14
     (createdAt, bs16)  <- getW64 bs15
     (msgCount, _bs17)  <- getW64 bs16
-    Just SessionState
-        { ssRatchetState = RatchetState
-            { rsDHSend      = (dhSec, dhPub)
-            , rsDHRecv      = mDHRecv
-            , rsRootKey     = rootKey
-            , rsSendChain   = sendChain
-            , rsRecvChain   = recvChain
-            , rsSendN       = sendN
-            , rsRecvN       = recvN
-            , rsPrevChainN  = prevChainN
-            , rsSkippedKeys = skipped
-            , rsSkipSeq     = skipSeq
-            , rsNonceCounter = nonceCtr
-            , rsSeenDHKeys  = Seq.empty
-            }
-        , ssPeerIdentity = peerIdent
-        , ssCreatedAt    = createdAt
-        , ssMessageCount = msgCount
-        }
+    Just (dhSec, dhPub, mDHRecv, rootKey, sendChain, recvChain,
+          sendN, recvN, prevChainN, skipSeq, nonceCtr, skipped,
+          peerIdent, createdAt, msgCount)
 
 ------------------------------------------------------------------------
 -- Binary helpers

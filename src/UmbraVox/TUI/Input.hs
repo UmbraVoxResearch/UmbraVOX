@@ -59,6 +59,7 @@ import UmbraVox.TUI.RichText
 import qualified UmbraVox.TUI.RichText as RichText
 import UmbraVox.Network.MDNS (MDNSPeer(..))
 import UmbraVox.Protocol.Encoding (splitOn, parseHostPort)
+import UmbraVox.Crypto.SecureBytes (fromByteString)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 
 data GridRegion = RegionContacts | RegionActions | RegionChat | RegionOverlay
@@ -1287,8 +1288,9 @@ handleKeysDlg st (KeyChar 'x') = closeDialog st
 handleKeysDlg st (KeyChar 'X') = closeDialog st
 handleKeysDlg st (KeyChar 'i') = do
     writeIORef (asDialogBuf st) ""
-    writeIORef (asDialogMode st) (Just (DlgPrompt "Import Identity Key (hex payload)" $ \val ->
-        case decodeIdentityHex val of
+    writeIORef (asDialogMode st) (Just (DlgPrompt "Import Identity Key (hex payload)" $ \val -> do
+        mIk <- decodeIdentityHex val
+        case mIk of
             Just ik -> writeIORef (cfgIdentity (asConfig st)) (Just ik) >> setStatus st "Identity key imported."
             Nothing -> setStatus st "Invalid key payload."))
 handleKeysDlg st (KeyChar 'I') = handleKeysDlg st (KeyChar 'i')
@@ -1468,20 +1470,27 @@ handleBridgeSelectDlg st (KeyChar '1') = do
     writeIORef (asDialogScroll st) 0
 handleBridgeSelectDlg _ _ = pure ()
 
-decodeIdentityHex :: String -> Maybe IdentityKey
+decodeIdentityHex :: String -> IO (Maybe IdentityKey)
 decodeIdentityHex input = do
     let compact = filter (/= ' ') input
-    hexText <- if all isDigit compact && even (length compact)
-        then decodeIdentityNumeric compact
-        else Just (map toLower compact)
-    bytes <- fromHex hexText
-    if BS.length bytes /= 128 then Nothing else
-        Just IdentityKey
-            { ikEd25519Secret = BS.take 32 bytes
-            , ikEd25519Public = BS.take 32 (BS.drop 32 bytes)
-            , ikX25519Secret  = BS.take 32 (BS.drop 64 bytes)
-            , ikX25519Public  = BS.drop 96 bytes
-            }
+        mBytes = do
+            hexText <- if all isDigit compact && even (length compact)
+                then decodeIdentityNumeric compact
+                else Just (map toLower compact)
+            fromHex hexText
+    case mBytes of
+        Nothing -> pure Nothing
+        Just bytes
+            | BS.length bytes /= 128 -> pure Nothing
+            | otherwise -> do
+                sbEdSecret <- fromByteString (BS.take 32 bytes)
+                sbXSecret  <- fromByteString (BS.take 32 (BS.drop 64 bytes))
+                pure $ Just IdentityKey
+                    { ikEd25519Secret = sbEdSecret
+                    , ikEd25519Public = BS.take 32 (BS.drop 32 bytes)
+                    , ikX25519Secret  = sbXSecret
+                    , ikX25519Public  = BS.drop 96 bytes
+                    }
   where
     fromHex [] = Just BS.empty
     fromHex [_] = Nothing

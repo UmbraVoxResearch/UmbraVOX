@@ -129,36 +129,19 @@ func readGuestStatus(outputDir string, qemuExit int) int {
 	return qemuExit
 }
 
-// execInVM boots the dev VM, runs cmd inside it, and returns the guest exit code.
-// This is the core primitive — most commands are thin wrappers around it.
-func execInVM(cmd string, profile qemu.VMProfile, timeout time.Duration) int {
-	repoRoot, err := repo.Root()
-	if err != nil {
-		log.Fail(tag, err.Error())
-		return 1
-	}
-
-	srcDisk, overlayPath, cacheDisk, outputDir, cleanup, err := prepareVMDisks(repoRoot, cmd)
-	if err != nil {
-		log.Fail(tag, err.Error())
-		return 1
-	}
-	defer cleanup()
-
-	// Network policy
-	policyFile := filepath.Join(repoRoot, "vm-network-policy.conf")
+// buildExecQEMUConfig assembles the QEMU configuration for an exec-mode VM
+// boot from the prepared disk paths, network policy, and profile.
+func buildExecQEMUConfig(repoRoot, srcDisk, overlayPath, cacheDisk, outputDir string, profile qemu.VMProfile, timeout time.Duration) (*qemu.Config, error) {
+	policyFile := filepath.Join(repoRoot, "conf/vm-network-policy.conf")
 	policy, err := netpol.ParseFile(policyFile)
 	if err != nil {
-		log.Fail(tag, fmt.Sprintf("Failed to parse network policy: %v", err))
-		return 1
+		return nil, fmt.Errorf("failed to parse network policy: %w", err)
 	}
 	netArgs, err := policy.QEMUNetArgs()
 	if err != nil {
-		log.Fail(tag, fmt.Sprintf("Network policy error: %v", err))
-		return 1
+		return nil, fmt.Errorf("network policy error: %w", err)
 	}
 
-	// Build QEMU config
 	outputShare := ninep.DefaultOutputShare(outputDir)
 	cfg := qemu.ProfileConfig(profile)
 	cfg.Drives = []qemu.Drive{
@@ -177,10 +160,12 @@ func execInVM(cmd string, profile qemu.VMProfile, timeout time.Duration) int {
 	cfg.Timeout = timeout
 
 	log.Info(tag, fmt.Sprintf("VM: %d cores, %dMB RAM | net: %s", cfg.SMP, cfg.MemoryMB, netArgs))
-	log.Info(tag, fmt.Sprintf("exec: %s", cmd))
-	fmt.Fprintln(os.Stderr)
+	return &cfg, nil
+}
 
-	// Boot QEMU
+// bootQEMU starts the QEMU process with the given config and timeout, returning
+// the process exit code (0 if QEMU exits cleanly).
+func bootQEMU(cfg *qemu.Config, timeout time.Duration) int {
 	qemuArgs := cfg.Args()
 	var qemuCmd *exec.Cmd
 	if timeout > 0 {
@@ -195,16 +180,42 @@ func execInVM(cmd string, profile qemu.VMProfile, timeout time.Duration) int {
 	qemuCmd.Stderr = os.Stderr
 
 	qemuErr := qemuCmd.Run()
-	qemuExit := 0
 	if qemuErr != nil {
 		if exitErr, ok := qemuErr.(*exec.ExitError); ok {
-			qemuExit = exitErr.ExitCode()
-		} else {
-			log.Fail(tag, fmt.Sprintf("Failed to run QEMU: %v", qemuErr))
-			qemuExit = 1
+			return exitErr.ExitCode()
 		}
+		log.Fail(tag, fmt.Sprintf("Failed to run QEMU: %v", qemuErr))
+		return 1
+	}
+	return 0
+}
+
+// execInVM boots the dev VM, runs cmd inside it, and returns the guest exit code.
+// This is the core primitive — most commands are thin wrappers around it.
+func execInVM(cmd string, profile qemu.VMProfile, timeout time.Duration) int {
+	repoRoot, err := repo.Root()
+	if err != nil {
+		log.Fail(tag, err.Error())
+		return 1
 	}
 
+	srcDisk, overlayPath, cacheDisk, outputDir, cleanup, err := prepareVMDisks(repoRoot, cmd)
+	if err != nil {
+		log.Fail(tag, err.Error())
+		return 1
+	}
+	defer cleanup()
+
+	cfg, err := buildExecQEMUConfig(repoRoot, srcDisk, overlayPath, cacheDisk, outputDir, profile, timeout)
+	if err != nil {
+		log.Fail(tag, err.Error())
+		return 1
+	}
+
+	log.Info(tag, fmt.Sprintf("exec: %s", cmd))
+	fmt.Fprintln(os.Stderr)
+
+	qemuExit := bootQEMU(cfg, timeout)
 	return readGuestStatus(outputDir, qemuExit)
 }
 

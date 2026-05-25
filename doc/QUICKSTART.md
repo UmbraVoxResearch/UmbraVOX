@@ -50,7 +50,7 @@ scripts/nix-flake.sh flake show --no-write-lock-file
 - `./uv build` builds library + executables (routes to VM by default).
 - `./uv release linux` builds a portable Linux x86_64 terminal bundle with a patched local loader/lib set.
 - `./uv dev` opens an interactive development shell inside the NixOS VM with
-  the full toolchain (GHC 9.6, Cabal, F*, Z3, Coq, AFL++, valgrind).
+  the full toolchain (GHC 9.14, Cabal, F*, Z3, Coq, AFL++, valgrind).
 - `./uv vm build-image` builds and caches the NixOS VM image without
   running the smoke pipeline.
 - `./uv clean` removes build artifacts including the cached VM image.
@@ -82,7 +82,7 @@ an isolated NixOS VM by default.  The host only needs QEMU and git.
 | `./uv clean` | Clean build artifacts |
 | `nix-shell` | Full local shell (commands still route to VM by default) |
 
-Inside `./uv dev`, you have the full toolchain (GHC 9.6, Cabal, F*, Z3,
+Inside `./uv dev`, you have the full toolchain (GHC 9.14, Cabal, F*, Z3,
 Coq, AFL++, valgrind) and can run any command interactively. The source is
 mounted read-only at `/mnt/src` and copied to `/work/umbravox` on boot.
 

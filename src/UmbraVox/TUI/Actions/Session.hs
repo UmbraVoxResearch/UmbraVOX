@@ -107,7 +107,7 @@ addLoopbackSession cfg label = do
 -- encrypted payload per M23.1.1d.
 sendToSession :: BS.ByteString -> SessionInfo -> BS.ByteString -> IO SendResult
 sendToSession sId si msg = case siCrypto si of
-    BridgeCrypto _bs -> error "bridge not implemented"
+    BridgeCrypto _bs -> putStrLn "warning: BridgeCrypto send not yet implemented" >> pure SendUnavailable
     RatchetCrypto ref -> do
       withMVar (siSessionLock si) $ \_ -> do
         session <- readIORef ref

@@ -106,10 +106,12 @@ val kdf_ck_distinct_lemma :
               ck1 == hmac_sha256 ck (Seq.create 1 0x01uy))
 let kdf_ck_distinct_lemma ck = ()
 
-(** Cryptographic axiom: HMAC-SHA256 is not a fixpoint.
-    For any chain key ck, HMAC-SHA256(ck, 0x01) != ck.
-    This is a standard PRF security property; instantiation with a
-    concrete Spec.HMAC and SHA-256 collision resistance would discharge it. *)
+(* ASSUME JUSTIFICATION: hmac_non_fixpoint
+   Category: Cryptographic assumption
+   Reference: RFC 2104 (HMAC); Bellare et al., "Keying Hash Functions for Message Authentication" (1996)
+   Status: Standard cryptographic assumption, not provable in F*.
+   HMAC-SHA256 as a PRF has negligible probability of being a fixpoint on any input.
+   Discharging this would require a concrete HMAC model and SHA-256 collision resistance. *)
 assume val hmac_non_fixpoint :
     ck:seq UInt8.t{Seq.length ck = chain_key_size}
     -> Lemma (hmac_sha256 ck (Seq.create 1 0x01uy) =!= ck)
@@ -137,10 +139,12 @@ let kdf_ck_independence_lemma ck =
   assert (Seq.index (Seq.create 1 0x02uy) 0 == 0x02uy);
   assert (Seq.create 1 0x01uy =!= Seq.create 1 0x02uy)
 
-(** Cryptographic axiom: HMAC-SHA256 collision resistance on distinct inputs.
-    For any key ck, HMAC-SHA256(ck, 0x01) != HMAC-SHA256(ck, 0x02).
-    This follows from collision resistance of HMAC-SHA256: the two inputs
-    differ, so a collision would break the hash function. *)
+(* ASSUME JUSTIFICATION: hmac_collision_resistance
+   Category: Cryptographic assumption
+   Reference: RFC 2104 (HMAC); NIST FIPS 180-4 (SHA-256)
+   Status: Standard cryptographic assumption, not provable in F*.
+   HMAC-SHA256 collision resistance ensures distinct inputs (0x01 vs 0x02) under the
+   same key produce distinct outputs; a collision would break the underlying hash function. *)
 assume val hmac_collision_resistance :
     ck:seq UInt8.t{Seq.length ck = chain_key_size}
     -> Lemma (hmac_sha256 ck (Seq.create 1 0x01uy) =!=

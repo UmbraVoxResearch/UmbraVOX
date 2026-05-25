@@ -78,6 +78,10 @@ let
     networking.hostName = lib.mkForce "umbravox-signal-build";
     boot.loader.timeout = 0;
 
+    # nix-ld provides /lib64/ld-linux-x86-64.so.2 so Maven-downloaded
+    # protoc/grpc plugin binaries (dynamically linked ELF) can execute.
+    programs.nix-ld.enable = true;
+
     # Nix daemon for in-VM builds (vm-base.nix sets nix.enable=false)
     nix.enable = lib.mkForce true;
     nix.settings = {
@@ -111,12 +115,14 @@ let
       environment = {
         HOME = "/root";
         NIX_PATH = "nixpkgs=${pkgs.path}";
+        JAVA_HOME = "${pkgs.jdk25_headless}";
       };
       serviceConfig = {
         Type = "oneshot";
         ExecStart = pkgs.writeShellScript "signal-server-build" ''
           set -euo pipefail
-          export PATH=/run/current-system/sw/bin:/run/current-system/sw/sbin:$PATH
+          export PATH=${pkgs.jdk25_headless}/bin:/run/current-system/sw/bin:/run/current-system/sw/sbin:$PATH
+          export JAVA_HOME=${pkgs.jdk25_headless}
 
           echo "=== Signal-Server Build VM (nix-build inside VM) ==="
           echo "  Nix: $(nix --version)"
@@ -166,8 +172,17 @@ let
               exit 1
             }
 
+          # Copy dependency JARs for classpath assembly
+          mvn -B -ntp dependency:copy-dependencies \
+            -pl service \
+            -Dmaven.repo.local=/root/.m2/repository \
+            -DoutputDirectory=target/dependency \
+            -DincludeScope=runtime \
+            -DskipTests \
+            || true
+
           echo "=== Build complete ==="
-          JAR=$(find service/target -name 'TextSecureServer-*.jar' -not -name '*-sources*' -not -name '*-tests*' | head -1)
+          JAR=$(find service/target -maxdepth 1 -name 'TextSecureServer-*.jar' -not -name '*-sources*' -not -name '*-tests*' | head -1)
           if [ -z "$JAR" ]; then
             echo "BUILD_RESULT=FAIL"
             echo "JAR not found in service/target/"
@@ -177,6 +192,12 @@ let
           fi
 
           cp "$JAR" /output/signal-server.jar
+          # Copy dependency JARs for runtime classpath
+          if [ -d service/target/dependency ]; then
+            mkdir -p /output/lib
+            cp service/target/dependency/*.jar /output/lib/ 2>/dev/null || true
+            echo "Copied $(ls /output/lib/*.jar 2>/dev/null | wc -l) dependency JARs"
+          fi
           echo "BUILD_RESULT=PASS"
           echo "JAR copied to /output/signal-server.jar"
           ls -lh /output/signal-server.jar
@@ -261,6 +282,11 @@ let
       source = signalJarPath + "/signal-server.jar";
     };
 
+    # Copy dependency JARs for runtime classpath
+    environment.etc."signal-server/lib" = lib.mkIf (signalJarPath != null && builtins.pathExists (signalJarPath + "/lib")) {
+      source = signalJarPath + "/lib";
+    };
+
     systemd.services.signal-server = lib.mkIf (signalJarPath != null) {
       description = "Signal-Server (wire-compat test instance)";
       wantedBy = [ "multi-user.target" ];
@@ -282,10 +308,16 @@ let
             ${pkgs.postgresql_15}/bin/pg_isready -q && break
             echo "Waiting for PostgreSQL ($i/30)..." && sleep 1
           done
+          # Use classpath mode: thin JAR + dependency libs
+          CP="/etc/signal-server/signal-server.jar"
+          if [ -d /etc/signal-server/lib ]; then
+            CP="$CP:/etc/signal-server/lib/*"
+          fi
           exec ${pkgs.jdk25_headless}/bin/java \
             -Dsecrets.bundle.filename=/etc/signal-server/secrets.yml \
             -Xmx512m \
-            -jar /etc/signal-server/signal-server.jar \
+            -cp "$CP" \
+            org.whispersystems.textsecuregroupserver.WhisperServerService \
             server /etc/signal-server/config.yml
         '';
         Restart = "on-failure";
@@ -333,7 +365,7 @@ let
       };
     };
 
-    networking.firewall.enable = false;
+    networking.firewall.enable = lib.mkForce false;
   };
 
   runtimeNixos = import (pkgs.path + "/nixos") {

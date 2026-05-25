@@ -474,8 +474,8 @@ func runSmoke(workDir, outputDir, skip, only string, verbose bool) int {
 
 	// Step 7: Release
 	if shouldRun("release", skip, only) {
-		releaseScript := filepath.Join(workDir, "scripts/release-package.sh")
-		if runStep("release-linux", verbose, "bash", releaseScript, "linux") {
+		releaseTool := filepath.Join(workDir, "tools", "cmd", "release")
+		if runStep("release-linux", verbose, "go", "run", releaseTool, "linux") {
 			pass++
 		} else {
 			fail++
@@ -542,7 +542,7 @@ func runComplexityCheck(workDir, complexityBin string) bool {
 	violations := 0
 	total := 0
 
-	dirs := []string{"src/UmbraVox", "test/Test", "codegen"}
+	dirs := []string{"src/UmbraVox", "test/Test", "app/codegen"}
 	for _, dir := range dirs {
 		fullDir := filepath.Join(workDir, dir)
 		filepath.Walk(fullDir, func(path string, info os.FileInfo, err error) error {

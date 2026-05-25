@@ -10,6 +10,7 @@ import System.FilePath ((</>))
 import Test.Util (assertEq, getProjectTmpDir)
 import UmbraVox.Crypto.KeyStore
     ( openKeyStore, saveIdentityKeyAt, loadIdentityKeyAt )
+import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.X3DH
     ( IdentityKey(..), generateIdentityKey )
 
@@ -35,15 +36,19 @@ testIdentityRoundTrip :: IO Bool
 testIdentityRoundTrip = do
     tmp <- getProjectTmpDir
     let path = tmp </> "umbravox-keystore-roundtrip.key"
-        ik = generateIdentityKey (BS.replicate 32 0x11) (BS.replicate 32 0x22)
+    ik <- generateIdentityKey (BS.replicate 32 0x11) (BS.replicate 32 0x22)
     saveIdentityKeyAt path ik
     loaded <- loadIdentityKeyAt path
     cleanup path
     case loaded of
         Nothing -> assertEq "identity round-trip loads key" True False
         Just actual -> do
-            ok1 <- assertEq "round-trip ed secret" (ikEd25519Secret ik) (ikEd25519Secret actual)
-            ok2 <- assertEq "round-trip x secret" (ikX25519Secret ik) (ikX25519Secret actual)
+            edSecOrig   <- toByteString (ikEd25519Secret ik)
+            edSecLoaded <- toByteString (ikEd25519Secret actual)
+            xSecOrig    <- toByteString (ikX25519Secret ik)
+            xSecLoaded  <- toByteString (ikX25519Secret actual)
+            ok1 <- assertEq "round-trip ed secret" edSecOrig edSecLoaded
+            ok2 <- assertEq "round-trip x secret" xSecOrig xSecLoaded
             pure (ok1 && ok2)
 
 cleanup :: FilePath -> IO ()

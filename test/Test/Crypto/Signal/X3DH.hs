@@ -4,6 +4,7 @@
 module Test.Crypto.Signal.X3DH (runTests) where
 
 import qualified Data.ByteString as BS
+import Data.Maybe (isNothing)
 import Data.Word (Word64)
 
 import Test.Util
@@ -28,7 +29,7 @@ runTests = do
         ]
     putStrLn "[X3DH] Running property tests..."
     propResults <- sequence
-        [ checkProperty "key agreement matches (100 random keypairs)" 100 propKeyAgreementMatches
+        [ checkPropertyIO "key agreement matches (100 random keypairs)" 100 propKeyAgreementMatches
         ]
     putStrLn "[X3DH] Running M23.2.1 OPK depletion tests..."
     depletionResults <- sequence
@@ -54,9 +55,9 @@ runTests = do
 testKeyGenRoundTrip :: IO Bool
 testKeyGenRoundTrip = do
     let secret = hexDecode "a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4"
-        kp = generateKeyPair secret
-        -- x25519 now returns Maybe; basepoint mult of a non-zero secret is always Just
-        mExpectedPub = x25519 secret x25519Basepoint
+    kp <- generateKeyPair secret
+    -- x25519 now returns Maybe; basepoint mult of a non-zero secret is always Just
+    let mExpectedPub = x25519 secret x25519Basepoint
     case mExpectedPub of
         Nothing -> do
             putStrLn "  FAIL: key gen round-trip: x25519 basepoint returned Nothing (impossible)"
@@ -71,15 +72,15 @@ testSPKSignatureVerify :: IO Bool
 testSPKSignatureVerify = do
     let edSecret = hexDecode "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"
         xSecret  = hexDecode "a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4"
-        ik = generateIdentityKey edSecret xSecret
-        spkSecret = hexDecode "4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d"
-        spk = generateKeyPair spkSecret
-        sig = signPreKey ik (kpPublic spk)
-        -- Verify with Ed25519
-        valid = verifyBundle ik spk sig
+    ik <- generateIdentityKey edSecret xSecret
+    let spkSecret = hexDecode "4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d"
+    spk <- generateKeyPair spkSecret
+    sig <- signPreKey ik (kpPublic spk)
+    -- Verify with Ed25519
+    valid <- verifyBundle ik spk sig
     assertEq "SPK signature verifies" True valid
   where
-    verifyBundle ik spk sig =
+    verifyBundle ik spk sig = do
         let bundle = PreKeyBundle
                 { pkbIdentityKey    = ikX25519Public ik
                 , pkbSignedPreKey   = kpPublic spk
@@ -89,10 +90,11 @@ testSPKSignatureVerify = do
                 }
             -- If x3dhInitiate succeeds, the signature was valid
             ekSecret = hexDecode "0900000000000000000000000000000000000000000000000000000000000001"
-            aliceIK = generateIdentityKey
-                (hexDecode "0900000000000000000000000000000000000000000000000000000000000002")
-                (hexDecode "0900000000000000000000000000000000000000000000000000000000000003")
-        in case x3dhInitiate aliceIK bundle ekSecret of
+        aliceIK <- generateIdentityKey
+            (hexDecode "0900000000000000000000000000000000000000000000000000000000000002")
+            (hexDecode "0900000000000000000000000000000000000000000000000000000000000003")
+        mResult <- x3dhInitiate aliceIK bundle ekSecret
+        pure $ case mResult of
             Just _  -> True
             Nothing -> False
 
@@ -103,20 +105,20 @@ testSPKSignatureVerify = do
 testX3DHWithOPK :: IO Bool
 testX3DHWithOPK = do
     -- Alice's identity key
-    let aliceIK = generateIdentityKey
+    aliceIK <- generateIdentityKey
             (hexDecode "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
             (hexDecode "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
     -- Bob's identity key
-    let bobIK = generateIdentityKey
+    bobIK <- generateIdentityKey
             (hexDecode "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb")
             (hexDecode "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb")
     -- Bob's SPK
     let spkSecret = hexDecode "b8b4e236805318e93f48bfbb365656ec1d068bf3d8cabb64dd1ba4523cec3a2a"
-        spk = generateKeyPair spkSecret
-        spkSig = signPreKey bobIK (kpPublic spk)
+    spk <- generateKeyPair spkSecret
+    spkSig <- signPreKey bobIK (kpPublic spk)
     -- Bob's OPK
     let opkSecret = hexDecode "a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4"
-        opk = generateKeyPair opkSecret
+    opk <- generateKeyPair opkSecret
     -- Bob's prekey bundle
     let bundle = PreKeyBundle
             { pkbIdentityKey    = ikX25519Public bobIK
@@ -128,14 +130,16 @@ testX3DHWithOPK = do
     -- Alice's ephemeral secret
     let ekSecret = hexDecode "4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d"
     -- Alice initiates
-    case x3dhInitiate aliceIK bundle ekSecret of
+    mResult <- x3dhInitiate aliceIK bundle ekSecret
+    case mResult of
         Nothing -> do
             putStrLn "  FAIL: X3DH with OPK (initiation failed)"
             pure False
         Just result -> do
-            -- Bob responds (x3dhRespond now returns Maybe ByteString)
-            case x3dhRespond bobIK spkSecret (Just opkSecret)
-                    (ikX25519Public aliceIK) (x3dhEphemeralKey result) of
+            -- Bob responds (x3dhRespond now returns IO (Maybe ByteString))
+            mBobSecret <- x3dhRespond bobIK spkSecret (Just opkSecret)
+                    (ikX25519Public aliceIK) (x3dhEphemeralKey result)
+            case mBobSecret of
                 Nothing -> do
                     putStrLn "  FAIL: X3DH with OPK (Bob response failed)"
                     pure False
@@ -154,15 +158,15 @@ testX3DHWithOPK = do
 
 testX3DHWithoutOPK :: IO Bool
 testX3DHWithoutOPK = do
-    let aliceIK = generateIdentityKey
+    aliceIK <- generateIdentityKey
             (hexDecode "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
             (hexDecode "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
-    let bobIK = generateIdentityKey
+    bobIK <- generateIdentityKey
             (hexDecode "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb")
             (hexDecode "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb")
     let spkSecret = hexDecode "b8b4e236805318e93f48bfbb365656ec1d068bf3d8cabb64dd1ba4523cec3a2a"
-        spk = generateKeyPair spkSecret
-        spkSig = signPreKey bobIK (kpPublic spk)
+    spk <- generateKeyPair spkSecret
+    spkSig <- signPreKey bobIK (kpPublic spk)
     let bundle = PreKeyBundle
             { pkbIdentityKey    = ikX25519Public bobIK
             , pkbSignedPreKey   = kpPublic spk
@@ -171,14 +175,16 @@ testX3DHWithoutOPK = do
             , pkbOneTimePreKey  = Nothing
             }
     let ekSecret = hexDecode "4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d"
-    case x3dhInitiate aliceIK bundle ekSecret of
+    mResult <- x3dhInitiate aliceIK bundle ekSecret
+    case mResult of
         Nothing -> do
             putStrLn "  FAIL: X3DH without OPK (initiation failed)"
             pure False
         Just result -> do
-            -- x3dhRespond now returns Maybe ByteString
-            case x3dhRespond bobIK spkSecret Nothing
-                    (ikX25519Public aliceIK) (x3dhEphemeralKey result) of
+            -- x3dhRespond now returns IO (Maybe ByteString)
+            mBobSecret <- x3dhRespond bobIK spkSecret Nothing
+                    (ikX25519Public aliceIK) (x3dhEphemeralKey result)
+            case mBobSecret of
                 Nothing -> do
                     putStrLn "  FAIL: X3DH without OPK (Bob response failed)"
                     pure False
@@ -192,11 +198,11 @@ testX3DHWithoutOPK = do
                     pure (r1 && r2 && r3)
 
 ------------------------------------------------------------------------
--- Test 5: Property test — agreement always matches for random keys
+-- Test 5: Property test -- agreement always matches for random keys
 ------------------------------------------------------------------------
 
-propKeyAgreementMatches :: PRNG -> Bool
-propKeyAgreementMatches g0 =
+propKeyAgreementMatches :: PRNG -> IO Bool
+propKeyAgreementMatches g0 = do
     let -- Generate random key material
         (aliceEdSec, g1) = nextBytes 32 g0
         (aliceXSec,  g2) = nextBytes 32 g1
@@ -209,25 +215,27 @@ propKeyAgreementMatches g0 =
         (useOpkByte, _g8) = nextWord8 g7
         useOPK = even useOpkByte
 
-        aliceIK = generateIdentityKey aliceEdSec aliceXSec
-        bobIK   = generateIdentityKey bobEdSec bobXSec
-        spk     = generateKeyPair spkSec
-        spkSig  = signPreKey bobIK (kpPublic spk)
-        opk     = generateKeyPair opkSec
+    aliceIK <- generateIdentityKey aliceEdSec aliceXSec
+    bobIK   <- generateIdentityKey bobEdSec bobXSec
+    spk     <- generateKeyPair spkSec
+    spkSig  <- signPreKey bobIK (kpPublic spk)
+    opk     <- generateKeyPair opkSec
 
-        bundle = PreKeyBundle
+    let bundle = PreKeyBundle
             { pkbIdentityKey    = ikX25519Public bobIK
             , pkbSignedPreKey   = kpPublic spk
             , pkbSPKSignature   = spkSig
             , pkbIdentityEd25519 = ikEd25519Public bobIK
             , pkbOneTimePreKey  = if useOPK then Just (kpPublic opk) else Nothing
             }
-    in case x3dhInitiate aliceIK bundle ekSec of
-        Nothing -> False  -- signature should always verify for valid keys
-        Just result ->
-            case x3dhRespond bobIK spkSec
+    mResult <- x3dhInitiate aliceIK bundle ekSec
+    case mResult of
+        Nothing -> pure False  -- signature should always verify for valid keys
+        Just result -> do
+            mBobSecret <- x3dhRespond bobIK spkSec
                     (if useOPK then Just opkSec else Nothing)
-                    (ikX25519Public aliceIK) (x3dhEphemeralKey result) of
+                    (ikX25519Public aliceIK) (x3dhEphemeralKey result)
+            pure $ case mBobSecret of
                 Nothing        -> False  -- DH all-zero should not occur with random keys
                 Just bobSecret ->
                     x3dhSharedSecret result == bobSecret
@@ -239,16 +247,16 @@ propKeyAgreementMatches g0 =
 
 testRejectInvalidSPKSignature :: IO Bool
 testRejectInvalidSPKSignature = do
-    let aliceIK = generateIdentityKey
+    aliceIK <- generateIdentityKey
             (hexDecode "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
             (hexDecode "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
-    let bobIK = generateIdentityKey
+    bobIK <- generateIdentityKey
             (hexDecode "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb")
             (hexDecode "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb")
     let spkSecret = hexDecode "b8b4e236805318e93f48bfbb365656ec1d068bf3d8cabb64dd1ba4523cec3a2a"
-        spk = generateKeyPair spkSecret
-        spkSig = signPreKey bobIK (kpPublic spk)
-        -- Corrupt the signature by flipping a byte
+    spk <- generateKeyPair spkSecret
+    spkSig <- signPreKey bobIK (kpPublic spk)
+    let -- Corrupt the signature by flipping a byte
         badSig = BS.take 5 spkSig `BS.append` BS.singleton 0xff `BS.append` BS.drop 6 spkSig
     let bundle = PreKeyBundle
             { pkbIdentityKey    = ikX25519Public bobIK
@@ -258,9 +266,8 @@ testRejectInvalidSPKSignature = do
             , pkbOneTimePreKey  = Nothing
             }
     let ekSecret = hexDecode "4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d"
-    let rejected = case x3dhInitiate aliceIK bundle ekSecret of
-            Nothing -> True
-            Just _  -> False
+    mResult <- x3dhInitiate aliceIK bundle ekSecret
+    let rejected = isNothing mResult
     assertEq "reject invalid SPK signature" True rejected
 
 ------------------------------------------------------------------------
@@ -324,15 +331,15 @@ testBundleFreshnessBinding :: IO Bool
 testBundleFreshnessBinding = do
     -- Two different timestamps should produce different shared secrets
     -- even with identical key material.
-    let aliceIK = generateIdentityKey
+    aliceIK <- generateIdentityKey
             (hexDecode "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
             (hexDecode "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
-    let bobIK = generateIdentityKey
+    bobIK <- generateIdentityKey
             (hexDecode "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb")
             (hexDecode "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb")
     let spkSecret = hexDecode "b8b4e236805318e93f48bfbb365656ec1d068bf3d8cabb64dd1ba4523cec3a2a"
-        spk = generateKeyPair spkSecret
-        spkSig = signPreKey bobIK (kpPublic spk)
+    spk <- generateKeyPair spkSecret
+    spkSig <- signPreKey bobIK (kpPublic spk)
     let bundle = PreKeyBundle
             { pkbIdentityKey    = ikX25519Public bobIK
             , pkbSignedPreKey   = kpPublic spk
@@ -344,8 +351,9 @@ testBundleFreshnessBinding = do
         now = 1700000000 :: Word64
         ts1 = now - 100
         ts2 = now - 200
-    case (x3dhInitiateWithTimestamp aliceIK bundle ekSecret now ts1,
-          x3dhInitiateWithTimestamp aliceIK bundle ekSecret now ts2) of
+    mr1 <- x3dhInitiateWithTimestamp aliceIK bundle ekSecret now ts1
+    mr2 <- x3dhInitiateWithTimestamp aliceIK bundle ekSecret now ts2
+    case (mr1, mr2) of
         (Just r1, Just r2) ->
             assertEq "different timestamps produce different secrets"
                 True (x3dhSharedSecret r1 /= x3dhSharedSecret r2)
@@ -357,17 +365,17 @@ testTimestampAgreement :: IO Bool
 testTimestampAgreement = do
     -- Verify that initiator and responder derive the same secret
     -- when using timestamp-aware variants with the same timestamp.
-    let aliceIK = generateIdentityKey
+    aliceIK <- generateIdentityKey
             (hexDecode "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
             (hexDecode "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
-    let bobIK = generateIdentityKey
+    bobIK <- generateIdentityKey
             (hexDecode "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb")
             (hexDecode "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb")
     let spkSecret = hexDecode "b8b4e236805318e93f48bfbb365656ec1d068bf3d8cabb64dd1ba4523cec3a2a"
-        spk = generateKeyPair spkSecret
-        spkSig = signPreKey bobIK (kpPublic spk)
-        opkSecret = hexDecode "a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4"
-        opk = generateKeyPair opkSecret
+    spk <- generateKeyPair spkSecret
+    spkSig <- signPreKey bobIK (kpPublic spk)
+    let opkSecret = hexDecode "a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4"
+    opk <- generateKeyPair opkSecret
     let bundle = PreKeyBundle
             { pkbIdentityKey    = ikX25519Public bobIK
             , pkbSignedPreKey   = kpPublic spk
@@ -378,13 +386,15 @@ testTimestampAgreement = do
     let ekSecret = hexDecode "4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d"
         now = 1700000000 :: Word64
         bundleTs = now - 3600  -- 1 hour ago
-    case x3dhInitiateWithTimestamp aliceIK bundle ekSecret now bundleTs of
+    mResult <- x3dhInitiateWithTimestamp aliceIK bundle ekSecret now bundleTs
+    case mResult of
         Nothing -> do
             putStrLn "  FAIL: timestamp initiation with OPK failed"
             pure False
-        Just result ->
-            case x3dhRespondWithTimestamp bobIK spkSecret (Just opkSecret)
-                    (ikX25519Public aliceIK) (x3dhEphemeralKey result) bundleTs of
+        Just result -> do
+            mBobSecret <- x3dhRespondWithTimestamp bobIK spkSecret (Just opkSecret)
+                    (ikX25519Public aliceIK) (x3dhEphemeralKey result) bundleTs
+            case mBobSecret of
                 Nothing -> do
                     putStrLn "  FAIL: timestamp response with OPK failed"
                     pure False
@@ -395,7 +405,8 @@ testTimestampAgreement = do
                             32 (BS.length (x3dhSharedSecret result))
                     -- Also verify the stale case rejects
                     let staleTs = now - maxBundleAge - 1
+                    mStale <- x3dhInitiateWithTimestamp aliceIK bundle ekSecret now staleTs
                     r3 <- assertEq "timestamp X3DH: stale bundle rejected"
-                            Nothing
-                            (x3dhInitiateWithTimestamp aliceIK bundle ekSecret now staleTs)
+                            True
+                            (isNothing mStale)
                     pure (r1 && r2 && r3)

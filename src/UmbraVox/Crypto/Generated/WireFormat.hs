@@ -31,7 +31,7 @@ unwrapEnvelope = Reference.unwrapEnvelope
 deriveEnvelopeKey :: ByteString -> ByteString
 deriveEnvelopeKey = Reference.deriveEnvelopeKey
 
-encodeEnvelopeAEAD :: ByteString -> Word32 -> Envelope -> ByteString
+encodeEnvelopeAEAD :: ByteString -> Word32 -> Envelope -> Either String ByteString
 encodeEnvelopeAEAD = Reference.encodeEnvelopeAEAD
 
 decodeEnvelopeAEAD :: ByteString -> Word32 -> ByteString -> Maybe Envelope

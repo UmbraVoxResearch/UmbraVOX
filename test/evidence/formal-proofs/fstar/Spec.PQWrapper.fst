@@ -141,20 +141,21 @@ let min_sealed_len_check () = ()
 (** IND-CCA2 security (computational assumption)                        **)
 (** -------------------------------------------------------------------- **)
 
-(** Axiom: The PQWrapper composition is IND-CCA2 secure under:
-    1. ML-KEM-768 IND-CCA2 security (FIPS 203)
-    2. AES-256-GCM IND-CPA + INT-CTXT security (NIST SP 800-38D)
-    3. HKDF PRF security (RFC 5869)
-
-    The composition follows the KEM/DEM paradigm: an IND-CCA2 KEM
-    composed with an IND-CPA + INT-CTXT DEM yields an IND-CCA2
-    hybrid scheme (Cramer-Shoup, 2003). *)
+(* ASSUME JUSTIFICATION: ind_cca2_security
+   Category: Cryptographic assumption
+   Reference: FIPS 203 (ML-KEM); NIST SP 800-38D (AES-GCM); Cramer-Shoup, "Design and Analysis of Practical Public-Key Encryption Schemes" (2003)
+   Status: Standard cryptographic assumption, not provable in F*.
+   The KEM/DEM composition (IND-CCA2 KEM + IND-CPA/INT-CTXT DEM) yields IND-CCA2
+   security for the hybrid scheme, relying on ML-KEM-768, AES-256-GCM, and HKDF PRF security. *)
 assume val ind_cca2_security : ek:encaps_key -> dk:decaps_key
     -> Lemma (True) (* Computational assumption *)
 
-(** Axiom: ML-KEM implicit rejection ensures that decapsulation with
-    an invalid ciphertext returns a pseudorandom value (not the
-    real shared secret), preventing chosen-ciphertext attacks. *)
+(* ASSUME JUSTIFICATION: mlkem_implicit_rejection
+   Category: Cryptographic assumption
+   Reference: FIPS 203 Section 7.3 (ML-KEM implicit rejection)
+   Status: Standard cryptographic assumption, not provable in F*.
+   ML-KEM's implicit rejection mechanism returns a pseudorandom shared secret (not the
+   real one) for invalid ciphertexts, preventing chosen-ciphertext oracle attacks. *)
 assume val mlkem_implicit_rejection : dk:decaps_key -> ct:kem_ciphertext
     -> Lemma (True) (* FIPS 203 Section 7.3 *)
 

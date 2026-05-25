@@ -4,12 +4,13 @@
 // Usage:
 //
 //	umbravox-vm                      build + test + check (fast gate)
-//	umbravox-vm build                build in VM
+//	umbravox-vm build [--docs]       build in VM (--docs runs cabal haddock)
+//	umbravox-vm run [tui|gui|headless] launch UmbraVOX runtime (default: tui/Firecracker)
 //	umbravox-vm test [SUITE]         run test suite in VM
 //	umbravox-vm dev [--gui]          interactive VM dev shell
 //	umbravox-vm verify               F* formal verification
 //	umbravox-vm verify vectors       F* test vector evaluation (M18.2.3)
-//	umbravox-vm check [GATE]         static quality gates
+//	umbravox-vm check [GATE]         static quality gates (lint,format,license,complexity,generated-headers)
 //	umbravox-vm coverage [FLAGS]     HPC coverage report
 //	umbravox-vm release [PLATFORM]   build release artifacts
 //	umbravox-vm vm <action>          VM infrastructure management
@@ -43,6 +44,8 @@ func run(args []string) int {
 		return runBuild(rest)
 	case "test":
 		return runTest(rest)
+	case "run":
+		return runRun(rest)
 	case "dev":
 		return runDev(rest)
 	case "verify":
@@ -79,15 +82,20 @@ Usage: ./uv <command> [args]
 
 Commands:
   (no args)           Build + test + check (fast gate)
-  build               Build library and executables in VM
+  build [--docs]      Build library and executables in VM (--docs: cabal haddock)
+  run                 Build and launch UmbraVOX (default: tui via Firecracker)
+  run tui             Firecracker microVM, serial console (sub-second boot)
+  run gui             Lightweight QEMU VM with VGA display (no dev tools)
+  run headless        Firecracker microVM, daemon mode
   test [SUITE]        Run test suite (default: required fast gate)
   dev [--gui]         Interactive VM development shell
   verify              F* formal verification (17 modules)
   verify vectors      F* test vector evaluation (M18.2.3)
-  check [GATE]        Static quality gates (lint, format, license, complexity)
+  check [GATE]        Static quality gates (lint, format, license, complexity, generated-headers)
   coverage [FLAGS]    HPC coverage report (--check, --mcdc)
   release [PLATFORM]  Build release artifacts
   vm <action>         VM infrastructure (build-image, smoke, signal)
+  build-runtime-image  Build lightweight runtime VM images (Firecracker + QEMU)
   evidence [FLAGS]    Evidence & assurance bundles (--fast, --full)
   fuzz [MODE]         Fuzzing (differential, afl)
   clean [--all|--nix-gc] Remove build artifacts (--nix-gc frees /nix/store)
@@ -110,6 +118,8 @@ VM actions:
 Examples:
   ./uv                       Quick gate: build + test + check
   ./uv build                 Just build
+  ./uv run                   Launch UmbraVOX (Firecracker TUI)
+  ./uv run gui               Launch with QEMU VGA display
   ./uv test tcp              Run TCP hardening suite
   ./uv dev                   Interactive VM shell
   ./uv vm build-image        Build the VM image
