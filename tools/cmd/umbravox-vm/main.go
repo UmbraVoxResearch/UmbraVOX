@@ -4,9 +4,9 @@
 // Usage:
 //
 //	umbravox-vm                      build + test + check (fast gate)
-//	umbravox-vm build [--docs]       build in VM (--docs runs cabal haddock)
+//	umbravox-vm build [--docs] [--direct]  build in VM (--docs runs cabal haddock; --direct: host/CI via nix-shell)
 //	umbravox-vm run [tui|gui|headless] launch UmbraVOX runtime (default: tui/Firecracker)
-//	umbravox-vm test [SUITE]         run test suite in VM
+//	umbravox-vm test [SUITE] [--direct]  run test suite in VM (--direct: host/CI via nix-shell)
 //	umbravox-vm dev [--gui]          interactive VM dev shell
 //	umbravox-vm verify               F* formal verification
 //	umbravox-vm verify vectors       F* test vector evaluation (M18.2.3)
@@ -82,12 +82,12 @@ Usage: ./uv <command> [args]
 
 Commands:
   (no args)           Build + test + check (fast gate)
-  build [--docs]      Build library and executables in VM (--docs: cabal haddock)
+  build [--docs] [--direct]  Build library and executables in VM (--docs: cabal haddock; --direct: host/CI via nix-shell)
   run                 Build and launch UmbraVOX (default: tui via Firecracker)
   run tui             Firecracker microVM, serial console (sub-second boot)
   run gui             Lightweight QEMU VM with VGA display (no dev tools)
   run headless        Firecracker microVM, daemon mode
-  test [SUITE]        Run test suite (default: required fast gate)
+  test [SUITE] [--direct]  Run test suite (default: required fast gate; --direct: host/CI via nix-shell)
   dev [--gui]         Interactive VM development shell
   verify              F* formal verification (17 modules)
   verify vectors      F* test vector evaluation (M18.2.3)

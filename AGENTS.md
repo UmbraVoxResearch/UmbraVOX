@@ -4,6 +4,9 @@ Instructions for AI agents working on UmbraVOX. All build, test, and
 verification MUST happen inside NixOS VMs. The host system's nix store
 should never be touched by compilation.
 
+For CI environments without KVM, `--direct` runs on the host via nix-shell.
+This is the secondary path — always prefer VM-based execution.
+
 ## MANDATORY: Use the Build System
 
 **All development, testing, and verification by agents MUST use `./uv`.**

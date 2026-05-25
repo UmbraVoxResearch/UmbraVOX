@@ -14,9 +14,10 @@ import (
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/repo"
 )
 
-// runCheck handles: uv check [GATE] [--fix]
+// runCheck handles: uv check [GATE] [--fix] [--direct]
 // Gates: lint, format, license, complexity
 // No arg = run all gates.
+// --direct is accepted as a no-op: check already runs on the host.
 func runCheck(args []string) int {
 	fix := false
 	var gate string
@@ -24,6 +25,8 @@ func runCheck(args []string) int {
 		switch a {
 		case "--fix":
 			fix = true
+		case "--direct":
+			// no-op: check runs on host regardless
 		default:
 			gate = a
 		}

@@ -32,14 +32,41 @@ var testSuites = map[string]string{
 	"soak":         "soak",
 }
 
-// runBuild handles: uv build [--docs]
+// runBuild handles: uv build [--docs] [--direct]
 // Codegen always runs before build to ensure generated files match specs.
+// --direct bypasses the VM and runs via nix-shell on the host (for CI).
 func runBuild(args []string) int {
 	docs := false
+	direct := false
 	for _, a := range args {
-		if a == "--docs" {
+		switch a {
+		case "--docs":
 			docs = true
+		case "--direct":
+			direct = true
 		}
+	}
+
+	if direct {
+		repoRoot, err := repo.Root()
+		if err != nil {
+			log.Fail(tag, err.Error())
+			return 1
+		}
+		shellNix := filepath.Join(repoRoot, "shell.nix")
+		innerCmd := "cabal run codegen && cabal build all --enable-tests"
+		cmd := exec.Command("nix-shell", shellNix, "--pure", "--run", innerCmd)
+		cmd.Dir = repoRoot
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				return exitErr.ExitCode()
+			}
+			log.Fail(tag, fmt.Sprintf("nix-shell: %v", err))
+			return 1
+		}
+		return 0
 	}
 
 	var cmd string
@@ -87,7 +114,8 @@ func runBuild(args []string) int {
 	return code
 }
 
-// runTest handles: uv test [SUITE] [--list]
+// runTest handles: uv test [SUITE] [--list] [--direct]
+// --direct bypasses the VM and runs via nix-shell on the host (for CI).
 func runTest(args []string) int {
 	if len(args) > 0 && (args[0] == "--list" || args[0] == "-l") {
 		fmt.Println("Available test suites:")
@@ -98,6 +126,40 @@ func runTest(args []string) int {
 		fmt.Println("  e2e        (full end-to-end: build image, compile, test, check, runtime)")
 		fmt.Println("\nUsage: ./uv test [SUITE]")
 		fmt.Println("No suite argument runs the required fast gate.")
+		return 0
+	}
+
+	// Check for --direct anywhere in args; collect remaining args without it.
+	direct := false
+	var filtered []string
+	for _, a := range args {
+		if a == "--direct" {
+			direct = true
+		} else {
+			filtered = append(filtered, a)
+		}
+	}
+	args = filtered
+
+	if direct {
+		repoRoot, err := repo.Root()
+		if err != nil {
+			log.Fail(tag, err.Error())
+			return 1
+		}
+		shellNix := filepath.Join(repoRoot, "shell.nix")
+		innerCmd := "cabal build all --enable-tests && cabal test umbravox-test --test-options='required'"
+		cmd := exec.Command("nix-shell", shellNix, "--pure", "--run", innerCmd)
+		cmd.Dir = repoRoot
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				return exitErr.ExitCode()
+			}
+			log.Fail(tag, fmt.Sprintf("nix-shell: %v", err))
+			return 1
+		}
 		return 0
 	}
 

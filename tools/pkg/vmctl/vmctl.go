@@ -14,6 +14,7 @@ type HypervisorType int
 const (
 	HypervisorQEMU        HypervisorType = iota // QEMU/KVM full-system emulation
 	HypervisorFirecracker                        // Firecracker microVM
+	HypervisorDirect                             // host nix-shell, no VM booted
 )
 
 // Feature enumerates optional hypervisor capabilities.
@@ -97,10 +98,13 @@ type NetworkSpec struct {
 }
 
 // BootSpec describes kernel/initrd boot parameters for direct-kernel boot.
+// When used with HypervisorDirect, only Command is relevant; the kernel
+// fields are ignored.
 type BootSpec struct {
 	KernelPath string // path to kernel image
 	InitrdPath string // path to initrd (optional)
 	KernelArgs string // kernel command-line arguments
+	Command    string // shell command for HypervisorDirect (passed to nix-shell --run)
 }
 
 // VMSpec is the complete specification for launching a VM.

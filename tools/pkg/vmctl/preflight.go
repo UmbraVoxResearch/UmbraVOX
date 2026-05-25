@@ -50,3 +50,16 @@ func PreflightFirecracker() error {
 	}
 	return nil
 }
+
+// PreflightDirect checks that nix-shell is on PATH (or at the default Nix
+// profile location). No KVM device is required.
+func PreflightDirect() error {
+	if _, err := exec.LookPath("nix-shell"); err == nil {
+		return nil
+	}
+	const defaultPath = "/nix/var/nix/profiles/default/bin/nix-shell"
+	if _, err := os.Stat(defaultPath); err == nil {
+		return nil
+	}
+	return fmt.Errorf("Direct preflight failed:\n  nix-shell not found on PATH or at %s", defaultPath)
+}

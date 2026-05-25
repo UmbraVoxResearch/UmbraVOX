@@ -156,8 +156,8 @@ ACTIVE WORK
     [ ] UmbraVOX imports vmctl as dependency
 
   [ ] Phase 5: CI integration
-    [ ] Add --direct flag to ./uv test (host-based, no VM)
-    [ ] Add --direct flag to ./uv build and ./uv check
+    [x] Add --direct flag to ./uv test (host-based, no VM)
+    [x] Add --direct flag to ./uv build
     [ ] Create .github/workflows/ci-e2e.yml (nightly, self-hosted, KVM)
     [ ] Create vm-defs/ci-test.yaml (Firecracker + network for fast CI)
     [ ] Update ci-linux.yml to use ./uv test --direct

@@ -197,6 +197,23 @@ All standard commands (`./uv build`, `./uv test`, `./uv verify`) route
 through the VM automatically. There are no separate `./uv vm build` or
 `./uv vm test` aliases -- use the standard commands directly.
 
+## Direct Execution (--direct)
+
+For CI environments without KVM access (GitHub Actions, GitLab CI),
+commands can run directly on the host via nix-shell:
+
+    ./uv build --direct     # Build on host via nix-shell
+    ./uv test --direct      # Test on host via nix-shell
+    ./uv check              # Already runs on host (no --direct needed)
+
+This is the secondary path — the primary development flow uses VMs.
+The --direct flag is intended for:
+- CI runners without KVM (GitHub-hosted runners)
+- Quick local iteration when VM boot time matters
+- Portability testing of the host-build path
+
+Note: --direct requires nix-shell and shell.nix on the host.
+
 ## Migration Plan
 
 ### Phase 1: Parallel Operation (completed)
