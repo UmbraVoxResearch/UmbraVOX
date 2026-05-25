@@ -18,6 +18,7 @@ import (
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/ninep"
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/qemu"
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/repo"
+	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/vmctl"
 )
 
 const tag = "UV"
@@ -217,6 +218,111 @@ func execInVM(cmd string, profile qemu.VMProfile, timeout time.Duration) int {
 
 	qemuExit := bootQEMU(cfg, timeout)
 	return readGuestStatus(outputDir, qemuExit)
+}
+
+// profileToResources converts a qemu.VMProfile to vmctl.Resources,
+// preserving the same fraction/floor semantics used by qemu.ScaleToHost.
+func profileToResources(p qemu.VMProfile) vmctl.Resources {
+	var frac int
+	switch p {
+	case qemu.ProfileBuild:
+		frac = 75
+	case qemu.ProfileRuntime:
+		frac = 25
+	default: // ProfileDev
+		frac = 50
+	}
+	return vmctl.Resources{
+		Fraction: frac,
+		MinCores: 2,
+		MinMemMB: 2048,
+	}
+}
+
+// execInVMv2 is the vmctl-based replacement for execInVM. It constructs a
+// vmctl.VMSpec and delegates to QEMUHypervisor.Boot instead of manually
+// assembling QEMU arguments. Callers should migrate from execInVM to
+// execInVMv2 in future commits once the vmctl path is validated.
+func execInVMv2(cmd string, profile qemu.VMProfile, timeout time.Duration) int {
+	repoRoot, err := repo.Root()
+	if err != nil {
+		log.Fail(tag, err.Error())
+		return 1
+	}
+
+	srcDisk, overlayPath, cacheDisk, outputDir, cleanup, err := prepareVMDisks(repoRoot, cmd)
+	if err != nil {
+		log.Fail(tag, err.Error())
+		return 1
+	}
+	defer cleanup()
+
+	// Parse network policy (same as buildExecQEMUConfig).
+	policyFile := filepath.Join(repoRoot, "conf/vm-network-policy.conf")
+	policy, err := netpol.ParseFile(policyFile)
+	if err != nil {
+		log.Fail(tag, fmt.Sprintf("failed to parse network policy: %v", err))
+		return 1
+	}
+	netArgs, err := policy.QEMUNetArgs()
+	if err != nil {
+		log.Fail(tag, fmt.Sprintf("network policy error: %v", err))
+		return 1
+	}
+
+	outputShare := ninep.DefaultOutputShare(outputDir)
+	vmStatusFile := filepath.Join(outputDir, "vm-exec-status")
+
+	spec := &vmctl.VMSpec{
+		Hypervisor: vmctl.HypervisorQEMU,
+		Resources:  profileToResources(profile),
+		BaseImage: vmctl.ImageRef{
+			Path:   overlayPath,
+			Format: vmctl.DiskFormatQCOW2,
+		},
+		Disks: []vmctl.DiskSpec{
+			{Path: srcDisk, Format: vmctl.DiskFormatRaw, ReadOnly: true, Interface: "virtio"},
+			{Path: cacheDisk, Format: vmctl.DiskFormatQCOW2, Interface: "virtio"},
+		},
+		Shares: []vmctl.ShareSpec{{
+			HostPath:      outputShare.LocalPath,
+			MountTag:      outputShare.MountTag,
+			SecurityModel: string(outputShare.SecurityModel),
+			ID:            outputShare.ID,
+		}},
+		Network: vmctl.NetworkSpec{
+			RawArgs: netArgs,
+		},
+		Display:    vmctl.DisplayNone,
+		NoReboot:   true,
+		Timeout:    timeout,
+		StatusFile: vmStatusFile,
+	}
+
+	log.Info(tag, fmt.Sprintf("exec (vmctl): %s", cmd))
+	fmt.Fprintln(os.Stderr)
+
+	ctx := context.Background()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	hyp := &vmctl.QEMUHypervisor{Logger: nil}
+	tmpDir := filepath.Join(repoRoot, "build", "vm", "tmp")
+	result, err := hyp.Boot(ctx, spec, tmpDir)
+	if err != nil {
+		log.Fail(tag, fmt.Sprintf("vmctl boot failed: %v", err))
+		return 1
+	}
+
+	if result.ExitCode == 0 {
+		log.OK(tag, "Guest command completed successfully.")
+	} else {
+		log.Fail(tag, fmt.Sprintf("Guest command failed with exit %d.", result.ExitCode))
+	}
+	return result.ExitCode
 }
 
 // generateInitScript produces the in-guest init script content.

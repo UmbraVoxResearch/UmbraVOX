@@ -1,0 +1,23 @@
+# runtime-fc.yaml — Firecracker runtime VM (headless / TUI)
+#
+# Tier 1 (Base) image: minimal NixOS — glibc, sqlite, ncurses, coreutils.
+# Used by:
+#   ./uv run           — default TUI mode (sub-second boot)
+#   ./uv run headless  — daemon / headless mode
+#
+# Firecracker microVM: fastest cold-boot path (<500MB image).
+# No network: the runtime binary is self-contained.
+# Low resource footprint: 1 vCPU, 256MB RAM is sufficient for the TUI.
+
+name: runtime-fc
+tier: base
+hypervisor: firecracker
+resources:
+  fraction: 10
+  min_cores: 1
+  min_memory: 256
+network:
+  mode: none
+boot:
+  timeout: 5m
+  no_reboot: true

@@ -98,14 +98,14 @@ ACTIVE WORK
   Goal: consolidate 5 ad-hoc VM types into tools/pkg/vmctl/
   Decoupled from UmbraVOX for reuse in other projects.
 
-  [~] Phase 1: Extract and deduplicate (no behavior changes)
-    [~] Create tools/pkg/vmctl/ package structure
+  [x] Phase 1: Extract and deduplicate (no behavior changes)
+    [x] Create tools/pkg/vmctl/ package structure
     [x] Move ReadHostMemoryMB to vmctl/resources.go (deduplicate from qemu + firecracker) — done (resources.go)
     [x] Move ScaleToHost logic to vmctl/resources.go with Resources struct — done (ResolveResources)
-    [ ] Move CreateOverlay, EnsureCacheDisk, CreateSourceDisk, CreateAppDisk to vmctl/disk.go — stubs exist, need implementation
+    [x] Move CreateOverlay, EnsureCacheDisk, CreateSourceDisk, CreateAppDisk to vmctl/disk.go — done (full implementation, delegates from pkg/disk and pkg/firecracker)
     [x] Define Hypervisor interface in vmctl/hypervisor.go — done
-    [ ] Create vmctl/hypervisor_qemu.go wrapping qemu.Config behind interface — interface defined, implementation pending
-    [ ] Create vmctl/hypervisor_fc.go wrapping firecracker.Config behind interface — interface defined, implementation pending
+    [x] Create vmctl/hypervisor_qemu.go wrapping qemu.Config behind interface — done (full Boot() converting VMSpec → QEMU CLI)
+    [x] Create vmctl/hypervisor_fc.go wrapping firecracker.Config behind interface — done (full Boot() with zstd, JSON config, initrd)
     [x] Create vmctl/preflight.go unifying 4 preflight implementations — done (PreflightQEMU, PreflightFirecracker, PreflightDirect)
     [x] Create vmctl/nix.go with NixBuild wrapper — done (NixBuild, FindNixBuild, IsCached)
     [x] Thin wrappers in pkg/qemu, pkg/firecracker delegating to vmctl — done (resources + preflight)
@@ -127,8 +127,8 @@ ACTIVE WORK
     [x] Document tier architecture in doc/VM-DEVELOPMENT.md — done
     [x] Reference tier policy in AGENTS.md — done
 
-  [ ] Phase 2: Unified boot path (VMSpec → vmctl.Boot)
-    [ ] Define VMSpec, DiskSpec, NetworkSpec, BootSpec types
+  [~] Phase 2: Unified boot path (VMSpec → vmctl.Boot)
+    [x] Define VMSpec, DiskSpec, NetworkSpec, BootSpec types — done (vmctl.go)
     [ ] Replace execInVM in cmd_exec.go with vmctl.Boot(spec)
     [ ] Replace runRunFirecracker/runRunQEMU in cmd_run.go with vmctl.Boot
     [ ] Replace runDev in cmd_dev.go with vmctl.Boot
@@ -148,19 +148,19 @@ ACTIVE WORK
       [ ] vm-defs/signal-runtime.yaml — tier: network (Signal Server runtime)
     [ ] ./uv commands load YAML, overlay CLI flags, call vmctl.Boot
 
-  [ ] Phase 4: Extract to separate Go module
+  [~] Phase 4: Extract to separate Go module
     [ ] Ensure vmctl has zero imports from tools/pkg/{repo,log,netproxy,ninep}
-    [ ] Accept Logger interface instead of importing pkg/log
+    [x] Accept Logger interface instead of importing pkg/log — done (Logger interface in vmctl.go)
     [ ] Accept repo root as parameter instead of importing pkg/repo
     [ ] Move to tools/vmctl/ with own go.mod (or separate repo)
     [ ] UmbraVOX imports vmctl as dependency
 
-  [ ] Phase 5: CI integration
+  [~] Phase 5: CI integration
     [x] Add --direct flag to ./uv test (host-based, no VM)
     [x] Add --direct flag to ./uv build
     [ ] Create .github/workflows/ci-e2e.yml (nightly, self-hosted, KVM)
     [ ] Create vm-defs/ci-test.yaml (Firecracker + network for fast CI)
-    [ ] Update ci-linux.yml to use ./uv test --direct
+    [x] Update ci-linux.yml to use ./uv test --direct — already done in earlier commit
     [ ] Add slirp4netns support for rootless Firecracker networking
     [ ] Document CI setup in doc/CI-INTEGRATION.md
 

@@ -1,0 +1,26 @@
+# builder.yaml — VM image builder
+#
+# Tier 3 (Builder) image: Base + Nix daemon + git.  Used by:
+#   ./uv vm build-image      — builds the full Dev/Runtime VM images
+#                              inside a dedicated builder VM so the host
+#                              /nix/store is never touched
+#
+# Network required: fetches derivations from cache.nixos.org during
+# image construction.  Longer timeout accommodates full NixOS closure
+# downloads and multi-pass nix-build runs.
+#
+# Resources are generous: parallel nix builds benefit from many cores
+# and substantial RAM.  75% fraction with a 4-core / 4GB floor.
+
+name: builder
+tier: builder
+hypervisor: qemu
+resources:
+  fraction: 75
+  min_cores: 4
+  min_memory: 4096
+network:
+  mode: user
+boot:
+  timeout: 120m
+  no_reboot: true

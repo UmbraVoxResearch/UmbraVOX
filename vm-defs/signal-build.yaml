@@ -1,0 +1,24 @@
+# signal-build.yaml — Signal Server build VM
+#
+# Tier 3 (Builder) image: Base + Nix daemon + git.  Used by:
+#   ./uv vm signal build-jar   — compiles the Signal Server JAR inside
+#                                a builder VM; output lands in build/vm-output/
+#
+# Network required: Gradle/Maven fetches Signal Server dependencies from
+# Maven Central and other registries during the build.
+# Long timeout: Signal Server is a large Java project; first build
+# downloads the full dependency graph.
+# Resources set to 50% with a 4-core / 4GB floor for parallel compilation.
+
+name: signal-build
+tier: builder
+hypervisor: qemu
+resources:
+  fraction: 50
+  min_cores: 4
+  min_memory: 4096
+network:
+  mode: user
+boot:
+  timeout: 90m
+  no_reboot: true

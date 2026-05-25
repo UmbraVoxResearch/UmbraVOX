@@ -1,0 +1,24 @@
+# ci-test.yaml — CI test runner
+#
+# Tier 2 (Network) image: Base + DHCP, DNS, outbound HTTPS (curl, cacert, jq).
+# Used by CI pipelines that need outbound connectivity during test execution
+# (e.g., fetching test fixtures, pushing coverage reports, SOCKS5 transport
+# tests).
+#
+# Firecracker for fast per-job cold boots in CI.  User-mode networking
+# provides outbound HTTPS without TAP/bridge setup on ephemeral runners.
+# Resources scaled to 25% with a 2-core / 1GB floor — CI runners are
+# typically shared and memory-constrained.
+
+name: ci-test
+tier: network
+hypervisor: firecracker
+resources:
+  fraction: 25
+  min_cores: 2
+  min_memory: 1024
+network:
+  mode: user
+boot:
+  timeout: 15m
+  no_reboot: true

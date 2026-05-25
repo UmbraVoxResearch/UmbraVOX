@@ -1,0 +1,29 @@
+# signal-runtime.yaml — Signal Server runtime VM
+#
+# Tier 2 (Network) image: Base + DHCP, DNS, outbound HTTPS (curl, cacert, jq).
+# Additional packages provided by the vm-signal.nix overlay:
+#   PostgreSQL, Redis, JRE (runtime only), and supporting utilities.
+#
+# Used by:
+#   ./uv vm signal run   — runs the compiled Signal Server JAR with its
+#                          required backing services (Postgres, Redis)
+#
+# Network is mandatory: Signal Server must bind ports and accept inbound
+# connections from clients; user-mode SLIRP provides host-forwarded access.
+# QEMU preferred over Firecracker for its richer virtio-net emulation and
+# port-forwarding ergonomics.
+# Resources set to 25% with a 2-core / 2GB floor; the JVM heap is bounded
+# separately inside the guest.
+
+name: signal-runtime
+tier: network
+hypervisor: qemu
+resources:
+  fraction: 25
+  min_cores: 2
+  min_memory: 2048
+network:
+  mode: user
+boot:
+  timeout: 10m
+  no_reboot: false

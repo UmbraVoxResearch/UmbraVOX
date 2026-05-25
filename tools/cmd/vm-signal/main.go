@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/qemu"
+	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/repo"
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/vmctl"
 )
 
@@ -155,50 +156,6 @@ func run(args []string) int {
 		flag.Usage()
 		return 2
 	}
-}
-
-// findRepoRoot walks up from the executable (or cwd) to find the repo root.
-// It looks for the uv bootstrap script alongside tools/, or UmbraVox.cabal.
-func findRepoRoot() string {
-	isRoot := func(dir string) bool {
-		// Primary: uv wrapper + tools/ directory
-		if _, err := os.Stat(filepath.Join(dir, "uv")); err == nil {
-			if _, err := os.Stat(filepath.Join(dir, "tools")); err == nil {
-				return true
-			}
-		}
-		// Fallback: UmbraVox.cabal
-		if _, err := os.Stat(filepath.Join(dir, "UmbraVox.cabal")); err == nil {
-			return true
-		}
-		return false
-	}
-
-	exe, err := os.Executable()
-	if err == nil {
-		dir := filepath.Dir(exe)
-		for i := 0; i < 10; i++ {
-			if isRoot(dir) {
-				return dir
-			}
-			dir = filepath.Dir(dir)
-		}
-	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		logMsg(red, "Cannot determine working directory")
-		os.Exit(1)
-	}
-	dir := cwd
-	for i := 0; i < 10; i++ {
-		if isRoot(dir) {
-			return dir
-		}
-		dir = filepath.Dir(dir)
-	}
-	logMsg(red, "Cannot find repo root (looked for uv + tools/ or UmbraVox.cabal)")
-	os.Exit(1)
-	return ""
 }
 
 // preflightCheck validates KVM and QEMU availability.
@@ -346,7 +303,11 @@ func runBuildJar(outputDirFlag string, timeout time.Duration) int {
 		return 1
 	}
 
-	repoRoot := findRepoRoot()
+	repoRoot, err := repo.Root()
+	if err != nil {
+		logMsg(red, fmt.Sprintf("Cannot find repo root: %v", err))
+		return 1
+	}
 	vmCacheDir := filepath.Join(repoRoot, "build", "vm-signal-server")
 	buildImagePath := filepath.Join(vmCacheDir, "build-image")
 	tmpDir := filepath.Join(vmCacheDir, "tmp")
@@ -426,7 +387,11 @@ func runRuntime(mode string, memoryMB, cores int, timeout time.Duration, endpoin
 		return 1
 	}
 
-	repoRoot := findRepoRoot()
+	repoRoot, err := repo.Root()
+	if err != nil {
+		logMsg(red, fmt.Sprintf("Cannot find repo root: %v", err))
+		return 1
+	}
 	vmCacheDir := filepath.Join(repoRoot, "build", "vm-signal-server")
 	vmImagePath := filepath.Join(vmCacheDir, "image")
 	tmpDir := filepath.Join(vmCacheDir, "tmp")
@@ -551,7 +516,11 @@ func runCheckHealth(host string, port int, maxRetries int) error {
 // This implements the same logic as the archived Makefile target
 // vm-signal-server-hash (M19.4.5).
 func runExtractHash(logFileFlag, nixFileFlag string, dryRun bool) int {
-	repoRoot := findRepoRoot()
+	repoRoot, err := repo.Root()
+	if err != nil {
+		logMsg(red, fmt.Sprintf("Cannot find repo root: %v", err))
+		return 1
+	}
 
 	logFile := logFileFlag
 	if logFile == "" {

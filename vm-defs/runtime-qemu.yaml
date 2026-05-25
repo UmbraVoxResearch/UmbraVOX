@@ -1,0 +1,24 @@
+# runtime-qemu.yaml — QEMU runtime VM with GTK GUI display
+#
+# Tier 1 (Base) image: minimal NixOS — glibc, sqlite, ncurses, coreutils.
+# Used by:
+#   ./uv run gui   — lightweight QEMU window with VGA display (<1GB image)
+#
+# QEMU is required (Firecracker has no display support).
+# GTK display mode enables the graphical output.
+# No network: runtime binary is self-contained.
+# Slightly more RAM than the Firecracker path to accommodate the VGA framebuffer.
+
+name: runtime-qemu
+tier: base
+hypervisor: qemu
+display: gtk
+resources:
+  fraction: 15
+  min_cores: 1
+  min_memory: 512
+network:
+  mode: none
+boot:
+  timeout: 5m
+  no_reboot: true

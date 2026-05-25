@@ -1,0 +1,24 @@
+# dev.yaml — Interactive development VM
+#
+# Full Tier 4 (Dev) image: GHC 9.14, Cabal, F*, Z3, Coq, GCC, GDB,
+# Valgrind, AFL++, Go, tmux, etc.  Used by:
+#   ./uv dev         — interactive root shell inside VM
+#   ./uv build       — cabal build all
+#   ./uv test        — cabal test
+#   ./uv verify      — F* formal verification
+#
+# No network: all packages are baked into the image at build time.
+# Resources auto-scale to 50% of host with a 2-core / 2GB floor.
+
+name: dev
+tier: dev
+hypervisor: qemu
+resources:
+  fraction: 50
+  min_cores: 2
+  min_memory: 2048
+network:
+  mode: none
+boot:
+  timeout: 30m
+  no_reboot: true
