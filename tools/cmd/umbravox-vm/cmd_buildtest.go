@@ -55,6 +55,7 @@ func runBuild(args []string) int {
   BIN=$(cabal list-bin exe:umbravox 2>/dev/null) && \
   if [ -n "$BIN" ] && [ -f "$BIN" ]; then \
     cp "$BIN" /output/runtime/bin/umbravox && chmod +x /output/runtime/bin/umbravox && \
+    strip /output/runtime/bin/umbravox 2>/dev/null || true ; \
     INTERP=$(patchelf --print-interpreter "$BIN" 2>/dev/null) && \
     [ -n "$INTERP" ] && cp "$INTERP" /output/runtime/lib/ ; \
     ldd "$BIN" 2>/dev/null | awk '/=>/ && !/not found/ {print $3}' | while read lib; do \
