@@ -50,17 +50,72 @@ ACTIVE WORK
   [ ] M3.1.4.b Add an actual repo-owned native Windows CLI runner lane and smoke evidence.
 
 [~] M13 Formal verification (remaining)
-  Note: All 30 assume val declarations now have structured ASSUME JUSTIFICATION documentation,
-  cross-referenced with Coq primality proof (Ed25519Prime.v), HWCD 2008, RFC 8032, RFC 7748,
-  and other external evidence. See test/evidence/formal-proofs/ASSUMPTIONS.md.
-  [~] M13.3.2 Ed25519: 6 assume val remaining (cross-ref'd with Coq proofs)
-  [~] M13.7 F* infrastructure (partial)
-  [x] M13.11.4.h Coq primality: self-contained via pocklington_criterion axiom (225d49e)
-  [~] M13.13.6 Verify all F* specs pass in VM
-    Note: ANSI escape fix applied (v0.5.1). fstar-verify now detects
-    UMBRAVOX_VM=1 and suppresses color output. Ready for VM testing
-    with ./uv verify.
+  Note: All 30 assume val declarations have ASSUME JUSTIFICATION documentation.
+  18 of 30 are provable in Coq (algebraic/number theory).
+  12 of 30 are genuine cryptographic assumptions (unprovable in any proof assistant).
+
+  [x] M13.11.4.h Coq primality: Ed25519Prime.v — Pocklington criterion (225d49e)
+  [~] M13.7 F* infrastructure (partial — timeout now 120 min, needs F* cache in VM)
+  [~] M13.13.6 Verify all F* specs pass in VM (2/9 PASS, 7 expected FAIL from assume vals)
   [ ] M13.13.7 Run full F* verification suite in VM and capture evidence
+
+  Coq proofs needed — Ed25519 elliptic curve algebra (fiat-crypto / nsatz):
+  [ ] M13.14.1 point_add_assoc — associativity of extended twisted Edwards addition
+      Approach: fiat-crypto HWCD or nsatz over GF(2^255-19), degree-12 polynomial
+  [ ] M13.14.2 point_add_preserves_on_curve_ext — closure of point addition
+      Approach: HWCD Theorem 1, degree-8 identity (EFD dbl-2008-hwcd)
+  [ ] M13.14.3 point_double_preserves_on_curve_ext — closure of doubling
+      Approach: HWCD §4 doubling formulas, same degree-8 technique
+  [ ] M13.14.4 scalar_mult_preserves_on_curve_ext — closure of scalar mult
+      Approach: induction from add + double preservation
+  [ ] M13.14.5 scalar_mult_add — [a+b]P = [a]P + [b]P
+      Approach: group homomorphism induction (Silverman Prop III.3.6)
+  [ ] M13.14.6 scalar_mult_compose — [a]([b]P) = [ab]P
+      Approach: Z-module action, induction from scalar_mult_add
+  [ ] M13.14.7 scalar_mod_L_equiv — [n mod L]B = [n]B
+      Approach: cyclic group theory + group_order_lemma
+  [ ] M13.14.8 group_order_lemma — [L]B = O
+      Approach: vm_compute on optimized field representation (expensive)
+  [ ] M13.14.9 point_add_congruence_right — projective equivalence
+      Approach: rational map (Hartshorne II.7), scaling factor cancellation
+  [ ] M13.14.10 scalar_mult_congruence — scalar mult preserves congruence
+      Approach: induction from point_add_congruence_right
+
+  Coq proofs needed — Ed25519 encoding/decoding:
+  [ ] M13.14.11 encode_decode_roundtrip — point encode/decode round-trip
+      Approach: field arithmetic + RFC 8032 encoding spec
+  [ ] M13.14.12 sqrt_ratio_correct — GF(p) square root recovery
+      Approach: field arithmetic identity, Tonelli-Shanks correctness
+  [ ] M13.14.13 cofactor_clearing — cofactor subgroup projection
+      Approach: Ed25519 subgroup structure (h=8)
+
+  Coq proofs needed — X25519 / VRF:
+  [ ] M13.14.14 dh_commutativity — x25519(a, x25519(b, G)) = x25519(b, x25519(a, G))
+      Approach: scalar mult commutativity from group axioms
+  [ ] M13.14.15 dh_commutativity_general — generalized for arbitrary base point
+      Approach: same, extended to non-basepoint
+  [ ] M13.14.16 dleq_correctness — discrete log equality (Chaum-Pedersen)
+      Approach: algebraic identity, straightforward group theory
+
+  Coq proofs needed — SHA-256 refinement:
+  [ ] M13.14.17 bs_seq_roundtrip — ByteString ↔ sequence conversion
+      Approach: structural (Coq Prop, sequence lemmas)
+  [ ] M13.14.18 seq_of_bs_length_bound — ByteString length < 2^61
+      Approach: physical memory bound (trivial arithmetic)
+
+  Unprovable cryptographic assumptions (12, documented in F* specs):
+  [N/A] hmac_non_fixpoint — HMAC-SHA256 PRF security (RFC 2104)
+  [N/A] hmac_collision_resistance — HMAC-SHA256 collision resistance
+  [N/A] tag_forgery_ct_axiom — Poly1305 UF-CMA (RFC 8439)
+  [N/A] ind_cca2_security — ML-KEM IND-CCA2 (FIPS 203)
+  [N/A] mlkem_implicit_rejection — ML-KEM implicit rejection (FIPS 203 §7.3)
+  [N/A] hmac_integrity — HMAC-SHA-256 integrity (FIPS 198-1)
+  [N/A] hmac_unforgeability — HMAC-SHA-256 UF-CMA (RFC 2104)
+  [N/A] unlinkability — stealth address DDH (RFC 7748)
+  [N/A] vrf_strong_uniqueness — VRF DL binding (RFC 9381)
+  [N/A] vrf_collision_resistance — SHA-512 + point injection (RFC 9381)
+  [N/A] distinct_messages_distinct_sigs — SHA-512 collision (RFC 8032)
+  [N/A] sha256_refinement_axiom — Haskell SHA-256 matches F* spec (interop)
 
 [x] Quality gate: generated file header check
   All csrc/generated/*.c must contain "Auto-generated by CryptoGen" header.
