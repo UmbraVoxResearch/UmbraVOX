@@ -28,6 +28,7 @@ Signal Server:    v20260521.0.0 pinned, JDK 25, central config, JAR built
 Shell migration:  11/12 scripts replaced with Go (lib-vm.sh partial)
 Review findings:  18/18 resolved
 Firecracker VM:   runtime image in progress (phases 1-5 active)
+vmctl:            unified VM framework extraction in progress (phase 1)
 Platform targets: Linux, macOS, Windows, FreeBSD, OpenBSD, NetBSD,
                   DragonFlyBSD, illumos, arm64 + 7 future targets
 
@@ -92,6 +93,59 @@ ACTIVE WORK
   [~] Phase 6: Verification — image <500MB, boot <2s, all modes work
       Note: Firecracker boots successfully; UmbraVOX binary launches; init-path works.
       Remaining: confirm image size <500MB and sub-2s boot time under load.
+
+[~] vmctl — Unified VM Framework (reusable Go module)
+  Goal: consolidate 5 ad-hoc VM types into tools/pkg/vmctl/
+  Decoupled from UmbraVOX for reuse in other projects.
+
+  [~] Phase 1: Extract and deduplicate (no behavior changes)
+    [~] Create tools/pkg/vmctl/ package structure
+    [ ] Move ReadHostMemoryMB to vmctl/resources.go (deduplicate from qemu + firecracker)
+    [ ] Move ScaleToHost logic to vmctl/resources.go with Resources struct
+    [ ] Move CreateOverlay, EnsureCacheDisk, CreateSourceDisk, CreateAppDisk to vmctl/disk.go
+    [ ] Define Hypervisor interface in vmctl/hypervisor.go
+    [ ] Create vmctl/hypervisor_qemu.go wrapping qemu.Config behind interface
+    [ ] Create vmctl/hypervisor_fc.go wrapping firecracker.Config behind interface
+    [ ] Create vmctl/preflight.go unifying 4 preflight implementations
+    [ ] Create vmctl/nix.go with NixBuild wrapper
+    [ ] Thin wrappers in pkg/qemu, pkg/firecracker, pkg/disk delegating to vmctl
+
+  [ ] Phase 2: Unified boot path (VMSpec → vmctl.Boot)
+    [ ] Define VMSpec, DiskSpec, NetworkSpec, BootSpec types
+    [ ] Replace execInVM in cmd_exec.go with vmctl.Boot(spec)
+    [ ] Replace runRunFirecracker/runRunQEMU in cmd_run.go with vmctl.Boot
+    [ ] Replace runDev in cmd_dev.go with vmctl.Boot
+    [ ] Replace bootBuilderVM in cmd_image.go with vmctl.Boot
+    [ ] Replace hand-rolled QEMU args in vm-signal/main.go with vmctl.Boot
+    [ ] Eliminate duplicate findRepoRoot in vm-signal (use passed parameter)
+
+  [ ] Phase 3: Declarative YAML definitions
+    [ ] Add vmctl/config.go with YAML parsing into VMSpec
+    [ ] Create vm-defs/ directory with YAML for each VM type
+      [ ] vm-defs/dev.yaml — dev VM (full toolchain)
+      [ ] vm-defs/builder.yaml — builder VM (nix + network)
+      [ ] vm-defs/runtime-fc.yaml — Firecracker runtime
+      [ ] vm-defs/runtime-qemu.yaml — QEMU runtime (VGA)
+      [ ] vm-defs/ci-test.yaml — CI Firecracker with network
+      [ ] vm-defs/signal-build.yaml — Signal Server build
+      [ ] vm-defs/signal-runtime.yaml — Signal Server runtime
+    [ ] ./uv commands load YAML, overlay CLI flags, call vmctl.Boot
+
+  [ ] Phase 4: Extract to separate Go module
+    [ ] Ensure vmctl has zero imports from tools/pkg/{repo,log,netproxy,ninep}
+    [ ] Accept Logger interface instead of importing pkg/log
+    [ ] Accept repo root as parameter instead of importing pkg/repo
+    [ ] Move to tools/vmctl/ with own go.mod (or separate repo)
+    [ ] UmbraVOX imports vmctl as dependency
+
+  [ ] Phase 5: CI integration
+    [ ] Add --direct flag to ./uv test (host-based, no VM)
+    [ ] Add --direct flag to ./uv build and ./uv check
+    [ ] Create .github/workflows/ci-e2e.yml (nightly, self-hosted, KVM)
+    [ ] Create vm-defs/ci-test.yaml (Firecracker + network for fast CI)
+    [ ] Update ci-linux.yml to use ./uv test --direct
+    [ ] Add slirp4netns support for rootless Firecracker networking
+    [ ] Document CI setup in doc/CI-INTEGRATION.md
 
 ================================================================================
 CODE REVIEW FINDINGS (v0.5.3 audit)

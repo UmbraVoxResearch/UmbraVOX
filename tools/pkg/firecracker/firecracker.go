@@ -3,16 +3,15 @@
 package firecracker
 
 import (
-	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
-	"strconv"
 	"strings"
+
+	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/vmctl"
 )
 
 // Config holds parameters for a Firecracker microVM.
@@ -52,44 +51,15 @@ type machineConfig struct {
 	MemSizeMib int `json:"mem_size_mib"`
 }
 
-// readHostMemoryMB reads total host memory from /proc/meminfo.
-// Returns 4096 as a fallback on non-Linux or read failure.
-func readHostMemoryMB() int {
-	f, err := os.Open("/proc/meminfo")
-	if err != nil {
-		return 4096
-	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "MemTotal:") {
-			fields := strings.Fields(line)
-			if len(fields) >= 2 {
-				kb, err := strconv.Atoi(fields[1])
-				if err == nil {
-					return kb / 1024
-				}
-			}
-		}
-	}
-	return 4096
-}
-
 // ScaleToHost returns (cores, memMB) sized to 25% of host resources,
 // with minimums of 1 core and 512 MB.
 func ScaleToHost() (cores int, memMB int) {
-	cores = runtime.NumCPU() / 4
-	memMB = readHostMemoryMB() / 4
-
-	if cores < 1 {
-		cores = 1
-	}
-	if memMB < 512 {
-		memMB = 512
-	}
-	return cores, memMB
+	r := vmctl.ResolveResources(vmctl.Resources{
+		Fraction: 25,
+		MinCores: 1,
+		MinMemMB: 512,
+	})
+	return r.Cores, r.MemoryMB
 }
 
 // WriteConfigFile writes a Firecracker JSON configuration file into dir

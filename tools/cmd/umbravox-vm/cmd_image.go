@@ -23,6 +23,7 @@ import (
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/ninep"
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/qemu"
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/repo"
+	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/vmctl"
 )
 
 const (
@@ -135,13 +136,15 @@ func vmBuildImage(args []string) int {
 // vmBuildImageOnHost builds the VM image directly on the host via nix-build.
 func vmBuildImageOnHost(repoRoot string) int {
 	log.Info(tag, "Building VM image on host (writes to /nix/store)...")
-	cmd := exec.Command("nix-build", filepath.Join(repoRoot, "nix", "vm-image.nix"),
-		"-A", "qemu",
-		"-o", filepath.Join(repoRoot, "build", "vm", "image"))
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		log.Fail(tag, fmt.Sprintf("nix-build failed: %v", err))
+	b := &vmctl.NixBuild{
+		File:    filepath.Join(repoRoot, "nix", "vm-image.nix"),
+		Attr:    "qemu",
+		OutLink: filepath.Join(repoRoot, "build", "vm", "image"),
+		Stdout:  os.Stdout,
+		Stderr:  os.Stderr,
+	}
+	if err := b.Build(); err != nil {
+		log.Fail(tag, err.Error())
 		return 1
 	}
 	log.OK(tag, "VM image built successfully.")

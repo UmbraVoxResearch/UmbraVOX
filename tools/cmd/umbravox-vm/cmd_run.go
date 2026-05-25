@@ -15,6 +15,7 @@ import (
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/ninep"
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/qemu"
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/repo"
+	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/vmctl"
 )
 
 // runRun handles: uv run [gui|tui|headless] [--port PORT]
@@ -50,18 +51,6 @@ func runRun(args []string) int {
 	return runRunFirecracker(mode, port)
 }
 
-// PreflightFirecracker verifies that the firecracker binary is on PATH
-// and /dev/kvm exists.
-func PreflightFirecracker() error {
-	if _, err := exec.LookPath("firecracker"); err != nil {
-		return fmt.Errorf("firecracker not found on PATH; install it or use 'uv run gui' for QEMU")
-	}
-	if _, err := os.Stat("/dev/kvm"); err != nil {
-		return fmt.Errorf("/dev/kvm not available; KVM is required for Firecracker")
-	}
-	return nil
-}
-
 // canDisplayGUI checks whether a GUI window can be opened.
 func canDisplayGUI() bool {
 	// X11/Wayland: DISPLAY or WAYLAND_DISPLAY must be set
@@ -75,7 +64,7 @@ func canDisplayGUI() bool {
 // runRunFirecracker boots the runtime bundle in a Firecracker microVM.
 // mode is "tui" (serial console) or "headless" (daemon).
 func runRunFirecracker(mode, port string) int {
-	if err := PreflightFirecracker(); err != nil {
+	if err := vmctl.PreflightFirecracker(); err != nil {
 		log.Fail(tag, err.Error())
 		return 1
 	}

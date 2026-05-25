@@ -3,13 +3,11 @@
 package qemu
 
 import (
-	"bufio"
 	"fmt"
-	"os"
-	"runtime"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/vmctl"
 )
 
 // DriveFormat enumerates supported QEMU disk image formats.
@@ -70,60 +68,27 @@ type Config struct {
 // ReadHostMemoryMB reads total host memory from /proc/meminfo.
 // Returns 8192 as a fallback on non-Linux or read failure.
 func ReadHostMemoryMB() int {
-	f, err := os.Open("/proc/meminfo")
-	if err != nil {
-		return 8192
-	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "MemTotal:") {
-			fields := strings.Fields(line)
-			if len(fields) >= 2 {
-				kb, err := strconv.Atoi(fields[1])
-				if err == nil {
-					return kb / 1024
-				}
-			}
-		}
-	}
-	return 8192
+	return vmctl.ReadHostMemoryMB()
 }
 
 // ScaleToHost returns (cores, memMB) for a given VMProfile based on
 // the current host's resources.
 func ScaleToHost(p VMProfile) (cores int, memMB int) {
-	hostCores := runtime.NumCPU()
-	hostMem := ReadHostMemoryMB()
-
+	var frac int
 	switch p {
 	case ProfileBuild:
-		cores = hostCores * 3 / 4
-		memMB = hostMem * 3 / 4
+		frac = 75
 	case ProfileRuntime:
-		cores = hostCores / 4
-		memMB = hostMem / 4
+		frac = 25
 	default: // ProfileDev
-		cores = hostCores / 2
-		memMB = hostMem / 2
+		frac = 50
 	}
-
-	// Floor: 25% of host or absolute minimum
-	if minC := hostCores / 4; cores < minC {
-		cores = minC
-	}
-	if minM := hostMem / 4; memMB < minM {
-		memMB = minM
-	}
-	if cores < 2 {
-		cores = 2
-	}
-	if memMB < 2048 {
-		memMB = 2048
-	}
-	return cores, memMB
+	r := vmctl.ResolveResources(vmctl.Resources{
+		Fraction: frac,
+		MinCores: 2,
+		MinMemMB: 2048,
+	})
+	return r.Cores, r.MemoryMB
 }
 
 // DefaultConfig returns a Config with sensible defaults for UmbraVOX dev VMs.

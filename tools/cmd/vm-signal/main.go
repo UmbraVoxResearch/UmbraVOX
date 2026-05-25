@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/qemu"
+	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/vmctl"
 )
 
 // ANSI color helpers.
@@ -201,20 +202,9 @@ func findRepoRoot() string {
 }
 
 // preflightCheck validates KVM and QEMU availability.
+// Delegates to vmctl.PreflightQEMU.
 func preflightCheck() error {
-	ok := true
-	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
-		logMsg(red, "/dev/kvm not found; KVM required")
-		ok = false
-	}
-	if _, err := exec.LookPath("qemu-system-x86_64"); err != nil {
-		logMsg(red, "qemu-system-x86_64 not on PATH")
-		ok = false
-	}
-	if !ok {
-		return fmt.Errorf("preflight checks failed")
-	}
-	return nil
+	return vmctl.PreflightQEMU()
 }
 
 // createOverlay creates a COW qcow2 overlay backed by baseImage in dir.

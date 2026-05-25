@@ -7,9 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/log"
+	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/vmctl"
 )
 
 // Root walks up from the executable path (then cwd) to find the repo root.
@@ -58,6 +58,7 @@ func Root() (string, error) {
 
 // Preflight checks KVM, QEMU, and genext2fs availability.
 // If requireImage is true, also checks that vmImagePath exists.
+// KVM absence is a warning (falls back to TCG); QEMU and genext2fs are hard failures.
 func Preflight(vmImagePath string, requireImage bool) error {
 	ok := true
 
@@ -87,20 +88,7 @@ func Preflight(vmImagePath string, requireImage bool) error {
 }
 
 // PreflightFirecracker checks that Firecracker and KVM are available.
-// Returns nil if ready, error with actionable message if not.
+// Delegates to vmctl.PreflightFirecracker.
 func PreflightFirecracker() error {
-	var errs []string
-
-	if _, err := os.Stat("/dev/kvm"); os.IsNotExist(err) {
-		errs = append(errs, "/dev/kvm not found (KVM required for Firecracker)")
-	}
-
-	if _, err := exec.LookPath("firecracker"); err != nil {
-		errs = append(errs, "firecracker not on PATH (install via nix or package manager)")
-	}
-
-	if len(errs) > 0 {
-		return fmt.Errorf("Firecracker preflight failed:\n  %s", strings.Join(errs, "\n  "))
-	}
-	return nil
+	return vmctl.PreflightFirecracker()
 }
