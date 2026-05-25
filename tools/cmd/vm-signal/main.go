@@ -592,3 +592,157 @@ func runExtractHash(logFileFlag, nixFileFlag string, dryRun bool) int {
 	logMsg(blue, "Next step: ./uv vm signal build-jar  (should succeed now)")
 	return 0
 }
+
+// runBuildJarV2 is the vmctl-based replacement for runBuildJar.
+// It constructs a VMSpec and delegates all QEMU argument assembly to
+// QEMUHypervisor.Boot, eliminating the hand-rolled arg slice in runBuildJar.
+func runBuildJarV2(outputDirFlag string) int {
+	if err := preflightCheck(); err != nil {
+		return 1
+	}
+
+	repoRoot, err := repo.Root()
+	if err != nil {
+		logMsg(red, fmt.Sprintf("Cannot find repo root: %v", err))
+		return 1
+	}
+	vmCacheDir := filepath.Join(repoRoot, "build", "vm-signal-server")
+	buildImagePath := filepath.Join(vmCacheDir, "build-image")
+	tmpDir := filepath.Join(vmCacheDir, "tmp")
+	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
+		logMsg(red, fmt.Sprintf("Failed to create tmp dir: %v", err))
+		return 1
+	}
+
+	jarOutputDir := resolveJarOutputDir(repoRoot, outputDirFlag)
+
+	if err := ensureBuildImage(repoRoot, buildImagePath, tmpDir); err != nil {
+		logMsg(red, err.Error())
+		return 1
+	}
+
+	diskImg, err := filepath.EvalSymlinks(filepath.Join(buildImagePath, "nixos.img"))
+	if err != nil {
+		logMsg(red, fmt.Sprintf("Cannot resolve nixos.img: %v", err))
+		return 1
+	}
+
+	dm := vmctl.DiskManager{}
+	overlay, err := dm.CreateOverlay(diskImg, tmpDir)
+	if err != nil {
+		logMsg(red, fmt.Sprintf("Failed to create overlay: %v", err))
+		return 1
+	}
+	defer overlay.Remove()
+
+	if err := os.MkdirAll(jarOutputDir, 0o755); err != nil {
+		logMsg(red, fmt.Sprintf("Failed to create JAR output dir: %v", err))
+		return 1
+	}
+
+	logMsg(blue, "Stage 1 (v2): Building Signal-Server JAR in VM...")
+	logMsg(blue, "Network: enabled (Maven needs to fetch deps)")
+	logMsg(blue, fmt.Sprintf("Output: %s/signal-server.jar", jarOutputDir))
+	fmt.Fprintln(os.Stderr)
+
+	spec := &vmctl.VMSpec{
+		BaseImage: vmctl.ImageRef{
+			Path:   overlay.Path,
+			Format: vmctl.DiskFormatQCOW2,
+		},
+		Shares: []vmctl.ShareSpec{
+			{
+				HostPath: jarOutputDir,
+				MountTag: "output",
+				ID:       "output",
+			},
+		},
+		Network:  vmctl.NetworkSpec{Mode: vmctl.NetworkUserMode},
+		Resources: vmctl.Resources{Fraction: 50},
+		Timeout:  30 * time.Minute,
+		NoReboot: true,
+	}
+
+	ctx := context.Background()
+	if spec.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, spec.Timeout)
+		defer cancel()
+	}
+
+	hv := vmctl.QEMUHypervisor{}
+	result, hvErr := hv.Boot(ctx, spec, tmpDir)
+	if hvErr != nil {
+		logMsg(red, fmt.Sprintf("VM boot failed: %v", hvErr))
+		return 1
+	}
+	_ = result
+	return checkJarResult(jarOutputDir, hvErr)
+}
+
+// runRuntimeV2 is the vmctl-based replacement for runRuntime.
+// It constructs a VMSpec and delegates all QEMU argument assembly to
+// QEMUHypervisor.Boot, eliminating the hand-rolled arg slice in runRuntime.
+func runRuntimeV2(mode string) int {
+	if err := preflightCheck(); err != nil {
+		return 1
+	}
+
+	repoRoot, err := repo.Root()
+	if err != nil {
+		logMsg(red, fmt.Sprintf("Cannot find repo root: %v", err))
+		return 1
+	}
+	vmCacheDir := filepath.Join(repoRoot, "build", "vm-signal-server")
+	vmImagePath := filepath.Join(vmCacheDir, "image")
+	tmpDir := filepath.Join(vmCacheDir, "tmp")
+
+	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
+		logMsg(red, fmt.Sprintf("Failed to create tmp dir: %v", err))
+		return 1
+	}
+
+	if fi, err := os.Stat(vmImagePath); err != nil || !fi.IsDir() {
+		logMsg(red, fmt.Sprintf("Runtime VM image not found at %s", vmImagePath))
+		logMsg(yellow, "Run './uv vm signal build-jar' first.")
+		return 1
+	}
+
+	diskImg, err := filepath.EvalSymlinks(filepath.Join(vmImagePath, "nixos.img"))
+	if err != nil {
+		logMsg(red, fmt.Sprintf("Cannot resolve nixos.img: %v", err))
+		return 1
+	}
+
+	dm := vmctl.DiskManager{}
+	overlay, err := dm.CreateOverlay(diskImg, tmpDir)
+	if err != nil {
+		logMsg(red, fmt.Sprintf("Failed to create overlay: %v", err))
+		return 1
+	}
+	defer overlay.Remove()
+
+	logMsg(blue, "Stage 2 (v2): Booting Signal-Server runtime VM...")
+	logMsg(blue, "Network: deny-all (runtime isolation)")
+	logMsg(blue, fmt.Sprintf("Mode: %s", mode))
+	fmt.Fprintln(os.Stderr)
+
+	spec := &vmctl.VMSpec{
+		BaseImage: vmctl.ImageRef{
+			Path:   overlay.Path,
+			Format: vmctl.DiskFormatQCOW2,
+		},
+		Network:   vmctl.NetworkSpec{Mode: vmctl.NetworkNone},
+		Resources: vmctl.Resources{Fraction: 25},
+		NoReboot:  mode != "interactive",
+	}
+
+	ctx := context.Background()
+	hv := vmctl.QEMUHypervisor{}
+	result, hvErr := hv.Boot(ctx, spec, tmpDir)
+	if hvErr != nil {
+		logMsg(red, fmt.Sprintf("VM boot failed: %v", hvErr))
+		return 1
+	}
+	return result.ExitCode
+}

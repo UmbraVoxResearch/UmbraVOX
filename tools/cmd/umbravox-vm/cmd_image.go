@@ -443,6 +443,117 @@ func bootBuilderVM(repoRoot, builderImg string) int {
 	return 0
 }
 
+// bootBuilderVMV2 prepares disks, boots the builder VM via vmctl.QEMUHypervisor,
+// and extracts the resulting VM image. Returns 0 on success.
+func bootBuilderVMV2(repoRoot, builderImg string) int {
+	vmCacheDir := filepath.Join(repoRoot, "build", "vm")
+	builderDir := filepath.Dir(builderImg)
+
+	if err := repo.Preflight(builderDir, false); err != nil {
+		return 1
+	}
+
+	diskImg, err := filepath.EvalSymlinks(builderImg)
+	if err != nil {
+		diskImg = builderImg
+	}
+
+	tmpDir := filepath.Join(vmCacheDir, "tmp")
+	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
+		log.Fail(tag, fmt.Sprintf("Failed to create temp dir: %v", err))
+		return 1
+	}
+
+	disks, diskCleanup, err := prepareBuilderDisks(repoRoot, diskImg, tmpDir)
+	if err != nil {
+		log.Fail(tag, err.Error())
+		return 1
+	}
+	defer diskCleanup()
+
+	// ── Output directory ──────────────────────────────────────────
+	outputDir := filepath.Join(repoRoot, "build", "vm-output")
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		log.Fail(tag, fmt.Sprintf("Failed to create output dir: %v", err))
+		return 1
+	}
+	statusFile := filepath.Join(outputDir, "builder-status")
+	os.Remove(statusFile)
+	os.Remove(filepath.Join(outputDir, "nixos.img.zst"))
+
+	// ── Network filter ────────────────────────────────────────────
+	stopFilter, err := setupNetworkFilter(repoRoot, tmpDir)
+	if err != nil {
+		log.Fail(tag, err.Error())
+		return 1
+	}
+	if stopFilter != nil {
+		defer stopFilter()
+	}
+
+	// ── VMSpec ────────────────────────────────────────────────────
+	outputShare := ninep.DefaultOutputShare(outputDir)
+	spec := &vmctl.VMSpec{
+		Hypervisor: vmctl.HypervisorQEMU,
+		BaseImage: vmctl.ImageRef{
+			Path:   disks.overlay.Path,
+			Format: vmctl.DiskFormatQCOW2,
+		},
+		Disks: []vmctl.DiskSpec{
+			{Path: disks.srcDisk, Format: vmctl.DiskFormatRaw, ReadOnly: true, Interface: "virtio"},
+			{Path: disks.scratchDisk, Format: vmctl.DiskFormatQCOW2, Interface: "virtio"},
+		},
+		Shares: []vmctl.ShareSpec{{
+			HostPath:      outputShare.LocalPath,
+			MountTag:      outputShare.MountTag,
+			SecurityModel: string(outputShare.SecurityModel),
+			ID:            outputShare.ID,
+		}},
+		// User-mode networking: builder needs access to cache.nixos.org.
+		Network: vmctl.NetworkSpec{RawArgs: "-nic user,model=virtio"},
+		Resources: vmctl.Resources{
+			Fraction: 75, // ProfileBuild
+			MinCores: 2,
+			MinMemMB: 2048,
+		},
+		Timeout:    2 * time.Hour,
+		NoReboot:   true,
+		StatusFile: statusFile,
+	}
+
+	res := vmctl.ResolveResources(spec.Resources)
+	log.Info(tag, fmt.Sprintf("VM: %d cores, %dMB RAM", res.Cores, res.MemoryMB))
+	log.Info(tag, "Building dev VM image inside builder VM (vmctl)...")
+	fmt.Fprintln(os.Stderr)
+
+	// ── Boot ──────────────────────────────────────────────────────
+	ctx, cancel := context.WithTimeout(context.Background(), spec.Timeout)
+	defer cancel()
+
+	result, bootErr := (&vmctl.QEMUHypervisor{}).Boot(ctx, spec, tmpDir)
+	if bootErr != nil {
+		log.Fail(tag, fmt.Sprintf("QEMU error: %v", bootErr))
+		return 1
+	}
+	if result.ExitCode != 0 {
+		log.Fail(tag, fmt.Sprintf("QEMU exited with %d", result.ExitCode))
+		return 1
+	}
+
+	// ── Check result ──────────────────────────────────────────────
+	if err := checkBuilderResult(statusFile); err != nil {
+		log.Fail(tag, err.Error())
+		return 1
+	}
+
+	// ── Decompress result ─────────────────────────────────────────
+	if err := decompressBuilderImage(outputDir, vmCacheDir); err != nil {
+		log.Fail(tag, err.Error())
+		return 1
+	}
+	return 0
+}
+
 // bootBuilderVMWithCmd boots the builder VM and runs a custom nix-build command.
 // Results are written to the 9p output share at build/vm-output/.
 func bootBuilderVMWithCmd(repoRoot, builderImg, buildCmd string) int {

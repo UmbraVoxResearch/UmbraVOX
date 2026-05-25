@@ -98,13 +98,14 @@ type NetworkSpec struct {
 }
 
 // BootSpec describes kernel/initrd boot parameters for direct-kernel boot.
-// When used with HypervisorDirect, only Command is relevant; the kernel
-// fields are ignored.
+// When used with HypervisorDirect, only Command and ShellNix are relevant;
+// the kernel fields are ignored.
 type BootSpec struct {
 	KernelPath string // path to kernel image
 	InitrdPath string // path to initrd (optional)
 	KernelArgs string // kernel command-line arguments
 	Command    string // shell command for HypervisorDirect (passed to nix-shell --run)
+	ShellNix   string // path to shell.nix for HypervisorDirect (default: <repoRoot>/shell.nix)
 }
 
 // VMSpec is the complete specification for launching a VM.
