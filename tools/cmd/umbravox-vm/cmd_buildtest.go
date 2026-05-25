@@ -2,10 +2,12 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/log"
@@ -38,16 +40,23 @@ var testSuites = map[string]string{
 func runBuild(args []string) int {
 	docs := false
 	direct := false
+	bypassInteractive := false
 	for _, a := range args {
 		switch a {
 		case "--docs":
 			docs = true
 		case "--direct":
 			direct = true
+		case "--direct-bypass-interactive":
+			direct = true
+			bypassInteractive = true
 		}
 	}
 
 	if direct {
+		if !confirmDirect("build", bypassInteractive) {
+			return 1
+		}
 		repoRoot, err := repo.Root()
 		if err != nil {
 			log.Fail(tag, err.Error())
@@ -131,17 +140,25 @@ func runTest(args []string) int {
 
 	// Check for --direct anywhere in args; collect remaining args without it.
 	direct := false
+	bypassInteractive := false
 	var filtered []string
 	for _, a := range args {
-		if a == "--direct" {
+		switch a {
+		case "--direct":
 			direct = true
-		} else {
+		case "--direct-bypass-interactive":
+			direct = true
+			bypassInteractive = true
+		default:
 			filtered = append(filtered, a)
 		}
 	}
 	args = filtered
 
 	if direct {
+		if !confirmDirect("test", bypassInteractive) {
+			return 1
+		}
 		repoRoot, err := repo.Root()
 		if err != nil {
 			log.Fail(tag, err.Error())
@@ -263,4 +280,30 @@ cabal test umbravox-test --test-options='required' 2>&1`
 	}
 	// Host-side checks
 	return runCheck(nil)
+}
+
+// confirmDirect warns the user about --direct mode and asks for confirmation.
+// Returns true if the user confirms (or bypass is set). Always shows warning.
+func confirmDirect(action string, bypass bool) bool {
+	fmt.Fprintln(os.Stderr)
+	log.Warn(tag, "WARNING: --direct bypasses VM isolation.")
+	fmt.Fprintf(os.Stderr, "  This will %s directly on the host via nix-shell.\n", action)
+	fmt.Fprintf(os.Stderr, "  The primary development path uses VMs (./uv %s without --direct).\n", action)
+	fmt.Fprintf(os.Stderr, "  --direct is intended for CI runners without KVM access.\n")
+	fmt.Fprintln(os.Stderr)
+
+	if bypass {
+		log.Info(tag, "Proceeding (--direct-bypass-interactive)")
+		return true
+	}
+
+	fmt.Fprintf(os.Stderr, "  Continue with host-direct %s? [y/N] ", action)
+	reader := bufio.NewReader(os.Stdin)
+	line, _ := reader.ReadString('\n')
+	answer := strings.TrimSpace(strings.ToLower(line))
+	if answer == "y" || answer == "yes" {
+		return true
+	}
+	log.Info(tag, "Cancelled. Use VM-based ./uv "+action+" instead.")
+	return false
 }
