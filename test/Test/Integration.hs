@@ -199,7 +199,7 @@ sendN s r n g = do
 ------------------------------------------------------------------------
 
 testOutOfOrderDelivery :: IO Bool
-testOutOfOrderDelivery =
+testOutOfOrderDelivery = do
     mSession <- setupFixedSession
     case mSession of
         Nothing -> putStrLn "  FAIL: session setup failed" >> pure False
