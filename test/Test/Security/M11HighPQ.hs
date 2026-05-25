@@ -83,13 +83,14 @@ kemD2 = BS.replicate 32 0xAA
 kemZ2 = BS.replicate 32 0xBB
 
 -- | Build a valid PQXDH prekey bundle for Bob with correct PQ key signature.
-buildBundle :: IdentityKey -> ByteString -> MLKEMEncapKey -> PQPreKeyBundle
-buildBundle bIK spkSecret ekPQ =
-    let spkKP  = generateKeyPair spkSecret
-        spkSig = signPreKey bIK (kpPublic spkKP)
-        MLKEMEncapKey ekBytes = ekPQ
-        pqSig  = ed25519Sign (ikEd25519Secret bIK) ekBytes
-    in PQPreKeyBundle
+buildBundle :: IdentityKey -> ByteString -> MLKEMEncapKey -> IO PQPreKeyBundle
+buildBundle bIK spkSecret ekPQ = do
+    spkKP  <- generateKeyPair spkSecret
+    spkSig <- signPreKey bIK (kpPublic spkKP)
+    let MLKEMEncapKey ekBytes = ekPQ
+    sec <- toByteString (ikEd25519Secret bIK)
+    let pqSig  = ed25519Sign sec ekBytes
+    pure PQPreKeyBundle
         { pqpkbIdentityKey     = ikX25519Public bIK
         , pqpkbSignedPreKey    = kpPublic spkKP
         , pqpkbSPKSignature    = spkSig
@@ -384,9 +385,10 @@ testPQ005CiphertextLength = do
 testPQ006PQXDHHybridBinding :: IO Bool
 testPQ006PQXDHHybridBinding = do
     let (ekPQ, _dkPQ) = mlkemKeyGen kemD1 kemZ1
-        bundle        = buildBundle testBobIK testSpkSec ekPQ
+    bundle        <- buildBundle testBobIK testSpkSec ekPQ
 
-    case pqxdhInitiate testAliceIK bundle testEKSecret testMLKEMRand of
+    mResult <- pqxdhInitiate testAliceIK bundle testEKSecret testMLKEMRand
+    case mResult of
         Nothing -> do
             putStrLn "  FAIL: PQ-006 pqxdhInitiate returned Nothing"
             pure False
@@ -398,7 +400,8 @@ testPQ006PQXDHHybridBinding = do
 
             -- Different ML-KEM randomness => different pqSS => different master secret
             let mlkemRandB = BS.replicate 32 0x66
-            ok2 <- case pqxdhInitiate testAliceIK bundle testEKSecret mlkemRandB of
+            mResultB <- pqxdhInitiate testAliceIK bundle testEKSecret mlkemRandB
+            ok2 <- case mResultB of
                 Nothing -> do
                     putStrLn "  FAIL: PQ-006 second initiate returned Nothing"
                     pure False
@@ -408,8 +411,9 @@ testPQ006PQXDHHybridBinding = do
 
             -- Different DH: use a different SPK secret => different dh1,dh2,dh3
             let spkSec2  = BS.replicate 32 0xDE
-                bundle2  = buildBundle testBobIK spkSec2 ekPQ
-            ok3 <- case pqxdhInitiate testAliceIK bundle2 testEKSecret testMLKEMRand of
+            bundle2  <- buildBundle testBobIK spkSec2 ekPQ
+            mResultC <- pqxdhInitiate testAliceIK bundle2 testEKSecret testMLKEMRand
+            ok3 <- case mResultC of
                 Nothing ->
                     -- Signature verification with new SPK sig is fine; any rejection
                     -- also demonstrates DH contribution (different bundle -> different outcome)
@@ -453,9 +457,10 @@ testPQ006PQXDHHybridBinding = do
 testPQ007PQXDHClassicalFallback :: IO Bool
 testPQ007PQXDHClassicalFallback = do
     let (ekPQ, dkPQ) = mlkemKeyGen kemD1 kemZ1
-        bundle       = buildBundle testBobIK testSpkSec ekPQ
+    bundle       <- buildBundle testBobIK testSpkSec ekPQ
 
-    case pqxdhInitiate testAliceIK bundle testEKSecret testMLKEMRand of
+    mResult <- pqxdhInitiate testAliceIK bundle testEKSecret testMLKEMRand
+    case mResult of
         Nothing -> do
             putStrLn "  FAIL: PQ-007 pqxdhInitiate returned Nothing"
             pure False
@@ -466,8 +471,9 @@ testPQ007PQXDHClassicalFallback = do
 
             -- Bob responds with wrong ciphertext (all-zeros, 1088 bytes)
             let wrongCt = MLKEMCiphertext (BS.replicate 1088 0x00)
-            ok1 <- case pqxdhRespond testBobIK testSpkSec Nothing dkPQ
-                            (ikX25519Public testAliceIK) aliceEKPub wrongCt of
+            mWrong <- pqxdhRespond testBobIK testSpkSec Nothing dkPQ
+                            (ikX25519Public testAliceIK) aliceEKPub wrongCt
+            ok1 <- case mWrong of
                 Nothing ->
                     assertEq "PQ-007 Wrong ct: pqxdhRespond returned Nothing (expected)"
                         True True
@@ -476,8 +482,9 @@ testPQ007PQXDHClassicalFallback = do
                         True (aliceSS /= bobSSWrong)
 
             -- Bob responds with correct ciphertext -> secrets agree
-            ok2 <- case pqxdhRespond testBobIK testSpkSec Nothing dkPQ
-                            (ikX25519Public testAliceIK) aliceEKPub realPqCt of
+            mReal <- pqxdhRespond testBobIK testSpkSec Nothing dkPQ
+                            (ikX25519Public testAliceIK) aliceEKPub realPqCt
+            ok2 <- case mReal of
                 Nothing -> do
                     putStrLn "  FAIL: PQ-007 Real ct: pqxdhRespond returned Nothing"
                     pure False
@@ -617,9 +624,10 @@ testPQ009KeypairConsistency = do
 testPQ010TranscriptHashIncludesPQCt :: IO Bool
 testPQ010TranscriptHashIncludesPQCt = do
     let (ekPQ, dkPQ) = mlkemKeyGen kemD1 kemZ1
-        bundle       = buildBundle testBobIK testSpkSec ekPQ
+    bundle       <- buildBundle testBobIK testSpkSec ekPQ
 
-    case pqxdhInitiate testAliceIK bundle testEKSecret testMLKEMRand of
+    mResult <- pqxdhInitiate testAliceIK bundle testEKSecret testMLKEMRand
+    case mResult of
         Nothing -> do
             putStrLn "  FAIL: PQ-010 pqxdhInitiate returned Nothing"
             pure False
@@ -635,8 +643,9 @@ testPQ010TranscriptHashIncludesPQCt = do
                        True (aliceSS /= BS.replicate 32 0x00)
 
             -- Bob responds with real ciphertext -> secrets agree
-            ok3 <- case pqxdhRespond testBobIK testSpkSec Nothing dkPQ
-                           (ikX25519Public testAliceIK) aliceEKPub realPqCt of
+            mBobSS <- pqxdhRespond testBobIK testSpkSec Nothing dkPQ
+                           (ikX25519Public testAliceIK) aliceEKPub realPqCt
+            ok3 <- case mBobSS of
                 Nothing -> do
                     putStrLn "  FAIL: PQ-010 pqxdhRespond returned Nothing"
                     pure False
@@ -652,8 +661,9 @@ testPQ010TranscriptHashIncludesPQCt = do
             let MLKEMCiphertext realCtBytes = realPqCt
                 wrongCt = MLKEMCiphertext (flipBit 64 realCtBytes)
 
-            ok4 <- case pqxdhRespond testBobIK testSpkSec Nothing dkPQ
-                           (ikX25519Public testAliceIK) aliceEKPub wrongCt of
+            mBobSSWrong <- pqxdhRespond testBobIK testSpkSec Nothing dkPQ
+                           (ikX25519Public testAliceIK) aliceEKPub wrongCt
+            ok4 <- case mBobSSWrong of
                 Nothing ->
                     assertEq "PQ-010 Wrong ct: pqxdhRespond returned Nothing (acceptable)"
                         True True

@@ -297,14 +297,14 @@ testIA005SafetyNumberChangesOnKeyChange = do
 
 testIA006X3DHBundleSPKSigVerification :: IO Bool
 testIA006X3DHBundleSPKSigVerification = do
-    let aliceIK  = generateIdentityKey
+    aliceIK  <- generateIdentityKey
                        (BS.replicate 32 0xA1) (BS.replicate 32 0xA2)
-        bobIK    = generateIdentityKey
+    bobIK    <- generateIdentityKey
                        (BS.replicate 32 0xB1) (BS.replicate 32 0xB2)
-        spkSec   = BS.replicate 32 0xC1
-        spk      = generateKeyPair spkSec
-        validSig = signPreKey bobIK (kpPublic spk)
-        zeroSig  = BS.replicate 64 0x00
+    let spkSec   = BS.replicate 32 0xC1
+    spk      <- generateKeyPair spkSec
+    validSig <- signPreKey bobIK (kpPublic spk)
+    let zeroSig  = BS.replicate 64 0x00
         badSig   = flipBit 0x01 validSig
         ekSec    = BS.replicate 32 0xE1
 
@@ -316,15 +316,12 @@ testIA006X3DHBundleSPKSigVerification = do
             , pkbOneTimePreKey   = Nothing
             }
 
-        acceptValid = case x3dhInitiate aliceIK (mkBundle validSig) ekSec of
-                          Just _  -> True
-                          Nothing -> False
-        rejectZero  = case x3dhInitiate aliceIK (mkBundle zeroSig) ekSec of
-                          Nothing -> True
-                          Just _  -> False
-        rejectBad   = case x3dhInitiate aliceIK (mkBundle badSig) ekSec of
-                          Nothing -> True
-                          Just _  -> False
+    mValid <- x3dhInitiate aliceIK (mkBundle validSig) ekSec
+    mZero  <- x3dhInitiate aliceIK (mkBundle zeroSig) ekSec
+    mBad   <- x3dhInitiate aliceIK (mkBundle badSig) ekSec
+    let acceptValid = case mValid of Just _  -> True; Nothing -> False
+        rejectZero  = case mZero  of Nothing -> True; Just _  -> False
+        rejectBad   = case mBad   of Nothing -> True; Just _  -> False
 
     ok1 <- assertEq "IA-006 X3DH SPK sig: valid sig -> accepted (Just)" True acceptValid
     ok2 <- assertEq "IA-006 X3DH SPK sig: zero sig -> rejected (Nothing)" True rejectZero
@@ -359,19 +356,20 @@ testIA006X3DHBundleSPKSigVerification = do
 
 testIA007PQXDHBundleCompletenessCheck :: IO Bool
 testIA007PQXDHBundleCompletenessCheck = do
-    let aliceIK     = generateIdentityKey
+    aliceIK     <- generateIdentityKey
                           (BS.replicate 32 0xA1) (BS.replicate 32 0xA2)
-        bobIK       = generateIdentityKey
+    bobIK       <- generateIdentityKey
                           (BS.replicate 32 0xB1) (BS.replicate 32 0xB2)
-        spkSec      = BS.replicate 32 0xC1
-        spk         = generateKeyPair spkSec
-        validSPKSig = signPreKey bobIK (kpPublic spk)
-        zeroSPKSig  = BS.replicate 64 0x00
+    let spkSec      = BS.replicate 32 0xC1
+    spk         <- generateKeyPair spkSec
+    validSPKSig <- signPreKey bobIK (kpPublic spk)
+    let zeroSPKSig  = BS.replicate 64 0x00
         mlkemD      = BS.replicate 32 0x42
         mlkemZ      = BS.replicate 32 0x43
         (ekPQ, _)   = mlkemKeyGen mlkemD mlkemZ
         MLKEMEncapKey ekPQBytes = ekPQ
-        validPQSig  = ed25519Sign (ikEd25519Secret bobIK) ekPQBytes
+    bobEdSec <- toByteString (ikEd25519Secret bobIK)
+    let validPQSig  = ed25519Sign bobEdSec ekPQBytes
         zeroPQSig   = BS.replicate 64 0x00
         ekSec       = BS.replicate 32 0xE1
         mlkemRand   = BS.replicate 32 0xE2
@@ -386,18 +384,12 @@ testIA007PQXDHBundleCompletenessCheck = do
             , pqpkbPQKeySignature  = pqSig
             }
 
-        rejectZeroSPK = case pqxdhInitiate aliceIK
-                                 (mkBundle zeroSPKSig validPQSig) ekSec mlkemRand of
-                            Nothing -> True
-                            Just _  -> False
-        rejectZeroPQ  = case pqxdhInitiate aliceIK
-                                 (mkBundle validSPKSig zeroPQSig) ekSec mlkemRand of
-                            Nothing -> True
-                            Just _  -> False
-        acceptBoth    = case pqxdhInitiate aliceIK
-                                 (mkBundle validSPKSig validPQSig) ekSec mlkemRand of
-                            Just _  -> True
-                            Nothing -> False
+    mZeroSPK <- pqxdhInitiate aliceIK (mkBundle zeroSPKSig validPQSig) ekSec mlkemRand
+    mZeroPQ  <- pqxdhInitiate aliceIK (mkBundle validSPKSig zeroPQSig) ekSec mlkemRand
+    mBoth    <- pqxdhInitiate aliceIK (mkBundle validSPKSig validPQSig) ekSec mlkemRand
+    let rejectZeroSPK = case mZeroSPK of Nothing -> True; Just _  -> False
+        rejectZeroPQ  = case mZeroPQ  of Nothing -> True; Just _  -> False
+        acceptBoth    = case mBoth    of Just _  -> True; Nothing -> False
 
     ok1 <- assertEq "IA-007 PQXDH: zero SPK sig -> rejected (Nothing)" True rejectZeroSPK
     ok2 <- assertEq "IA-007 PQXDH: zero PQ key sig -> rejected (Nothing)" True rejectZeroPQ

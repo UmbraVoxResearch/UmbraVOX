@@ -443,8 +443,9 @@ testDoubleRatchetMaxTotalSkipped = do
         -- Derive Bob's SPK public key from his secret (X25519 scalar mult)
         Just bobSPKPublic = x25519 bobSPKSecret x25519Basepoint
         aliceDHSecret = BS.replicate 32 0xEF
-    let Just aliceSt0 = ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret
-        bobSt0   = ratchetInitBob sharedSecret bobSPKSecret
+    mAliceSt0 <- ratchetInitAlice sharedSecret bobSPKPublic aliceDHSecret
+    let Just aliceSt0 = mAliceSt0
+    bobSt0   <- ratchetInitBob sharedSecret bobSPKSecret
 
     -- Alice encrypts messages 0..99, so she advances her send counter to 100.
     -- We only keep the last message.
@@ -564,20 +565,21 @@ testExpandHomeNormalPath = do
 testPqxdhSharedSecretNonEmpty :: IO Bool
 testPqxdhSharedSecretNonEmpty = do
     -- Build a minimal valid PQXDH setup.
-    let aliceIK = generateIdentityKey
+    aliceIK <- generateIdentityKey
                       (hexDecode "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
                       (hexDecode "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
-        bobIK   = generateIdentityKey
+    bobIK   <- generateIdentityKey
                       (hexDecode "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb")
                       (hexDecode "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb")
-        spkSec  = hexDecode "b8b4e236805318e93f48bfbb365656ec1d068bf3d8cabb64dd1ba4523cec3a2a"
-        spk     = generateKeyPair spkSec
-        spkSig  = signPreKey bobIK (kpPublic spk)
+    let spkSec  = hexDecode "b8b4e236805318e93f48bfbb365656ec1d068bf3d8cabb64dd1ba4523cec3a2a"
+    spk     <- generateKeyPair spkSec
+    spkSig  <- signPreKey bobIK (kpPublic spk)
     let mlkemD = BS.replicate 32 0x42
         mlkemZ = BS.replicate 32 0x43
         (ekPQ, _dkPQ) = mlkemKeyGen mlkemD mlkemZ
         MLKEMEncapKey ekPQBytes = ekPQ
-        pqSig = ed25519Sign (ikEd25519Secret bobIK) ekPQBytes
+    bobSec <- toByteString (ikEd25519Secret bobIK)
+    let pqSig = ed25519Sign bobSec ekPQBytes
     let bundle = PQPreKeyBundle
             { pqpkbIdentityKey     = ikX25519Public bobIK
             , pqpkbSignedPreKey    = kpPublic spk
@@ -589,7 +591,8 @@ testPqxdhSharedSecretNonEmpty = do
             }
         ekSecret  = hexDecode "4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d"
         mlkemRand = BS.replicate 32 0x55
-    case pqxdhInitiate aliceIK bundle ekSecret mlkemRand of
+    mResult <- pqxdhInitiate aliceIK bundle ekSecret mlkemRand
+    case mResult of
         Nothing -> do
             putStrLn "  FAIL: M7.4.1 PQXDH initiation returned Nothing (SPK sig check failed?)"
             pure False

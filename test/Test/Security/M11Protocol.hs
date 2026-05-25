@@ -394,8 +394,8 @@ testPL004PQDowngrade = do
     ekSecret2 <- randomBytes 32
     mlkemR2   <- randomBytes 32
 
-    let mLegitResult     = pqxdhInitiate aliceIK legitBundle      ekSecret1 mlkemR1
-        mDowngradeResult = pqxdhInitiate aliceIK downgradedBundle  ekSecret2 mlkemR2
+    mLegitResult     <- pqxdhInitiate aliceIK legitBundle      ekSecret1 mlkemR1
+    mDowngradeResult <- pqxdhInitiate aliceIK downgradedBundle  ekSecret2 mlkemR2
 
     case mLegitResult of
         Nothing -> do
@@ -537,12 +537,13 @@ testPL007DoubleRatchetReplay = do
         bobSPKSecret  = BS.replicate 32 0xBB
         aliceDHSecret = BS.replicate 32 0xCC
 
-    let !aliceSt0 = case ratchetInitAlice sharedSecret
+    mAliceSt0 <- ratchetInitAlice sharedSecret
                         (mustX25519 bobSPKSecret x25519Basepoint)
-                        aliceDHSecret of
+                        aliceDHSecret
+    let !aliceSt0 = case mAliceSt0 of
                         Just s  -> s
                         Nothing -> error "testPL007: ratchetInitAlice returned Nothing"
-        !bobSt0   = ratchetInitBob sharedSecret bobSPKSecret
+    !bobSt0   <- ratchetInitBob sharedSecret bobSPKSecret
 
     let plaintext = BS.pack [0x01, 0x02, 0x03, 0x04]
 
@@ -679,12 +680,13 @@ testPL010PQXDHPrekeyReuse = do
     !bobIK <- generateIdentityKey bobEdSec bobXSec
     bobSPKSec <- randomBytes 32
     !bobSPK <- generateKeyPair bobSPKSec
-        !bobSPKSig = signPreKey bobIK (kpPublic bobSPK)
+    !bobSPKSig <- signPreKey bobIK (kpPublic bobSPK)
     (bobPQEncap, _bobPQDecap) <- do
         d <- randomBytes 32; z <- randomBytes 32
         pure (mlkemKeyGen d z)
     let MLKEMEncapKey bobPQEncapBytes2 = bobPQEncap
-        bobPQSig2 = ed25519Sign (ikEd25519Secret bobIK) bobPQEncapBytes2
+    bobEdSec2' <- toByteString (ikEd25519Secret bobIK)
+    let bobPQSig2 = ed25519Sign bobEdSec2' bobPQEncapBytes2
 
     let !bundle = PQPreKeyBundle
             { pqpkbIdentityKey     = ikX25519Public bobIK
@@ -706,11 +708,11 @@ testPL010PQXDHPrekeyReuse = do
         mlkemRand2 = BS.replicate 32 0xCC
 
     -- Session A and B with identical randomness (reuse scenario)
-    let mResA = pqxdhInitiate aliceIK bundle ekSec mlkemRand1
-        mResB = pqxdhInitiate aliceIK bundle ekSec mlkemRand1  -- exact reuse
+    mResA <- pqxdhInitiate aliceIK bundle ekSec mlkemRand1
+    mResB <- pqxdhInitiate aliceIK bundle ekSec mlkemRand1  -- exact reuse
 
     -- Session C with fresh mlkemRand
-    let mResC = pqxdhInitiate aliceIK bundle ekSec mlkemRand2
+    mResC <- pqxdhInitiate aliceIK bundle ekSec mlkemRand2
 
     case (mResA, mResB, mResC) of
         (Just rA, Just rB, Just rC) -> do
@@ -835,7 +837,7 @@ testPL021X3DHIdentityKeySubstitution = do
     !bobIK <- generateIdentityKey bobEdSec bobXSec
     bobSPKSec <- randomBytes 32
     !bobSPK <- generateKeyPair bobSPKSec
-        !bobSPKSig = signPreKey bobIK (kpPublic bobSPK)
+    !bobSPKSig <- signPreKey bobIK (kpPublic bobSPK)
 
     -- Generate a substitute Ed25519 public key (attacker's, without matching secret)
     substituteEdSec <- randomBytes 32
@@ -855,7 +857,7 @@ testPL021X3DHIdentityKeySubstitution = do
     !aliceIK <- generateIdentityKey aliceEdSec aliceXSec
 
     let ekSecret = BS.replicate 32 0x99
-    let mResult = x3dhInitiate aliceIK tamperedBundle ekSecret
+    mResult <- x3dhInitiate aliceIK tamperedBundle ekSecret
 
     assertEq "PL-021 X3DH identity key substitution: mismatched IK_B sig must be rejected"
              True (isNothing mResult)
@@ -893,14 +895,15 @@ testPL022PQXDHSignatureBypass = do
     !bobIK <- generateIdentityKey bobEdSec bobXSec
     bobSPKSec <- randomBytes 32
     !bobSPK <- generateKeyPair bobSPKSec
-        !validSig = signPreKey bobIK (kpPublic bobSPK)
-        !zeroSig  = BS.replicate 64 0x00
+    !validSig <- signPreKey bobIK (kpPublic bobSPK)
+    let !zeroSig  = BS.replicate 64 0x00
 
     (bobPQEncap, _) <- do
         d <- randomBytes 32; z <- randomBytes 32
         pure (mlkemKeyGen d z)
     let MLKEMEncapKey bobPQEncapBytes3 = bobPQEncap
-        validPQSig3 = ed25519Sign (ikEd25519Secret bobIK) bobPQEncapBytes3
+    bobEdSec3' <- toByteString (ikEd25519Secret bobIK)
+    let validPQSig3 = ed25519Sign bobEdSec3' bobPQEncapBytes3
 
     let !bundleValidSig = PQPreKeyBundle
             { pqpkbIdentityKey     = ikX25519Public bobIK
@@ -921,8 +924,8 @@ testPL022PQXDHSignatureBypass = do
     ekSec     <- randomBytes 32
     mlkemRand <- randomBytes 32
 
-    let mZeroSig  = pqxdhInitiate aliceIK bundleZeroSig  ekSec mlkemRand
-        mValidSig = pqxdhInitiate aliceIK bundleValidSig ekSec mlkemRand
+    mZeroSig  <- pqxdhInitiate aliceIK bundleZeroSig  ekSec mlkemRand
+    mValidSig <- pqxdhInitiate aliceIK bundleValidSig ekSec mlkemRand
 
     ok1 <- assertEq "PL-022 PQXDH sig bypass: zeroed SPK sig must be rejected"
                     True (isNothing mZeroSig)

@@ -124,7 +124,8 @@ testSM003MessageAfterClose = do
         dhSec  = BS.replicate 32 0xC5
         spkPub = mustX25519 spkSec x25519Basepoint
 
-    case ratchetInitAlice ss spkPub dhSec of
+    mSt0 <- ratchetInitAlice ss spkPub dhSec
+    case mSt0 of
         Nothing -> do
             putStrLn "  FAIL: SM-003 ratchetInitAlice returned Nothing"
             pure False
@@ -188,12 +189,13 @@ testSM005DRMissingRatchetStep = do
         dhSec  = BS.replicate 32 0xD7
         spkPub = mustX25519 spkSec x25519Basepoint
 
-    case ratchetInitAlice ss spkPub dhSec of
+    mAliceSt0 <- ratchetInitAlice ss spkPub dhSec
+    case mAliceSt0 of
         Nothing -> do
             putStrLn "  FAIL: SM-005 ratchetInitAlice returned Nothing"
             pure False
         Just aliceSt0 -> do
-            let bobSt0 = ratchetInitBob ss spkSec
+            bobSt0 <- ratchetInitBob ss spkSec
 
             -- Alice sends msg1 in epoch 0
             enc1 <- ratchetEncrypt aliceSt0 (strToBS "sm005-msg1-epoch0")
@@ -325,7 +327,9 @@ testSM012StateAfterTimeout = do
         dhSec2 = BS.replicate 32 0x15  -- "new connection" uses fresh ephemeral
         spkPub = mustX25519 spkSec x25519Basepoint
 
-    case (ratchetInitAlice ss spkPub dhSec1, ratchetInitAlice ss spkPub dhSec2) of
+    mSt1 <- ratchetInitAlice ss spkPub dhSec1
+    mSt2 <- ratchetInitAlice ss spkPub dhSec2
+    case (mSt1, mSt2) of
         (Just st1, Just st2) -> do
             -- (a) Both sessions start at counter 0
             ok1 <- assertEq "SM-012 session 1: rsSendN = 0 (fresh counter)" (0 :: Word32) (rsSendN st1)
@@ -426,12 +430,13 @@ testFS006RatchetPubkeyExposure = do
         dhSec  = BS.replicate 32 0xF8
         spkPub = mustX25519 spkSec x25519Basepoint
 
-    case ratchetInitAlice ss spkPub dhSec of
+    mAliceSt0 <- ratchetInitAlice ss spkPub dhSec
+    case mAliceSt0 of
         Nothing -> do
             putStrLn "  FAIL: FS-006 ratchetInitAlice returned Nothing"
             pure False
         Just aliceSt0 -> do
-            let bobSt0 = ratchetInitBob ss spkSec
+            bobSt0 <- ratchetInitBob ss spkSec
 
             -- Alice sends two messages in same DH epoch
             enc1 <- ratchetEncrypt aliceSt0 (strToBS "msg1")
@@ -506,12 +511,13 @@ testFS008SkippedKeyLifetime = do
         dhSec  = BS.replicate 32 0x0A
         spkPub = mustX25519 spkSec x25519Basepoint
 
-    case ratchetInitAlice ss spkPub dhSec of
+    mAliceSt0 <- ratchetInitAlice ss spkPub dhSec
+    case mAliceSt0 of
         Nothing -> do
             putStrLn "  FAIL: FS-008 ratchetInitAlice returned Nothing"
             pure False
         Just aliceSt0 -> do
-            let bobSt0 = ratchetInitBob ss spkSec
+            bobSt0 <- ratchetInitBob ss spkSec
 
             -- Alice sends msg1, msg2, msg3
             enc1 <- ratchetEncrypt aliceSt0 (strToBS "fs008-msg1")
@@ -685,7 +691,8 @@ testFS012RatchetStepFrequency = do
         spkPub = mustX25519 spkSec x25519Basepoint
         pt     = BS.singleton 0xAB
 
-    case ratchetInitAlice ss spkPub dhSec of
+    mSt0 <- ratchetInitAlice ss spkPub dhSec
+    case mSt0 of
         Nothing -> do
             putStrLn "  FAIL: FS-012 ratchetInitAlice returned Nothing"
             pure False
@@ -1079,13 +1086,13 @@ testIA015VRFIdentityBindingInfo = do
 
 testIA017ContactListPoisoning :: IO Bool
 testIA017ContactListPoisoning = do
-    let aliceIK = generateIdentityKey (BS.replicate 32 0xA1) (BS.replicate 32 0xA2)
-        bobIK   = generateIdentityKey (BS.replicate 32 0xB1) (BS.replicate 32 0xB2)
-        eveIK   = generateIdentityKey (BS.replicate 32 0xE1) (BS.replicate 32 0xE2)
-        spkSec  = BS.replicate 32 0xD1
-        spk     = generateKeyPair spkSec
-        spkSig  = signPreKey bobIK (kpPublic spk)
-        ekSec   = BS.replicate 32 0xEE
+    aliceIK <- generateIdentityKey (BS.replicate 32 0xA1) (BS.replicate 32 0xA2)
+    bobIK   <- generateIdentityKey (BS.replicate 32 0xB1) (BS.replicate 32 0xB2)
+    eveIK   <- generateIdentityKey (BS.replicate 32 0xE1) (BS.replicate 32 0xE2)
+    let spkSec  = BS.replicate 32 0xD1
+    spk     <- generateKeyPair spkSec
+    spkSig  <- signPreKey bobIK (kpPublic spk)
+    let ekSec   = BS.replicate 32 0xEE
 
         -- Legitimate Bob bundle
         goodBundle = PreKeyBundle
@@ -1105,7 +1112,8 @@ testIA017ContactListPoisoning = do
             }
 
     -- (a) Legitimate bundle accepted
-    ok1 <- case x3dhInitiate aliceIK goodBundle ekSec of
+    mGoodR <- x3dhInitiate aliceIK goodBundle ekSec
+    ok1 <- case mGoodR of
         Nothing -> do
             putStrLn "  FAIL: IA-017 legitimate bundle rejected"
             pure False
@@ -1116,8 +1124,8 @@ testIA017ContactListPoisoning = do
     -- (b) Poisoned bundle (mismatched identity key) — may be rejected by
     --     SPK sig check if the sig covers the identity key, otherwise
     --     produces a different shared secret (keys are isolated)
-    let mPoisoned = x3dhInitiate aliceIK poisonedBundle ekSec
-        mGood     = x3dhInitiate aliceIK goodBundle ekSec
+    mPoisoned <- x3dhInitiate aliceIK poisonedBundle ekSec
+    mGood     <- x3dhInitiate aliceIK goodBundle ekSec
     ok2 <- case (mPoisoned, mGood) of
         (Nothing, _) -> do
             putStrLn "  PASS: IA-017 poisoned bundle rejected by sig check"
@@ -1133,16 +1141,18 @@ testIA017ContactListPoisoning = do
     -- (c) Two distinct contacts produce distinct shared secrets
     let ekSec2 = BS.replicate 32 0xEF  -- different ephemeral for second contact
         spk2Sec = BS.replicate 32 0xD2
-        spk2    = generateKeyPair spk2Sec
-        spk2Sig = signPreKey eveIK (kpPublic spk2)
-        eveBundle = PreKeyBundle
+    spk2    <- generateKeyPair spk2Sec
+    spk2Sig <- signPreKey eveIK (kpPublic spk2)
+    let eveBundle = PreKeyBundle
             { pkbIdentityKey     = ikX25519Public eveIK
             , pkbSignedPreKey    = kpPublic spk2
             , pkbSPKSignature    = spk2Sig
             , pkbIdentityEd25519 = ikEd25519Public eveIK
             , pkbOneTimePreKey   = Nothing
             }
-    ok3 <- case (x3dhInitiate aliceIK goodBundle ekSec, x3dhInitiate aliceIK eveBundle ekSec2) of
+    mBobR <- x3dhInitiate aliceIK goodBundle ekSec
+    mEveR <- x3dhInitiate aliceIK eveBundle ekSec2
+    ok3 <- case (mBobR, mEveR) of
         (Just rBob, Just rEve) ->
             assertEq "IA-017 two contacts: distinct shared secrets (isolated)"
                 True (x3dhSharedSecret rBob /= x3dhSharedSecret rEve)
@@ -1247,15 +1257,15 @@ testIA018PeerDiscoveryInjection = do
 
 testIA019KeyRotationMITM :: IO Bool
 testIA019KeyRotationMITM = do
-    let oldIK  = generateIdentityKey (BS.replicate 32 0xA1) (BS.replicate 32 0xA2)
-        newIK  = generateIdentityKey (BS.replicate 32 0xA3) (BS.replicate 32 0xA4)
-        mitmIK = generateIdentityKey (BS.replicate 32 0xEE) (BS.replicate 32 0xEF)
+    oldIK  <- generateIdentityKey (BS.replicate 32 0xA1) (BS.replicate 32 0xA2)
+    newIK  <- generateIdentityKey (BS.replicate 32 0xA3) (BS.replicate 32 0xA4)
+    mitmIK <- generateIdentityKey (BS.replicate 32 0xEE) (BS.replicate 32 0xEF)
 
     -- The "rotation announcement" is the new key's Ed25519 public bytes
     let newKeyBytes = ikEd25519Public newIK
 
     -- (a) Old key signs the new key's bytes
-    let rotationSig = signPreKey oldIK newKeyBytes
+    rotationSig <- signPreKey oldIK newKeyBytes
 
     -- (b) Verifying with old public key succeeds
     -- signPreKey uses Ed25519 internally; we verify via the X3DH verify path
@@ -1268,9 +1278,10 @@ testIA019KeyRotationMITM = do
             , pkbOneTimePreKey   = Nothing
             }
         ekSec = BS.replicate 32 0xF1
-        aliceIK = generateIdentityKey (BS.replicate 32 0xC1) (BS.replicate 32 0xC2)
+    aliceIK <- generateIdentityKey (BS.replicate 32 0xC1) (BS.replicate 32 0xC2)
 
-    ok1 <- case x3dhInitiate aliceIK bundle ekSec of
+    mR1 <- x3dhInitiate aliceIK bundle ekSec
+    ok1 <- case mR1 of
         Just _ ->
             assertEq "IA-019 rotation sig (old->new): verified by x3dhInitiate"
                 True True
@@ -1280,15 +1291,18 @@ testIA019KeyRotationMITM = do
 
     -- (c) MITM substitution: attacker signs newKeyBytes with their own key
     --     The SPK sig was produced by oldIK; the bundle still claims oldIK identity
-    let mitmSig  = signPreKey mitmIK newKeyBytes
-        mitmBundle = bundle { pkbSPKSignature = mitmSig }
-    ok2 <- case x3dhInitiate aliceIK mitmBundle ekSec of
+    mitmSig  <- signPreKey mitmIK newKeyBytes
+    let mitmBundle = bundle { pkbSPKSignature = mitmSig }
+    mR2 <- x3dhInitiate aliceIK mitmBundle ekSec
+    ok2 <- case mR2 of
         Nothing ->
             assertEq "IA-019 MITM rotation sig (mitm->new): rejected by x3dhInitiate"
                 True True
         Just _ -> do
             -- If not rejected (sig covers SPK, not identity), shared secrets differ
-            case (x3dhInitiate aliceIK bundle ekSec, x3dhInitiate aliceIK mitmBundle ekSec) of
+            mLeg <- x3dhInitiate aliceIK bundle ekSec
+            mMITM <- x3dhInitiate aliceIK mitmBundle ekSec
+            case (mLeg, mMITM) of
                 (Just rLeg, Just rMITM) ->
                     assertEq "IA-019 MITM rotation yields different shared secret"
                         True (x3dhSharedSecret rLeg /= x3dhSharedSecret rMITM)

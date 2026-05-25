@@ -262,8 +262,8 @@ testSC016DoubleRatchetChainKeyDerivation = do
         bobSPKSecret  = BS.replicate 32 0x17
         aliceDHSecret = BS.replicate 32 0x18
         bobSPKPub     = mustX25519 bobSPKSecret x25519Basepoint
-        mAliceSt0     = ratchetInitAlice sharedSecret bobSPKPub aliceDHSecret
-        bobSt0        = ratchetInitBob sharedSecret bobSPKSecret
+    mAliceSt0     <- ratchetInitAlice sharedSecret bobSPKPub aliceDHSecret
+    bobSt0        <- ratchetInitBob sharedSecret bobSPKSecret
 
     case mAliceSt0 of
         Nothing -> do
@@ -354,12 +354,12 @@ testSC016DoubleRatchetChainKeyDerivation = do
 
 testSC018X3DHInitiateValidPeer :: IO Bool
 testSC018X3DHInitiateValidPeer = do
-    let aliceIK  = generateIdentityKey (BS.replicate 32 0x18) (BS.replicate 32 0x19)
-        bobIK    = generateIdentityKey (BS.replicate 32 0x20) (BS.replicate 32 0x21)
-        spkSec   = BS.replicate 32 0x22
-        spk      = generateKeyPair spkSec
-        spkSig   = signPreKey bobIK (kpPublic spk)
-        bundle   = PreKeyBundle
+    aliceIK  <- generateIdentityKey (BS.replicate 32 0x18) (BS.replicate 32 0x19)
+    bobIK    <- generateIdentityKey (BS.replicate 32 0x20) (BS.replicate 32 0x21)
+    let spkSec   = BS.replicate 32 0x22
+    spk      <- generateKeyPair spkSec
+    spkSig   <- signPreKey bobIK (kpPublic spk)
+    let bundle   = PreKeyBundle
             { pkbIdentityKey     = ikX25519Public bobIK
             , pkbSignedPreKey    = kpPublic spk
             , pkbSPKSignature    = spkSig
@@ -370,7 +370,8 @@ testSC018X3DHInitiateValidPeer = do
         ekSec2 = BS.replicate 32 0xE2
 
     -- (a) Valid SPK sig → Just result
-    case x3dhInitiate aliceIK bundle ekSec1 of
+    mR1 <- x3dhInitiate aliceIK bundle ekSec1
+    case mR1 of
         Nothing -> putStrLn "  FAIL: SC-018 valid SPK: x3dhInitiate returned Nothing" >> pure False
         Just r1 -> do
             ok1 <- assertEq "SC-018 X3DH valid: shared secret is 32 bytes"
@@ -379,7 +380,8 @@ testSC018X3DHInitiateValidPeer = do
                        32 (BS.length (x3dhEphemeralKey r1))
 
             -- (c) Different ekSecrets → different shared secrets
-            case x3dhInitiate aliceIK bundle ekSec2 of
+            mR2 <- x3dhInitiate aliceIK bundle ekSec2
+            case mR2 of
                 Nothing -> putStrLn "  FAIL: SC-018 second initiation returned Nothing" >> pure False
                 Just r2 -> do
                     ok3 <- assertEq "SC-018 X3DH: different ekSecrets produce different secrets"
@@ -388,13 +390,13 @@ testSC018X3DHInitiateValidPeer = do
 
 testSC018X3DHInitiateInvalidSPKSig :: IO Bool
 testSC018X3DHInitiateInvalidSPKSig = do
-    let aliceIK  = generateIdentityKey (BS.replicate 32 0x30) (BS.replicate 32 0x31)
-        bobIK    = generateIdentityKey (BS.replicate 32 0x32) (BS.replicate 32 0x33)
-        spkSec   = BS.replicate 32 0x34
-        spk      = generateKeyPair spkSec
-        -- Corrupt the signature: flip all bytes
-        validSig    = signPreKey bobIK (kpPublic spk)
-        corruptedSig = BS.map (0xFF -) validSig
+    aliceIK  <- generateIdentityKey (BS.replicate 32 0x30) (BS.replicate 32 0x31)
+    bobIK    <- generateIdentityKey (BS.replicate 32 0x32) (BS.replicate 32 0x33)
+    let spkSec   = BS.replicate 32 0x34
+    spk      <- generateKeyPair spkSec
+    -- Corrupt the signature: flip all bytes
+    validSig    <- signPreKey bobIK (kpPublic spk)
+    let corruptedSig = BS.map (0xFF -) validSig
         bundle   = PreKeyBundle
             { pkbIdentityKey     = ikX25519Public bobIK
             , pkbSignedPreKey    = kpPublic spk
@@ -405,7 +407,8 @@ testSC018X3DHInitiateInvalidSPKSig = do
         ekSec = BS.replicate 32 0xE3
 
     -- (b) Invalid SPK sig → Nothing (sig check fires before DH)
-    case x3dhInitiate aliceIK bundle ekSec of
+    mResult <- x3dhInitiate aliceIK bundle ekSec
+    case mResult of
         Nothing -> do
             putStrLn "  PASS: SC-018 X3DH invalid SPK sig: correctly rejected (Nothing)"
             pure True
@@ -444,9 +447,9 @@ testSC020StealthAddressScanHit :: IO Bool
 testSC020StealthAddressScanHit = do
     let scanSec   = BS.replicate 32 0x42
         spendSec  = BS.replicate 32 0x43
-        -- Build a valid Ed25519 identity to get a proper spend public key
-        fakeIK    = generateIdentityKey spendSec (BS.replicate 32 0x44)
-        spendPub  = ikEd25519Public fakeIK
+    -- Build a valid Ed25519 identity to get a proper spend public key
+    fakeIK    <- generateIdentityKey spendSec (BS.replicate 32 0x44)
+    let spendPub  = ikEd25519Public fakeIK
         scanPub   = mustX25519 scanSec x25519Basepoint
         ephSec    = BS.replicate 32 0x55
         ephPub    = mustX25519 ephSec x25519Basepoint
@@ -516,8 +519,8 @@ testSC020StealthAddressScanMiss :: IO Bool
 testSC020StealthAddressScanMiss = do
     let scanSec   = BS.replicate 32 0x60
         spendSec  = BS.replicate 32 0x61
-        fakeIK    = generateIdentityKey spendSec (BS.replicate 32 0x62)
-        spendPub  = ikEd25519Public fakeIK
+    fakeIK    <- generateIdentityKey spendSec (BS.replicate 32 0x62)
+    let spendPub  = ikEd25519Public fakeIK
         scanPub   = mustX25519 scanSec x25519Basepoint
 
     -- Derive a genuine stealth address

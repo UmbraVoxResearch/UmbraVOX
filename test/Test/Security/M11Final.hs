@@ -91,14 +91,15 @@ mustX25519 s p = case x25519 s p of
     Nothing -> error "mustX25519: unexpected all-zero DH output"
 
 -- | Build a valid PQXDH bundle for 'bobIK' with a fresh ML-KEM key.
-buildPQBundle :: IdentityKey -> ByteString -> PQPreKeyBundle
-buildPQBundle bobIK spkSec =
-    let spk    = generateKeyPair spkSec
-        spkSig = signPreKey bobIK (kpPublic spk)
-        (encapKey, _) = mlkemKeyGen (BS.replicate 32 0xCC) (BS.replicate 32 0xDD)
+buildPQBundle :: IdentityKey -> ByteString -> IO PQPreKeyBundle
+buildPQBundle bobIK spkSec = do
+    spk    <- generateKeyPair spkSec
+    spkSig <- signPreKey bobIK (kpPublic spk)
+    let (encapKey, _) = mlkemKeyGen (BS.replicate 32 0xCC) (BS.replicate 32 0xDD)
         MLKEMEncapKey ekBytes = encapKey
-        pqSig  = ed25519Sign (ikEd25519Secret bobIK) ekBytes
-    in PQPreKeyBundle
+    sec <- toByteString (ikEd25519Secret bobIK)
+    let pqSig  = ed25519Sign sec ekBytes
+    pure PQPreKeyBundle
         { pqpkbIdentityKey     = ikX25519Public bobIK
         , pqpkbSignedPreKey    = kpPublic spk
         , pqpkbSPKSignature    = spkSig
@@ -241,14 +242,14 @@ testIB022HandshakePayloadLengthValidation = do
 
 testPQ013PQDowngrade :: IO Bool
 testPQ013PQDowngrade = do
-    let aliceIK = generateIdentityKey (BS.replicate 32 0xA1) (BS.replicate 32 0xA2)
-        bobIK   = generateIdentityKey (BS.replicate 32 0xB1) (BS.replicate 32 0xB2)
-        spkSec  = BS.replicate 32 0xD1
+    aliceIK <- generateIdentityKey (BS.replicate 32 0xA1) (BS.replicate 32 0xA2)
+    bobIK   <- generateIdentityKey (BS.replicate 32 0xB1) (BS.replicate 32 0xB2)
+    let spkSec  = BS.replicate 32 0xD1
         ekSec   = BS.replicate 32 0xE1
         mlkemR  = BS.replicate 32 0xF1
-        bundle  = buildPQBundle bobIK spkSec
+    bundle  <- buildPQBundle bobIK spkSec
 
-    let mPQ = pqxdhInitiate aliceIK bundle ekSec mlkemR
+    mPQ <- pqxdhInitiate aliceIK bundle ekSec mlkemR
 
     -- Classical X3DH over the same classical keys (no PQ term).
     let classicalBundle = PreKeyBundle
@@ -258,7 +259,7 @@ testPQ013PQDowngrade = do
             , pkbIdentityEd25519 = pqpkbIdentityEd25519 bundle
             , pkbOneTimePreKey   = Nothing
             }
-    let mX3DH = x3dhInitiate aliceIK classicalBundle ekSec
+    mX3DH <- x3dhInitiate aliceIK classicalBundle ekSec
 
     case (mPQ, mX3DH) of
         (Just pqRes, Just x3dhRes) -> do
@@ -266,7 +267,7 @@ testPQ013PQDowngrade = do
                        True (pqxdhSharedSecret pqRes /= x3dhSharedSecret x3dhRes)
             -- (b) Different ML-KEM randomness -> different ciphertext
             let mlkemR2 = BS.replicate 32 0xF2
-                mPQ2 = pqxdhInitiate aliceIK bundle ekSec mlkemR2
+            mPQ2 <- pqxdhInitiate aliceIK bundle ekSec mlkemR2
             ok2 <- case mPQ2 of
                 Just pqRes2 ->
                     assertEq "PQ-013 different ML-KEM rand -> different PQ ciphertext"
@@ -300,26 +301,27 @@ testPQ013PQDowngrade = do
 
 testPQ014HybridKEMBinding :: IO Bool
 testPQ014HybridKEMBinding = do
-    let aliceIK = generateIdentityKey (BS.replicate 32 0xA3) (BS.replicate 32 0xA4)
-        bobIK   = generateIdentityKey (BS.replicate 32 0xB3) (BS.replicate 32 0xB4)
-        spkSec  = BS.replicate 32 0xD2
+    aliceIK <- generateIdentityKey (BS.replicate 32 0xA3) (BS.replicate 32 0xA4)
+    bobIK   <- generateIdentityKey (BS.replicate 32 0xB3) (BS.replicate 32 0xB4)
+    let spkSec  = BS.replicate 32 0xD2
         ekSec   = BS.replicate 32 0xE2
         mlkemR  = BS.replicate 32 0xF2
-        bundle  = buildPQBundle bobIK spkSec
+    bundle  <- buildPQBundle bobIK spkSec
 
-    let mFull = pqxdhInitiate aliceIK bundle ekSec mlkemR
+    mFull <- pqxdhInitiate aliceIK bundle ekSec mlkemR
 
     -- Alternate PQ key (different ML-KEM seed).
     let (encapKey2, _) = mlkemKeyGen (BS.replicate 32 0x00) (BS.replicate 32 0x00)
         MLKEMEncapKey ek2Bytes = encapKey2
-        pqSig2    = ed25519Sign (ikEd25519Secret bobIK) ek2Bytes
+    sec <- toByteString (ikEd25519Secret bobIK)
+    let pqSig2    = ed25519Sign sec ek2Bytes
         bundle2   = bundle { pqpkbPQPreKey = encapKey2
                            , pqpkbPQKeySignature = pqSig2 }
-        mAltPQ    = pqxdhInitiate aliceIK bundle2 ekSec mlkemR
+    mAltPQ    <- pqxdhInitiate aliceIK bundle2 ekSec mlkemR
 
     -- Alternate ephemeral key (different classical DH contribution).
     let ekSec2 = BS.replicate 32 0xE3
-        mAltDH  = pqxdhInitiate aliceIK bundle ekSec2 mlkemR
+    mAltDH  <- pqxdhInitiate aliceIK bundle ekSec2 mlkemR
 
     case (mFull, mAltPQ, mAltDH) of
         (Just full, Just altPQ, Just altDH) -> do
@@ -488,32 +490,36 @@ testSM001Noise2Before1 = do
 
 testSM008PQXDHPartialAbort :: IO Bool
 testSM008PQXDHPartialAbort = do
-    let aliceIK = generateIdentityKey (BS.replicate 32 0xA5) (BS.replicate 32 0xA6)
-        bobIK   = generateIdentityKey (BS.replicate 32 0xB5) (BS.replicate 32 0xB6)
-        spkSec  = BS.replicate 32 0xD5
+    aliceIK <- generateIdentityKey (BS.replicate 32 0xA5) (BS.replicate 32 0xA6)
+    bobIK   <- generateIdentityKey (BS.replicate 32 0xB5) (BS.replicate 32 0xB6)
+    let spkSec  = BS.replicate 32 0xD5
         ekSec   = BS.replicate 32 0xE5
         mlkemR  = BS.replicate 32 0xF5
-        good    = buildPQBundle bobIK spkSec
+    good    <- buildPQBundle bobIK spkSec
 
     -- (a) Zero SPK signature
     let badSPK = good { pqpkbSPKSignature = BS.replicate 64 0x00 }
+    mBadSPK <- pqxdhInitiate aliceIK badSPK ekSec mlkemR
     ok1 <- assertEq "SM-008 zeroed SPK sig: returns Nothing"
-               True (isNothing (pqxdhInitiate aliceIK badSPK ekSec mlkemR))
+               True (isNothing mBadSPK)
 
     -- (b) Zero PQ key signature
     let badPQ = good { pqpkbPQKeySignature = BS.replicate 64 0x00 }
+    mBadPQ <- pqxdhInitiate aliceIK badPQ ekSec mlkemR
     ok2 <- assertEq "SM-008 zeroed PQ key sig: returns Nothing"
-               True (isNothing (pqxdhInitiate aliceIK badPQ ekSec mlkemR))
+               True (isNothing mBadPQ)
 
     -- (c) Wrong Ed25519 identity key for verification
-    let wrongIK = generateIdentityKey (BS.replicate 32 0xEE) (BS.replicate 32 0xEF)
-        badEd   = good { pqpkbIdentityEd25519 = ikEd25519Public wrongIK }
+    wrongIK <- generateIdentityKey (BS.replicate 32 0xEE) (BS.replicate 32 0xEF)
+    let badEd   = good { pqpkbIdentityEd25519 = ikEd25519Public wrongIK }
+    mBadEd <- pqxdhInitiate aliceIK badEd ekSec mlkemR
     ok3 <- assertEq "SM-008 wrong Ed25519 key: returns Nothing"
-               True (isNothing (pqxdhInitiate aliceIK badEd ekSec mlkemR))
+               True (isNothing mBadEd)
 
     -- (d) Valid bundle succeeds after prior failures
+    mGood <- pqxdhInitiate aliceIK good ekSec mlkemR
     ok4 <- assertEq "SM-008 valid bundle succeeds after failures (no state corruption)"
-               True (isJust (pqxdhInitiate aliceIK good ekSec mlkemR))
+               True (isJust mGood)
 
     putStrLn "  INFO: SM-008 pqxdhInitiate is pure; Nothing leaves no partial key state"
     pure (ok1 && ok2 && ok3 && ok4)
@@ -628,14 +634,14 @@ testFS007SessionKeyNotOnDiskInfo = do
 
 testFS011OPKForwardSecrecy :: IO Bool
 testFS011OPKForwardSecrecy = do
-    let aliceIK = generateIdentityKey (BS.replicate 32 0xA7) (BS.replicate 32 0xA8)
-        bobIK   = generateIdentityKey (BS.replicate 32 0xB7) (BS.replicate 32 0xB8)
-        spkSec  = BS.replicate 32 0xD7
-        spk     = generateKeyPair spkSec
-        spkSig  = signPreKey bobIK (kpPublic spk)
-        opkSec  = BS.replicate 32 0xCC
-        opk     = generateKeyPair opkSec
-        ekSec1  = BS.replicate 32 0xE7
+    aliceIK <- generateIdentityKey (BS.replicate 32 0xA7) (BS.replicate 32 0xA8)
+    bobIK   <- generateIdentityKey (BS.replicate 32 0xB7) (BS.replicate 32 0xB8)
+    let spkSec  = BS.replicate 32 0xD7
+    spk     <- generateKeyPair spkSec
+    spkSig  <- signPreKey bobIK (kpPublic spk)
+    let opkSec  = BS.replicate 32 0xCC
+    opk     <- generateKeyPair opkSec
+    let ekSec1  = BS.replicate 32 0xE7
         ekSec2  = BS.replicate 32 0xE8
 
         mkBundle opkPub = PreKeyBundle
@@ -649,8 +655,8 @@ testFS011OPKForwardSecrecy = do
     let b = mkBundle (kpPublic opk)
 
     -- (a) Same OPK + same ephemeral -> identical (OPK must be single-use)
-    let m1 = x3dhInitiate aliceIK b ekSec1
-        m2 = x3dhInitiate aliceIK b ekSec1
+    m1 <- x3dhInitiate aliceIK b ekSec1
+    m2 <- x3dhInitiate aliceIK b ekSec1
     ok1 <- case (m1, m2) of
         (Just r1, Just r2) ->
             assertEq "FS-011 same OPK + same ek: identical shared secrets (OPK reuse detectable)"
@@ -658,7 +664,7 @@ testFS011OPKForwardSecrecy = do
         _ -> putStrLn "  FAIL: FS-011 x3dhInitiate returned Nothing" >> pure False
 
     -- (b) Same OPK + different ephemeral -> different (ephemeral contributes)
-    let m3 = x3dhInitiate aliceIK b ekSec2
+    m3 <- x3dhInitiate aliceIK b ekSec2
     ok2 <- case (m1, m3) of
         (Just r1, Just r3) ->
             assertEq "FS-011 same OPK + different ek: different secrets (ephemeral binds)"
@@ -842,23 +848,26 @@ testIA004SafetyNumberDeterministic = do
 
 testIA007PQXDHMissingPQKeySig :: IO Bool
 testIA007PQXDHMissingPQKeySig = do
-    let aliceIK = generateIdentityKey (BS.replicate 32 0xA9) (BS.replicate 32 0xAA)
-        bobIK   = generateIdentityKey (BS.replicate 32 0xB9) (BS.replicate 32 0xBA)
-        spkSec  = BS.replicate 32 0xD9
+    aliceIK <- generateIdentityKey (BS.replicate 32 0xA9) (BS.replicate 32 0xAA)
+    bobIK   <- generateIdentityKey (BS.replicate 32 0xB9) (BS.replicate 32 0xBA)
+    let spkSec  = BS.replicate 32 0xD9
         ekSec   = BS.replicate 32 0xE9
         mlkemR  = BS.replicate 32 0xF9
-        good    = buildPQBundle bobIK spkSec
+    good    <- buildPQBundle bobIK spkSec
 
+    mGood <- pqxdhInitiate aliceIK good ekSec mlkemR
     ok1 <- assertEq "IA-007 valid PQ key sig: pqxdhInitiate succeeds"
-               True (isJust (pqxdhInitiate aliceIK good ekSec mlkemR))
+               True (isJust mGood)
 
     let zeroSig = good { pqpkbPQKeySignature = BS.replicate 64 0x00 }
+    mZero <- pqxdhInitiate aliceIK zeroSig ekSec mlkemR
     ok2 <- assertEq "IA-007 zeroed PQ key sig: pqxdhInitiate returns Nothing"
-               True (isNothing (pqxdhInitiate aliceIK zeroSig ekSec mlkemR))
+               True (isNothing mZero)
 
     let forgeSig  = good { pqpkbPQKeySignature = BS.replicate 64 0xDE }
+    mForge <- pqxdhInitiate aliceIK forgeSig ekSec mlkemR
     ok3 <- assertEq "IA-007 forged PQ key sig: pqxdhInitiate returns Nothing"
-               True (isNothing (pqxdhInitiate aliceIK forgeSig ekSec mlkemR))
+               True (isNothing mForge)
 
     putStrLn "  INFO: IA-007 pqpkbPQKeySignature verified with pqpkbIdentityEd25519"
     pure (ok1 && ok2 && ok3)

@@ -145,12 +145,12 @@ recvFrame t = do
 
 testPL006TranscriptHashBindsBothIdentities :: IO Bool
 testPL006TranscriptHashBindsBothIdentities = do
-    let aliceIK = generateIdentityKey (BS.replicate 32 0xA1) (BS.replicate 32 0xA2)
-        bobIK   = generateIdentityKey (BS.replicate 32 0xB1) (BS.replicate 32 0xB2)
-        spkSec  = BS.replicate 32 0xC1
-        spk     = generateKeyPair spkSec
-        spkSig  = signPreKey bobIK (kpPublic spk)
-        bundle  = PreKeyBundle
+    aliceIK <- generateIdentityKey (BS.replicate 32 0xA1) (BS.replicate 32 0xA2)
+    bobIK   <- generateIdentityKey (BS.replicate 32 0xB1) (BS.replicate 32 0xB2)
+    let spkSec  = BS.replicate 32 0xC1
+    spk     <- generateKeyPair spkSec
+    spkSig  <- signPreKey bobIK (kpPublic spk)
+    let bundle  = PreKeyBundle
             { pkbIdentityKey      = ikX25519Public bobIK
             , pkbSignedPreKey     = kpPublic spk
             , pkbSPKSignature     = spkSig
@@ -159,12 +159,13 @@ testPL006TranscriptHashBindsBothIdentities = do
             }
         ekSec   = BS.replicate 32 0xE1
 
-    case x3dhInitiate aliceIK bundle ekSec of
+    mResult <- x3dhInitiate aliceIK bundle ekSec
+    case mResult of
         Nothing -> putStrLn "  FAIL: PL-006 deeper: x3dhInitiate returned Nothing" >> pure False
         Just result -> do
             let aliceSS = x3dhSharedSecret result
                 aliceEK = x3dhEphemeralKey result
-                mBobSS  = x3dhRespond bobIK spkSec Nothing
+            mBobSS  <- x3dhRespond bobIK spkSec Nothing
                               (ikX25519Public aliceIK) aliceEK
 
             case mBobSS of
@@ -174,14 +175,14 @@ testPL006TranscriptHashBindsBothIdentities = do
                     ok1 <- assertEq "PL-006 deeper: Alice/Bob shared secrets agree" aliceSS bobSS
 
                     -- (b) Carol impersonating Alice — different aliceIKPub in info
-                    let carolIK = generateIdentityKey (BS.replicate 32 0xCC) (BS.replicate 32 0xCD)
-                        carolSig = signPreKey carolIK (kpPublic spk)
-                        bundleCarol = bundle
+                    carolIK <- generateIdentityKey (BS.replicate 32 0xCC) (BS.replicate 32 0xCD)
+                    carolSig <- signPreKey carolIK (kpPublic spk)
+                    let bundleCarol = bundle
                             { pkbSPKSignature   = carolSig
                             , pkbIdentityEd25519 = ikEd25519Public carolIK
                             }
                         -- Carol uses her own identity to initiate to Bob
-                        mCarolR = x3dhInitiate carolIK bundleCarol ekSec
+                    mCarolR <- x3dhInitiate carolIK bundleCarol ekSec
                     let ok2res = case mCarolR of
                             Nothing -> True   -- bundle rejected (sig mismatch): OK
                             Just cr -> x3dhSharedSecret cr /= aliceSS
@@ -189,16 +190,16 @@ testPL006TranscriptHashBindsBothIdentities = do
                                True ok2res
 
                     -- (c) Dave impersonating Bob — different bobIKPub in info
-                    let daveIK  = generateIdentityKey (BS.replicate 32 0xDD) (BS.replicate 32 0xDE)
-                        daveSig = signPreKey daveIK (kpPublic spk)
-                        bundleDave = PreKeyBundle
+                    daveIK  <- generateIdentityKey (BS.replicate 32 0xDD) (BS.replicate 32 0xDE)
+                    daveSig <- signPreKey daveIK (kpPublic spk)
+                    let bundleDave = PreKeyBundle
                             { pkbIdentityKey     = ikX25519Public daveIK
                             , pkbSignedPreKey    = kpPublic spk
                             , pkbSPKSignature    = daveSig
                             , pkbIdentityEd25519 = ikEd25519Public daveIK
                             , pkbOneTimePreKey   = Nothing
                             }
-                        mDaveR = x3dhInitiate aliceIK bundleDave ekSec
+                    mDaveR <- x3dhInitiate aliceIK bundleDave ekSec
                     let ok3res = case mDaveR of
                             Nothing -> True
                             Just dr -> x3dhSharedSecret dr /= aliceSS
@@ -667,8 +668,8 @@ testPL019DoubleRatchetOutOfOrder = do
         bobSPKSecret  = BS.replicate 32 0xBB
         aliceDHSecret = BS.replicate 32 0xCC
         bobSPKPub     = mustX25519Base bobSPKSecret
-        mAliceSt0     = ratchetInitAlice sharedSecret bobSPKPub aliceDHSecret
-        bobSt0        = ratchetInitBob sharedSecret bobSPKSecret
+    mAliceSt0     <- ratchetInitAlice sharedSecret bobSPKPub aliceDHSecret
+    bobSt0        <- ratchetInitBob sharedSecret bobSPKSecret
 
     case mAliceSt0 of
         Nothing -> putStrLn "  FAIL: PL-019 ratchetInitAlice returned Nothing" >> pure False

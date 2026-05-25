@@ -577,7 +577,7 @@ testSC019PQXDHEncapDecapAgreement = do
             , 0x04, 0xf8, 0x08, 0xab, 0x86, 0x14, 0x54, 0x08
             , 0x9e, 0x11, 0x28, 0x49, 0x08, 0x5a, 0x01, 0x9c
             , 0x74, 0xd5, 0x5b, 0x6e, 0xea, 0x32, 0x2c, 0xf4 ]
-        aliceIK = generateIdentityKey aliceSK aliceIKPub
+    aliceIK <- generateIdentityKey aliceSK aliceIKPub
 
     -- Bob's identity
     let bobSK = BS.pack
@@ -590,19 +590,20 @@ testSC019PQXDHEncapDecapAgreement = do
             , 0x79, 0xe1, 0x7f, 0x8b, 0x83, 0x80, 0x0e, 0xe6
             , 0x6f, 0x3b, 0xb1, 0x29, 0x26, 0x18, 0xb6, 0xfd
             , 0x1c, 0x2f, 0x8b, 0x27, 0xff, 0x88, 0xe0, 0xeb ]
-        bobIK = generateIdentityKey bobSK bobIKPub
+    bobIK <- generateIdentityKey bobSK bobIKPub
 
     -- Bob's SPK
     let spkSec = BS.replicate 32 0xB8
-        spkKP  = generateKeyPair spkSec
-        spkSig = signPreKey bobIK (kpPublic spkKP)
+    spkKP  <- generateKeyPair spkSec
+    spkSig <- signPreKey bobIK (kpPublic spkKP)
 
     -- Bob's ML-KEM keypair
     let mlkemD = BS.replicate 32 0x42
         mlkemZ = BS.replicate 32 0x43
         (ekPQ, dkPQ) = mlkemKeyGen mlkemD mlkemZ
         MLKEMEncapKey ekPQBytes = ekPQ
-        pqSig = ed25519Sign (ikEd25519Secret bobIK) ekPQBytes
+    bobSec <- toByteString (ikEd25519Secret bobIK)
+    let pqSig = ed25519Sign bobSec ekPQBytes
 
     let bundle = PQPreKeyBundle
             { pqpkbIdentityKey     = ikX25519Public bobIK
@@ -617,7 +618,8 @@ testSC019PQXDHEncapDecapAgreement = do
     let ekSecret   = BS.replicate 32 0xE1
         mlkemRand  = BS.replicate 32 0xE2
 
-    case pqxdhInitiate aliceIK bundle ekSecret mlkemRand of
+    mResult <- pqxdhInitiate aliceIK bundle ekSecret mlkemRand
+    case mResult of
         Nothing -> do
             putStrLn "  FAIL: SC-019 pqxdhInitiate returned Nothing (SPK verify failed)"
             pure False
@@ -625,7 +627,7 @@ testSC019PQXDHEncapDecapAgreement = do
             let aliceSS = pqxdhSharedSecret result
                 pqCt    = pqxdhPQCiphertext result
                 aliceEK = pqxdhEphemeralKey result
-                mBobSS  = pqxdhRespond bobIK spkSec Nothing dkPQ
+            mBobSS  <- pqxdhRespond bobIK spkSec Nothing dkPQ
                               (ikX25519Public aliceIK) aliceEK pqCt
             ok1 <- assertEq "SC-019 PQXDH shared secret: 32 bytes"
                        32 (BS.length aliceSS)
