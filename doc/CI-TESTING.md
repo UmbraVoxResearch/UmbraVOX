@@ -52,26 +52,10 @@ Triggered manually before tagging a release. Exhaustive validation.
 | `./uv test --direct` | — | Host build path regression |
 | `./uv release all` | — | Build all 12 platform artifacts |
 
-## Test Level Reference
+## Test Levels
 
-| Level | Name | Command | Time |
-|-------|------|---------|------|
-| L0 | Unit (fast gate) | `./uv test` | ~5 min |
-| L1 | Named suites | `./uv test <suite>` | 2-10 min each |
-| L1 | All suites | `./uv test all` | ~30 min |
-| L2 | Differential | `./uv test differential` | ~5 min |
-| L4 | Soak | `./uv test soak` | ~2 hr |
-| L5 | Fuzz | `./uv fuzz [mode]` | Unbounded |
-| L6 | Formal | `./uv verify` | ~1 hr |
-| L7 | Quality | `./uv check` | ~30 sec |
-| L8 | Coverage | `./uv coverage [--check\|--mcdc]` | ~15 min |
-| L9 | Smoke | `./uv vm smoke <target>` | ~5 min |
-| L10 | E2E | `./uv test e2e` | ~45 min |
-| L11 | Ephemeral | `./uv test ephemeral` | ~30 min |
-| L12 | Integration | `./uv vm integration` | ~15 min |
-| L13 | Pre-release | `./uv check pre-release` | ~2 min |
-| L14 | Signal | `./uv vm signal test` | ~10 min |
-| L15 | Integrity | `./uv test integrity` | ~1 min |
+See [TEST-LEVELS.md](TEST-LEVELS.md) for the complete test level reference
+(L0-L15), named suite descriptions, and command details.
 
 ## Coverage Matrix
 
