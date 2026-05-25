@@ -54,7 +54,7 @@ func runBuild(args []string) int {
   mkdir -p /output/runtime/bin /output/runtime/lib && \
   BIN=$(cabal list-bin exe:umbravox 2>/dev/null) && \
   if [ -n "$BIN" ] && [ -f "$BIN" ]; then \
-    cp "$BIN" /output/runtime/bin/umbravox && \
+    cp "$BIN" /output/runtime/bin/umbravox && chmod +x /output/runtime/bin/umbravox && \
     INTERP=$(patchelf --print-interpreter "$BIN" 2>/dev/null) && \
     [ -n "$INTERP" ] && cp "$INTERP" /output/runtime/lib/ ; \
     ldd "$BIN" 2>/dev/null | awk '/=>/ && !/not found/ {print $3}' | while read lib; do \
@@ -76,6 +76,9 @@ func runBuild(args []string) int {
 			if fi, err := os.Stat(runtimeSrc); err == nil && fi.IsDir() {
 				os.RemoveAll(runtimeDst)
 				os.Rename(runtimeSrc, runtimeDst)
+				// Ensure execute permission (9p share may strip it)
+				binPath := filepath.Join(runtimeDst, "bin", "umbravox")
+				os.Chmod(binPath, 0o755)
 				log.Info(tag, "Runtime bundle saved to build/runtime/")
 			}
 		}
