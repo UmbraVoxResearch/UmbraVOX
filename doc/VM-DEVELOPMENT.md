@@ -288,18 +288,73 @@ UMBRAVOX_SEED_URL=https://internal-mirror.example.com/nixos-seed.qcow2 \
 This is useful for air-gapped networks, corporate mirrors, or local
 caches. The SHA-256 verification still applies regardless of the URL.
 
+## VM Image Tiers
+
+All VM images derive from a 4-tier NixOS module hierarchy. Each tier
+imports the one below it — strictly additive.
+
+### Tier 1: Base (`nix/tiers/base.nix`)
+Boots, has a shell, can mount disks, can run a binary.
+No network, no nix daemon, no toolchain.
+
+Packages: bashInteractive, coreutils, util-linux, ncurses, sqlite
+
+Used by:
+- Firecracker runtime (`./uv run tui`, `./uv run headless`)
+- QEMU runtime (`./uv run gui`)
+- Smoke test guests
+
+### Tier 2: Network (`nix/tiers/network.nix`)
+Base + DHCP, DNS, outbound HTTPS. No nix daemon.
+
+Additional packages: curl, cacert, jq
+
+Used by:
+- CI test runner (Firecracker with network)
+- Signal Server runtime VM (PostgreSQL, Redis, etc.)
+
+### Tier 3: Builder (`nix/tiers/builder.nix`)
+Network + nix daemon. Can build nix derivations and fetch
+packages from cache.nixos.org.
+
+Additional: nix, git, nix.enable, sandbox=false, 4 build users
+
+Used by:
+- VM image builder (`./uv vm build-image`)
+- Signal Server build VM (`./uv vm signal build-jar`)
+
+### Tier 4: Dev (`nix/tiers/dev.nix`)
+Builder + full development toolchain.
+
+Additional: GHC 9.14.1, Cabal, GCC, GDB, Valgrind, Coq, F*, Z3, TLA+,
+Go, SQLite, AFL++, graphviz, patchelf, genext2fs, tmux, asciinema, etc.
+
+Used by:
+- Dev VM (`./uv dev`, `./uv build`, `./uv test`, `./uv verify`)
+
+### Creating a New VM
+
+1. Choose the appropriate tier based on what the VM needs
+2. Create `nix/vm-<name>.nix` importing the tier
+3. Add VM-specific config (services, boot params, extra packages)
+4. Add a YAML definition in `vm-defs/` (Phase 3)
+5. Wire into `./uv` CLI
+
 ## Runtime VM (Firecracker)
 
 The project uses two VM tiers:
 
 1. **Dev VM** (QEMU, ~26GB) — full toolchain (GHC 9.14, Cabal, F*, Z3, Coq)
    Used by: `./uv build`, `./uv test`, `./uv verify`, `./uv dev`
+   NixOS tier: Tier 4 (Dev)
 
 2. **Runtime VM** (Firecracker, <500MB) — minimal (glibc, sqlite, ncurses)
    Used by: `./uv run`, `./uv run tui`, `./uv run headless`
+   NixOS tier: Tier 1 (Base)
 
 3. **Runtime VM** (QEMU lightweight, <1GB) — minimal + VGA display
    Used by: `./uv run gui`
+   NixOS tier: Tier 1 (Base)
 
 ### Building Runtime Images
 

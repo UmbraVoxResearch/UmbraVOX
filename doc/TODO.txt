@@ -110,6 +110,23 @@ ACTIVE WORK
     [ ] Create vmctl/nix.go with NixBuild wrapper
     [ ] Thin wrappers in pkg/qemu, pkg/firecracker, pkg/disk delegating to vmctl
 
+  [~] Nix base image tiers (4-tier hierarchy)
+    [ ] Create nix/tiers/base.nix — boots, shell, mount disks, run binary
+        Imports vm-base.nix, adds bashInteractive, coreutils, util-linux
+    [ ] Create nix/tiers/network.nix — base + DHCP, DNS, curl
+        Imports base.nix, adds useDHCP, curl, cacert
+    [ ] Create nix/tiers/builder.nix — network + nix daemon
+        Imports network.nix, adds nix.enable, nix.settings, nixbld users
+    [ ] Create nix/tiers/dev.nix — builder + full toolchain
+        Imports builder.nix, adds devToolsPkgs (GHC, Cabal, Go, F*, Z3, Coq, AFL)
+    [ ] Update nix/vm-runtime.nix to import tiers/base.nix
+    [ ] Update nix/vm-image.nix to import tiers/dev.nix
+    [ ] Update nix/vm-builder.nix to import tiers/builder.nix
+    [ ] Update nix/vm-signal-server.nix build VM to import tiers/builder.nix
+    [ ] Update nix/vm-signal-server.nix runtime VM to import tiers/network.nix
+    [ ] Document tier architecture in doc/VM-DEVELOPMENT.md
+    [ ] Reference tier policy in AGENTS.md
+
   [ ] Phase 2: Unified boot path (VMSpec → vmctl.Boot)
     [ ] Define VMSpec, DiskSpec, NetworkSpec, BootSpec types
     [ ] Replace execInVM in cmd_exec.go with vmctl.Boot(spec)
@@ -119,16 +136,16 @@ ACTIVE WORK
     [ ] Replace hand-rolled QEMU args in vm-signal/main.go with vmctl.Boot
     [ ] Eliminate duplicate findRepoRoot in vm-signal (use passed parameter)
 
-  [ ] Phase 3: Declarative YAML definitions
+  [ ] Phase 3: Declarative YAML definitions (reference tier names: base, network, builder, dev)
     [ ] Add vmctl/config.go with YAML parsing into VMSpec
     [ ] Create vm-defs/ directory with YAML for each VM type
-      [ ] vm-defs/dev.yaml — dev VM (full toolchain)
-      [ ] vm-defs/builder.yaml — builder VM (nix + network)
-      [ ] vm-defs/runtime-fc.yaml — Firecracker runtime
-      [ ] vm-defs/runtime-qemu.yaml — QEMU runtime (VGA)
-      [ ] vm-defs/ci-test.yaml — CI Firecracker with network
-      [ ] vm-defs/signal-build.yaml — Signal Server build
-      [ ] vm-defs/signal-runtime.yaml — Signal Server runtime
+      [ ] vm-defs/dev.yaml — tier: dev (full toolchain)
+      [ ] vm-defs/builder.yaml — tier: builder (nix + network)
+      [ ] vm-defs/runtime-fc.yaml — tier: base (Firecracker runtime)
+      [ ] vm-defs/runtime-qemu.yaml — tier: base (QEMU runtime with VGA)
+      [ ] vm-defs/ci-test.yaml — tier: network (CI Firecracker with network)
+      [ ] vm-defs/signal-build.yaml — tier: builder (Signal Server build)
+      [ ] vm-defs/signal-runtime.yaml — tier: network (Signal Server runtime)
     [ ] ./uv commands load YAML, overlay CLI flags, call vmctl.Boot
 
   [ ] Phase 4: Extract to separate Go module

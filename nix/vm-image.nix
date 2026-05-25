@@ -22,67 +22,8 @@ let
     then fstarCacheDir
     else null;
 
-  hp = pkgs.haskell.packages.ghc9141;
-
-  # Rocq 9.1.1 separates the stdlib (ZArith, Arith, etc.) from the core.
-  # Conditionally include the stdlib package: try coqPackages.stdlib first
-  # (modern nixpkgs name), then coqPackages.coq-stdlib (legacy alias).
-  # This ensures Ed25519Constants.v can "Require Import ZArith." in-guest.
-  coqStdlib =
-    if builtins.hasAttr "stdlib" pkgs.coqPackages then [ pkgs.coqPackages.stdlib ]
-    else if builtins.hasAttr "coq-stdlib" pkgs.coqPackages then [ pkgs.coqPackages.coq-stdlib ]
-    else [];
-
-  # coqprime provides Pocklington primality proofs and field tactics.
-  # bignums is a dependency. Both needed for Ed25519 group law (M13.11.4).
-  coqPrime =
-    if builtins.hasAttr "coqprime" pkgs.coqPackages then [ pkgs.coqPackages.coqprime ]
-    else [];
-  coqBignums =
-    if builtins.hasAttr "bignums" pkgs.coqPackages then [ pkgs.coqPackages.bignums ]
-    else [];
-
-  devToolsPkgs = with pkgs; [
-    (hp.ghcWithPackages (p: [ p.network ]))
-    cabal-install
-    gcc
-    gdb
-    valgrind
-    coq
-  ] ++ coqStdlib ++ coqPrime ++ coqBignums ++ (with pkgs; [
-    tlaplus
-    fstar
-    z3
-    go
-    sqlite
-    sqlite.dev
-    pkg-config
-    aflplusplus
-    graphviz
-    jq
-    patchelf
-    file
-    zip
-    gnumake
-    git
-    genext2fs
-    bashInteractive
-    coreutils
-    findutils
-    gnugrep
-    gnused
-    gnutar
-    gzip
-    which
-    diffutils
-    gnupatch
-    tmux
-    aha
-    asciinema
-  ]);
-
   nixosConfig = { config, lib, modulesPath, pkgs, ... }: {
-    imports = [ ./vm-base.nix ];
+    imports = [ ./tiers/dev.nix ];
 
     boot.loader.grub.device = "/dev/vda";
     # QEMU image also loads virtio_scsi (not needed for Firecracker)
@@ -90,15 +31,12 @@ let
       "virtio_pci" "virtio_blk" "virtio_scsi" "virtio_net" "ext4"
     ];
 
-    # All dev tools pre-installed
-    environment.systemPackages = devToolsPkgs;
-
     # Auto-run smoke pipeline on boot, then shut down
     systemd.services.umbravox-smoke = {
       description = "UmbraVOX isolated build/test/release smoke";
       wantedBy = [ "multi-user.target" ];
       after = [ "local-fs.target" "umbravox-dev-init.service" ];
-      path = devToolsPkgs ++ [ pkgs.mount pkgs.util-linux ];
+      path = config.environment.systemPackages ++ [ pkgs.mount pkgs.util-linux ];
       environment = {
         HOME = "/root";
         CABAL_DIR = "/root/.cabal";
@@ -139,7 +77,7 @@ let
       wantedBy = [ "multi-user.target" ];
       after = [ "local-fs.target" ];
       before = [ "umbravox-smoke.service" ];
-      path = devToolsPkgs ++ [ pkgs.mount pkgs.util-linux pkgs.e2fsprogs ];
+      path = config.environment.systemPackages ++ [ pkgs.mount pkgs.util-linux pkgs.e2fsprogs ];
       environment = {
         HOME = "/root";
         CABAL_DIR = "/root/.cabal";
@@ -206,7 +144,7 @@ let
 
   # Firecracker-specific NixOS config: no GRUB, rootfs is /dev/vda directly
   firecrackerNixosConfig = { config, lib, modulesPath, pkgs, ... }: {
-    imports = [ ./vm-base.nix ];
+    imports = [ ./tiers/dev.nix ];
 
     boot.loader.grub.enable = false;
     boot.kernelParams = [ "console=ttyS0" "panic=1" "reboot=k" ];
@@ -216,8 +154,6 @@ let
       device = "/dev/vda";
       fsType = "ext4";
     };
-
-    environment.systemPackages = devToolsPkgs;
   };
 
   firecrackerNixos = import (pkgs.path + "/nixos") {

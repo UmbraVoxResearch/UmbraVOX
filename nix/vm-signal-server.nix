@@ -67,7 +67,7 @@ let
   # STAGE 1: BUILD VM — has network + nix, builds JAR via nix-build inside VM
   # ===========================================================================
   buildVmConfig = { config, lib, modulesPath, pkgs, ... }: {
-    imports = [ ./vm-base.nix ];
+    imports = [ ./tiers/builder.nix ];
 
     boot.loader.grub.device = "/dev/vda";
     boot.initrd.availableKernelModules = [
@@ -82,26 +82,13 @@ let
     # protoc/grpc plugin binaries (dynamically linked ELF) can execute.
     programs.nix-ld.enable = true;
 
-    # Nix daemon for in-VM builds (vm-base.nix sets nix.enable=false)
-    nix.enable = lib.mkForce true;
-    nix.settings = {
-      experimental-features = [ "nix-command" ];
-      sandbox = false;
-      trusted-users = [ "root" ];
-    };
-    # Ensure nixbld group has members (required even with sandbox=false)
-    nix.nrBuildUsers = 4;
-
     environment.systemPackages = with pkgs; [
-      nix
       jdk25_headless
       maven
       protobuf
       patchelf
       file
       foundationdb
-      git
-      curl
       zlib
     ];
 
@@ -220,7 +207,7 @@ let
   # STAGE 2: RUNTIME VM — deny-all network, runs pre-built JAR
   # ===========================================================================
   runtimeVmConfig = { config, lib, modulesPath, pkgs, ... }: {
-    imports = [ ./vm-base.nix ];
+    imports = [ ./tiers/network.nix ];
 
     boot.loader.grub.device = "/dev/vda";
     boot.initrd.availableKernelModules = [

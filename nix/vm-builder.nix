@@ -18,58 +18,24 @@
 
 let
   builderConfig = { config, lib, modulesPath, pkgs, ... }: {
-    imports = [ (modulesPath + "/profiles/qemu-guest.nix") ];
-
-    # Serial console — auto-login root
-    systemd.services."serial-getty@ttyS0".enable = true;
-    services.getty.autologinUser = "root";
+    imports = [ ./tiers/builder.nix ];
 
     boot.loader.grub.device = "/dev/vda";
     boot.loader.timeout = 0;
-    boot.kernelParams = [ "console=ttyS0" "panic=1" ];
     boot.initrd.availableKernelModules = [
       "virtio_pci" "virtio_blk" "virtio_scsi" "virtio_net"
       "9p" "9pnet" "9pnet_virtio" "ext4"
     ];
 
-    fileSystems."/" = {
-      device = "/dev/vda1";
-      fsType = "ext4";
-    };
-
-    swapDevices = [];
     networking.hostName = "umbravox-builder";
-    networking.useDHCP = true;
-    networking.firewall.enable = true;
 
-    # Nix daemon — downloads from binary cache via guestfwd proxy
-    nix.enable = true;
+    # Builder-specific nix settings beyond the tier defaults
     nix.settings = {
       experimental-features = [ "nix-command" "flakes" ];
-      trusted-users = [ "root" ];
       sandbox = true;
     };
 
-    # Minimize image size
-    documentation.enable = false;
-    programs.command-not-found.enable = false;
-    services.udisks2.enable = false;
-    security.polkit.enable = false;
-    xdg.mime.enable = false;
-    xdg.icons.enable = false;
-    services.avahi.enable = false;
-
-    # FHS compatibility
-    system.activationScripts.fhsCompat = ''
-      mkdir -p /bin /usr/bin
-      ln -sf /run/current-system/sw/bin/bash /bin/bash
-      ln -sf /run/current-system/sw/bin/sh /bin/sh
-      ln -sf /run/current-system/sw/bin/env /usr/bin/env
-    '';
-
     environment.systemPackages = with pkgs; [
-      bashInteractive
-      coreutils
       findutils
       gnugrep
       gnused
@@ -78,9 +44,7 @@ let
       zstd
       which
       gnumake
-      git
       e2fsprogs
-      util-linux
       mount
     ];
 
@@ -191,8 +155,6 @@ let
         TimeoutStartSec = "7200";
       };
     };
-
-    system.stateVersion = "25.05";
   };
 
   nixos = import (pkgs.path + "/nixos") {

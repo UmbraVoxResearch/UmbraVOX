@@ -16,27 +16,16 @@
 { pkgs ? import <nixpkgs> { system = "x86_64-linux"; } }:
 
 let
-  # Minimal runtime packages — no compilers, no build tools.
-  runtimePkgs = with pkgs; [
-    bashInteractive
-    coreutils
-    sqlite
-    ncurses
-    util-linux
-  ];
-
   # Shared NixOS module for both Firecracker and QEMU runtime images.
   runtimeBase = { config, lib, modulesPath, pkgs, ... }: {
-    imports = [ ./vm-base.nix ];
-
-    environment.systemPackages = runtimePkgs;
+    imports = [ ./tiers/base.nix ];
 
     # Mount the application disk and exec the umbravox binary.
     systemd.services.umbravox-runtime = {
       description = "UmbraVOX runtime application";
       wantedBy = [ "multi-user.target" ];
       after = [ "local-fs.target" ];
-      path = runtimePkgs ++ [ pkgs.mount ];
+      path = config.environment.systemPackages ++ [ pkgs.mount ];
       serviceConfig = {
         Type = "oneshot";
         ExecStart = pkgs.writeShellScript "umbravox-runtime-start" ''

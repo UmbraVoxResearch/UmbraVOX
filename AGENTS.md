@@ -158,13 +158,14 @@ output — do not fall back to host nix commands.**
 
 ### VM Architecture
 
-Three VM tiers, each built by the builder VM:
+Three VM tiers, each built by the builder VM. All images derive from a
+4-tier NixOS module hierarchy (see `doc/VM-DEVELOPMENT.md` — VM Image Tiers):
 
-| VM | Size | Built by | Used by |
-|----|------|----------|---------|
-| **Builder** | ~3GB | Downloaded or `nix-build nix/vm-builder.nix` (host, one-time) | `./uv vm build-image`, `./uv vm build-runtime-image` |
-| **Dev** | ~26GB | Builder VM | `./uv build`, `./uv test`, `./uv verify`, `./uv dev` |
-| **Runtime** | ~1.3GB | Builder VM | `./uv run` (Firecracker TUI/headless, QEMU GUI) |
+| VM | NixOS Tier | Size | Built by | Used by |
+|----|------------|------|----------|---------|
+| **Builder** | Tier 3 (Builder) | ~3GB | Downloaded or `nix-build nix/vm-builder.nix` (host, one-time) | `./uv vm build-image`, `./uv vm build-runtime-image` |
+| **Dev** | Tier 4 (Dev) | ~26GB | Builder VM | `./uv build`, `./uv test`, `./uv verify`, `./uv dev` |
+| **Runtime** | Tier 1 (Base) | ~1.3GB | Builder VM | `./uv run` (Firecracker TUI/headless, QEMU GUI) |
 
 The builder VM is the only image that may be built on the host (bootstrap).
 All other images are built inside VMs.
