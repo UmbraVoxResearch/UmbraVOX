@@ -95,6 +95,7 @@ func runTest(args []string) int {
 			fmt.Printf("  %s\n", name)
 		}
 		fmt.Println("  ephemeral  (builds fresh image, tests, discards)")
+		fmt.Println("  e2e        (full end-to-end: build image, compile, test, check, runtime)")
 		fmt.Println("\nUsage: ./uv test [SUITE]")
 		fmt.Println("No suite argument runs the required fast gate.")
 		return 0
@@ -110,6 +111,10 @@ func runTest(args []string) int {
 
 	if suite == "ephemeral" {
 		return runTestEphemeral()
+	}
+
+	if suite == "e2e" {
+		return runE2E(args[1:])
 	}
 
 	opts, ok := testSuites[suite]
