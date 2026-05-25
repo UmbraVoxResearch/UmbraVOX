@@ -127,7 +127,8 @@ testM811SendCounterExhaustionErrors = do
     let sharedSecret  = BS.replicate 32 0xAA
         bobSPK        = BS.replicate 32 0xBB
         aliceDHSecret = BS.replicate 32 0xCC
-        Just baseState = ratchetInitAlice sharedSecret bobSPK aliceDHSecret
+    mBaseState <- ratchetInitAlice sharedSecret bobSPK aliceDHSecret
+    let Just baseState = mBaseState
         exhaustedState = baseState { rsSendN = (0xFFFFFFFE :: Word32) }
     result <- ratchetEncrypt exhaustedState (BS.pack [1, 2, 3])
     case result of

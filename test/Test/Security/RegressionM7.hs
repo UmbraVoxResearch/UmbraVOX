@@ -115,10 +115,10 @@ testKeyStoreFilePermissions :: IO Bool
 testKeyStoreFilePermissions = do
     tmp <- getProjectTmpDir
     let path = tmp </> "umbravox-m7.1.1-perm-test.key"
-        -- Deterministic identity key using fixed seed bytes
-        ik = generateIdentityKey
-                (BS.replicate 32 0x11)
-                (BS.replicate 32 0x22)
+    -- Deterministic identity key using fixed seed bytes
+    ik <- generateIdentityKey
+              (BS.replicate 32 0x11)
+              (BS.replicate 32 0x22)
     saveIdentityKeyAt path ik
     status <- getFileStatus path
     let mode = fileMode status .&. test_filePermMask

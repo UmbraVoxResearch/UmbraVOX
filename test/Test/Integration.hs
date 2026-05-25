@@ -165,7 +165,7 @@ exchangeMessages alice bob n g0 = do
 ------------------------------------------------------------------------
 
 testSessionResumption :: IO Bool
-testSessionResumption =
+testSessionResumption = do
     mSession <- setupFixedSession
     case mSession of
         Nothing -> putStrLn "  FAIL: session setup failed" >> pure False

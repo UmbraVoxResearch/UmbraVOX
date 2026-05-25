@@ -564,8 +564,11 @@ testPL007DoubleRatchetReplay = do
                                     plaintext plain1
                     -- Bob attempts to replay the same ciphertext
                     mResult2 <- ratchetDecrypt bobSt1 hdr ct tag
+                    let isReplayBlocked = case mResult2 of
+                            Right Nothing -> True
+                            _             -> False
                     ok2 <- assertEq "PL-007 replay decryption must return Nothing"
-                                    True (mResult2 == Right Nothing)
+                                    True isReplayBlocked
                     -- Alice's updated state is well-formed (regression guard)
                     ok3 <- assertEq "PL-007 Alice send counter advanced"
                                     (1 :: Word32) (rsSendN aliceSt1)

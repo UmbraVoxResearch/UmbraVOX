@@ -165,7 +165,7 @@ testTransportClosedAfterBundle = do
     (pqEK, _pqDK) <- genPQPreKey
 
     -- Send a valid bundle from Bob's side
-    let bundleBS = serializeBundle bobIK (kpPublic spk) spkSig pqEK Nothing
+    bundleBS <- serializeBundle bobIK (kpPublic spk) spkSig pqEK Nothing
     anySend tB (encodeMessage bundleBS)
 
     -- Signal EOF by sending empty bytestring (loopback treats this as EOF)
