@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/vmctl"
 )
 
 // CreateSourceDisk exports the worktree at repoRoot into an ext2 disk image.
@@ -85,10 +87,10 @@ func CreateSourceDisk(repoRoot, tmpDir, initScript, execCmd string) (string, err
 		}
 	}
 
-	// Build ext2 image
-	genCmd := exec.Command("genext2fs", "-b", "1048576", "-d", srcDir, diskPath)
-	if out, err := genCmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("genext2fs: %w\n%s", err, out)
+	// Build ext2 image via vmctl
+	dm := &vmctl.DiskManager{}
+	if err := dm.CreateSourceDisk(srcDir, diskPath, 1048576); err != nil {
+		return "", err
 	}
 
 	return diskPath, nil

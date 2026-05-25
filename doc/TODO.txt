@@ -100,32 +100,32 @@ ACTIVE WORK
 
   [~] Phase 1: Extract and deduplicate (no behavior changes)
     [~] Create tools/pkg/vmctl/ package structure
-    [ ] Move ReadHostMemoryMB to vmctl/resources.go (deduplicate from qemu + firecracker)
-    [ ] Move ScaleToHost logic to vmctl/resources.go with Resources struct
-    [ ] Move CreateOverlay, EnsureCacheDisk, CreateSourceDisk, CreateAppDisk to vmctl/disk.go
-    [ ] Define Hypervisor interface in vmctl/hypervisor.go
-    [ ] Create vmctl/hypervisor_qemu.go wrapping qemu.Config behind interface
-    [ ] Create vmctl/hypervisor_fc.go wrapping firecracker.Config behind interface
-    [ ] Create vmctl/preflight.go unifying 4 preflight implementations
-    [ ] Create vmctl/nix.go with NixBuild wrapper
-    [ ] Thin wrappers in pkg/qemu, pkg/firecracker, pkg/disk delegating to vmctl
+    [x] Move ReadHostMemoryMB to vmctl/resources.go (deduplicate from qemu + firecracker) — done (resources.go)
+    [x] Move ScaleToHost logic to vmctl/resources.go with Resources struct — done (ResolveResources)
+    [ ] Move CreateOverlay, EnsureCacheDisk, CreateSourceDisk, CreateAppDisk to vmctl/disk.go — stubs exist, need implementation
+    [x] Define Hypervisor interface in vmctl/hypervisor.go — done
+    [ ] Create vmctl/hypervisor_qemu.go wrapping qemu.Config behind interface — interface defined, implementation pending
+    [ ] Create vmctl/hypervisor_fc.go wrapping firecracker.Config behind interface — interface defined, implementation pending
+    [x] Create vmctl/preflight.go unifying 4 preflight implementations — done (PreflightQEMU, PreflightFirecracker, PreflightDirect)
+    [x] Create vmctl/nix.go with NixBuild wrapper — done (NixBuild, FindNixBuild, IsCached)
+    [x] Thin wrappers in pkg/qemu, pkg/firecracker delegating to vmctl — done (resources + preflight)
 
   [~] Nix base image tiers (4-tier hierarchy)
-    [ ] Create nix/tiers/base.nix — boots, shell, mount disks, run binary
+    [x] Create nix/tiers/base.nix — boots, shell, mount disks, run binary — done
         Imports vm-base.nix, adds bashInteractive, coreutils, util-linux
-    [ ] Create nix/tiers/network.nix — base + DHCP, DNS, curl
+    [x] Create nix/tiers/network.nix — base + DHCP, DNS, curl — done
         Imports base.nix, adds useDHCP, curl, cacert
-    [ ] Create nix/tiers/builder.nix — network + nix daemon
+    [x] Create nix/tiers/builder.nix — network + nix daemon — done
         Imports network.nix, adds nix.enable, nix.settings, nixbld users
-    [ ] Create nix/tiers/dev.nix — builder + full toolchain
+    [x] Create nix/tiers/dev.nix — builder + full toolchain — done
         Imports builder.nix, adds devToolsPkgs (GHC, Cabal, Go, F*, Z3, Coq, AFL)
-    [ ] Update nix/vm-runtime.nix to import tiers/base.nix
-    [ ] Update nix/vm-image.nix to import tiers/dev.nix
-    [ ] Update nix/vm-builder.nix to import tiers/builder.nix
-    [ ] Update nix/vm-signal-server.nix build VM to import tiers/builder.nix
-    [ ] Update nix/vm-signal-server.nix runtime VM to import tiers/network.nix
-    [ ] Document tier architecture in doc/VM-DEVELOPMENT.md
-    [ ] Reference tier policy in AGENTS.md
+    [x] Update nix/vm-runtime.nix to import tiers/base.nix — done
+    [x] Update nix/vm-image.nix to import tiers/dev.nix — done
+    [x] Update nix/vm-builder.nix to import tiers/builder.nix — done
+    [x] Update nix/vm-signal-server.nix build VM to import tiers/builder.nix — done
+    [x] Update nix/vm-signal-server.nix runtime VM to import tiers/network.nix — done
+    [x] Document tier architecture in doc/VM-DEVELOPMENT.md — done
+    [x] Reference tier policy in AGENTS.md — done
 
   [ ] Phase 2: Unified boot path (VMSpec → vmctl.Boot)
     [ ] Define VMSpec, DiskSpec, NetworkSpec, BootSpec types
