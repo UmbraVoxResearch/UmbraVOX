@@ -165,9 +165,11 @@ let
   # Bundle Firecracker rootfs + kernel + initrd into a single derivation.
   # Firecracker needs all three: the kernel (vmlinux), the initrd (to load
   # virtio_mmio/virtio_blk modules before mounting root), and the rootfs.
-  firecrackerBundle = pkgs.runCommand "umbravox-firecracker-runtime" {} ''
+  firecrackerBundle = pkgs.runCommand "umbravox-firecracker-runtime" {
+    nativeBuildInputs = [ pkgs.zstd ];
+  } ''
     mkdir -p $out
-    cp ${firecrackerImage}/nixos.img $out/rootfs.ext4
+    zstd -19 -T0 ${firecrackerImage}/nixos.img -o $out/rootfs.ext4.zst
     cp ${firecrackerNixos.config.system.build.kernel.dev}/vmlinux $out/vmlinux
     cp ${firecrackerNixos.config.system.build.initialRamdisk}/initrd $out/initrd
     echo -n "${firecrackerNixos.config.system.build.toplevel}/init" > $out/init-path

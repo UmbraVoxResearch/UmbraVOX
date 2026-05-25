@@ -65,7 +65,7 @@ func CreateSourceDisk(repoRoot, tmpDir, initScript, execCmd string) (string, err
 	binDir := filepath.Join(srcDir, "tools", "bin")
 	if err := os.MkdirAll(binDir, 0o755); err == nil {
 		toolsDir := filepath.Join(repoRoot, "tools")
-		goBuild := exec.Command("go", "build", "-o", filepath.Join(binDir, "vm-init"), "./cmd/vm-init")
+		goBuild := exec.Command("go", "build", "-trimpath", "-ldflags=-s -w", "-o", filepath.Join(binDir, "vm-init"), "./cmd/vm-init")
 		goBuild.Dir = toolsDir
 		goBuild.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64")
 		if out, err := goBuild.CombinedOutput(); err != nil {

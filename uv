@@ -10,6 +10,6 @@ if [ ! -f "$BIN" ]; then
     mkdir -p "$REPO/build/tools" "$REPO/build/go/mod" "$REPO/build/go/cache"
     ( cd "$REPO/tools" && \
       GOMODCACHE="$REPO/build/go/mod" GOCACHE="$REPO/build/go/cache" \
-      go build -o "$BIN" ./cmd/umbravox-vm/ )
+      go build -trimpath -ldflags="-s -w" -o "$BIN" ./cmd/umbravox-vm/ )
 fi
 exec "$BIN" "$@"

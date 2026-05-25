@@ -124,12 +124,14 @@ func runRunFirecracker(mode, port string) int {
 	}
 	defer os.Remove(appDiskPath)
 
-	// 4. Copy rootfs to writable location (nix store is read-only;
-	// Firecracker needs write access, unlike QEMU which uses qcow2 overlays)
-	rootfsSrc := filepath.Join(runtimeImageDir, "rootfs.ext4")
+	// 4. Decompress rootfs to writable location (bundle stores zstd-compressed;
+	// Firecracker needs uncompressed + writable, unlike QEMU which uses qcow2 overlays)
+	rootfsSrc := filepath.Join(runtimeImageDir, "rootfs.ext4.zst")
 	rootfsPath := filepath.Join(tmpDir, "runtime-rootfs.ext4")
-	if err := copyFile(rootfsSrc, rootfsPath); err != nil {
-		log.Fail(tag, fmt.Sprintf("Failed to copy rootfs: %v", err))
+	log.Info(tag, "Decompressing runtime rootfs...")
+	zstdCmd := exec.Command("zstd", "-d", "-f", rootfsSrc, "-o", rootfsPath)
+	if out, err := zstdCmd.CombinedOutput(); err != nil {
+		log.Fail(tag, fmt.Sprintf("Failed to decompress rootfs: %v\n%s", err, out))
 		return 1
 	}
 	defer os.Remove(rootfsPath)
