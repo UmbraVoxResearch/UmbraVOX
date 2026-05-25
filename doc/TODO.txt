@@ -151,7 +151,7 @@ ACTIVE WORK
     [x] Ensure vmctl has zero imports from tools/pkg/{repo,log,netproxy,ninep} — confirmed clean (stdlib only)
     [x] Accept Logger interface instead of importing pkg/log — done (Logger interface in vmctl.go)
     [x] Accept repo root as parameter instead of importing pkg/repo — vmctl takes all paths as params
-    [ ] Move to tools/vmctl/ with own go.mod — future work
+    [x] Move to tools/vmctl/ with own go.mod — done (v0.6.0)
     [ ] UmbraVOX imports vmctl as dependency — depends on above
 
   [x] Phase 5: CI integration
