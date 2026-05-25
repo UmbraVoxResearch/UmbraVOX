@@ -124,6 +124,12 @@ func profileToResources(p qemu.VMProfile) vmctl.Resources {
 
 // execInVM boots the dev VM via vmctl, runs cmd inside it, and returns the
 // guest exit code. This is the primary boot path used by all callers.
+//
+// Resource fractions, network mode, hypervisor selection, and boot timeout
+// defaults are loaded from vm-defs/dev.yaml when present.  If the file does
+// not exist the function falls back to the hardcoded profile values so that
+// repos without a vm-defs/ directory still work.  The caller-supplied timeout
+// always overrides the YAML value (0 means "use YAML default").
 func execInVM(cmd string, profile qemu.VMProfile, timeout time.Duration) int {
 	repoRoot, err := repo.Root()
 	if err != nil {
@@ -154,9 +160,29 @@ func execInVM(cmd string, profile qemu.VMProfile, timeout time.Duration) int {
 	outputShare := ninep.DefaultOutputShare(outputDir)
 	vmStatusFile := filepath.Join(outputDir, "vm-exec-status")
 
+	// Start with defaults derived from the profile (backward-compat fallback).
+	hypervisor := vmctl.HypervisorQEMU
+	resources := profileToResources(profile)
+	noReboot := true
+	effectiveTimeout := timeout
+
+	// Attempt to load vm-defs/dev.yaml and overlay its values.
+	if def, defErr := loadVMDef(repoRoot, "dev"); defErr != nil {
+		log.Fail(tag, fmt.Sprintf("failed to load vm-def: %v", defErr))
+		return 1
+	} else if def != nil {
+		hypervisor = def.Hypervisor
+		resources = def.Resources
+		noReboot = def.NoReboot
+		// Use the YAML timeout only when the caller did not specify one.
+		if timeout == 0 && def.Timeout > 0 {
+			effectiveTimeout = def.Timeout
+		}
+	}
+
 	spec := &vmctl.VMSpec{
-		Hypervisor: vmctl.HypervisorQEMU,
-		Resources:  profileToResources(profile),
+		Hypervisor: hypervisor,
+		Resources:  resources,
 		BaseImage: vmctl.ImageRef{
 			Path:   overlayPath,
 			Format: vmctl.DiskFormatQCOW2,
@@ -175,8 +201,8 @@ func execInVM(cmd string, profile qemu.VMProfile, timeout time.Duration) int {
 			RawArgs: netArgs,
 		},
 		Display:    vmctl.DisplayNone,
-		NoReboot:   true,
-		Timeout:    timeout,
+		NoReboot:   noReboot,
+		Timeout:    effectiveTimeout,
 		StatusFile: vmStatusFile,
 	}
 
@@ -184,9 +210,9 @@ func execInVM(cmd string, profile qemu.VMProfile, timeout time.Duration) int {
 	fmt.Fprintln(os.Stderr)
 
 	ctx := context.Background()
-	if timeout > 0 {
+	if effectiveTimeout > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, timeout)
+		ctx, cancel = context.WithTimeout(ctx, effectiveTimeout)
 		defer cancel()
 	}
 

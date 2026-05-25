@@ -43,6 +43,7 @@ scripts/nix-flake.sh flake show --no-write-lock-file
 
 - `./uv test` runs the required messaging-MVP gate.
 - It streams the full live suite output and writes a per-run log under `build/test-artifacts/`.
+- `./uv test all` runs every named suite sequentially in a single VM session (~30 min).
 - `./uv test soak` runs the longer stress suite and writes artifacts under `build/test-artifacts/`.
 - `./uv verify` runs the F* verification pass.
 - `./uv` (no args) runs the full build pipeline (`build + test + verify + check`).
@@ -73,6 +74,7 @@ an isolated NixOS VM by default.  The host only needs QEMU and git.
 | `./uv vm build-image` | Build the NixOS dev VM (once) |
 | `./uv build` | Build library + executables (routes to VM by default) |
 | `./uv test` | Run `required` test suite (routes to VM by default) |
+| `./uv test all` | Run all 15 named suites in a single VM session (~30 min) |
 | `./uv verify` | Run F* formal verification (routes to VM by default) |
 | `./uv` | Full quality gate (build + test + verify + check) |
 | `./uv check` | Lint + format + license + complexity + generated-headers + constant-time-branches |

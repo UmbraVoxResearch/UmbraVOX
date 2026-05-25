@@ -13,17 +13,17 @@ inside VMs unless `--direct` is explicitly used.
 ## VM Image Building
 
 ```
-./uv vm build-image               Build dev VM (26GB, tiers/dev.nix)
+./uv vm build-image               Build dev VM (26GB, nix/tiers/dev.nix)
   ├── Downloads builder image from GitHub release
   │   └── build/vm/builder-image/nixos.img (~3GB)
-  ├── Boots builder VM (QEMU, tiers/builder.nix — nix daemon + network)
+  ├── Boots builder VM (QEMU, nix/tiers/builder.nix — nix daemon + network)
   │   ├── nix-cache.qcow2 (persistent nix store across builds)
   │   ├── Downloads packages from cache.nixos.org
   │   └── nix-build nix/vm-image.nix → nixos.img.zst
   ├── Extracts via 9p share → build/vm-output/
   └── Decompresses → build/vm/image/nixos.img (26GB)
 
-./uv vm build-runtime-image       Build runtime VMs (~1.3GB, tiers/base.nix)
+./uv vm build-runtime-image       Build runtime VMs (~1.3GB, nix/tiers/base.nix)
   ├── Same builder VM as above
   └── nix-build nix/vm-runtime.nix
       ├── -A firecracker → build/vm/runtime-image/
@@ -34,7 +34,7 @@ inside VMs unless `--direct` is explicitly used.
       └── -A qemu → build/vm/runtime-qemu-image/nixos.img
 ```
 
-## Development (Dev VM — QEMU, tiers/dev.nix)
+## Development (Dev VM — QEMU, nix/tiers/dev.nix)
 
 All commands share the same disk setup:
 - Source disk (ext2, readonly, /dev/vdb → /mnt/src)
@@ -54,6 +54,10 @@ All commands share the same disk setup:
   ├── cabal build all --enable-tests  (cached from build → instant)
   └── cabal test umbravox-test --test-options='required'
 
+./uv test all                     Run all named suites in one VM session
+  ├── cabal build all --enable-tests  (cached)
+  └── cabal test umbravox-test --test-options='<all 15 named suites>'
+
 ./uv verify                       F* verification in dev VM
   ├── cabal build all (cached)
   └── cabal run fstar-verify
@@ -66,7 +70,7 @@ All commands share the same disk setup:
   └── Runs <cmd>, writes exit status to /output/vm-exec-status
 ```
 
-## Running (Runtime VM — Firecracker or QEMU, tiers/base.nix)
+## Running (Runtime VM — Firecracker or QEMU, nix/tiers/base.nix)
 
 Requires `./uv build` first (populates build/runtime/).
 
@@ -100,7 +104,7 @@ Requires `./uv build` first (populates build/runtime/).
   └── pre-release                  10 gates (F* admits, assume inventory, etc.)
 ```
 
-## Signal Server (tiers/builder.nix build, tiers/network.nix runtime)
+## Signal Server (nix/tiers/builder.nix build, nix/tiers/network.nix runtime)
 
 ```
 ./uv vm signal build-jar          Build 333MB fat JAR in signal build VM
@@ -155,8 +159,8 @@ Requires `./uv build` first (populates build/runtime/).
 All VM images derive from a 4-tier hierarchy (see doc/VM-DEVELOPMENT.md):
 
 ```
-tiers/base.nix      → shell, mount, run binary
-tiers/network.nix   → base + DHCP, DNS, curl
-tiers/builder.nix   → network + nix daemon
-tiers/dev.nix       → builder + GHC, Cabal, Go, F*, Z3, Coq, AFL
+nix/tiers/base.nix      → shell, mount, run binary
+nix/tiers/network.nix   → base + DHCP, DNS, curl
+nix/tiers/builder.nix   → network + nix daemon
+nix/tiers/dev.nix       → builder + GHC, Cabal, Go, F*, Z3, Coq, TLA+, AFL++, Valgrind
 ```

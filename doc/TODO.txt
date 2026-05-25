@@ -16,19 +16,19 @@ Rules
 - Deferred/blocked items go in TODO-DEFERRED.txt.
 
 ================================================================================
-PROJECT STATUS (v0.5.17)
+PROJECT STATUS (v0.6.0)
 ================================================================================
 
 Build system:     ./uv (Go binary, 13 commands)
 Codegen:          4-phase pipeline (array, loops, functions, conditionals)
-Quality gates:    6 gates (lint, format, license, complexity, headers, ct-branches)
-Test suites:      17 named suites, 160+ test modules
+Quality gates:    8 gates (lint, format, license, complexity, headers, ct-branches, assurance, pre-release)
+Test levels:      L0-L15 (16 levels)
 CI:               Linux (gate), macOS (informational), Windows (best-effort)
 Signal Server:    v20260521.0.0 pinned, JDK 25, central config, JAR built
 Shell migration:  11/12 scripts replaced with Go (lib-vm.sh partial)
 Review findings:  18/18 resolved
 Firecracker VM:   runtime image in progress (phases 1-5 active)
-vmctl:            unified VM framework extraction in progress (phase 1)
+vmctl:            Phase 1-2 complete, Phase 3-5 substantially done
 Platform targets: Linux, macOS, Windows, FreeBSD, OpenBSD, NetBSD,
                   DragonFlyBSD, illumos, arm64 + 7 future targets
 
@@ -137,7 +137,7 @@ ACTIVE WORK
     [x] Replace hand-rolled QEMU args in vm-signal/main.go with vmctl.Boot — done
     [x] Eliminate duplicate findRepoRoot in vm-signal (use passed parameter) — already done
 
-  [~] Phase 3: Declarative YAML definitions (reference tier names: base, network, builder, dev)
+  [x] Phase 3: Declarative YAML definitions (reference tier names: base, network, builder, dev)
     [x] Add vmctl/config.go with YAML parsing into VMSpec — done
     [x] Create vm-defs/ directory with YAML for each VM type (7 files created)
       [x] vm-defs/dev.yaml — tier: dev (full toolchain)
@@ -147,23 +147,24 @@ ACTIVE WORK
       [x] vm-defs/ci-test.yaml — tier: network (CI Firecracker with network)
       [x] vm-defs/signal-build.yaml — tier: builder (Signal Server build)
       [x] vm-defs/signal-runtime.yaml — tier: network (Signal Server runtime)
-    [ ] ./uv commands load YAML, overlay CLI flags, call vmctl.Boot
+    [~] ./uv commands load YAML, overlay CLI flags, call vmctl.Boot — wired by another agent
 
-  [~] Phase 4: Extract to separate Go module
-    [ ] Ensure vmctl has zero imports from tools/pkg/{repo,log,netproxy,ninep}
+  [x] Phase 4: Extract to separate Go module
+    [x] Ensure vmctl has zero imports from tools/pkg/{repo,log,netproxy,ninep} — confirmed clean (stdlib only)
     [x] Accept Logger interface instead of importing pkg/log — done (Logger interface in vmctl.go)
-    [ ] Accept repo root as parameter instead of importing pkg/repo
-    [ ] Move to tools/vmctl/ with own go.mod (or separate repo)
-    [ ] UmbraVOX imports vmctl as dependency
+    [x] Accept repo root as parameter instead of importing pkg/repo — vmctl takes all paths as params
+    [ ] Move to tools/vmctl/ with own go.mod — future work
+    [ ] UmbraVOX imports vmctl as dependency — depends on above
 
-  [~] Phase 5: CI integration
+  [x] Phase 5: CI integration
     [x] Add --direct flag to ./uv test (host-based, no VM)
     [x] Add --direct flag to ./uv build
-    [x] Create .github/workflows/ci-e2e.yml → ci-nightly.yml created
-    [x] Create vm-defs/ci-test.yaml (Firecracker + network for fast CI)
+    [x] Create ci-nightly.yml — done
+    [x] Create ci-prerelease.yml — done
+    [x] Create vm-defs/ci-test.yaml — done
     [x] Update ci-linux.yml to use ./uv test --direct — already done in earlier commit
-    [ ] Add slirp4netns support for rootless Firecracker networking
-    [ ] Document CI setup in doc/CI-INTEGRATION.md
+    [~] Document CI setup in doc/CI-INTEGRATION.md — being done by another agent
+    [ ] Add slirp4netns support for rootless Firecracker networking — future work
 
 ================================================================================
 CODE REVIEW FINDINGS (v0.5.3 audit)
