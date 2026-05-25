@@ -124,7 +124,7 @@ setupFixedSession = do
 ------------------------------------------------------------------------
 
 testPQXDHDoubleRatchet :: IO Bool
-testPQXDHDoubleRatchet =
+testPQXDHDoubleRatchet = do
     mSession <- setupFixedSession
     case mSession of
         Nothing -> putStrLn "  FAIL: PQXDH key agreement failed" >> pure False

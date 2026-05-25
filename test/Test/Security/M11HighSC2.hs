@@ -584,7 +584,7 @@ testSC021KeyStoreCorrectPassphrase = do
     let tmpDir = tmpBase </> "sc021"
     createDirectoryIfMissing True tmpDir
     let path    = tmpDir </> "identity.key"
-        aliceIK = generateIdentityKey
+    aliceIK <- generateIdentityKey
                       (BS.replicate 32 0x21) (BS.replicate 32 0x22)
 
     -- Save with AES-256-GCM wrapping (empty passphrase — public API)
@@ -598,8 +598,10 @@ testSC021KeyStoreCorrectPassphrase = do
             removeDirectoryRecursive tmpDir
             pure False
         Just loadedIK -> do
+            aliceEdSec  <- toByteString (ikEd25519Secret aliceIK)
+            loadedEdSec <- toByteString (ikEd25519Secret loadedIK)
             ok1 <- assertEq "SC-021 KeyStore: loaded Ed25519 secret matches"
-                       (ikEd25519Secret aliceIK) (ikEd25519Secret loadedIK)
+                       aliceEdSec loadedEdSec
             ok2 <- assertEq "SC-021 KeyStore: loaded X25519 public matches"
                        (ikX25519Public aliceIK) (ikX25519Public loadedIK)
             removeDirectoryRecursive tmpDir
@@ -611,7 +613,7 @@ testSC021KeyStoreWrongPassphrase = do
     let tmpDir = tmpBase </> "sc021b"
     createDirectoryIfMissing True tmpDir
     let path    = tmpDir </> "identity.key"
-        aliceIK = generateIdentityKey
+    aliceIK <- generateIdentityKey
                       (BS.replicate 32 0x23) (BS.replicate 32 0x24)
 
     saveIdentityKeyAt path aliceIK

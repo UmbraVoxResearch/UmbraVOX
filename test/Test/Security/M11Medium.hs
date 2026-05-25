@@ -393,10 +393,10 @@ testKM018SkippedKeyInsertionOrder = do
     -- is enforced (verified by ratchetDecrypt not growing the cache unboundedly).
     let bobSecret = BS.replicate 32 0x10
         aliceSecret = BS.replicate 32 0x20
-        bobKP   = generateKeyPair bobSecret
-        rootKey = BS.replicate 32 0x30
+    bobKP   <- generateKeyPair bobSecret
+    let rootKey = BS.replicate 32 0x30
         chainKey = BS.replicate 32 0x40
-        mAliceSt = ratchetInitAlice rootKey chainKey (kpPublic bobKP)
+    mAliceSt <- ratchetInitAlice rootKey chainKey (kpPublic bobKP)
     case mAliceSt of
       Nothing -> putStrLn "  INFO: KM-018 ratchetInitAlice returned Nothing (x25519 rejected)" >> pure True
       Just aliceSt -> do

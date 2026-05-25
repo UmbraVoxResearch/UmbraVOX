@@ -122,7 +122,7 @@ testKM001KeyAtRest = do
     let path = tmp </> "umbravox-m11-km001.key"
         edSec = BS.replicate 32 0x11
         xSec  = BS.replicate 32 0x22
-        ik = generateIdentityKey edSec xSec
+    ik <- generateIdentityKey edSec xSec
     saveIdentityKeyAt path ik
     raw <- BS.readFile path
     cleanupFile path
@@ -169,7 +169,7 @@ testKM002FilePermissions :: IO Bool
 testKM002FilePermissions = do
     tmp <- getProjectTmpDir
     let path = tmp </> "umbravox-m11-km002.key"
-        ik = generateIdentityKey
+    ik <- generateIdentityKey
                 (BS.replicate 32 0xAA)
                 (BS.replicate 32 0xBB)
     saveIdentityKeyAt path ik
@@ -551,7 +551,8 @@ testIB005RatchetCounterNearMax = do
     let sharedSecret  = BS.replicate 32 0xAA
         bobSPK        = BS.replicate 32 0xBB
         aliceDHSecret = BS.replicate 32 0xCC
-        Just baseState = ratchetInitAlice sharedSecret bobSPK aliceDHSecret
+    mBaseState <- ratchetInitAlice sharedSecret bobSPK aliceDHSecret
+    let Just baseState = mBaseState
         nearMaxState   = baseState { rsSendN = (0xFFFFFFFE :: Word32) }
     result <- ratchetEncrypt nearMaxState (BS.pack [1, 2, 3])
     case result of
