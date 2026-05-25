@@ -131,6 +131,7 @@ func runTest(args []string) int {
 		for name := range testSuites {
 			fmt.Printf("  %s\n", name)
 		}
+		fmt.Println("  all        (every suite sequentially)")
 		fmt.Println("  ephemeral  (builds fresh image, tests, discards)")
 		fmt.Println("  e2e        (full end-to-end: build image, compile, test, check, runtime)")
 		fmt.Println("\nUsage: ./uv test [SUITE]")
@@ -196,6 +197,10 @@ func runTest(args []string) int {
 		return runE2E(args[1:])
 	}
 
+	if suite == "all" {
+		return runTestAll()
+	}
+
 	opts, ok := testSuites[suite]
 	if !ok {
 		fmt.Fprintf(os.Stderr, "Unknown test suite: %s\nRun './uv test --list' for available suites.\n", suite)
@@ -218,6 +223,33 @@ qemu-img create -f qcow2 -b /tmp/ephemeral-image/nixos.img -F raw /tmp/ephemeral
 echo "Ephemeral image built; running tests..." && \
 cabal build all --enable-tests && cabal test umbravox-test --test-options='required' 2>&1`
 	return execInVM(cmd, qemu.ProfileBuild, 60*time.Minute)
+}
+
+// runTestAll runs every named test suite sequentially in a single VM session.
+// This ensures complete coverage of all test paths.
+func runTestAll() int {
+	log.Info(tag, "Running all test suites sequentially...")
+
+	// Build once, then run each suite
+	var parts []string
+	parts = append(parts, "cabal build all --enable-tests")
+	for name, opts := range testSuites {
+		parts = append(parts, fmt.Sprintf(
+			"echo '=== Suite: %s ===' && cabal test umbravox-test --test-options='%s' 2>&1",
+			name, opts))
+	}
+
+	cmd := ""
+	for i, p := range parts {
+		if i == 0 {
+			cmd = p
+		} else {
+			cmd += " && " + p
+		}
+	}
+
+	// Soak suite alone is 2h; all suites together need generous timeout
+	return execInVM(cmd, qemu.ProfileDev, 180*time.Minute)
 }
 
 // runVerify handles: uv verify [vectors [ARGS...]]
