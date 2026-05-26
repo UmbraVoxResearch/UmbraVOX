@@ -90,13 +90,16 @@ func runBuild(args []string) int {
   mkdir -p /output/runtime/bin /output/runtime/lib && \
   BIN=$(cabal list-bin exe:umbravox 2>/dev/null) && \
   if [ -n "$BIN" ] && [ -f "$BIN" ]; then \
-    cp "$BIN" /output/runtime/bin/umbravox && chmod +x /output/runtime/bin/umbravox && \
-    strip /output/runtime/bin/umbravox 2>/dev/null || true ; \
+    cp "$BIN" /output/runtime/bin/umbravox && \
+    chmod +x /output/runtime/bin/umbravox && \
     INTERP=$(patchelf --print-interpreter "$BIN" 2>/dev/null) && \
     [ -n "$INTERP" ] && cp "$INTERP" /output/runtime/lib/ ; \
     ldd "$BIN" 2>/dev/null | awk '/=>/ && !/not found/ {print $3}' | while read lib; do \
       [ -f "$lib" ] && cp "$lib" /output/runtime/lib/ ; \
     done ; \
+    strip /output/runtime/bin/umbravox 2>/dev/null ; \
+    patchelf --set-interpreter /app/lib/ld-linux-x86-64.so.2 /output/runtime/bin/umbravox && \
+    patchelf --set-rpath /app/lib /output/runtime/bin/umbravox && \
     echo "Runtime bundle extracted: $(ls /output/runtime/bin/ /output/runtime/lib/ | wc -l) files" ; \
   else \
     echo "WARNING: could not extract runtime bundle (binary not found)" ; \
@@ -133,7 +136,8 @@ func runTest(args []string) int {
 		}
 		fmt.Println("  all        (every suite sequentially)")
 		fmt.Println("  ephemeral  (builds fresh image, tests, discards)")
-		fmt.Println("  e2e        (full end-to-end: build image, compile, test, check, runtime)")
+		fmt.Println("  e2e              (end-to-end: build, test, check, runtime, SBOM)")
+		fmt.Println("  e2e --bootstrap  (cold start: clean, build image, then full e2e)")
 		fmt.Println("\nUsage: ./uv test [SUITE]")
 		fmt.Println("No suite argument runs the required fast gate.")
 		return 0

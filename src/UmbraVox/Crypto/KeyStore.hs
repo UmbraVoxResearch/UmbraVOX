@@ -40,10 +40,26 @@ import UmbraVox.Crypto.SecureBytes (SecureBytes, fromByteString, toByteString, w
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 
 -- | Handle to an encrypted-at-rest key store.
+--
+-- Finding:     M10.2.11 — 'ksPassphrase' was a plain 'ByteString' with an
+--              auto-derived 'Show' instance, meaning 'show ks' would print
+--              the raw passphrase bytes in plaintext to logs or error messages.
+-- Vulnerability: Any logger or error-reporting path that prints a 'KeyStore'
+--              value leaks the passphrase verbatim, potentially exposing it in
+--              log files, crash dumps, or stderr output.
+-- Fix:         Changed 'ksPassphrase' to 'SecureBytes' so the passphrase is
+--              stored in a pinned, zeroed-on-free buffer.  Replaced 'deriving
+--              Show' with a manual instance that prints @\<redacted\>@ for the
+--              passphrase field.
+-- Verified:    'show (KeyStore path _)' now prints \"<redacted>\" for the
+--              passphrase; the passphrase bytes are never present in the output.
 data KeyStore = KeyStore
   { ksPath       :: !FilePath
-  , ksPassphrase :: !ByteString
-  } deriving (Show)
+  , ksPassphrase :: !SecureBytes
+  }
+
+instance Show KeyStore where
+  show ks = "KeyStore {ksPath = " ++ show (ksPath ks) ++ ", ksPassphrase = <redacted>}"
 
 ------------------------------------------------------------------------
 -- Constants
@@ -134,10 +150,15 @@ loadSaltForDecrypt path = do
 ------------------------------------------------------------------------
 
 -- | Open or create a key store at the given path, bound to a passphrase.
+--
+-- The passphrase is immediately wrapped in a 'SecureBytes' buffer so that
+-- the caller's 'ByteString' copy can be discarded and the key material is
+-- held in a pinned, zeroed-on-free allocation for the lifetime of the handle.
 openKeyStore :: FilePath -> ByteString -> IO KeyStore
 openKeyStore path passphrase = do
     createDirectoryIfMissing True (takeDirectory path)
-    pure (KeyStore path passphrase)
+    passphraseSB <- fromByteString passphrase
+    pure (KeyStore path passphraseSB)
 
 -- | Save the local identity key to the default application path.
 -- Guarded by the PluginIdentityPersistence build flag; returns ()

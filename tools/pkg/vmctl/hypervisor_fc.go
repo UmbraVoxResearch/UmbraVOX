@@ -253,6 +253,8 @@ func (h *FirecrackerHypervisor) resolveRootfs(src, tmpDir string) (path string, 
 	if out, zstdErr := zstdCmd.CombinedOutput(); zstdErr != nil {
 		return "", nil, fmt.Errorf("zstd decompress: %w\n%s", zstdErr, out)
 	}
+	// Ensure writable — zstd inherits nix store read-only permissions
+	os.Chmod(dst, 0o644)
 
 	return dst, func() { os.Remove(dst) }, nil
 }

@@ -52,6 +52,7 @@ import qualified Test.Crypto.SecureBytes as SecureBytes
 import qualified Test.Crypto.MLKEM as MLKEM
 import qualified Test.Crypto.PQWrapper as PQWrapper
 import qualified Test.Crypto.PQXDH as PQXDH
+import qualified Test.Crypto.PQXDHEdge as PQXDHEdge
 import qualified Test.Crypto.Poly1305 as Poly1305
 import qualified Test.Crypto.Random as Random
 import qualified Test.Crypto.SHA256 as SHA256
@@ -60,11 +61,17 @@ import qualified Test.CryptoIntegrity as CryptoIntegrity
 import qualified Test.Crypto.SignalCompat as SignalCompat
 import qualified Test.Crypto.Signal.DoubleRatchet as DoubleRatchet
 import qualified Test.Crypto.Signal.SenderKeys as SenderKeys
+import qualified Test.Crypto.Signal.SenderKeysEdge as SenderKeysEdge
 import qualified Test.Crypto.Signal.Session as Session
 import qualified Test.Crypto.SignalWireCompat as SignalWireCompat
 import qualified Test.Crypto.Signal.X3DH as X3DH
 import qualified Test.Crypto.StealthAddress as StealthAddress
 import qualified Test.Crypto.VRF as VRF
+import qualified Test.Crypto.Vectors.AES as VectorsAES
+import qualified Test.Crypto.Vectors.GCM as VectorsGCM
+import qualified Test.Crypto.Vectors.Ed25519 as VectorsEd25519
+import qualified Test.Crypto.Vectors.X25519 as VectorsX25519
+import qualified Test.Crypto.Vectors.MLKEM as VectorsMLKEM
 import qualified Test.EndToEnd as EndToEnd
 import qualified Test.EndToEnd2 as EndToEnd2
 #ifdef STUBS
@@ -104,7 +111,13 @@ import qualified Test.Security.M11HighCrypto3 as M11HighCrypto3
 import qualified Test.Security.M11HighKM3 as M11HighKM3
 import qualified Test.Security.M11Final as M11Final
 import qualified Test.Security.MCDC as MCDC
+import qualified Test.Security.AdversarialProto as AdversarialProto
+import qualified Test.Security.Boundary as Boundary
+import qualified Test.Security.ConstantTimeAudit as ConstantTimeAudit
+import qualified Test.Security.KeyLifecycle as KeyLifecycle
+import qualified Test.Security.Negative as Negative
 import qualified Test.Security.Regression as Regression
+import qualified Test.Security.RegressionAudit as RegressionAudit
 import qualified Test.Security.RegressionM7 as RegressionM7
 import qualified Test.Security.RegressionM8 as RegressionM8
 import qualified Test.Security.RegressionNet as RegressionNet
@@ -252,6 +265,14 @@ runSuiteArg suiteArg =
             [Suite "m11-final" M11Final.runTests]
         "mcdc" -> runSuiteGroup "UmbraVox DO-178C DAL A MC/DC Gap-Fill Suite"
             [Suite "mcdc" MCDC.runTests]
+        "audit" -> runSuiteGroup "UmbraVox Security Audit Suite (v0.6)"
+            [ Suite "audit-regression" RegressionAudit.runTests
+            , Suite "audit-negative" Negative.runTests
+            , Suite "audit-boundary" Boundary.runTests
+            , Suite "audit-adversarial-proto" AdversarialProto.runTests
+            , Suite "audit-ct" ConstantTimeAudit.runTests
+            , Suite "audit-key-lifecycle" KeyLifecycle.runTests
+            ]
         "integrity" -> runSuiteGroup "UmbraVox Integrity Suite" integritySuites
         "soak" -> runSuiteGroup "UmbraVox Soak Suite" soakSuites
         "differential" -> runSuiteGroup "UmbraVox Differential C vs Haskell Suite"
@@ -337,13 +358,20 @@ coreSuites =
     , Suite "route-token" RouteToken.runTests
     , Suite "chat-wire" ChatWire.runTests
     , Suite "pqxdh" PQXDH.runTests
+    , Suite "pqxdh-edge" PQXDHEdge.runTests
     , Suite "random" Random.runTests
     , Suite "vrf" VRF.runTests
     , Suite "pq-wrapper" PQWrapper.runTests
     , Suite "sender-keys" SenderKeys.runTests
+    , Suite "sender-keys-edge" SenderKeysEdge.runTests
     , Suite "signal-session" Session.runTests
     , Suite "signal-wire-compat" SignalWireCompat.signalWireCompatTests
     , Suite "signal-compat" SignalCompat.signalCompatTests
+    , Suite "vectors-aes" VectorsAES.runTests
+    , Suite "vectors-gcm" VectorsGCM.runTests
+    , Suite "vectors-ed25519" VectorsEd25519.runTests
+    , Suite "vectors-x25519" VectorsX25519.runTests
+    , Suite "vectors-mlkem" VectorsMLKEM.runTests
     , Suite "dandelion" Dandelion.runTests
     , Suite "dht" DHT.runTests
     , Suite "dos-mitigation" DoSMitigation.runTests
@@ -396,6 +424,12 @@ coreSuites =
     , Suite "m11-final" M11Final.runTests
     , Suite "mcdc" MCDC.runTests
     , Suite "bridge-umbraclaw" BridgeUmbraClaw.runTests
+    , Suite "audit-regression" RegressionAudit.runTests
+    , Suite "audit-negative" Negative.runTests
+    , Suite "audit-boundary" Boundary.runTests
+    , Suite "audit-adversarial-proto" AdversarialProto.runTests
+    , Suite "audit-ct" ConstantTimeAudit.runTests
+    , Suite "audit-key-lifecycle" KeyLifecycle.runTests
     ]
 
 coreCryptoSuites :: [Suite]
@@ -419,13 +453,20 @@ coreCryptoSuites =
     , Suite "bip39" BIP39.runTests
     , Suite "export" Export.runTests
     , Suite "pqxdh" PQXDH.runTests
+    , Suite "pqxdh-edge" PQXDHEdge.runTests
     , Suite "random" Random.runTests
     , Suite "vrf" VRF.runTests
     , Suite "pq-wrapper" PQWrapper.runTests
     , Suite "sender-keys" SenderKeys.runTests
+    , Suite "sender-keys-edge" SenderKeysEdge.runTests
     , Suite "signal-session" Session.runTests
     , Suite "signal-wire-compat" SignalWireCompat.signalWireCompatTests
     , Suite "signal-compat" SignalCompat.signalCompatTests
+    , Suite "vectors-aes" VectorsAES.runTests
+    , Suite "vectors-gcm" VectorsGCM.runTests
+    , Suite "vectors-ed25519" VectorsEd25519.runTests
+    , Suite "vectors-x25519" VectorsX25519.runTests
+    , Suite "vectors-mlkem" VectorsMLKEM.runTests
     , Suite "security" Security.runTests
     , Suite "differential" Differential.runTests
     , Suite "m11-symmetric" M11Symmetric.runTests
@@ -583,5 +624,5 @@ validSuiteArgs =
     , "m11-protocol", "m11-high", "m11-high-auth", "m11-noise-dh", "m11-high-fs", "m11-high-proto"
     , "m11-high-keyimpl", "m11-high-symhash", "m11-high-pq", "m11-high-pqhash", "m11-medium", "m11-high-sc2"
     , "m11-high-as2", "m11-high-remaining", "m11-high-smfsia", "m11-high-crypto3"
-    , "m11-high-km3", "m11-final", "mcdc", "all"
+    , "m11-high-km3", "m11-final", "mcdc", "audit", "all"
     ]

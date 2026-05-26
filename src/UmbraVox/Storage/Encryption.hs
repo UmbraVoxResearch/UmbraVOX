@@ -28,18 +28,53 @@ import Data.Word (Word8)
 import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.FilePath (takeDirectory)
 import System.IO (withBinaryFile, IOMode(..))
+import System.IO.Unsafe (unsafePerformIO)
 import System.Posix.Files (setFileMode, ownerReadMode, ownerWriteMode, unionFileModes)
 
 import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
 import UmbraVox.Crypto.HKDF (hkdfSHA256Extract, hkdfSHA256Expand)
 import UmbraVox.Crypto.Random (randomBytes)
+import UmbraVox.Crypto.SecureBytes (SecureBytes, fromByteString, toByteString)
 
 ------------------------------------------------------------------------
 -- Types
 ------------------------------------------------------------------------
 
 -- | A 32-byte AES-256-GCM key for storage encryption.
-type StorageKey = ByteString
+--
+-- Finding:     M10.2.10 — 'StorageKey' was a plain 'ByteString' type alias,
+--              meaning the key material lived on the GC heap with no zeroing
+--              on collection and no protection against swap or core dumps.
+-- Vulnerability: A plain 'ByteString' key can be paged to swap, included in
+--              core dumps, and is never zeroed; an attacker with access to
+--              swap or a core file can recover the storage key verbatim.
+-- Fix:         Changed 'StorageKey' to a newtype wrapping 'SecureBytes'.
+--              'deriveStorageKey' now returns @IO StorageKey@ so the key
+--              material is immediately moved into a pinned, mlock'd, zeroed-
+--              on-free buffer.  'encryptField' and 'decryptField' extract the
+--              key via 'toByteString' only for the duration of the GCM call.
+-- Verified:    'deriveStorageKey' wraps the derived bytes in 'fromByteString';
+--              callers use 'encryptField' / 'decryptField' rather than
+--              extracting the raw key.
+newtype StorageKey = StorageKey SecureBytes
+
+-- | Equality comparison for 'StorageKey'.
+--
+-- Uses 'unsafePerformIO' to extract both keys for byte-by-byte comparison.
+-- This is NOT constant-time and must only be used in test assertions or
+-- non-security-critical equality checks (e.g. "did I derive the same key
+-- twice?").  Never use this as a timing-safe key-equality guard.
+instance Eq StorageKey where
+    (StorageKey a) == (StorageKey b) =
+        unsafePerformIO $ do
+            aBS <- toByteString a
+            bBS <- toByteString b
+            pure (aBS == bBS)
+
+-- | Show instance for 'StorageKey' — prints a fixed placeholder to avoid
+-- leaking key material in logs or error messages.
+instance Show StorageKey where
+    show _ = "<StorageKey>"
 
 ------------------------------------------------------------------------
 -- Key derivation
@@ -69,15 +104,17 @@ type StorageKey = ByteString
 -- 32-byte random value loaded (or freshly generated) by 'getOrCreateSalt'.
 -- The info string remains a fixed domain separator.
 --
--- NOTE: Key zeroing is not performed because Haskell ByteStrings are
--- immutable and GC-managed.  True key zeroing requires FFI to
--- memset_s / explicit_bzero; this is tracked as a known limitation.
+-- Returns an @IO StorageKey@ so the derived key material is immediately moved
+-- into a pinned, mlock'd, zeroed-on-free 'SecureBytes' buffer (M10.2.10).
+-- The intermediate 'ByteString' values produced by HKDF are short-lived
+-- GC-heap allocations; only the final wrapped value is protected.
 deriveStorageKey :: ByteString  -- ^ Per-install random salt (32 bytes)
                  -> ByteString  -- ^ Identity secret (IKM)
-                 -> StorageKey
-deriveStorageKey salt secret =
-    let !prk = hkdfSHA256Extract salt secret
-    in hkdfSHA256Expand prk (C8.pack "UmbraVox_StorageAEAD_v1") 32
+                 -> IO StorageKey
+deriveStorageKey salt secret = do
+    let !prk    = hkdfSHA256Extract salt secret
+        !keyBS  = hkdfSHA256Expand prk (C8.pack "UmbraVox_StorageAEAD_v1") 32
+    StorageKey <$> fromByteString keyBS
 
 -- Finding: M10.2.9 — No per-install salt file existed; all key derivation used
 -- a static compile-time constant.
@@ -126,7 +163,10 @@ getOrCreateSalt saltPath = do
 --
 -- Uses a fixed all-zero salt and a fixed IKM so test expectations are stable
 -- across builds.  Never use in production — the salt provides no real entropy.
-testStorageKey :: StorageKey
+--
+-- Returns @IO StorageKey@ because 'deriveStorageKey' now wraps the key in
+-- a 'SecureBytes' buffer (M10.2.10).
+testStorageKey :: IO StorageKey
 testStorageKey = deriveStorageKey (BS.replicate 32 0x00) (BS.pack [0..31])
 
 ------------------------------------------------------------------------
@@ -140,11 +180,14 @@ encPrefix = "UVENC1:"
 -- | Encrypt a string field for at-rest storage.
 --
 -- Returns @\"UVENC1:\" ++ hex(nonce || ciphertext || tag)@.
+-- Extracts the raw key bytes from the 'SecureBytes' buffer only for the
+-- duration of the GCM call (M10.2.10).
 encryptField :: StorageKey -> String -> IO String
-encryptField key plainStr = do
+encryptField (StorageKey keySB) plainStr = do
     nonce <- randomBytes 12
+    keyBS <- toByteString keySB
     let !plaintext      = C8.pack plainStr
-        !(ciphertext, tag) = gcmEncrypt key nonce BS.empty plaintext
+        !(ciphertext, tag) = gcmEncrypt keyBS nonce BS.empty plaintext
         !blob           = nonce <> ciphertext <> tag
     return (encPrefix ++ C8.unpack (toHex blob))
 
@@ -172,17 +215,22 @@ encryptField key plainStr = do
 -- (including legacy plaintext values), and 'Nothing' on malformed
 -- ciphertext or GCM authentication failure.  All stored fields must be
 -- encrypted — there is no passthrough path.
-decryptField :: StorageKey -> String -> Maybe String
-decryptField key input
-    | not (isEncryptedField input) = Nothing
-    | otherwise =
-        let hexPart = drop (length encPrefix) input
-        in case fromHex (C8.pack hexPart) of
-            Nothing  -> Nothing
-            Just raw -> decryptRaw key raw
+--
+-- Returns @IO (Maybe String)@ because the 'StorageKey' wraps a 'SecureBytes'
+-- buffer that must be accessed via 'toByteString' in IO (M10.2.10).
+decryptField :: StorageKey -> String -> IO (Maybe String)
+decryptField _ input
+    | not (isEncryptedField input) = pure Nothing
+decryptField (StorageKey keySB) input = do
+    keyBS <- toByteString keySB
+    let hexPart = drop (length encPrefix) input
+    case fromHex (C8.pack hexPart) of
+        Nothing  -> pure Nothing
+        Just raw -> pure (decryptRaw keyBS raw)
 
 -- | Attempt to decrypt a raw blob of @nonce(12) || ciphertext || tag(16)@.
-decryptRaw :: StorageKey -> ByteString -> Maybe String
+-- Takes a plain 'ByteString' key extracted by the caller from a 'StorageKey'.
+decryptRaw :: ByteString -> ByteString -> Maybe String
 decryptRaw key raw
     | BS.length raw < 28 = Nothing
     | otherwise =

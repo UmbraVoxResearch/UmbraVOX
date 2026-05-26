@@ -32,14 +32,18 @@ let
           set -euo pipefail
           export PATH=/run/current-system/sw/bin:/run/current-system/sw/sbin:$PATH
 
-          # Mount the application disk read-only
+          # Mount the application disk (rw so we can fix permissions)
           mkdir -p /app
-          mount -o ro -t ext4 /dev/vdb /app
+          mount -o exec -t ext4 /dev/vdb /app
+
+          # Fix permissions (genext2fs may not preserve execute bits)
+          chmod +x /app/bin/umbravox 2>/dev/null || true
+          chmod +x /app/lib/ld-linux-x86-64.so.2 2>/dev/null || true
 
           # Provide runtime library path for dynamically-linked deps
           export LD_LIBRARY_PATH=/app/lib
 
-          if [ -x /app/bin/umbravox ]; then
+          if [ -f /app/bin/umbravox ]; then
             echo "[RUNTIME] Starting /app/bin/umbravox"
             /app/bin/umbravox; rc=$?
           else

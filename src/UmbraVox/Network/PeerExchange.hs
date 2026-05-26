@@ -122,15 +122,23 @@ pexToken sessionKey pubKeyFingerprint =
 --
 -- The pubkey field is sent as-is; callers who want opaque tokens should
 -- pre-process piPubkey through 'pexToken' before encoding.
+--
+-- PRIVACY (M14.1.2 — timestamp quantisation): The last-seen timestamp is
+-- quantised to 1-hour buckets (rounded down to the nearest 3600-second
+-- boundary) before being written to the wire.  Sending a precise POSIX
+-- timestamp would let PEX observers correlate peer activity at
+-- sub-minute resolution; hour-level granularity is sufficient for the
+-- liveness signal PEX actually needs while removing that side-channel.
 encodePeer :: PeerInfo -> ByteString
 encodePeer p =
     let !ip    = piIP p
         !ipLen = BS.length ip
+        !ts    = (piLastSeen p `div` 3600) * 3600
     in  BS.singleton (fromIntegral ipLen)
         <> ip
         <> putBE16 (piPort p)
         <> padOrTrunc 32 (piPubkey p)
-        <> putBE64 (piLastSeen p)
+        <> putBE64 ts
 
 -- | Decode entries from the remaining buffer.
 --

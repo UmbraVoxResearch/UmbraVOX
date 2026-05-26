@@ -5,7 +5,7 @@
 //
 //	umbravox-vm                      build + test + check (fast gate)
 //	umbravox-vm build [--docs] [--direct]  build in VM (--docs runs cabal haddock; --direct: host/CI via nix-shell)
-//	umbravox-vm run [tui|gui|headless] launch UmbraVOX runtime (default: tui/Firecracker)
+//	umbravox-vm run [tui|gui|headless] launch UmbraVOX runtime (default: tui, lightweight QEMU)
 //	umbravox-vm test [SUITE] [--direct]  run test suite in VM (--direct: host/CI via nix-shell)
 //	umbravox-vm dev [--gui]          interactive VM dev shell
 //	umbravox-vm verify               F* formal verification
@@ -86,10 +86,10 @@ Usage: ./uv <command> [args]
 Commands:
   (no args)           Build + test + check (fast gate)
   build [--docs] [--direct]  Build library and executables in VM (--docs: cabal haddock; --direct: host/CI via nix-shell)
-  run                 Build and launch UmbraVOX (default: tui via Firecracker)
-  run tui             Firecracker microVM, serial console (sub-second boot)
-  run gui             Lightweight QEMU VM with VGA display (no dev tools)
-  run headless        Firecracker microVM, daemon mode
+  run                 Build and launch UmbraVOX (default: tui, lightweight QEMU)
+  run tui             Serial console in terminal (no GUI window)
+  run gui             QEMU VM with VGA display
+  run headless        Serial console, daemon mode
   test [SUITE] [--direct]  Run test suite (default: required fast gate; --direct: host/CI via nix-shell)
   dev [--gui]         Interactive VM development shell
   verify              F* formal verification (17 modules)
@@ -98,7 +98,7 @@ Commands:
   coverage [FLAGS]    HPC coverage report (--check, --mcdc)
   release [PLATFORM]  Build release artifacts
   vm <action>         VM infrastructure (build-image, smoke, signal)
-  build-runtime-image  Build lightweight runtime VM images (Firecracker + QEMU)
+  build-runtime-image  Build lightweight runtime VM image (QEMU)
   evidence [FLAGS]    Evidence & assurance bundles (--fast, --full)
   fuzz [MODE]         Fuzzing (differential, afl)
   clean [--all|--nix-gc] Remove build artifacts (--nix-gc frees /nix/store)
@@ -122,7 +122,7 @@ VM actions:
 Examples:
   ./uv                       Quick gate: build + test + check
   ./uv build                 Just build
-  ./uv run                   Launch UmbraVOX (Firecracker TUI)
+  ./uv run                   Launch UmbraVOX (TUI)
   ./uv run gui               Launch with QEMU VGA display
   ./uv test tcp              Run TCP hardening suite
   ./uv dev                   Interactive VM shell

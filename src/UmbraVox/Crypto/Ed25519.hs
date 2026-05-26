@@ -322,12 +322,14 @@ ed25519PublicKey !sk =
 
 -- | Clamp the first 32 bytes of the SHA-512 hash per RFC 8032 Section 5.1.5.
 clampScalar :: ByteString -> Integer
-clampScalar !bs =
-    let !bytes = BS.unpack bs
-        !b0   = (head bytes) .&. 248
-        !b31  = ((bytes !! 31) .&. 127) .|. 64
-        !clamped = BS.pack (b0 : take 30 (drop 1 bytes) ++ [b31])
-    in decodeLE clamped
+clampScalar !bs
+    | BS.length bs < 32 = error "clampScalar: input too short"
+    | otherwise =
+        let !b0   = (BS.index bs 0) .&. 248
+            !b31  = ((BS.index bs 31) .&. 127) .|. 64
+            !middle = BS.take 30 (BS.drop 1 bs)
+            !clamped = BS.cons b0 (BS.snoc middle b31)
+        in decodeLE clamped
 
 -- | Ed25519 signing per RFC 8032 Section 5.1.6.
 ed25519Sign :: ByteString -> ByteString -> ByteString

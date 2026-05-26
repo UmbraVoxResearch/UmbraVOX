@@ -19,7 +19,7 @@ ffiLinked = (/= 0) <$> c_pqwrapper_link_probe
 pqEncrypt :: ByteString -> ByteString -> IO ByteString
 pqEncrypt ek pt = do
     _ <- c_pqwrapper_link_probe
-    pure (Reference.pqEncrypt ek pt)
+    Reference.pqEncrypt ek pt
 
 pqDecrypt :: ByteString -> ByteString -> IO (Maybe ByteString)
 pqDecrypt dk ct = do

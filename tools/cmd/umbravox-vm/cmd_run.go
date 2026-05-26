@@ -43,11 +43,10 @@ func runRun(args []string) int {
 		}
 	}
 
-	if mode == "gui" {
-		return runRunQEMU(port)
-	}
-	// tui and headless use Firecracker
-	return runRunFirecracker(mode, port)
+	// All modes use lightweight QEMU runtime image.
+	// Firecracker deferred due to genext2fs ext2 permission issues.
+	// GUI mode: QEMU with VGA display. TUI/headless: QEMU with serial console.
+	return runRunQEMUAll(mode, port)
 }
 
 // canDisplayGUI checks whether a GUI window can be opened.
@@ -143,7 +142,7 @@ func runRunFirecracker(mode, port string) int {
 			{
 				Path:     appDiskPath,
 				Format:   vmctl.DiskFormatExt2,
-				ReadOnly: true,
+				ReadOnly: false, // rw so runtime can chmod +x (genext2fs strips execute bits)
 			},
 		},
 		Boot: &vmctl.BootSpec{
@@ -168,11 +167,21 @@ func runRunFirecracker(mode, port string) int {
 
 // runRunQEMU boots the runtime bundle in a lightweight QEMU VM with VGA
 // display using QEMUHypervisor.Boot from the vmctl package.
-func runRunQEMU(port string) int {
-	if !canDisplayGUI() {
-		log.Fail(tag, "No display available (DISPLAY/WAYLAND_DISPLAY not set). Use 'uv run tui' for terminal mode.")
-		return 1
+// runRunQEMUAll runs the app in the lightweight QEMU runtime image.
+// mode: "gui" (VGA display), "tui" (serial console), "headless" (serial, no input)
+func runRunQEMUAll(mode, port string) int {
+	useGUI := mode == "gui" && canDisplayGUI()
+	if mode == "gui" && !canDisplayGUI() {
+		log.Info(tag, "No display available, falling back to TUI (serial console)")
 	}
+	return runRunQEMUInner(useGUI, port)
+}
+
+func runRunQEMU(port string) int {
+	return runRunQEMUInner(true, port)
+}
+
+func runRunQEMUInner(useGUI bool, port string) int {
 
 	repoRoot, err := repo.Root()
 	if err != nil {
@@ -255,10 +264,17 @@ func runRunQEMU(port string) int {
 	// 6. Build output share for guest-written results
 	outputShare := ninep.DefaultOutputShare(outputDir)
 
-	// 7. Construct VMSpec: 25% host resources, GTK display, runtime image
+	// 7. Construct VMSpec: load from vm-defs/runtime-qemu.yaml, fall back to 25%.
+	resources := vmctl.Resources{Fraction: 25}
+	if def, defErr := loadVMDef(repoRoot, "runtime-qemu"); defErr != nil {
+		log.Fail(tag, fmt.Sprintf("failed to load vm-def: %v", defErr))
+		return 1
+	} else if def != nil {
+		resources = def.Resources
+	}
 	spec := &vmctl.VMSpec{
 		Hypervisor: vmctl.HypervisorQEMU,
-		Resources:  vmctl.Resources{Fraction: 25},
+		Resources:  resources,
 		BaseImage: vmctl.ImageRef{
 			Path:   overlay.Path,
 			Format: vmctl.DiskFormatQCOW2,
@@ -280,11 +296,17 @@ func runRunQEMU(port string) int {
 			},
 		},
 		Network: vmctl.NetworkSpec{RawArgs: netArgs},
-		Display: vmctl.DisplayGTK,
+	}
+	if useGUI {
+		spec.Display = vmctl.DisplayGTK
 	}
 
 	res := vmctl.ResolveResources(spec.Resources)
-	log.Info(tag, fmt.Sprintf("VM: %d cores, %dMB RAM | GUI (QEMU VGA window, runtime image, vmctl)", res.Cores, res.MemoryMB))
+	displayLabel := "serial console"
+	if useGUI {
+		displayLabel = "GUI (QEMU VGA window)"
+	}
+	log.Info(tag, fmt.Sprintf("VM: %d cores, %dMB RAM | %s (runtime image, vmctl)", res.Cores, res.MemoryMB, displayLabel))
 	fmt.Fprintln(os.Stderr)
 
 	// 8. Boot via QEMUHypervisor

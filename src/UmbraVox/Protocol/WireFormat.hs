@@ -29,7 +29,7 @@ module UmbraVox.Protocol.WireFormat
 
 import qualified Data.ByteString as BS
 import Data.ByteString (ByteString)
-import Data.Bits (shiftL, shiftR, (.&.))
+import Data.Bits (shiftL, shiftR, (.&.), (.|.), testBit)
 import Data.IORef
 import Data.Word (Word8, Word16, Word32)
 import qualified Data.Set as Set
@@ -240,18 +240,30 @@ seqNonceSafe seqNum
     | seqNum >= seqNonceMaxSeq = Nothing
     | otherwise = Just (seqNonce seqNum)
 
+-- | Flag bit in the version byte that distinguishes AEAD-encrypted messages
+-- from HMAC-authenticated messages.
+--
+-- When this bit is set in byte 0, the message uses ChaCha20-Poly1305 AEAD
+-- (type byte encrypted inside the ciphertext).  When clear, the message uses
+-- the legacy HMAC-SHA-256 format with a full cleartext header (handshake path).
+--
+-- Bit 7 (0x80) is used; the lower bits still carry the protocol version (2).
+aeadFlag :: Word8
+aeadFlag = 0x80
+
 -- | Encode an envelope with ChaCha20-Poly1305 AEAD encryption.
 --
 -- M27.6.4: The message type byte is encrypted inside the AEAD payload so
 -- that observers cannot distinguish message types on the wire.
 --
 -- For data messages (all types except handshake type 2):
---   AAD: version byte only (authenticated but not encrypted)
+--   AAD: version byte with AEAD flag set (authenticated but not encrypted)
 --   Plaintext: type(1) + seq(4) + ephemeralR(32) + viewTag(1) + scanTag(2) + payloadLen(4) + payload(N)
---   Output: [version:1][aead_ciphertext:N][poly1305_tag:16]
+--   Output: [version|0x80:1][aead_ciphertext:N][poly1305_tag:16]
 --
 -- For handshake messages (type 2): delegates to 'encodeEnvelope' (HMAC-SHA-256),
--- since no session key exists yet during the handshake.
+-- since no session key exists yet during the handshake.  The HMAC path emits a
+-- full cleartext header where byte 0 does NOT have 'aeadFlag' set.
 --
 -- Returns 'Left' with a description when the sequence number has exceeded the
 -- re-keying threshold (2^31), allowing callers to handle the error without a
@@ -262,14 +274,18 @@ encodeEnvelopeAEAD :: ByteString  -- ^ 32-byte envelope key (from 'deriveEnvelop
                    -> Either String ByteString
 encodeEnvelopeAEAD envelopeKey seqNum env
     | envType env == 2 =
-        -- Handshake messages use HMAC authentication (no session key yet)
+        -- Handshake messages use HMAC authentication (no session key yet).
+        -- The HMAC path writes a full cleartext header; byte 0 = version (0x02),
+        -- without the aeadFlag bit set.
         Right (encodeEnvelope envelopeKey env)
     | seqNum >= seqNonceMaxSeq =
         -- M27.3.4: Refuse to encrypt past 2^31 messages; caller must re-key
         Left "encodeEnvelopeAEAD: sequence number exceeds re-keying threshold (2^31)"
     | otherwise =
-        let -- M27.6.4: AAD contains only the version byte; type is encrypted
-            !aad = BS.singleton (envVersion env)
+        let -- M27.6.4: AAD is the version byte with the AEAD flag set, so the
+            -- decoder can reliably distinguish this format from the HMAC format
+            -- without inspecting any ciphertext byte.
+            !aad = BS.singleton (envVersion env .|. aeadFlag)
             -- M27.2.1: Pad payload to fixed size bucket before encryption
             -- to prevent length correlation attacks.
             !paddedPayload = padToBucket (envPayload env)
@@ -292,38 +308,60 @@ encodeEnvelopeAEAD envelopeKey seqNum env
 -- The caller must supply the expected sequence number (from the transport
 -- layer's SeqWindow) so that the correct nonce can be reconstructed.
 --
--- For handshake messages (type byte == 2): delegates to 'decodeEnvelope' (HMAC).
--- For all other types: verifies the Poly1305 tag, decrypts, and parses inner fields.
+-- Message format detection uses the 'aeadFlag' bit (0x80) in the version byte
+-- (byte 0), NOT byte 1 (which is ciphertext in the AEAD format):
+--
+--   * Byte 0 has 'aeadFlag' set (0x82): AEAD format — type byte is inside
+--     the ciphertext; decode with ChaCha20-Poly1305 and then 'parseInnerEnvelopeV2'.
+--   * Byte 0 does NOT have 'aeadFlag' set (0x02): HMAC format — full cleartext
+--     header used for handshake messages; delegate to 'decodeEnvelope'.
 --
 -- Returns 'Nothing' on authentication failure, truncation, or parse error.
+--
+-- Finding:      Byte index 1 of an AEAD message is ciphertext, yet the old
+--               decoder compared it to the literal value 2 to detect handshake
+--               messages.  This could misclassify a data message whose first
+--               ciphertext byte happens to equal 2 (≈1/256 probability),
+--               causing the decoder to attempt HMAC verification on an AEAD
+--               message and silently drop it.
+-- Vulnerability: AEAD messages with a first ciphertext byte of 0x02 would be
+--               incorrectly routed to the HMAC path, causing spurious decryption
+--               failures and potential message loss.
+-- Fix:           Set 'aeadFlag' (bit 7 = 0x80) in the version/AAD byte during
+--               AEAD encoding, and test that bit during decoding to distinguish
+--               the two formats.  Byte 1 is never examined for format detection.
+-- Verified:     The encode path sets bit 0x80; the decode path tests bit 0x80
+--               before any other byte is read.
 decodeEnvelopeAEAD :: ByteString  -- ^ 32-byte envelope key (from 'deriveEnvelopeKey')
                    -> Word32      -- ^ expected sequence number (for nonce derivation)
                    -> ByteString  -- ^ wire bytes
                    -> Maybe Envelope
 decodeEnvelopeAEAD envelopeKey seqNum bs
     | BS.length bs < 2 = Nothing
-    | BS.index bs 0 /= 2 = Nothing  -- reject non-v2 envelopes
-    | BS.index bs 1 == 2 =
-        -- Handshake messages use HMAC authentication (type byte visible)
+    -- Reject if base version bits (ignoring the AEAD flag) are not 2.
+    | (BS.index bs 0 .&. 0x7f) /= 2 = Nothing
+    | not (testBit (BS.index bs 0) 7) =
+        -- AEAD flag not set: this is a legacy HMAC-authenticated handshake
+        -- message with a full cleartext header.  Byte 1 is the cleartext type.
         decodeEnvelope envelopeKey bs
     | seqNum >= seqNonceMaxSeq = Nothing  -- M27.3.4: reject past re-key threshold
     | BS.length bs < minAEADSize = Nothing
     | otherwise =
-        -- M27.6.4: AAD is only the version byte; type is inside encrypted payload.
-        -- However, we still need to check for handshake (type 2) *before*
-        -- decryption.  For non-handshake messages, the second byte is ciphertext,
-        -- not a cleartext type.  The handshake check above uses the legacy
-        -- 2-byte header format where type is visible.
+        -- AEAD flag is set: type byte is inside the encrypted payload (M27.6.4).
+        -- Byte 1 is ciphertext; do not inspect it for message type detection.
         let !aad = BS.take 1 bs
-            -- ciphertext is everything between aad and the trailing 16-byte tag
+            -- ciphertext is everything between the 1-byte AAD and the trailing
+            -- 16-byte Poly1305 tag
             !totalLen = BS.length bs
             !ciphertextLen = totalLen - 1 - poly1305TagSize
             !ciphertext = BS.take ciphertextLen (BS.drop 1 bs)
             !tag = BS.drop (totalLen - poly1305TagSize) bs
             !nonce = seqNonce seqNum
+            -- Strip AEAD flag from version byte before passing to envelope parser
+            !ver = BS.index bs 0 .&. 0x7f
         in case chachaPolyDecrypt envelopeKey nonce aad ciphertext tag of
             Nothing -> Nothing
-            Just plaintext -> parseInnerEnvelopeV2 (BS.index bs 0) plaintext
+            Just plaintext -> parseInnerEnvelopeV2 ver plaintext
 
 -- | Parse the decrypted inner plaintext into an 'Envelope' (legacy format).
 --

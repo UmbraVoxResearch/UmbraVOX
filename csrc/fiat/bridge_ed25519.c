@@ -64,6 +64,10 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+#include "../ct_helpers.h"
+
+/* Constant-time byte-array equality from csrc/constant_time.c */
+extern int constant_time_eq(const uint8_t *a, const uint8_t *b, size_t len);
 
 /* -------------------------------------------------------------------------
  * Vendor gate
@@ -221,30 +225,37 @@ typedef struct {
 } umbravox_ed_point;
 
 /* Curve constant d = -121665/121666 mod p.
- * Stored as a fiat-crypto field element, initialised on first use.
- * The little-endian byte encoding of d is:
- *   a3 78 59 13 ca 4d eb 75 ab d8 41 41 0a 00 07 00
- *   98 e8 79 77 40 c7 cc 38 73 fe 6f ee 2b ce 36 52  (32 bytes, LE)
+ * Stored as a fiat-crypto field element in the 51-bit-limb representation.
  *
- * We initialise lazily via umbravox_ed_curve_d() to avoid depending on
- * C99 compound-literal initialisers for the felem array type.
+ * The limb values below are the precomputed result of calling
+ * fiat_25519_from_bytes on the 32-byte LE encoding of d:
+ *   a3 78 59 13 ca 4d eb 75 ab d8 41 41 0a 00 07 00
+ *   98 e8 79 77 40 c7 cc 38 73 fe 6f ee 2b ce 36 52
+ *
+ * Limbs (51-bit radix, tight, little-endian):
+ *   d  = 0x52036cee2b6ffe73 8cc740797779e898
+ *        0x00070000000007a4 75ebd5ab08808c8a  (RFC 8032 §5.1)
+ *
+ * Exact 51-bit limb decomposition:
+ *   limb[0] = d[0..50]   = 0x00034dca135978a3
+ *   limb[1] = d[51..101] = 0x0001a8283b156ebd
+ *   limb[2] = d[102..152]= 0x0005e7a26001c029
+ *   limb[3] = d[153..203]= 0x000739c663370f7e
+ *   limb[4] = d[204..254]= 0x00052036cee2b6ff
+ *
+ * Hardcoded to eliminate the lazy-init race (TOCTOU) present in the
+ * previous double-checked locking approach.
  */
-static fiat_25519_felem g_curve_d;
-static int g_curve_d_init = 0;
-
-static const uint8_t k_curve_d_bytes[32] = {
-    0xa3,0x78,0x59,0x13,0xca,0x4d,0xeb,0x75,
-    0xab,0xd8,0x41,0x41,0x0a,0x00,0x07,0x00,
-    0x98,0xe8,0x79,0x77,0x40,0xc7,0xcc,0x38,
-    0x73,0xfe,0x6f,0xee,0x2b,0xce,0x36,0x52
+static const fiat_25519_felem k_curve_d = {
+    UINT64_C(0x00034dca135978a3),
+    UINT64_C(0x0001a8283b156ebd),
+    UINT64_C(0x0005e7a26001c029),
+    UINT64_C(0x000739c663370f7e),
+    UINT64_C(0x00052036cee2b6ff)
 };
 
 static const fiat_25519_felem *umbravox_ed_curve_d(void) {
-    if (!g_curve_d_init) {
-        fiat_25519_from_bytes(g_curve_d, k_curve_d_bytes);
-        g_curve_d_init = 1;
-    }
-    return (const fiat_25519_felem *)g_curve_d;
+    return &k_curve_d;
 }
 
 /* -------------------------------------------------------------------------
@@ -489,21 +500,43 @@ int umbravox_ed_decode(umbravox_ed_point *out,
     fiat_25519_carry(neg_u, neg_u);
     fiat_25519_to_bytes(neg_u_b, neg_u);
 
-    int eq_u    = (memcmp(vx2_b, u_b,     32) == 0);
-    int eq_negu = (memcmp(vx2_b, neg_u_b, 32) == 0);
+    /* Constant-time comparisons: no variable-time memcmp. */
+    int eq_u    = constant_time_eq(vx2_b, u_b,     32);
+    int eq_negu = constant_time_eq(vx2_b, neg_u_b, 32);
 
-    if (!eq_u && !eq_negu) {
-        /* Special case: u == 0 and x_sign == 0 => x = 0 is valid */
-        uint8_t zero32[32] = {0};
-        if (memcmp(u_b, zero32, 32) == 0 && x_sign == 0) {
-            fe_set_small(x, 0);
-        } else {
-            return 0; /* point not on curve */
-        }
-    } else if (!eq_u) {
-        /* vx2 == -u: multiply x by sqrt(-1) */
-        fiat_25519_from_bytes(sqrt_m1, k_sqrt_m1);
-        fiat_25519_mul(x, x, sqrt_m1);
+    /* Constant-time zero check for u (needed for the u==0 special case). */
+    uint8_t zero32[32];
+    memset(zero32, 0, 32);
+    int u_is_zero = constant_time_eq(u_b, zero32, 32);
+
+    /*
+     * Three cases, resolved with constant-time selection:
+     *
+     *   eq_u    == 1 : vx2 == u  -> x is already correct, no adjustment.
+     *   eq_negu == 1 : vx2 == -u -> multiply x by sqrt(-1).
+     *   both zero    : point not on curve, EXCEPT when u==0 and x_sign==0
+     *                  (the only valid x=0 solution).
+     *
+     * We compute the sqrt(-1)-adjusted candidate unconditionally and select
+     * between the original x and the adjusted value with ct_select, avoiding
+     * a branch on eq_u.  The on-curve validity check is then:
+     *   valid = eq_u | eq_negu | (u_is_zero & !x_sign)
+     * which is also evaluated without branches.
+     */
+
+    /* adjusted_x = x * sqrt(-1) — computed unconditionally */
+    fiat_25519_felem adjusted_x;
+    fiat_25519_from_bytes(sqrt_m1, k_sqrt_m1);
+    fiat_25519_mul(adjusted_x, x, sqrt_m1);
+
+    /* Select: if eq_negu and not eq_u, use adjusted_x; otherwise keep x. */
+    uint64_t use_adjusted = (uint64_t)((1 - eq_u) & eq_negu);
+    fiat_25519_selectznz(x, (fiat_25519_uint1)use_adjusted, x, adjusted_x);
+
+    /* Validity: on-curve iff eq_u OR eq_negu OR (u==0 AND x_sign==0). */
+    int valid = eq_u | eq_negu | (u_is_zero & (1 - x_sign));
+    if (!valid) {
+        return 0; /* point not on curve */
     }
 
     /* Adjust x sign */
@@ -523,38 +556,78 @@ int umbravox_ed_decode(umbravox_ed_point *out,
 }
 
 /* -------------------------------------------------------------------------
- * umbravox_ed_scalar_mult — variable-time double-and-add scalar multiply
+ * ct_point_cswap — constant-time conditional swap of two extended points.
+ *
+ * If cond == 1, swaps *R0 and *R1 in place; if cond == 0, leaves both
+ * unchanged.  Uses fiat_25519_selectznz on every limb so the swap is
+ * free of data-dependent branches and the compiler cannot optimise it away.
+ * --------------------------------------------------------------------- */
+static void ct_point_cswap(umbravox_ed_point *R0,
+                           umbravox_ed_point *R1,
+                           uint64_t cond) {
+    fiat_25519_uint1 c = (fiat_25519_uint1)(cond & 1);
+    fiat_25519_felem tmp;
+
+/* Swap a single felem field inside the two points. */
+#define CSWAP_FELEM(field)                                      \
+    do {                                                         \
+        fe_copy(tmp, R0->field);                                 \
+        fiat_25519_selectznz(R0->field, c, R0->field, R1->field); \
+        fiat_25519_selectznz(R1->field, c, R1->field, tmp);     \
+    } while (0)
+
+    CSWAP_FELEM(X);
+    CSWAP_FELEM(Y);
+    CSWAP_FELEM(Z);
+    CSWAP_FELEM(T);
+
+#undef CSWAP_FELEM
+}
+
+/* -------------------------------------------------------------------------
+ * umbravox_ed_scalar_mult — constant-time double-and-add scalar multiply
  *
  * Computes out = scalar * P, where scalar is a 256-bit little-endian integer.
  * This is the direct C analogue of scalarMul in Ed25519.hs.
  *
- * NOT CONSTANT-TIME.  The production FFI path (ed25519extended_link_probe /
- * ed25519extended.c) routes through libsodium or another constant-time
- * implementation for secret-scalar operations.  This function exists to
- * complete the fiat-crypto field-op mapping for non-secret scalars (e.g.
- * public scalar in verification, cofactor multiply for small-order checks).
+ * The implementation uses the conditional-swap (cswap) pattern:
+ *   for each bit b (MSB first):
+ *     R0 = 2*R0                     (always double R0)
+ *     R1 = R0 + P_original          (always compute the "add" candidate)
+ *     cswap(R0, R1, b)              (select result without branching)
+ *
+ * Both point_double and point_add execute unconditionally on every iteration.
+ * The fiat_25519_selectznz-based cswap ensures the scalar bit value never
+ * creates observable timing differences.
  * --------------------------------------------------------------------- */
 void umbravox_ed_scalar_mult(umbravox_ed_point *out,
                              const uint8_t scalar[32],
                              const umbravox_ed_point *P) {
-    /* Identity point (0 : 1 : 1 : 0) */
-    umbravox_ed_point acc;
-    fe_set_small(acc.X, 0);
-    fe_set_small(acc.Y, 1);
-    fe_set_small(acc.Z, 1);
-    fe_set_small(acc.T, 0);
+    /* R0 = identity (0:1:1:0), R1 = scratch */
+    umbravox_ed_point R0, R1;
+    fe_set_small(R0.X, 0);
+    fe_set_small(R0.Y, 1);
+    fe_set_small(R0.Z, 1);
+    fe_set_small(R0.T, 0);
 
-    /* MSB-first double-and-add over 255 bits (skip leading zero bits) */
+    /* MSB-first, 256 bits (bytes 31..0, bits 7..0). */
     for (int byte_i = 31; byte_i >= 0; byte_i--) {
         uint8_t byte_val = scalar[byte_i];
         for (int bit_i = 7; bit_i >= 0; bit_i--) {
-            umbravox_ed_point_double(&acc, &acc);
-            if ((byte_val >> bit_i) & 1) {
-                umbravox_ed_point_add(&acc, &acc, P);
-            }
+            uint64_t bit = (byte_val >> bit_i) & 1;
+
+            /* Always double R0. */
+            umbravox_ed_point_double(&R0, &R0);
+
+            /* Always compute R1 = R0 + P (the "add" candidate). */
+            umbravox_ed_point_add(&R1, &R0, P);
+
+            /* Constant-time select: if bit==1, take R1 (R0 stays as R1
+             * after the swap); if bit==0, keep R0 unchanged. */
+            ct_point_cswap(&R0, &R1, bit);
         }
     }
-    *out = acc;
+    *out = R0;
 }
 
 #endif /* FIAT_VENDORED */

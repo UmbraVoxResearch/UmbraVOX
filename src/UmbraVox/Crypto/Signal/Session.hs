@@ -101,6 +101,9 @@ initSession sharedSecret = do
 --       [4: msgKey len][msgKey][4: chainKey len][chainKey][8: insertSeq][8: wallTimestamp]
 --   [4: peerIdentity len][peerIdentity]
 --   [8: createdAt][8: messageCount]
+--   [4: seenDHKeys count]
+--     for each entry:
+--       [4: dhPub len][dhPub]
 -- @
 -- M15.3: Now monadic (IO) — must extract ByteString from SecureBytes fields.
 serializeSession :: SessionState -> IO ByteString
@@ -124,6 +127,10 @@ serializeSession ss = do
               <> putBlob mk <> putBlob ck <> putWord64BE iseq <> putWord64BE wallTs
             | ((k, n), (mk, ck, iseq, wallTs)) <- skippedList
             ]
+        -- Seen DH keys (replay detection FIFO)
+        seenList  = foldr (:) [] (rsSeenDHKeys rs)
+        seenCount = fromIntegral (length seenList) :: Word32
+        seenBytes = mconcat [ putBlob k | k <- seenList ]
     pure $ mconcat
         [ putBlob dhSec
         , putBlob dhPub
@@ -141,6 +148,8 @@ serializeSession ss = do
         , putBlob (ssPeerIdentity ss)
         , putWord64BE (ssCreatedAt ss)
         , putWord64BE (ssMessageCount ss)
+        , putWord32BE seenCount
+        , seenBytes
         ]
 
 -- | Deserialize a session state from bytes.
@@ -154,7 +163,7 @@ deserializeSession bs0 =
         Nothing -> pure Nothing
         Just (dhSec, dhPub, mDHRecv, rootKey, sendChain, recvChain,
               sendN, recvN, prevChainN, skipSeq, nonceCtr, skipped,
-              peerIdent, createdAt, msgCount) -> do
+              peerIdent, createdAt, msgCount, seenDH) -> do
             dhSecSB    <- fromByteString dhSec
             rootKeySB  <- fromByteString rootKey
             sendChainSB <- fromByteString sendChain
@@ -172,7 +181,7 @@ deserializeSession bs0 =
                     , rsSkippedKeys = skipped
                     , rsSkipSeq     = skipSeq
                     , rsNonceCounter = nonceCtr
-                    , rsSeenDHKeys  = Seq.empty
+                    , rsSeenDHKeys  = seenDH
                     }
                 , ssPeerIdentity = peerIdent
                 , ssCreatedAt    = createdAt
@@ -187,7 +196,8 @@ parseSessionBytes :: ByteString
                            , Word32, Word32, Word32
                            , Word64, Word64
                            , Map.Map (ByteString, Word32) (ByteString, ByteString, Word64, Word64)
-                           , ByteString, Word64, Word64 )
+                           , ByteString, Word64, Word64
+                           , Seq.Seq ByteString )
 parseSessionBytes bs0 = do
     (dhSec, bs1)   <- getBlob bs0
     (dhPub, bs2)   <- getBlob bs1
@@ -210,10 +220,12 @@ parseSessionBytes bs0 = do
     (skipped, bs14)    <- getSkippedKeys (fromIntegral skCount) bs13
     (peerIdent, bs15)  <- getBlob bs14
     (createdAt, bs16)  <- getW64 bs15
-    (msgCount, _bs17)  <- getW64 bs16
+    (msgCount, bs17)   <- getW64 bs16
+    (seenCount, bs18)  <- getW32 bs17
+    (seenDH, _bs19)    <- getSeenDHKeys (fromIntegral seenCount) bs18
     Just (dhSec, dhPub, mDHRecv, rootKey, sendChain, recvChain,
           sendN, recvN, prevChainN, skipSeq, nonceCtr, skipped,
-          peerIdent, createdAt, msgCount)
+          peerIdent, createdAt, msgCount, seenDH)
 
 ------------------------------------------------------------------------
 -- Binary helpers
@@ -280,3 +292,13 @@ getSkippedKeys n bs = do
     (wallTs, bs6)   <- getW64 bs5
     (rest, bs7)     <- getSkippedKeys (n - 1) bs6
     Just (Map.insert (dhPub, counter) (msgKey, chainKey, iseq, wallTs) rest, bs7)
+
+-- | Read N seen-DH-key entries from the wire format (replay detection FIFO).
+getSeenDHKeys :: Int
+              -> ByteString
+              -> Maybe (Seq.Seq ByteString, ByteString)
+getSeenDHKeys 0 bs = Just (Seq.empty, bs)
+getSeenDHKeys n bs = do
+    (dhPub, bs1) <- getBlob bs
+    (rest, bs2)  <- getSeenDHKeys (n - 1) bs1
+    Just (dhPub Seq.<| rest, bs2)

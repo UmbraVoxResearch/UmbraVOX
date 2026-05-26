@@ -581,34 +581,30 @@ testSY027ExportSaltUniqueness = do
 
 testSY028StorageCiphertextTruncation :: IO Bool
 testSY028StorageCiphertextTruncation = do
-    let key   = testStorageKey
-        plain = "sensitive value"
+    key <- testStorageKey
+    let plain = "sensitive value"
 
     -- (a) Valid round-trip
     enc <- encryptField key plain
-    let roundTrip = decryptField key enc
+    roundTrip <- decryptField key enc
     ok1 <- assertEq "SY-028 storage truncation: valid round-trip returns Just"
                (Just plain) roundTrip
 
     -- (b) Prefix only (empty hex payload)
-    let prefixOnly = "UVENC1:"
-    ok2 <- assertEq "SY-028 storage truncation: prefix-only -> Nothing"
-               Nothing (decryptField key prefixOnly)
+    r2 <- decryptField key "UVENC1:"
+    ok2 <- assertEq "SY-028 storage truncation: prefix-only -> Nothing" Nothing r2
 
     -- (c) Truncated hex payload (10 hex chars = 5 raw bytes, too short for nonce+ct+tag)
-    let truncated10 = "UVENC1:aabbccddee11223344"  -- 24 hex chars = 12 bytes raw (nonce only, no ct+tag)
-    ok3 <- assertEq "SY-028 storage truncation: nonce-only payload -> Nothing"
-               Nothing (decryptField key truncated10)
+    r3 <- decryptField key "UVENC1:aabbccddee11223344"  -- 24 hex chars = 12 bytes raw (nonce only, no ct+tag)
+    ok3 <- assertEq "SY-028 storage truncation: nonce-only payload -> Nothing" Nothing r3
 
     -- (d) Single-byte payload after prefix
-    let singleByte = "UVENC1:aa"
-    ok4 <- assertEq "SY-028 storage truncation: 1-byte payload -> Nothing"
-               Nothing (decryptField key singleByte)
+    r4 <- decryptField key "UVENC1:aa"
+    ok4 <- assertEq "SY-028 storage truncation: 1-byte payload -> Nothing" Nothing r4
 
     -- (e) Malformed hex (odd length)
-    let oddHex = "UVENC1:aab"
-    ok5 <- assertEq "SY-028 storage truncation: odd-length hex -> Nothing"
-               Nothing (decryptField key oddHex)
+    r5 <- decryptField key "UVENC1:aab"
+    ok5 <- assertEq "SY-028 storage truncation: odd-length hex -> Nothing" Nothing r5
 
     pure (ok1 && ok2 && ok3 && ok4 && ok5)
 

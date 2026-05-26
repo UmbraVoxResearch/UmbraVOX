@@ -28,7 +28,7 @@
   };
 
   swapDevices = [];
-  networking.hostName = "umbravox-vm";
+  networking.hostName = lib.mkDefault "umbravox-vm";
   # Security: enable the firewall by default so the VM does not expose
   # services to the host network unless explicitly allowed.
   networking.firewall.enable = true;

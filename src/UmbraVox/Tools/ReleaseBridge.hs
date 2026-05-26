@@ -25,6 +25,7 @@ import Control.Exception (IOException, catch)
 import Control.Monad (when, forM_)
 import Data.List (find, intercalate, isPrefixOf, isSuffixOf, tails)
 import Data.Maybe (isNothing)
+import Text.Read (readMaybe)
 import System.Directory (doesFileExist, doesDirectoryExist, getModificationTime,
                          createDirectoryIfMissing, removeDirectoryRecursive,
                          removeFile, findExecutable,
@@ -713,7 +714,9 @@ forConcurrently items action = do
 -- | Parse --agents N from args, defaulting to 3.
 parseAgentCount :: [String] -> Int
 parseAgentCount [] = 3
-parseAgentCount ("--agents" : n : _) = read n
+parseAgentCount ("--agents" : n : _) = case readMaybe n of
+    Just k  -> k
+    Nothing -> 3
 parseAgentCount (_ : rest) = parseAgentCount rest
 
 -- | Ensure the test VM image is built and cached at build/vm/test-image.

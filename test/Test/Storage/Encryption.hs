@@ -5,7 +5,6 @@
 module Test.Storage.Encryption (runTests) where
 
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Char8 as C8
 
 import UmbraVox.Storage.Encryption
     (StorageKey, testStorageKey, encryptField, decryptField, isEncryptedField, deriveStorageKey)
@@ -31,11 +30,11 @@ runTests = do
 -- Helpers
 ------------------------------------------------------------------------
 
-key1 :: StorageKey
-key1 = testStorageKey
+getKey1 :: IO StorageKey
+getKey1 = testStorageKey
 
-key2 :: StorageKey
-key2 = deriveStorageKey (BS.replicate 32 0x01) (BS.pack [32..63])
+getKey2 :: IO StorageKey
+getKey2 = deriveStorageKey (BS.replicate 32 0x01) (BS.pack [32..63])
 
 ------------------------------------------------------------------------
 -- Tests
@@ -43,18 +42,20 @@ key2 = deriveStorageKey (BS.replicate 32 0x01) (BS.pack [32..63])
 
 testRoundTrip :: IO Bool
 testRoundTrip = do
+    key1 <- getKey1
     let msg = "Hello, encrypted world!"
     ct <- encryptField key1 msg
-    let result = decryptField key1 ct
+    result <- decryptField key1 ct
     assertEq "roundTrip: encrypt then decrypt" (Just msg) result
 
 testMigrationSafe :: IO Bool
 testMigrationSafe = do
+    key1 <- getKey1
     -- M10.3.7: passthrough removed — non-UVENC1-prefixed values must yield
     -- Nothing so that unencrypted or injected plaintext is never silently
     -- accepted.
     let plain = "legacy plaintext value"
-        result = decryptField key1 plain
+    result <- decryptField key1 plain
     assertEq "migrationSafe: non-encrypted value yields Nothing" Nothing result
 
 testIsEncrypted :: IO Bool
@@ -65,31 +66,36 @@ testIsEncrypted = do
 
 testDifferentKeys :: IO Bool
 testDifferentKeys = do
+    key1 <- getKey1
+    key2 <- getKey2
     ct <- encryptField key1 "secret data"
-    let result = decryptField key2 ct
+    result <- decryptField key2 ct
     assertEq "differentKeys: wrong key yields Nothing" Nothing result
 
 testEmptyString :: IO Bool
 testEmptyString = do
+    key1 <- getKey1
     ct <- encryptField key1 ""
-    let result = decryptField key1 ct
+    result <- decryptField key1 ct
     assertEq "emptyString: encrypt/decrypt empty" (Just "") result
 
 testLargeContent :: IO Bool
 testLargeContent = do
+    key1 <- getKey1
     let big = replicate 10000 'X'
     ct <- encryptField key1 big
-    let result = decryptField key1 ct
+    result <- decryptField key1 ct
     assertEq "largeContent: 10000-char round-trip" (Just big) result
 
 testDeriveKeyDeterministic :: IO Bool
 testDeriveKeyDeterministic = do
     let salt = BS.replicate 32 0xAB
-        k1 = deriveStorageKey salt (BS.pack [0..31])
-        k2 = deriveStorageKey salt (BS.pack [0..31])
+    k1 <- deriveStorageKey salt (BS.pack [0..31])
+    k2 <- deriveStorageKey salt (BS.pack [0..31])
     assertEq "deriveKey: deterministic" k1 k2
 
 testEncryptedPrefix :: IO Bool
 testEncryptedPrefix = do
+    key1 <- getKey1
     ct <- encryptField key1 "test"
     assertEq "encryptedPrefix: starts with UVENC1:" True (isEncryptedField ct)

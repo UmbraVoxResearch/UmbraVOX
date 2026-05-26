@@ -50,7 +50,7 @@ import UmbraVox.Crypto.StealthAddress
     , StealthAddress(..), StealthKeys(..)
     )
 import UmbraVox.Storage.Encryption
-    ( testStorageKey, encryptField, decryptField )
+    ( testStorageKey, encryptField, decryptField, deriveStorageKey )
 
 ------------------------------------------------------------------------
 -- Top-level runner
@@ -350,14 +350,16 @@ testSY029StorageTagCorruption = do
                Nothing decFlipCT
 
     -- (d) encryptField + corrupt decryptField: field-level check via Storage
-    encVal <- encryptField testStorageKey "SY-029 storage tag test"
+    storKey <- testStorageKey
+    encVal <- encryptField storKey "SY-029 storage tag test"
+    r4 <- decryptField storKey encVal
     ok4 <- assertEq "SY-029 encryptField + decryptField: round-trip OK"
-               (Just "SY-029 storage tag test") (decryptField testStorageKey encVal)
+               (Just "SY-029 storage tag test") r4
     -- Corrupt one byte in the hex payload (last hex char before any NUL)
     let corrupt = init encVal ++ [toEnum (fromEnum (last encVal) `xor` 1)]
-        decCorrupt = decryptField testStorageKey corrupt
+    decCorrupt <- decryptField storKey corrupt
     ok5 <- assertEq "SY-029 corrupted encryptField: decryptField returns Nothing"
-               True (decCorrupt == Nothing)
+               Nothing decCorrupt
 
     pure (ok1 && ok2 && ok3 && ok4 && ok5)
 
@@ -929,18 +931,22 @@ testKM011KeyConfusionLabelSeparation = do
 
 testKM012ExportNoPlaintextPassthrough :: IO Bool
 testKM012ExportNoPlaintextPassthrough = do
+    key <- testStorageKey
+
     -- (a) decryptField with a raw string (no UVENC1: prefix) returns Nothing
+    r1 <- decryptField key "not-encrypted-at-all"
     ok1 <- assertEq "KM-012 decryptField: plaintext without UVENC1: prefix -> Nothing"
-               Nothing (decryptField testStorageKey "not-encrypted-at-all")
-    ok2 <- assertEq "KM-012 decryptField: empty string -> Nothing"
-               Nothing (decryptField testStorageKey "")
-    ok3 <- assertEq "KM-012 decryptField: partial prefix -> Nothing"
-               Nothing (decryptField testStorageKey "UVENC1")
+               Nothing r1
+    r2 <- decryptField key ""
+    ok2 <- assertEq "KM-012 decryptField: empty string -> Nothing" Nothing r2
+    r3 <- decryptField key "UVENC1"
+    ok3 <- assertEq "KM-012 decryptField: partial prefix -> Nothing" Nothing r3
 
     -- (b) decryptField with correct encrypted value succeeds
-    encVal <- encryptField testStorageKey "KM-012 passphrase"
+    encVal <- encryptField key "KM-012 passphrase"
+    r4 <- decryptField key encVal
     ok4 <- assertEq "KM-012 decryptField: encrypted field decrypts correctly"
-               (Just "KM-012 passphrase") (decryptField testStorageKey encVal)
+               (Just "KM-012 passphrase") r4
 
     pure (ok1 && ok2 && ok3 && ok4)
 
@@ -976,32 +982,31 @@ testKM012ExportNoPlaintextPassthrough = do
 
 testKM013PerInstallSaltPersistence :: IO Bool
 testKM013PerInstallSaltPersistence = do
+    key <- testStorageKey
     -- testStorageKey uses a fixed salt (all-zeros); the derived key is stable
     let plaintext = "KM-013 per-install salt stability check"
 
-    enc1 <- encryptField testStorageKey plaintext
-    enc2 <- encryptField testStorageKey plaintext
+    enc1 <- encryptField key plaintext
+    enc2 <- encryptField key plaintext
 
     -- Both encryptions should decrypt correctly (same key, different nonces)
-    ok1 <- assertEq "KM-013 enc1 decrypts with stable key"
-               (Just plaintext) (decryptField testStorageKey enc1)
-    ok2 <- assertEq "KM-013 enc2 decrypts with stable key"
-               (Just plaintext) (decryptField testStorageKey enc2)
+    r1 <- decryptField key enc1
+    ok1 <- assertEq "KM-013 enc1 decrypts with stable key" (Just plaintext) r1
+    r2 <- decryptField key enc2
+    ok2 <- assertEq "KM-013 enc2 decrypts with stable key" (Just plaintext) r2
 
     -- The blobs differ (different random nonces), but both decrypt correctly
     ok3 <- assertEq "KM-013 blobs differ per call (random nonce)"
                True (enc1 /= enc2)
 
-    -- A key derived from a different salt cannot decrypt enc1
-    -- testStorageKey uses salt = all-zeros; here we build a key with salt = all-ones
-    let diffKey = BS.replicate 32 0xFF  -- not a StorageKey, but GCM key length is same
-    -- Use raw GCM to confirm that a different key fails decryption
-    let nonce = BS.replicate 12 0x00
-        (ct, tag) = gcmEncrypt testStorageKey nonce BS.empty (strToBS plaintext)
-        wrongDec = gcmDecrypt diffKey nonce BS.empty ct tag
+    -- A key derived from a different salt cannot decrypt ciphertext produced
+    -- by the original key.  Use encryptField/decryptField directly.
+    diffKey <- deriveStorageKey (BS.replicate 32 0xFF) (BS.replicate 32 0xAA)
+    encWithKey <- encryptField key plaintext
+    wrongDec <- decryptField diffKey encWithKey
     ok4 <- assertEq "KM-013 different derived key cannot decrypt ciphertext"
                Nothing wrongDec
-    let rightDec = gcmDecrypt testStorageKey nonce BS.empty ct tag
+    rightDec <- decryptField key encWithKey
     ok5 <- assertEq "KM-013 correct derived key can decrypt ciphertext"
                True (rightDec /= Nothing)
 

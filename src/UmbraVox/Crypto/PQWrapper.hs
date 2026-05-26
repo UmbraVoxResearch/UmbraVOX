@@ -14,7 +14,6 @@ module UmbraVox.Crypto.PQWrapper
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
-import System.IO.Unsafe (unsafePerformIO)
 
 import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
 import UmbraVox.Crypto.HKDF (hkdfSHA256)
@@ -67,18 +66,14 @@ deriveKeyNonce sharedSecret =
 --
 -- Input: recipient ML-KEM-768 encapsulation key (1184 bytes) and plaintext.
 -- Output: kemCiphertext (1088) || gcmCiphertext || gcmTag (16).
-pqEncrypt :: ByteString -> ByteString -> ByteString
-{-# NOINLINE pqEncrypt #-}
-pqEncrypt encapKeyBS plaintext =
-    -- unsafePerformIO is safe here: randomBytes is the only effect and
-    -- each call produces an independent, unobservable random draw.
-    unsafePerformIO $ do
-        rand <- randomBytes 32
-        let ek = MLKEMEncapKey encapKeyBS
-            (MLKEMCiphertext kemCt, sharedSecret) = mlkemEncaps ek rand
-            (key, nonce) = deriveKeyNonce sharedSecret
-            (gcmCt, tag) = gcmEncrypt key nonce BS.empty plaintext
-        pure $! kemCt <> gcmCt <> tag
+pqEncrypt :: ByteString -> ByteString -> IO ByteString
+pqEncrypt encapKeyBS plaintext = do
+    rand <- randomBytes 32
+    let ek = MLKEMEncapKey encapKeyBS
+        (MLKEMCiphertext kemCt, sharedSecret) = mlkemEncaps ek rand
+        (key, nonce) = deriveKeyNonce sharedSecret
+        (gcmCt, tag) = gcmEncrypt key nonce BS.empty plaintext
+    pure $! kemCt <> gcmCt <> tag
 
 -- | Remove the post-quantum outer encryption layer.
 --
@@ -86,6 +81,7 @@ pqEncrypt encapKeyBS plaintext =
 -- ciphertext.  Returns 'Nothing' on authentication failure or malformed input.
 pqDecrypt :: ByteString -> ByteString -> Maybe ByteString
 pqDecrypt decapKeyBS combined
+    | BS.length decapKeyBS /= 2400             = Nothing
     | BS.length combined < kemCtLen + gcmTagLen = Nothing
     | otherwise =
         let kemCt      = BS.take kemCtLen combined

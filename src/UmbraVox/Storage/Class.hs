@@ -10,6 +10,8 @@ module UmbraVox.Storage.Class
 
 import Data.ByteString (ByteString)
 
+import UmbraVox.Crypto.Signal.X3DH (IdentityKey)
+
 -- | A polymorphic handle to a storage backend.
 --
 -- Each field is an IO action that corresponds to one of the persistence
@@ -48,6 +50,10 @@ data StorageHandle = StorageHandle
       -- ^ Delete all messages belonging to a conversation.
     , shPruneMessages     :: Int -> IO ()
       -- ^ Delete messages older than the given number of days.
+    , shSaveIdentityKey   :: IdentityKey -> IO ()
+      -- ^ Persist the local identity key.
+    , shLoadIdentityKey   :: IO (Maybe IdentityKey)
+      -- ^ Load the local identity key; returns 'Nothing' if absent.
     , shClose             :: IO ()
       -- ^ Release any resources held by the backend.
     }

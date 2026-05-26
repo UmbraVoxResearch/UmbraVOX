@@ -317,8 +317,7 @@ No network, no nix daemon, no toolchain.
 Packages: bashInteractive, coreutils, util-linux, ncurses, sqlite
 
 Used by:
-- Firecracker runtime (`./uv run tui`, `./uv run headless`)
-- QEMU runtime (`./uv run gui`)
+- Lightweight QEMU runtime (`./uv run tui`, `./uv run gui`, `./uv run headless`)
 - Smoke test guests
 
 ### Tier 2: Network (`nix/tiers/network.nix`)
@@ -327,7 +326,7 @@ Base + DHCP, DNS, outbound HTTPS. No nix daemon.
 Additional packages: curl, cacert, jq
 
 Used by:
-- CI test runner (Firecracker with network)
+- CI test runner (QEMU with network)
 - Signal Server runtime VM (PostgreSQL, Redis, etc.)
 
 ### Tier 3: Builder (`nix/tiers/builder.nix`)
@@ -357,7 +356,7 @@ Used by:
 4. Add a YAML definition in `vm-defs/` (Phase 3)
 5. Wire into `./uv` CLI
 
-## Runtime VM (Firecracker)
+## Runtime VM (lightweight QEMU)
 
 The project uses two VM tiers:
 
@@ -365,13 +364,12 @@ The project uses two VM tiers:
    Used by: `./uv build`, `./uv test`, `./uv verify`, `./uv dev`
    NixOS tier: Tier 4 (Dev)
 
-2. **Runtime VM** (Firecracker, <500MB) — minimal (glibc, sqlite, ncurses)
-   Used by: `./uv run`, `./uv run tui`, `./uv run headless`
+2. **Runtime VM** (lightweight QEMU, ~1.6GB) — minimal (glibc, sqlite, ncurses)
+   Used by: `./uv run`, `./uv run tui`, `./uv run gui`, `./uv run headless`
    NixOS tier: Tier 1 (Base)
 
-3. **Runtime VM** (QEMU lightweight, <1GB) — minimal + VGA display
-   Used by: `./uv run gui`
-   NixOS tier: Tier 1 (Base)
+All `./uv run` modes use a lightweight QEMU image with a qcow2 COW overlay.
+QEMU is the only supported runtime hypervisor.
 
 ### Building Runtime Images
 
@@ -379,9 +377,10 @@ The project uses two VM tiers:
 
 ### Running
 
-    ./uv run              # Default: Firecracker TUI (sub-second boot)
+    ./uv run              # Default: lightweight QEMU TUI (serial console)
+    ./uv run tui          # Same as default
     ./uv run gui          # Lightweight QEMU with VGA display
-    ./uv run headless     # Firecracker daemon mode
+    ./uv run headless     # Lightweight QEMU daemon mode
 
 The runtime VM boots the pre-built binary from `build/runtime/`. If no
 binary exists, run `./uv build` first.

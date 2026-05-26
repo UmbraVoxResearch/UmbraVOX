@@ -37,6 +37,7 @@ import Data.ByteString (ByteString)
 import Data.Char (isDigit, isSpace)
 import Data.IORef
 import Data.List (dropWhileEnd)
+import Text.Read (readMaybe)
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import System.Directory (doesFileExist, getHomeDirectory)
@@ -256,12 +257,14 @@ validatePeerAddress allowLoopback addr =
             | null portStr    -> Nothing
             | not (all isDigit portStr) -> Nothing
             | otherwise ->
-                let p = read portStr :: Int
-                in if p < 1 || p > 65535
-                    then Nothing
-                    else if not allowLoopback && isLoopbackAddr host
-                        then Nothing
-                        else Just (host, p)
+                case readMaybe portStr :: Maybe Int of
+                    Nothing -> Nothing
+                    Just p  ->
+                        if p < 1 || p > 65535
+                            then Nothing
+                            else if not allowLoopback && isLoopbackAddr host
+                                then Nothing
+                                else Just (host, p)
   where
     -- Break on the last ':' to support IPv6 addresses like [::1]:8080
     breakOnLastColon :: String -> Maybe (String, String)

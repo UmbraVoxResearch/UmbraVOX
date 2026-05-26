@@ -216,8 +216,9 @@ encodeNumericGroups ds
         let val = safeReadInt ds
         in intToBits 7 val
     | otherwise =
-        let val = if isDigit (head ds) then digitToInt (head ds) else 0
-        in intToBits 4 val
+        case ds of
+            (d:_) -> intToBits 4 (if isDigit d then digitToInt d else 0)
+            []    -> []
 
 -- | Safely parse a numeric string, returning 0 on failure.
 safeReadInt :: String -> Int
@@ -310,12 +311,15 @@ rsEncode nEcc dataCW =
 -- Register layout: regs !! 0 is the highest-degree coefficient.
 rsStep :: [Word8] -> Int -> [Word8] -> Word8 -> [Word8]
 rsStep gen nEcc regs dataByte =
-    let feedback = dataByte `xor` head regs
-        -- Shift register left and XOR with generator coefficients
-        shifted = tail regs ++ [0]
-        -- gen has n+1 coefficients; we use gen[n-1] down to gen[0]
-        genCoeffs = reverse (take nEcc gen)
-    in zipWith (\s gc -> s `xor` gfMul feedback gc) shifted genCoeffs
+    case regs of
+        [] -> replicate nEcc 0
+        (r0:rest) ->
+            let feedback  = dataByte `xor` r0
+                -- Shift register left and XOR with generator coefficients
+                shifted   = rest ++ [0]
+                -- gen has n+1 coefficients; we use gen[n-1] down to gen[0]
+                genCoeffs = reverse (take nEcc gen)
+            in zipWith (\s gc -> s `xor` gfMul feedback gc) shifted genCoeffs
 
 -- ---------------------------------------------------------------------------
 -- Data placement (zigzag)

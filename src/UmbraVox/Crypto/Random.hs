@@ -173,17 +173,37 @@ serialise (w0,w1,w2,w3,w4,w5,w6,w7,w8,w9,w10,w11,w12,w13,w14,w15) =
 
 -- | CSPRNG internal state.
 data CSPRNGState = CSPRNGState
-    { csKey     :: !SecureBytes  -- ^ 32-byte ChaCha20 key (pinned, zeroed on free)
-    , csCounter :: !Word64       -- ^ Block counter (Word64 to prevent overflow)
-    , csNonce   :: !ByteString   -- ^ 12-byte nonce (from entropy)
-    , csBuffer  :: !ByteString   -- ^ Remaining bytes from last block
-    , csOutputs :: !Int          -- ^ Outputs since last reseed
-    , csPID     :: !Int          -- ^ PID at last seed (fork detection)
+    { csKey          :: !SecureBytes  -- ^ 32-byte ChaCha20 key (pinned, zeroed on free)
+    , csCounter      :: !Word64       -- ^ Block counter (Word64 to prevent overflow)
+    , csNonce        :: !ByteString   -- ^ 12-byte nonce (from entropy)
+    , csBuffer       :: !ByteString   -- ^ Remaining bytes from last block
+    , csOutputs      :: !Int          -- ^ Outputs since last reseed
+    , csPID          :: !Int          -- ^ PID at last seed (fork detection)
+    , csLastReseedAt :: !Word64       -- ^ POSIX time (seconds) of last reseed
     }
 
 -- | Maximum outputs before mandatory reseed (2^20).
 reseedInterval :: Int
 reseedInterval = 1048576
+
+-- | Maximum seconds between reseeds regardless of output count (5 minutes).
+--
+-- Finding:     M20.1.3 — The CSPRNG only reseeded on output count ('reseedInterval')
+--              and fork events, but not on elapsed time.  A long-running process
+--              that produces fewer than 'reseedInterval' bytes within any 5-minute
+--              window would never reseed from fresh OS entropy, reducing forward
+--              secrecy against state-compromise extension attacks.
+-- Vulnerability: An attacker who captures the CSPRNG state at time T can predict
+--              all future outputs until the next reseed.  Without a time-based
+--              reseed bound, the window of predictability is unlimited in
+--              low-throughput processes (e.g. interactive sessions).
+-- Fix:         'ensureState' now also reseeds when the elapsed time since the
+--              last reseed exceeds 'reseedIntervalSecs' (300 seconds / 5 minutes),
+--              regardless of how many bytes have been produced.
+-- Verified:    'ensureState' checks @now - csLastReseedAt >= reseedIntervalSecs@
+--              and calls 'reseedCSPRNG' on the time path as well as the count path.
+reseedIntervalSecs :: Word64
+reseedIntervalSecs = 300
 
 -- | Global CSPRNG state.
 --
@@ -288,10 +308,12 @@ seedCSPRNG = do
         -- HKDF-Extract: concentrate entropy with the process-unique salt
         !keyBS   = BS.take 32 (hkdfExtract salt rawKey)
         !pidInt  = fromIntegral pid :: Int
+        !nowSecs = round time :: Word64
     key <- fromByteString keyBS
     return CSPRNGState
         { csKey = key, csCounter = 0, csNonce = nonce
-        , csBuffer = BS.empty, csOutputs = 0, csPID = pidInt }
+        , csBuffer = BS.empty, csOutputs = 0, csPID = pidInt
+        , csLastReseedAt = nowSecs }
 
 -- | Reseed using HKDF-Extract(old_key, fresh_entropy) for backtracking
 -- resistance, then draw a fresh nonce.
@@ -299,6 +321,7 @@ reseedCSPRNG :: CSPRNGState -> IO CSPRNGState
 reseedCSPRNG old = do
     entropy <- readEntropy 44  -- 32 fresh + 12 nonce
     pid <- fromIntegral <$> getProcessID
+    nowSecs <- round <$> getPOSIXTime :: IO Word64
     oldKeyBS <- toByteString (csKey old)
     let !freshKey   = BS.take 32 entropy
         !freshNonce = BS.drop 32 entropy
@@ -310,18 +333,31 @@ reseedCSPRNG old = do
     zeroAndFree (csKey old)
     return CSPRNGState
         { csKey = newKey, csCounter = 0, csNonce = freshNonce
-        , csBuffer = BS.empty, csOutputs = 0, csPID = pid }
+        , csBuffer = BS.empty, csOutputs = 0, csPID = pid
+        , csLastReseedAt = nowSecs }
 
 -- | Obtain a valid CSPRNG state, reseeding if needed.
+--
+-- Reseeds on three conditions:
+--
+--   1. Fork detected (PID changed) — create a fresh state from OS entropy.
+--   2. Output count reached 'reseedInterval' — forward secrecy reseed.
+--   3. Time since last reseed exceeds 'reseedIntervalSecs' (M20.1.3) —
+--      time-based reseed for low-throughput processes.
 ensureState :: CSPRNGState -> IO CSPRNGState
 ensureState s = do
-    pid <- fromIntegral <$> getProcessID
+    pid     <- fromIntegral <$> getProcessID
+    nowSecs <- round <$> getPOSIXTime :: IO Word64
     if csPID s /= pid then do
         -- Fork detected — zero old key and create fresh state.
         zeroAndFree (csKey s)
         seedCSPRNG
-    else if csOutputs s >= reseedInterval then reseedCSPRNG s  -- reseed limit
-    else return s
+    else if csOutputs s >= reseedInterval then
+        reseedCSPRNG s  -- output-count limit
+    else if nowSecs - csLastReseedAt s >= reseedIntervalSecs then
+        reseedCSPRNG s  -- M20.1.3: time-based reseed (5-minute interval)
+    else
+        return s
 
 -- | Draw bytes from the buffer and generate new ChaCha20 blocks as needed.
 generate :: Int -> CSPRNGState -> IO (ByteString, CSPRNGState)

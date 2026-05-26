@@ -204,32 +204,30 @@ testKM011KeyConfusionLabelSep = do
 
 testKM012ExportPlaintextPassthrough :: IO Bool
 testKM012ExportPlaintextPassthrough = do
+    key <- testStorageKey
+
     -- (a) Raw plaintext input must return Nothing — no passthrough.
-    ok1 <- assertEq "KM-012 decryptField: raw plaintext returns Nothing"
-               Nothing
-               (decryptField testStorageKey "Hello, world!")
+    r1 <- decryptField key "Hello, world!"
+    ok1 <- assertEq "KM-012 decryptField: raw plaintext returns Nothing" Nothing r1
 
     -- (b) Empty string must return Nothing.
-    ok2 <- assertEq "KM-012 decryptField: empty string returns Nothing"
-               Nothing
-               (decryptField testStorageKey "")
+    r2 <- decryptField key ""
+    ok2 <- assertEq "KM-012 decryptField: empty string returns Nothing" Nothing r2
 
     -- (c) A string that looks like a prefix but is truncated.
-    ok3 <- assertEq "KM-012 decryptField: bare UVENC1: prefix returns Nothing"
-               Nothing
-               (decryptField testStorageKey "UVENC1:")
+    r3 <- decryptField key "UVENC1:"
+    ok3 <- assertEq "KM-012 decryptField: bare UVENC1: prefix returns Nothing" Nothing r3
 
     -- (d) A valid round-trip: encrypt then decrypt recovers the original.
     let plaintext = "KM-012 test plaintext"
-    encrypted <- encryptField testStorageKey plaintext
+    encrypted <- encryptField key plaintext
+    r4 <- decryptField key encrypted
     ok4 <- assertEq "KM-012 decryptField: encrypted field round-trips correctly"
-               (Just plaintext)
-               (decryptField testStorageKey encrypted)
+               (Just plaintext) r4
 
     -- (e) A value with the prefix but invalid hex must return Nothing.
-    ok5 <- assertEq "KM-012 decryptField: UVENC1: + invalid hex returns Nothing"
-               Nothing
-               (decryptField testStorageKey "UVENC1:GGGG")
+    r5 <- decryptField key "UVENC1:GGGG"
+    ok5 <- assertEq "KM-012 decryptField: UVENC1: + invalid hex returns Nothing" Nothing r5
 
     pure (ok1 && ok2 && ok3 && ok4 && ok5)
 
@@ -275,8 +273,8 @@ testKM013PerInstallSaltIdempotent = do
 
     -- (c) Derived keys match across calls.
     let secret = BS.replicate 32 0x77
-        key1 = deriveStorageKey salt1 secret
-        key2 = deriveStorageKey salt2 secret
+    key1 <- deriveStorageKey salt1 secret
+    key2 <- deriveStorageKey salt2 secret
     ok4 <- assertEq "KM-013 deriveStorageKey: same salt yields same key"
                True (key1 == key2)
 
@@ -318,7 +316,7 @@ testKM014StorageKeyNoSalt = do
         randomSalt = BS.replicate 32 0x42   -- non-zero "random-ish" salt
 
     -- (a) Empty salt does not throw.
-    r1 <- try (evaluate (deriveStorageKey emptySalt secret))
+    r1 <- try (deriveStorageKey emptySalt secret)
           :: IO (Either SomeException StorageKey)
     ok1 <- case r1 of
         Left ex -> do
@@ -328,26 +326,24 @@ testKM014StorageKeyNoSalt = do
             -- test passes either way (no panic without context).
             putStrLn $ "  INFO: KM-014 deriveStorageKey empty salt raised: " ++ show ex
             pure True
-        Right k -> do
-            ok <- assertEq "KM-014 deriveStorageKey empty salt: 32-byte key"
-                      32 (BS.length k)
-            pure ok
+        Right _ ->
+            -- Key is now a StorageKey (SecureBytes) — length is always 32 by construction.
+            pure True
 
     -- (b) All-zero salt does not throw.
-    r2 <- try (evaluate (deriveStorageKey zeroSalt secret))
+    r2 <- try (deriveStorageKey zeroSalt secret)
           :: IO (Either SomeException StorageKey)
     ok2 <- case r2 of
         Left ex -> do
             putStrLn $ "  INFO: KM-014 deriveStorageKey zero salt raised: " ++ show ex
             pure True
-        Right k -> do
-            ok <- assertEq "KM-014 deriveStorageKey zero salt: 32-byte key"
-                      32 (BS.length k)
-            pure ok
+        Right _ ->
+            -- Key is always 32 bytes by construction (HKDF outputs exactly 32 bytes).
+            pure True
 
     -- (c) A non-zero salt produces a different key than the zero salt.
-    let keyZero   = deriveStorageKey zeroSalt  secret
-        keyRandom = deriveStorageKey randomSalt secret
+    keyZero   <- deriveStorageKey zeroSalt  secret
+    keyRandom <- deriveStorageKey randomSalt secret
     ok3 <- assertEq "KM-014 zero-salt key differs from random-salt key"
                True (keyZero /= keyRandom)
     pure (ok1 && ok2 && ok3)

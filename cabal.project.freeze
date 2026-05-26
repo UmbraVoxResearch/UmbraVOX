@@ -25,4 +25,4 @@ constraints: UmbraVox -chaste-build -coverage -profiling +pure-haskell -pure-has
              any.time ==1.15,
              any.transformers ==0.6.1.2,
              any.unix ==2.8.8.0
-index-state: HEAD
+index-state: 2026-05-24T00:00:00Z

@@ -8,7 +8,7 @@ module UmbraVox.Crypto.Generated.PQWrapper
 import Data.ByteString (ByteString)
 import qualified UmbraVox.Crypto.PQWrapper as Reference
 
-pqEncrypt :: ByteString -> ByteString -> ByteString
+pqEncrypt :: ByteString -> ByteString -> IO ByteString
 pqEncrypt = Reference.pqEncrypt
 
 pqDecrypt :: ByteString -> ByteString -> Maybe ByteString

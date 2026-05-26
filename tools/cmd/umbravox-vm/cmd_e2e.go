@@ -4,36 +4,94 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/log"
+	"github.com/UmbraVoxResearch/UmbraVOX/tools/pkg/repo"
 )
 
-// runE2E handles: uv test e2e
-// Full end-to-end pipeline test from clean state. All steps run in VMs.
+// runE2E handles: uv test e2e [--bootstrap]
 //
-//  1. Build dev VM image (bootstrap)
-//  2. Build + codegen in dev VM
-//  3. Run test suite in dev VM
-//  4. Run quality gates in dev VM
-//  5. Build runtime images
-//  6. Verify runtime bundle extraction
-//  7. Boot Firecracker runtime VM
-//  8. Build Signal Server JAR
+// Default (no flag): warm pipeline from existing VM image.
+//   1. Build + codegen in dev VM
+//   2. Run test suite in dev VM
+//   3. Quality gates
+//   4. Build runtime images
+//   5. Verify ./uv run launches app
 //
-// This is the CI-equivalent full validation. Takes 30-60 minutes.
+// --bootstrap: cold start from scratch (pre-release validation).
+//   0. Clean all build artifacts
+//   1. Build dev VM image from scratch
+//   2-5. Same as above
+//   6. Verify SBOM generation
+//
+// Takes 30-60 min (warm) or 60-90 min (bootstrap).
 func runE2E(args []string) int {
+	bootstrap := false
+	for _, a := range args {
+		if a == "--bootstrap" {
+			bootstrap = true
+		}
+	}
+
 	start := time.Now()
-	steps := []struct {
+	var steps []struct {
 		name string
 		fn   func() int
-	}{
-		{"Build dev VM image", func() int { return vmBuildImage(nil) }},
-		{"Build (codegen + compile)", func() int { return runBuild(nil) }},
-		{"Test (required fast gate)", func() int { return runTest(nil) }},
-		{"Quality gates", func() int { return runCheck(nil) }},
-		{"Build runtime images", func() int { return vmBuildRuntimeImage(nil) }},
 	}
+
+	if bootstrap {
+		steps = append(steps,
+			struct {
+				name string
+				fn   func() int
+			}{"Clean all artifacts", func() int { return runClean([]string{"--all"}) }},
+			struct {
+				name string
+				fn   func() int
+			}{"Build dev VM image (cold bootstrap)", func() int { return vmBuildImage(nil) }},
+		)
+	}
+
+	steps = append(steps,
+		struct {
+			name string
+			fn   func() int
+		}{"Build (codegen + compile)", func() int { return runBuild(nil) }},
+		struct {
+			name string
+			fn   func() int
+		}{"Test (required fast gate)", func() int { return runTest(nil) }},
+		struct {
+			name string
+			fn   func() int
+		}{"Quality gates", func() int { return runCheck(nil) }},
+		struct {
+			name string
+			fn   func() int
+		}{"Build runtime images", func() int { return vmBuildRuntimeImage(nil) }},
+		struct {
+			name string
+			fn   func() int
+		}{"Verify runtime bundle", func() int {
+			repoRoot, err := repo.Root()
+			if err != nil {
+				return 1
+			}
+			bin := filepath.Join(repoRoot, "build", "runtime", "bin", "umbravox")
+			if _, err := os.Stat(bin); err != nil {
+				log.Fail(tag, "Runtime bundle missing: build/runtime/bin/umbravox")
+				return 1
+			}
+			log.OK(tag, "Runtime bundle present")
+			return 0
+		}},
+		struct {
+			name string
+			fn   func() int
+		}{"Generate SBOM", func() int { return runSBOM(nil) }},
+	)
 
 	passed := 0
 	failed := 0

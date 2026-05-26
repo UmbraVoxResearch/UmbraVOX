@@ -97,6 +97,24 @@ ipBytesToString bs
         intercalate "." (map (show . fromIntegral) (BS.unpack bs))
     | otherwise = ""
 
+-- | Extract the host (IP) portion from a "host:port" address string.
+-- For IPv4 "1.2.3.4:5678" returns "1.2.3.4".
+-- For IPv6 "[::1]:5678" returns "::1".
+-- If no port separator is found, returns the whole string unchanged.
+extractHost :: String -> String
+extractHost s = case stripPrefix "[" s of
+    Just rest -> takeWhile (/= ']') rest  -- IPv6 bracketed: "[::1]:port" -> "::1"
+    Nothing   ->
+        let rev = reverse s
+            afterColon = dropWhile (/= ':') rev
+        in if null afterColon
+           then s  -- no colon found: return the whole string as-is
+           else reverse (drop 1 afterColon)  -- IPv4/hostname: drop ":port" suffix
+
+-- | Maximum number of simultaneous connections allowed from a single remote IP.
+maxPerIpConnections :: Int
+maxPerIpConnections = 5
+
 -- | Attempt PEX exchange after a successful handshake (best-effort).
 tryPEXExchange :: AppConfig -> AnyTransport -> IO ()
 tryPEXExchange cfg at =
@@ -123,77 +141,124 @@ tryPEXExchange cfg at =
 --------------------------------------------------------------------------------
 -- Accept loop
 
+-- | Atomically increment the per-IP connection count for a host.
+-- Returns the new count.
+incIpCount :: TVar (Map.Map String Int) -> String -> IO Int
+incIpCount ipCountVar host = atomically $ do
+    m <- readTVar ipCountVar
+    let n = Map.findWithDefault 0 host m + 1
+    modifyTVar' ipCountVar (Map.insert host n)
+    pure n
+
+-- | Atomically decrement the per-IP connection count for a host.
+-- Removes the entry when the count reaches zero.
+decIpCount :: TVar (Map.Map String Int) -> String -> IO ()
+decIpCount ipCountVar host = atomically $
+    modifyTVar' ipCountVar $ \m ->
+        let n = Map.findWithDefault 0 host m - 1
+        in if n <= 0 then Map.delete host m else Map.insert host n m
+
 acceptLoopCore
     :: CoreState
     -> ListenerCallbacks
     -> IdentityKey
     -> Int
     -> TVar Int
+    -> TVar (Map.Map String Int)
     -> ProviderListener
     -> IO ()
-acceptLoopCore cs cbs ik port connCount listener = do
+acceptLoopCore cs cbs ik port connCount ipCount listener = do
     let cfg = csConfig cs
     running <- readIORef (csRunning cs)
     when running $ do
         logEvent cfg "listener.awaiting_transport" [("port", show port)]
         at <- acceptWithProvider listener
         count <- atomically (readTVar connCount)
+        -- Check global connection limit first.
         if count >= maxInboundConnections
           then do
             logEvent cfg "listener.connection_limit"
                 [("port", show port), ("active", show count)]
             anyClose at
           else do
-            atomically (modifyTVar' connCount (+ 1))
-            let trustCheck :: ByteString -> IO Bool
-                trustCheck peerKey = do
-                    mode <- readIORef (cfgConnectionMode cfg)
-                    case mode of
-                        Swing       -> do
-                            lcOnStatus cbs ("Swing: accepted " ++ take 8 (fingerprint peerKey))
-                            pure True
-                        Promiscuous -> pure True
-                        Selective   -> do
-                            tofoKeys <- readIORef (cfgTofoKeys cfg)
-                            let peerAddr = anyInfo at
-                            addrKeys <- readIORef (cfgTofoAddrKeys cfg)
-                            case Map.lookup peerAddr addrKeys of
-                                Just knownKey
-                                    | constantEq knownKey peerKey -> do
-                                        lcOnStatus cbs ("Selective: known peer " ++ take 8 (fingerprint peerKey))
+            -- Check per-IP connection limit.
+            -- Finding:      No per-IP connection rate limiting allowed a single
+            --               attacker to exhaust maxInboundConnections.
+            -- Vulnerability: An attacker from one IP could open connections until
+            --               the global limit was hit, denying service to all other
+            --               peers.
+            -- Fix:          Count active connections per remote IP; reject new
+            --               connections from an IP that already has
+            --               maxPerIpConnections active connections.
+            -- Verified:     ipCount is incremented before the handshake thread
+            --               starts and decremented in its finally block.
+            let peerInfo = anyInfo at
+                peerHost = extractHost peerInfo
+            ipCountForHost <- atomically $ do
+                m <- readTVar ipCount
+                pure (Map.findWithDefault 0 peerHost m)
+            if ipCountForHost >= maxPerIpConnections
+              then do
+                logEvent cfg "listener.per_ip_limit"
+                    [ ("port",    show port)
+                    , ("ip",      peerHost)
+                    , ("active",  show ipCountForHost)
+                    ]
+                anyClose at
+              else do
+                atomically (modifyTVar' connCount (+ 1))
+                _ <- incIpCount ipCount peerHost
+                let trustCheck :: ByteString -> IO Bool
+                    trustCheck peerKey = do
+                        mode <- readIORef (cfgConnectionMode cfg)
+                        case mode of
+                            Swing       -> do
+                                lcOnStatus cbs ("Swing: accepted " ++ take 8 (fingerprint peerKey))
+                                pure True
+                            Promiscuous -> pure True
+                            Selective   -> do
+                                tofoKeys <- readIORef (cfgTofoKeys cfg)
+                                let peerAddr = anyInfo at
+                                addrKeys <- readIORef (cfgTofoAddrKeys cfg)
+                                case Map.lookup peerAddr addrKeys of
+                                    Just knownKey
+                                        | constantEq knownKey peerKey -> do
+                                            lcOnStatus cbs ("Selective: known peer " ++ take 8 (fingerprint peerKey))
+                                            pure True
+                                        | otherwise -> do
+                                            -- M27.4.2: key-change detected — reject
+                                            lcOnStatus cbs ("Selective: REJECTED key change for " ++ peerAddr
+                                                           ++ " (was " ++ take 8 (fingerprint knownKey)
+                                                           ++ ", now " ++ take 8 (fingerprint peerKey) ++ ")")
+                                            logEvent cfg "tofu.key_change_rejected"
+                                                [ ("address", peerAddr)
+                                                , ("old_key", take 16 (fingerprint knownKey))
+                                                , ("new_key", take 16 (fingerprint peerKey))
+                                                ]
+                                            pure False
+                                    Nothing -> do
+                                        -- TOFU: first time seeing this address — accept and record
+                                        modifyIORef' (cfgTofoKeys cfg) (Set.insert peerKey)
+                                        modifyIORef' (cfgTofoAddrKeys cfg) (Map.insert peerAddr peerKey)
+                                        lcOnStatus cbs ("Selective: new peer trusted " ++ take 8 (fingerprint peerKey)
+                                                       ++ " at " ++ peerAddr)
                                         pure True
-                                    | otherwise -> do
-                                        -- M27.4.2: key-change detected — reject
-                                        lcOnStatus cbs ("Selective: REJECTED key change for " ++ peerAddr
-                                                       ++ " (was " ++ take 8 (fingerprint knownKey)
-                                                       ++ ", now " ++ take 8 (fingerprint peerKey) ++ ")")
-                                        logEvent cfg "tofu.key_change_rejected"
-                                            [ ("address", peerAddr)
-                                            , ("old_key", take 16 (fingerprint knownKey))
-                                            , ("new_key", take 16 (fingerprint peerKey))
-                                            ]
-                                        pure False
-                                Nothing -> do
-                                    -- TOFU: first time seeing this address — accept and record
-                                    modifyIORef' (cfgTofoKeys cfg) (Set.insert peerKey)
-                                    modifyIORef' (cfgTofoAddrKeys cfg) (Map.insert peerAddr peerKey)
-                                    lcOnStatus cbs ("Selective: new peer trusted " ++ take 8 (fingerprint peerKey)
-                                                   ++ " at " ++ peerAddr)
-                                    pure True
-                        Chaste      -> do
-                            keys <- readIORef (cfgTrustedKeys cfg)
-                            pure (any (constantEq peerKey) keys)
-            logEvent cfg "transport.accepted.pre_auth"
-                [("port", show port), ("provider", runtimeProviderLabel)]
-            void $ forkIO $ flip finally (atomically (modifyTVar' connCount (subtract 1))) $ do
-                session <- handshakeResponder at ik trustCheck
-                let info = anyInfo at
-                    peerLabel = if null info then "peer:" ++ show port else info
-                sid <- lcAddSession cbs cfg at session peerLabel
-                tryPEXExchange cfg at
-                lcOnNewSession cbs
-                lcOnStatus cbs ("Session #" ++ show sid)
-        acceptLoopCore cs cbs ik port connCount listener
+                            Chaste      -> do
+                                keys <- readIORef (cfgTrustedKeys cfg)
+                                pure (any (constantEq peerKey) keys)
+                logEvent cfg "transport.accepted.pre_auth"
+                    [("port", show port), ("provider", runtimeProviderLabel)]
+                void $ forkIO $
+                    flip finally (atomically (modifyTVar' connCount (subtract 1))
+                                  >> decIpCount ipCount peerHost) $ do
+                        session <- handshakeResponder at ik trustCheck
+                        let info = anyInfo at
+                            peerLabel = if null info then "peer:" ++ show port else info
+                        sid <- lcAddSession cbs cfg at session peerLabel
+                        tryPEXExchange cfg at
+                        lcOnNewSession cbs
+                        lcOnStatus cbs ("Session #" ++ show sid)
+        acceptLoopCore cs cbs ik port connCount ipCount listener
 
 listenerWorkerCore
     :: CoreState
@@ -210,7 +275,8 @@ listenerWorkerCore cs cbs ik port started = do
         Left e -> throwIO e
         Right listener -> do
             connCount <- newTVarIO 0
-            (((acceptLoopCore cs cbs ik port connCount listener)
+            ipCount   <- newTVarIO Map.empty
+            (((acceptLoopCore cs cbs ik port connCount ipCount listener)
                 `finally` closeProviderListener listener)
                 `catch` (\(e :: SomeException) -> do
                     logEvent cfg "listener.stop"
@@ -281,10 +347,11 @@ startListener cs cbs ik port source = do
 runAcceptLoop :: CoreState -> ListenerCallbacks -> IdentityKey -> Int -> IO ()
 runAcceptLoop cs cbs ik port = do
     connCount <- newTVarIO 0
+    ipCount   <- newTVarIO Map.empty
     bracket
         (bindListenerWithProvider runtimeProvider port)
         closeProviderListener
-        (acceptLoopCore cs cbs ik port connCount)
+        (acceptLoopCore cs cbs ik port connCount ipCount)
 
 ------------------------------------------------------------------------
 -- Per-peer rate limiting (M23.1.1h)

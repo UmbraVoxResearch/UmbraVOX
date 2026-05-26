@@ -109,9 +109,18 @@ func runDev(args []string) int {
 		log.Info(tag, "Display: GUI (QEMU VGA window)")
 	}
 
+	// Load vm-defs/dev.yaml; fall back to hardcoded defaults.
+	resources := profileToResources(qemu.ProfileDev)
+	if def, defErr := loadVMDef(repoRoot, "dev"); defErr != nil {
+		log.Fail(tag, fmt.Sprintf("failed to load vm-def: %v", defErr))
+		return 1
+	} else if def != nil {
+		resources = def.Resources
+	}
+
 	spec := &vmctl.VMSpec{
 		Hypervisor: vmctl.HypervisorQEMU,
-		Resources:  profileToResources(qemu.ProfileDev),
+		Resources:  resources,
 		BaseImage: vmctl.ImageRef{
 			Path:   overlay.Path,
 			Format: vmctl.DiskFormatQCOW2,
@@ -131,7 +140,8 @@ func runDev(args []string) int {
 		NoReboot: false,
 	}
 
-	log.Info(tag, fmt.Sprintf("VM: ProfileDev (50%% host) | mode: %s", mode))
+	res := vmctl.ResolveResources(resources)
+	log.Info(tag, fmt.Sprintf("VM: %d cores, %dMB RAM | mode: %s", res.Cores, res.MemoryMB, mode))
 	log.Info(tag, "Booting NixOS development VM (vmctl)...")
 	fmt.Fprintln(os.Stderr)
 

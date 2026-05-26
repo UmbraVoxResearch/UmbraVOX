@@ -14,7 +14,7 @@
   nix.enable = lib.mkForce true;
   nix.settings = {
     experimental-features = [ "nix-command" ];
-    sandbox = false;          # nested sandboxing is unreliable in VMs
+    sandbox = lib.mkDefault false;  # VMs can override (builder uses true)
     trusted-users = [ "root" ];
   };
   nix.nrBuildUsers = 4;

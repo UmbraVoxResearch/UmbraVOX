@@ -31,7 +31,11 @@ func runClean(args []string) int {
 	}
 
 	// Clean build artifacts
-	for _, dir := range []string{"build", "dist-newstyle"} {
+	// Go module cache has read-only files — make writable before deleting
+	goModCache := filepath.Join(repoRoot, "build", "go", "mod")
+	exec.Command("chmod", "-R", "u+w", goModCache).Run()
+
+	for _, dir := range []string{"dist-newstyle", "build"} {
 		p := filepath.Join(repoRoot, dir)
 		if err := os.RemoveAll(p); err != nil {
 			log.Warn(tag, fmt.Sprintf("Failed to remove %s: %v", dir, err))

@@ -11,6 +11,7 @@ module UmbraVox.TUI.Terminal
     ) where
 
 import Control.Exception (catch, SomeException, throw)
+import Text.Read (readMaybe)
 import Control.Monad (void)
 import System.IO (hFlush, stdout, stdin, hSetBuffering, BufferMode(..),
                   hSetEcho)
@@ -73,5 +74,7 @@ getTermSize = do
     let cleaned = filter (\ch -> (ch >= '0' && ch <= '9') || ch == ' ') result
         ws = words cleaned
     case ws of
-        [r, c'] -> pure (read r, read c')
+        [r, c'] -> case (readMaybe r, readMaybe c') of
+            (Just rows, Just cols) -> pure (rows, cols)
+            _                      -> pure (defaultTermRows, defaultTermCols)
         _       -> pure (defaultTermRows, defaultTermCols)

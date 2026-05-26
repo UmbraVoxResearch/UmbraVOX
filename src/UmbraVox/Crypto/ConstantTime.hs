@@ -41,6 +41,7 @@ constantEq a b =
 
 #else
 
+import Data.Bits (xor)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Unsafe as BSU
 import Foreign.C.Types (CInt(..), CSize(..))
@@ -54,15 +55,39 @@ foreign import ccall unsafe "constant_time_eq"
 -- | Constant-time comparison for ByteStrings (C FFI, volatile accumulator).
 -- M27.6.6: delegates to a C implementation that is guaranteed not to
 -- short-circuit on early mismatch.
+--
+-- Finding    — Length mismatch caused an early return, creating a timing
+--              oracle: callers could distinguish "wrong length" from "wrong
+--              content" by measuring execution time.
+-- Vulnerability: Timing side-channel that leaks whether two ByteStrings
+--              share the same length, useful for oracle attacks on MACs or
+--              password hashes stored with their length.
+-- Fix:       Pad both inputs to max(lenA, lenB) with zero bytes and XOR a
+--              length-mismatch sentinel (1) into the C accumulator result so
+--              that the C path always runs over the full max-length buffer.
+--              Equal-length inputs follow the existing fast path unchanged.
+-- Verified:  The C function is always invoked with equal-length buffers;
+--              the sentinel ensures different-length inputs still return False
+--              even when their padded byte contents happen to be identical.
 constantEq :: ByteString -> ByteString -> Bool
-constantEq a b
-    | BS.length a /= BS.length b = False
-    | BS.null a                  = True
-    | otherwise = unsafeDupablePerformIO $
-        BSU.unsafeUseAsCStringLen a $ \(ptrA, len) ->
-        BSU.unsafeUseAsCStringLen b $ \(ptrB, _)  ->
-            let r = c_constant_time_eq (castPtr ptrA) (castPtr ptrB)
-                                       (fromIntegral len)
-            in return (r == 1)
+constantEq a b = unsafeDupablePerformIO $
+    let !lenA    = BS.length a
+        !lenB    = BS.length b
+        !maxLen  = max lenA lenB
+        -- Pad shorter side with zeros so C always sees equal-length buffers.
+        !a'      = if lenA == maxLen then a
+                   else a <> BS.replicate (maxLen - lenA) 0
+        !b'      = if lenB == maxLen then b
+                   else b <> BS.replicate (maxLen - lenB) 0
+        -- Sentinel: 1 when lengths differ, 0 otherwise.  XOR'd into the C
+        -- result so a length mismatch always yields a non-zero accumulator.
+        !lenSentinel = if lenA == lenB then 0 else 1 :: CInt
+    in if maxLen == 0
+       then return (lenSentinel == 0)   -- both empty → equal
+       else BSU.unsafeUseAsCStringLen a' $ \(ptrA, len) ->
+            BSU.unsafeUseAsCStringLen b' $ \(ptrB, _)  ->
+                let r = c_constant_time_eq (castPtr ptrA) (castPtr ptrB)
+                                           (fromIntegral len)
+                in return ((r `xor` lenSentinel) == 0)
 
 #endif

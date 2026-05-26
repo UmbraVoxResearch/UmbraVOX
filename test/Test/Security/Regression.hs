@@ -227,9 +227,10 @@ testEncodeWord32BEMaxBound = do
 -- | M10.4.12: Correct-key round-trip must recover the original plaintext.
 testStorageRoundTrip :: IO Bool
 testStorageRoundTrip = do
+    key <- testStorageKey
     let msg = "regression test secret value"
-    ct <- encryptField testStorageKey msg
-    let result = decryptField testStorageKey ct
+    ct <- encryptField key msg
+    result <- decryptField key ct
     assertEq "M10.4.12 encryptField/decryptField round-trip"
         (Just msg) result
 
@@ -237,9 +238,10 @@ testStorageRoundTrip = do
 -- authentication failure), not a garbage plaintext.
 testStorageWrongKey :: IO Bool
 testStorageWrongKey = do
-    let wrongKey = deriveStorageKey (BS.replicate 32 0xFF) (BS.pack [99..130])
-    ct <- encryptField testStorageKey "sensitive data"
-    let result = decryptField wrongKey ct
+    key    <- testStorageKey
+    wrongKey <- deriveStorageKey (BS.replicate 32 0xFF) (BS.pack [99..130])
+    ct <- encryptField key "sensitive data"
+    result <- decryptField wrongKey ct
     assertEq "M10.4.12 decryptField with wrong key -> Nothing"
         Nothing result
 
@@ -263,13 +265,14 @@ testStorageIsEncryptedField = do
 -- so decryptField must reject it cleanly through its hex-decode error path.
 testStorageTruncatedPassthrough :: IO Bool
 testStorageTruncatedPassthrough = do
-    ct <- encryptField testStorageKey "hello"
+    key <- testStorageKey
+    ct <- encryptField key "hello"
     -- Remove the last character from the encrypted string (breaks hex).
     let truncated = init ct
     -- If it still starts with UVENC1: then decryptField must return Nothing.
     -- If somehow truncation removed the prefix it would pass through; either
     -- way there must be no exception.
-    let result = decryptField testStorageKey truncated
+    result <- decryptField key truncated
     case result of
         Nothing -> do
             putStrLn "  PASS: M10.4.12 truncated ciphertext -> Nothing (malformed hex)"

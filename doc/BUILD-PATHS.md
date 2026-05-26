@@ -23,14 +23,9 @@ inside VMs unless `--direct` is explicitly used.
   ├── Extracts via 9p share → build/vm-output/
   └── Decompresses → build/vm/image/nixos.img (26GB)
 
-./uv vm build-runtime-image       Build runtime VMs (~1.3GB, nix/tiers/base.nix)
+./uv vm build-runtime-image       Build runtime VM (~1.6GB, nix/tiers/base.nix)
   ├── Same builder VM as above
   └── nix-build nix/vm-runtime.nix
-      ├── -A firecracker → build/vm/runtime-image/
-      │   ├── rootfs.ext4.zst (compressed)
-      │   ├── vmlinux (kernel)
-      │   ├── initrd
-      │   └── init-path (NixOS closure path)
       └── -A qemu → build/vm/runtime-qemu-image/nixos.img
 ```
 
@@ -70,26 +65,27 @@ All commands share the same disk setup:
   └── Runs <cmd>, writes exit status to /output/vm-exec-status
 ```
 
-## Running (Runtime VM — Firecracker or QEMU, nix/tiers/base.nix)
+## Running (Runtime VM — lightweight QEMU, nix/tiers/base.nix)
 
 Requires `./uv build` first (populates build/runtime/).
 
 ```
-./uv run                          Firecracker TUI (default)
-./uv run tui                      Firecracker, serial console
+./uv run                          Lightweight QEMU TUI (default)
+./uv run tui                      Lightweight QEMU, serial console
   ├── Creates app disk (ext2) from build/runtime/
-  ├── Decompresses rootfs.ext4.zst → writable copy
-  ├── Reads init-path for NixOS init= kernel arg
-  └── firecracker --no-api --config-file (sub-second boot)
+  ├── COW overlay on runtime-qemu-image (~1.6GB)
+  └── QEMU with -nographic, app on serial console
 
-./uv run gui                      QEMU lightweight runtime
+./uv run gui                      Lightweight QEMU with VGA display
   ├── Same app disk
   ├── COW overlay on runtime-qemu-image
   └── QEMU with -display gtk -vga std, app on tty1
 
-./uv run headless                 Firecracker daemon mode
-  └── Same as tui, no console= kernel arg
+./uv run headless                 Lightweight QEMU daemon mode
+  └── Same as tui, no console output
 ```
+
+QEMU is the only supported runtime hypervisor.
 
 ## Quality Gates (host-side)
 
@@ -120,12 +116,18 @@ Requires `./uv build` first (populates build/runtime/).
 ## End-to-End Test
 
 ```
-./uv test e2e                     Full pipeline from clean state
+./uv test e2e                     Warm pipeline (build → test → check → runtime → SBOM)
   1. Build dev VM image            (./uv vm build-image)
   2. Build + codegen               (./uv build)
   3. Test suite                    (./uv test)
   4. Quality gates                 (./uv check)
   5. Build runtime images          (./uv vm build-runtime-image)
+
+./uv test e2e --bootstrap         Cold start (clean → build image → full e2e)
+  1. Remove existing VM image      (./uv vm clean-image)
+  2. Enter nix-shell               (nix-shell shell.nix)
+  3. Build dev VM image from scratch  (./uv vm build-image)
+  4. Run full e2e pipeline above
 ```
 
 ## Direct Mode (CI without KVM)
@@ -148,8 +150,8 @@ Requires `./uv build` first (populates build/runtime/).
 | `build/vm/builder-image/` | Builder VM (symlink to nix store) | Until `./uv vm clean-image` |
 | `build/vm/build-cache.qcow2` | cabal dist-newstyle + store | All dev VM boots |
 | `build/vm/nix-cache.qcow2` | Builder's nix store scratch | All builder VM boots |
-| `build/vm/runtime-image/` | Firecracker rootfs + kernel | Until rebuild |
-| `build/vm/runtime-qemu-image/` | QEMU runtime image | Until rebuild |
+| `build/vm/runtime-image/` | (unused, legacy) | Until rebuild |
+| `build/vm/runtime-qemu-image/` | QEMU runtime image (~1.6GB) | Until rebuild |
 | `build/runtime/` | Extracted binary + libs | Each `./uv build` |
 | `build/signal-server-jar/` | Signal Server fat JAR | Each `./uv vm signal build-jar` |
 | `build/tools/` | Compiled Go binaries | Until `./uv clean` |

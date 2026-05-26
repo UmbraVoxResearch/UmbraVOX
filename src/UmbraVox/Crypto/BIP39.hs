@@ -23,11 +23,16 @@ generatePassphrase n
         entropy <- randomBytes (n * 2)
         let indices = [ fromIntegral (getW16 entropy (i * 2)) `mod` wordCount
                       | i <- [0 .. n - 1] ]
-            words'  = map (bip39Words !!) indices
+            words'  = map safeIndex indices
         pure (unwords words')
   where
     wordCount :: Int
     wordCount = length bip39Words
+
+    safeIndex :: Int -> String
+    safeIndex idx
+        | idx < wordCount = bip39Words !! idx
+        | otherwise       = error "BIP39: index out of bounds"
 
     getW16 :: BS.ByteString -> Int -> Int
     getW16 bs off =

@@ -131,7 +131,33 @@ openDBWithKey path key = do
 closeDB :: AnthonyDB -> IO ()
 closeDB db = SQL.close (dbConn db)
 
+-- Finding: M14.2.1 — savePeer stored the peer IP address and port as
+-- plaintext in the SQLite database.  A raw database dump (backup, stolen
+-- device, forensic image) revealed the full social graph: every peer IP
+-- and port the local node had ever contacted.
+--
+-- Vulnerability: Plaintext peer metadata on disk exposes network topology
+-- and peer identities to any party with read access to the database file,
+-- undermining the privacy goals of the overlay network.
+--
+-- Fix: When the 'AnthonyDB' handle carries a 'StorageKey' (set via
+-- 'openDBWithKey'), 'savePeer' encrypts the @ip_enc@ field (String) and
+-- the @port_enc@ field (Int serialised to decimal String) with
+-- 'encryptField' before insertion.  'loadPeers' decrypts both columns
+-- with 'decryptField' after loading, parsing the port back to Int.  Rows
+-- whose ciphertext fails GCM authentication are dropped.  When no key is
+-- present both functions store and return plaintext, preserving backward
+-- compatibility for tests that use 'openDB'.  Column names were updated
+-- from @ip@/@port@ (INTEGER) to @ip_enc@/@port_enc@ (TEXT) in schema v3.
+--
+-- Verified: 'openDBWithKey' callers see encrypted ip/port on disk,
+-- plaintext in memory.  'openDB' callers continue to round-trip as before.
+--
 -- | Save or update a peer record.
+--
+-- When the 'AnthonyDB' handle carries a 'StorageKey' (set via
+-- 'openDBWithKey'), the @ip_enc@ and @port_enc@ fields are encrypted with
+-- 'encryptField' before insertion.
 savePeer :: AnthonyDB
          -> ByteString  -- ^ Public key fingerprint (hex)
          -> String      -- ^ IP address
@@ -139,13 +165,19 @@ savePeer :: AnthonyDB
          -> Int         -- ^ Last seen (POSIX timestamp)
          -> String      -- ^ Source (\"mdns\", \"pex\", \"manual\")
          -> IO ()
-savePeer db pubkey ip port lastSeen source =
+savePeer db pubkey ip port lastSeen source = do
+    (storedIP, storedPort) <- case dbStorageKey db of
+        Just key -> do
+            encIP   <- encryptField key ip
+            encPort <- encryptField key (show port)
+            pure (encIP, encPort)
+        Nothing  -> pure (ip, show port)
     SQL.withStatement (dbConn db)
-        "INSERT OR REPLACE INTO peers (pubkey, ip, port, last_seen, source) VALUES (?, ?, ?, ?, ?)"
+        "INSERT OR REPLACE INTO peers (pubkey, ip_enc, port_enc, last_seen, source) VALUES (?, ?, ?, ?, ?)"
         $ \stmt -> do
             SQL.bindText stmt 1 (C8.unpack pubkey)
-            SQL.bindText stmt 2 ip
-            SQL.bindInt  stmt 3 port
+            SQL.bindText stmt 2 storedIP
+            SQL.bindText stmt 3 storedPort
             SQL.bindInt  stmt 4 lastSeen
             SQL.bindText stmt 5 source
             _ <- SQL.step stmt
@@ -154,17 +186,40 @@ savePeer db pubkey ip port lastSeen source =
 -- | Load all known peers from the database.
 --
 -- Returns rows as @(pubkey, ip, port, last_seen, source)@ tuples.
+--
+-- When the 'AnthonyDB' handle carries a 'StorageKey', each row's
+-- @ip_enc@ and @port_enc@ fields are decrypted with 'decryptField'.
+-- Rows whose ciphertext fails GCM authentication are dropped.  When no
+-- key is present the raw column values are returned as-is.
 loadPeers :: AnthonyDB -> IO [(String, String, Int, Int, String)]
-loadPeers db =
-    SQL.withStatement (dbConn db)
-        "SELECT pubkey, ip, port, last_seen, source FROM peers"
+loadPeers db = do
+    rows <- SQL.withStatement (dbConn db)
+        "SELECT pubkey, ip_enc, port_enc, last_seen, source FROM peers"
         $ \stmt -> collectRows stmt $ \s -> do
-            pk  <- SQL.columnText s 0
-            ip  <- SQL.columnText s 1
-            p   <- SQL.columnInt  s 2
-            ls  <- SQL.columnInt  s 3
-            src <- SQL.columnText s 4
-            pure (pk, ip, p, ls, src)
+            pk      <- SQL.columnText s 0
+            ipEnc   <- SQL.columnText s 1
+            portEnc <- SQL.columnText s 2
+            ls      <- SQL.columnInt  s 3
+            src     <- SQL.columnText s 4
+            pure (pk, ipEnc, portEnc, ls, src)
+    case dbStorageKey db of
+        Nothing  -> pure [ (pk, ipEnc, readPort portEnc, ls, src)
+                         | (pk, ipEnc, portEnc, ls, src) <- rows ]
+        Just key -> mapMaybeM (decryptPeerRow key) rows
+  where
+    readPort s = case reads s of
+        [(n, "")] -> n
+        _         -> 0
+    decryptPeerRow key (pk, ipEnc, portEnc, ls, src) = do
+        mIp      <- decryptField key ipEnc
+        mPortStr <- decryptField key portEnc
+        case (mIp, mPortStr) of
+            (Just ip, Just portStr) ->
+                pure (Just (pk, ip, readPort portStr, ls, src))
+            _ -> pure Nothing  -- M10.3.7: authentication failure or missing key — drop the row
+    mapMaybeM f xs = do
+        results <- mapM f xs
+        pure [ x | Just x <- results ]
 
 -- | Save a key-value setting.
 saveSetting :: AnthonyDB -> String -> String -> IO ()
@@ -236,17 +291,20 @@ loadMessages db convId limit = do
     let ordered = reverse rows
     case dbStorageKey db of
         Nothing  -> pure ordered
-        Just key -> pure (concatMap (decryptRow key) ordered)
+        Just key -> do
+            results <- mapM (decryptRow key) ordered
+            pure (concat results)
   where
     decryptRow key (sender, content, ts)
-        | isEncryptedField content =
+        | isEncryptedField content = do
             -- Ciphertext present: authenticate and decrypt; drop on failure.
-            case decryptField key content of
-                Just plaintext -> [(sender, plaintext, ts)]
-                Nothing        -> []  -- M10.3.7: authentication failure — drop the row
+            mPlaintext <- decryptField key content
+            case mPlaintext of
+                Just plaintext -> pure [(sender, plaintext, ts)]
+                Nothing        -> pure []  -- M10.3.7: authentication failure — drop the row
         | otherwise =
             -- M27.4.4: reject legacy plaintext when encryption is active.
-            [(sender, "[UNREADABLE: legacy plaintext rejected]", ts)]
+            pure [(sender, "[UNREADABLE: legacy plaintext rejected]", ts)]
 
 -- | Delete messages older than N days.
 pruneMessages :: AnthonyDB -> Int -> IO ()
@@ -344,17 +402,20 @@ loadConversations db = do
             pure (cid, pubkey, name, created)
     case dbStorageKey db of
         Nothing  -> pure rows
-        Just key -> pure (concatMap (decryptConvName key) rows)
+        Just key -> do
+            results <- mapM (decryptConvName key) rows
+            pure (concat results)
   where
     decryptConvName key (convId, pubkey, name, created)
-        | isEncryptedField name =
+        | isEncryptedField name = do
             -- Ciphertext present: authenticate and decrypt; drop on failure.
-            case decryptField key name of
-                Just plainName -> [(convId, pubkey, plainName, created)]
-                Nothing        -> []  -- M10.3.7: authentication failure — drop the row
+            mPlainName <- decryptField key name
+            case mPlainName of
+                Just plainName -> pure [(convId, pubkey, plainName, created)]
+                Nothing        -> pure []  -- M10.3.7: authentication failure — drop the row
         | otherwise =
             -- Legacy plaintext (written before encryption was enabled): pass through.
-            [(convId, pubkey, name, created)]
+            pure [(convId, pubkey, name, created)]
 
 -- | Save a trusted public key with a human-readable label.
 saveTrustedKey :: AnthonyDB -> ByteString -> String -> IO ()

@@ -180,7 +180,7 @@ testSC023AESGCMNonceFunctional :: IO Bool
 testSC023AESGCMNonceFunctional = do
     -- SC-023: GCM nonces are random in UmbraVox (randomBytes 12 per ratchet message).
     -- encryptField takes String, returns String.
-    let key = testStorageKey
+    key <- testStorageKey
     ct1 <- encryptField key "plaintext"
     ct2 <- encryptField key "plaintext"
     ok1 <- assertEq "SC-023 AES-GCM nonce: two encryptions of same pt produce distinct cts"

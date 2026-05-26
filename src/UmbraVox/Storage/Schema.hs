@@ -16,14 +16,18 @@ module UmbraVox.Storage.Schema
 --   v2: renamed messages.content -> messages.content_enc to signal
 --       that the column holds encrypted data.
 --       Migration: ALTER TABLE messages RENAME COLUMN content TO content_enc;
+--   v3: renamed peers.ip -> peers.ip_enc and peers.port -> peers.port_enc
+--       to indicate that these columns hold AES-256-GCM encrypted data.
+--       Migration: ALTER TABLE peers RENAME COLUMN ip   TO ip_enc;
+--                  ALTER TABLE peers RENAME COLUMN port TO port_enc;
 schemaVersion :: Int
-schemaVersion = 2
+schemaVersion = 3
 
 -- | SQL statements to initialise the database schema.
 schemaStatements :: [String]
 schemaStatements =
     [ "CREATE TABLE IF NOT EXISTS peers "
-      <> "(pubkey TEXT PRIMARY KEY, ip TEXT, port INTEGER, "
+      <> "(pubkey TEXT PRIMARY KEY, ip_enc TEXT, port_enc TEXT, "
       <> "last_seen INTEGER, source TEXT)"
     , "CREATE TABLE IF NOT EXISTS settings "
       <> "(key TEXT PRIMARY KEY, value TEXT)"
@@ -45,5 +49,10 @@ migrationStatements :: [(Int, Int, [String])]
 migrationStatements =
     [ ( 1, 2
       , ["ALTER TABLE messages RENAME COLUMN content TO content_enc"]
+      )
+    , ( 2, 3
+      , [ "ALTER TABLE peers RENAME COLUMN ip   TO ip_enc"
+        , "ALTER TABLE peers RENAME COLUMN port TO port_enc"
+        ]
       )
     ]

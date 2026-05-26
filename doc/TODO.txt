@@ -5,7 +5,7 @@ Purpose: active work only.
 - Deferred/blocked items → TODO-DEFERRED.txt
 
 Status: [ ] pending, [~] in progress
-Last updated: 2026-05-24
+Last updated: 2026-05-26
 
 Rules
 -----
@@ -27,7 +27,7 @@ CI:               Linux (gate), macOS (informational), Windows (best-effort)
 Signal Server:    v20260521.0.0 pinned, JDK 25, central config, JAR built
 Shell migration:  11/12 scripts replaced with Go (lib-vm.sh partial)
 Review findings:  18/18 resolved
-Firecracker VM:   runtime image complete (all 6 phases done)
+Runtime VM:       lightweight QEMU for all ./uv run modes
 vmctl:            unified Go module in tools/vmctl/, all 5 phases complete
 Platform targets: Linux, macOS, Windows, FreeBSD, OpenBSD, NetBSD,
                   DragonFlyBSD, illumos, arm64 + 7 future targets
@@ -153,16 +153,16 @@ ACTIVE WORK
   [N/A] csrc/generated/vrf.c — no verified VRF C exists
   [N/A] csrc/generated/ed25519extended.c — will use fiat-crypto field ops
 
-[~] M13.16 CycloneDX SBOM auto-generation
-  [~] M13.16.1 Add ./uv sbom command that generates CycloneDX JSON
-  [~] M13.16.2 Scan Haskell deps from cabal.project.freeze (GHC boot libs)
-  [~] M13.16.3 Scan C deps from csrc/ (CryptoGen, HACL*, fiat-crypto, helpers)
-  [~] M13.16.4 Scan Go deps from tools/go.mod (currently zero external)
-  [~] M13.16.5 Scan nix deps from flake.lock (nixpkgs pin)
-  [~] M13.16.6 Include SPDX license identifiers for all components
-  [~] M13.16.7 Output to build/sbom.cdx.json (CycloneDX 1.5 format)
-  [~] M13.16.8 Add SBOM to release artifacts (./uv release includes sbom)
-  [~] M13.16.9 Add ./uv check sbom quality gate (SBOM exists and is current)
+[x] M13.16 CycloneDX SBOM auto-generation
+  [x] M13.16.1 Add ./uv sbom command that generates CycloneDX JSON
+  [x] M13.16.2 Scan Haskell deps from cabal.project.freeze (GHC boot libs)
+  [x] M13.16.3 Scan C deps from csrc/ (CryptoGen, HACL*, fiat-crypto, helpers)
+  [x] M13.16.4 Scan Go deps from tools/go.mod (currently zero external)
+  [x] M13.16.5 Scan nix deps from flake.lock (nixpkgs pin)
+  [x] M13.16.6 Include SPDX license identifiers for all components
+  [x] M13.16.7 Output to build/sbom.cdx.json (CycloneDX 1.5 format)
+  [x] M13.16.8 Add SBOM to release artifacts (./uv release includes sbom)
+  [x] M13.16.9 Add ./uv check sbom quality gate (SBOM exists and is current)
   [x] M13.16.10 Document in doc/SBOM.md
 
 [x] Quality gate: generated file header check
@@ -183,17 +183,17 @@ ACTIVE WORK
       Note: JAR classpath fix applied (removed -o/--offline from mvn dependency:copy-dependencies);
       implemented in code but needs VM rebuild to verify JAR assembles correctly.
 
-[x] Firecracker Runtime VM (./uv run)
-  [x] Phase 1: nix/vm-runtime.nix — minimal NixOS image (<500MB)
-      Firecracker variant (no GRUB, /dev/vda ext4) + QEMU variant (GRUB, VGA)
+[x] Runtime VM (./uv run) — lightweight QEMU
+  All ./uv run modes use lightweight QEMU runtime image (~1.6GB).
+  Firecracker runtime path removed (ext2 permission stripping,
+  no qcow2 overlay support). Library code retained for reference.
+  [x] Phase 1: nix/vm-runtime.nix — minimal NixOS image (QEMU, GRUB, VGA)
   [x] Phase 2: Binary extraction after ./uv build
       Extract umbravox binary + ldd closure to build/runtime/
-  [x] Phase 3: tools/pkg/firecracker/ Go package
-      Config, WriteConfigFile, Boot, CreateAppDisk, ScaleToHost
-  [x] Phase 4: ./uv run integration
-      Default: tui (Firecracker), gui (lightweight QEMU), headless (Firecracker)
-  [x] Phase 5: ./uv vm build-runtime-image command
-  [x] Phase 6: Verification — Firecracker boots, app launches, init-path works
+  [x] Phase 3: ./uv run integration
+      All modes: lightweight QEMU (tui, gui, headless)
+  [x] Phase 4: ./uv vm build-runtime-image command
+  [x] Phase 5: Verification — QEMU boots, app launches, overlay works
 
 [x] vmctl — Unified VM Framework (reusable Go module)
   Goal: consolidate 5 ad-hoc VM types into tools/pkg/vmctl/
@@ -211,7 +211,7 @@ ACTIVE WORK
     [x] Create vmctl/nix.go with NixBuild wrapper — done (NixBuild, FindNixBuild, IsCached)
     [x] Thin wrappers in pkg/qemu, pkg/firecracker delegating to vmctl — done (resources + preflight)
 
-  [~] Nix base image tiers (4-tier hierarchy)
+  [x] Nix base image tiers (4-tier hierarchy)
     [x] Create nix/tiers/base.nix — boots, shell, mount disks, run binary — done
         Imports vm-base.nix, adds bashInteractive, coreutils, util-linux
     [x] Create nix/tiers/network.nix — base + DHCP, DNS, curl — done
@@ -243,12 +243,13 @@ ACTIVE WORK
     [x] Create vm-defs/ directory with YAML for each VM type (7 files created)
       [x] vm-defs/dev.yaml — tier: dev (full toolchain)
       [x] vm-defs/builder.yaml — tier: builder (nix + network)
-      [x] vm-defs/runtime-fc.yaml — tier: base (Firecracker runtime)
-      [x] vm-defs/runtime-qemu.yaml — tier: base (QEMU runtime with VGA)
-      [x] vm-defs/ci-test.yaml — tier: network (CI Firecracker with network)
+      [x] vm-defs/runtime-fc.yaml — removed (Firecracker runtime path removed)
+      [x] vm-defs/runtime-qemu.yaml — tier: base (lightweight QEMU runtime)
+      [x] vm-defs/ci-test.yaml — tier: network (CI QEMU with network)
       [x] vm-defs/signal-build.yaml — tier: builder (Signal Server build)
       [x] vm-defs/signal-runtime.yaml — tier: network (Signal Server runtime)
-    [~] ./uv commands load YAML, overlay CLI flags, call vmctl.Boot — wired by another agent
+    [x] ./uv commands load YAML, overlay CLI flags, call vmctl.Boot
+        exec/build/test/verify: dev.yaml; dev: dev.yaml; run: runtime-qemu.yaml; image: builder.yaml
 
   [x] Phase 4: Extract to separate Go module
     [x] Ensure vmctl has zero imports from tools/pkg/{repo,log,netproxy,ninep} — confirmed clean (stdlib only)
@@ -265,7 +266,7 @@ ACTIVE WORK
     [x] Create vm-defs/ci-test.yaml — done
     [x] Update ci-linux.yml to use ./uv test --direct — done
     [x] Document CI setup in doc/CI-INTEGRATION.md — done
-    [x] Add slirp4netns support for rootless Firecracker networking — done (graceful degradation)
+    [x] Add slirp4netns support for rootless networking — done (graceful degradation)
 
 ================================================================================
 CODE REVIEW FINDINGS (v0.5.3 audit)
@@ -454,6 +455,52 @@ PROJECT REVIEW FINDINGS (v0.5.17 audit, 2026-05-24)
 [x] [LOW] shell.nix unused tlc alias — fixed (removed)
 [x] [LOW] cabal stm bound < 2.6 — fixed (< 2.7)
 [x] [LOW] checkGeneratedHeaders fails if csrc/generated/ doesn't exist — fixed (graceful skip when no files)
+
+================================================================================
+SECURITY AUDIT REMEDIATION (v0.6 audit, 91 findings)
+================================================================================
+
+[x] M20 Security Audit Remediation (v0.6 audit, 91 findings)
+  [x] P0 Critical (fix before any release)
+    [x] Fix pqEncrypt to return IO (remove unsafePerformIO)
+    [x] Fix clampScalar partial functions (head/!!)
+    [x] Populate go.sum
+    [x] Pin cabal index-state to timestamp
+  [x] P1 Security-critical
+    [x] Fix session deserialization DH replay state
+    [x] Add per-IP rate limiting to listener
+    [x] Encrypt peer metadata in storage
+    [x] Quantize PEX timestamps to 1-hour buckets
+    [x] Fix ConstantTime.hs length oracle
+    [x] Fix GCM nonce comparison to constant-time
+    [x] Fix WireFormat AEAD type byte detection
+  [x] P2 Defense-in-depth (8/8 complete)
+    [x] Add platform-native secure_zero (explicit_bzero) — csrc/secure_zero.c
+    [x] Add compiler barriers to CT helpers — csrc/ct_helpers.h (__asm__ volatile)
+    [x] Fix ct_lt32 signed right shift — uint64_t widening, bit 63 extraction
+    [x] Fix bridge_ed25519.c timing issues — ct_point_cswap via fiat_25519_selectznz
+    [x] Complete SecureBytes for StorageKey, KeyStore passphrase
+    [x] Add time-based CSPRNG reseed — 300s interval in Random.hs
+    [x] Fix all partial functions (6 files) — no head/!!/tail in crypto paths
+    [x] Explicit zeroAndFree on ratchet key rotation — DoubleRatchet + SenderKeys
+  [x] P3 Test coverage (85+ tests across 10 categories)
+    [x] Add crypto vector tests (40 cases: AES, GCM, Ed25519, X25519, ML-KEM)
+    [x] Add negative/boundary tests (13 cases: Negative.hs + Boundary.hs)
+    [x] Add adversarial protocol tests (4 cases: replay, forgery, tamper, OOO)
+    [x] Add group messaging edge case tests (5 cases: SenderKeysEdge.hs)
+    [x] Add PQ hybrid mode edge case tests (5 cases: PQXDHEdge.hs)
+    [x] Add constant-time verification tests (4 audit checks: ConstantTimeAudit.hs)
+    [x] Add key lifecycle tests (5 cases: KeyLifecycle.hs)
+    [x] Add regression tests for all audit findings (6 CVE regression: RegressionAudit.hs)
+    [x] Add fuzzing harnesses (3: ed25519-verify, x25519, gcm-decrypt)
+    [x] Add RFC/NIST test vector files (8 JSON: NIST SP 800-38D, RFC 8032/7748/5869/4231/8439)
+    [ ] Download Wycheproof vector suites (placeholder dir exists)
+    [ ] Download NIST CAVP ML-KEM vectors (placeholder dir exists)
+  [x] CVE candidates from audit (12/12 addressed)
+    [x] CVE-4: SenderKeys ephemeral Ed25519 signatures (preserves deniability)
+    [x] CVE-5: PQXDH KEM check strengthened (length + zero)
+    [x] CVE-10: Identity key moved to storage plugin (ephemeral-first)
+    [x] KeyStore.hs deprecated (persistence via StorageHandle)
 
 ================================================================================
 FINAL AGENT WORK (completed by other agents)

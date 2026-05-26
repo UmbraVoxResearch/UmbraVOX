@@ -50,6 +50,7 @@ import UmbraVox.Crypto.KeyStore
     ( loadIdentityKey, saveIdentityKey
     , loadIdentityKeyAt, saveIdentityKeyAt
     )
+import UmbraVox.Storage.Class (StorageHandle(..))
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..), ikEd25519Secret)
@@ -143,8 +144,7 @@ newDefaultAppConfig = do
 
 initializeLocalIdentity :: AppConfig -> IO IdentityKey
 initializeLocalIdentity cfg = do
-    ephemeral <- readIORef (cfgEphemeral cfg)
-    identity <- resolveIdentityEphemeral ephemeral
+    identity <- resolveIdentityEphemeral cfg
     writeIORef (cfgIdentity cfg) (Just identity)
     logEvent cfg "identity.ready" []
     pure identity
@@ -237,18 +237,21 @@ resolveIdentity = do
                     saveIdentityKey ik
                     pure ik
 
--- | Like 'resolveIdentity' but skips the disk write when ephemeral is set.
-resolveIdentityEphemeral :: Bool -> IO IdentityKey
-resolveIdentityEphemeral ephemeral = do
+-- | Like 'resolveIdentity' but routes identity key I/O through the
+-- 'StorageHandle' in 'cfgStorage' and skips persistence when ephemeral is set.
+resolveIdentityEphemeral :: AppConfig -> IO IdentityKey
+resolveIdentityEphemeral cfg = do
+    ephemeral <- readIORef (cfgEphemeral cfg)
     if not (pluginEnabled PluginIdentityPersistence) || ephemeral
         then genIdentity
         else do
-            mIdentity <- loadIdentityKey
+            sh <- readIORef (cfgStorage cfg)
+            mIdentity <- shLoadIdentityKey sh
             case mIdentity of
                 Just ik -> pure ik
                 Nothing -> do
                     ik <- genIdentity
-                    saveIdentityKey ik
+                    shSaveIdentityKey sh ik
                     pure ik
 
 resolveIdentityAt :: FilePath -> IO IdentityKey
@@ -317,12 +320,13 @@ restorePersistentStateAtUnsafe cfg path = do
                     let saltPath = path ++ ".salt"
                     getOrCreateSalt saltPath
             edSecBS <- toByteString (ikEd25519Secret ik)
-            let storageKey = deriveStorageKey salt edSecBS
+            storageKey <- deriveStorageKey salt edSecBS
             openDBWithKey path storageKey
         Nothing ->
             openDB path
     writeIORef (cfgAnthonyDB cfg) (Just db)
-    writeIORef (cfgStorage cfg) (anthonyStorageHandle db)
+    sh <- anthonyStorageHandle db
+    writeIORef (cfgStorage cfg) sh
     writeIORef (cfgDBEnabled cfg) True
     writeIORef (cfgPersistencePreference cfg) (Just True)
     -- M17.3.6: enable message-storage (and deps) in the runtime plugin

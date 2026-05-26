@@ -142,7 +142,7 @@ who understand the tradeoff.
 ```bash
 # CORRECT — builds inside the builder VM
 ./uv vm build-image              # Dev VM image
-./uv vm build-runtime-image      # Firecracker + QEMU runtime images
+./uv vm build-runtime-image      # Lightweight QEMU runtime image
 
 # WRONG — touches the host nix store
 nix-build nix/vm-image.nix       # ← NEVER DO THIS
@@ -168,7 +168,7 @@ Three VM tiers, each built by the builder VM. All images derive from a
 |----|------------|------|----------|---------|
 | **Builder** | Tier 3 (Builder) | ~3GB | Downloaded or `nix-build nix/vm-builder.nix` (host, one-time) | `./uv vm build-image`, `./uv vm build-runtime-image` |
 | **Dev** | Tier 4 (Dev) | ~26GB | Builder VM | `./uv build`, `./uv test`, `./uv verify`, `./uv dev` |
-| **Runtime** | Tier 1 (Base) | ~1.3GB | Builder VM | `./uv run` (Firecracker TUI/headless, QEMU GUI) |
+| **Runtime** | Tier 1 (Base) | ~1.6GB | Builder VM | `./uv run` (lightweight QEMU: TUI, GUI, headless) |
 
 The builder VM is the only image that may be built on the host (bootstrap).
 All other images are built inside VMs.

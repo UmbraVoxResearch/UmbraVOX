@@ -284,8 +284,23 @@ gcmEncryptNR (GCMNonceTracker ref) !key !nonce !aad !plaintext = do
 -- | Big-endian numeric comparison: @nonceGtBE a b@ returns 'True' iff @a@
 -- interpreted as a big-endian unsigned integer is strictly greater than @b@.
 -- Shorter nonces are logically left-padded with zeros.
+--
+-- Finding    — The previous implementation short-circuited on the first
+--              byte where ai /= bi, leaking the position of that byte via
+--              execution time (a timing side-channel).
+-- Vulnerability: An adversary who can measure encryption latency could
+--              determine how many leading bytes two successive nonces share,
+--              narrowing the search space for a nonce-reuse attack.
+-- Fix:       Replace the branching walk with a constant-time accumulation
+--              over all bytes.  Two Word8 accumulators track "greater-than
+--              decided" and "still equal" using only bitwise/arithmetic ops
+--              with no data-dependent branches.  The loop always runs
+--              exactly 'len' iterations regardless of byte values.
+-- Verified:  The result is identical to the old function for all inputs of
+--              equal length (the common 12-byte nonce case).  Left-padding
+--              semantics for unequal lengths are preserved via BS.replicate.
 nonceGtBE :: ByteString -> ByteString -> Bool
-nonceGtBE !a !b = go 0
+nonceGtBE !a !b = go 0 0 1
   where
     !la  = BS.length a
     !lb  = BS.length b
@@ -295,13 +310,33 @@ nonceGtBE !a !b = go 0
          | otherwise = BS.replicate (len - la) 0 <> a
     !b'  | lb == len = b
          | otherwise = BS.replicate (len - lb) 0 <> b
-    -- Walk bytes left-to-right (big-endian MSB first).
-    go :: Int -> Bool
-    go !i
-        | i >= len  = False          -- equal
-        | ai > bi   = True
-        | ai < bi   = False
-        | otherwise = go (i + 1)
-      where
-        !ai = BS.index a' i :: Word8
-        !bi = BS.index b' i :: Word8
+    -- Constant-time walk: no data-dependent branches, always len iterations.
+    --   gt  — 1 if a > b has been decided by a more-significant byte, 0 otherwise
+    --   eq  — 1 if all bytes seen so far have been equal, 0 once a difference is found
+    --   i   — current byte index (MSB = 0)
+    go :: Int -> Word8 -> Word8 -> Bool
+    go !i !gt !eq
+        | i >= len  = gt == 1
+        | otherwise =
+            let !ai   = BS.index a' i
+                !bi   = BS.index b' i
+                -- Unsigned subtraction: non-zero iff ai /= bi.
+                -- aboveFlag = 1 if ai > bi, 0 otherwise (no branch).
+                -- The cast to Int allows detecting the sign of (ai - bi).
+                !diff      = (fromIntegral ai :: Int) - (fromIntegral bi :: Int)
+                -- aboveFlag: 1 when ai > bi (diff > 0), else 0.
+                -- When diff > 0, -diff < 0, so its sign bit is 1.
+                -- Arithmetic shiftR 63 fills all bits with the sign bit;
+                -- masking with 1 extracts it.  No branch on secret data.
+                !aboveFlag = fromIntegral (((- diff) `shiftR` 63) .&. 1) :: Word8
+                -- equalFlag: 1 when ai == bi, 0 otherwise.
+                -- Collapse diff to 0/1: any non-zero diff maps to non-zero
+                -- after (diff .|. -diff) >>> 63; invert for equalFlag.
+                !nzFlag    = fromIntegral
+                               (((diff .|. (-diff)) `shiftR` 63) .&. 1) :: Word8
+                !equalFlag = 1 - nzFlag
+                -- Update gt: set if (was equal so far) AND (ai > bi).
+                !gt'  = gt .|. (eq .&. aboveFlag)
+                -- Update eq: clear once any difference is seen.
+                !eq'  = eq .&. equalFlag
+            in go (i + 1) gt' eq'

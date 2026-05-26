@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               UmbraVox
-version:            0.5.16
+version:            0.6.2
 synopsis:           Decentralized encrypted communications protocol
 description:
   UmbraVox is a research-oriented encrypted messaging project with
@@ -501,11 +501,13 @@ test-suite umbravox-test
     Test.Protocol.WireFormat
     Test.Protocol.RouteToken
     Test.Crypto.PQXDH
+    Test.Crypto.PQXDHEdge
     Test.Crypto.Random
     Test.Crypto.VRF
     Test.Crypto.PQWrapper
     Test.Crypto.KeyStore
     Test.Crypto.Signal.SenderKeys
+    Test.Crypto.Signal.SenderKeysEdge
     Test.Crypto.Signal.Session
     Test.Crypto.SignalWireCompat
     Test.Plugin.Registry
@@ -571,8 +573,19 @@ test-suite umbravox-test
     Test.Security.M11HighKM3
     Test.Security.M11Final
     Test.Security.MCDC
+    Test.Security.ConstantTimeAudit
+    Test.Security.KeyLifecycle
+    Test.Security.RegressionAudit
+    Test.Security.Negative
+    Test.Security.Boundary
+    Test.Security.AdversarialProto
     Test.Bridge.UmbraClaw
     Test.VectorIntegrity
+    Test.Crypto.Vectors.AES
+    Test.Crypto.Vectors.GCM
+    Test.Crypto.Vectors.Ed25519
+    Test.Crypto.Vectors.X25519
+    Test.Crypto.Vectors.MLKEM
     CryptoGen
   if flag(stubs)
     other-modules:
@@ -607,6 +620,7 @@ test-suite umbravox-test
     directory    >= 1.3   && < 1.5,
     filepath     >= 1.4   && < 1.7,
     process      >= 1.6   && < 1.8,
+    stm          >= 2.5   && < 2.7,
     text         >= 2.0   && < 2.3,
     time         >= 1.12  && < 1.16,
     UmbraVox

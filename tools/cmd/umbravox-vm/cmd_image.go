@@ -385,6 +385,19 @@ func bootBuilderVM(repoRoot, builderImg string) int {
 	}
 
 	// ── VMSpec ────────────────────────────────────────────────────
+	// Load vm-defs/builder.yaml; fall back to hardcoded defaults.
+	resources := vmctl.Resources{Fraction: 75, MinCores: 2, MinMemMB: 2048}
+	builderTimeout := 2 * time.Hour
+	if def, defErr := loadVMDef(repoRoot, "builder"); defErr != nil {
+		log.Fail(tag, fmt.Sprintf("failed to load vm-def: %v", defErr))
+		return 1
+	} else if def != nil {
+		resources = def.Resources
+		if def.Timeout > 0 {
+			builderTimeout = def.Timeout
+		}
+	}
+
 	outputShare := ninep.DefaultOutputShare(outputDir)
 	spec := &vmctl.VMSpec{
 		Hypervisor: vmctl.HypervisorQEMU,
@@ -403,13 +416,16 @@ func bootBuilderVM(repoRoot, builderImg string) int {
 			ID:            outputShare.ID,
 		}},
 		// User-mode networking: builder needs access to cache.nixos.org.
-		Network: vmctl.NetworkSpec{RawArgs: "-nic user,model=virtio"},
-		Resources: vmctl.Resources{
-			Fraction: 75, // ProfileBuild
-			MinCores: 2,
-			MinMemMB: 2048,
-		},
-		Timeout:    2 * time.Hour,
+		// TODO(security): add restrict=on to the NIC and route traffic exclusively
+		// through a guestfwd SOCKS/HTTP proxy so the builder VM cannot reach
+		// arbitrary internet endpoints. Requires standing up a netproxy listener
+		// on the host and wiring its address into the guestfwd= option, e.g.:
+		//   -nic user,model=virtio,restrict=on,guestfwd=tcp:10.0.2.100:3128-tcp:127.0.0.1:<proxy_port>
+		// The setupNetworkFilter / netproxy.Filter plumbing is already present;
+		// this just needs the QEMU restrict+guestfwd args to enforce it.
+		Network:    vmctl.NetworkSpec{RawArgs: "-nic user,model=virtio"},
+		Resources:  resources,
+		Timeout:    builderTimeout,
 		NoReboot:   true,
 		StatusFile: statusFile,
 	}

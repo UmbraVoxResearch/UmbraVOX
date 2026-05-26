@@ -40,7 +40,7 @@ import UmbraVox.Crypto.GCM (gcmDecrypt, gcmEncrypt)
 import UmbraVox.Crypto.HKDF (hkdfExpand, hkdfExtract)
 import UmbraVox.Crypto.HMAC (hmacSHA256)
 import UmbraVox.Crypto.Random (randomBytes)
-import UmbraVox.Crypto.SecureBytes (SecureBytes, fromByteString, toByteString)
+import UmbraVox.Crypto.SecureBytes (SecureBytes, fromByteString, toByteString, zeroAndFree)
 
 ------------------------------------------------------------------------
 -- Error type
@@ -536,6 +536,23 @@ recordDHKey st peerPub =
 -- M23.3.3: Records the new peer DH public key in 'rsSeenDHKeys' for
 -- replay detection.  The replay check itself is in 'ratchetDecrypt',
 -- before this function is called.
+--
+-- Finding:     M15.4 — Old ratchet keys ('rsRootKey', 'rsSendChain',
+--              'rsRecvChain') were replaced by new 'SecureBytes' values but
+--              the displaced 'SecureBytes' were never explicitly zeroed.
+--              Although the GC finalizer eventually zeros them, the window
+--              between replacement and collection leaves old key material
+--              accessible in pinned memory.
+-- Vulnerability: During GC collection delay, old root and chain keys remain
+--              readable in physical RAM.  A memory-forensics attacker or a
+--              process that can read /proc/self/mem could recover previous
+--              epoch key material.
+-- Fix:         Call 'zeroAndFree' on the displaced root key, intermediate
+--              root key, old send chain, and old receive chain immediately
+--              after the new keys are in place.  This provides deterministic
+--              erasure rather than relying on GC scheduling.
+-- Verified:    'zeroAndFree' is called on all four displaced 'SecureBytes'
+--              values before 'dhRatchet' returns.
 dhRatchet :: RatchetState -> RatchetHeader -> Word64 -> IO (Maybe RatchetState)
 dhRatchet st header nowSecs = do
     -- Skip any remaining messages in old receiving chain
@@ -561,7 +578,11 @@ dhRatchet st header nowSecs = do
             case mDhOutput1 of
                 Nothing -> pure Nothing
                 Just !dhOutput1 -> do
-                    (rootKey1, recvChain) <- kdfRK (rsRootKey st2) dhOutput1
+                    -- Save references to old key material for deterministic zeroing (M15.4).
+                    let !oldRootKey   = rsRootKey   st2
+                        !oldSendChain = rsSendChain st2
+                        !oldRecvChain = rsRecvChain st2
+                    (rootKey1, recvChain) <- kdfRK oldRootKey dhOutput1
                     -- Generate new sending keypair from CSPRNG
                     newDHSecret <- randomBytes 32
                     newDHKP <- generateDH newDHSecret
@@ -570,6 +591,13 @@ dhRatchet st header nowSecs = do
                         Nothing -> pure Nothing
                         Just !dhOutput2 -> do
                             (rootKey2, sendChain) <- kdfRK rootKey1 dhOutput2
+                            -- M15.4: Deterministically zero all displaced key material
+                            -- before they become unreachable.  'rootKey1' is the
+                            -- intermediate root key; the others are the pre-ratchet values.
+                            zeroAndFree oldRootKey
+                            zeroAndFree rootKey1
+                            zeroAndFree oldSendChain
+                            zeroAndFree oldRecvChain
                             pure $ Just st2
                                 { rsDHSend    = newDHKP
                                 , rsRootKey   = rootKey2

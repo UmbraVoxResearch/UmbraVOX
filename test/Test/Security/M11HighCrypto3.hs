@@ -224,13 +224,16 @@ testSY029StorageTagCorruption = do
                Nothing (gcmDecrypt key nonce aad flippedCT tag)
 
     -- (e) encryptField / decryptField field-level check
-    encVal <- encryptField testStorageKey "SY-029 field payload"
+    storKey <- testStorageKey
+    encVal <- encryptField storKey "SY-029 field payload"
+    r5 <- decryptField storKey encVal
     ok5 <- assertEq "SY-029 encryptField round-trip: OK"
-               (Just "SY-029 field payload") (decryptField testStorageKey encVal)
+               (Just "SY-029 field payload") r5
     -- Flip the last character of the encoded blob (in the tag region)
     let corrupted = init encVal ++ [toEnum (fromEnum (last encVal) `xor` 1)]
+    r6 <- decryptField storKey corrupted
     ok6 <- assertEq "SY-029 corrupted encryptField: decryptField returns Nothing"
-               Nothing (decryptField testStorageKey corrupted)
+               Nothing r6
 
     pure (ok1 && ok2 && ok3 && ok4 && ok5 && ok6)
 

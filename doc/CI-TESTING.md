@@ -36,12 +36,13 @@ Runs daily via cron. Full regression net.
 | `./uv vm integration` | L12 | Multi-VM integration (3 agents) |
 | `./uv vm signal test` | L14 | Signal Server wire-compat |
 
-## Tier 3: Pre-release (manual, ~7 hr)
+## Tier 3: Pre-release (manual, ~8 hr)
 
 Triggered manually before tagging a release. Exhaustive validation.
 
 | Command | Level | What it catches |
 |---------|-------|-----------------|
+| `./uv test e2e --bootstrap` | L10 | Cold-start bootstrap chain (clean → nix-shell → build image → full pipeline) |
 | All Nightly tests | — | Baseline |
 | `./uv coverage --mcdc` | L8 | MC/DC coverage |
 | `./uv test ephemeral` | L11 | Fresh image build + test |
@@ -70,6 +71,7 @@ Every test path is covered by at least one tier:
 | `./uv check pre-release` | ✓ | ✓ | ✓ |
 | `./uv test all` | — | ✓ | ✓ |
 | `./uv test e2e` | — | ✓ | ✓ |
+| `./uv test e2e --bootstrap` | — | — | ✓ |
 | `./uv test tcp` | — | ✓ | ✓ |
 | `./uv test fault` | — | ✓ | ✓ |
 | `./uv test recovery` | — | ✓ | ✓ |
@@ -96,6 +98,6 @@ Every test path is covered by at least one tier:
 All tiers require a self-hosted runner with:
 - Linux x86_64 with KVM (`/dev/kvm`)
 - Nix package manager
-- QEMU + Firecracker
+- QEMU
 - 16GB+ RAM, 100GB+ disk
 - Network access (for nix cache downloads)

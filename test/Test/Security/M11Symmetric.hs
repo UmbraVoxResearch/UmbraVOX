@@ -407,8 +407,8 @@ testSY012Poly1305ZeroR = do
 
 testSY023StorageNonceUnique :: IO Bool
 testSY023StorageNonceUnique = do
-    let key = testStorageKey
-        plain = "sensitive_field_value"
+    key <- testStorageKey
+    let plain = "sensitive_field_value"
     enc1 <- encryptField key plain
     enc2 <- encryptField key plain
     -- Both must be encrypted (not plaintext pass-through)

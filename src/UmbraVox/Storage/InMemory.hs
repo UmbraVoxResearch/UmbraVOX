@@ -11,9 +11,10 @@ module UmbraVox.Storage.InMemory
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as C8
-import Data.IORef (newIORef, readIORef, modifyIORef')
+import Data.IORef (newIORef, readIORef, writeIORef, modifyIORef')
 import qualified Data.Map.Strict as Map
 
+import UmbraVox.Crypto.Signal.X3DH (IdentityKey)
 import UmbraVox.Storage.Class (StorageHandle(..))
 
 -- ---------------------------------------------------------------------------
@@ -60,6 +61,8 @@ newInMemoryStorage = do
     convsRef   <- newIORef (Map.empty :: Map.Map Int ConvRow)
     -- trusted keys: pubkey bytes -> label
     trustedRef <- newIORef (Map.empty :: Map.Map ByteString String)
+    -- identity key: at most one per handle
+    identityRef <- newIORef (Nothing :: Maybe IdentityKey)
 
     pure StorageHandle
         { shSavePeer = \pubkey ip port lastSeen source -> do
@@ -123,6 +126,10 @@ newInMemoryStorage = do
             -- simple seconds-based cutoff so the semantic matches Anthony.
             let cutoff = days * 86400
             modifyIORef' msgsRef (Map.map (filter (\r -> mrTimestamp r >= cutoff)))
+
+        , shSaveIdentityKey = writeIORef identityRef . Just
+
+        , shLoadIdentityKey = readIORef identityRef
 
         , shClose = pure ()
         }

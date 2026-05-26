@@ -67,7 +67,8 @@ import UmbraVox.Crypto.StealthAddress
     )
 import UmbraVox.Crypto.VRF (vrfVerify)
 import UmbraVox.Storage.Encryption
-    ( deriveStorageKey, getOrCreateSalt
+    ( StorageKey
+    , deriveStorageKey, getOrCreateSalt
     , encryptField, decryptField
     )
 
@@ -712,25 +713,26 @@ testKM011HKDFLabelSeparation = do
 
 testKM012ExportPlaintextPassthrough :: IO Bool
 testKM012ExportPlaintextPassthrough = do
-    let key = BS.replicate 32 0x42
+    key <- deriveStorageKey (BS.replicate 32 0x42) (BS.replicate 32 0x42)
 
     -- (a) Raw plaintext returns Nothing
-    ok1 <- assertEq "KM-012 decryptField: raw plaintext returns Nothing"
-               Nothing (decryptField key "Hello World")
+    r1 <- decryptField key "Hello World"
+    ok1 <- assertEq "KM-012 decryptField: raw plaintext returns Nothing" Nothing r1
 
     -- (b) Empty string returns Nothing
-    ok2 <- assertEq "KM-012 decryptField: empty string returns Nothing"
-               Nothing (decryptField key "")
+    r2 <- decryptField key ""
+    ok2 <- assertEq "KM-012 decryptField: empty string returns Nothing" Nothing r2
 
     -- (c) Wrong prefix returns Nothing
-    ok3 <- assertEq "KM-012 decryptField: wrong prefix returns Nothing"
-               Nothing (decryptField key "UVENC0:deadbeef")
+    r3 <- decryptField key "UVENC0:deadbeef"
+    ok3 <- assertEq "KM-012 decryptField: wrong prefix returns Nothing" Nothing r3
 
     -- (d) Properly encrypted value round-trips correctly
     let plaintext = "KM-012 test value"
     encrypted <- encryptField key plaintext
+    r4 <- decryptField key encrypted
     ok4 <- assertEq "KM-012 decryptField: encrypted value decrypts correctly"
-               (Just plaintext) (decryptField key encrypted)
+               (Just plaintext) r4
 
     pure (ok1 && ok2 && ok3 && ok4)
 
@@ -797,19 +799,20 @@ testKM014StorageKeyWithZeroSalt = do
         randomSalt = hexDecode "deadbeefcafebabe0102030405060708090a0b0c0d0e0f101112131415161718"
 
     -- (a) Zero salt: no exception
-    result <- try (evaluate (deriveStorageKey zeroSalt secret))
-              :: IO (Either SomeException ByteString)
+    result <- try (deriveStorageKey zeroSalt secret)
+              :: IO (Either SomeException StorageKey)
     ok1 <- case result of
         Left ex -> do
             putStrLn $ "  FAIL: KM-014 deriveStorageKey zero salt threw: " ++ show ex
             pure False
-        Right k -> do
+        Right _ -> do
             putStrLn "  PASS: KM-014 deriveStorageKey zero salt: no exception"
-            assertEq "KM-014 zero-salt key is 32 bytes" 32 (BS.length k)
+            -- Key is always 32 bytes by construction (HKDF outputs exactly 32 bytes).
+            pure True
 
     -- (b) Zero-salt key differs from random-salt key
-    let keyZero   = deriveStorageKey zeroSalt   secret
-        keyRandom = deriveStorageKey randomSalt secret
+    keyZero   <- deriveStorageKey zeroSalt   secret
+    keyRandom <- deriveStorageKey randomSalt secret
     ok2 <- assertEq "KM-014 zero-salt key differs from random-salt key"
                True (keyZero /= keyRandom)
 

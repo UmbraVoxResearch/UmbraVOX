@@ -19,6 +19,7 @@ All tests run inside VMs unless `--direct` is explicitly used.
 | L8 | MC/DC coverage | `./uv coverage --mcdc` | Modified Condition/Decision Coverage for safety-critical paths. | ~15 min | Yes |
 | L9 | Platform smoke | `./uv vm smoke <target>` | Boot a platform VM, verify binary executes. Targets: freebsd, openbsd, netbsd, illumos, dragonfly, arm64, release. | ~5 min | Yes |
 | L10 | End-to-end | `./uv test e2e` | Full pipeline from clean state: build image → compile → test → check → runtime images. | ~45 min | Yes |
+| L10 | End-to-end (bootstrap) | `./uv test e2e --bootstrap` | Cold-start path: clean → nix-shell → build image → full pipeline. Tests the bootstrap chain from scratch. | ~60 min | Yes |
 | L11 | Ephemeral | `./uv test ephemeral` | Build a fresh VM image, run tests inside it, discard. Catches image staleness. | ~30 min | Yes |
 | L12 | Integration | `./uv vm integration [--dual-lan]` | Multi-VM test with 3-6 agents communicating across virtual networks. | ~15 min | Yes |
 | L13 | Pre-release | `./uv check pre-release` | 10 assurance gates: F* admit count, assume val inventory, ledger consistency, proof hygiene, Coq build, infrastructure tests, differential oracle, assurance matrix, GPG signing, reproducibility. | ~2 min | Host |

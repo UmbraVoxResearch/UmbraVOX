@@ -185,15 +185,22 @@ initSession aliceIK bundle ekSecret mlkemRand = do
                      Just opk -> fmap Just (x25519 ekSecret' opk)
         let -- ML-KEM encapsulation
             !(pqCt, pqSS) = mlkemEncaps (pqpkbPQPreKey bundle) mlkemRand
-            -- Derive master secret (with identity + ciphertext binding)
-            !masterSecret = derivePQSecret dh1 dh2 dh3 mDh4 pqSS pqCt
-                                (ikX25519Public aliceIK) (pqpkbIdentityKey bundle)
-        Just PQXDHResult
-            { pqxdhSharedSecret = masterSecret
-            , pqxdhEphemeralKey = kpPublic ek
-            , pqxdhPQCiphertext = pqCt
-            , pqxdhUsedOPK      = pqpkbOneTimePreKey bundle
-            }
+        -- M23.3.2: validate ML-KEM encapsulation output
+        -- 1. Must be exactly 32 bytes (ML-KEM-768 shared secret size)
+        -- 2. Must not be all-zero (catches implementation bugs where
+        --    encapsulation fails silently instead of using implicit rejection)
+        if BS.length pqSS /= 32 || constantEq pqSS (BS.replicate 32 0)
+            then Nothing
+            else
+                let -- Derive master secret (with identity + ciphertext binding)
+                    !masterSecret = derivePQSecret dh1 dh2 dh3 mDh4 pqSS pqCt
+                                        (ikX25519Public aliceIK) (pqpkbIdentityKey bundle)
+                in Just PQXDHResult
+                    { pqxdhSharedSecret = masterSecret
+                    , pqxdhEphemeralKey = kpPublic ek
+                    , pqxdhPQCiphertext = pqCt
+                    , pqxdhUsedOPK      = pqpkbOneTimePreKey bundle
+                    }
 
 ------------------------------------------------------------------------
 -- PQXDH Response (Bob's side)
@@ -224,7 +231,10 @@ pqxdhRespond bobIK spkSecret mOPKSecret pqDK aliceIKPub aliceEKPub pqCt = do
                      Just opkSec -> fmap Just (x25519 opkSec aliceEKPub)
         let -- ML-KEM decapsulation
             !pqSS = mlkemDecaps pqDK pqCt
-        -- M23.3.2: reject decapsulation failure (all-zero shared secret)
-        if constantEq pqSS (BS.replicate (BS.length pqSS) 0)
+        -- M23.3.2: validate ML-KEM decapsulation output
+        -- 1. Must be exactly 32 bytes (ML-KEM-768 shared secret size)
+        -- 2. Must not be all-zero (catches implementation bugs where
+        --    decapsulation fails silently instead of using implicit rejection)
+        if BS.length pqSS /= 32 || constantEq pqSS (BS.replicate 32 0)
             then Nothing
             else Just (derivePQSecret dh1 dh2 dh3 mDh4 pqSS pqCt aliceIKPub (ikX25519Public bobIK))

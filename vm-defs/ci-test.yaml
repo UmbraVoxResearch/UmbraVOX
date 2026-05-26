@@ -5,14 +5,13 @@
 # (e.g., fetching test fixtures, pushing coverage reports, SOCKS5 transport
 # tests).
 #
-# Firecracker for fast per-job cold boots in CI.  User-mode networking
-# provides outbound HTTPS without TAP/bridge setup on ephemeral runners.
-# Resources scaled to 25% with a 2-core / 1GB floor — CI runners are
-# typically shared and memory-constrained.
+# QEMU with user-mode networking provides outbound HTTPS without TAP/bridge
+# setup on ephemeral runners.  Resources scaled to 25% with a 2-core / 1GB
+# floor — CI runners are typically shared and memory-constrained.
 
 name: ci-test
 tier: network
-hypervisor: firecracker
+hypervisor: qemu
 resources:
   fraction: 25
   min_cores: 2

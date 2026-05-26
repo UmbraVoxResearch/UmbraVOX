@@ -12,26 +12,36 @@
 /* Select a if cond is 1, b if cond is 0 (32-bit). */
 static inline uint32_t ct_select32(uint32_t cond, uint32_t a, uint32_t b) {
     uint32_t mask = -(cond & 1);
-    return (a & mask) | (b & ~mask);
+    uint32_t result = (a & mask) | (b & ~mask);
+    __asm__ __volatile__("" ::: "memory");
+    return result;
 }
 
 /* Select a if cond is 1, b if cond is 0 (64-bit). */
 static inline uint64_t ct_select64(uint64_t cond, uint64_t a, uint64_t b) {
     uint64_t mask = -(cond & 1);
-    return (a & mask) | (b & ~mask);
+    uint64_t result = (a & mask) | (b & ~mask);
+    __asm__ __volatile__("" ::: "memory");
+    return result;
 }
 
 /* Return 1 if a == b, 0 otherwise (32-bit). */
 static inline uint32_t ct_eq32(uint32_t a, uint32_t b) {
     uint32_t x = a ^ b;
-    return ((uint32_t)(-(int32_t)x) >> 31) ^ 1;
+    uint32_t result = ((uint32_t)(-(int32_t)x) >> 31) ^ 1;
+    __asm__ __volatile__("" ::: "memory");
+    return result;
 }
 
 /* Return 1 if a < b, 0 otherwise (32-bit, unsigned).
-   Arithmetic right shift of signed int64 is implementation-defined
-   but universally sign-extends on all modern platforms (x86, ARM, RISC-V). */
+   Widening to uint64_t before subtracting avoids any signed overflow or
+   implementation-defined right-shift behaviour; bit 63 of the difference
+   is set iff a < b. */
 static inline uint32_t ct_lt32(uint32_t a, uint32_t b) {
-    return (uint32_t)(((int64_t)a - (int64_t)b) >> 63);
+    uint64_t diff = (uint64_t)a - (uint64_t)b;
+    uint32_t result = (uint32_t)((diff >> 63) & 1);
+    __asm__ __volatile__("" ::: "memory");
+    return result;
 }
 
 /* Return 1 if a == 0, 0 otherwise (32-bit). */

@@ -48,8 +48,8 @@ testRoundTrip = do
         (z, _g2) = nextBytes 32 g1
         (ekBS, dkBS) = makeKeypair d z
         plaintext = BS.pack [0x48, 0x65, 0x6c, 0x6c, 0x6f]  -- "Hello"
-        ciphertext = pqEncrypt ekBS plaintext
-        result = pqDecrypt dkBS ciphertext
+    ciphertext <- pqEncrypt ekBS plaintext
+    let result = pqDecrypt dkBS ciphertext
     case result of
         Just got | got == plaintext -> do
             putStrLn "  PASS: round-trip encrypt/decrypt"
@@ -72,8 +72,8 @@ testWrongKey = do
         (ekBS1, _dkBS1) = makeKeypair d1 z1
         (_ekBS2, dkBS2) = makeKeypair d2 z2
         plaintext = BS.pack [0x54, 0x65, 0x73, 0x74]  -- "Test"
-        ciphertext = pqEncrypt ekBS1 plaintext
-        result = pqDecrypt dkBS2 ciphertext
+    ciphertext <- pqEncrypt ekBS1 plaintext
+    let result = pqDecrypt dkBS2 ciphertext
     case result of
         Nothing -> do
             putStrLn "  PASS: wrong key returns Nothing"
@@ -90,8 +90,8 @@ testTruncatedCiphertext = do
         (z, _g2) = nextBytes 32 g1
         (ekBS, dkBS) = makeKeypair d z
         plaintext = BS.pack [0x41, 0x42, 0x43]
-        ciphertext = pqEncrypt ekBS plaintext
-        -- Truncate to less than kemCtLen (1088) + gcmTagLen (16)
+    ciphertext <- pqEncrypt ekBS plaintext
+    let -- Truncate to less than kemCtLen (1088) + gcmTagLen (16)
         truncated = BS.take 1000 ciphertext
         result = pqDecrypt dkBS truncated
     case result of
@@ -110,8 +110,8 @@ testEmptyPlaintext = do
         (z, _g2) = nextBytes 32 g1
         (ekBS, dkBS) = makeKeypair d z
         plaintext = BS.empty
-        ciphertext = pqEncrypt ekBS plaintext
-        result = pqDecrypt dkBS ciphertext
+    ciphertext <- pqEncrypt ekBS plaintext
+    let result = pqDecrypt dkBS ciphertext
     case result of
         Just got | BS.null got -> do
             putStrLn "  PASS: empty plaintext round-trip"
@@ -131,8 +131,8 @@ testLargePlaintext = do
         (z, g2)  = nextBytes 32 g1
         (ekBS, dkBS) = makeKeypair d z
         (plaintext, _g3) = nextBytes 4096 g2
-        ciphertext = pqEncrypt ekBS plaintext
-        result = pqDecrypt dkBS ciphertext
+    ciphertext <- pqEncrypt ekBS plaintext
+    let result = pqDecrypt dkBS ciphertext
     case result of
         Just got | got == plaintext -> do
             putStrLn "  PASS: large plaintext (4KB) round-trip"

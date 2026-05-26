@@ -115,7 +115,16 @@ func runSBOM(_ []string) int {
 		}
 	}
 
-	// --- 6. Read VERSION ---
+	// --- 6. Nix deps from flake.lock ---
+	nixComps := scanFlakeLock(root)
+	components = append(components, nixComps...)
+	for _, c := range nixComps {
+		for _, lw := range c.Licenses {
+			licenses[lw.License.ID] = true
+		}
+	}
+
+	// --- 7. Read VERSION ---
 	version := readVersion(root)
 
 	// --- Build CycloneDX 1.5 ---
@@ -184,13 +193,47 @@ func scanCabalFreeze(root string) []cdxComp {
 		// Strip trailing comma from version if present.
 		ver = strings.TrimRight(ver, ",")
 		comps = append(comps, cdxComp{
-			Type:    "library",
-			Name:    name,
-			Version: ver,
-			PURL:    fmt.Sprintf("pkg:hackage/%s@%s", name, ver),
+			Type:     "library",
+			Name:     name,
+			Version:  ver,
+			Licenses: hackageLicense(name),
+			PURL:     fmt.Sprintf("pkg:hackage/%s@%s", name, ver),
 		})
 	}
 	return comps
+}
+
+// hackageLicense returns the SPDX license ID for well-known Haskell packages.
+// GHC boot libraries are BSD-3-Clause; common Hackage packages have known licenses.
+func hackageLicense(pkg string) []cdxLicWrap {
+	// GHC boot libraries (all BSD-3-Clause).
+	ghcBoot := map[string]bool{
+		"array": true, "base": true, "binary": true, "bytestring": true,
+		"containers": true, "deepseq": true, "directory": true, "exceptions": true,
+		"filepath": true, "ghc-bignum": true, "ghc-boot": true, "ghc-boot-th": true,
+		"ghc-compact": true, "ghc-heap": true, "ghc-prim": true, "ghci": true,
+		"hpc": true, "integer-gmp": true, "mtl": true, "parsec": true,
+		"pretty": true, "process": true, "stm": true, "template-haskell": true,
+		"text": true, "time": true, "transformers": true, "unix": true,
+		"Win32": true, "xhtml": true, "Cabal": true, "Cabal-syntax": true,
+	}
+	if ghcBoot[pkg] {
+		return []cdxLicWrap{{License: cdxLicense{ID: "BSD-3-Clause"}}}
+	}
+	// Well-known packages with known licenses.
+	known := map[string]string{
+		"aeson": "BSD-3-Clause", "attoparsec": "BSD-3-Clause",
+		"network": "BSD-3-Clause", "vector": "BSD-3-Clause",
+		"unordered-containers": "BSD-3-Clause", "hashable": "BSD-3-Clause",
+		"scientific": "BSD-3-Clause", "primitive": "BSD-3-Clause",
+		"crypton": "BSD-3-Clause", "memory": "BSD-3-Clause",
+		"async": "BSD-3-Clause", "random": "BSD-3-Clause",
+		"sqlite-simple": "BSD-3-Clause", "direct-sqlite": "BSD-3-Clause",
+	}
+	if lic, ok := known[pkg]; ok {
+		return []cdxLicWrap{{License: cdxLicense{ID: lic}}}
+	}
+	return nil
 }
 
 // scanGeneratedC discovers CryptoGen-generated C source files.
@@ -329,11 +372,74 @@ func scanGoMod(root string) []cdxComp {
 
 func goModComp(mod, ver string) cdxComp {
 	return cdxComp{
-		Type:    "library",
-		Name:    mod,
-		Version: ver,
-		PURL:    fmt.Sprintf("pkg:golang/%s@%s", mod, ver),
+		Type:     "library",
+		Name:     mod,
+		Version:  ver,
+		Licenses: goLicense(mod),
+		PURL:     fmt.Sprintf("pkg:golang/%s@%s", mod, ver),
 	}
+}
+
+// goLicense returns the SPDX license for well-known Go modules.
+func goLicense(mod string) []cdxLicWrap {
+	// Go stdlib-adjacent and common modules.
+	switch {
+	case strings.HasPrefix(mod, "golang.org/x/"):
+		return []cdxLicWrap{{License: cdxLicense{ID: "BSD-3-Clause"}}}
+	case strings.HasPrefix(mod, "github.com/golang/"):
+		return []cdxLicWrap{{License: cdxLicense{ID: "BSD-3-Clause"}}}
+	default:
+		return nil
+	}
+}
+
+// scanFlakeLock parses flake.lock for nix dependency pins.
+func scanFlakeLock(root string) []cdxComp {
+	path := filepath.Join(root, "flake.lock")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		log.Warn("sbom", fmt.Sprintf("flake.lock: %v", err))
+		return nil
+	}
+
+	var lock struct {
+		Nodes map[string]struct {
+			Locked struct {
+				Owner string `json:"owner"`
+				Repo  string `json:"repo"`
+				Rev   string `json:"rev"`
+				Type  string `json:"type"`
+			} `json:"locked"`
+		} `json:"nodes"`
+	}
+	if err := json.Unmarshal(data, &lock); err != nil {
+		log.Warn("sbom", fmt.Sprintf("flake.lock parse: %v", err))
+		return nil
+	}
+
+	var comps []cdxComp
+	for name, node := range lock.Nodes {
+		if name == "root" || node.Locked.Rev == "" {
+			continue
+		}
+		owner := node.Locked.Owner
+		repo := node.Locked.Repo
+		rev := node.Locked.Rev
+		purl := ""
+		if node.Locked.Type == "github" && owner != "" && repo != "" {
+			purl = fmt.Sprintf("pkg:github/%s/%s@%s", owner, repo, rev)
+		}
+		comps = append(comps, cdxComp{
+			Type:    "library",
+			Name:    name,
+			Version: rev[:12], // short rev as version
+			Licenses: []cdxLicWrap{
+				{License: cdxLicense{ID: "MIT"}}, // nixpkgs is MIT
+			},
+			PURL: purl,
+		})
+	}
+	return comps
 }
 
 // readVersion extracts the version string from src/UmbraVox/Version.hs.
