@@ -1,6 +1,6 @@
 # Base VM tier: boots, has a shell, can mount disks, can run a binary.
 # This is the minimal tier — no network, no nix daemon, no toolchain.
-# Used by: Firecracker runtime, QEMU runtime, smoke guests.
+# Used by: QEMU runtime, smoke guests.
 #
 # Tier hierarchy:
 #   base → network → builder → dev

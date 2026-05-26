@@ -183,23 +183,11 @@ func vmBuildRuntimeImageOnHost(repoRoot string) int {
 	runtimeNix := filepath.Join(repoRoot, "nix", "vm-runtime.nix")
 	vmDir := filepath.Join(repoRoot, "build", "vm")
 
-	// ── Firecracker bundle (rootfs + kernel) ─────────────────────
-	fcOutDir := filepath.Join(vmDir, "runtime-image")
-	os.RemoveAll(fcOutDir) // clean stale symlink/dir before nix-build
-	log.Info(tag, "Building Firecracker runtime image on host...")
-	cmd := exec.Command("nix-build", runtimeNix, "-A", "firecracker", "-o", fcOutDir)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		log.Fail(tag, fmt.Sprintf("nix-build firecracker failed: %v", err))
-		return 1
-	}
-
 	// ── QEMU image ───────────────────────────────────────────────
 	qemuOutDir := filepath.Join(vmDir, "runtime-qemu-image")
 	os.RemoveAll(qemuOutDir) // clean stale symlink/dir before nix-build
 	log.Info(tag, "Building QEMU runtime image on host...")
-	cmd = exec.Command("nix-build", runtimeNix, "-A", "qemu", "-o", qemuOutDir)
+	cmd := exec.Command("nix-build", runtimeNix, "-A", "qemu", "-o", qemuOutDir)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -207,11 +195,9 @@ func vmBuildRuntimeImageOnHost(repoRoot string) int {
 		return 1
 	}
 
-	fcSize := pathSize(fcOutDir)
 	qemuSize := pathSize(qemuOutDir)
-	log.OK(tag, "Runtime images built successfully")
-	log.Info(tag, fmt.Sprintf("  Firecracker: %s (%s)", fcOutDir, formatSize(fcSize)))
-	log.Info(tag, fmt.Sprintf("  QEMU:        %s (%s)", qemuOutDir, formatSize(qemuSize)))
+	log.OK(tag, "Runtime image built successfully")
+	log.Info(tag, fmt.Sprintf("  QEMU: %s (%s)", qemuOutDir, formatSize(qemuSize)))
 	return 0
 }
 

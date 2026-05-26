@@ -4,10 +4,8 @@
 # Used by:
 #   ./uv run gui   — lightweight QEMU window with VGA display (<1GB image)
 #
-# QEMU is required (Firecracker has no display support).
 # GTK display mode enables the graphical output.
 # No network: runtime binary is self-contained.
-# Slightly more RAM than the Firecracker path to accommodate the VGA framebuffer.
 
 name: runtime-qemu
 tier: base

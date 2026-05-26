@@ -25,7 +25,7 @@ Each staged release artifact also includes:
 ## Smoke Validation Status
 
 Current smoke coverage is split between a working container-based check and
-microVM entrypoints that now support direct pinned boot for both VMMs:
+a QEMU microVM entrypoint that supports direct pinned boot:
 
 - `./uv release --smoke linux` performs an isolated Linux bundle smoke check
   with `podman` or `docker` when available.
@@ -33,7 +33,6 @@ microVM entrypoints that now support direct pinned boot for both VMMs:
   - `scripts/release-smoke-linux.sh` -- container-based Linux bundle smoke.
   - `scripts/release-smoke-appimage.sh` -- experimental AppImage scaffold smoke.
   - `./uv vm smoke release qemu` -- QEMU microVM smoke (Go implementation).
-  - `./uv vm smoke release firecracker` -- Firecracker microVM smoke (Go implementation).
   - `scripts/release-smoke-qemu-profile.sh` -- QEMU with `QEMU_SMOKE_PROFILE`.
 
 ## Orchestration Migration
@@ -97,19 +96,6 @@ Image caching:
 This closes the gap between host-trusted builds and authoritative
 isolated release execution (M2.4).
 
-### Firecracker Lane
-
-`./uv vm firecracker-smoke` provides the same isolated pipeline via
-Firecracker instead of QEMU:
-
-1. Builds (or reuses cached) Firecracker image via
-   `nix build .#firecracker-image` (vmlinux + ext4 rootfs)
-2. Creates source disk and generates Firecracker JSON config at runtime
-3. Boots Firecracker with KVM acceleration
-4. Guest runs the same pipeline as the QEMU lane
-
-The Firecracker image is cached at `build/vm/firecracker-image`.
-
 ## VM Integration Testing
 
 In addition to release smoke testing, the VM infrastructure supports
@@ -151,28 +137,18 @@ After those checks:
 
 1. QEMU can run a host-supplied smoke command via
    `UMBRAVOX_QEMU_SMOKE_RUNNER`
-2. Firecracker can run a host-supplied smoke command via
-   `UMBRAVOX_FIRECRACKER_SMOKE_RUNNER`
-3. QEMU can invoke a direct pinned-input boot path from
+2. QEMU can invoke a direct pinned-input boot path from
    `UMBRAVOX_QEMU_KERNEL`, `UMBRAVOX_QEMU_INITRD`,
    `UMBRAVOX_QEMU_ROOTFS`, and either `UMBRAVOX_QEMU_APPEND` or
    `UMBRAVOX_QEMU_PROFILE`
-4. Firecracker can invoke `firecracker --config-file` when
-   `UMBRAVOX_FIRECRACKER_KERNEL`, `UMBRAVOX_FIRECRACKER_ROOTFS`, and
-   `UMBRAVOX_FIRECRACKER_CONFIG` are supplied
-5. QEMU and Firecracker lane checks remain prerequisite-only checks
-6. Platform sanity checks only verify helper wiring
+3. QEMU lane checks remain prerequisite-only checks
+4. Platform sanity checks only verify helper wiring
 
 What is still not claimed here:
 
 - UmbraVOX does not yet ship a maintained guest image/rootfs for these paths.
 - The default microVM smoke command remains scaffold-only when no runner hook
   or pinned inputs are provided.
-- Firecracker does not yet have the same documented deterministic smoke-profile
-  helper that QEMU has via `scripts/release-smoke-qemu-profile.sh`.
-- Firecracker pinned boot is an invocation path, not yet a repository-owned
-  maintained guest/config profile that proves in-guest bundle verification by
-  default, and the M2.4.4.c.4 guest-image/config evidence task remains open.
 - The AppImage track is scaffold-only and does not yet claim a maintained,
   supported single-file release artifact.
 - These entrypoints are not yet evidence that release packaging is executed
@@ -283,14 +259,9 @@ nix-shell
 scripts/release-smoke-linux.sh
 scripts/release-smoke-appimage.sh
 ./uv vm smoke release qemu
-./uv vm smoke release firecracker
 UMBRAVOX_QEMU_PROFILE=bundle-basic \
 UMBRAVOX_QEMU_KERNEL=/path/to/bzImage \
 UMBRAVOX_QEMU_INITRD=/path/to/initrd \
 UMBRAVOX_QEMU_ROOTFS=/path/to/rootfs.img \
 ./uv vm smoke release qemu
-UMBRAVOX_FIRECRACKER_KERNEL=/path/to/vmlinux \
-UMBRAVOX_FIRECRACKER_ROOTFS=/path/to/rootfs.img \
-UMBRAVOX_FIRECRACKER_CONFIG=/path/to/firecracker.json \
-./uv vm smoke release firecracker
 ```

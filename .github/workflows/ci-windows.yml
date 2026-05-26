@@ -1,4 +1,4 @@
-name: CI - Windows (M3.1.4)
+name: CI - Windows
 
 on:
   push:
@@ -61,7 +61,7 @@ jobs:
       - name: Set up Haskell
         uses: haskell-actions/setup@ec49af4e6fd92c53c1d67070e922e43fdde17af0  # v2
         with:
-          ghc-version: '9.6'
+          ghc-version: '9.14'
           cabal-version: 'latest'
 
       - name: Cabal update

@@ -8,31 +8,18 @@
 
 let
   nixosConfig = { config, lib, modulesPath, pkgs, ... }: {
-    imports = [ (modulesPath + "/profiles/qemu-guest.nix") ];
+    imports = [ ./tiers/base.nix ];
 
     boot.loader.grub.device = "/dev/vda";
-    boot.kernelParams = [ "console=ttyS0" "panic=1" ];
+    # Add virtio_scsi on top of the modules provided by vm-base.nix
     boot.initrd.availableKernelModules = [
       "virtio_pci" "virtio_blk" "virtio_scsi" "virtio_net" "ext4"
     ];
 
-    fileSystems."/" = {
-      device = "/dev/vda1";
-      fsType = "ext4";
-    };
-
-    swapDevices = [];
     networking.hostName = "umbravox-agent";
-    networking.firewall.enable = false;
 
-    # Serial console
-    systemd.services."serial-getty@ttyS0".enable = true;
-    services.getty.autologinUser = "root";
-
-    # Minimal runtime packages (no build tools)
+    # Test-specific runtime packages (no build tools)
     environment.systemPackages = with pkgs; [
-      bashInteractive
-      coreutils
       findutils
       gnugrep
       gnused
@@ -42,26 +29,17 @@ let
       iputils
       netcat-gnu
       procps
-      util-linux
       which
       tcpdump
       microsocks
     ];
 
-    # Workspace for bundle extraction
+    # Test agents need less workspace than build VMs
     fileSystems."/work" = {
       device = "tmpfs";
       fsType = "tmpfs";
-      options = [ "size=2G" "mode=1777" ];
+      options = [ "size=2G" "mode=0700" ];
     };
-
-    # FHS compatibility
-    system.activationScripts.fhsCompat = ''
-      mkdir -p /bin /usr/bin
-      ln -sf /run/current-system/sw/bin/bash /bin/bash
-      ln -sf /run/current-system/sw/bin/sh /bin/sh
-      ln -sf /run/current-system/sw/bin/env /usr/bin/env
-    '';
 
     # Auto-run integration test agent on boot
     systemd.services.umbravox-agent = {
@@ -103,16 +81,6 @@ let
       };
     };
 
-    # Minimize image size
-    documentation.enable = false;
-    programs.command-not-found.enable = false;
-    services.udisks2.enable = false;
-    security.polkit.enable = false;
-    xdg.mime.enable = false;
-    xdg.icons.enable = false;
-    nix.enable = false;
-
-    system.stateVersion = "25.05";
   };
 
   nixos = import (pkgs.path + "/nixos") {

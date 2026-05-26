@@ -13,7 +13,7 @@ module UmbraVox.Crypto.Signal.Session
   , deserializeSession
   ) where
 
-import Data.Bits (shiftL, shiftR, (.&.), (.|.))
+import Data.Bits (shiftL, (.|.))
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.Map.Strict as Map

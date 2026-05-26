@@ -10,8 +10,7 @@
 #
 # Network is mandatory: Signal Server must bind ports and accept inbound
 # connections from clients; user-mode SLIRP provides host-forwarded access.
-# QEMU preferred over Firecracker for its richer virtio-net emulation and
-# port-forwarding ergonomics.
+# QEMU provides virtio-net emulation and port-forwarding.
 # Resources set to 25% with a 2-core / 2GB floor; the JVM heap is bounded
 # separately inside the guest.
 

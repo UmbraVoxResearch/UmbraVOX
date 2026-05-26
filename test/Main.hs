@@ -1,5 +1,4 @@
 -- SPDX-License-Identifier: Apache-2.0
-{-# LANGUAGE CPP #-}
 module Main (main) where
 
 import System.Environment (getArgs)
@@ -12,23 +11,10 @@ import qualified Test.Chat.API as ChatAPI
 import qualified Test.Chat.Contacts as ChatContacts
 import qualified Test.Chat.Message as ChatMessage
 import qualified Test.Chat.Session as ChatSession
-import qualified Test.Chat.Transaction as ChatTransaction
 import qualified Test.Chat.Wire as ChatWire
 import qualified Test.Chat.OutboundQueue as ChatOutboundQueue
 import qualified Test.Chat.WireEdge as ChatWireEdge
 import qualified Test.Codegen as Codegen
-#ifdef STUBS
-import qualified Test.Consensus.Block as ConsensusBlock
-import qualified Test.Consensus.ForkChoice as ConsensusForkChoice
-import qualified Test.Consensus.LeaderElection as ConsensusLeaderElection
-import qualified Test.Consensus.Ledger as ConsensusLedger
-import qualified Test.Consensus.Mempool as ConsensusMempool
-import qualified Test.Consensus.Nonce as ConsensusNonce
-import qualified Test.Consensus.Protocol as ConsensusProtocol
-import qualified Test.Consensus.Truncation as ConsensusTruncation
-import qualified Test.Consensus.Types as ConsensusTypes
-import qualified Test.Consensus.Validation as ConsensusValidation
-#endif
 import qualified Test.Crypto.AES as AES
 import qualified Test.Crypto.BIP39 as BIP39
 import qualified Test.Crypto.ChaCha20 as ChaCha20
@@ -74,14 +60,6 @@ import qualified Test.Crypto.Vectors.X25519 as VectorsX25519
 import qualified Test.Crypto.Vectors.MLKEM as VectorsMLKEM
 import qualified Test.EndToEnd as EndToEnd
 import qualified Test.EndToEnd2 as EndToEnd2
-#ifdef STUBS
-import qualified Test.Economics.Cycle as EconCycle
-import qualified Test.Economics.Fees as EconFees
-import qualified Test.Economics.Onboarding as EconOnboarding
-import qualified Test.Economics.Penalty as EconPenalty
-import qualified Test.Economics.Rewards as EconRewards
-import qualified Test.Economics.Token as EconToken
-#endif
 import qualified Test.Equivalence as Equivalence
 import qualified Test.Fuzz as Fuzz
 import qualified Test.FuzzConnection as FuzzConnection
@@ -152,10 +130,6 @@ import qualified Test.Plugin.Registry as PluginRegistry
 import qualified Test.Plugin.EphemeralIntegration as EphemeralIntegration
 import qualified Test.Storage.Anthony as Anthony
 import qualified Test.Storage.Encryption as StorageEncryption
-import qualified Test.Storage.ChainDB as ChainDB
-import qualified Test.Storage.Checkpoint as Checkpoint
-import qualified Test.Storage.Index as StorageIndex
-import qualified Test.Storage.StateDB as StateDB
 import qualified Test.TUI.Actions as TUIActions
 import qualified Test.TUI.Handshake as TUIHandshake
 import qualified Test.TUI.HandshakeEdge as TUIHandshakeEdge
@@ -287,7 +261,7 @@ runSuiteArg suiteArg =
             ]
         "unicode" -> runSuiteGroup "UmbraVox Unicode Exhaustive Suite"
             [Suite "unicode" Unicode.runTests]
-        "deferred" -> runSuiteGroup "UmbraVox Deferred Stub Suite" deferredSuites
+        "deferred" -> runSuiteGroup "UmbraVox Deferred Suite (empty)" deferredSuites
         "all" -> runSuiteGroup "UmbraVox Full Test Matrix"
             (requiredSuites ++ tuiSimSuites ++ integritySuites ++ soakSuites ++ deferredSuites)
         _ ->
@@ -580,31 +554,7 @@ integritySuites =
     ]
 
 deferredSuites :: [Suite]
-deferredSuites =
-    [ Suite "chat-transaction" ChatTransaction.runTests
-    , Suite "storage-chaindb" ChainDB.runTests
-    , Suite "storage-statedb" StateDB.runTests
-    , Suite "storage-index" StorageIndex.runTests
-    , Suite "storage-checkpoint" Checkpoint.runTests
-#ifdef STUBS
-    , Suite "consensus-types" ConsensusTypes.runTests
-    , Suite "consensus-block" ConsensusBlock.runTests
-    , Suite "consensus-ledger" ConsensusLedger.runTests
-    , Suite "consensus-mempool" ConsensusMempool.runTests
-    , Suite "consensus-validation" ConsensusValidation.runTests
-    , Suite "consensus-fork-choice" ConsensusForkChoice.runTests
-    , Suite "consensus-nonce" ConsensusNonce.runTests
-    , Suite "consensus-leader-election" ConsensusLeaderElection.runTests
-    , Suite "consensus-protocol" ConsensusProtocol.runTests
-    , Suite "consensus-truncation" ConsensusTruncation.runTests
-    , Suite "economics-token" EconToken.runTests
-    , Suite "economics-fees" EconFees.runTests
-    , Suite "economics-rewards" EconRewards.runTests
-    , Suite "economics-penalty" EconPenalty.runTests
-    , Suite "economics-cycle" EconCycle.runTests
-    , Suite "economics-onboarding" EconOnboarding.runTests
-#endif
-    ]
+deferredSuites = []
 
 requiredSuites :: [Suite]
 requiredSuites = coreSuites ++ tcpSuites ++ faultSuites ++ recoverySuites ++ integritySuites

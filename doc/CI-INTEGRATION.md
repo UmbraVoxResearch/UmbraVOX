@@ -405,9 +405,9 @@ cat /mnt/src/.vm-exec-cmd      # command that was sent to the VM
 `./uv vm integration` with `--dual-lan` requires bridge and TAP device setup:
 
 ```bash
-sudo scripts/vm-network-setup.sh setup 6
+sudo ./uv vm netsetup setup 6
 ./uv vm integration --dual-lan
-sudo scripts/vm-network-setup.sh teardown
+sudo ./uv vm netsetup teardown
 ```
 
 Standard `./uv vm integration` (without `--dual-lan`) does not require elevated

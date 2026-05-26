@@ -551,7 +551,7 @@ func checkPreRelease() int {
 	assuranceMatrix := filepath.Join(repoRoot, "test", "evidence", "formal-proofs", "ASSURANCE-MATRIX.md")
 
 	// 1. F* admit check
-	runGate("[1/10] F* admit check", func() (int, string) {
+	runGate("[1/11] F* admit check", func() (int, string) {
 		if _, err := os.Stat(fstarDir); err != nil {
 			return -1, "skip (fstar dir not found)"
 		}
@@ -576,7 +576,7 @@ func checkPreRelease() int {
 
 	// 2. assume val inventory (always passes; writes inventory file)
 	var assumeCount int
-	runGate("[2/10] Assume val inventory", func() (int, string) {
+	runGate("[2/11] Assume val inventory", func() (int, string) {
 		if _, err := os.Stat(fstarDir); err != nil {
 			return -1, "skip (fstar dir not found)"
 		}
@@ -605,7 +605,7 @@ func checkPreRelease() int {
 	})
 
 	// 3. Assumption ledger consistency
-	runGate("[3/10] Assumption ledger", func() (int, string) {
+	runGate("[3/11] Assumption ledger", func() (int, string) {
 		script := filepath.Join(repoRoot, "test", "evidence", "formal-proofs", "check-assumption-ledger.sh")
 		if _, err := os.Stat(script); err != nil {
 			return -1, "skip (check-assumption-ledger.sh not found)"
@@ -619,7 +619,7 @@ func checkPreRelease() int {
 	})
 
 	// 4. Proof hygiene
-	runGate("[4/10] Proof hygiene", func() (int, string) {
+	runGate("[4/11] Proof hygiene", func() (int, string) {
 		script := filepath.Join(repoRoot, "test", "evidence", "formal-proofs", "check-proof-hygiene.sh")
 		if _, err := os.Stat(script); err != nil {
 			return -1, "skip (check-proof-hygiene.sh not found)"
@@ -633,7 +633,7 @@ func checkPreRelease() int {
 	})
 
 	// 5. Coq build
-	runGate("[5/10] Coq build", func() (int, string) {
+	runGate("[5/11] Coq build", func() (int, string) {
 		if _, err := exec.LookPath("coqc"); err != nil {
 			return -1, "skip (coqc not available — run in nix-shell)"
 		}
@@ -653,7 +653,7 @@ func checkPreRelease() int {
 	})
 
 	// 6. Infrastructure tests
-	runGate("[6/10] Infrastructure tests", func() (int, string) {
+	runGate("[6/11] Infrastructure tests", func() (int, string) {
 		script := filepath.Join(repoRoot, "scripts", "test-infrastructure.sh")
 		if _, err := os.Stat(script); err != nil {
 			return -1, "skip (test-infrastructure.sh not found)"
@@ -667,7 +667,7 @@ func checkPreRelease() int {
 	})
 
 	// 7. Differential tests
-	runGate("[7/10] Differential tests", func() (int, string) {
+	runGate("[7/11] Differential tests", func() (int, string) {
 		if _, err := exec.LookPath("cabal"); err != nil {
 			return -1, "skip (cabal not available)"
 		}
@@ -680,7 +680,7 @@ func checkPreRelease() int {
 	})
 
 	// 8. ASSURANCE-MATRIX freshness
-	runGate("[8/10] ASSURANCE-MATRIX freshness", func() (int, string) {
+	runGate("[8/11] ASSURANCE-MATRIX freshness", func() (int, string) {
 		if _, err := os.Stat(assuranceMatrix); err != nil {
 			return -1, "skip (ASSURANCE-MATRIX.md not found)"
 		}
@@ -700,7 +700,7 @@ func checkPreRelease() int {
 	})
 
 	// 9. GPG signing key availability
-	runGate("[9/10] GPG signing key availability", func() (int, string) {
+	runGate("[9/11] GPG signing key availability", func() (int, string) {
 		if _, err := exec.LookPath("gpg"); err != nil {
 			return 1, "gpg not installed — required for release signing"
 		}
@@ -719,7 +719,7 @@ func checkPreRelease() int {
 	})
 
 	// 10. Reproducibility check
-	runGate("[10/10] Reproducibility check", func() (int, string) {
+	runGate("[10/11] Reproducibility check", func() (int, string) {
 		script := filepath.Join(repoRoot, "scripts", "release-reproducibility-check.sh")
 		info, err := os.Stat(script)
 		if err != nil || info.Mode()&0o111 == 0 {
@@ -731,6 +731,15 @@ func checkPreRelease() int {
 			return 1, ""
 		}
 		return 0, ""
+	})
+
+	// 11. SBOM validation
+	runGate("[11/11] SBOM validation", func() (int, string) {
+		code := checkSBOM()
+		if code == 0 {
+			return 0, ""
+		}
+		return code, ""
 	})
 
 	// Print results

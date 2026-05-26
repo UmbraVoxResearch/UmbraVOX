@@ -42,7 +42,7 @@ All tests run inside VMs unless `--direct` is explicitly used.
 | `tui-sim` | TUI simulation | Full TUI interaction simulation (contacts, chat, settings, menus) |
 | `integrity` | Test vectors | SHA-256 integrity validation of all test vector files |
 | `mdns` | mDNS discovery | Peer discovery, announcement, conflict resolution |
-| `deferred` | Deferred features | Consensus stubs, blockchain stubs (behind `-fstubs` flag) |
+| `deferred` | Deferred features | (Blockchain/consensus modules permanently removed; `-fstubs` flag retired) |
 | `differential` | Differential oracle | Generated C output vs libsodium/HACL* reference |
 | `soak` | Stress/endurance | Long-running message exchange, key rotation, memory stability |
 

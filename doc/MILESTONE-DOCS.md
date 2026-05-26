@@ -15,8 +15,8 @@ Last updated: 2026-05-22
   ListenerCallbacks, moved Bridge/Signal/Main.hs to app/signal-bridge/.
 - M20.2: 11 `*Safe` crypto variants added, 24 stub modules documented with
   error handling hardening.
-- M20.3: Consensus/economics stubs gated behind cabal flag, transport stubs
-  documented, all test files wired, 7 attic docs archived.
+- M20.3: Consensus/economics modules permanently removed (not deferred),
+  transport stubs documented, all test files wired, 7 attic docs archived.
 - M20.4 (partial): 36 M-series TODOs audited, VM agent trust boundary hardened,
   IPC decode hardened with 64 KiB guard + telemetry, config hash pinning
   fail-closed.
@@ -31,8 +31,8 @@ Last updated: 2026-05-22
 - `src/UmbraVox/Network/Listener.hs` (ListenerCallbacks decoupling)
 - `app/signal-bridge/Main.hs` (extracted bridge entrypoint)
 - `src/UmbraVox/Crypto/*.hs` (*Safe variants across all crypto modules)
-- `src/UmbraVox/Consensus/` (gated stubs)
-- `src/UmbraVox/Economics/` (gated stubs)
+- `src/UmbraVox/Consensus/` (removed)
+- `src/UmbraVox/Economics/` (removed)
 - `./uv` (VM-default targets, run_named_suite macro -- formerly Makefile)
 - `flake.nix` (VM-only devShell)
 - `coq/` (Coq proof files, 14 files, 475 Qed)

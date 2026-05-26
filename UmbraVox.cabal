@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               UmbraVox
-version:            0.6.2
+version:            0.6.3
 synopsis:           Decentralized encrypted communications protocol
 description:
   UmbraVox is a research-oriented encrypted messaging project with
@@ -42,10 +42,7 @@ flag wasm
   default:     False
   manual:      True
 
-flag stubs
-  description: Include unimplemented stub modules (consensus, economics, etc.)
-  default:     True
-  manual:      True
+
 
 common warnings
   ghc-options:
@@ -268,9 +265,9 @@ library
       UmbraVox.Runtime.Headless
   build-depends:
     base         >= 4.18  && < 5,
-    bytestring   >= 0.11  && < 0.13,
-    containers   >= 0.6   && < 0.9,
-    array        >= 0.5   && < 0.6,
+    bytestring   >= 0.11  && < 0.14,
+    containers   >= 0.6   && < 0.10,
+    array        >= 0.5   && < 0.7,
     stm          >= 2.5   && < 2.7,
     text         >= 2.0   && < 2.3
   if !flag(wasm)
@@ -278,7 +275,7 @@ library
       network      >= 3.1   && < 3.4,
       directory    >= 1.3   && < 1.5,
       filepath     >= 1.4   && < 1.7,
-      time         >= 1.12  && < 1.16,
+      time         >= 1.12  && < 1.17,
       process      >= 1.6   && < 1.8
   if !flag(wasm) && !os(windows)
     build-depends:
@@ -309,35 +306,6 @@ library
       csrc/constant_time.c
     include-dirs: csrc csrc/hacl
     cc-options: -fstack-protector-strong -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security
-  if !flag(wasm) && flag(stubs)
-    exposed-modules:
-      -- Chat / Network / Storage stubs (deferred; blockchain-facing)
-      UmbraVox.Chat.Transaction
-      UmbraVox.Network.Gossip
-      UmbraVox.Network.Sync
-      UmbraVox.Storage.ChainDB
-      UmbraVox.Storage.StateDB
-      UmbraVox.Storage.Index
-      UmbraVox.Storage.Checkpoint
-      -- Consensus (stub / deferred)
-      UmbraVox.Consensus.Types
-      UmbraVox.Consensus.Block
-      UmbraVox.Consensus.Ledger
-      UmbraVox.Consensus.Protocol
-      UmbraVox.Consensus.LeaderElection
-      UmbraVox.Consensus.Validation
-      UmbraVox.Consensus.ForkChoice
-      UmbraVox.Consensus.Nonce
-      UmbraVox.Consensus.Truncation
-      UmbraVox.Consensus.Mempool
-      -- Economics (stub / deferred)
-      UmbraVox.Economics.Token
-      UmbraVox.Economics.Fees
-      UmbraVox.Economics.Rewards
-      UmbraVox.Economics.Penalty
-      UmbraVox.Economics.Cycle
-      UmbraVox.Economics.Onboarding
-    cpp-options: -DSTUBS
   if flag(pure-haskell-crypto)
     cpp-options: -DPURE_HASKELL_CRYPTO
   if flag(chaste-build)
@@ -417,7 +385,7 @@ executable umbravox-signal-bridge
   hs-source-dirs:   app/signal-bridge
   build-depends:
     base         >= 4.18  && < 5,
-    bytestring   >= 0.11  && < 0.13,
+    bytestring   >= 0.11  && < 0.14,
     UmbraVox
   ghc-options:      -threaded
 
@@ -587,42 +555,18 @@ test-suite umbravox-test
     Test.Crypto.Vectors.X25519
     Test.Crypto.Vectors.MLKEM
     CryptoGen
-  if flag(stubs)
-    other-modules:
-      Test.Storage.ChainDB
-      Test.Storage.StateDB
-      Test.Storage.Index
-      Test.Storage.Checkpoint
-      Test.Chat.Transaction
-      Test.Consensus.Types
-      Test.Consensus.Block
-      Test.Consensus.Ledger
-      Test.Consensus.Mempool
-      Test.Consensus.Validation
-      Test.Consensus.ForkChoice
-      Test.Consensus.Nonce
-      Test.Consensus.LeaderElection
-      Test.Consensus.Protocol
-      Test.Consensus.Truncation
-      Test.Economics.Token
-      Test.Economics.Fees
-      Test.Economics.Rewards
-      Test.Economics.Penalty
-      Test.Economics.Cycle
-      Test.Economics.Onboarding
-    cpp-options: -DSTUBS
   build-depends:
     base         >= 4.18  && < 5,
-    bytestring   >= 0.11  && < 0.13,
-    array        >= 0.5   && < 0.6,
-    containers   >= 0.6   && < 0.9,
+    bytestring   >= 0.11  && < 0.14,
+    array        >= 0.5   && < 0.7,
+    containers   >= 0.6   && < 0.10,
     network      >= 3.1   && < 3.4,
     directory    >= 1.3   && < 1.5,
     filepath     >= 1.4   && < 1.7,
     process      >= 1.6   && < 1.8,
     stm          >= 2.5   && < 2.7,
     text         >= 2.0   && < 2.3,
-    time         >= 1.12  && < 1.16,
+    time         >= 1.12  && < 1.17,
     UmbraVox
   if !os(windows)
     build-depends:

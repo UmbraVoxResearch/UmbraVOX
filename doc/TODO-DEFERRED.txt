@@ -123,23 +123,23 @@ DEFERRED — PLATFORM RUNNER EVIDENCE
   [ ] X1.2 M3.1.2 Linux arm64 native runner lane (needs arm64 hardware or QEMU emulation).
 
 ================================================================================
-PERMANENTLY DEFERRED — BLOCKCHAIN LAYER
+REMOVED — BLOCKCHAIN LAYER
 ================================================================================
-Note: All blockchain, consensus, ledger, and economics features are permanently
-deferred. The 1.0 release is the current MVP feature set: encrypted messaging +
-Signal bridge + DHT discovery. No blockchain features in 1.0.
+Note: All blockchain, consensus, ledger, and economics modules were permanently
+removed from the codebase (not deferred). The messaging protocol is the core
+product. These modules will not return.
 
-Consensus modules (8):
+Removed consensus modules (8):
   - Consensus.Protocol, ForkChoice, Validation, Mempool
   - Consensus.Ledger, Nonce, Truncation, LeaderElection
 
-Storage blockchain modules (4):
+Removed storage blockchain modules (4):
   - Storage.ChainDB, Checkpoint, Index, StateDB
 
-Bridge/network blockchain modules (3):
+Removed bridge/network blockchain modules (3):
   - Chat.Transaction, Network.Gossip, Network.Sync
 
-Economics modules (2):
+Removed economics modules (2):
   - Economics.Onboarding, Economics.Cycle
 
 PERMANENTLY DEFERRED — FUTURE PLATFORM TARGETS

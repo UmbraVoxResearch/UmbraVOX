@@ -102,9 +102,9 @@ Host
 
 Setup requires `CAP_NET_ADMIN` (sudo):
 ```bash
-sudo scripts/vm-network-setup.sh setup 6
+sudo ./uv vm netsetup setup 6
 ./uv vm integration --dual-lan
-sudo scripts/vm-network-setup.sh teardown
+sudo ./uv vm netsetup teardown
 ```
 
 Traffic capture:
@@ -223,22 +223,18 @@ in-guest artifact for distribution is tracked as future work.
 3. Container extracts and smoke-checks the artifact
 4. Container reports exit code
 
-## QEMU vs Firecracker
+## Hypervisor
 
-| Property | QEMU | Firecracker |
-|----------|------|-------------|
-| Available | Yes (via nix-shell) | Yes (via nix-shell) |
-| KVM acceleration | Yes | Yes |
-| NixOS image support | Yes (bootable raw disk) | Needs vmlinux + rootfs |
-| Current status | Functional (`./uv vm smoke`) | Scaffold only |
-| Use case | Full pipeline isolation | Lightweight, fast-boot isolation |
+QEMU is the sole VM hypervisor. Firecracker was evaluated and
+permanently removed as a runtime target.
 
-Firecracker support (M2.4.2) remains scaffold-only. It requires:
-- A vmlinux kernel (not bzImage) — needs a separate Nix derivation
-- A minimal rootfs (not a full NixOS disk image)
-- A Firecracker JSON config template
-
-The QEMU lane is the current authoritative isolated runner.
+| Property | QEMU |
+|----------|------|
+| Available | Yes (via nix-shell) |
+| KVM acceleration | Yes |
+| NixOS image support | Yes (bootable raw disk) |
+| Current status | Functional (`./uv vm smoke`) |
+| Use case | Full pipeline isolation |
 
 ## Multi-Architecture Emulation (M5.5)
 
@@ -271,7 +267,6 @@ Actual building requires either:
 |--------|---------|--------|--------|
 | x86_64-linux | x86_64 (KVM) | QEMU q35 (KVM) | Functional |
 | aarch64-linux | aarch64 or binfmt | QEMU virt (emulated) | Stub |
-| x86_64-linux (Firecracker) | x86_64 (KVM) | Firecracker | Scaffold |
 
 Native ARM64 testing provides the strongest assurance. Emulated testing
 catches architecture-specific issues (endianness, word size, alignment)

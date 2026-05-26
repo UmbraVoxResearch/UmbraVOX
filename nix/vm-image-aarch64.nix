@@ -19,53 +19,25 @@
 
 let
   nixosConfig = { config, lib, modulesPath, pkgs, ... }: {
-    imports = [ (modulesPath + "/profiles/qemu-guest.nix") ];
+    imports = [ ./tiers/dev.nix ];
 
+    # aarch64 uses UEFI, not GRUB
     boot.loader.grub.enable = false;
+    # ARM serial console (ttyAMA0), overriding base's ttyS0
     boot.kernelParams = [ "console=ttyAMA0" "panic=1" ];
-    boot.initrd.availableKernelModules = [
-      "virtio_pci" "virtio_blk" "virtio_net" "ext4"
-    ];
 
+    # aarch64 root is the whole disk (no partition table)
     fileSystems."/" = {
       device = "/dev/vda";
       fsType = "ext4";
     };
 
-    swapDevices = [];
     networking.hostName = "umbravox-arm64";
-    networking.firewall.enable = false;
 
-    services.getty.autologinUser = "root";
-
-    # Minimal packages for test agent
+    # Additional aarch64-specific packages beyond what dev tier provides
     environment.systemPackages = with pkgs; [
-      bashInteractive coreutils findutils gnugrep gnused
-      gnutar gzip iproute2 procps which
+      iproute2
     ];
-
-    fileSystems."/work" = {
-      device = "tmpfs";
-      fsType = "tmpfs";
-      options = [ "size=2G" "mode=1777" ];
-    };
-
-    system.activationScripts.fhsCompat = ''
-      mkdir -p /bin /usr/bin
-      ln -sf /run/current-system/sw/bin/bash /bin/bash
-      ln -sf /run/current-system/sw/bin/sh /bin/sh
-      ln -sf /run/current-system/sw/bin/env /usr/bin/env
-    '';
-
-    documentation.enable = false;
-    programs.command-not-found.enable = false;
-    services.udisks2.enable = false;
-    security.polkit.enable = false;
-    xdg.mime.enable = false;
-    xdg.icons.enable = false;
-    nix.enable = false;
-
-    system.stateVersion = "25.05";
   };
 
   nixos = import (pkgs.path + "/nixos") {

@@ -15,7 +15,6 @@
         # Minimal tools for VM orchestration (default shell)
         vmTools = with pkgs; [
           qemu_kvm
-          firecracker
           genext2fs    # needed by vm-image-builder.sh for source disk
           git
           gnumake
@@ -191,28 +190,6 @@
         packages.vm-image = (import ./nix/vm-image.nix {
           pkgs = import nixpkgs { system = "x86_64-linux"; };
         }).qemu;
-
-        packages.firecracker-image = let
-          vmImages = import ./nix/vm-image.nix {
-            pkgs = import nixpkgs { system = "x86_64-linux"; };
-          };
-        in pkgs.runCommand "umbravox-firecracker-image" {} ''
-          mkdir -p $out
-          cp ${vmImages.firecrackerRootfs}/nixos.img $out/rootfs.img
-          cp ${vmImages.firecrackerKernel} $out/vmlinux
-          cp ${vmImages.firecrackerInitrd} $out/initrd
-        '';
-
-        packages.firecracker-runtime-image = let
-          vmImages = import ./nix/vm-runtime.nix {
-            pkgs = import nixpkgs { system = "x86_64-linux"; };
-          };
-        in pkgs.runCommand "umbravox-firecracker-runtime" {} ''
-          mkdir -p $out
-          cp ${vmImages.firecrackerRootfs}/nixos.img $out/rootfs.img
-          cp ${vmImages.firecrackerKernel} $out/vmlinux
-          cp ${vmImages.firecrackerInitrd} $out/initrd
-        '';
 
         packages.qemu-runtime-image = (import ./nix/vm-runtime.nix {
           pkgs = import nixpkgs { system = "x86_64-linux"; };

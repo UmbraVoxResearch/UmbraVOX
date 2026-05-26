@@ -65,7 +65,7 @@ These targets delegate all compilation to a QEMU guest via `./uv exec --`:
 | `vm-smoke-arm64`              | QEMU aarch64 guest                               |
 | `vm-signal-server-build-jar`  | Maven build inside VM                            |
 | `vm-signal-server`            | Runtime VM (no host compilers)                   |
-| `differential-vectors`        | `vm-differential-run.sh vectors` (VM)            |
+| `differential-vectors`        | `./uv test differential` (VM)                    |
 
 ### Nix-Build-on-Host Targets (ACCEPTABLE -- only VM image derivations)
 
@@ -120,15 +120,12 @@ These targets invoke `cabal`, `ghc`, `coqc`, `fstar.exe`, or `nix-shell`
 | `test-signal-compat` | `scripts/vm-signal-test.sh` | Needs audit |
 | `assurance` | `coqc` (via `make -C .../coq`), `cabal test` | Runs on host |
 | `vm-smoke` | `cabal run umbravox -- vm-smoke` | Runs cabal on host to launch orchestrator |
-| `firecracker-smoke` | `cabal run umbravox -- firecracker-smoke` | Runs cabal on host |
-| `firecracker-image-build` | `cabal run umbravox -- firecracker-image-build` | Runs cabal on host |
 | `vm-integration-test` | `cabal run umbravox -- vm-integration-test` | Runs cabal on host |
 | `vm-integration-test-dual-lan` | `cabal run umbravox -- vm-integration-test --dual-lan` | Runs cabal on host |
 | `vm-forensics` | `cabal run umbravox -- vm-forensics` | Runs cabal on host |
 | `release-smoke-linux` | `cabal run umbravox -- smoke-linux` | Runs cabal on host |
 | `release-smoke-appimage` | `cabal run umbravox -- smoke-appimage` | Runs cabal on host |
 | `release-lane-qemu` | `cabal run umbravox -- lane-qemu` | Runs cabal on host |
-| `release-lane-firecracker` | `cabal run umbravox -- lane-firecracker` | Runs cabal on host |
 | `release-lane-readiness-haskell` | `cabal run umbravox -- release-lane-readiness` | Runs cabal on host |
 | `release-gate-assurance` | `cabal run umbravox -- gate-assurance` | Runs cabal on host |
 | `verify-traffic` | `cabal run umbravox -- verify-traffic` | Runs cabal on host |
@@ -175,10 +172,8 @@ These use only `grep`, `bash`, `find`, `test`, `git`, etc. -- no compilers:
 | `release-freedos` | shell script (source packaging) |
 | `release-smoke-qemu` | shell script (QEMU microVM) |
 | `release-smoke-qemu-profile` | shell script |
-| `release-smoke-firecracker` | shell script |
-| `release-smoke-firecracker-pinned` | shell script |
 | `release-smoke-qemu-nix` | shell script |
-| `platform-lane-qemu` / `platform-lane-firecracker` | shell script |
+| `platform-lane-qemu` | shell script |
 | `platform-smoke-qemu-profile` | shell script |
 | `release-lane-readiness` | shell scripts (check for tools, don't run them) |
 | `release-compliance` / `release-sbom` / `release-license-bundle` | Tool presence check only |
@@ -247,10 +242,10 @@ orchestrator.  These need to either:
 - Run inside the VM (preferred), or
 - Be rewritten as shell scripts that call `./uv exec -- ...`
 
-Affected: `vm-smoke`, `firecracker-smoke`, `firecracker-image-build`,
+Affected: `vm-smoke`,
 `vm-integration-test`, `vm-integration-test-dual-lan`, `vm-forensics`,
 `release-smoke-linux`, `release-smoke-appimage`, `release-lane-qemu`,
-`release-lane-firecracker`, `release-lane-readiness-haskell`,
+`release-lane-readiness-haskell`,
 `release-gate-assurance`, `verify-traffic`, `release-sbom-generate`,
 `release-license-bundle-generate`, `release-license-check`,
 `release-linking`, `release-manifest`, `release-checksums`.

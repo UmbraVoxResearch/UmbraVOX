@@ -171,7 +171,7 @@ shared output directory (`build/vm-output/screenshots/`).
 
 The VM has **no network access by default** (`-nic none`).  Network access
 is controlled by `conf/vm-network-policy.conf` in the repository root, which is
-read by `scripts/vm-network-policy.sh` before QEMU launches.
+enforced by `./uv` (Go code in `tools/pkg/netpol/`) before QEMU launches.
 
 The default smoke/development boot path is offline-first and does not wait for
 `network.target` before starting UmbraVOX guest init/smoke units.
@@ -286,10 +286,10 @@ After building a new seed locally:
 
 2. Upload the seed image to a GitHub release (or other hosting).
 
-3. Update the pinned hash in `scripts/vm-image-builder.sh`:
-   find the `SEED_SHA256=` line and replace its value with the new
-   checksum. Update the `SEED_URL=` line if the download location
-   changed.
+3. Update the pinned hash in `./uv vm build-image` (Go code in
+   `tools/cmd/umbravox-vm/cmd_image.go`): find the `SEED_SHA256`
+   constant and replace its value with the new checksum. Update the
+   `SEED_URL` constant if the download location changed.
 
 4. Commit both changes together so the URL and hash stay in sync.
 
@@ -390,7 +390,7 @@ binary exists, run `./uv build` first.
 ### "VM image not found"
 
 Run `./uv vm build-image` to build and cache the NixOS VM image.
-This is a one-time operation unless `flake.nix` or `flake.lock` change.
+This is a one-time operation unless `nix/vm-image.nix` changes.
 
 ### "/dev/kvm not found"
 

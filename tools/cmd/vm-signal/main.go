@@ -14,6 +14,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -146,6 +147,22 @@ func run(args []string) int {
 // Delegates to vmctl.PreflightQEMU.
 func preflightCheck() error {
 	return vmctl.PreflightQEMU()
+}
+
+// loadVMDef loads a vm-def YAML by name from the vm-defs/ directory rooted at
+// repoRoot.  It returns (spec, nil) on success, (nil, nil) when the file does
+// not exist (caller should fall back to defaults), or (nil, err) on a parse
+// error.
+func loadVMDef(repoRoot, name string) (*vmctl.VMSpec, error) {
+	path := filepath.Join(repoRoot, "vm-defs", name+".yaml")
+	_, spec, err := vmctl.LoadSpec(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil // file absent — caller falls back
+		}
+		return nil, err
+	}
+	return spec, nil
 }
 
 // resolveJarOutputDir returns the absolute path for the JAR output directory.
@@ -417,6 +434,21 @@ func runBuildJar(outputDirFlag string) int {
 	logMsg(blue, fmt.Sprintf("Output: %s/signal-server.jar", jarOutputDir))
 	fmt.Fprintln(os.Stderr)
 
+	// Load vm-defs/signal-build.yaml; fall back to hardcoded defaults.
+	resources := vmctl.Resources{Fraction: 50}
+	timeout := 30 * time.Minute
+	noReboot := true
+	if def, defErr := loadVMDef(repoRoot, "signal-build"); defErr != nil {
+		logMsg(red, fmt.Sprintf("failed to load vm-def: %v", defErr))
+		return 1
+	} else if def != nil {
+		resources = def.Resources
+		if def.Timeout > 0 {
+			timeout = def.Timeout
+		}
+		noReboot = def.NoReboot
+	}
+
 	spec := &vmctl.VMSpec{
 		BaseImage: vmctl.ImageRef{
 			Path:   overlay.Path,
@@ -429,10 +461,10 @@ func runBuildJar(outputDirFlag string) int {
 				ID:       "output",
 			},
 		},
-		Network:  vmctl.NetworkSpec{Mode: vmctl.NetworkUserMode},
-		Resources: vmctl.Resources{Fraction: 50},
-		Timeout:  30 * time.Minute,
-		NoReboot: true,
+		Network:   vmctl.NetworkSpec{Mode: vmctl.NetworkUserMode},
+		Resources: resources,
+		Timeout:   timeout,
+		NoReboot:  noReboot,
 	}
 
 	ctx := context.Background()
@@ -499,14 +531,28 @@ func runRuntime(mode string) int {
 	logMsg(blue, fmt.Sprintf("Mode: %s", mode))
 	fmt.Fprintln(os.Stderr)
 
+	// Load vm-defs/signal-runtime.yaml; fall back to hardcoded defaults.
+	resources := vmctl.Resources{Fraction: 25}
+	noReboot := mode != "interactive"
+	if def, defErr := loadVMDef(repoRoot, "signal-runtime"); defErr != nil {
+		logMsg(red, fmt.Sprintf("failed to load vm-def: %v", defErr))
+		return 1
+	} else if def != nil {
+		resources = def.Resources
+		// For runtime, mode still overrides: interactive keeps reboot enabled.
+		if mode != "interactive" {
+			noReboot = def.NoReboot
+		}
+	}
+
 	spec := &vmctl.VMSpec{
 		BaseImage: vmctl.ImageRef{
 			Path:   overlay.Path,
 			Format: vmctl.DiskFormatQCOW2,
 		},
 		Network:   vmctl.NetworkSpec{Mode: vmctl.NetworkNone},
-		Resources: vmctl.Resources{Fraction: 25},
-		NoReboot:  mode != "interactive",
+		Resources: resources,
+		NoReboot:  noReboot,
 	}
 
 	ctx := context.Background()

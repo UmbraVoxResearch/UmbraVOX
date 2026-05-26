@@ -2,7 +2,7 @@
 
 ## Current Assurance Statement
 
-UmbraVOX v0.5.x provides the following assurance levels:
+UmbraVOX v0.6.x provides the following assurance levels:
 
 | Domain | Level | Evidence |
 |--------|-------|----------|

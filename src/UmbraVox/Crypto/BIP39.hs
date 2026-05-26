@@ -8,7 +8,7 @@ module UmbraVox.Crypto.BIP39
     , bip39Words
     ) where
 
-import Data.Bits (shiftL, shiftR, (.|.), (.&.))
+import Data.Bits (shiftL, (.|.))
 import qualified Data.ByteString as BS
 
 import UmbraVox.Crypto.Random (randomBytes)

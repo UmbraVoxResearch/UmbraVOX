@@ -113,8 +113,8 @@ See `doc/VM-DEVELOPMENT.md` for the full VM development guide and troubleshootin
 - Windows CLI, macOS terminal, and BSD terminal currently remain explicit
   source releases until repo-owned native builders and parity evidence exist.
 - FreeDOS remains a research/source release with an unsupported-runtime note.
-- QEMU and Firecracker entrypoints are release-lane scaffolding plus smoke-path
-  hooks; they are not yet authoritative in-guest release execution.
+- QEMU entrypoints are release-lane scaffolding plus smoke-path hooks; they
+  are not yet authoritative in-guest release execution.
 - If cross-built artifacts are introduced later, they should be treated as
   non-authoritative until native parity evidence exists.
 

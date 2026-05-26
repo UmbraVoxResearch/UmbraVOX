@@ -1,6 +1,6 @@
 # NixOS VM disk image for isolated UmbraVOX build/test/release.
 #
-# Contains the full development toolchain (GHC 9.6, cabal, F*, Z3, etc.)
+# Contains the full development toolchain (GHC 9.14.1, cabal, F*, Z3, etc.)
 # with zero external dependencies — no network access needed in-guest.
 #
 # The guest boots, mounts the source tree from /dev/vdb, copies it to a
@@ -26,7 +26,6 @@ let
     imports = [ ./tiers/dev.nix ];
 
     boot.loader.grub.device = "/dev/vda";
-    # QEMU image also loads virtio_scsi (not needed for Firecracker)
     boot.initrd.availableKernelModules = [
       "virtio_pci" "virtio_blk" "virtio_scsi" "virtio_net" "ext4"
     ];
@@ -142,46 +141,7 @@ let
     copyChannel = false;
   };
 
-  # Firecracker-specific NixOS config: no GRUB, rootfs is /dev/vda directly
-  firecrackerNixosConfig = { config, lib, modulesPath, pkgs, ... }: {
-    imports = [ ./tiers/dev.nix ];
-
-    boot.loader.grub.enable = false;
-    boot.kernelParams = [ "console=ttyS0" "panic=1" "reboot=k" ];
-
-    # Firecracker rootfs is /dev/vda (no partition table)
-    fileSystems."/" = {
-      device = "/dev/vda";
-      fsType = "ext4";
-    };
-  };
-
-  firecrackerNixos = import (pkgs.path + "/nixos") {
-    system = "x86_64-linux";
-    configuration = firecrackerNixosConfig;
-  };
-
-  firecrackerRootfs = import (pkgs.path + "/nixos/lib/make-disk-image.nix") {
-    inherit pkgs;
-    lib = pkgs.lib;
-    config = firecrackerNixos.config;
-    diskSize = "auto";
-    additionalSpace = "2048M";
-    format = "raw";
-    partitionTableType = "none";
-    copyChannel = false;
-  };
-
 in {
   # QEMU: full bootable disk image with GRUB + partition table
   qemu = image;
-
-  # Firecracker: rootfs-only ext4 image (no partition table, no bootloader)
-  firecrackerRootfs = firecrackerRootfs;
-
-  # Firecracker: uncompressed vmlinux kernel (ELF, not bzImage)
-  firecrackerKernel = "${firecrackerNixos.config.system.build.kernel.dev}/vmlinux";
-
-  # Firecracker: initrd (needed to load virtio_mmio/virtio_blk before root mount)
-  firecrackerInitrd = "${firecrackerNixos.config.system.build.initialRamdisk}/initrd";
 }

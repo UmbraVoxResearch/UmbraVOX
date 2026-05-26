@@ -59,49 +59,31 @@ ACTIVE WORK
   [~] M13.13.6 Verify all F* specs pass in VM (2/9 PASS, 7 expected FAIL from assume vals)
   [ ] M13.13.7 Run full F* verification suite in VM and capture evidence
 
-  Coq proofs needed — Ed25519 elliptic curve algebra (fiat-crypto / nsatz):
-  [ ] M13.14.1 point_add_assoc — associativity of extended twisted Edwards addition
-      Approach: fiat-crypto HWCD or nsatz over GF(2^255-19), degree-12 polynomial
-  [ ] M13.14.2 point_add_preserves_on_curve_ext — closure of point addition
-      Approach: HWCD Theorem 1, degree-8 identity (EFD dbl-2008-hwcd)
-  [ ] M13.14.3 point_double_preserves_on_curve_ext — closure of doubling
-      Approach: HWCD §4 doubling formulas, same degree-8 technique
-  [ ] M13.14.4 scalar_mult_preserves_on_curve_ext — closure of scalar mult
-      Approach: induction from add + double preservation
-  [ ] M13.14.5 scalar_mult_add — [a+b]P = [a]P + [b]P
-      Approach: group homomorphism induction (Silverman Prop III.3.6)
-  [ ] M13.14.6 scalar_mult_compose — [a]([b]P) = [ab]P
-      Approach: Z-module action, induction from scalar_mult_add
-  [ ] M13.14.7 scalar_mod_L_equiv — [n mod L]B = [n]B
-      Approach: cyclic group theory + group_order_lemma
-  [ ] M13.14.8 group_order_lemma — [L]B = O
-      Approach: vm_compute on optimized field representation (expensive)
-  [ ] M13.14.9 point_add_congruence_right — projective equivalence
-      Approach: rational map (Hartshorne II.7), scaling factor cancellation
-  [ ] M13.14.10 scalar_mult_congruence — scalar mult preserves congruence
-      Approach: induction from point_add_congruence_right
+  Coq proofs — Ed25519 elliptic curve algebra (all complete, zero Admitted):
+  [x] M13.14.1 point_add_assoc — Ed25519GroupAssoc.v, Ed25519AssocUniversal.v
+  [x] M13.14.2 point_add_preserves_on_curve_ext — Ed25519PointAdd.v
+  [x] M13.14.3 point_double_preserves_on_curve_ext — Ed25519PointAdd.v
+  [x] M13.14.4 scalar_mult_preserves_on_curve_ext — Ed25519ScalarMult.v
+  [x] M13.14.5 scalar_mult_add — Ed25519GroupScalarMultAdd.v
+  [x] M13.14.6 scalar_mult_compose — X25519DH.v (compose lemmas)
+  [x] M13.14.7 scalar_mod_L_equiv — Ed25519Scalar.v
+  [x] M13.14.8 group_order_lemma — Ed25519Scalar.v
+  [x] M13.14.9 point_add_congruence_right — Ed25519CongruenceUniversal.v
+  [x] M13.14.10 scalar_mult_congruence — Ed25519CongruenceUniversal.v
 
-  Coq proofs needed — Ed25519 encoding/decoding:
-  [ ] M13.14.11 encode_decode_roundtrip — point encode/decode round-trip
-      Approach: field arithmetic + RFC 8032 encoding spec
-  [ ] M13.14.12 sqrt_ratio_correct — GF(p) square root recovery
-      Approach: field arithmetic identity, Tonelli-Shanks correctness
-  [ ] M13.14.13 cofactor_clearing — cofactor subgroup projection
-      Approach: Ed25519 subgroup structure (h=8)
+  Coq proofs — Ed25519 encoding/decoding (all complete):
+  [x] M13.14.11 encode_decode_roundtrip — Ed25519Encoding.v
+  [x] M13.14.12 sqrt_ratio_correct — Ed25519SqrtRatio.v
+  [x] M13.14.13 cofactor_clearing — Ed25519ScalarMult.v
 
-  Coq proofs needed — X25519 / VRF:
-  [ ] M13.14.14 dh_commutativity — x25519(a, x25519(b, G)) = x25519(b, x25519(a, G))
-      Approach: scalar mult commutativity from group axioms
-  [ ] M13.14.15 dh_commutativity_general — generalized for arbitrary base point
-      Approach: same, extended to non-basepoint
-  [ ] M13.14.16 dleq_correctness — discrete log equality (Chaum-Pedersen)
-      Approach: algebraic identity, straightforward group theory
+  Coq proofs — X25519 / VRF (all complete):
+  [x] M13.14.14 dh_commutativity — X25519DH.v
+  [x] M13.14.15 dh_commutativity_general — X25519DH.v
+  [x] M13.14.16 dleq_correctness — VRFDLEQ.v
 
-  Coq proofs needed — SHA-256 refinement:
-  [ ] M13.14.17 bs_seq_roundtrip — ByteString ↔ sequence conversion
-      Approach: structural (Coq Prop, sequence lemmas)
-  [ ] M13.14.18 seq_of_bs_length_bound — ByteString length < 2^61
-      Approach: physical memory bound (trivial arithmetic)
+  Coq proofs — SHA-256 refinement (all complete):
+  [x] M13.14.17 bs_seq_roundtrip — StructuralProofs.v
+  [x] M13.14.18 seq_of_bs_length_bound — StructuralProofs.v
 
   Unprovable cryptographic assumptions (12, documented in F* specs):
   [N/A] hmac_non_fixpoint — HMAC-SHA256 PRF security (RFC 2104)
@@ -398,10 +380,10 @@ PROJECT REVIEW FINDINGS (v0.5.17 audit, 2026-05-24)
     Risk: GHC can CSE/share the call, reusing same random bytes.
     Fix: add {-# NOINLINE pqEncrypt #-} or move to IO.
 
-[x] [HIGH] 12 Consensus/Chat/Network/Storage modules contain reachable error "not implemented" — fixed (moved behind stubs flag)
+[x] [HIGH] 12 Consensus/Chat/Network/Storage modules contained reachable error "not implemented" — REMOVED
     Files: LeaderElection, Protocol, Truncation, ForkChoice, Validation,
            Transaction, Sync, Gossip, ChainDB, Index, Checkpoint, StateDB
-    Fix: guard behind stubs flag or return typed errors.
+    Resolution: modules permanently removed (not deferred). Messaging protocol is the core product.
 
 [x] [HIGH] TUI/Actions/Session.hs:110 — reachable error "bridge not implemented" — fixed (returns SendUnavailable)
     Fix: return Left or typed error instead of crashing.
@@ -503,7 +485,67 @@ SECURITY AUDIT REMEDIATION (v0.6 audit, 91 findings)
     [x] KeyStore.hs deprecated (persistence via StorageHandle)
 
 ================================================================================
-FINAL AGENT WORK (completed by other agents)
+IMPLEMENTATION BACKLOG (discovered from audits, 2026-05-26)
+================================================================================
+
+[~] M21 Go test coverage
+  Go packages with zero tests (prioritized by risk):
+  [ ] M21.1 pkg/qemu — Args(), ScaleToHost(), DefaultConfig() (pure logic, high priority)
+  [ ] M21.2 vmctl/boot.go — hypervisor dispatch (testable with mock)
+  [ ] M21.3 vmctl/nix.go — IsCached() symlink detection (pure logic)
+  [ ] M21.4 vmctl/disk.go — dirSizeKB (pure logic, filesystem)
+  [ ] M21.5 vmctl/preflight.go — KVM/QEMU detection (environment-dependent)
+  [ ] M21.6 pkg/disk — CreateSourceDisk, CreateOverlay wrappers (integration)
+  [ ] M21.7 pkg/download — FetchFile with httptest (network mock)
+  [ ] M21.8 pkg/netproxy — ParseAllowlist (pure parsing)
+  Already tested: vmctl/config.go (7), vmctl/resources.go (10),
+    vmctl/network.go (7), pkg/netpol (14)
+
+[ ] M22 Nix placeholder hashes (12 fake hashes in 3 files, unbuildable)
+  [ ] M22.1 nix/vm-freebsd.nix — lib.fakeSha256 needs nix-prefetch-url
+  [ ] M22.2 nix/vm-omnios.nix — lib.fakeSha256 needs nix-prefetch-url
+  [ ] M22.3 nix/vm-libsignal-protocol-oracle.nix — all-zero rev + AAAA hashes (3 entries)
+  [ ] M22.4 nix/vm-primitive-oracle-suite.nix — all-zero rev + AAAA hashes (5 entries)
+  Note: These are intentional first-run placeholders. Fix by running
+  nix-prefetch-url / nix-prefetch-git in the builder VM.
+
+[ ] M23 Nix tier consistency
+  [ ] M23.1 vm-libsignal-protocol-oracle.nix — imports vm-base.nix directly, bypasses tiers
+  [ ] M23.2 vm-primitive-oracle-suite.nix — imports vm-base.nix directly, bypasses tiers
+  [ ] M23.3 Both oracle files use mode=1777 tmpfs (security: should be 0700)
+  [ ] M23.4 Both oracle files use upstream make-disk-image.nix (misses LKL/cptofs fix)
+
+[ ] M24 CI hardening
+  [ ] M24.1 Add timeout-minutes to all CI jobs (prevent hung runners)
+  [ ] M24.2 Extract nixpkgs hash to shared variable (duplicated 4 times across workflows)
+  [ ] M24.3 Add FORCE_JAVASCRIPT_ACTIONS_TO_NODE24 to ci-linux, ci-nightly, ci-prerelease
+  [ ] M24.4 Add ./uv test audit to ci-nightly.yml (currently only in ci-linux.yml)
+
+[ ] M25 Test vector completeness
+  [ ] M25.1 Download Wycheproof vector suites (test/vectors/wycheproof/ placeholder)
+  [ ] M25.2 Download NIST CAVP ML-KEM vectors (test/vectors/nist/ placeholder)
+  [ ] M25.3 Add Wycheproof loader + test harness for AES-GCM, Ed25519, X25519, ChaCha20Poly1305
+
+[ ] M26 Signal bridge completion
+  [ ] M26.1 Registration.hs — complete protobuf parsing in completeRegistration (stub)
+  [ ] M26.2 Registration.hs — implement WebSocket transport (M19.3.5)
+  [ ] M26.3 M19.4.7 — health endpoint verification (blocked on JAR assembly)
+
+[ ] M27 Documentation debt
+  [ ] M27.1 ENCRYPTED-ENVELOPE-DESIGN.md — 15+ unchecked TODO items (lines 450-466)
+  [ ] M27.2 DHT-NETWORK-PLAN.md — M24 TODO items never moved to TODO.txt (lines 457-484)
+  [ ] M27.3 PROJECT-CHARTER.md — version history stops at v0.1.8
+  [ ] M27.4 MILESTONE-DOCS.md — no entries past M28
+  [ ] M27.5 AGENTS.md:303 — Coq make command uses nix-shell on host (contradicts VM-first)
+
+[ ] M28 Build system polish
+  [ ] M28.1 cmd_image.go:419 — TODO(security): add restrict=on to builder VM NIC
+  [ ] M28.2 netproxy/filter.go:116 — TODO: SNI-based routing for multi-dest
+  [ ] M28.3 cmd_image.go:177 — TODO: build runtime image inside builder VM (host-isolated)
+  [ ] M28.4 Remove continue-on-error: false boilerplate from CI steps (already default)
+
+================================================================================
+COMPLETED AGENT WORK
 ================================================================================
 
 [x] Move to tools/vmctl/ with own go.mod — done (separate module with replace directive)
