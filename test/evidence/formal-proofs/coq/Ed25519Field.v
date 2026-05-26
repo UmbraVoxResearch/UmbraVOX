@@ -440,4 +440,167 @@ Proof. vm_compute. reflexivity. Qed.
     Fermat's little theorem:
       - a^(p-1) mod p = 1 verified for a in {2, 3, 5, 7, 11, 13}
       - fermat_spec formalized as a specification
+
+    Multiplicative inverse and curve foundations:
+      - Zinv a m = a^(m-2) mod m  (Fermat-based modular inverse)
+      - p = ed25519_p = 2^255 - 19  (short alias for downstream proofs)
+      - d: curve constant -121665/121666 mod p (concrete literal, cross-checked)
+      - on_curve(x,y): twisted Edwards equation (-x^2+y^2) mod p = (1+d*x^2*y^2) mod p
+      - on_curve_b: boolean reflection of on_curve with correctness proof
 *)
+
+(** ========================================================================
+    Section 16: Short alias for the field prime
+    ======================================================================== *)
+
+(** p is the canonical short name used in curve and group proofs.
+    It is definitionally equal to ed25519_p from Ed25519Prime.v. *)
+Definition p : Z := ed25519_p.
+
+Lemma p_eq : p = 2^255 - 19.
+Proof. unfold p, ed25519_p. reflexivity. Qed.
+
+(** ========================================================================
+    Section 17: Generic modular inverse via Fermat's little theorem
+    ======================================================================== *)
+
+(** Zinv a m computes a^(m-2) mod m.
+    When m is prime and a is not divisible by m, this equals a^(-1) mod m
+    by Fermat's little theorem: a^(m-1) = 1 (mod m), so a^(m-2) = a^(-1).
+
+    Correctness for specific elements is witnessed by vm_compute (e.g.,
+    Zinv_121666_correct below, and all finv uses in Ed25519Curve). *)
+Definition Zinv (a m : Z) : Z := pow_mod a (m - 2) m.
+
+(** Convenience: finv over the Ed25519 prime (= Zinv a p). *)
+Definition finv (a : Z) : Z := Zinv a p.
+
+Lemma finv_eq_Zinv : forall a, finv a = Zinv a p.
+Proof. intros. unfold finv. reflexivity. Qed.
+
+(** Fermat witnesses: for specific a, a * Zinv(a, p) = 1 mod p. *)
+Lemma Zinv_2_correct : fmul 2 (Zinv 2 p) = 1.
+Proof. vm_compute. reflexivity. Qed.
+
+Lemma Zinv_3_correct : fmul 3 (Zinv 3 p) = 1.
+Proof. vm_compute. reflexivity. Qed.
+
+Lemma Zinv_5_correct : fmul 5 (Zinv 5 p) = 1.
+Proof. vm_compute. reflexivity. Qed.
+
+Lemma Zinv_121666_correct : fmul 121666 (Zinv 121666 p) = 1.
+Proof. vm_compute. reflexivity. Qed.
+
+(** ========================================================================
+    Section 18: Curve constant d = -121665/121666 mod p
+    ======================================================================== *)
+
+(** The twisted Edwards curve constant for Ed25519 (RFC 8032 Section 5.1):
+      d = -121665 * inv(121666)  mod p
+
+    Defined as a concrete literal to avoid slow vm_compute of Zinv 121666 p
+    (a 255-bit modular exponentiation at elaboration time).
+    Correctness is established by cross-multiplication in d_cross_check. *)
+Definition d : Z :=
+  37095705934669439343138083508754565189542113879843219016388785533085940283555.
+
+(** d * 121666 = -121665 mod p, equivalent to d = -121665 * inv(121666) mod p. *)
+Lemma d_cross_check : fmul d 121666 = ((-121665) mod p).
+Proof. vm_compute. reflexivity. Qed.
+
+(** d is in the canonical range [0, p). *)
+Lemma d_range : 0 < d < p.
+Proof.
+  assert (Hd : d = 37095705934669439343138083508754565189542113879843219016388785533085940283555)
+    by (vm_compute; reflexivity).
+  rewrite Hd. unfold p, ed25519_p. lia.
+Qed.
+
+(** d != 0. *)
+Lemma d_nonzero : d <> 0.
+Proof.
+  assert (Hd : d = 37095705934669439343138083508754565189542113879843219016388785533085940283555)
+    by (vm_compute; reflexivity).
+  rewrite Hd. discriminate.
+Qed.
+
+(** ========================================================================
+    Section 19: The twisted Edwards curve predicate
+    ======================================================================== *)
+
+(** on_curve(x, y) holds when (x, y) satisfies the twisted Edwards equation
+    for Ed25519 over GF(p):
+
+        -x^2 + y^2 = 1 + d * x^2 * y^2   (mod p)
+
+    This is the affine form.  The curve parameter a = -1 is absorbed into
+    the left-hand side (standard Ed25519 / RFC 8032 convention). *)
+Definition on_curve (x y : Z) : Prop :=
+  let x2 := fmul x x in
+  let y2 := fmul y y in
+  let lhs := fadd (fopp x2) y2 in
+  let rhs := fadd 1 (fmul d (fmul x2 y2)) in
+  lhs = rhs.
+
+(** Boolean decision procedure for vm_compute verification of specific points. *)
+Definition on_curve_b (x y : Z) : bool :=
+  let x2 := fmul x x in
+  let y2 := fmul y y in
+  let lhs := fadd (fopp x2) y2 in
+  let rhs := fadd 1 (fmul d (fmul x2 y2)) in
+  lhs =? rhs.
+
+Lemma on_curve_b_correct : forall x y,
+  on_curve_b x y = true <-> on_curve x y.
+Proof.
+  intros x y. unfold on_curve_b, on_curve.
+  split; intro H.
+  - apply Z.eqb_eq. exact H.
+  - apply Z.eqb_eq. exact H.
+Qed.
+
+(** The neutral element (0, 1) is on the curve.
+    LHS = -0 + 1 = 1 mod p.  RHS = 1 + d*0*1 = 1 mod p. *)
+Lemma identity_on_curve : on_curve 0 1.
+Proof. unfold on_curve. vm_compute. reflexivity. Qed.
+
+Lemma identity_on_curve_b : on_curve_b 0 1 = true.
+Proof. vm_compute. reflexivity. Qed.
+
+(** Unfolded form: on_curve uses fadd/fmul/fopp which are all mod-p operations.
+    The following lemma shows on_curve x y is equivalent to the flat
+    modular equality used in the RFC 8032 specification. *)
+Lemma on_curve_unfold : forall x y,
+  on_curve x y <->
+  ((-( x * x) + y * y) mod ed25519_p =
+   (1 + d * (x * x) * (y * y)) mod ed25519_p).
+Proof.
+  intros x y.
+  unfold on_curve, fadd, fopp, fmul.
+  (* Both sides of on_curve expand to nested mod expressions.
+     We show each side equals the corresponding flat form by
+     normalization via mod-congruence. *)
+  assert (LHS_eq :
+    (-(x * x mod ed25519_p) mod ed25519_p + y * y mod ed25519_p) mod ed25519_p =
+    (-(x * x) + y * y) mod ed25519_p). {
+    rewrite opp_mod_idemp by (pose proof p_pos; lia).
+    rewrite Zplus_mod_idemp_l.
+    rewrite Zplus_mod_idemp_r.
+    reflexivity.
+  }
+  assert (RHS_inner :
+    (x * x mod ed25519_p * (y * y mod ed25519_p)) mod ed25519_p =
+    (x * x * (y * y)) mod ed25519_p). {
+    rewrite Zmult_mod_idemp_l. rewrite Zmult_mod_idemp_r. reflexivity.
+  }
+  assert (RHS_eq :
+    (1 + (d * ((x * x mod ed25519_p * (y * y mod ed25519_p)) mod ed25519_p)) mod ed25519_p) mod ed25519_p =
+    (1 + d * (x * x) * (y * y)) mod ed25519_p). {
+    rewrite RHS_inner.
+    (* Goal: (1 + (d * ((x*x * (y*y)) mod p)) mod p) mod p = (1 + d*(x*x)*(y*y)) mod p *)
+    rewrite Zmult_mod_idemp_r.
+    rewrite Zplus_mod_idemp_r.
+    f_equal. ring.
+  }
+  rewrite LHS_eq. rewrite RHS_eq. tauto.
+Qed.
