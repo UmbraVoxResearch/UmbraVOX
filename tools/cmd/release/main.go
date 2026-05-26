@@ -91,6 +91,8 @@ func (c *releaseCtx) buildSource(target, suffix, archiveKind, noteFile, noteBody
 	c.writeManifest(stage, target, "source")
 	writeFile(filepath.Join(stage, noteFile), noteBody)
 
+	copySBOM(c.root, stage)
+
 	// checksums
 	writeContentsSHA256(stage)
 	writeScriptSHA256(stage)
@@ -190,6 +192,8 @@ func (c *releaseCtx) buildLinux() string {
 	// Write FILE.txt.
 	fileOut := must(exec.Command("file", wrappedBin).Output())
 	writeFile(filepath.Join(stage, "FILE.txt"), string(fileOut))
+
+	copySBOM(c.root, stage)
 
 	// Checksums.
 	writeContentsSHA256(stage)
@@ -310,6 +314,7 @@ func (c *releaseCtx) buildPlatform(platform string) string {
 	}
 
 	tryCopyBinary(stage)
+	copySBOM(c.root, stage)
 
 	writeContentsSHA256(stage)
 	writePlatformScriptSHA256(stage)
@@ -663,6 +668,20 @@ func copyFile(src, dst string) {
 func writeFile(path, content string) {
 	must0(os.MkdirAll(filepath.Dir(path), 0o755))
 	must0(os.WriteFile(path, []byte(content), 0o644))
+}
+
+// copySBOM copies build/sbom.cdx.json from the project root into the release
+// staging directory so every artifact ships with a CycloneDX SBOM.  A missing
+// SBOM is logged as a warning but does not abort the release.
+func copySBOM(root, stage string) {
+	src := filepath.Join(root, "build", "sbom.cdx.json")
+	if _, err := os.Stat(src); err != nil {
+		fmt.Fprintln(os.Stderr, "warning: build/sbom.cdx.json not found; SBOM will not be included in release artifact (run ./uv sbom to generate)")
+		return
+	}
+	dst := filepath.Join(stage, "sbom.cdx.json")
+	copyFile(src, dst)
+	fmt.Fprintf(os.Stderr, "sbom: included build/sbom.cdx.json\n")
 }
 
 // ---------- linux helpers ----------

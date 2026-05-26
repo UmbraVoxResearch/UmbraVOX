@@ -17,6 +17,7 @@
 //	umbravox-vm evidence [FLAGS]     evidence & assurance bundles
 //	umbravox-vm fuzz [MODE]          fuzzing
 //	umbravox-vm clean [--all]        remove build artifacts
+//	umbravox-vm sbom                 generate CycloneDX 1.5 SBOM
 //	umbravox-vm exec -- <cmd>        run arbitrary command in VM
 //	umbravox-vm help                 show help
 package main
@@ -64,6 +65,8 @@ func run(args []string) int {
 		return runFuzz(rest)
 	case "clean":
 		return runClean(rest)
+	case "sbom":
+		return runSBOM(rest)
 	case "exec":
 		return runExec(rest)
 	case "help", "-h", "--help":
@@ -99,6 +102,7 @@ Commands:
   evidence [FLAGS]    Evidence & assurance bundles (--fast, --full)
   fuzz [MODE]         Fuzzing (differential, afl)
   clean [--all|--nix-gc] Remove build artifacts (--nix-gc frees /nix/store)
+  sbom                Generate CycloneDX 1.5 SBOM (build/sbom.cdx.json)
   exec -- <cmd>       Run arbitrary command in VM (power user)
   help                Show this help
 

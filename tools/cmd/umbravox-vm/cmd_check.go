@@ -2,6 +2,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -48,8 +49,10 @@ func runCheck(args []string) int {
 			return checkAssurance()
 		case "pre-release":
 			return checkPreRelease()
+		case "sbom":
+			return checkSBOM()
 		default:
-			fmt.Fprintf(os.Stderr, "Unknown check gate: %s\nAvailable: lint, format, license, complexity, generated-headers, assurance, pre-release\n", gate)
+			fmt.Fprintf(os.Stderr, "Unknown check gate: %s\nAvailable: lint, format, license, complexity, generated-headers, assurance, pre-release, sbom\n", gate)
 			return 2
 		}
 	}
@@ -72,6 +75,9 @@ func runCheck(args []string) int {
 		code = c
 	}
 	if c := checkAssurance(); c != 0 {
+		code = c
+	}
+	if c := checkSBOM(); c != 0 {
 		code = c
 	}
 	if code == 0 {
@@ -440,6 +446,73 @@ func checkAssurance() int {
 	}
 
 	log.OK(tag, "Assurance: passed")
+	return 0
+}
+
+// checkSBOM validates build/sbom.cdx.json: existence, JSON validity,
+// minimum component count, freshness (<=7 days), and required CycloneDX fields.
+// Missing file is informational (warn, don't fail) because the SBOM is generated
+// by `./uv sbom`, not by `./uv check`.
+func checkSBOM() int {
+	log.Info(tag, "Checking SBOM (build/sbom.cdx.json)...")
+	repoRoot, err := repo.Root()
+	if err != nil {
+		log.Fail(tag, err.Error())
+		return 1
+	}
+
+	sbomPath := filepath.Join(repoRoot, "build", "sbom.cdx.json")
+
+	data, err := os.ReadFile(sbomPath)
+	if os.IsNotExist(err) {
+		log.Warn(tag, "SBOM not found: build/sbom.cdx.json (run './uv sbom' to generate)")
+		return 0
+	}
+	if err != nil {
+		log.Fail(tag, fmt.Sprintf("Cannot read build/sbom.cdx.json: %v", err))
+		return 1
+	}
+
+	// 2. Valid JSON
+	var doc map[string]interface{}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		log.Fail(tag, fmt.Sprintf("SBOM is not valid JSON: %v", err))
+		return 1
+	}
+
+	// 3. Required CycloneDX fields
+	bomFormat, _ := doc["bomFormat"].(string)
+	specVersion, _ := doc["specVersion"].(string)
+	if bomFormat == "" || specVersion == "" {
+		log.Fail(tag, "SBOM missing required fields: bomFormat and/or specVersion")
+		return 1
+	}
+	if bomFormat != "CycloneDX" {
+		log.Fail(tag, fmt.Sprintf("SBOM bomFormat is %q; expected \"CycloneDX\"", bomFormat))
+		return 1
+	}
+
+	// 4. Component count >= 10
+	components, _ := doc["components"].([]interface{})
+	if len(components) < 10 {
+		log.Fail(tag, fmt.Sprintf("SBOM contains only %d component(s); expected at least 10 (sanity check)", len(components)))
+		return 1
+	}
+
+	// 5. Freshness: file mtime <= 7 days ago
+	info, err := os.Stat(sbomPath)
+	if err != nil {
+		log.Fail(tag, fmt.Sprintf("Cannot stat build/sbom.cdx.json: %v", err))
+		return 1
+	}
+	age := time.Since(info.ModTime())
+	if age > 7*24*time.Hour {
+		log.Fail(tag, fmt.Sprintf("SBOM is %.0f days old (max 7); run './uv sbom' to regenerate", age.Hours()/24))
+		return 1
+	}
+
+	log.OK(tag, fmt.Sprintf("SBOM: passed (bomFormat=%s specVersion=%s components=%d age=%.1fh)",
+		bomFormat, specVersion, len(components), age.Hours()))
 	return 0
 }
 
