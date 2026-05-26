@@ -307,7 +307,7 @@ library
       csrc/generated/networkprotocol.c
       csrc/generated/sessionstate.c
       csrc/constant_time.c
-    include-dirs: csrc
+    include-dirs: csrc csrc/hacl
     cc-options: -fstack-protector-strong -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security
   if !flag(wasm) && flag(stubs)
     exposed-modules:
