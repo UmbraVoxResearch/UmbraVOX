@@ -1,17 +1,17 @@
 /* Bridge: HACL* verified Poly1305 → UmbraVOX FFI interface.
- * This file wraps Hacl_Poly1305_32 to match the function signatures
+ * This file wraps Hacl_MAC_Poly1305 to match the function signatures
  * expected by src/UmbraVox/Crypto/Generated/FFI/Poly1305.hs.
  *
  * When HACL* is vendored, this replaces csrc/generated/poly1305.c
  * in the cabal c-sources list.
  *
- * HACL* entry point (from Hacl_Poly1305_32.h):
+ * HACL* entry point (from Hacl_MAC_Poly1305.h):
  *
- *   void Hacl_MAC_Poly1305_poly1305_mac(
- *       uint8_t  *output,  -- 16-byte tag output
- *       uint32_t  len,     -- byte length of msg
- *       uint8_t  *msg,     -- message input
- *       uint8_t  *key      -- 32-byte one-time key
+ *   void Hacl_MAC_Poly1305_mac(
+ *       uint8_t  *output,    -- 16-byte tag output
+ *       uint8_t  *input,     -- message input
+ *       uint32_t  input_len, -- byte length of msg
+ *       uint8_t  *key        -- 32-byte one-time key
  *   );
  *
  * FFI symbols required by Poly1305.hs:
@@ -29,9 +29,12 @@
 #include <stdint.h>
 #include <stddef.h>
 
-/* Forward declaration — resolved when Hacl_Poly1305_32.c is compiled in. */
-extern void Hacl_MAC_Poly1305_poly1305_mac(
-    uint8_t *output, uint32_t len, uint8_t *msg, uint8_t *key);
+/* Forward declaration — resolved when Hacl_MAC_Poly1305.c is compiled in.
+ * Signature per Hacl_MAC_Poly1305.h (HACL* dist/gcc-compatible):
+ *   void Hacl_MAC_Poly1305_mac(output, input, input_len, key)
+ */
+extern void Hacl_MAC_Poly1305_mac(
+    uint8_t *output, uint8_t *input, uint32_t input_len, uint8_t *key);
 
 /* Poly1305 produces a 16-byte authentication tag. */
 #define POLY1305_TAG_BYTES  16
@@ -50,9 +53,10 @@ void
 poly1305_mac(uint8_t *tag, const uint8_t *msg, uint32_t msg_len,
              const uint8_t *key)
 {
-    Hacl_MAC_Poly1305_poly1305_mac(
-        tag, msg_len,
+    Hacl_MAC_Poly1305_mac(
+        tag,
         (uint8_t *)(uintptr_t)msg,
+        msg_len,
         (uint8_t *)(uintptr_t)key);
 }
 

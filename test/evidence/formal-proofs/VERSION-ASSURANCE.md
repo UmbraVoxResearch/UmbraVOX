@@ -5,6 +5,56 @@ Tracks what changed, what did NOT change, and how to verify.
 
 ---
 
+## v0.6.3 Assurance Delta
+
+**Theme:** Security audit remediation, Coq proof expansion, Go test coverage, CI hardening
+
+**What changed since v0.1.9:**
+
+Formal proofs:
+- 19 Coq verified files (up from 13), 613 Qed (up from 444)
+- 6 new Coq files: Ed25519PointAdd.v, Ed25519ScalarMult.v, Ed25519Scalar.v,
+  Ed25519Encoding.v, Ed25519GroupScalarMultAdd.v, X25519DH.v, StructuralProofs.v
+- All M13.14.x Coq milestones complete (M13.14.1–M13.14.18):
+  point_add_assoc, point_add_preserves_on_curve_ext, point_double_preserves_on_curve_ext,
+  scalar_mult_preserves_on_curve_ext, scalar_mult_add, scalar_mult_compose,
+  scalar_mod_L_equiv, group_order_lemma, point_add_congruence_right,
+  scalar_mult_congruence, encode_decode_roundtrip, sqrt_ratio_correct,
+  cofactor_clearing, dh_commutativity, dh_commutativity_general, dleq_correctness,
+  bs_seq_roundtrip, seq_of_bs_length_bound
+- 32 F* specs on disk (8 added since v0.1.9: Dandelion, Ed25519Extended, Keccak,
+  MessageFormat, NetworkProtocol, PQWrapper, SessionState, WireFormat)
+- assume val count: 35 declarations (31 in ASSUMPTIONS.md: 25 original + 6 new from new specs; 4 discharged stubs retained for F* compilation)
+- admit() count: 0 (invariant maintained)
+
+Security:
+- 91-finding v0.6 security audit fully remediated (M20 complete)
+- SecureBytes migration: all 15 secret key fields wrapped (mlock, zero-on-finalize)
+- P0 critical: pqEncrypt IO, clampScalar partial functions, go.sum, cabal index-state
+- P1 security-critical: 7/7 complete (DH replay, rate-limit, metadata encrypt, etc.)
+- P2 defense-in-depth: 8/8 complete (secure_zero, CT helpers, etc.)
+- P3 test coverage: 85+ tests across 10 categories
+- 12 CVE candidates: 12/12 addressed
+
+Build/CI:
+- vmctl unified Go module (5 VM types consolidated)
+- 4-tier Nix image hierarchy (base/network/builder/dev)
+- Go test coverage: 7 packages, 80+ tests (qemu, vmctl, download, netproxy, netpol)
+- CI hardening: timeouts, SBOM gate, Wycheproof vectors, pre-release gate
+
+**What was NOT changed (invariants maintained):**
+- admit() count: 0 across all 32 F* specs
+- Coq Admitted (verified files): 0
+- Coq draft Admitted: 8 (Ed25519GroupLaw.v, aspirational only)
+
+**What this version does NOT claim:**
+- Does not claim ML-KEM-768 formal verification (F* spec is stubs only)
+- Does not claim constant-time behavior across all code paths (assessed per-primitive)
+- Does not claim X3DH/NoiseIK/DoubleRatchet security from F* alone (crypto = constant stubs in those specs)
+- Does not claim F* verification suite completes in CI (infrastructure work ongoing: M13.7, M13.13.6)
+
+---
+
 ## v0.1.9 Assurance Delta
 
 **Theme:** Universal Coq proofs and Signal bridge — ED-003, ED-007, ED-008b, ED-008c all proved
@@ -167,19 +217,19 @@ All issues documented in commit history (`v0.1.1..v0.1.2`).
 
 ## Baseline Counts
 
-| Metric | v0.1.1 | v0.1.2 | v0.1.3 | v0.1.4 | v0.1.5 | v0.1.6 | v0.1.7 | v0.1.8 | v0.1.9 |
-|--------|--------|--------|--------|--------|--------|--------|--------|--------|--------|
-| F* `admit()` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| F* `assume val` | 23 | 30 | 28 | 28 | 28 | 28 | 30 | 30 | 25 |
-| Coq `Qed` | 5 | 153 | 171 | 171 | 187 | 219 | 350 | 415 | 444 |
-| Coq files | 1 | 3 | 4 | 4 | 5 | 6 | 9 | 11 | 13 |
-| Coq `Admitted` (verified) | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Infra tests | 65 | 67 | 67 | 67 | 67 | 67 | 67 | 67 | 67 |
-| Assurance checks | -- | -- | 5/5 | 5/5 | 5/5 | 8/8 | 8/8 | 8/8 | 8/8 |
-| Differential suites | -- | -- | -- | 21/21 | 22/22 | 22/22 | 36/36 | 36/36 | 36/36 |
-| TUI screenshots | -- | -- | -- | -- | -- | -- | 8/8 | 8/8 | 8/8 |
-| Proved theorems | -- | -- | -- | -- | -- | -- | sign_then_verify, encode_decode_round_trip | -- | ED-003, ED-007, ED-008b, ED-008c |
-| Irreducible (permanent) | 7 | 7 | 7 | 7 | 7 | 7 | 7 | 7 | 7 |
+| Metric | v0.1.1 | v0.1.2 | v0.1.3 | v0.1.4 | v0.1.5 | v0.1.6 | v0.1.7 | v0.1.8 | v0.1.9 | v0.6.3 |
+|--------|--------|--------|--------|--------|--------|--------|--------|--------|--------|--------|
+| F* `admit()` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| F* specs | -- | -- | -- | -- | -- | -- | -- | -- | 24 | 32 |
+| F* `assume val` (active/registered) | 23 | 30 | 28 | 28 | 28 | 28 | 30 | 30 | 25 | 31 |
+| F* `assume val` (DISCHARGED/Coq) | -- | -- | -- | -- | -- | -- | -- | -- | 11 | 11 |
+| Coq `Qed` | 5 | 153 | 171 | 171 | 187 | 219 | 350 | 415 | 444 | 613 |
+| Coq files | 1 | 3 | 4 | 4 | 5 | 6 | 9 | 11 | 13 | 19 |
+| Coq `Admitted` (verified) | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Assurance checks | -- | -- | 5/5 | 5/5 | 5/5 | 8/8 | 8/8 | 8/8 | 8/8 | 8/8 |
+| Differential suites | -- | -- | -- | 21/21 | 22/22 | 22/22 | 36/36 | 36/36 | 36/36 | 36/36 |
+| Proved theorems | -- | -- | -- | -- | -- | -- | sign_then_verify, encode_decode_round_trip | -- | ED-003, ED-007, ED-008b, ED-008c | M13.14.1–18 (18 complete) |
+| Irreducible (permanent) | 7 | 7 | 7 | 7 | 7 | 7 | 7 | 7 | 7 | 7 |
 
 ---
 

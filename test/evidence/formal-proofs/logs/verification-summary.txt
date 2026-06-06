@@ -1,24 +1,35 @@
 UmbraVOX F* Verification Summary
-Generated: 2026-05-23
-Version: v0.1.6
+Generated: 2026-06-05
+Version: v0.6.3
 
 Total specs: 32
-Specs with 0 assume val: 24
-Total assume val: 34
+Specs with 0 assume val: 21
+Total assume val (^assume val declarations in fst files): 35
+Total assume val (active per ASSUMPTIONS.md): 31
+  - 25 original (fully classified with justification, evidence, discharge plan)
+  - 6 new (EE-001, EE-002, PQ-001, PQ-002, SS-001, WF-001 — added 2026-06-05)
+  - 4 discharged stubs retained in fst files (F* needs them; Coq provides external evidence)
 Total admit(): 0
-Coq verified files: 6
-Coq Qed total: 219
-Differential suites: 22/22 PASS
+Coq verified files: 19 (excluding draft/Ed25519GroupLaw.v)
+Coq Qed total: 613
+Coq Admitted (verified files): 0
+Coq Admitted (draft only): 8
+Differential suites: 36/36 PASS
 Pre-release gates: 8/8 PASS
 
-Per-spec breakdown:
+Assumption ledger update: ASSUMPTIONS.md updated 2026-06-05 to add entries for the 6 assume vals
+from specs added after v0.1.9 (Dandelion, Ed25519Extended, Keccak, MessageFormat, NetworkProtocol,
+PQWrapper, SessionState, WireFormat). The 6 new entries (EE-001, EE-002, PQ-001, PQ-002, SS-001,
+WF-001) are now registered with full justification, category, and discharge plan.
+
+Per-spec breakdown (^assume val declarations; see ASSUMPTIONS.md for full ledger):
   Spec.AES256                    assume val: 0
   Spec.ChaCha20                  assume val: 0
-  Spec.ChaChaPoly                assume val: 1
+  Spec.ChaChaPoly                assume val: 1  [CP-001 tag_forgery_ct_axiom, CRYPTO_HARDNESS]
   Spec.Dandelion                 assume val: 0
-  Spec.DoubleRatchet             assume val: 2
-  Spec.Ed25519                   assume val: 10
-  Spec.Ed25519Extended           assume val: 2
+  Spec.DoubleRatchet             assume val: 2  [DR-001 hmac_non_fixpoint, DR-002 hmac_collision_resistance]
+  Spec.Ed25519                   assume val: 13 [10 active per ASSUMPTIONS.md; 3 retained-discharged stubs]
+  Spec.Ed25519Extended           assume val: 2  [EE-001 cofactor_clearing, EE-002 encode_decode_roundtrip — added to ASSUMPTIONS.MD 2026-06-05]
   Spec.GaloisField               assume val: 0
   Spec.GCM                       assume val: 0
   Spec.HKDF                      assume val: 0
@@ -32,15 +43,15 @@ Per-spec breakdown:
   Spec.NetworkProtocol           assume val: 0
   Spec.NoiseIK                   assume val: 0
   Spec.Poly1305                  assume val: 0
-  Spec.PQWrapper                 assume val: 2
+  Spec.PQWrapper                 assume val: 2  [PQ-001 ind_cca2_security, PQ-002 mlkem_implicit_rejection — added to ASSUMPTIONS.MD 2026-06-05]
   Spec.PQXDH                     assume val: 0
   Spec.SenderKeys                assume val: 0
-  Spec.SessionState              assume val: 1
+  Spec.SessionState              assume val: 1  [SS-001 hmac_integrity — added to ASSUMPTIONS.MD 2026-06-05]
   Spec.SHA256                    assume val: 0
-  Spec.SHA256.Refinement         assume val: 6
+  Spec.SHA256.Refinement         assume val: 6  [SR-001..SR-006 CROSS_TOOLCHAIN/REFINEMENT_BOUNDARY]
   Spec.SHA512                    assume val: 0
-  Spec.StealthAddress            assume val: 1
-  Spec.VRF                       assume val: 3
-  Spec.WireFormat                assume val: 1
-  Spec.X25519                    assume val: 5
+  Spec.StealthAddress            assume val: 1  [SA-001 unlinkability, CRYPTO_HARDNESS]
+  Spec.VRF                       assume val: 3  [VR-001 dleq_correctness, VR-002 vrf_strong_uniqueness, VR-003 vrf_collision_resistance]
+  Spec.WireFormat                assume val: 1  [WF-001 hmac_unforgeability — added to ASSUMPTIONS.MD 2026-06-05]
+  Spec.X25519                    assume val: 3  [X2-001 prime_is_prime, X2-005 dh_commutativity, X2-006 dh_commutativity_general]
   Spec.X3DH                      assume val: 0

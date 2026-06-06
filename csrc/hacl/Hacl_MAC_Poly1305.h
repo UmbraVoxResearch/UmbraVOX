@@ -1,33 +1,63 @@
-/* STUB — replace with vendored HACL* distribution.
+/* MIT License
  *
- * Hacl_MAC_Poly1305.h — stub header for HACL* Poly1305 MAC.
+ * Copyright (c) 2016-2022 INRIA, CMU and Microsoft Corporation
+ * Copyright (c) 2022-2023 HACL* Contributors
  *
- * This file is a placeholder that allows bridge_poly1305.c to compile and link
- * as a no-op until the real HACL* distribution is dropped into csrc/hacl/.
- * The real header ships with the HACL* source tree (typically dist/gcc-compatible/).
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
  *
- * HACL* source: https://github.com/hacl-star/hacl-star
- * Replace this file with: Hacl_MAC_Poly1305.h from the vendored distribution.
- * (Also sometimes distributed as Hacl_Poly1305_32.h — check the dist/ tree.)
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
  *
- * Sizes:
- *   key : 32 bytes (256-bit one-time key)
- *   tag : 16 bytes (128-bit authenticator)
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
  */
-#pragma once
-#include <stdint.h>
-#include <stddef.h>
 
-/*
- * Hacl_MAC_Poly1305_poly1305_mac — compute Poly1305 tag over msg with key.
- *
- *   output : caller-allocated output buffer of at least 16 bytes
- *   len    : byte length of msg
- *   msg    : message bytes (non-const per HACL* convention)
- *   key    : 32-byte one-time key
- */
-void Hacl_MAC_Poly1305_poly1305_mac(
-    uint8_t *output,
-    uint32_t len,
-    uint8_t *msg,
-    uint8_t *key);
+
+#ifndef Hacl_MAC_Poly1305_H
+#define Hacl_MAC_Poly1305_H
+
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
+#include <string.h>
+#include "krml/internal/types.h"
+#include "krml/lowstar_endianness.h"
+#include "krml/internal/target.h"
+
+#include "Hacl_Streaming_Types.h"
+
+typedef struct Hacl_MAC_Poly1305_state_t_s Hacl_MAC_Poly1305_state_t;
+
+Hacl_MAC_Poly1305_state_t *Hacl_MAC_Poly1305_malloc(uint8_t *key);
+
+void Hacl_MAC_Poly1305_reset(Hacl_MAC_Poly1305_state_t *state, uint8_t *key);
+
+/**
+0 = success, 1 = max length exceeded
+*/
+Hacl_Streaming_Types_error_code
+Hacl_MAC_Poly1305_update(Hacl_MAC_Poly1305_state_t *state, uint8_t *chunk, uint32_t chunk_len);
+
+void Hacl_MAC_Poly1305_digest(Hacl_MAC_Poly1305_state_t *state, uint8_t *output);
+
+void Hacl_MAC_Poly1305_free(Hacl_MAC_Poly1305_state_t *state);
+
+void Hacl_MAC_Poly1305_mac(uint8_t *output, uint8_t *input, uint32_t input_len, uint8_t *key);
+
+#if defined(__cplusplus)
+}
+#endif
+
+#define Hacl_MAC_Poly1305_H_DEFINED
+#endif /* Hacl_MAC_Poly1305_H */

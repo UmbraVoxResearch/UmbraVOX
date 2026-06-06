@@ -2,12 +2,13 @@
 
 # F* Trust Boundary — Assumption Ledger
 
-**Date:** 2026-05-17 (updated 2026-05-20)
-**F* specs:** 24 total, 17 with 0 assume val
-**assume val count:** 25
+**Date:** 2026-05-17 (updated 2026-06-05)
+**F* specs:** 32 total, 21 with 0 assume val
+**assume val count:** 31 active (25 original + 6 from specs added after v0.1.9); 35 total fst declarations (4 discharged stubs retained for F* compilation)
 **admit() count:** 0
-**Status:** ALL PLANS COMPLETE — every assume val has a classification, documented
+**Status:** 25 original assume vals complete — every one has a classification, documented
 justification, external evidence path, and discharge plan (or permanent status).
+6 assume vals from new specs (EE-001, EE-002, PQ-001, PQ-002, SS-001, WF-001) added 2026-06-05.
 
 ---
 
@@ -51,6 +52,12 @@ justification, external evidence path, and discharge plan (or permanent status).
 | VR-001 | Spec.VRF | `dleq_correctness` | DERIVED_FROM_ALGEBRA | no | ED-003, ED-004 | DLEQ algebraic identity requires group axioms | RFC 9381 Section 3 | Prove after ED-004 (ED-003 resolved) | UNBLOCKED |
 | VR-002 | Spec.VRF | `vrf_strong_uniqueness` | CRYPTO_HARDNESS | yes | none | Discrete log hardness on Ed25519 | RFC 9381; DL hardness | Cannot be proved unconditionally | CRYPTO_HARDNESS |
 | VR-003 | Spec.VRF | `vrf_collision_resistance` | CRYPTO_HARDNESS | yes | none | SHA-512 CR + group injectivity | RFC 9381; SHA-512 CR | Cannot be proved unconditionally | CRYPTO_HARDNESS |
+| EE-001 | Spec.Ed25519Extended | `cofactor_clearing` | ALGEBRAIC_EXTERNAL | yes | none | [8][q]P = O: cofactor-8 projects into prime-order subgroup; requires Ed25519 group law model | RFC 8032 §5.1; HWCD 2008 | Requires group law (same as ED-003 dependency) | BLOCKED_BY_TOOLING |
+| EE-002 | Spec.Ed25519Extended | `encode_decode_roundtrip` | FIELD_ARITHMETIC | yes | none | Point compress/decompress are inverses for on-curve points; requires sqrt in GF(2^255-19) | RFC 8032 §5.1.2-5.1.3 | Same as ED-009 (DISCHARGED); may be provable via Coq | UNBLOCKED |
+| PQ-001 | Spec.PQWrapper | `ind_cca2_security` | CRYPTO_HARDNESS | yes | none | KEM/DEM composition (ML-KEM-768 + AES-256-GCM + HKDF) yields IND-CCA2 | FIPS 203; Cramer-Shoup 2003 | Cannot be proved unconditionally | CRYPTO_HARDNESS |
+| PQ-002 | Spec.PQWrapper | `mlkem_implicit_rejection` | CRYPTO_HARDNESS | yes | none | ML-KEM implicit rejection prevents CCA oracle; pseudorandom output on invalid CT | FIPS 203 §7.3 | Cannot be proved unconditionally | CRYPTO_HARDNESS |
+| SS-001 | Spec.SessionState | `hmac_integrity` | CRYPTO_HARDNESS | yes | none | HMAC-SHA-256 integrity: any modification to session state body is detected | RFC 2104; NIST FIPS 198-1 | Cannot be proved unconditionally | CRYPTO_HARDNESS |
+| WF-001 | Spec.WireFormat | `hmac_unforgeability` | CRYPTO_HARDNESS | yes | none | HMAC-SHA-256 UF-CMA: any modification to header or payload is detected | RFC 2104; Bellare et al. 1996 | Cannot be proved unconditionally | CRYPTO_HARDNESS |
 
 ---
 
@@ -58,17 +65,20 @@ justification, external evidence path, and discharge plan (or permanent status).
 
 | Category | Count | Items |
 |----------|-------|-------|
-| CRYPTO_HARDNESS | 7 | CP-001, DR-001, DR-002, ED-010, SA-001, VR-002, VR-003 |
+| CRYPTO_HARDNESS | 11 | CP-001, DR-001, DR-002, ED-010, SA-001, VR-002, VR-003, PQ-001, PQ-002, SS-001, WF-001 |
 | CROSS_TOOLCHAIN_BOUNDARY | 5 | SR-001..005 |
 | REFINEMENT_BOUNDARY | 1 | SR-006 |
-| ALGEBRAIC_EXTERNAL | 2 | ED-001, X2-001 (prime_is_prime) |
-| FIELD_ARITHMETIC | 1 | ED-009a (sqrt_ratio_correct) |
+| ALGEBRAIC_EXTERNAL | 3 | ED-001, X2-001 (prime_is_prime), EE-001 |
+| FIELD_ARITHMETIC | 2 | ED-009a (sqrt_ratio_correct), EE-002 |
 | DERIVED_FROM_ALGEBRA | 7 | ED-004, ED-005, ED-006, ED-008a, ED-008d, VR-001, X2-005 |
 | BLOCKED_BY_TOOLING | 2 | ED-002, X2-006 |
-| **Total (active)** | **25** | |
+| **Total (active)** | **31** | (25 original + 6 new from specs added after v0.1.9) |
 | DISCHARGED (proved) | 11 | ED-003, ED-007, ED-008, ED-008b, ED-008c, ED-009, X2-001 (fmul_inverse), X2-002, X2-003, X2-004, X2-007 |
 
-## Permanently Irreducible (cannot be proved in any system): 7
+## Permanently Irreducible (cannot be proved in any system): 11
+
+(7 original + 4 new: PQ-001 ind_cca2_security, PQ-002 mlkem_implicit_rejection,
+SS-001 hmac_integrity, WF-001 hmac_unforgeability)
 
 These are standard cryptographic hardness assumptions. They remain as explicit,
 narrow, well-named trust anchors.
@@ -78,7 +88,9 @@ narrow, well-named trust anchors.
 These model the semantic boundary between F* and Haskell. They cannot be proved
 without a shared extraction framework.
 
-## Algebraic / Tooling (provable with better tools): 12
+## Algebraic / Tooling (provable with better tools): 14
+
+(12 original + EE-001 cofactor_clearing + EE-002 encode_decode_roundtrip)
 
 These are mathematically sound but require tools beyond Z3:
 - Coq `ring`/`field` tactic for polynomial identity verification

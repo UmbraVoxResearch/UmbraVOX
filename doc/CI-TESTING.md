@@ -28,7 +28,7 @@ Runs daily via cron. Full regression net.
 | `./uv test recovery` | L1 | State recovery |
 | `./uv test soak` | L4 | 2hr stress test |
 | `./uv fuzz differential` | L5 | Fuzz testing |
-| `./uv verify` | L6 | F* formal verification (24 specs) |
+| `./uv verify` | L6 | F* formal verification (32 specs) |
 | `./uv coverage --check` | L8 | HPC coverage targets |
 | `./uv vm smoke release` | L9 | Release bundle smoke |
 | `./uv vm smoke freebsd` | L9 | FreeBSD platform |

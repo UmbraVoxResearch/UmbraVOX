@@ -1,0 +1,53 @@
+HACL* Vendored C Sources
+========================
+
+Source:  https://github.com/hacl-star/hacl-star
+Commit:  504c298
+Extract: dist/gcc-compatible/
+
+These files are a curated subset of the HACL* formally F*-verified C crypto
+library, extracted from dist/gcc-compatible/ for use as the primary runtime
+crypto implementation in the UmbraVOX main build (milestones M13.15.8-M13.15.14).
+
+License: MIT / Apache-2.0
+See: ../../contrib/oracles/src/hacl-star/LICENSE
+
+DO NOT modify these files. If updates are needed, regenerate from the
+upstream source tree and re-copy using the same procedure.
+
+Algorithm sources
+-----------------
+Hacl_Hash_SHA2.h / Hacl_Hash_SHA2.c    -- SHA-256 and SHA-512
+Hacl_Hash_SHA3.h / Hacl_Hash_SHA3.c    -- SHA-3 / Keccak / SHAKE
+Hacl_Chacha20.h  / Hacl_Chacha20.c     -- ChaCha20 stream cipher
+Hacl_MAC_Poly1305.h / Hacl_MAC_Poly1305.c -- Poly1305 MAC
+Hacl_HMAC.h      / Hacl_HMAC.c         -- HMAC (over any hash)
+Hacl_HKDF.h      / Hacl_HKDF.c         -- HKDF (over HMAC)
+Hacl_Hash_Base.h / Hacl_Hash_Base.c    -- Shared hash base types
+
+Support headers
+---------------
+Hacl_Streaming_Types.h  -- Streaming API types
+Hacl_SHA2_Types.h       -- SHA-2 internal types
+Hacl_Krmllib.h          -- KaRaMeL runtime (integer ops, endianness)
+Hacl_Spec.h             -- Spec types
+lib_memzero0.h          -- Secure memory zeroing
+Lib_Memzero0.c          -- Secure memory zeroing implementation
+
+KaRaMeL runtime headers (krml/)
+--------------------------------
+krml/internal/types.h           -- Fixed-width integer types
+krml/internal/target.h          -- Compiler portability macros
+krml/internal/builtin.h         -- Compiler built-ins
+krml/internal/callconv.h        -- Calling convention macros
+krml/internal/compat.h          -- Compatibility macros
+krml/lowstar_endianness.h       -- Endianness helpers
+krml/c_endianness.h             -- C endianness macros
+krml/FStar_UInt128.h            -- 128-bit integer support
+krml/FStar_UInt_8_16_32_64.h    -- Fixed-width integer helpers
+
+Bridge files (bridge_*.c)
+--------------------------
+The bridge_*.c files in this directory are UmbraVOX-specific thin wrappers
+that adapt HACL* entry points to the function signatures expected by the
+Haskell FFI layer. They are not part of the upstream HACL* distribution.

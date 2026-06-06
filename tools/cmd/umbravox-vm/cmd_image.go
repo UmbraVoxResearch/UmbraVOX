@@ -155,7 +155,7 @@ func vmBuildImageOnHost(repoRoot string) int {
 }
 
 // vmBuildRuntimeImage builds lightweight runtime VM images.
-// Default: builds inside the builder VM (same as dev image).
+// Default: builds inside the builder VM (host-isolated).
 // --on-host: builds directly on the host via nix-build.
 func vmBuildRuntimeImage(args []string) int {
 	onHost := false
@@ -175,10 +175,25 @@ func vmBuildRuntimeImage(args []string) int {
 		return vmBuildRuntimeImageOnHost(repoRoot)
 	}
 
-	// Build runtime images via nix-build on the host.
-	// The runtime image is small (~1.3GB) so this is fast.
-	// TODO: support building inside the builder VM for fully host-isolated builds.
-	return vmBuildRuntimeImageOnHost(repoRoot)
+	// ── Preflight: disk space check ───────────────────────────────
+	freeBytes := availableDiskSpace(repoRoot)
+	freeGB := freeBytes / (1024 * 1024 * 1024)
+	if freeGB < minFreeSpaceGB {
+		log.Fail(tag, fmt.Sprintf("Insufficient disk space: %dGB free, need %dGB", freeGB, minFreeSpaceGB))
+		log.Info(tag, "Free space with: ./uv vm clean-image, ./uv clean --all, or nix-collect-garbage -d")
+		return 1
+	}
+
+	// ── Ensure builder image ──────────────────────────────────────
+	vmCacheDir := filepath.Join(repoRoot, "build", "vm")
+	builderDir := filepath.Join(vmCacheDir, "builder-image")
+	builderImg := filepath.Join(builderDir, "nixos.img")
+
+	if code := downloadOrBuildBuilder(repoRoot, builderDir, builderImg); code != 0 {
+		return code
+	}
+
+	return bootBuilderVMForRuntimeImage(repoRoot, builderImg)
 }
 
 // vmBuildRuntimeImageOnHost builds runtime images directly on the host.
@@ -456,6 +471,168 @@ func bootBuilderVM(repoRoot, builderImg string) int {
 	return 0
 }
 
+
+// bootBuilderVMForRuntimeImage boots the builder VM to build the runtime image
+// (nix/vm-runtime.nix -A qemu) in a host-isolated environment.
+//
+// The builder VM mounts the project source read-only, runs nix-build inside
+// the VM, and deposits the resulting nixos.raw into a 9p output share on the
+// host.  A build-command file written to the output directory before boot
+// signals to the builder which target to build.
+//
+// This mirrors bootBuilderVM but targets the runtime image:
+//   - Output goes to build/vm-runtime-output/ instead of build/vm-output/
+//   - The builder reads nix/vm-runtime.nix -A qemu (via build-command file)
+//   - The result is extracted to build/vm/runtime-qemu-image/
+func bootBuilderVMForRuntimeImage(repoRoot, builderImg string) int {
+	vmCacheDir := filepath.Join(repoRoot, "build", "vm")
+	builderDir := filepath.Dir(builderImg)
+
+	if err := repo.Preflight(builderDir, false); err != nil {
+		return 1
+	}
+
+	diskImg, err := filepath.EvalSymlinks(builderImg)
+	if err != nil {
+		diskImg = builderImg
+	}
+
+	tmpDir := filepath.Join(vmCacheDir, "tmp")
+	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
+		log.Fail(tag, fmt.Sprintf("Failed to create temp dir: %v", err))
+		return 1
+	}
+
+	disks, diskCleanup, err := prepareBuilderDisks(repoRoot, diskImg, tmpDir)
+	if err != nil {
+		log.Fail(tag, err.Error())
+		return 1
+	}
+	defer diskCleanup()
+
+	// ── Output directory ──────────────────────────────────────────
+	outputDir := filepath.Join(repoRoot, "build", "vm-runtime-output")
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		log.Fail(tag, fmt.Sprintf("Failed to create output dir: %v", err))
+		return 1
+	}
+	statusFile := filepath.Join(outputDir, "builder-status")
+	os.Remove(statusFile)
+	os.Remove(filepath.Join(outputDir, "nixos.img.zst"))
+
+	// Write a build-command file so the builder VM knows which nix target
+	// to build.  The builder VM reads this file from the 9p output share
+	// before launching nix-build.
+	buildCmdFile := filepath.Join(outputDir, "build-command")
+	if err := os.WriteFile(buildCmdFile, []byte("nix-build nix/vm-runtime.nix -A qemu\n"), 0o644); err != nil {
+		log.Fail(tag, fmt.Sprintf("Failed to write build-command file: %v", err))
+		return 1
+	}
+
+	// ── Network filter ────────────────────────────────────────────
+	stopFilter, filterSockPath, err := setupNetworkFilter(repoRoot, tmpDir)
+	if err != nil {
+		log.Fail(tag, err.Error())
+		return 1
+	}
+	if stopFilter != nil {
+		defer stopFilter()
+	}
+
+	// ── VMSpec ────────────────────────────────────────────────────
+	resources := vmctl.Resources{Fraction: 75, MinCores: 2, MinMemMB: 2048}
+	builderTimeout := 2 * time.Hour
+	if def, defErr := loadVMDef(repoRoot, "builder"); defErr != nil {
+		log.Fail(tag, fmt.Sprintf("failed to load vm-def: %v", defErr))
+		return 1
+	} else if def != nil {
+		resources = def.Resources
+		if def.Timeout > 0 {
+			builderTimeout = def.Timeout
+		}
+	}
+
+	networkArgs := "-nic user,model=virtio"
+	if filterSockPath != "" {
+		networkArgs = fmt.Sprintf(
+			"-nic user,model=virtio,restrict=on,"+
+				"guestfwd=tcp:10.0.2.100:3128-chardev:uvproxy "+
+				"-chardev socket,id=uvproxy,path=%s",
+			filterSockPath)
+	}
+
+	outputShare := ninep.DefaultOutputShare(outputDir)
+	spec := &vmctl.VMSpec{
+		Hypervisor: vmctl.HypervisorQEMU,
+		BaseImage: vmctl.ImageRef{
+			Path:   disks.overlay.Path,
+			Format: vmctl.DiskFormatQCOW2,
+		},
+		Disks: []vmctl.DiskSpec{
+			{Path: disks.srcDisk, Format: vmctl.DiskFormatRaw, ReadOnly: true, Interface: "virtio"},
+			{Path: disks.scratchDisk, Format: vmctl.DiskFormatQCOW2, Interface: "virtio"},
+		},
+		Shares: []vmctl.ShareSpec{{
+			HostPath:      outputShare.LocalPath,
+			MountTag:      outputShare.MountTag,
+			SecurityModel: string(outputShare.SecurityModel),
+			ID:            outputShare.ID,
+		}},
+		Network:    vmctl.NetworkSpec{RawArgs: networkArgs},
+		Resources:  resources,
+		Timeout:    builderTimeout,
+		NoReboot:   true,
+		StatusFile: statusFile,
+	}
+
+	res := vmctl.ResolveResources(spec.Resources)
+	log.Info(tag, fmt.Sprintf("VM: %d cores, %dMB RAM", res.Cores, res.MemoryMB))
+	log.Info(tag, "Building runtime VM image inside builder VM (vmctl)...")
+	fmt.Fprintln(os.Stderr)
+
+	// ── Boot ──────────────────────────────────────────────────────
+	ctx, cancel := context.WithTimeout(context.Background(), spec.Timeout)
+	defer cancel()
+
+	result, bootErr := (&vmctl.QEMUHypervisor{}).Boot(ctx, spec, tmpDir)
+	if bootErr != nil {
+		log.Fail(tag, fmt.Sprintf("QEMU error: %v", bootErr))
+		return 1
+	}
+	if result.ExitCode != 0 {
+		log.Fail(tag, fmt.Sprintf("QEMU exited with %d", result.ExitCode))
+		return 1
+	}
+
+	// ── Check result ──────────────────────────────────────────────
+	if err := checkBuilderResult(statusFile); err != nil {
+		log.Fail(tag, err.Error())
+		return 1
+	}
+
+	// ── Extract result ────────────────────────────────────────────
+	// The builder VM deposits the compressed runtime image as nixos.img.zst.
+	// Decompress it to build/vm/runtime-qemu-image/.
+	runtimeImageDir := filepath.Join(vmCacheDir, "runtime-qemu-image")
+	if err := decompressBuilderImage(outputDir, vmCacheDir); err != nil {
+		log.Fail(tag, err.Error())
+		return 1
+	}
+	// decompressBuilderImage writes to build/vm/image/; rename to runtime-qemu-image/
+	builtImageDir := filepath.Join(vmCacheDir, "image")
+	if _, statErr := os.Stat(builtImageDir); statErr == nil {
+		os.RemoveAll(runtimeImageDir)
+		if renErr := os.Rename(builtImageDir, runtimeImageDir); renErr != nil {
+			log.Fail(tag, fmt.Sprintf("Failed to move runtime image: %v", renErr))
+			return 1
+		}
+	}
+
+	runtimeSize := pathSize(runtimeImageDir)
+	log.OK(tag, "Runtime image built successfully inside builder VM")
+	log.Info(tag, fmt.Sprintf("  QEMU: %s (%s)", runtimeImageDir, formatSize(runtimeSize)))
+	return 0
+}
 
 // ensureBuilderImage downloads the builder image or prompts to build locally.
 func ensureBuilderImage(repoRoot, builderDir, builderImg string) int {

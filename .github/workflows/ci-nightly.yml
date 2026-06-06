@@ -58,7 +58,7 @@ jobs:
       - name: Fuzz testing
         run: ./uv fuzz differential
 
-      - name: F* formal verification (24 specs)
+      - name: F* formal verification (32 specs)
         run: ./uv verify
 
       - name: HPC coverage targets

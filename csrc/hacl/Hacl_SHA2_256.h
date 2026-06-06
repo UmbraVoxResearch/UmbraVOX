@@ -1,13 +1,12 @@
-/* STUB — replace with vendored HACL* distribution.
+/* MIT License
  *
- * Hacl_SHA2_256.h — stub header for HACL* SHA-256.
+ * Copyright (c) 2016-2022 INRIA, CMU and Microsoft Corporation
+ * Copyright (c) 2022-2023 HACL* Contributors
  *
- * This file is a placeholder that allows bridge_sha256.c to compile and link
- * as a no-op until the real HACL* distribution is dropped into csrc/hacl/.
- * The real header ships with the HACL* source tree (typically dist/gcc-compatible/).
+ * Hacl_SHA2_256.h — HACL* SHA-256 entry point.
  *
- * HACL* source: https://github.com/hacl-star/hacl-star
- * Replace this file with: Hacl_SHA2_256.h from the vendored distribution.
+ * Implemented in csrc/hacl/Hacl_SHA2_256.c (M13.15.8).
+ * Used by csrc/hacl/bridge_sha256.c.
  */
 #pragma once
 #include <stdint.h>

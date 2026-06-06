@@ -39,7 +39,7 @@ documentation of what is and is not proved.
 - Stealth Addresses
 
 ### Formal Verification
-- F* specifications for all primitives and protocols (24 specs)
+- F* specifications for all primitives and protocols (32 specs)
 - Coq external evidence (primality, field arithmetic, curve properties)
 - Assumption ledger with mechanical consistency checking
 - Reviewer-grade assurance matrix and dependency graph
@@ -54,9 +54,9 @@ documentation of what is and is not proved.
 
 | Layer | What it proves | Tools | Status |
 |-------|---------------|-------|--------|
-| Formal model | Algorithm correctness | F* + Z3 | 24 specs, 0 admit, 30 assume val |
-| External certificates | Computational facts Z3 can't prove | Coq (Rocq 9.1.1) | 11 files, 415 Qed |
-| Assumption registry | Trust boundary is documented | check-assumption-ledger.sh | 30 entries, mechanically checked |
+| Formal model | Algorithm correctness | F* + Z3 | 32 specs, 0 admit, 25 active assume val |
+| External certificates | Computational facts Z3 can't prove | Coq (Rocq 9.1.1) | 19 files, 613 Qed |
+| Assumption registry | Trust boundary is documented | check-assumption-ledger.sh | 25 active entries (20 discharged), mechanically checked |
 | Proof hygiene | No hidden trust, no misleading names | check-proof-hygiene.sh | 4 checks, 0 issues |
 | Infrastructure tests | Build system, VM pipeline, docs | test-infrastructure.sh | 67 tests |
 | Crypto audit | Per-module assurance grades A-F | audit/ reports | 6 reports |

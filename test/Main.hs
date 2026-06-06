@@ -27,6 +27,8 @@ import qualified Test.Crypto.Differential.Fuzz as DiffFuzz
 import qualified Test.Crypto.Differential.Kyber as DiffKyber
 import qualified Test.Crypto.Differential.ProtocolLibsignal as DiffProtocolLibsignal
 import qualified Test.Crypto.Differential.ProtocolSelfConsistency as DiffProtocolSC
+import qualified Test.Crypto.Differential.HaclVsCryptogen as DiffHacl
+import qualified Test.Crypto.Differential.FiatVsCryptogen as DiffFiatVsCryptogen
 import qualified Test.Crypto.Ed25519 as Ed25519
 import qualified Test.Crypto.Export as Export
 import qualified Test.Crypto.GCM as GCM
@@ -263,6 +265,8 @@ runSuiteArg suiteArg =
             , Suite "differential-kyber" DiffKyber.kyberDifferentialTests
             , Suite "differential-protocol-sc" DiffProtocolSC.protocolSelfConsistencyTests
             , Suite "differential-protocol-libsignal" DiffProtocolLibsignal.protocolLibsignalTests
+            , Suite "differential-hacl-vs-cryptogen" DiffHacl.haclVsCryptogenTests
+            , Suite "differential-fiat-vs-cryptogen" DiffFiatVsCryptogen.fiatVsCryptogenTests
             ]
         "unicode" -> runSuiteGroup "UmbraVox Unicode Exhaustive Suite"
             [Suite "unicode" Unicode.runTests]
@@ -578,7 +582,8 @@ validSuiteArgs :: [String]
 validSuiteArgs =
     [ "required", "core", "core-crypto", "core-network", "core-chat"
     , "core-tui", "core-tools", "tcp", "fault", "recovery", "tui-sim"
-    , "integrity", "soak", "deferred", "differential", "differential-kyber", "adversarial", "unicode"
+    , "integrity", "soak", "deferred", "differential", "differential-kyber"
+    , "differential-hacl-vs-cryptogen", "differential-fiat-vs-cryptogen", "adversarial", "unicode"
     , "regression", "regression-m7", "regression-m8", "regression-net"
     , "m11-keymgmt", "m11-symmetric", "m11-asymmetric", "m11-sidechannel"
     , "m11-protocol", "m11-high", "m11-high-auth", "m11-noise-dh", "m11-high-fs", "m11-high-proto"

@@ -1,73 +1,28 @@
-/* STUB — replace with vendored HACL* distribution.
+/* Compatibility shim: Hacl_SHA3.h → Hacl_Hash_SHA3.h
  *
- * Hacl_SHA3.h — stub header for HACL* SHA-3 / Keccak (SHA3-256, SHA3-512,
- * SHAKE-128, SHAKE-256).
+ * The HACL* gcc-compatible distribution uses Hacl_Hash_SHA3.h with the
+ * Hacl_Hash_SHA3_ prefix.  This shim provides the Hacl_SHA3_ names as
+ * aliases so that code written against the older naming convention continues
+ * to compile without modification.
  *
- * This file is a placeholder that allows bridge_keccak.c to compile and link
- * as a no-op until the real HACL* distribution is dropped into csrc/hacl/.
- * The real header ships with the HACL* source tree (typically dist/gcc-compatible/).
+ * bridge_keccak.c (M13.15.12) uses extern declarations directly and does
+ * not include this header, but it is retained for any other consumers that
+ * may #include "Hacl_SHA3.h".
  *
- * HACL* source: https://github.com/hacl-star/hacl-star
- * Replace this file with: Hacl_SHA3.h from the vendored distribution.
- *
- * Output sizes:
- *   SHA3-256  : 32 bytes (fixed)
- *   SHA3-512  : 64 bytes (fixed)
- *   SHAKE-128 : variable, caller-specified
- *   SHAKE-256 : variable, caller-specified
+ * M13.15.12: updated from stub to real shim after HACL* vendoring.
  */
 #pragma once
-#include <stdint.h>
-#include <stddef.h>
+#include "Hacl_Hash_SHA3.h"
 
-/*
- * Hacl_SHA3_sha3_256 — compute SHA3-256, writing 32 bytes to output.
- *
- *   inputByteLen : byte length of input
- *   input        : message bytes (non-const per HACL* convention)
- *   output       : caller-allocated buffer of at least 32 bytes
- */
-void Hacl_SHA3_sha3_256(
-    uint32_t inputByteLen,
-    uint8_t *input,
-    uint8_t *output);
+/* Alias Hacl_SHA3_* → Hacl_Hash_SHA3_* for backward compatibility. */
+#define Hacl_SHA3_sha3_256(inputByteLen, input, output) \
+    Hacl_Hash_SHA3_sha3_256((output), (input), (inputByteLen))
 
-/*
- * Hacl_SHA3_sha3_512 — compute SHA3-512, writing 64 bytes to output.
- *
- *   inputByteLen : byte length of input
- *   input        : message bytes (non-const per HACL* convention)
- *   output       : caller-allocated buffer of at least 64 bytes
- */
-void Hacl_SHA3_sha3_512(
-    uint32_t inputByteLen,
-    uint8_t *input,
-    uint8_t *output);
+#define Hacl_SHA3_sha3_512(inputByteLen, input, output) \
+    Hacl_Hash_SHA3_sha3_512((output), (input), (inputByteLen))
 
-/*
- * Hacl_SHA3_shake128 — compute SHAKE-128 with variable-length output.
- *
- *   inputByteLen  : byte length of input
- *   input         : message bytes (non-const per HACL* convention)
- *   outputByteLen : desired output length in bytes
- *   output        : caller-allocated buffer of at least outputByteLen bytes
- */
-void Hacl_SHA3_shake128(
-    uint32_t inputByteLen,
-    uint8_t *input,
-    uint32_t outputByteLen,
-    uint8_t *output);
+#define Hacl_SHA3_shake128(inputByteLen, input, outputByteLen, output) \
+    Hacl_Hash_SHA3_shake128((output), (outputByteLen), (input), (inputByteLen))
 
-/*
- * Hacl_SHA3_shake256 — compute SHAKE-256 with variable-length output.
- *
- *   inputByteLen  : byte length of input
- *   input         : message bytes (non-const per HACL* convention)
- *   outputByteLen : desired output length in bytes
- *   output        : caller-allocated buffer of at least outputByteLen bytes
- */
-void Hacl_SHA3_shake256(
-    uint32_t inputByteLen,
-    uint8_t *input,
-    uint32_t outputByteLen,
-    uint8_t *output);
+#define Hacl_SHA3_shake256(inputByteLen, input, outputByteLen, output) \
+    Hacl_Hash_SHA3_shake256((output), (outputByteLen), (input), (inputByteLen))

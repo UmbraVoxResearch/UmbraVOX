@@ -27,6 +27,16 @@ let
     if builtins.hasAttr "bignums" pkgs.coqPackages then [ pkgs.coqPackages.bignums ]
     else [];
 
+  # fiat-crypto: Coq-verified formally-correct constant-time C field arithmetic.
+  # Derives from Coq proofs and generates machine-checked C for:
+  #   - Curve25519 / X25519 field operations (field element mul, sqr, add, sub, inv)
+  #   - Ed25519 field arithmetic (GF(2^255-19) ops)
+  # The generated C files land in $out/ (e.g. $(nix-build -A fiat-crypto)/).
+  # Common outputs include src/ExtractionOCaml/word_by_word_montgomery.c and
+  # related files; on nixpkgs, all generated C lives under $out/include/ and $out/src/.
+  # M13.15.2-M13.15.5 will extract these C files and wire them into FFI.
+  fiatCrypto = [ pkgs.fiat-crypto ];
+
   devToolsPkgs = with pkgs; [
     (hp.ghcWithPackages (p: [ p.network ]))
     cabal-install
@@ -34,7 +44,7 @@ let
     gdb
     valgrind
     coq
-  ] ++ coqStdlib ++ coqPrime ++ coqBignums ++ (with pkgs; [
+  ] ++ coqStdlib ++ coqPrime ++ coqBignums ++ fiatCrypto ++ (with pkgs; [
     tlaplus
     fstar
     z3

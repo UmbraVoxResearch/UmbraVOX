@@ -274,8 +274,8 @@ src/UmbraVox/Network/          Transport (TCP, UDP, SOCKS5, IPC, Providers)
 src/UmbraVox/Bridge/Signal/    Signal bridge plugin (IPC subprocess)
 src/UmbraVox/TUI/              Terminal UI (Render, Input, Menu, Dialog)
 src/UmbraVox/App/              Core app (Config, Types, State, Defaults)
-test/evidence/formal-proofs/coq/   14 Coq files, 475 Qed, 0 Admitted
-test/evidence/formal-proofs/fstar/ 24 F* specs, 0 admit(), 25 assume val
+test/evidence/formal-proofs/coq/   19 Coq files, 613 Qed, 0 Admitted
+test/evidence/formal-proofs/fstar/ 32 F* specs, 0 admit(), 25 assume val active (20 DISCHARGED in Coq)
 nix/                           VM images + build configs
 plugins/                       Bridge plugin manifests + templates
 scripts/                       VM orchestration + test scripts

@@ -286,14 +286,35 @@ library
       csrc/secure_mlock.c
       csrc/sqlite3_shim.c
       csrc/generated/aes256.c
-      csrc/generated/chacha20.c
-      csrc/generated/hkdf.c
-      csrc/generated/hmac.c
-      csrc/generated/keccak.c
+      csrc/hacl/Hacl_Chacha20.c
+      csrc/hacl/bridge_chacha20.c
+      -- M13.15.14: HACL* verified HKDF (replaces generated/hkdf.c as primary impl)
+      -- generated/hkdf.c is RETAINED in csrc/ as differential testing oracle.
+      csrc/hacl/Hacl_HKDF.c
+      csrc/hacl/bridge_hkdf.c
+      -- M13.15.13: HACL* verified HMAC (replaces generated/hmac.c as primary impl)
+      -- generated/hmac.c is RETAINED in csrc/ as differential testing oracle.
+      csrc/hacl/Hacl_Hash_Blake2b.c
+      csrc/hacl/Hacl_Hash_Blake2s.c
+      csrc/hacl/Hacl_Hash_MD5.c
+      csrc/hacl/Hacl_Hash_SHA1.c
+      csrc/hacl/Hacl_HMAC.c
+      csrc/hacl/bridge_hmac.c
+      -- M13.15.12: HACL* verified Keccak/SHA-3 (replaces generated/keccak.c as primary impl)
+      -- generated/keccak.c is RETAINED in csrc/ as differential testing oracle.
+      csrc/hacl/Hacl_Hash_SHA3.c
+      csrc/hacl/bridge_keccak.c
       csrc/generated/mlkem768.c
-      csrc/generated/poly1305.c
-      csrc/generated/sha256.c
-      csrc/generated/sha512.c
+      csrc/hacl/Hacl_MAC_Poly1305.c
+      csrc/hacl/bridge_poly1305.c
+      -- M13.15.8: HACL* verified SHA-256 (replaces generated/sha256.c as primary impl)
+      -- generated/sha256.c is RETAINED in csrc/ as differential testing oracle.
+      csrc/hacl/Hacl_SHA2_256.c
+      csrc/hacl/bridge_sha256.c
+      -- M13.15.9: HACL* verified SHA-512 (replaces generated/sha512.c as primary impl)
+      -- generated/sha512.c is RETAINED in csrc/ as differential testing oracle.
+      csrc/hacl/Hacl_SHA2_512.c
+      csrc/hacl/bridge_sha512.c
       csrc/generated/x25519.c
       csrc/generated/vrf.c
       csrc/generated/pqwrapper.c
@@ -426,6 +447,8 @@ test-suite umbravox-test
     Test.Crypto.Differential.ProtocolLibsignal
     Test.Crypto.Differential.ProtocolSelfConsistency
     Test.Crypto.Differential.Evidence
+    Test.Crypto.Differential.HaclVsCryptogen
+    Test.Crypto.Differential.FiatVsCryptogen
     Test.Crypto.SignalCompat
     Test.Crypto.Ed25519
     Test.Crypto.ChaCha20

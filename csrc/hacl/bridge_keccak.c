@@ -1,36 +1,36 @@
 /* Bridge: HACL* verified Keccak/SHA-3/SHAKE → UmbraVOX FFI interface.
- * This file wraps Hacl_SHA3 to match the function signatures
+ * This file wraps Hacl_Hash_SHA3 to match the function signatures
  * expected by src/UmbraVox/Crypto/Generated/FFI/Keccak.hs.
  *
  * When HACL* is vendored, this replaces csrc/generated/keccak.c
  * in the cabal c-sources list.
  *
- * HACL* entry points (from Hacl_SHA3.h):
+ * HACL* entry points (from Hacl_Hash_SHA3.h):
  *
- *   void Hacl_SHA3_sha3_256(
- *       uint32_t  inputByteLen,
+ *   void Hacl_Hash_SHA3_sha3_256(
+ *       uint8_t  *output,     -- 32-byte digest
  *       uint8_t  *input,
- *       uint8_t  *output     -- 32-byte digest
+ *       uint32_t  inputByteLen
  *   );
  *
- *   void Hacl_SHA3_sha3_512(
- *       uint32_t  inputByteLen,
+ *   void Hacl_Hash_SHA3_sha3_512(
+ *       uint8_t  *output,     -- 64-byte digest
  *       uint8_t  *input,
- *       uint8_t  *output     -- 64-byte digest
+ *       uint32_t  inputByteLen
  *   );
  *
- *   void Hacl_SHA3_shake128(
- *       uint32_t  inputByteLen,
- *       uint8_t  *input,
+ *   void Hacl_Hash_SHA3_shake128(
+ *       uint8_t  *output,
  *       uint32_t  outputByteLen,
- *       uint8_t  *output
+ *       uint8_t  *input,
+ *       uint32_t  inputByteLen
  *   );
  *
- *   void Hacl_SHA3_shake256(
- *       uint32_t  inputByteLen,
- *       uint8_t  *input,
+ *   void Hacl_Hash_SHA3_shake256(
+ *       uint8_t  *output,
  *       uint32_t  outputByteLen,
- *       uint8_t  *output
+ *       uint8_t  *input,
+ *       uint32_t  inputByteLen
  *   );
  *
  * FFI symbols required by Keccak.hs:
@@ -46,25 +46,29 @@
  *   SHA3-512  : 64 bytes fixed
  *   SHAKE-128 : variable, caller-specified
  *   SHAKE-256 : variable, caller-specified
+ *
+ * M13.15.12: HACL* Hacl_Hash_SHA3 replaces csrc/generated/keccak.c as primary.
  */
 
 #include <stdint.h>
 #include <stddef.h>
 
-/* Forward declarations — resolved when Hacl_SHA3.c is compiled in. */
-extern void Hacl_SHA3_sha3_256(
-    uint32_t inputByteLen, uint8_t *input, uint8_t *output);
+/* Forward declarations — resolved when Hacl_Hash_SHA3.c is compiled in.
+ * Note: HACL* gcc-compatible dist uses Hacl_Hash_SHA3_ prefix and places
+ * output first, unlike the older Hacl_SHA3_ convention. */
+extern void Hacl_Hash_SHA3_sha3_256(
+    uint8_t *output, uint8_t *input, uint32_t inputByteLen);
 
-extern void Hacl_SHA3_sha3_512(
-    uint32_t inputByteLen, uint8_t *input, uint8_t *output);
+extern void Hacl_Hash_SHA3_sha3_512(
+    uint8_t *output, uint8_t *input, uint32_t inputByteLen);
 
-extern void Hacl_SHA3_shake128(
-    uint32_t inputByteLen, uint8_t *input,
-    uint32_t outputByteLen, uint8_t *output);
+extern void Hacl_Hash_SHA3_shake128(
+    uint8_t *output, uint32_t outputByteLen,
+    uint8_t *input,  uint32_t inputByteLen);
 
-extern void Hacl_SHA3_shake256(
-    uint32_t inputByteLen, uint8_t *input,
-    uint32_t outputByteLen, uint8_t *output);
+extern void Hacl_Hash_SHA3_shake256(
+    uint8_t *output, uint32_t outputByteLen,
+    uint8_t *input,  uint32_t inputByteLen);
 
 #define SHA3_256_DIGEST_BYTES 32
 #define SHA3_512_DIGEST_BYTES 64
@@ -79,7 +83,7 @@ extern void Hacl_SHA3_shake256(
 void
 keccak_sha3_256(uint8_t *output, const uint8_t *input, uint32_t input_len)
 {
-    Hacl_SHA3_sha3_256(input_len, (uint8_t *)(uintptr_t)input, output);
+    Hacl_Hash_SHA3_sha3_256(output, (uint8_t *)(uintptr_t)input, input_len);
 }
 
 /*
@@ -92,7 +96,7 @@ keccak_sha3_256(uint8_t *output, const uint8_t *input, uint32_t input_len)
 void
 keccak_sha3_512(uint8_t *output, const uint8_t *input, uint32_t input_len)
 {
-    Hacl_SHA3_sha3_512(input_len, (uint8_t *)(uintptr_t)input, output);
+    Hacl_Hash_SHA3_sha3_512(output, (uint8_t *)(uintptr_t)input, input_len);
 }
 
 /*
@@ -107,9 +111,9 @@ void
 keccak_shake128(uint8_t *output, const uint8_t *input,
                 uint32_t input_len, uint32_t output_len)
 {
-    Hacl_SHA3_shake128(
-        input_len, (uint8_t *)(uintptr_t)input,
-        output_len, output);
+    Hacl_Hash_SHA3_shake128(
+        output, output_len,
+        (uint8_t *)(uintptr_t)input, input_len);
 }
 
 /*
@@ -124,9 +128,9 @@ void
 keccak_shake256(uint8_t *output, const uint8_t *input,
                 uint32_t input_len, uint32_t output_len)
 {
-    Hacl_SHA3_shake256(
-        input_len, (uint8_t *)(uintptr_t)input,
-        output_len, output);
+    Hacl_Hash_SHA3_shake256(
+        output, output_len,
+        (uint8_t *)(uintptr_t)input, input_len);
 }
 
 /*

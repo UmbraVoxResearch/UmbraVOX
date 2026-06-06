@@ -34,6 +34,9 @@
           tlaplus
           fstar
           z3
+          # fiat-crypto: Coq-verified constant-time C for Curve25519/Ed25519 field ops.
+          # Generated C under $out/include/ and $out/src/; used by M13.15.2-M13.15.5.
+          fiat-crypto
           go
           sqlite
           aflplusplus
