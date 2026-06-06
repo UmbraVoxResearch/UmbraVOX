@@ -5,7 +5,7 @@ Purpose: active work only.
 - Deferred/blocked items → TODO-DEFERRED.txt
 
 Status: [ ] pending, [~] in progress
-Last updated: 2026-05-26
+Last updated: 2026-06-05
 
 Rules
 -----
@@ -490,14 +490,14 @@ IMPLEMENTATION BACKLOG (discovered from audits, 2026-05-26)
 
 [~] M21 Go test coverage
   Go packages with zero tests (prioritized by risk):
-  [ ] M21.1 pkg/qemu — Args(), ScaleToHost(), DefaultConfig() (pure logic, high priority)
-  [ ] M21.2 vmctl/boot.go — hypervisor dispatch (testable with mock)
-  [ ] M21.3 vmctl/nix.go — IsCached() symlink detection (pure logic)
-  [ ] M21.4 vmctl/disk.go — dirSizeKB (pure logic, filesystem)
-  [ ] M21.5 vmctl/preflight.go — KVM/QEMU detection (environment-dependent)
-  [ ] M21.6 pkg/disk — CreateSourceDisk, CreateOverlay wrappers (integration)
-  [ ] M21.7 pkg/download — FetchFile with httptest (network mock)
-  [ ] M21.8 pkg/netproxy — ParseAllowlist (pure parsing)
+  [x] M21.1 pkg/qemu — 27 tests: Args(), ScaleToHost(), DefaultConfig() (done in v0.6.3)
+  [x] M21.2 vmctl/boot.go — 8 tests: hypervisor dispatch (done in v0.6.3)
+  [x] M21.3 vmctl/nix.go — 9 tests: IsCached() symlink detection (done in v0.6.3)
+  [x] M21.4 vmctl/disk.go — 8 tests: dirSizeKB (done in v0.6.3)
+  [ ] M21.5 vmctl/preflight.go — KVM/QEMU detection (environment-dependent, deferred)
+  [ ] M21.6 pkg/disk — CreateSourceDisk, CreateOverlay wrappers (integration, needs VM)
+  [x] M21.7 pkg/download — 13 tests: FetchFile with httptest (done in v0.6.3)
+  [x] M21.8 pkg/netproxy — 6 tests: ParseAllowlist (done in cef9ea5)
   Already tested: vmctl/config.go (7), vmctl/resources.go (10),
     vmctl/network.go (7), pkg/netpol (14)
 
@@ -509,11 +509,11 @@ IMPLEMENTATION BACKLOG (discovered from audits, 2026-05-26)
   Note: These are intentional first-run placeholders. Fix by running
   nix-prefetch-url / nix-prefetch-git in the builder VM.
 
-[ ] M23 Nix tier consistency
-  [ ] M23.1 vm-libsignal-protocol-oracle.nix — imports vm-base.nix directly, bypasses tiers
-  [ ] M23.2 vm-primitive-oracle-suite.nix — imports vm-base.nix directly, bypasses tiers
-  [ ] M23.3 Both oracle files use mode=1777 tmpfs (security: should be 0700)
-  [ ] M23.4 Both oracle files use upstream make-disk-image.nix (misses LKL/cptofs fix)
+[x] M23 Nix tier consistency
+  [x] M23.1 vm-libsignal-protocol-oracle.nix — now imports tiers/base.nix (5ae3102)
+  [x] M23.2 vm-primitive-oracle-suite.nix — now imports tiers/base.nix (5ae3102)
+  [x] M23.3 Both oracle files use mode=1777 tmpfs — fixed to mode=0700 (5ae3102)
+  [x] M23.4 Both oracle files use upstream make-disk-image.nix — fixed to ./make-disk-image.nix (5ae3102)
 
 [x] M24 CI hardening
   [x] M24.1 Add timeout-minutes to all CI jobs (prevent hung runners)
@@ -528,7 +528,7 @@ IMPLEMENTATION BACKLOG (discovered from audits, 2026-05-26)
   [ ] M25.2 Download NIST CAVP ML-KEM vectors (test/vectors/nist/ placeholder)
   [ ] M25.3 Add Wycheproof loader + test harness for AES-GCM, Ed25519, X25519, ChaCha20Poly1305
 
-[~] M26 Signal bridge completion
+[x] M26 Signal bridge completion (pending M26.3 only)
   [x] M26.1 Registration.hs — crypto path complete: X25519 ECDH, HKDF, AES-256-CBC,
       HMAC-SHA256, protobuf parsing; 3 test cases (happy path, bad MAC, bad ciphertext)
   [x] M26.2 Registration.hs — implement WebSocket transport (M19.3.5)
@@ -536,23 +536,24 @@ IMPLEMENTATION BACKLOG (discovered from audits, 2026-05-26)
       message → completeRegistration. Full loopback integration test added.
   [ ] M26.3 M19.4.7 — health endpoint verification (blocked on JAR assembly)
 
-[ ] M27 Documentation debt
-  [ ] M27.1 ENCRYPTED-ENVELOPE-DESIGN.md — 15+ unchecked TODO items (lines 450-466)
-  [ ] M27.2 DHT-NETWORK-PLAN.md — M24 TODO items never moved to TODO.txt (lines 457-484)
-  [ ] M27.3 PROJECT-CHARTER.md — version history stops at v0.1.8
-  [ ] M27.4 MILESTONE-DOCS.md — no entries past M28
-  [ ] M27.5 AGENTS.md:303 — Coq make command uses nix-shell on host (contradicts VM-first)
+[x] M27 Documentation debt
+  [x] M27.1 ENCRYPTED-ENVELOPE-DESIGN.md — audited all 27 TODO items; ~28 marked done (174b41b)
+  [x] M27.2 DHT-NETWORK-PLAN.md — M24 sub-items annotated with status notes (174b41b)
+  [x] M27.3 PROJECT-CHARTER.md — version history extended through post-v0.6.3 (174b41b)
+  [x] M27.4 MILESTONE-DOCS.md — M22-M29 entries added (174b41b)
+  [x] M27.5 AGENTS.md:303 — Coq make command now uses ./uv exec make (174b41b)
 
 [ ] M28 Build system polish
   [ ] M28.1 cmd_image.go:419 — TODO(security): add restrict=on to builder VM NIC
   [ ] M28.2 netproxy/filter.go:116 — TODO: SNI-based routing for multi-dest
   [ ] M28.3 cmd_image.go:177 — TODO: build runtime image inside builder VM (host-isolated)
-  [ ] M28.4 Remove continue-on-error: false boilerplate from CI steps (already default)
+  [x] M28.4 Remove continue-on-error: false boilerplate from CI steps (f62e2b7)
 
 [~] M29 Implementation plan execution
   Reference: doc/IMPLEMENTATION-PLAN.md
   [x] M29.1 Align top-level pipeline truthfully per doc/IMPLEMENTATION-PLAN.md
-  [~] M29.2 Complete Signal bridge registration per doc/IMPLEMENTATION-PLAN.md
+  [x] M29.2 Complete Signal bridge registration per doc/IMPLEMENTATION-PLAN.md
+      M26.1 (crypto path) + M26.2 (WebSocket transport + loopback test) both done.
   [ ] M29.3 Close assurance evidence gaps per doc/IMPLEMENTATION-PLAN.md
   [x] M29.4 Keep backlog visibility consistent per doc/IMPLEMENTATION-PLAN.md
 
