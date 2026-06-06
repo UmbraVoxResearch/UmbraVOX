@@ -159,7 +159,9 @@ See: doc/IMPLEMENTATION-PLAN.md, doc/PROJECT-CHARTER.md
        - VERIFIED-C.md updated: VRF row shows "1-way + KAV", concrete plan documented
 
 [ ] PHASE 4: KaRaMeL Extraction — Simple Primitives (dev VM, M35 gated)
-  [ ] M36B.0 Write Spec.IntBridge — FStar.UInt32.t <-> Lib.IntTypes.uint32 equivalence
+  [~] M36B.0 Write Spec.IntBridge — FStar.UInt32.t <-> Lib.IntTypes.uint32 equivalence
+       - [x] Scaffold Spec.IntBridge.fst with full module structure, lemma signatures, VM notes
+       - [ ] Uncomment Lib.IntTypes opens + verify in dev VM (fstar.exe --include $KRML_HOME/lib/)
   [ ] M36B.1 SHA-256 Low*: Impl.SHA256.Low.fst + equivalence proof + KaRaMeL → csrc/extracted/sha256.c
   [ ] M36B.2 SHA-512 Low*: Impl.SHA512.Low.fst + extraction → csrc/extracted/sha512.c
   [ ] M36B.3 ChaCha20 Low*: Impl.ChaCha20.Low.fst → csrc/extracted/chacha20.c
