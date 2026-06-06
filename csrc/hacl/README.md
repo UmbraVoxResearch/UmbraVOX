@@ -1,8 +1,51 @@
-# HACL* Vendored C Sources
+# csrc/hacl — HACL* Formally Verified C (Third-Party, INTERIM Production)
 
-This directory will contain verified C source files extracted from
-[HACL*](https://github.com/cryspen/hacl-packages) (the Cryspen-maintained
-distribution of HACL*), a formally verified cryptographic library.
+## Status
+
+HACL* serves as the INTERIM production implementation for the 8 cryptographic primitives
+listed below, until UmbraVOX's own KaRaMeL-extracted C (from our F* Low* specs) is ready.
+
+**Intended final state**: Our own formally-extracted C in `csrc/extracted/` will replace
+HACL* in production. HACL* will then move to `contrib/hacl-oracle/` and serve as a
+differential oracle.
+
+**Do not add production callers** to HACL* directly. All callers go through
+`src/UmbraVox/Crypto/Generated/FFI/<prim>.hs` which CryptoGen generates to call the
+appropriate bridge function.
+
+## Third-party provenance
+
+HACL* is developed by Microsoft Research and Inria. It is NOT our code.
+- Upstream: https://github.com/hacl-star/hacl-star
+- Commit: 504c298
+- License: MIT / Apache-2.0
+- Formal basis: F* + Low* specifications extracted via KaRaMeL by the HACL* team
+
+## Primitives covered (interim production)
+
+The following primitives use HACL* C as interim production, wired through CryptoGen FFI:
+- SHA-256 (bridge_sha256.c → Hacl_Hash_SHA2_hash_256)
+- SHA-512 (bridge_sha512.c → Hacl_Hash_SHA2_hash_512)
+- ChaCha20 (bridge_chacha20.c → Hacl_Chacha20_*)
+- Poly1305 (bridge_poly1305.c → Hacl_MAC_Poly1305_*)
+- Keccak/SHA-3 (bridge_keccak.c → Hacl_Hash_SHA3_*)
+- HMAC (bridge_hmac.c → Hacl_HMAC_*)
+- HKDF (bridge_hkdf.c → Hacl_HKDF_*)
+
+[Ed25519, X25519 use csrc/fiat/ bridge instead]
+
+## Differential oracle role
+
+HACL* output is compared against:
+1. CryptoGen-generated C (csrc/generated/<prim>.c)
+2. Haskell reference implementation (src/UmbraVox/Crypto/<prim>.hs)
+
+Any divergence between the three is a bug.
+
+## Migration plan
+
+See doc/IMPLEMENTATION-PLAN.md M36B for the KaRaMeL extraction plan. As each primitive
+gets our own extracted C, its HACL* files will move to contrib/hacl-oracle/.
 
 ## What HACL* Is
 
@@ -15,44 +58,6 @@ KaRaMeL compiler. The extraction preserves machine-checked proofs of:
 
 The extracted C files are ordinary C with no runtime dependency on F* or
 KaRaMeL. They compile with any standard C compiler.
-
-## Role in UmbraVOX
-
-These sources serve as **comparison oracle** for differential testing (Option B
-from `doc/hacl-evaluation.md`). They are NOT the active production
-implementation — the codegen C path (`csrc/generated/`) remains primary.
-
-The three-way comparison used in tests:
-```
-Haskell oracle  vs  codegen C (active)  vs  HACL* C (verified oracle)
-```
-
-Any disagreement among the three is reported as a test failure. Because HACL*
-has a machine-checked F*-to-C proof chain, agreement with HACL* empirically
-links the codegen C to a formally verified implementation.
-
-## License
-
-HACL* is MIT licensed. See `VENDORING.md` for the exact upstream commit and
-file manifest. All files in this directory retain their original MIT license
-headers.
-
-## Bridge Files (Already Present)
-
-The following thin C wrapper files are already present in this directory. They
-adapt HACL* entry points to the function signatures expected by the Haskell
-FFI layer. They will be compiled once the corresponding HACL* C sources are
-vendored alongside them.
-
-| File | Wraps | FFI module |
-|---|---|---|
-| `bridge_sha256.c` | `Hacl_SHA2_256_hash` | `UmbraVox.Crypto.Generated.FFI.SHA256` |
-| `bridge_sha512.c` | `Hacl_SHA2_512_hash` | `UmbraVox.Crypto.Generated.FFI.SHA512` |
-| `bridge_chacha20.c` | `Hacl_Chacha20_chacha20_{encrypt,decrypt}` | `UmbraVox.Crypto.Generated.FFI.ChaCha20` |
-
-Each bridge also exports a `*_link_probe` symbol used by the Haskell FFI to
-confirm that the compilation unit was linked in. See the file headers for
-details.
 
 ## Files to Vendor
 

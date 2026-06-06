@@ -1,7 +1,51 @@
-# csrc/fiat — Verified Field Arithmetic (fiat-crypto)
+# csrc/fiat — fiat-crypto Verified Field Arithmetic (Third-Party, INTERIM Production)
 
-This directory contains vendored, formally verified, constant-time C from the
-[fiat-crypto](https://github.com/mit-plv/fiat-crypto) project (MIT License).
+## Status
+
+fiat-crypto serves as the INTERIM production implementation for Ed25519 and X25519
+field arithmetic, until UmbraVOX's own KaRaMeL-extracted C (from our F* Low* specs)
+is ready.
+
+**Intended final state**: Our own formally-extracted C in `csrc/extracted/` will replace
+fiat-crypto in production. fiat-crypto will then move to `contrib/fiat-oracle/` and serve
+as a differential oracle.
+
+**Do not add production callers** to fiat-crypto directly. All callers go through
+`src/UmbraVox/Crypto/Generated/FFI/<prim>.hs` which CryptoGen generates to call the
+appropriate bridge function.
+
+## Third-party provenance
+
+fiat-crypto is developed by MIT PLV. It is NOT our code.
+- Upstream: https://github.com/mit-plv/fiat-crypto
+- C output directory: `fiat-c/src/`
+- License: MIT
+- Formal basis: field axioms proved in Coq, C extracted automatically
+
+The same C output is used by BoringSSL, the Go standard library
+(`crypto/internal/edwards25519/field`), and the Linux kernel
+(`lib/crypto/curve25519-hacl.c`).
+
+## Primitives covered (interim production)
+
+The following primitives use fiat-crypto C as interim production:
+- Ed25519 (field arithmetic over GF(2^255-19) for sign/verify)
+- X25519 (scalar multiplication over Curve25519)
+
+[SHA-256, SHA-512, ChaCha20, Poly1305, Keccak/SHA-3, HMAC, HKDF use csrc/hacl/ instead]
+
+## Differential oracle role
+
+fiat-crypto output is compared against:
+1. CryptoGen-generated C (csrc/generated/<prim>.c)
+2. Haskell reference implementation (src/UmbraVox/Crypto/<prim>.hs)
+
+Any divergence between the three is a bug.
+
+## Migration plan
+
+See doc/IMPLEMENTATION-PLAN.md M36B for the KaRaMeL extraction plan. As each primitive
+gets our own extracted C, its fiat-crypto files will move to contrib/fiat-oracle/.
 
 ## What fiat-crypto provides
 
@@ -12,8 +56,6 @@ proofs in Coq. The extracted C output is standalone (no dependencies beyond
 - **Functionally correct** — field axioms proved in Coq
 - **Constant-time** — no data-dependent branches or memory accesses
 - **Portable** — pure C99, no intrinsics, no platform assumptions
-
-The same C output is used by BoringSSL, the Go standard library (`crypto/internal/edwards25519/field`), and the Linux kernel (`lib/crypto/curve25519-hacl.c`).
 
 ## Files to vendor
 
@@ -53,11 +95,5 @@ These are sufficient to implement the full X25519 scalar multiplication and
 Ed25519 sign/verify group law. The Haskell FFI bridge in `ffi_bridge.h` maps
 these names to the `umbravox_fe_*` namespace expected by the rest of this
 codebase.
-
-## Upstream source
-
-- Repository: https://github.com/mit-plv/fiat-crypto
-- C output directory: `fiat-c/src/`
-- License: MIT (see upstream `LICENSE` file; reproduce in this directory when vendoring)
 
 See `VENDORING.md` for exact fetch instructions.
