@@ -61,36 +61,44 @@ Goal: 100% formally verified production crypto; our own KaRaMeL-extracted C.
 See: doc/IMPLEMENTATION-PLAN.md, doc/PROJECT-CHARTER.md
 ================================================================================
 
-[~] PHASE 1: Documentation + Assurance Fixes (host, M35C expert gate)
-  [ ] M31.1 Fix ASSURANCE-MATRIX.md Axiom counts (0→5 across Ed25519Prime.v, Ed25519ScalarMult.v, StructuralProofs.v)
-  [ ] M31.2 Reclassify ED-002 in ASSUMPTIONS.md: BLOCKED_BY_TOOLING → EXTERNALLY_VERIFIED
-  [ ] M31.3 Fix VRF verifiability qualification: "proved modulo VR-001 (dleq_correctness) + ED-004"
-  [ ] M31.4 Add PQ-001 coverage gap note: Spec.MLKEM768.fst is STUBS ONLY
-  [ ] M31.5 Fix csrc/hacl/README.md — relabel HACL* as interim oracle pending KaRaMeL extraction
-  [ ] M31.6 Add oracle label comments to csrc/generated/sha256.c through hkdf.c
-  [ ] M31.7 Document CT gap and differential testing limitations in doc/CRYPTO-SAFETY.md
-  [x] M31.8 Update TODO.txt/CHANGELOG.txt with all M31-M39 milestones (this task)
-  [ ] M33.1 Add third-party provenance headers to csrc/hacl/*.c and csrc/fiat/*.c
-  [ ] M33.2 Update contrib/oracles/THIRD_PARTY_LICENSES.md with HACL* and fiat-crypto entries
+[x] PHASE 1: Documentation + Assurance Fixes (COMPLETE)
+  [x] M31.1 Fix ASSURANCE-MATRIX.md Axiom counts (0→5 across Ed25519Prime.v, Ed25519ScalarMult.v, StructuralProofs.v)
+  [x] M31.2 Reclassify ED-002 in ASSUMPTIONS.md: BLOCKED_BY_TOOLING → EXTERNALLY_VERIFIED
+  [x] M31.3 Fix VRF verifiability qualification: "proved modulo VR-001 (dleq_correctness) + ED-004"
+  [x] M31.4 Add PQ-001 coverage gap note: Spec.MLKEM768.fst is STUBS ONLY
+  [x] M31.5 Fix csrc/hacl/README.md — relabel HACL* as interim oracle pending KaRaMeL extraction
+  [x] M31.6 Add oracle label comments to csrc/generated/sha256.c through hkdf.c
+  [x] M31.7 Document CT gap and differential testing limitations in doc/CRYPTO-SAFETY.md
+  [x] M31.8 Update TODO.txt/CHANGELOG.txt with all M31-M39 milestones
+  [x] M33.1 Add third-party provenance headers to csrc/hacl/*.c and csrc/fiat/*.c
+  [x] M33.2 Update contrib/oracles/THIRD_PARTY_LICENSES.md with HACL* and fiat-crypto entries
 
 [~] PHASE 2: Interim Production Wiring (M38, M39 — M35A+B+C expert gate required)
-  [ ] M38.1 Update CryptoGen ffiWrapperSpec with HaclBridge/ExtractedC backend type
-       - Add data EmitBackend = HaclBridge String | ExtractedC String | ReferenceHaskell String
-       - Wire SHA256, SHA512, ChaCha20, Poly1305, Keccak, HMAC, HKDF, X25519, Ed25519
-       - Regenerate all 20 Generated/FFI/*.hs modules via ./uv run codegen
+  [x] M35A Code review: bridge files, buffer sizing, API correctness (done — 4 findings fixed)
+  [x] M35B Security review: FFI boundary, memory safety, timing gaps (done — 5 findings fixed)
+  [x] M35C Cryptanalysis review: F* spec vs RFC correctness (done — all specs correct, MLKEM stubs documented)
+  [x] M35 Bridge security fixes: -std=c99, HKDF okm_len bounds, PRK zeroing, x25519 low-order doc, poly1305 warning
+  [x] M38.1 Update CryptoGen ffiWrapperSpec — real HACL*/fiat-crypto calls for 8 primitives
+       - SHA256/512 → sha256_hash/sha512_hash (bridge_sha256/512.c)
+       - HMAC → hmac_sha256/sha512 (bridge_hmac.c)
+       - HKDF → hkdf_sha256 (bridge_hkdf.c, PRK zeroed, okm_len bounded)
+       - Poly1305 → poly1305_mac (bridge_poly1305.c, one-time key warning)
+       - ChaCha20 → chacha20_encrypt (bridge_chacha20.c)
+       - Keccak → keccak_sha3_256/512, shake128/256 (bridge_keccak.c)
+       - X25519 → umbravox_x25519 (bridge_x25519.c, RFC 7748 low-order check → Nothing)
+       - ASSURANCE_PENDING stay Reference: AES256, MLKEM768, VRF, Ed25519Extended
   [ ] M38.2 Vendor HACL* AES-256-GCM into csrc/hacl/ + add bridge_aesgcm.c
        - Verify HACL* commit 504c298 includes AES-GCM; vendor correct files
-  [ ] M38.3 Regenerate all FFI modules after M38.1 change
-       - Run: ./uv build codegen && ./uv run codegen && ./uv build
-  [ ] M38.4 Update ALL production callers from Crypto.* to Generated.FFI.* (monadic change)
+  [ ] M38.3 Regenerate all FFI modules (VM ONLY: cabal run codegen in builder VM)
+       - Then: cabal build all --enable-tests to confirm compilation
+  [ ] M38.4 Update ALL production callers from Crypto.* to Generated.FFI.* (monadic change, VM ONLY)
        - src/UmbraVox/Protocol/ProofOfWork.hs, Handshake.hs, ConfigFile.hs
        - src/UmbraVox/Crypto/Signal/PQXDH.hs, Crypto/HMAC.hs
        - src/UmbraVox/TUI/Actions/Session.hs
        - src/UmbraVox/Network/DHT/Types.hs, DHT.hs, Noise/Handshake.hs, Presence.hs
        - All callers of Crypto.MLKEM, Crypto.GCM, Crypto.Ed25519, Crypto.Curve25519
-  [ ] M38.5 Expert review gate: M35A (code) + M35B (security) REQUIRED before landing M38
-  [ ] M38.6 Differential regression: ./uv test crypto-differential — FFI output == Reference output
-  [ ] M38.7 Mark Crypto.* modules as Haskell oracle (not production) in module headers
+  [ ] M38.5 Differential regression: ./uv test crypto-differential (VM ONLY)
+  [ ] M38.6 Mark Crypto.* modules as Haskell oracle (not production) in module headers
   [ ] M39.1 Update app/codegen/Specs/MLKEM768.spec with real NTT butterfly steps
        - 7-layer Cooley-Tukey, 128-value zeta table, q=3329, cross-ref pqclean ntt.c
   [ ] M39.2 Add K-PKE + ML-KEM transform steps to MLKEM768.spec
