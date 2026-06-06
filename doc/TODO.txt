@@ -111,8 +111,11 @@ See: doc/IMPLEMENTATION-PLAN.md, doc/PROJECT-CHARTER.md
   [x] M38.6 Mark Crypto.* modules as Haskell oracle (not production) in module headers
        - SHA256.hs, SHA512.hs, HMAC.hs, HKDF.hs labeled "Haskell reference oracle. NOT production."
        - Generated/SHA256.hs, Generated/SHA512.hs, Generated/HMAC.hs, Generated/HKDF.hs labeled
-  [ ] M39.1 Update app/codegen/Specs/MLKEM768.spec with real NTT butterfly steps
+  [x] M39.1 Update app/codegen/Specs/MLKEM768.spec with real NTT butterfly steps
        - 7-layer Cooley-Tukey, 128-value zeta table, q=3329, cross-ref pqclean ntt.c
+       - All 128 zeta values: 17^bitrev7(i) mod 3329, cross-verified vs PQClean Montgomery table
+       - Fixed N_INV: 0xf01=3841 (wrong, > q) → 0xCEF=3303 = 128^{-1} mod 3329
+       - Updated csrc/generated/mlkem768.c constants to match (stub body unchanged; M39.3 VM)
   [ ] M39.2 Add K-PKE + ML-KEM transform steps to MLKEM768.spec
        - Reference: src/UmbraVox/Crypto/MLKEM.hs (~623 lines, real implementation exists)
   [ ] M39.3 Regenerate csrc/generated/mlkem768.c via ./uv run codegen; test with ./uv test mlkem
