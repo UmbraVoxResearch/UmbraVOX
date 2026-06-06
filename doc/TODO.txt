@@ -153,7 +153,10 @@ See: doc/IMPLEMENTATION-PLAN.md, doc/PROJECT-CHARTER.md
        - Wycheproof.hs: runAesGcmVectorsFFI runs full Wycheproof JSON suite against FFI
        - Both skip gracefully (report PASS) on platforms without AES-NI hardware
   [ ] M34.2 ML-KEM-768: run ./uv vm kyber generate-kat in dev VM (M25.2 completion)
-  [ ] M34.3 VRF: document Haskell-reference oracle only; plan liboqs ECVRF as second oracle
+  [x] M34.3 VRF: document oracle situation; plan second oracle in VERIFIED-C.md §3
+       - RFC 9381 Appendix A.2 KAV vectors ARE the authoritative external oracle (24 test cases)
+       - Second implementation oracle (Python scripted) deferred until M36B.10 VRF extraction
+       - VERIFIED-C.md updated: VRF row shows "1-way + KAV", concrete plan documented
 
 [ ] PHASE 4: KaRaMeL Extraction — Simple Primitives (dev VM, M35 gated)
   [ ] M36B.0 Write Spec.IntBridge — FStar.UInt32.t <-> Lib.IntTypes.uint32 equivalence

@@ -127,7 +127,7 @@ The following table shows differential oracle depth for each primitive.
 | Ed25519 | fiat-crypto (`csrc/fiat/`) | CryptoGen + Haskell ref | **3-way** |
 | AES-256-GCM | _(none — see note)_ | Wycheproof vectors + Haskell ref | **2-way** |
 | ML-KEM-768 | _(none — see note)_ | pq-crystals oracle + Haskell ref | **2-way** |
-| VRF (ECVRF) | _(none — see note)_ | Haskell reference only | **1-way** |
+| VRF (ECVRF) | _(none — see note)_ | Haskell ref + RFC 9381 KAV | **1-way + KAV** |
 | PQ wrapper | _(none)_ | — | — |
 | Wire format | _(none)_ | — | — |
 | Message format | _(none)_ | — | — |
@@ -137,15 +137,35 @@ The following table shows differential oracle depth for each primitive.
 
 **Notes on coverage gaps:**
 
-- **AES-256-GCM**: Constant-time software AES requires hardware intrinsics
-  (AES-NI). HACL* delegates this to Vale, which emits architecture-specific
-  assembly — not portable verified C. HACL* AES-GCM vendor integration is
-  tracked as M38.2.
+- **AES-256-GCM**: HACL* EverCrypt AES-256-GCM (M38.2) is the interim
+  production implementation (`Generated.FFI.GCM`). Wycheproof vectors
+  exercise both the Haskell oracle and the FFI path (via `runAesGcmVectorsFFI`
+  in `Test.Crypto.Wycheproof`). Tests skip gracefully on platforms without
+  AES-NI. `testGCMDifferential` in `Test.Crypto.Differential` provides
+  4-vector Haskell-oracle vs FFI comparison.
+
 - **ML-KEM-768**: FIPS 203 was published in 2024; no public verified Low*
   implementation exists. pq-crystals oracle provides cross-check; formal C
   assurance is ASSURANCE_PENDING.
-- **VRF**: Only the Haskell reference exists; liboqs ECVRF as a second oracle
-  is planned for M34.3.
+
+- **VRF (ECVRF-ED25519-SHA512-ELL2)**: The Haskell implementation passes all
+  three RFC 9381 Appendix A.2 known-answer test vectors — these vectors are
+  the authoritative ground truth (the RFC itself), stronger than a typical
+  2-way implementation differential. `Test.Crypto.VRF` covers 24 test cases
+  including RFC KAV, round-trip, deterministic regression, and 11 negative
+  tests.
+
+  Second oracle plan: a standalone Python implementation using the
+  `py_ecc` / `cryptography` library against RFC 9381 §4.1 (ECVRF-EDWARDS25519-SHA512-ELL2),
+  invoked from `test/scripts/vrf-oracle.py`, would serve as a second oracle
+  for differential testing. This is deferred until `csrc/extracted/vrf.c`
+  (M36B.10) requires validation, at which point the RFC KAV vectors alone may
+  not be sufficient and an independent implementation comparison is warranted.
+
+  **Current assessment**: RFC KAV coverage plus Haskell round-trip testing
+  provides adequate assurance for the interim period. A C-level oracle
+  (e.g., libsodium's Ed25519 scalar-mult primitives composed per RFC 9381)
+  is not justified until VRF enters the production FFI path.
 
 ---
 
