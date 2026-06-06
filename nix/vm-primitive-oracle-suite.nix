@@ -210,7 +210,7 @@ let
   # NixOS configuration
   # ===========================================================================
   nixosConfig = { config, lib, modulesPath, pkgs, ... }: {
-    imports = [ ./vm-base.nix ];
+    imports = [ ./tiers/base.nix ];
 
     boot.loader.grub.device = "/dev/vda";
 
@@ -232,7 +232,7 @@ let
     fileSystems."/output" = {
       device = "tmpfs";
       fsType = "tmpfs";
-      options = [ "size=512M" "mode=1777" ];
+      options = [ "size=512M" "mode=0700" ];
     };
 
     # ---- Oracle boot service ------------------------------------------------
@@ -290,7 +290,7 @@ let
     configuration = nixosConfig;
   };
 
-  image = import (pkgs.path + "/nixos/lib/make-disk-image.nix") {
+  image = import ./make-disk-image.nix {
     inherit pkgs;
     lib   = pkgs.lib;
     config = nixos.config;
