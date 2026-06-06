@@ -265,27 +265,27 @@ func prepareBuilderDisks(repoRoot, diskImg, tmpDir string) (*builderDisks, func(
 // setupNetworkFilter initialises the network policy filter for the builder VM.
 // If no policy file exists or the allowlist is empty, the filter is not started
 // and a nil stop function is returned.
-func setupNetworkFilter(repoRoot, tmpDir string) (func(), error) {
+func setupNetworkFilter(repoRoot, tmpDir string) (stop func(), socketPath string, err error) {
 	policyFile := filepath.Join(repoRoot, "conf/vm-builder-network-policy.conf")
-	allowed, err := netproxy.ParseAllowlist(policyFile)
-	if err != nil {
-		log.Warn(tag, fmt.Sprintf("No network policy file, using unrestricted: %v", err))
-		return nil, nil
+	allowed, parseErr := netproxy.ParseAllowlist(policyFile)
+	if parseErr != nil {
+		log.Warn(tag, fmt.Sprintf("No network policy file, using unrestricted: %v", parseErr))
+		return nil, "", nil
 	}
 	if len(allowed) == 0 {
-		return nil, nil
+		return nil, "", nil
 	}
 
-	socketPath := filepath.Join(tmpDir, fmt.Sprintf("uv-proxy.%d.sock", os.Getpid()))
+	sockPath := filepath.Join(tmpDir, fmt.Sprintf("uv-proxy.%d.sock", os.Getpid()))
 	filter := &netproxy.Filter{
-		SocketPath: socketPath,
+		SocketPath: sockPath,
 		Allowed:    allowed,
 	}
 	if err := filter.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start network filter: %w", err)
+		return nil, "", fmt.Errorf("failed to start network filter: %w", err)
 	}
 	log.Info(tag, fmt.Sprintf("Network filter: allowing %d destination(s)", len(allowed)))
-	return filter.Stop, nil
+	return filter.Stop, filter.SocketPath, nil
 }
 
 // checkBuilderResult reads the builder status file and returns an error if the
@@ -361,7 +361,7 @@ func bootBuilderVM(repoRoot, builderImg string) int {
 	os.Remove(filepath.Join(outputDir, "nixos.img.zst"))
 
 	// ── Network filter ────────────────────────────────────────────
-	stopFilter, err := setupNetworkFilter(repoRoot, tmpDir)
+	stopFilter, filterSockPath, err := setupNetworkFilter(repoRoot, tmpDir)
 	if err != nil {
 		log.Fail(tag, err.Error())
 		return 1
@@ -384,6 +384,18 @@ func bootBuilderVM(repoRoot, builderImg string) int {
 		}
 	}
 
+	// When the network filter is active, restrict=on prevents the guest from
+	// reaching the host or internet directly; guestfwd routes proxy traffic
+	// through the host-side netproxy UNIX socket instead.
+	networkArgs := "-nic user,model=virtio"
+	if filterSockPath != "" {
+		networkArgs = fmt.Sprintf(
+			"-nic user,model=virtio,restrict=on,"+
+				"guestfwd=tcp:10.0.2.100:3128-chardev:uvproxy "+
+				"-chardev socket,id=uvproxy,path=%s",
+			filterSockPath)
+	}
+
 	outputShare := ninep.DefaultOutputShare(outputDir)
 	spec := &vmctl.VMSpec{
 		Hypervisor: vmctl.HypervisorQEMU,
@@ -401,15 +413,7 @@ func bootBuilderVM(repoRoot, builderImg string) int {
 			SecurityModel: string(outputShare.SecurityModel),
 			ID:            outputShare.ID,
 		}},
-		// User-mode networking: builder needs access to cache.nixos.org.
-		// TODO(security): add restrict=on to the NIC and route traffic exclusively
-		// through a guestfwd SOCKS/HTTP proxy so the builder VM cannot reach
-		// arbitrary internet endpoints. Requires standing up a netproxy listener
-		// on the host and wiring its address into the guestfwd= option, e.g.:
-		//   -nic user,model=virtio,restrict=on,guestfwd=tcp:10.0.2.100:3128-tcp:127.0.0.1:<proxy_port>
-		// The setupNetworkFilter / netproxy.Filter plumbing is already present;
-		// this just needs the QEMU restrict+guestfwd args to enforce it.
-		Network:    vmctl.NetworkSpec{RawArgs: "-nic user,model=virtio"},
+		Network:    vmctl.NetworkSpec{RawArgs: networkArgs},
 		Resources:  resources,
 		Timeout:    builderTimeout,
 		NoReboot:   true,
