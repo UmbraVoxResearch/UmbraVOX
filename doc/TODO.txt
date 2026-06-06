@@ -526,9 +526,10 @@ IMPLEMENTATION BACKLOG (discovered from audits, 2026-05-26)
   [ ] M25.2 Download NIST CAVP ML-KEM vectors (test/vectors/nist/ placeholder)
   [ ] M25.3 Add Wycheproof loader + test harness for AES-GCM, Ed25519, X25519, ChaCha20Poly1305
 
-[ ] M26 Signal bridge completion
-  [ ] M26.1 Registration.hs — complete protobuf parsing in completeRegistration (stub)
-  [ ] M26.2 Registration.hs — implement WebSocket transport (M19.3.5)
+[~] M26 Signal bridge completion
+  [x] M26.1 Registration.hs — crypto path complete: X25519 ECDH, HKDF, AES-256-CBC,
+      HMAC-SHA256, protobuf parsing; 3 test cases (happy path, bad MAC, bad ciphertext)
+  [~] M26.2 Registration.hs — implement WebSocket transport (M19.3.5)
   [ ] M26.3 M19.4.7 — health endpoint verification (blocked on JAR assembly)
 
 [ ] M27 Documentation debt
@@ -544,12 +545,12 @@ IMPLEMENTATION BACKLOG (discovered from audits, 2026-05-26)
   [ ] M28.3 cmd_image.go:177 — TODO: build runtime image inside builder VM (host-isolated)
   [ ] M28.4 Remove continue-on-error: false boilerplate from CI steps (already default)
 
-[ ] M29 Implementation plan execution
+[~] M29 Implementation plan execution
   Reference: doc/IMPLEMENTATION-PLAN.md
-  [ ] M29.1 Align top-level pipeline truthfully per doc/IMPLEMENTATION-PLAN.md
-  [ ] M29.2 Complete Signal bridge registration per doc/IMPLEMENTATION-PLAN.md
+  [x] M29.1 Align top-level pipeline truthfully per doc/IMPLEMENTATION-PLAN.md
+  [~] M29.2 Complete Signal bridge registration per doc/IMPLEMENTATION-PLAN.md
   [ ] M29.3 Close assurance evidence gaps per doc/IMPLEMENTATION-PLAN.md
-  [ ] M29.4 Keep backlog visibility consistent per doc/IMPLEMENTATION-PLAN.md
+  [x] M29.4 Keep backlog visibility consistent per doc/IMPLEMENTATION-PLAN.md
 
 ================================================================================
 COMPLETED AGENT WORK

@@ -151,6 +151,7 @@ import qualified Test.Tools.Complexity as ToolsComplexity
 import qualified Test.Tools.FStarVerify as ToolsFStarVerify
 import qualified Test.Tools.FetchReferences as ToolsFetchReferences
 import qualified Test.Bridge.UmbraClaw as BridgeUmbraClaw
+import qualified Test.Bridge.SignalRegistration as BridgeSignalRegistration
 import qualified Test.VectorIntegrity as VectorIntegrity
 
 data Suite = Suite
@@ -398,6 +399,7 @@ coreSuites =
     , Suite "m11-final" M11Final.runTests
     , Suite "mcdc" MCDC.runTests
     , Suite "bridge-umbraclaw" BridgeUmbraClaw.runTests
+    , Suite "bridge-signal-registration" BridgeSignalRegistration.runTests
     , Suite "audit-regression" RegressionAudit.runTests
     , Suite "audit-negative" Negative.runTests
     , Suite "audit-boundary" Boundary.runTests

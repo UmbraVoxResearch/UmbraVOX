@@ -25,14 +25,19 @@ module UmbraVox.Bridge.Signal.Registration
     , generatePreKeyBundle
     ) where
 
+import Data.Bits (xor)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Word (Word32)
 
+import UmbraVox.Crypto.AES (aesDecrypt)
+import UmbraVox.Crypto.ConstantTime (constantEq)
 import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
 import UmbraVox.Crypto.Ed25519 (ed25519Sign)
 import UmbraVox.Crypto.HKDF (hkdfExpand, hkdfExtract)
+import UmbraVox.Crypto.HMAC (hmacSHA256)
 import UmbraVox.Crypto.Random (randomBytes)
+import UmbraVox.Protocol.SignalWire (ProtoField(..), WireType(..), decodeFields, decodeVarint)
 
 ------------------------------------------------------------------------
 -- Types
@@ -204,23 +209,24 @@ completeRegistration rs encryptedMsg
     | BS.null encryptedMsg
     = Left (ProvisioningDecryptFailed "empty provisioning message")
     | otherwise
-    = -- STUB: Real implementation will:
-      --   1. Extract ephemeral public key (first 32 bytes)
-      --   2. Compute shared secret via X25519
-      --   3. HKDF-derive AES + HMAC keys
-      --   4. Verify HMAC, decrypt AES-256-CBC
-      --   5. Parse protobuf provisioning message
-      --
-      -- For now, perform the ECDH to prove the crypto path works,
-      -- then return an error since we cannot parse the stub payload.
-      let _sharedSecret = case x25519 (rsProvisioningPrivKey rs)
-                                      (BS.take 32 encryptedMsg) of
-                            Just ss -> ss
-                            Nothing -> BS.replicate 32 0
-          _prk          = hkdfExtract BS.empty _sharedSecret
-          _derivedKey   = hkdfExpand _prk "UmbraVox Provisioning" 64
-      in Left (ServerError
-          "provisioning WebSocket not yet connected (M19.3.5)")
+    = do
+        (ephPub, iv, ciphertext, mac) <- decodeProvisioningEnvelope encryptedMsg
+        sharedSecret <- maybe (Left (ProvisioningDecryptFailed "x25519 ECDH failed")) Right $
+            x25519 (rsProvisioningPrivKey rs) ephPub
+        let prk = hkdfExtract BS.empty sharedSecret
+            derived = hkdfExpand prk provisioningHKDFInfo 64
+            aesKey = BS.take 32 derived
+            macKey = BS.drop 32 derived
+            expectedMac = hmacSHA256 macKey (ephPub <> iv <> ciphertext)
+        if not (constantEq mac expectedMac)
+            then Left (ProvisioningDecryptFailed "HMAC verification failed")
+            else case aes256CbcPkcs7Decrypt aesKey iv ciphertext of
+                Nothing -> Left (ProvisioningDecryptFailed "AES-256-CBC decrypt failed")
+                Just pt -> do
+                    pd <- maybe (Left (ProvisioningParseFailed "failed to decode provisioning protobuf")) Right $
+                        decodeProvisioningDataProto pt
+                    validateProvisioningData pd
+                    Right pd
 
 -- | Generate a prekey bundle for upload to the Signal-Server.
 --
@@ -275,3 +281,141 @@ bytesToHex = concatMap toHex . BS.unpack
     hexChar n
         | n < 10    = toEnum (fromIntegral n + fromEnum '0')
         | otherwise = toEnum (fromIntegral n - 10 + fromEnum 'a')
+
+------------------------------------------------------------------------
+-- Provisioning crypto envelope + protobuf parsing
+------------------------------------------------------------------------
+
+-- | HKDF info string for provisioning key derivation.
+--
+-- This is intentionally local to UmbraVOX; the Signal-compatible
+-- WebSocket transport can deliver the ciphertext, but the key schedule
+-- and message structure must be fixed and versioned on our side.
+provisioningHKDFInfo :: ByteString
+provisioningHKDFInfo = "UmbraVox Provisioning v1"
+
+-- | Provisioning envelope wire format.
+--
+-- @
+--   [ ephPub(32) | iv(16) | ciphertext(N, multiple of 16) | mac(32) ]
+-- @
+--
+-- mac = HMAC-SHA256(macKey, ephPub || iv || ciphertext)
+decodeProvisioningEnvelope
+    :: ByteString
+    -> Either RegistrationError (ByteString, ByteString, ByteString, ByteString)
+decodeProvisioningEnvelope bs
+    | BS.length bs < 32 + 16 + 32 =
+        Left (ProvisioningDecryptFailed "provisioning message too short")
+    | otherwise =
+        let ephPub = BS.take 32 bs
+            iv = BS.take 16 (BS.drop 32 bs)
+            rest = BS.drop (32 + 16) bs
+            ciphertext = BS.take (BS.length rest - 32) rest
+            mac = BS.drop (BS.length rest - 32) rest
+        in if BS.length ciphertext == 0 || (BS.length ciphertext `mod` 16 /= 0)
+            then Left (ProvisioningDecryptFailed "ciphertext length invalid for AES-CBC")
+            else Right (ephPub, iv, ciphertext, mac)
+
+-- | AES-256-CBC decryption with PKCS7 unpadding.
+aes256CbcPkcs7Decrypt :: ByteString -> ByteString -> ByteString -> Maybe ByteString
+aes256CbcPkcs7Decrypt key iv ciphertext
+    | BS.length key /= 32 = Nothing
+    | BS.length iv /= 16 = Nothing
+    | BS.null ciphertext = Nothing
+    | BS.length ciphertext `mod` 16 /= 0 = Nothing
+    | otherwise =
+        let blocks = chunk16 ciphertext
+            ptBlocks = cbcDecryptBlocks key iv blocks
+            pt = BS.concat ptBlocks
+        in pkcs7Unpad16 pt
+
+cbcDecryptBlocks :: ByteString -> ByteString -> [ByteString] -> [ByteString]
+cbcDecryptBlocks _key _iv [] = []
+cbcDecryptBlocks key iv (c0:cs) =
+    let p0 = xorBS (aesDecrypt key c0) iv
+    in p0 : go c0 cs
+  where
+    go _prev [] = []
+    go prev (c:rest) =
+        let p = xorBS (aesDecrypt key c) prev
+        in p : go c rest
+
+chunk16 :: ByteString -> [ByteString]
+chunk16 bs
+    | BS.null bs = []
+    | otherwise =
+        let (a, b) = BS.splitAt 16 bs
+        in a : chunk16 b
+
+xorBS :: ByteString -> ByteString -> ByteString
+xorBS a b
+    | BS.length a /= BS.length b = BS.empty
+    | otherwise = BS.pack (BS.zipWith xor a b)
+
+pkcs7Unpad16 :: ByteString -> Maybe ByteString
+pkcs7Unpad16 bs
+    | BS.null bs = Nothing
+    | BS.length bs `mod` 16 /= 0 = Nothing
+    | otherwise =
+        let padLen = fromIntegral (BS.last bs) :: Int
+            len = BS.length bs
+        in if padLen <= 0 || padLen > 16 || padLen > len
+            then Nothing
+            else
+                let padding = BS.drop (len - padLen) bs
+                in if BS.all (== fromIntegral padLen) padding
+                    then Just (BS.take (len - padLen) bs)
+                    else Nothing
+
+-- | Decode the decrypted provisioning protobuf into 'ProvisioningData'.
+--
+-- This uses the same minimal protobuf decoder as SignalWire.
+-- Required fields (numbers are UmbraVOX-local for now):
+--   1: identity private key (bytes, 32)
+--   2: identity public key (bytes, 32)
+--   3: phone number (string bytes)
+--   4: profile key (bytes, 32)
+--   5: device id (varint uint32)
+--   6: provisioning code (bytes)
+decodeProvisioningDataProto :: ByteString -> Maybe ProvisioningData
+decodeProvisioningDataProto bs = do
+    fields <- decodeFields bs
+    idPriv <- lookupBytes 1 fields
+    idPub  <- lookupBytes 2 fields
+    phoneB <- lookupBytes 3 fields
+    prof   <- lookupBytes 4 fields
+    devIdB <- lookupVarint 5 fields
+    code   <- lookupBytes 6 fields
+    devIdW <- fmap fromIntegral (fst <$> decodeVarint devIdB)
+    pure ProvisioningData
+        { pdIdentityKeyPriv = idPriv
+        , pdIdentityKeyPub = idPub
+        , pdPhoneNumber = bytesToString phoneB
+        , pdProfileKey = prof
+        , pdDeviceId = devIdW
+        , pdProvisioningCode = code
+        }
+  where
+    lookupBytes n = lookupField n WireLengthDelimited
+    lookupVarint n = lookupField n WireVarint
+
+lookupField :: Word32 -> WireType -> [ProtoField] -> Maybe ByteString
+lookupField n wt = go
+  where
+    go [] = Nothing
+    go (f:fs)
+        | pfFieldNumber f == n && pfWireType f == wt = Just (pfValue f)
+        | otherwise = go fs
+
+bytesToString :: ByteString -> String
+bytesToString = map (toEnum . fromIntegral) . BS.unpack
+
+validateProvisioningData :: ProvisioningData -> Either RegistrationError ()
+validateProvisioningData pd
+    | BS.length (pdIdentityKeyPriv pd) /= 32 = Left (InvalidProvisioningData "identity private key must be 32 bytes")
+    | BS.length (pdIdentityKeyPub pd) /= 32  = Left (InvalidProvisioningData "identity public key must be 32 bytes")
+    | BS.length (pdProfileKey pd) /= 32      = Left (InvalidProvisioningData "profile key must be 32 bytes")
+    | pdPhoneNumber pd == ""                 = Left (InvalidProvisioningData "phone number empty")
+    | BS.null (pdProvisioningCode pd)        = Left (InvalidProvisioningData "provisioning code empty")
+    | otherwise                              = Right ()
