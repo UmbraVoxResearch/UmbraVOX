@@ -59,6 +59,7 @@ import qualified Test.Crypto.Vectors.GCM as VectorsGCM
 import qualified Test.Crypto.Vectors.Ed25519 as VectorsEd25519
 import qualified Test.Crypto.Vectors.X25519 as VectorsX25519
 import qualified Test.Crypto.Vectors.MLKEM as VectorsMLKEM
+import qualified Test.Crypto.Vectors.MLKEM_KAT as VectorsMLKEM_KAT
 import qualified Test.EndToEnd as EndToEnd
 import qualified Test.EndToEnd2 as EndToEnd2
 import qualified Test.Equivalence as Equivalence
@@ -350,6 +351,7 @@ coreSuites =
     , Suite "vectors-ed25519" VectorsEd25519.runTests
     , Suite "vectors-x25519" VectorsX25519.runTests
     , Suite "vectors-mlkem" VectorsMLKEM.runTests
+    , Suite "vectors-mlkem-kat" VectorsMLKEM_KAT.runTests
     , Suite "wycheproof" Wycheproof.runTests
     , Suite "dandelion" Dandelion.runTests
     , Suite "dht" DHT.runTests
@@ -447,6 +449,7 @@ coreCryptoSuites =
     , Suite "vectors-ed25519" VectorsEd25519.runTests
     , Suite "vectors-x25519" VectorsX25519.runTests
     , Suite "vectors-mlkem" VectorsMLKEM.runTests
+    , Suite "vectors-mlkem-kat" VectorsMLKEM_KAT.runTests
     , Suite "wycheproof" Wycheproof.runTests
     , Suite "security" Security.runTests
     , Suite "differential" Differential.runTests
@@ -581,5 +584,5 @@ validSuiteArgs =
     , "m11-protocol", "m11-high", "m11-high-auth", "m11-noise-dh", "m11-high-fs", "m11-high-proto"
     , "m11-high-keyimpl", "m11-high-symhash", "m11-high-pq", "m11-high-pqhash", "m11-medium", "m11-high-sc2"
     , "m11-high-as2", "m11-high-remaining", "m11-high-smfsia", "m11-high-crypto3"
-    , "m11-high-km3", "m11-final", "mcdc", "audit", "wycheproof", "all"
+    , "m11-high-km3", "m11-final", "mcdc", "audit", "wycheproof", "vectors-mlkem-kat", "all"
     ]
