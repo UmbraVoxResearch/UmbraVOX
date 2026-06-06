@@ -185,3 +185,68 @@ Identity secret + per-install salt
   and peer records, but has no effect on what the remote peer stores.  Users
   should not treat ephemeral mode as a guarantee of end-to-end deniability
   unless the peer is also verified to be running without persistent storage.
+
+---
+
+## 5. Differential Testing Limitations and Constant-Time Gap
+
+### What differential testing can and cannot detect
+
+The UmbraVOX differential testing infrastructure (three-way comparison: our extracted C
+vs HACL\* oracle vs Haskell reference) verifies *output equivalence* — that all three
+implementations produce identical outputs for identical inputs on all tested vectors.
+
+Differential output comparison **CANNOT** detect:
+- Timing side-channels (variable-time secret-dependent branches)
+- Cache timing attacks (secret-dependent memory access patterns)
+- Power analysis or electromagnetic leakage
+- Any behavior that produces identical outputs but through variable-time paths
+
+### Constant-time gap: current production crypto
+
+**CRITICAL**: As of v0.7.0, all production crypto runs through NOT-constant-time pure
+Haskell implementations (`src/UmbraVox/Crypto/SHA256.hs`, `src/UmbraVox/Crypto/MLKEM.hs`,
+etc.).  These modules explicitly state "NOT constant-time."  This is a known gap being
+addressed by M38 (wire FFI to HACL\* as interim constant-time C) and M36B (our own
+KaRaMeL-extracted C).
+
+Primitives with known timing side-channels in the current Haskell reference:
+- ML-KEM-768: polynomial arithmetic, NTT butterfly (S-box lookups)
+- AES-256-GCM: S-box lookup timing (table-based implementation)
+- Ed25519/X25519: scalar multiplication (branching in Montgomery ladder)
+- General: GHASH multiplication timing
+
+### HACL\* constant-time guarantees (interim production)
+
+When HACL\* is wired as interim production (M38), the following CT properties transfer:
+- HACL\* formally proves secret-independence (constant-time) for all its primitives via
+  F\* side-channel reasoning
+- This CT guarantee applies to the C code path only — NOT to the Haskell FFI marshalling
+- FFI marshalling (GHC ccall, ByteString pinning, pointer arithmetic) is NOT formally
+  verified for constant-time
+
+### Our extracted C (target state, M36B)
+
+Our own KaRaMeL-extracted C inherits constant-time guarantees from:
+1. The F\* Low\* specification, which uses secret-indexed memory (`LowStar.Secret`)
+2. KaRaMeL extraction, which preserves the Low\* memory model
+3. These CT properties apply to the extracted C only, not the Haskell marshalling layer
+
+### Documentation framing
+
+When documentation says "two independent proofs" or "formally verified agreement":
+- CORRECT: "HACL\* provides one formally-verified implementation; our F\* spec provides
+  independent algorithm verification; agreement is verified by differential testing"
+- INCORRECT: "formally proved equivalent" — differential testing is empirical, not formal
+
+### Current CT status summary
+
+| Primitive | Current CT status | After M38 | After M36B |
+|---|---|---|---|
+| SHA-256/512 | NOT CT (Haskell) | CT via HACL\* | CT via our extracted C |
+| ChaCha20, Poly1305 | NOT CT (Haskell) | CT via HACL\* | CT via our extracted C |
+| Keccak, HMAC, HKDF | NOT CT (Haskell) | CT via HACL\* | CT via our extracted C |
+| X25519, Ed25519 | NOT CT (Haskell) | CT via fiat-crypto | CT via our extracted C |
+| AES-256-GCM | NOT CT (Haskell) | CT via HACL\* AES-GCM | CT via our extracted C |
+| ML-KEM-768 | NOT CT (Haskell) | PENDING M36B.11 | CT via our extracted C |
+| VRF | NOT CT (Haskell) | PENDING M36B.10 | CT via our extracted C |
