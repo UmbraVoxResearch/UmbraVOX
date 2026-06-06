@@ -153,6 +153,7 @@ import qualified Test.Tools.FetchReferences as ToolsFetchReferences
 import qualified Test.Bridge.UmbraClaw as BridgeUmbraClaw
 import qualified Test.Bridge.SignalRegistration as BridgeSignalRegistration
 import qualified Test.VectorIntegrity as VectorIntegrity
+import qualified Test.Crypto.Wycheproof as Wycheproof
 
 data Suite = Suite
     { suiteName :: String
@@ -347,6 +348,7 @@ coreSuites =
     , Suite "vectors-ed25519" VectorsEd25519.runTests
     , Suite "vectors-x25519" VectorsX25519.runTests
     , Suite "vectors-mlkem" VectorsMLKEM.runTests
+    , Suite "wycheproof" Wycheproof.runTests
     , Suite "dandelion" Dandelion.runTests
     , Suite "dht" DHT.runTests
     , Suite "dos-mitigation" DoSMitigation.runTests
@@ -443,6 +445,7 @@ coreCryptoSuites =
     , Suite "vectors-ed25519" VectorsEd25519.runTests
     , Suite "vectors-x25519" VectorsX25519.runTests
     , Suite "vectors-mlkem" VectorsMLKEM.runTests
+    , Suite "wycheproof" Wycheproof.runTests
     , Suite "security" Security.runTests
     , Suite "differential" Differential.runTests
     , Suite "m11-symmetric" M11Symmetric.runTests
@@ -576,5 +579,5 @@ validSuiteArgs =
     , "m11-protocol", "m11-high", "m11-high-auth", "m11-noise-dh", "m11-high-fs", "m11-high-proto"
     , "m11-high-keyimpl", "m11-high-symhash", "m11-high-pq", "m11-high-pqhash", "m11-medium", "m11-high-sc2"
     , "m11-high-as2", "m11-high-remaining", "m11-high-smfsia", "m11-high-crypto3"
-    , "m11-high-km3", "m11-final", "mcdc", "audit", "all"
+    , "m11-high-km3", "m11-final", "mcdc", "audit", "wycheproof", "all"
     ]
