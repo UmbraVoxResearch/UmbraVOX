@@ -1,0 +1,15 @@
+UmbraVOX
+Copyright 2024-2026 UmbraVoxResearch
+
+This software is licensed under the Apache License, Version 2.0.
+See the LICENSE file for the full license text.
+
+---
+
+Third-party code under contrib/ is subject to separate licenses and is
+used exclusively for differential testing oracle VMs.  It is not linked
+into or distributed with UmbraVOX.
+
+See contrib/oracles/THIRD_PARTY_LICENSES.md for the full inventory of
+third-party sources, their upstream repositories, commit SHAs, and
+applicable licenses.

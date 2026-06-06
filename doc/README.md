@@ -26,6 +26,14 @@ messaging MVP.
 - [musl-evaluation.md](musl-evaluation.md) — static musl feasibility evaluation
 - [MILESTONE-DOCS.md](MILESTONE-DOCS.md) — per-milestone documentation index (M20-M28)
 
+## contrib/
+
+The `contrib/` tree contains third-party source trees used exclusively to build
+hermetic NixOS oracle VMs for differential testing.  These sources are **not**
+part of UmbraVOX and carry their own licenses — see
+[contrib/oracles/THIRD_PARTY_LICENSES.md](../contrib/oracles/THIRD_PARTY_LICENSES.md).
+The main project is Apache-2.0.
+
 ## Archived Docs
 
 Stale documents moved during doc audits:
