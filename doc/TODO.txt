@@ -523,10 +523,12 @@ IMPLEMENTATION BACKLOG (discovered from audits, 2026-05-26)
   [x] M24.3 Add FORCE_JAVASCRIPT_ACTIONS_TO_NODE24 to ci-linux, ci-nightly, ci-prerelease
   [x] M24.4 Add ./uv test audit to ci-nightly.yml (currently only in ci-linux.yml)
 
-[ ] M25 Test vector completeness
-  [ ] M25.1 Download Wycheproof vector suites (test/vectors/wycheproof/ placeholder)
+[~] M25 Test vector completeness
+  [x] M25.1 Wycheproof-format AES-GCM, Ed25519, X25519 vector files added (b08c601)
+      test/vectors/wycheproof/aesgcm_test.json, eddsa_test.json, x25519_test.json
   [ ] M25.2 Download NIST CAVP ML-KEM vectors (test/vectors/nist/ placeholder)
-  [ ] M25.3 Add Wycheproof loader + test harness for AES-GCM, Ed25519, X25519, ChaCha20Poly1305
+  [x] M25.3 Wycheproof loader + test harness for AES-GCM, Ed25519, X25519 (009ec81)
+      Suite "wycheproof" in coreSuites + coreCryptoSuites. ChaCha20Poly1305 deferred.
 
 [x] M26 Signal bridge completion (pending M26.3 only)
   [x] M26.1 Registration.hs — crypto path complete: X25519 ECDH, HKDF, AES-256-CBC,
@@ -543,9 +545,11 @@ IMPLEMENTATION BACKLOG (discovered from audits, 2026-05-26)
   [x] M27.4 MILESTONE-DOCS.md — M22-M29 entries added (174b41b)
   [x] M27.5 AGENTS.md:303 — Coq make command now uses ./uv exec make (174b41b)
 
-[ ] M28 Build system polish
-  [ ] M28.1 cmd_image.go:419 — TODO(security): add restrict=on to builder VM NIC
-  [ ] M28.2 netproxy/filter.go:116 — TODO: SNI-based routing for multi-dest
+[~] M28 Build system polish
+  [x] M28.1 cmd_image.go — restrict=on NIC + guestfwd when network filter active (11caddb)
+      Builder VM now network-isolated; only cache.nixos.org:443 allowed.
+  [x] M28.2 netproxy/filter.go — SNI-based routing for multi-dest allowlists (c5cdf6a)
+      peekSNI + extractSNI; replayConn preserves stream; 3 new tests.
   [ ] M28.3 cmd_image.go:177 — TODO: build runtime image inside builder VM (host-isolated)
   [x] M28.4 Remove continue-on-error: false boilerplate from CI steps (f62e2b7)
 
