@@ -67,6 +67,8 @@ func runVM(args []string) int {
 		// Legacy — redirect to appropriate new command
 		log.Warn(tag, "Seed commands removed. Use './uv vm build-image' instead.")
 		return 1
+	case "kyber":
+		return vmKyber(rest)
 	case "signal":
 		return vmSignal(rest)
 	case "integration":
@@ -89,6 +91,7 @@ Actions:
   clean-image                Remove cached VM image
   smoke [TARGET]             Platform smoke (freebsd, openbsd, netbsd, illumos, dragonfly, arm64, release)
   signal build-jar|update|test|run|health Signal Server VM
+  kyber generate-kat         Generate Kyber768 KAT vectors via oracle VM
   integration [--dual-lan]   Multi-VM integration test
   info                       VM config diagnostics
 `)
