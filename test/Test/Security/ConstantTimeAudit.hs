@@ -154,28 +154,47 @@ auditGcmDecrypt = do
     pure (ok1 && ok2)
 
 ------------------------------------------------------------------------
--- Audit: chachaPolyDecrypt uses constantEq for tag comparison
+-- Audit: chachaPolyDecrypt uses EverCrypt (formally CT) for tag comparison
 --
--- Finding    — ChaCha20-Poly1305 AEAD used Haskell '==' for tag check.
--- Vulnerability — Timing oracle on the Poly1305 authentication tag.
--- Fix        — 'chachaPolyDecryptSafe' calls 'constantEq tag expectedTag'.
--- Verified   — Source contains 'constantEq tag expectedTag'.
+-- Finding    — ChaCha20-Poly1305 AEAD used Haskell '==' for tag check
+--              (original); later used 'constantEq' manually; both were
+--              superseded by M38.4.1.
+-- Vulnerability — Reference Haskell Poly1305 and chacha20Block/chacha20Encrypt
+--              are NOT constant-time; using them in ChaChaPoly.hs exposed
+--              all Noise transport traffic to timing analysis.
+-- Fix        — M38.4.1: ChaChaPoly.hs now uses EverCrypt_Chacha20Poly1305
+--              via 'umbravox_chacha20poly1305_decrypt' (HACL*, formally CT
+--              by the Low* type system).  Tag verification is performed
+--              inside EverCrypt — no manual 'constantEq' call needed.
+--              Reference Haskell Poly1305 and Random imports removed.
+-- Verified   — Source (a) imports 'umbravox_chacha20poly1305_decrypt' via
+--              foreign import ccall; (b) does NOT import reference Haskell
+--              'UmbraVox.Crypto.Poly1305'; (c) does NOT import reference
+--              'UmbraVox.Crypto.Random' (chacha20Block/chacha20Encrypt).
 ------------------------------------------------------------------------
 
 auditChachaPolyDecrypt :: IO Bool
 auditChachaPolyDecrypt = do
     src <- readSource chachaPolySrc
+    -- (a) EverCrypt FFI is wired: formally CT by F* type system
     ok1 <- assertContains
-               "CVE-3 chachaPolyDecrypt: constantEq imported"
+               "CVE-3 chachaPolyDecrypt: EverCrypt FFI imported"
                chachaPolySrc
-               "constantEq"
+               "umbravox_chacha20poly1305_decrypt"
                src
-    ok2 <- assertContains
-               "CVE-3 chachaPolyDecrypt: uses constantEq for tag comparison"
+    -- (b) Reference Haskell Poly1305 must NOT be imported
+    ok2 <- assertAbsent
+               "CVE-3 chachaPolyDecrypt: no reference Poly1305 import"
                chachaPolySrc
-               "constantEq tag expectedTag"
+               "UmbraVox.Crypto.Poly1305"
                src
-    pure (ok1 && ok2)
+    -- (c) Reference Haskell Random (chacha20Block/Encrypt) must NOT be imported
+    ok3 <- assertAbsent
+               "CVE-3 chachaPolyDecrypt: no reference Random import"
+               chachaPolySrc
+               "UmbraVox.Crypto.Random"
+               src
+    pure (ok1 && ok2 && ok3)
 
 ------------------------------------------------------------------------
 -- Audit: decryptSenderKey / trySkippedSenderKeys delegate to gcmDecrypt
