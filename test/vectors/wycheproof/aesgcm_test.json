@@ -1,0 +1,54 @@
+{
+  "algorithm": "AES-GCM",
+  "schema": "aead_test_schema.json",
+  "generatorVersion": "umbravox-0.1",
+  "numberOfTests": 3,
+  "header": ["Wycheproof-compatible AES-256-GCM vectors derived from NIST SP 800-38D"],
+  "notes": {},
+  "testGroups": [
+    {
+      "ivSize": 96,
+      "keySize": 256,
+      "tagSize": 128,
+      "type": "AeadTest",
+      "tests": [
+        {
+          "tcId": 1,
+          "comment": "NIST SP 800-38D TC14: empty plaintext, empty AAD",
+          "key": "0000000000000000000000000000000000000000000000000000000000000000",
+          "iv": "000000000000000000000000",
+          "aad": "",
+          "msg": "",
+          "ct": "",
+          "tag": "530f8afbc74536b9a963b4f1c4cb738b",
+          "result": "valid",
+          "flags": []
+        },
+        {
+          "tcId": 2,
+          "comment": "NIST SP 800-38D TC16: 60-byte plaintext, empty AAD",
+          "key": "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308",
+          "iv": "cafebabefacedbaddecaf888",
+          "aad": "",
+          "msg": "d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b39",
+          "ct": "522dc1f099567d07f47f37a32a84427d643a8cdcbfe5c0c97598a2bd2555d1aa8cb08e48590dbb3da7b08b1056828838c5f61e6393ba7a0abcc9f662",
+          "tag": "eb9f796c8d356fc31a8433884b696f4f",
+          "result": "valid",
+          "flags": []
+        },
+        {
+          "tcId": 3,
+          "comment": "wrong tag — must reject",
+          "key": "0000000000000000000000000000000000000000000000000000000000000000",
+          "iv": "000000000000000000000000",
+          "aad": "",
+          "msg": "",
+          "ct": "",
+          "tag": "deadbeefdeadbeefdeadbeefdeadbeef",
+          "result": "invalid",
+          "flags": []
+        }
+      ]
+    }
+  ]
+}
