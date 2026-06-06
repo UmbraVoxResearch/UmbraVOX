@@ -282,6 +282,14 @@ void umbravox_x25519(uint8_t out[32],
     x25519_fe_inv(z2_inv, z_2);
     fiat_25519_mul(result, x_2, z2_inv);
     fiat_25519_to_bytes(out, result);
+
+    /* RFC 7748 §6.1: reject low-order points — all-zero output indicates
+     * the peer sent a low-order point, producing no usable shared secret.
+     * Callers (Haskell FFI wrapper) MUST check for all-zero output and
+     * treat it as a key-exchange failure (return Nothing / error).
+     * We do NOT change the output here; the check is left to the caller so
+     * that the constant-time guarantee of the ladder is not broken by a
+     * conditional branch after serialisation. */
 }
 
 /* -------------------------------------------------------------------------

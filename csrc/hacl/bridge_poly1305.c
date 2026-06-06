@@ -51,10 +51,17 @@ extern void Hacl_MAC_Poly1305_mac(
 /*
  * poly1305_mac — compute Poly1305 MAC over msg with key.
  *
- *   tag     : caller-allocated output buffer of at least POLY1305_TAG_BYTES
+ *   tag     : caller-allocated output buffer of at least POLY1305_TAG_BYTES (16 bytes)
  *   msg     : message bytes
  *   msg_len : byte length of msg
- *   key     : 32-byte one-time key
+ *   key     : 32-byte ONE-TIME key
+ *
+ * SECURITY: Poly1305 is a ONE-TIME authenticator (RFC 8439 §4.1.3).
+ * Each (key, nonce) pair MUST be used for at most one message.
+ * Reusing a (key, nonce) pair leaks (tag_A XOR tag_B), breaking authentication.
+ * In the ChaCha20-Poly1305 AEAD construction, the Poly1305 key is derived
+ * from (ChaCha20 key, nonce) via ChaCha20 block 0, ensuring key freshness.
+ * Direct callers of this function are responsible for ensuring key uniqueness.
  */
 void
 poly1305_mac(uint8_t *tag, const uint8_t *msg, uint32_t msg_len,

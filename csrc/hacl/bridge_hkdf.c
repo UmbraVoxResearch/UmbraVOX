@@ -52,6 +52,10 @@
 #include <stddef.h>
 #include <string.h>
 
+/* Portable secure zeroing — uses platform best-effort (explicit_bzero,
+ * SecureZeroMemory, memset_s, or volatile loop).  See Lib_Memzero0.c. */
+void Lib_Memzero0_memzero0(void *dst, uint64_t len);
+
 /* Forward declarations — resolved when Hacl_HKDF.c is compiled in. */
 extern void Hacl_HKDF_extract_sha2_256(
     uint8_t *prk,
@@ -123,6 +127,8 @@ hkdf_sha256_expand(uint8_t *okm,
                    const uint8_t *info, uint32_t info_len,
                    uint32_t okm_len)
 {
+    /* RFC 5869 §2.3: L ≤ 255 * HashLen = 8160 bytes for HKDF-SHA-256. */
+    if (okm_len > 255u * HKDF_SHA256_PRK_BYTES) return;
     Hacl_HKDF_expand_sha2_256(
         okm,
         (uint8_t *)(uintptr_t)prk,  prk_len,
@@ -149,9 +155,14 @@ hkdf_sha256(uint8_t *okm,
             const uint8_t *info, uint32_t info_len,
             uint32_t okm_len)
 {
+    /* RFC 5869 §2.3: L ≤ 255 * HashLen = 8160 bytes for HKDF-SHA-256. */
+    if (okm_len > 255u * HKDF_SHA256_PRK_BYTES) return;
+
     /* Apply the same RFC 5869 default-salt substitution as hkdf_sha256_extract. */
     const uint8_t *effective_salt = (salt_len == 0) ? hkdf_zero_salt : salt;
     uint32_t       effective_len  = (salt_len == 0) ? HKDF_SHA256_PRK_BYTES : salt_len;
+
+    /* PRK is sensitive intermediate key material — zero it explicitly after use. */
     uint8_t prk[HKDF_SHA256_PRK_BYTES];
     Hacl_HKDF_extract_sha2_256(
         prk,
@@ -162,6 +173,8 @@ hkdf_sha256(uint8_t *okm,
         prk, HKDF_SHA256_PRK_BYTES,
         (uint8_t *)(uintptr_t)info, info_len,
         okm_len);
+    /* Securely zero the PRK — compiler-resistant via Lib_Memzero0. */
+    Lib_Memzero0_memzero0(prk, HKDF_SHA256_PRK_BYTES);
 }
 
 /*
