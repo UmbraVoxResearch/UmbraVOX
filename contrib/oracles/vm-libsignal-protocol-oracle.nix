@@ -1,34 +1,21 @@
 # NixOS VM for libsignal-protocol differential testing oracle.
 #
-# Builds Signal's libsignal (Rust) from source inside a hermetic NixOS image.
-# At boot the oracle CLI generates test vectors, writes them to /output, and
-# shuts down.  No network access at runtime -- all dependencies (including the
-# full libsignal source tree) are fetched and compiled during the Nix build.
+# Builds Signal's libsignal (Rust) from the vendored source tree in
+# contrib/oracles/src/libsignal/.  At boot the oracle CLI generates test
+# vectors, writes them to /output, and shuts down.  No network access at
+# runtime -- all source trees are vendored and compiled during the Nix build.
 #
-# Build:
-#   nix-build nix/vm-libsignal-protocol-oracle.nix
+# Build (inside builder VM):
+#   nix-build contrib/oracles/vm-libsignal-protocol-oracle.nix
 #
 # The output is a raw disk image: result/nixos.raw
-#
-# NOTE: placeholder hashes -- this will not build until they are filled in.
-#       Run `nix-prefetch-git` or `nix-prefetch-url --unpack` to obtain real
-#       values.
 { pkgs ? import <nixpkgs> { system = "x86_64-linux"; } }:
 
 let
   # ---------------------------------------------------------------------------
-  # libsignal source (pinned)
+  # libsignal source (vendored in contrib/oracles/src/)
   # ---------------------------------------------------------------------------
-  libsignalSrc = pkgs.fetchFromGitHub {
-    owner  = "signalapp";
-    repo   = "libsignal";
-    # TODO: replace with real rev (e.g. "v0.58.0" tag commit)
-    rev    = "0000000000000000000000000000000000000000";
-    # TODO: replace with real hash -- run:
-    #   nix-prefetch-git --url https://github.com/signalapp/libsignal \
-    #       --rev <commit-or-tag>
-    sha256 = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
-  };
+  libsignalSrc = ./src/libsignal;
 
   # ---------------------------------------------------------------------------
   # Build libsignal's Rust workspace (the parts we need for oracle vectors)
@@ -38,9 +25,7 @@ let
     version = "0.0.0-oracle";
     src     = libsignalSrc;
 
-    # TODO: replace with real hash after first successful cargo build.
-    # Use `cargoHash` (preferred) or `cargoSha256`.
-    cargoHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    cargoLock.lockFile = "${libsignalSrc}/Cargo.lock";
 
     nativeBuildInputs = with pkgs; [
       cmake

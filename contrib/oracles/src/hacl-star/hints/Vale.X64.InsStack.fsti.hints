@@ -1,0 +1,125 @@
+[
+  "7320a9d6384791a0081697b4614144c7",
+  [
+    [
+      "Vale.X64.InsStack.va_quick_Stack_lemma",
+      1,
+      1,
+      0,
+      [
+        "@MaxIFuel_assumption", "@query",
+        "fuel_guarded_inversion_FStar.Pervasives.Native.tuple3"
+      ],
+      0,
+      "6e1745016aa773701a10d2652d112967"
+    ],
+    [
+      "Vale.X64.InsStack.va_quick_Pop",
+      1,
+      1,
+      0,
+      [
+        "@MaxIFuel_assumption", "@query",
+        "fuel_guarded_inversion_FStar.Pervasives.Native.tuple3"
+      ],
+      0,
+      "3a439e791e41987c1998bdc80b0cecc4"
+    ],
+    [
+      "Vale.X64.InsStack.va_quick_Push",
+      1,
+      1,
+      0,
+      [
+        "@MaxIFuel_assumption", "@query",
+        "fuel_guarded_inversion_FStar.Pervasives.Native.tuple3"
+      ],
+      0,
+      "026c60c1ae9a0fab5038f9733304e8f2"
+    ],
+    [
+      "Vale.X64.InsStack.va_quick_Pop_Secret",
+      1,
+      1,
+      0,
+      [
+        "@MaxIFuel_assumption", "@query",
+        "fuel_guarded_inversion_FStar.Pervasives.Native.tuple3"
+      ],
+      0,
+      "a2403f7282cd90fb92fe1034b6550ded"
+    ],
+    [
+      "Vale.X64.InsStack.va_quick_Push_Secret",
+      1,
+      1,
+      0,
+      [
+        "@MaxIFuel_assumption", "@query",
+        "fuel_guarded_inversion_FStar.Pervasives.Native.tuple3"
+      ],
+      0,
+      "4b57b3cac8e552f74ba4ef21b9382a8d"
+    ],
+    [
+      "Vale.X64.InsStack.va_quick_Load64_stack",
+      1,
+      1,
+      0,
+      [
+        "@MaxIFuel_assumption", "@query",
+        "fuel_guarded_inversion_FStar.Pervasives.Native.tuple3"
+      ],
+      0,
+      "767d098eb2546a82a62a081ed334b89a"
+    ],
+    [
+      "Vale.X64.InsStack.va_quick_PushXmm",
+      1,
+      1,
+      0,
+      [
+        "@MaxIFuel_assumption", "@query",
+        "fuel_guarded_inversion_FStar.Pervasives.Native.tuple3"
+      ],
+      0,
+      "c4899b05f3505f96f331e515e3db62c7"
+    ],
+    [
+      "Vale.X64.InsStack.va_quick_PopXmm",
+      1,
+      1,
+      0,
+      [
+        "@MaxIFuel_assumption", "@query",
+        "fuel_guarded_inversion_FStar.Pervasives.Native.tuple3"
+      ],
+      0,
+      "fa44654fca2d02464027ec60c112cfb9"
+    ],
+    [
+      "Vale.X64.InsStack.va_quick_PushXmm_Secret",
+      1,
+      1,
+      0,
+      [
+        "@MaxIFuel_assumption", "@query",
+        "fuel_guarded_inversion_FStar.Pervasives.Native.tuple3"
+      ],
+      0,
+      "c3b8049b99bafcdef47d50511a50b8e1"
+    ],
+    [
+      "Vale.X64.InsStack.va_quick_PopXmm_Secret",
+      1,
+      1,
+      0,
+      [
+        "@MaxIFuel_assumption", "@query",
+        "fuel_guarded_inversion_FStar.Pervasives.Native.tuple3"
+      ],
+      0,
+      "83ae89994587c392fae889062fc85f4f"
+    ]
+  ]
+]

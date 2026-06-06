@@ -1,0 +1,29 @@
+[
+  "22cccad69b5bc4e07482d5c685fdd3b2",
+  [
+    [
+      "Vale.Bignum.X64.va_quick_Adcx_64",
+      1,
+      1,
+      0,
+      [
+        "@MaxIFuel_assumption", "@query",
+        "fuel_guarded_inversion_FStar.Pervasives.Native.tuple3"
+      ],
+      0,
+      "0e6f6279555b46a7909158cf54e42c5a"
+    ],
+    [
+      "Vale.Bignum.X64.va_quick_Adox_64",
+      1,
+      1,
+      0,
+      [
+        "@MaxIFuel_assumption", "@query",
+        "fuel_guarded_inversion_FStar.Pervasives.Native.tuple3"
+      ],
+      0,
+      "ff385459652c29c2cebfa21f4b8a6f39"
+    ]
+  ]
+]

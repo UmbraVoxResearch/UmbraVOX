@@ -1,0 +1,50 @@
+[
+  "296be2f264cb9e74279075075beb653f",
+  [
+    [
+      "Spec.Frodo.KEM.crypto_kem_keypair",
+      1,
+      0,
+      0,
+      [ "@query" ],
+      0,
+      "c210c94e687766519673a96c86a95d8a"
+    ],
+    [
+      "Spec.Frodo.KEM.crypto_kem_enc",
+      1,
+      0,
+      0,
+      [ "@query" ],
+      0,
+      "5e93cc069ad9bc1577b98bf0dbb29eda"
+    ],
+    [
+      "Spec.Frodo.KEM.crypto_kem_enc",
+      2,
+      0,
+      0,
+      [ "@query" ],
+      0,
+      "a40b20720bc66ab0dcb8806289db55fe"
+    ],
+    [
+      "Spec.Frodo.KEM.crypto_kem_dec",
+      1,
+      0,
+      0,
+      [ "@query" ],
+      0,
+      "77372885a3ffe6368c850a8108306433"
+    ],
+    [
+      "Spec.Frodo.KEM.crypto_kem_dec",
+      2,
+      0,
+      0,
+      [ "@query" ],
+      0,
+      "2dbf7e557330392bf6a7e5856f247b3b"
+    ]
+  ]
+]

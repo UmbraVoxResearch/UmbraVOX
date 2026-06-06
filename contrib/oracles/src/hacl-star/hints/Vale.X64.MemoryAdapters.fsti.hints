@@ -1,0 +1,43 @@
+[
+  "f28cf6218c6011b0e79ae16d3040d774",
+  [
+    [
+      "Vale.X64.MemoryAdapters.coerce",
+      1,
+      1,
+      0,
+      [
+        "@MaxIFuel_assumption", "@query",
+        "refinement_interpretation_Tm_refine_754b00004f4a881ff74d076ab276dfe1"
+      ],
+      0,
+      "d91e97db3b25d6987ce3757ac2fac2fd"
+    ],
+    [
+      "Vale.X64.MemoryAdapters.create_initial_vale_full_heap",
+      1,
+      1,
+      0,
+      [
+        "@MaxIFuel_assumption", "@query",
+        "function_token_typing_Vale.X64.MemoryAdapters.lemma_heap_impl",
+        "refinement_interpretation_Tm_refine_6cb970752a0c41adbcb78239b848ad1f"
+      ],
+      0,
+      "cdb3a247e09c29f0727bbbae5df957b5"
+    ],
+    [
+      "Vale.X64.MemoryAdapters.as_vale_stack",
+      1,
+      1,
+      0,
+      [
+        "@MaxIFuel_assumption", "@query",
+        "function_token_typing_Vale.X64.MemoryAdapters.stack_eq",
+        "refinement_interpretation_Tm_refine_68edd2e7b46cd6dafa0790241d575575"
+      ],
+      0,
+      "e56c49c2bd73edebe2ba8e3487bd2382"
+    ]
+  ]
+]

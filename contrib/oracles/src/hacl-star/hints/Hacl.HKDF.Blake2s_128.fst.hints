@@ -1,0 +1,33 @@
+[
+  "5b15532373adc281c3778e6127cb0717",
+  [
+    [
+      "Hacl.HKDF.Blake2s_128.expand_blake2s_128",
+      1,
+      0,
+      0,
+      [
+        "@query", "constructor_distinct_Spec.Hash.Definitions.Blake2S",
+        "equality_tok_Spec.Hash.Definitions.Blake2S@tok",
+        "equation_Spec.Hash.Definitions.is_shake",
+        "projection_inverse_BoxBool_proj_0"
+      ],
+      0,
+      "8efb3660b051c76a38aaa33a8f7ae0ef"
+    ],
+    [
+      "Hacl.HKDF.Blake2s_128.extract_blake2s_128",
+      1,
+      0,
+      0,
+      [
+        "@query", "constructor_distinct_Spec.Hash.Definitions.Blake2S",
+        "equality_tok_Spec.Hash.Definitions.Blake2S@tok",
+        "equation_Spec.Hash.Definitions.is_shake",
+        "projection_inverse_BoxBool_proj_0"
+      ],
+      0,
+      "35287eaf6e7500ced0389e68dacdf095"
+    ]
+  ]
+]

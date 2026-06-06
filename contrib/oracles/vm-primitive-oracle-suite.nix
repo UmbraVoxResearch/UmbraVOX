@@ -6,76 +6,34 @@
 # vectors against UmbraVOX's own code.
 #
 # At boot the oracle CLI generates vectors, writes them to /output, and shuts
-# down.  No network access at runtime -- every library source tree is fetched
-# and compiled during the Nix build.
+# down.  No network access at runtime -- all library source trees are vendored
+# in contrib/oracles/src/ and compiled during the Nix build.
 #
-# Build:
-#   nix-build nix/vm-primitive-oracle-suite.nix
+# Build (inside builder VM):
+#   nix-build contrib/oracles/vm-primitive-oracle-suite.nix
 #
 # The output is a raw disk image: result/nixos.raw
-#
-# NOTE: placeholder hashes -- this will not build until they are filled in.
-#       Run `nix-prefetch-git` or `nix-prefetch-url --unpack` to obtain real
-#       values.
 { pkgs ? import <nixpkgs> { system = "x86_64-linux"; } }:
 
 let
   # ===========================================================================
-  # Library sources (pinned)
+  # Library sources (vendored in contrib/oracles/src/)
   # ===========================================================================
 
   # -- Monocypher (compact, auditable C crypto) --------------------------------
-  # Available in some nixpkgs channels; fetch from GitHub for a pinned version.
-  monocypherSrc = pkgs.fetchFromGitHub {
-    owner  = "LoupVaillant";
-    repo   = "Monocypher";
-    # TODO: replace with real rev (e.g. tag "4.0.2")
-    rev    = "0000000000000000000000000000000000000000";
-    # TODO: replace with real hash -- run:
-    #   nix-prefetch-git --url https://github.com/LoupVaillant/Monocypher \
-    #       --rev <tag-or-commit>
-    sha256 = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
-  };
+  monocypherSrc = ./src/monocypher;
 
   # -- HACL* (formally verified C/ASM from Project Everest) --------------------
-  haclStarSrc = pkgs.fetchFromGitHub {
-    owner  = "hacl-star";
-    repo   = "hacl-star";
-    # TODO: replace with real rev
-    rev    = "0000000000000000000000000000000000000000";
-    # TODO: replace with real hash
-    sha256 = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
-  };
+  haclStarSrc = ./src/hacl-star;
 
   # -- BoringSSL (Google's OpenSSL fork) ---------------------------------------
-  boringSslSrc = pkgs.fetchFromGitHub {
-    owner  = "google";
-    repo   = "boringssl";
-    # TODO: replace with real rev
-    rev    = "0000000000000000000000000000000000000000";
-    # TODO: replace with real hash
-    sha256 = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
-  };
+  boringSslSrc = ./src/boringssl;
 
   # -- PQClean (clean reference PQ implementations) ----------------------------
-  pqcleanSrc = pkgs.fetchFromGitHub {
-    owner  = "PQClean";
-    repo   = "PQClean";
-    # TODO: replace with real rev
-    rev    = "0000000000000000000000000000000000000000";
-    # TODO: replace with real hash
-    sha256 = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
-  };
+  pqcleanSrc = ./src/pqclean;
 
   # -- liboqs (Open Quantum Safe -- ML-KEM / ML-DSA reference) -----------------
-  liboqsSrc = pkgs.fetchFromGitHub {
-    owner  = "open-quantum-safe";
-    repo   = "liboqs";
-    # TODO: replace with real rev
-    rev    = "0000000000000000000000000000000000000000";
-    # TODO: replace with real hash
-    sha256 = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
-  };
+  liboqsSrc = ./src/liboqs;
 
   # ===========================================================================
   # Library derivations

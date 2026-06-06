@@ -1,17 +1,12 @@
 # NixOS VM for Kyber768 / ML-KEM-768 reference KAT oracle.
 #
-# Fetches the UmbraVoxResearch/kyber fork (pq-crystals Kyber reference),
-# compiles an inline KAT generator against the ref sources, runs it at boot,
-# writes kyber-kat.json to /output, and shuts down.
+# Uses the vendored UmbraVoxResearch/kyber fork (pq-crystals Kyber reference)
+# from contrib/oracles/src/kyber/, compiles an inline KAT generator against
+# the ref sources, runs it at boot, writes kyber-kat.json to /output, and
+# shuts down.
 #
-# At runtime the VM has no network access -- every source tree is fetched and
-# compiled during the Nix build phase.
-#
-# NOTE: Placeholder hashes -- this file will not build until they are filled in.
-#       Run:
-#         nix-prefetch-git --url https://github.com/UmbraVoxResearch/kyber \
-#             --rev <commit-or-tag>
-#       to obtain the real rev and sha256.
+# At runtime the VM has no network access -- all source trees are vendored in
+# contrib/oracles/src/ and compiled during the Nix build phase.
 #
 # Usage (inside builder VM):
 #   ./uv vm kyber generate-kat
@@ -19,18 +14,9 @@
 
 let
   # ===========================================================================
-  # Source: UmbraVoxResearch/kyber fork (pq-crystals reference)
+  # Source: UmbraVoxResearch/kyber fork (vendored in contrib/oracles/src/)
   # ===========================================================================
-  kyberSrc = pkgs.fetchFromGitHub {
-    owner  = "UmbraVoxResearch";
-    repo   = "kyber";
-    # TODO: replace with real rev
-    #   nix-prefetch-git --url https://github.com/UmbraVoxResearch/kyber \
-    #       --rev <tag-or-commit>
-    rev    = "0000000000000000000000000000000000000000";
-    # TODO: replace with real hash
-    sha256 = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
-  };
+  kyberSrc = ./src/kyber;
 
   # ===========================================================================
   # kyber768-oracle binary derivation

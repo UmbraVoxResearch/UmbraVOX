@@ -1,0 +1,77 @@
+[
+  "1847fd18abc7bbc9f017741935d08a4c",
+  [
+    [
+      "Vale.PPC64LE.InsStack.va_quick_Alloc_stack",
+      1,
+      1,
+      0,
+      [
+        "@MaxIFuel_assumption", "@query",
+        "fuel_guarded_inversion_FStar.Pervasives.Native.tuple3"
+      ],
+      0,
+      "e7f9172d01bd7d3d0f22909fc8b0fdfc"
+    ],
+    [
+      "Vale.PPC64LE.InsStack.va_quick_Dealloc_stack",
+      1,
+      1,
+      0,
+      [
+        "@MaxIFuel_assumption", "@query",
+        "fuel_guarded_inversion_FStar.Pervasives.Native.tuple3"
+      ],
+      0,
+      "55b622c509791af5c5bfa5ec76e65698"
+    ],
+    [
+      "Vale.PPC64LE.InsStack.va_quick_Store_stack128",
+      1,
+      1,
+      0,
+      [
+        "@MaxIFuel_assumption", "@query",
+        "fuel_guarded_inversion_FStar.Pervasives.Native.tuple3"
+      ],
+      0,
+      "9ab5fc4def485b1f5f3e7159692f9029"
+    ],
+    [
+      "Vale.PPC64LE.InsStack.va_quick_Load_stack128",
+      1,
+      1,
+      0,
+      [
+        "@MaxIFuel_assumption", "@query",
+        "fuel_guarded_inversion_FStar.Pervasives.Native.tuple3"
+      ],
+      0,
+      "5fa3edf2e278684ea3d8828d61789a3e"
+    ],
+    [
+      "Vale.PPC64LE.InsStack.va_quick_Store_stack64",
+      1,
+      1,
+      0,
+      [
+        "@MaxIFuel_assumption", "@query",
+        "fuel_guarded_inversion_FStar.Pervasives.Native.tuple3"
+      ],
+      0,
+      "ed6decf247163d21423dc569da67b148"
+    ],
+    [
+      "Vale.PPC64LE.InsStack.va_quick_Load_stack64",
+      1,
+      1,
+      0,
+      [
+        "@MaxIFuel_assumption", "@query",
+        "fuel_guarded_inversion_FStar.Pervasives.Native.tuple3"
+      ],
+      0,
+      "ac75e05d03f25af274f72951018f6dab"
+    ]
+  ]
+]

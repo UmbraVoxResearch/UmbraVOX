@@ -1,0 +1,17 @@
+[
+  "2d12cd4b210b8adda4766b51b06ef781",
+  [
+    [
+      "Vale.Test.X64.Args.va_quick_Test",
+      1,
+      1,
+      0,
+      [
+        "@MaxIFuel_assumption", "@query",
+        "fuel_guarded_inversion_FStar.Pervasives.Native.tuple3"
+      ],
+      0,
+      "21b6c2281b47c6ae674178f052c5203a"
+    ]
+  ]
+]

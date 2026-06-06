@@ -27,9 +27,9 @@ Subcommands:
                   test/vectors/nist/mlkem768-kat.json and
                   build/differential/traces/kyber-kat.json.
 
-The VM is built from contrib/oracles/vm-kyber-oracle.nix (placeholder
-hashes -- fill in real hashes before running).  The oracle generates 5
-KAT vectors using the pq-crystals reference implementation.
+The VM is built from contrib/oracles/vm-kyber-oracle.nix using the
+vendored pq-crystals reference in contrib/oracles/src/kyber/.
+The oracle generates 5 KAT vectors.
 `)
 		return 0
 	}
@@ -72,8 +72,7 @@ func vmKyberGenerateKAT() int {
 		}
 		if buildErr := b.Build(); buildErr != nil {
 			log.Fail(tag, fmt.Sprintf("nix-build failed: %v", buildErr))
-			log.Info(tag, "Note: contrib/oracles/vm-kyber-oracle.nix uses placeholder hashes.")
-			log.Info(tag, "Fill in real hashes with nix-prefetch-git before running.")
+			log.Info(tag, "Ensure contrib/oracles/src/kyber/ is populated (vendored source).")
 			return 1
 		}
 		// Copy the raw image out of the Nix store result symlink.

@@ -1,0 +1,52 @@
+[
+  "f1f9f4ffb792186549043dac1ea0609b",
+  [
+    [
+      "Hacl.Hash.Core.MD5.update",
+      1,
+      2,
+      1,
+      [
+        "@query", "constructor_distinct_Spec.Hash.Definitions.MD5",
+        "equality_tok_Spec.Hash.Definitions.MD5@tok",
+        "equation_Hacl.Hash.Definitions.get_alg",
+        "equation_Spec.Hash.Definitions.is_md",
+        "projection_inverse_BoxBool_proj_0",
+        "projection_inverse_Prims.Mkdtuple2__1"
+      ],
+      0,
+      "532ebffbc5c3a8450e741587b99041b8"
+    ],
+    [
+      "Hacl.Hash.Core.MD5.pad",
+      1,
+      2,
+      1,
+      [
+        "@query", "constructor_distinct_Spec.Hash.Definitions.MD5",
+        "equality_tok_Spec.Hash.Definitions.MD5@tok",
+        "equation_Spec.Hash.Definitions.is_md",
+        "projection_inverse_BoxBool_proj_0"
+      ],
+      0,
+      "355ea166a3ce2b9c2cc4bc9cfe5b7f95"
+    ],
+    [
+      "Hacl.Hash.Core.MD5.finish",
+      1,
+      2,
+      1,
+      [
+        "@query", "constructor_distinct_Spec.Hash.Definitions.MD5",
+        "equality_tok_Spec.Hash.Definitions.MD5@tok",
+        "equation_FStar.Pervasives.dfst",
+        "equation_Spec.Hash.Definitions.is_shake",
+        "proj_equation_Prims.Mkdtuple2__1",
+        "projection_inverse_BoxBool_proj_0",
+        "projection_inverse_Prims.Mkdtuple2__1"
+      ],
+      0,
+      "47bd1df479330eb7226a06c718cbba75"
+    ]
+  ]
+]

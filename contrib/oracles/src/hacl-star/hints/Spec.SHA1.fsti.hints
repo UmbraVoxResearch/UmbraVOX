@@ -1,0 +1,19 @@
+[
+  "6a446acf8d1ada16dadc15535f930020",
+  [
+    [
+      "Spec.SHA1.update",
+      1,
+      2,
+      1,
+      [
+        "@query", "constructor_distinct_Spec.Hash.Definitions.SHA1",
+        "equality_tok_Spec.Hash.Definitions.SHA1@tok",
+        "equation_Spec.Hash.Definitions.is_md",
+        "projection_inverse_BoxBool_proj_0"
+      ],
+      0,
+      "d15e187cfc32d7ace327a79104af4566"
+    ]
+  ]
+]
