@@ -515,11 +515,13 @@ IMPLEMENTATION BACKLOG (discovered from audits, 2026-05-26)
   [ ] M23.3 Both oracle files use mode=1777 tmpfs (security: should be 0700)
   [ ] M23.4 Both oracle files use upstream make-disk-image.nix (misses LKL/cptofs fix)
 
-[ ] M24 CI hardening
-  [ ] M24.1 Add timeout-minutes to all CI jobs (prevent hung runners)
-  [ ] M24.2 Extract nixpkgs hash to shared variable (duplicated 4 times across workflows)
-  [ ] M24.3 Add FORCE_JAVASCRIPT_ACTIONS_TO_NODE24 to ci-linux, ci-nightly, ci-prerelease
-  [ ] M24.4 Add ./uv test audit to ci-nightly.yml (currently only in ci-linux.yml)
+[x] M24 CI hardening
+  [x] M24.1 Add timeout-minutes to all CI jobs (prevent hung runners)
+      linux=30m, nightly=90m, prerelease=120m, macos=30m, builder=60m
+  [x] M24.2 Extract nixpkgs hash to shared variable (duplicated 4 times across workflows)
+      NIXPKGS_REV env var in ci-macos.yml (workflow-level), builder-image.yml, release.yml
+  [x] M24.3 Add FORCE_JAVASCRIPT_ACTIONS_TO_NODE24 to ci-linux, ci-nightly, ci-prerelease
+  [x] M24.4 Add ./uv test audit to ci-nightly.yml (currently only in ci-linux.yml)
 
 [ ] M25 Test vector completeness
   [ ] M25.1 Download Wycheproof vector suites (test/vectors/wycheproof/ placeholder)

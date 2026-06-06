@@ -7,6 +7,9 @@ jobs:
   prerelease:
     name: Pre-release exhaustive validation
     runs-on: self-hosted
+    timeout-minutes: 120
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "1"
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
 

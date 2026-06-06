@@ -6,10 +6,15 @@ on:
   pull_request:
     branches: [main]
 
+# Pin: keep in sync with builder-image.yml and release.yml.
+env:
+  NIXPKGS_REV: b3da656039dc7a6240f27b2ef8cc6a3ef3bccae7
+
 jobs:
   build-test:
     name: Build and test (native-macos)
     runs-on: macos-latest
+    timeout-minutes: 30
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
@@ -18,7 +23,7 @@ jobs:
       - name: Install Nix
         uses: cachix/install-nix-action@d1ca2b820025855eb2a2c513a76a9a0d9e84a2a1  # v27
         with:
-          nix_path: nixpkgs=https://github.com/NixOS/nixpkgs/archive/b3da656039dc7a6240f27b2ef8cc6a3ef3bccae7.tar.gz
+          nix_path: nixpkgs=https://github.com/NixOS/nixpkgs/archive/${{ env.NIXPKGS_REV }}.tar.gz
 
       # macOS runners have no KVM, so ./uv (which boots a QEMU VM) cannot
       # run.  Use cabal directly inside nix-shell instead.
@@ -35,6 +40,7 @@ jobs:
   readiness:
     name: Lane readiness check
     runs-on: macos-latest
+    timeout-minutes: 30
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
@@ -43,7 +49,7 @@ jobs:
       - name: Install Nix
         uses: cachix/install-nix-action@d1ca2b820025855eb2a2c513a76a9a0d9e84a2a1  # v27
         with:
-          nix_path: nixpkgs=https://github.com/NixOS/nixpkgs/archive/b3da656039dc7a6240f27b2ef8cc6a3ef3bccae7.tar.gz
+          nix_path: nixpkgs=https://github.com/NixOS/nixpkgs/archive/${{ env.NIXPKGS_REV }}.tar.gz
 
       - name: macOS lane readiness
         run: nix-shell --run "bash scripts/release-lane-readiness-macos.sh"
