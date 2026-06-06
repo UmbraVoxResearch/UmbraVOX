@@ -87,8 +87,18 @@ See: doc/IMPLEMENTATION-PLAN.md, doc/PROJECT-CHARTER.md
        - Keccak → keccak_sha3_256/512, shake128/256 (bridge_keccak.c)
        - X25519 → umbravox_x25519 (bridge_x25519.c, RFC 7748 low-order check → Nothing)
        - ASSURANCE_PENDING stay Reference: AES256, MLKEM768, VRF, Ed25519Extended
-  [ ] M38.2 Vendor HACL* AES-256-GCM into csrc/hacl/ + add bridge_aesgcm.c
-       - Verify HACL* commit 504c298 includes AES-GCM; vendor correct files
+  [x] M38.2 Vendor HACL* EverCrypt AES-256-GCM into csrc/hacl/ + add bridge_aesgcm.c
+       - EverCrypt_AEAD.c/h, EverCrypt_AutoConfig2.c/h, EverCrypt_Chacha20Poly1305.c/h,
+         EverCrypt_Cipher.c/h, Vale.c, aesgcm-x86_64-linux.S, cpuid-x86_64-linux.S vendored
+       - Full ChaCha20-Poly1305 SIMD chain: Hacl_AEAD_Chacha20Poly1305{,_Simd128,_Simd256}.c,
+         Hacl_Chacha20_Vec{128,256}.c, Hacl_MAC_Poly1305_Simd{128,256}.c + headers
+       - bridge_aesgcm.c: wraps EverCrypt_AEAD_encrypt/decrypt_expand_aes256_gcm (stateless)
+       - src/UmbraVox/Crypto/Generated/FFI/GCM.hs: new FFI module with ByteString marshalling
+       - cabal-version bumped to 3.4 for asm-sources; asm-sources (x86_64 linux/darwin),
+         cc-options -maes -mpclmul -msse4.2 -mavx -mavx2 added
+       - All 7 production Crypto.GCM callers rewired: Export.hs, KeyStore.hs, Signal/Compat.hs,
+         Signal/DoubleRatchet.hs, Signal/SenderKeys.hs, PQWrapper.hs, Storage/Encryption.hs
+       - Crypto.GCM labeled as Haskell reference oracle (NOT production)
   [x] M38.3 Regenerate all FFI modules (VM ONLY: cabal run codegen in builder VM)
        - Then: cabal build all --enable-tests to confirm compilation
   [x] M38.4 Update ALL production callers from Crypto.* to Generated.FFI.* (monadic change)

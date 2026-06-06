@@ -31,7 +31,7 @@ import System.IO (withBinaryFile, IOMode(..))
 import System.IO.Unsafe (unsafePerformIO)
 import System.Posix.Files (setFileMode, ownerReadMode, ownerWriteMode, unionFileModes)
 
-import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
+import qualified UmbraVox.Crypto.Generated.FFI.GCM as GCMFFI
 import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Crypto.SecureBytes (SecureBytes, fromByteString, toByteString)
@@ -186,9 +186,9 @@ encryptField :: StorageKey -> String -> IO String
 encryptField (StorageKey keySB) plainStr = do
     nonce <- randomBytes 12
     keyBS <- toByteString keySB
-    let !plaintext      = C8.pack plainStr
-        !(ciphertext, tag) = gcmEncrypt keyBS nonce BS.empty plaintext
-        !blob           = nonce <> ciphertext <> tag
+    let !plaintext = C8.pack plainStr
+    (ciphertext, tag) <- GCMFFI.gcmEncrypt keyBS nonce BS.empty plaintext
+    let !blob = nonce <> ciphertext <> tag
     return (encPrefix ++ C8.unpack (toHex blob))
 
 -- Finding    M10.3.7 — 'decryptField' returned @Just input@ (plaintext
@@ -226,20 +226,21 @@ decryptField (StorageKey keySB) input = do
     let hexPart = drop (length encPrefix) input
     case fromHex (C8.pack hexPart) of
         Nothing  -> pure Nothing
-        Just raw -> pure (decryptRaw keyBS raw)
+        Just raw -> decryptRaw keyBS raw
 
 -- | Attempt to decrypt a raw blob of @nonce(12) || ciphertext || tag(16)@.
 -- Takes a plain 'ByteString' key extracted by the caller from a 'StorageKey'.
-decryptRaw :: ByteString -> ByteString -> Maybe String
+decryptRaw :: ByteString -> ByteString -> IO (Maybe String)
 decryptRaw key raw
-    | BS.length raw < 28 = Nothing
-    | otherwise =
+    | BS.length raw < 28 = pure Nothing
+    | otherwise = do
         let !nonce      = BS.take 12 raw
             !ctAndTag   = BS.drop 12 raw
             !totalCT    = BS.length ctAndTag
             !ciphertext = BS.take (totalCT - 16) ctAndTag
             !tag        = BS.drop (totalCT - 16) ctAndTag
-        in case gcmDecrypt key nonce BS.empty ciphertext tag of
+        mPt <- GCMFFI.gcmDecrypt key nonce BS.empty ciphertext tag
+        pure $ case mPt of
             Just pt -> Just (C8.unpack pt)
             Nothing -> Nothing
 

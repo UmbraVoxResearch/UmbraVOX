@@ -1,9 +1,13 @@
 -- SPDX-License-Identifier: Apache-2.0
 -- | {-# REQ "CRYPTO-001" #-} AES-256-GCM (NIST SP 800-38D)
 --
--- Galois/Counter Mode authenticated encryption with associated data.
--- Pure Haskell reference implementation.
--- GHASH multiplication is constant-time (no branching on secret data).
+-- Haskell reference oracle. NOT production. NOT constant-time (AES block calls pure Haskell AES).
+-- Production callers must use 'UmbraVox.Crypto.Generated.FFI.GCM' which calls HACL* EverCrypt
+-- AES-256-GCM (formally verified, AES-NI constant-time).
+-- This module is retained for differential testing in Test.Equivalence.
+--
+-- GHASH multiplication is constant-time (no branching on secret data), but the underlying
+-- AES block encryption is NOT constant-time — use the FFI module for production.
 module UmbraVox.Crypto.GCM
     ( gcmEncrypt
     , gcmDecrypt

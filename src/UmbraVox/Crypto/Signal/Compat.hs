@@ -39,7 +39,7 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Word (Word32)
 
-import UmbraVox.Crypto.GCM (gcmDecrypt, gcmEncrypt)
+import qualified UmbraVox.Crypto.Generated.FFI.GCM as GCMFFI
 import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
 import qualified UmbraVox.Crypto.Generated.FFI.HMAC as HMACFFI
 import qualified UmbraVox.Crypto.Generated.FFI.X25519 as X25519FFI
@@ -225,8 +225,8 @@ signalRatchetEncrypt st plaintext
         -- We use the first 32 as AES key, derive a 12-byte nonce for GCM
         let !nonce = BS.take 12 (BS.drop 32 expanded)
             !iv    = if BS.length nonce >= 12 then nonce else BS.replicate 12 0
-        let !(ct, tag) = gcmEncrypt encKey iv BS.empty plaintext
-            !hdr = SignalRatchetHeader
+        (ct, tag) <- GCMFFI.gcmEncrypt encKey iv BS.empty plaintext
+        let !hdr = SignalRatchetHeader
                 { srhDHPublic   = snd (srsDHSend st)
                 , srhPrevChainN = srsPrevChainN st
                 , srhMsgN       = srsSendN st
@@ -255,7 +255,8 @@ signalRatchetDecrypt st hdr ct tag = do
             let !nonce = BS.take 12 (BS.drop 32 expanded)
                 !iv    = if BS.length nonce >= 12 then nonce else BS.replicate 12 0
                 !st'   = st { srsSkippedKeys = Map.delete (srhDHPublic hdr, srhMsgN hdr) (srsSkippedKeys st) }
-            case gcmDecrypt encKey iv BS.empty ct tag of
+            mPt <- GCMFFI.gcmDecrypt encKey iv BS.empty ct tag
+            case mPt of
                 Nothing -> pure (Right Nothing)
                 Just pt -> pure (Right (Just (st', pt)))
         Nothing -> do
@@ -280,7 +281,8 @@ signalRatchetDecrypt st hdr ct tag = do
                         !st4   = st3 { srsRecvChain = newChain
                                       , srsRecvN     = srsRecvN st3 + 1
                                       }
-                    case gcmDecrypt encKey iv BS.empty ct tag of
+                    mPt2 <- GCMFFI.gcmDecrypt encKey iv BS.empty ct tag
+                    case mPt2 of
                         Nothing -> pure (Right Nothing)
                         Just pt -> pure (Right (Just (st4, pt)))
 

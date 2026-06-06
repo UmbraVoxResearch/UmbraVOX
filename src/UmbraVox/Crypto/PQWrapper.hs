@@ -15,7 +15,7 @@ module UmbraVox.Crypto.PQWrapper
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 
-import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
+import qualified UmbraVox.Crypto.Generated.FFI.GCM as GCMFFI
 import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
 import UmbraVox.Crypto.MLKEM
     ( MLKEMEncapKey(..)
@@ -72,7 +72,7 @@ pqEncrypt encapKeyBS plaintext = do
     let ek = MLKEMEncapKey encapKeyBS
         (MLKEMCiphertext kemCt, sharedSecret) = mlkemEncaps ek rand
     (key, nonce) <- deriveKeyNonce sharedSecret
-    let (gcmCt, tag) = gcmEncrypt key nonce BS.empty plaintext
+    (gcmCt, tag) <- GCMFFI.gcmEncrypt key nonce BS.empty plaintext
     pure $! kemCt <> gcmCt <> tag
 
 -- | Remove the post-quantum outer encryption layer.
@@ -91,4 +91,4 @@ pqDecrypt decapKeyBS combined
             dk           = MLKEMDecapKey decapKeyBS
             sharedSecret = mlkemDecaps dk (MLKEMCiphertext kemCt)
         (key, nonce) <- deriveKeyNonce sharedSecret
-        pure (gcmDecrypt key nonce BS.empty gcmCt tag)
+        GCMFFI.gcmDecrypt key nonce BS.empty gcmCt tag

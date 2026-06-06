@@ -33,7 +33,7 @@ import System.FilePath ((</>), takeDirectory)
 import System.Posix.Files (ownerReadMode, ownerWriteMode, setFileMode, unionFileModes)
 
 import UmbraVox.BuildProfile (BuildPluginId(..), pluginEnabled)
-import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
+import qualified UmbraVox.Crypto.Generated.FFI.GCM as GCMFFI
 import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Crypto.SecureBytes (SecureBytes, fromByteString, toByteString, withSecureKey)
@@ -212,7 +212,7 @@ saveIdentityKeyWithPassphrase path passphrase ik = do
     wk <- deriveWrappingKey salt passphrase
     sbKey <- fromByteString wk
     blob <- withSecureKey sbKey $ \key -> do
-        let !(ct, tag) = gcmEncrypt key nonce BS.empty plaintext
+        (ct, tag) <- GCMFFI.gcmEncrypt key nonce BS.empty plaintext
         pure (nonce <> ct <> tag)
     BS.writeFile path blob
     setFileMode path (ownerReadMode `unionFileModes` ownerWriteMode)
@@ -242,7 +242,7 @@ loadIdentityKeyWithPassphrase path passphrase = do
                     wk <- deriveWrappingKey salt passphrase
                     sbKey <- fromByteString wk
                     mPlaintext <- withSecureKey sbKey $ \key ->
-                        pure (gcmDecrypt key nonce BS.empty ct tag)
+                        GCMFFI.gcmDecrypt key nonce BS.empty ct tag
                     case mPlaintext of
                         Nothing        -> pure Nothing
                         Just plaintext -> decodeIdentityKey plaintext

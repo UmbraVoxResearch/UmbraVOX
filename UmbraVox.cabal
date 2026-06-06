@@ -1,4 +1,4 @@
-cabal-version:      3.0
+cabal-version:      3.4
 name:               UmbraVox
 version:            0.7.0
 synopsis:           Decentralized encrypted communications protocol
@@ -138,6 +138,7 @@ library
       UmbraVox.Crypto.Generated.NetworkProtocol
       UmbraVox.Crypto.Generated.SessionState
       UmbraVox.Crypto.Generated.FFI.AES256
+      UmbraVox.Crypto.Generated.FFI.GCM
       UmbraVox.Crypto.Generated.FFI.ChaCha20
       UmbraVox.Crypto.Generated.FFI.HKDF
       UmbraVox.Crypto.Generated.FFI.HMAC
@@ -289,6 +290,23 @@ library
       csrc/secure_mlock.c
       csrc/sqlite3_shim.c
       csrc/generated/aes256.c
+      -- M38.2: EverCrypt AES-256-GCM + ChaCha20-Poly1305 SIMD (INTERIM PRODUCTION)
+      -- EverCrypt AEAD dispatch layer
+      csrc/hacl/EverCrypt_AEAD.c
+      csrc/hacl/EverCrypt_AutoConfig2.c
+      csrc/hacl/EverCrypt_Chacha20Poly1305.c
+      csrc/hacl/EverCrypt_Cipher.c
+      csrc/hacl/Vale.c
+      -- ChaCha20-Poly1305 AEAD: scalar + SIMD128 + SIMD256
+      csrc/hacl/Hacl_AEAD_Chacha20Poly1305.c
+      csrc/hacl/Hacl_AEAD_Chacha20Poly1305_Simd128.c
+      csrc/hacl/Hacl_AEAD_Chacha20Poly1305_Simd256.c
+      csrc/hacl/Hacl_Chacha20_Vec128.c
+      csrc/hacl/Hacl_Chacha20_Vec256.c
+      csrc/hacl/Hacl_MAC_Poly1305_Simd128.c
+      csrc/hacl/Hacl_MAC_Poly1305_Simd256.c
+      -- AES-256-GCM bridge
+      csrc/hacl/bridge_aesgcm.c
       csrc/hacl/Hacl_Chacha20.c
       csrc/hacl/bridge_chacha20.c
       -- M13.15.14: HACL* verified HKDF (replaces generated/hkdf.c as primary impl)
@@ -338,6 +356,17 @@ library
       csrc/fiat
     cc-options: -std=c99 -fstack-protector-strong -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security
       -DFIAT_VENDORED -Wno-unused-function -Wno-unused-parameter
+  -- M38.2: Vale assembly (AES-NI + GHASH) — x86-64 only
+  if !flag(wasm) && !os(windows) && arch(x86_64) && os(linux)
+    asm-sources:
+      csrc/hacl/aesgcm-x86_64-linux.S
+      csrc/hacl/cpuid-x86_64-linux.S
+  if !flag(wasm) && !os(windows) && arch(x86_64) && os(darwin)
+    asm-sources:
+      csrc/hacl/aesgcm-x86_64-darwin.S
+  -- M38.2: SIMD intrinsic flags required by EverCrypt SIMD ChaCha20-Poly1305
+  if !flag(wasm) && !os(windows) && arch(x86_64)
+    cc-options: -maes -mpclmul -msse4.2 -mavx -mavx2
   if flag(pure-haskell-crypto)
     cpp-options: -DPURE_HASKELL_CRYPTO
   if flag(chaste-build)

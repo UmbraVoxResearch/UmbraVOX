@@ -45,7 +45,7 @@ import Data.Word (Word32, Word64)
 import qualified UmbraVox.Crypto.Generated.FFI.Ed25519Extended as Ed25519FFI
 import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
 import qualified UmbraVox.Crypto.Generated.FFI.HMAC as HMACFFI
-import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
+import qualified UmbraVox.Crypto.Generated.FFI.GCM as GCMFFI
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Crypto.SecureBytes (SecureBytes, fromByteString, toByteString, zeroAndFree)
 
@@ -350,8 +350,8 @@ encryptSenderKey st plaintext
                 !aad = sksSenderId st
                     <> signingKeyBS
                     <> encodeWord32BE (sksIteration st)
-                !(ct, tag) = gcmEncrypt msgKey nonce aad plaintext
-                -- Sign: senderId || iteration(4 BE) || ciphertext || tag
+            (ct, tag) <- GCMFFI.gcmEncrypt msgKey nonce aad plaintext
+            let -- Sign: senderId || iteration(4 BE) || ciphertext || tag
                 !sigPayload = sksSenderId st
                     <> encodeWord32BE (sksIteration st)
                     <> ct
@@ -422,7 +422,8 @@ decryptSenderKey st msg nowSecs
             let !aad = sksSenderId st
                     <> signingKeyBS
                     <> encodeWord32BE (skmIteration msg)
-            case gcmDecrypt targetMsgKey nonce aad (skmCiphertext msg) (skmTag msg) of
+            mPt <- GCMFFI.gcmDecrypt targetMsgKey nonce aad (skmCiphertext msg) (skmTag msg)
+            case mPt of
                 Nothing -> do
                     -- Decrypt failed; zero the unused new chain key.
                     zeroAndFree advancedChainKeySB
@@ -466,7 +467,8 @@ trySkippedSenderKeys st msg nowSecs = do
                 let !aad = sksSenderId st
                         <> signingKeyBS
                         <> encodeWord32BE (skmIteration msg)
-                case gcmDecrypt msgKey nonce aad (skmCiphertext msg) (skmTag msg) of
+                mPt2 <- GCMFFI.gcmDecrypt msgKey nonce aad (skmCiphertext msg) (skmTag msg)
+                case mPt2 of
                     Nothing -> pure $ Left DecryptionFailed
                     Just plaintext ->
                         let !st' = st { sksSkippedKeys = Map.delete lookupKey pruned }

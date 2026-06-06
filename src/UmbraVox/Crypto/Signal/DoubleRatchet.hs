@@ -38,7 +38,7 @@ import UmbraVox.App.Defaults (defaultMaxSkip, defaultMaxTotalSkipped,
 import qualified UmbraVox.Crypto.Generated.FFI.HMAC as HMACFFI
 import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
 import qualified UmbraVox.Crypto.Generated.FFI.X25519 as X25519FFI
-import UmbraVox.Crypto.GCM (gcmDecrypt, gcmEncrypt)
+import qualified UmbraVox.Crypto.Generated.FFI.GCM as GCMFFI
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Crypto.SecureBytes (SecureBytes, fromByteString, toByteString, zeroAndFree)
 
@@ -405,8 +405,8 @@ ratchetEncrypt st plaintext =
                     }
                 -- Encrypt with AES-256-GCM
                 !aad = encodeHeader header
-                !(ct, tag) = gcmEncrypt msgKey nonce aad plaintext
-                -- Update state
+            (ct, tag) <- GCMFFI.gcmEncrypt msgKey nonce aad plaintext
+            let -- Update state
                 !st' = st
                     { rsSendChain    = newChainKey
                     , rsSendN        = rsSendN st + 1
@@ -491,7 +491,8 @@ ratchetDecrypt st header ct tag =
                                                     (newChainKey, msgKey) <- kdfCK (rsRecvChain st3)
                                                     nonce <- makeNonce (rsRecvChain st3) (rsRecvN st3)
                                                     let !aad = encodeHeader header
-                                                    pure $ Right $ case gcmDecrypt msgKey nonce aad ct tag of
+                                                    mPt <- GCMFFI.gcmDecrypt msgKey nonce aad ct tag
+                                                    pure $ Right $ case mPt of
                                                         Just plaintext ->
                                                             let !st4 = st3
                                                                     { rsRecvChain = newChainKey
@@ -633,7 +634,8 @@ trySkippedKeys st nowSecs header ct tag = do
             chainKeySB <- fromByteString chainKey
             nonce <- makeNonce chainKeySB (rhMsgN header)
             let !aad = encodeHeader header
-            pure $ case gcmDecrypt msgKey nonce aad ct tag of
+            mPt <- GCMFFI.gcmDecrypt msgKey nonce aad ct tag
+            pure $ case mPt of
                 Just plaintext ->
                     let !st' = st0 { rsSkippedKeys = Map.delete lookupKey pruned }
                     in Just (st', plaintext)

@@ -10,7 +10,7 @@ module UmbraVox.Crypto.Export
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 
-import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
+import qualified UmbraVox.Crypto.Generated.FFI.GCM as GCMFFI
 import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Crypto.SecureBytes (fromByteString, withSecureKey)
@@ -96,7 +96,7 @@ encryptExport password plaintext = do
     keyBS <- deriveKey salt password
     sbKey <- fromByteString keyBS
     withSecureKey sbKey $ \key -> do
-        let !(ct, tag) = gcmEncrypt key nonce exportInfo plaintext
+        (ct, tag) <- GCMFFI.gcmEncrypt key nonce exportInfo plaintext
         pure (salt <> nonce <> ct <> tag)
 
 -- | Decrypt an exported blob with a password.
@@ -114,4 +114,4 @@ decryptExport password blob
             !ct    = BS.take ctLen rest
             !tag   = BS.drop ctLen rest
         !key <- deriveKey salt password
-        pure (gcmDecrypt key nonce exportInfo ct tag)
+        GCMFFI.gcmDecrypt key nonce exportInfo ct tag
