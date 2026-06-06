@@ -208,7 +208,7 @@ CEOF
   # NixOS configuration
   # ===========================================================================
   nixosConfig = { config, lib, modulesPath, pkgs, ... }: {
-    imports = [ ./tiers/base.nix ];
+    imports = [ ../../nix/tiers/base.nix ];
 
     boot.loader.grub.device = "/dev/vda";
 
@@ -275,7 +275,7 @@ CEOF
     configuration = nixosConfig;
   };
 
-  image = import ./make-disk-image.nix {
+  image = import ../../nix/make-disk-image.nix {
     inherit pkgs;
     lib   = pkgs.lib;
     config = nixos.config;
