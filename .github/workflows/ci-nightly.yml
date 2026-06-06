@@ -19,82 +19,62 @@ jobs:
 
       - name: Lint, format, license, complexity, headers, assurance
         run: ./uv check
-        continue-on-error: false
 
       - name: Core logic, crypto, protocol, chat
         run: ./uv test
-        continue-on-error: false
 
       - name: SHA-256 test vector validation
         run: ./uv test integrity
-        continue-on-error: false
 
       - name: Generated C vs libsodium/HACL* oracle
         run: ./uv test differential
-        continue-on-error: false
 
       - name: F* admit count, assume inventory, assurance matrix
         run: ./uv check pre-release
-        continue-on-error: false
 
       - name: Security audit (regression, negative, boundary, adversarial-proto, constant-time, key-lifecycle)
         run: ./uv test audit
-        continue-on-error: false
 
       # --- Nightly additions ---
 
       - name: Every named suite (core-crypto, core-network, core-chat, core-tui, core-tools, tui-sim, mdns, deferred, etc.)
         run: ./uv test all
-        continue-on-error: false
 
       - name: Full pipeline from clean state
         run: ./uv test e2e
-        continue-on-error: false
 
       - name: TCP hardening
         run: ./uv test tcp
-        continue-on-error: false
 
       - name: Fault injection
         run: ./uv test fault
-        continue-on-error: false
 
       - name: State recovery
         run: ./uv test recovery
-        continue-on-error: false
 
       - name: 2hr stress test
         run: ./uv test soak
-        continue-on-error: false
 
       - name: Fuzz testing
         run: ./uv fuzz differential
-        continue-on-error: false
 
       - name: F* formal verification (24 specs)
         run: ./uv verify
-        continue-on-error: false
 
       - name: HPC coverage targets
         run: ./uv coverage --check
-        continue-on-error: false
 
       - name: Release bundle smoke
         run: ./uv vm smoke release
-        continue-on-error: false
 
       - name: FreeBSD platform smoke
         run: ./uv vm smoke freebsd
-        continue-on-error: false
 
       - name: OpenBSD platform smoke
         run: ./uv vm smoke openbsd
-        continue-on-error: false
 
       - name: Multi-VM integration (3 agents)
         run: ./uv vm integration
-        continue-on-error: false
 
       - name: Signal Server wire-compat
         run: ./uv vm signal test
-        continue-on-error: false
