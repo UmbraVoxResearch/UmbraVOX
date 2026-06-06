@@ -34,7 +34,7 @@ import qualified Data.Map.Strict as Map
 import Data.Word (Word64)
 
 import UmbraVox.Crypto.ConstantTime (constantEq)
-import UmbraVox.Crypto.HKDF (hkdfSHA256)
+import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
 import UmbraVox.Protocol.Encoding (putWord64BE)
 
 ------------------------------------------------------------------------
@@ -125,14 +125,14 @@ deriveRouteTokens :: ByteString  -- ^ Handshake hash (Noise transcript binding)
                   -> ByteString  -- ^ Transport key (shared secret from handshake)
                   -> ByteString  -- ^ My identity hash (32 bytes)
                   -> ByteString  -- ^ Peer identity hash (32 bytes)
-                  -> (ByteString, ByteString)  -- ^ (sendToken, recvToken)
-deriveRouteTokens handshakeHash transportKey myIdHash peerIdHash =
+                  -> IO (ByteString, ByteString)  -- ^ (sendToken, recvToken)
+deriveRouteTokens handshakeHash transportKey myIdHash peerIdHash = do
     let !info = tokenInfoPrefix <> myIdHash <> peerIdHash
                     <> putWord64BE 0
-        !material = hkdfSHA256 handshakeHash transportKey info 32
-        !sendToken = BS.take 16 material
+    !material <- HKDFFFI.hkdfSHA256 handshakeHash transportKey info 32
+    let !sendToken = BS.take 16 material
         !recvToken = BS.drop 16 material
-    in (sendToken, recvToken)
+    pure (sendToken, recvToken)
 
 -- | Derive epoch-rotated tokens.  The epoch counter is mixed into the info
 -- string so each epoch produces a fresh, unlinkable token pair.
@@ -141,14 +141,14 @@ deriveEpochTokens :: ByteString  -- ^ Handshake hash
                   -> ByteString  -- ^ My identity hash
                   -> ByteString  -- ^ Peer identity hash
                   -> Word64      -- ^ Epoch counter
-                  -> (ByteString, ByteString)  -- ^ (sendToken, recvToken)
-deriveEpochTokens handshakeHash transportKey myIdHash peerIdHash epoch =
+                  -> IO (ByteString, ByteString)  -- ^ (sendToken, recvToken)
+deriveEpochTokens handshakeHash transportKey myIdHash peerIdHash epoch = do
     let !info = epochInfoPrefix <> myIdHash <> peerIdHash
                     <> putWord64BE epoch
-        !material = hkdfSHA256 handshakeHash transportKey info 32
-        !sendToken = BS.take 16 material
+    !material <- HKDFFFI.hkdfSHA256 handshakeHash transportKey info 32
+    let !sendToken = BS.take 16 material
         !recvToken = BS.drop 16 material
-    in (sendToken, recvToken)
+    pure (sendToken, recvToken)
 
 ------------------------------------------------------------------------
 -- Hybrid rotation
@@ -171,33 +171,33 @@ shouldRotate rts wallNow =
 -- (via 'shouldRotate' or equivalent).
 rotateTokens :: RouteTokenState
              -> Word64  -- ^ Current wall-clock seconds
-             -> RouteTokenState
-rotateTokens rts wallNow =
+             -> IO RouteTokenState
+rotateTokens rts wallNow = do
     let !newEpoch = rtsEpochCounter rts + 1
-        (!newSend, !newRecv) =
-            deriveEpochTokens
-                (rtsHandshakeHash rts) (rtsTransportKey rts)
-                (rtsMyIdHash rts)      (rtsPeerIdHash rts)
-                newEpoch
-    in rts { rtsCurrentSend  = newSend
-           , rtsPrevRecv     = Just (rtsCurrentRecv rts)
-           , rtsCurrentRecv  = newRecv
-           , rtsEpochCounter = newEpoch
-           , rtsMsgCounter   = 0
-           , rtsLastRotation = wallNow
-           }
+    (!newSend, !newRecv) <-
+        deriveEpochTokens
+            (rtsHandshakeHash rts) (rtsTransportKey rts)
+            (rtsMyIdHash rts)      (rtsPeerIdHash rts)
+            newEpoch
+    pure rts { rtsCurrentSend  = newSend
+             , rtsPrevRecv     = Just (rtsCurrentRecv rts)
+             , rtsCurrentRecv  = newRecv
+             , rtsEpochCounter = newEpoch
+             , rtsMsgCounter   = 0
+             , rtsLastRotation = wallNow
+             }
 
 -- | Increment the message counter, then rotate if the hybrid threshold
 -- (counter or wall-clock) has been reached.  Suitable for calling after
 -- each outbound message.
 checkAndRotate :: RouteTokenState
                -> Word64  -- ^ Current wall-clock seconds
-               -> RouteTokenState
-checkAndRotate rts0 wallNow =
+               -> IO RouteTokenState
+checkAndRotate rts0 wallNow = do
     let !rts = rts0 { rtsMsgCounter = rtsMsgCounter rts0 + 1 }
-    in if shouldRotate rts wallNow
+    if shouldRotate rts wallNow
        then rotateTokens rts wallNow
-       else rts
+       else pure rts
 
 -- | Check whether an inbound route token matches the current recv token
 -- or the previous-epoch grace token (constant-time).

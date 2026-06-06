@@ -40,7 +40,7 @@ import Network.Socket (tupleToHostAddress)
 import qualified Network.Socket.ByteString as NSB
 
 import UmbraVox.App.Defaults (mdnsAnnounceIntervalUs, mdnsPeerEvictionSeconds)
-import UmbraVox.Crypto.HKDF (hkdf)
+import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
 import UmbraVox.Crypto.Random (randomBytes)
 
 ------------------------------------------------------------------------
@@ -88,9 +88,9 @@ peerEvictionSeconds = mdnsPeerEvictionSeconds
 -- >                            info="UmbraVox_mDNS_v1", len=32)
 deriveEphemeralId :: ByteString  -- ^ Identity key (pubkey fingerprint)
                   -> ByteString  -- ^ Per-boot random nonce (32 bytes)
-                  -> ByteString  -- ^ 32-byte ephemeral ID
+                  -> IO ByteString  -- ^ 32-byte ephemeral ID
 deriveEphemeralId identityKey bootNonce =
-    hkdf bootNonce identityKey "UmbraVox_mDNS_v1" 32
+    HKDFFFI.hkdf bootNonce identityKey "UmbraVox_mDNS_v1" 32
 
 ------------------------------------------------------------------------
 -- FFI for setsockopt (IP_ADD_MEMBERSHIP)
@@ -147,7 +147,7 @@ startMDNS :: Int -> String -> ByteString -> IO (MVar [MDNSPeer], ThreadId)
 startMDNS ourPort _ourName ourPubkey = do
     -- Generate a per-boot nonce so the ephemeral ID changes every restart.
     bootNonce <- randomBytes 32
-    let !ephemeralId = deriveEphemeralId ourPubkey bootNonce
+    ephemeralId <- deriveEphemeralId ourPubkey bootNonce
     peersRef <- newMVar []
     tid <- forkIO (runMDNS ourPort "" ephemeralId peersRef)
     pure (peersRef, tid)

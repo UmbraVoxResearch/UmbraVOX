@@ -130,9 +130,10 @@ testPoWGenerateSize = do
 testPoWSolveVerify :: IO Bool
 testPoWSolveVerify = do
     challenge <- generateChallenge
-    let nonce = solveChallenge challenge
+    nonce <- solveChallenge challenge
     r1 <- assertEq "nonce is 8 bytes" nonceSize (BS.length nonce)
-    r2 <- assertEq "solved nonce verifies" True (verifyChallenge challenge nonce)
+    verified <- verifyChallenge challenge nonce
+    r2 <- assertEq "solved nonce verifies" True verified
     pure (r1 && r2)
 
 -- | Wrong nonce does not verify.
@@ -140,23 +141,25 @@ testPoWWrongNonce :: IO Bool
 testPoWWrongNonce = do
     challenge <- generateChallenge
     let wrongNonce = BS.replicate nonceSize 0xFF
-    assertEq "wrong nonce does not verify" False (verifyChallenge challenge wrongNonce)
+    result <- verifyChallenge challenge wrongNonce
+    assertEq "wrong nonce does not verify" False result
 
 -- | Wrong challenge does not verify against a valid nonce.
 testPoWWrongChallenge :: IO Bool
 testPoWWrongChallenge = do
     challenge <- generateChallenge
-    let nonce = solveChallenge challenge
-        wrongChallenge = BS.replicate challengeSize 0xAA
-    assertEq "wrong challenge does not verify" False (verifyChallenge wrongChallenge nonce)
+    nonce <- solveChallenge challenge
+    let wrongChallenge = BS.replicate challengeSize 0xAA
+    result <- verifyChallenge wrongChallenge nonce
+    assertEq "wrong challenge does not verify" False result
 
 -- | Bad input lengths are rejected.
 testPoWBadLengths :: IO Bool
 testPoWBadLengths = do
-    r1 <- assertEq "short challenge rejected" False
-        (verifyChallenge (BS.pack [1,2,3]) (BS.replicate nonceSize 0))
-    r2 <- assertEq "short nonce rejected" False
-        (verifyChallenge (BS.replicate challengeSize 0) (BS.pack [1,2]))
+    r1v <- verifyChallenge (BS.pack [1,2,3]) (BS.replicate nonceSize 0)
+    r1 <- assertEq "short challenge rejected" False r1v
+    r2v <- verifyChallenge (BS.replicate challengeSize 0) (BS.pack [1,2])
+    r2 <- assertEq "short nonce rejected" False r2v
     pure (r1 && r2)
 
 ------------------------------------------------------------------------

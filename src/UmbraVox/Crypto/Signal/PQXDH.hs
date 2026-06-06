@@ -39,12 +39,12 @@ import qualified Data.ByteString as BS
 import Data.Word (Word32)
 
 import UmbraVox.Crypto.ConstantTime (constantEq)
-import UmbraVox.Crypto.Curve25519 (x25519)
-import UmbraVox.Crypto.Ed25519 (ed25519Verify)
-import UmbraVox.Crypto.HKDF (hkdf)
+import qualified UmbraVox.Crypto.Generated.FFI.Ed25519Extended as Ed25519FFI
+import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
+import qualified UmbraVox.Crypto.Generated.FFI.SHA256 as SHA256FFI
+import qualified UmbraVox.Crypto.Generated.FFI.X25519 as X25519FFI
 import UmbraVox.Crypto.MLKEM (MLKEMEncapKey(..), MLKEMDecapKey, MLKEMCiphertext(..),
                                mlkemEncaps, mlkemDecaps)
-import UmbraVox.Crypto.SHA256 (sha256)
 import UmbraVox.Crypto.SecureBytes (toByteString)
 import UmbraVox.Crypto.Signal.X3DH (KeyPair(..), IdentityKey(..), generateKeyPair)
 
@@ -122,16 +122,18 @@ derivePQSecret :: ByteString   -- ^ dh1
                -> MLKEMCiphertext  -- ^ pq_ct (ML-KEM ciphertext, hashed into ikm)
                -> ByteString   -- ^ Initiator (Alice) X25519 identity public key
                -> ByteString   -- ^ Responder (Bob) X25519 identity public key
-               -> ByteString   -- ^ 32-byte master secret
-derivePQSecret !dh1 !dh2 !dh3 !mDh4 !pqSS !pqCt !aliceIKPub !bobIKPub =
+               -> IO ByteString   -- ^ 32-byte master secret
+derivePQSecret !dh1 !dh2 !dh3 !mDh4 !pqSS !pqCt !aliceIKPub !bobIKPub = do
+    let MLKEMCiphertext ctBytes = pqCt
+    !ctHash <- SHA256FFI.sha256 ctBytes
     let !pad  = BS.replicate 32 0xff
         !salt = BS.replicate 32 0x00
         !ikm  = BS.concat $ [pad, dh1, dh2, dh3]
                           ++ maybe [] (:[]) mDh4
-                          ++ [pqSS, sha256 (let MLKEMCiphertext ct = pqCt in ct)]
+                          ++ [pqSS, ctHash]
         -- M27.6.10: length-prefixed keys in info string
         !info = pqxdhInfo <> lenPrefix aliceIKPub <> lenPrefix bobIKPub
-    in hkdf salt ikm info 32
+    HKDFFFI.hkdfSHA512 salt ikm info 32
 
 ------------------------------------------------------------------------
 -- PQXDH Initiation (Alice's side)
@@ -149,22 +151,23 @@ pqxdhInitiate :: IdentityKey      -- ^ Alice's identity key
               -> ByteString       -- ^ 32-byte ephemeral secret
               -> ByteString       -- ^ 32-byte ML-KEM randomness
               -> IO (Maybe PQXDHResult)
-pqxdhInitiate aliceIK bundle ekSecret mlkemRand =
+pqxdhInitiate aliceIK bundle ekSecret mlkemRand = do
     -- Step 1: Verify SPK signature (M23.3.1: message = ikEd25519 || spkPub)
-    if not (ed25519Verify (pqpkbIdentityEd25519 bundle)
-                          (pqpkbIdentityEd25519 bundle <> pqpkbSignedPreKey bundle)
-                          (pqpkbSPKSignature bundle))
-    then pure Nothing
-    -- Step 2: Verify PQ prekey signature (M10.2.1)
-    -- The ML-KEM encapsulation key bytes are signed by the responder's Ed25519
-    -- identity key.  Verification ensures the encap key was not substituted in
-    -- transit; a MITM without the responder's Ed25519 secret cannot forge this.
-    else let MLKEMEncapKey pqBytes = pqpkbPQPreKey bundle
-         in if not (ed25519Verify (pqpkbIdentityEd25519 bundle)
-                                  pqBytes
-                                  (pqpkbPQKeySignature bundle))
-            then pure Nothing
-            else initSession aliceIK bundle ekSecret mlkemRand
+    spkOk <- Ed25519FFI.ed25519Verify (pqpkbIdentityEd25519 bundle)
+                 (pqpkbIdentityEd25519 bundle <> pqpkbSignedPreKey bundle)
+                 (pqpkbSPKSignature bundle)
+    if not spkOk then pure Nothing
+    else do
+        -- Step 2: Verify PQ prekey signature (M10.2.1)
+        -- The ML-KEM encapsulation key bytes are signed by the responder's Ed25519
+        -- identity key.  Verification ensures the encap key was not substituted in
+        -- transit; a MITM without the responder's Ed25519 secret cannot forge this.
+        let MLKEMEncapKey pqBytes = pqpkbPQPreKey bundle
+        pqOk <- Ed25519FFI.ed25519Verify (pqpkbIdentityEd25519 bundle)
+                    pqBytes
+                    (pqpkbPQKeySignature bundle)
+        if not pqOk then pure Nothing
+        else initSession aliceIK bundle ekSecret mlkemRand
 
 -- | Compute the PQXDH session after SPK verification succeeds.
 -- Returns Nothing if any DH output is all-zero (low-order point).
@@ -173,34 +176,32 @@ initSession aliceIK bundle ekSecret mlkemRand = do
     -- Generate ephemeral keypair
     ek <- generateKeyPair ekSecret
     -- Extract secrets from SecureBytes for DH operations
-    xSecret  <- toByteString (ikX25519Secret aliceIK)
+    xSecret   <- toByteString (ikX25519Secret aliceIK)
     ekSecret' <- toByteString (kpSecret ek)
     -- Compute DH values; abort if any yields all-zero (low-order point)
-    pure $ do
-        !dh1  <- x25519 xSecret   (pqpkbSignedPreKey bundle)
-        !dh2  <- x25519 ekSecret' (pqpkbIdentityKey bundle)
-        !dh3  <- x25519 ekSecret' (pqpkbSignedPreKey bundle)
-        !mDh4 <- case pqpkbOneTimePreKey bundle of
-                     Nothing  -> Just Nothing
-                     Just opk -> fmap Just (x25519 ekSecret' opk)
-        let -- ML-KEM encapsulation
-            !(pqCt, pqSS) = mlkemEncaps (pqpkbPQPreKey bundle) mlkemRand
-        -- M23.3.2: validate ML-KEM encapsulation output
-        -- 1. Must be exactly 32 bytes (ML-KEM-768 shared secret size)
-        -- 2. Must not be all-zero (catches implementation bugs where
-        --    encapsulation fails silently instead of using implicit rejection)
-        if BS.length pqSS /= 32 || constantEq pqSS (BS.replicate 32 0)
-            then Nothing
-            else
-                let -- Derive master secret (with identity + ciphertext binding)
-                    !masterSecret = derivePQSecret dh1 dh2 dh3 mDh4 pqSS pqCt
+    mDh1 <- X25519FFI.x25519 xSecret   (pqpkbSignedPreKey bundle)
+    mDh2 <- X25519FFI.x25519 ekSecret' (pqpkbIdentityKey bundle)
+    mDh3 <- X25519FFI.x25519 ekSecret' (pqpkbSignedPreKey bundle)
+    mDh4 <- case pqpkbOneTimePreKey bundle of
+                 Nothing  -> pure (Just Nothing)
+                 Just opk -> fmap (fmap Just) (X25519FFI.x25519 ekSecret' opk)
+    case (mDh1, mDh2, mDh3, mDh4) of
+        (Just dh1, Just dh2, Just dh3, Just mDh4') -> do
+            let -- ML-KEM encapsulation
+                !(pqCt, pqSS) = mlkemEncaps (pqpkbPQPreKey bundle) mlkemRand
+            -- M23.3.2: validate ML-KEM encapsulation output
+            if BS.length pqSS /= 32 || constantEq pqSS (BS.replicate 32 0)
+                then pure Nothing
+                else do
+                    masterSecret <- derivePQSecret dh1 dh2 dh3 mDh4' pqSS pqCt
                                         (ikX25519Public aliceIK) (pqpkbIdentityKey bundle)
-                in Just PQXDHResult
-                    { pqxdhSharedSecret = masterSecret
-                    , pqxdhEphemeralKey = kpPublic ek
-                    , pqxdhPQCiphertext = pqCt
-                    , pqxdhUsedOPK      = pqpkbOneTimePreKey bundle
-                    }
+                    pure $ Just PQXDHResult
+                        { pqxdhSharedSecret = masterSecret
+                        , pqxdhEphemeralKey = kpPublic ek
+                        , pqxdhPQCiphertext = pqCt
+                        , pqxdhUsedOPK      = pqpkbOneTimePreKey bundle
+                        }
+        _ -> pure Nothing
 
 ------------------------------------------------------------------------
 -- PQXDH Response (Bob's side)
@@ -222,19 +223,18 @@ pqxdhRespond bobIK spkSecret mOPKSecret pqDK aliceIKPub aliceEKPub pqCt = do
     xSecret <- toByteString (ikX25519Secret bobIK)
     -- Mirror the DH computations from Alice's perspective
     -- Abort if any DH yields all-zero (low-order point attack)
-    pure $ do
-        !dh1  <- x25519 spkSecret aliceIKPub
-        !dh2  <- x25519 xSecret   aliceEKPub
-        !dh3  <- x25519 spkSecret aliceEKPub
-        !mDh4 <- case mOPKSecret of
-                     Nothing     -> Just Nothing
-                     Just opkSec -> fmap Just (x25519 opkSec aliceEKPub)
-        let -- ML-KEM decapsulation
-            !pqSS = mlkemDecaps pqDK pqCt
-        -- M23.3.2: validate ML-KEM decapsulation output
-        -- 1. Must be exactly 32 bytes (ML-KEM-768 shared secret size)
-        -- 2. Must not be all-zero (catches implementation bugs where
-        --    decapsulation fails silently instead of using implicit rejection)
-        if BS.length pqSS /= 32 || constantEq pqSS (BS.replicate 32 0)
-            then Nothing
-            else Just (derivePQSecret dh1 dh2 dh3 mDh4 pqSS pqCt aliceIKPub (ikX25519Public bobIK))
+    mDh1 <- X25519FFI.x25519 spkSecret aliceIKPub
+    mDh2 <- X25519FFI.x25519 xSecret   aliceEKPub
+    mDh3 <- X25519FFI.x25519 spkSecret aliceEKPub
+    mDh4 <- case mOPKSecret of
+                 Nothing     -> pure (Just Nothing)
+                 Just opkSec -> fmap (fmap Just) (X25519FFI.x25519 opkSec aliceEKPub)
+    case (mDh1, mDh2, mDh3, mDh4) of
+        (Just dh1, Just dh2, Just dh3, Just mDh4') -> do
+            let -- ML-KEM decapsulation
+                !pqSS = mlkemDecaps pqDK pqCt
+            -- M23.3.2: validate ML-KEM decapsulation output
+            if BS.length pqSS /= 32 || constantEq pqSS (BS.replicate 32 0)
+                then pure Nothing
+                else fmap Just (derivePQSecret dh1 dh2 dh3 mDh4' pqSS pqCt aliceIKPub (ikX25519Public bobIK))
+        _ -> pure Nothing

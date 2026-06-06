@@ -16,7 +16,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 
 import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
-import UmbraVox.Crypto.HKDF (hkdfSHA256)
+import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
 import UmbraVox.Crypto.MLKEM
     ( MLKEMEncapKey(..)
     , MLKEMDecapKey(..)
@@ -52,11 +52,11 @@ nonceInfo = "UmbraVox_PQ_v1_nonce"
 
 -- | Derive a 32-byte AES-256 key and 12-byte GCM nonce from the KEM
 -- shared secret using HKDF-SHA-256.
-deriveKeyNonce :: ByteString -> (ByteString, ByteString)
-deriveKeyNonce sharedSecret =
-    let !key   = hkdfSHA256 sharedSecret sharedSecret keyInfo   32
-        !nonce = hkdfSHA256 sharedSecret sharedSecret nonceInfo 12
-    in (key, nonce)
+deriveKeyNonce :: ByteString -> IO (ByteString, ByteString)
+deriveKeyNonce sharedSecret = do
+    !key   <- HKDFFFI.hkdfSHA256 sharedSecret sharedSecret keyInfo   32
+    !nonce <- HKDFFFI.hkdfSHA256 sharedSecret sharedSecret nonceInfo 12
+    pure (key, nonce)
 
 ------------------------------------------------------------------------
 -- Public API
@@ -71,24 +71,24 @@ pqEncrypt encapKeyBS plaintext = do
     rand <- randomBytes 32
     let ek = MLKEMEncapKey encapKeyBS
         (MLKEMCiphertext kemCt, sharedSecret) = mlkemEncaps ek rand
-        (key, nonce) = deriveKeyNonce sharedSecret
-        (gcmCt, tag) = gcmEncrypt key nonce BS.empty plaintext
+    (key, nonce) <- deriveKeyNonce sharedSecret
+    let (gcmCt, tag) = gcmEncrypt key nonce BS.empty plaintext
     pure $! kemCt <> gcmCt <> tag
 
 -- | Remove the post-quantum outer encryption layer.
 --
 -- Input: recipient ML-KEM-768 decapsulation key (2400 bytes) and combined
 -- ciphertext.  Returns 'Nothing' on authentication failure or malformed input.
-pqDecrypt :: ByteString -> ByteString -> Maybe ByteString
+pqDecrypt :: ByteString -> ByteString -> IO (Maybe ByteString)
 pqDecrypt decapKeyBS combined
-    | BS.length decapKeyBS /= 2400             = Nothing
-    | BS.length combined < kemCtLen + gcmTagLen = Nothing
-    | otherwise =
+    | BS.length decapKeyBS /= 2400             = pure Nothing
+    | BS.length combined < kemCtLen + gcmTagLen = pure Nothing
+    | otherwise = do
         let kemCt      = BS.take kemCtLen combined
             gcmPayload = BS.drop kemCtLen combined
             gcmCt      = BS.take (BS.length gcmPayload - gcmTagLen) gcmPayload
             tag        = BS.drop (BS.length gcmPayload - gcmTagLen) gcmPayload
             dk           = MLKEMDecapKey decapKeyBS
             sharedSecret = mlkemDecaps dk (MLKEMCiphertext kemCt)
-            (key, nonce) = deriveKeyNonce sharedSecret
-        in gcmDecrypt key nonce BS.empty gcmCt tag
+        (key, nonce) <- deriveKeyNonce sharedSecret
+        pure (gcmDecrypt key nonce BS.empty gcmCt tag)

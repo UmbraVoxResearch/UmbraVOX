@@ -182,8 +182,8 @@ testChannelBinding = do
 -- | keyConfirmMAC is deterministic: same inputs produce the same MAC.
 testKeyConfirmMACDeterminism :: IO Bool
 testKeyConfirmMACDeterminism = do
-    let mac1 = keyConfirmMAC testTransportKey "initiator" testHandshakeHash
-        mac2 = keyConfirmMAC testTransportKey "initiator" testHandshakeHash
+    mac1 <- keyConfirmMAC testTransportKey "initiator" testHandshakeHash
+    mac2 <- keyConfirmMAC testTransportKey "initiator" testHandshakeHash
     r1 <- assertEq "key confirm MAC: deterministic" mac1 mac2
     r2 <- assertEq "key confirm MAC: 32 bytes" 32 (BS.length mac1)
     pure (r1 && r2)
@@ -191,8 +191,8 @@ testKeyConfirmMACDeterminism = do
 -- | Initiator and responder roles produce different MACs.
 testKeyConfirmMACRoleSeparation :: IO Bool
 testKeyConfirmMACRoleSeparation = do
-    let macI = keyConfirmMAC testTransportKey "initiator" testHandshakeHash
-        macR = keyConfirmMAC testTransportKey "responder" testHandshakeHash
+    macI <- keyConfirmMAC testTransportKey "initiator" testHandshakeHash
+    macR <- keyConfirmMAC testTransportKey "responder" testHandshakeHash
     check "key confirm MAC: roles produce different MACs" (macI /= macR)
 
 -- | MitM with substituted keys: confirmation MAC mismatch, session rejected.
@@ -218,25 +218,25 @@ testMitMKeySubstitutionDetected = do
         hh = testHandshakeHash
 
     -- Alice computes her initiator MAC using her transport key
-    let aliceMAC = keyConfirmMAC aliceTransportKey "initiator" hh
+    aliceMAC <- keyConfirmMAC aliceTransportKey "initiator" hh
 
     -- Bob tries to verify Alice's MAC using his (different) transport key.
     -- He recomputes what the initiator MAC should be from his perspective.
-    let bobVerifiesAlice = verifyKeyConfirmation bobTransportKey "initiator" hh aliceMAC
+    bobVerifiesAlice <- verifyKeyConfirmation bobTransportKey "initiator" hh aliceMAC
 
     r1 <- check "MitM detection: cross-leg initiator MAC rejected" (not bobVerifiesAlice)
 
     -- Bob computes his responder MAC using his transport key
-    let bobMAC = keyConfirmMAC bobTransportKey "responder" hh
+    bobMAC <- keyConfirmMAC bobTransportKey "responder" hh
 
     -- Alice tries to verify Bob's MAC using her (different) transport key.
-    let aliceVerifiesBob = verifyKeyConfirmation aliceTransportKey "responder" hh bobMAC
+    aliceVerifiesBob <- verifyKeyConfirmation aliceTransportKey "responder" hh bobMAC
 
     r2 <- check "MitM detection: cross-leg responder MAC rejected" (not aliceVerifiesBob)
 
     -- Sanity: legitimate session (same transport key) verifies correctly
-    let legitimateMAC = keyConfirmMAC testTransportKey "initiator" hh
-        legitimateOk  = verifyKeyConfirmation testTransportKey "initiator" hh legitimateMAC
+    legitimateMAC <- keyConfirmMAC testTransportKey "initiator" hh
+    legitimateOk  <- verifyKeyConfirmation testTransportKey "initiator" hh legitimateMAC
 
     r3 <- check "MitM detection: legitimate session verifies" legitimateOk
 

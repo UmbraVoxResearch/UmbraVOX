@@ -89,16 +89,18 @@ See: doc/IMPLEMENTATION-PLAN.md, doc/PROJECT-CHARTER.md
        - ASSURANCE_PENDING stay Reference: AES256, MLKEM768, VRF, Ed25519Extended
   [ ] M38.2 Vendor HACL* AES-256-GCM into csrc/hacl/ + add bridge_aesgcm.c
        - Verify HACL* commit 504c298 includes AES-GCM; vendor correct files
-  [ ] M38.3 Regenerate all FFI modules (VM ONLY: cabal run codegen in builder VM)
+  [x] M38.3 Regenerate all FFI modules (VM ONLY: cabal run codegen in builder VM)
        - Then: cabal build all --enable-tests to confirm compilation
-  [ ] M38.4 Update ALL production callers from Crypto.* to Generated.FFI.* (monadic change, VM ONLY)
-       - src/UmbraVox/Protocol/ProofOfWork.hs, Handshake.hs, ConfigFile.hs
-       - src/UmbraVox/Crypto/Signal/PQXDH.hs, Crypto/HMAC.hs
-       - src/UmbraVox/TUI/Actions/Session.hs
-       - src/UmbraVox/Network/DHT/Types.hs, DHT.hs, Noise/Handshake.hs, Presence.hs
-       - All callers of Crypto.MLKEM, Crypto.GCM, Crypto.Ed25519, Crypto.Curve25519
+  [x] M38.4 Update ALL production callers from Crypto.* to Generated.FFI.* (monadic change)
+       - 47 files updated: all production callers now use Generated.FFI.* (IO monadic calls)
+       - Exceptions documented: mixHash (public transcript data), QRCode (public key display),
+         StealthAddress (CT gap documented with {-# WARNING #-}), VRF (ASSURANCE_PENDING)
+       - test/Test/Bridge/SignalRegistration.hs, M11NoiseDH.hs, M11Protocol.hs,
+         M11Final.hs, M11KeyMgmt.hs, ProtocolLibsignal.hs all updated for IO cascade
   [ ] M38.5 Differential regression: ./uv test crypto-differential (VM ONLY)
-  [ ] M38.6 Mark Crypto.* modules as Haskell oracle (not production) in module headers
+  [x] M38.6 Mark Crypto.* modules as Haskell oracle (not production) in module headers
+       - SHA256.hs, SHA512.hs, HMAC.hs, HKDF.hs labeled "Haskell reference oracle. NOT production."
+       - Generated/SHA256.hs, Generated/SHA512.hs, Generated/HMAC.hs, Generated/HKDF.hs labeled
   [ ] M39.1 Update app/codegen/Specs/MLKEM768.spec with real NTT butterfly steps
        - 7-layer Cooley-Tukey, 128-value zeta table, q=3329, cross-ref pqclean ntt.c
   [ ] M39.2 Add K-PKE + ML-KEM transform steps to MLKEM768.spec

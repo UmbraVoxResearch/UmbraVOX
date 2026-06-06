@@ -26,7 +26,7 @@ import System.Directory (doesFileExist, getHomeDirectory)
 import System.Environment (lookupEnv)
 
 import UmbraVox.App.Config (AppConfig(..))
-import UmbraVox.Crypto.SHA256 (sha256)
+import qualified UmbraVox.Crypto.Generated.FFI.SHA256 as SHA256FFI
 
 -- | Parse a single line into a @(key, value)@ pair.
 -- Returns 'Nothing' for blank lines, comment lines, and malformed lines.
@@ -129,8 +129,8 @@ verifyConfigHash = do
                     -- Use exact key match via parseLine, not prefix match.
                     let filtered = unlines [ l | l <- allLines
                                            , maybe True ((/= "config_hash_pin") . fst) (parseLine l) ]
-                        hashBytes = sha256 (BS8.pack filtered)
-                        hashHex = concatMap byteToHex (BS.unpack hashBytes)
+                    hashBytes <- SHA256FFI.sha256 (BS8.pack filtered)
+                    let hashHex = concatMap byteToHex (BS.unpack hashBytes)
                     if map toLower pin == map toLower hashHex
                         then pure (Right ())
                         else pure (Left $ "config hash mismatch: expected "

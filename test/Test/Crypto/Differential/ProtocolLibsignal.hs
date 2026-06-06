@@ -206,7 +206,7 @@ testX3DHCrossImplNoOPK = do
                     return False
                 Just [dh1, dh2, dh3] -> do
                     -- Verify the Signal-compat derivation produces a value
-                    let signalSecret = signalDeriveSecret dh1 dh2 dh3 Nothing
+                    signalSecret <- signalDeriveSecret dh1 dh2 dh3 Nothing
                     r1 <- assertEq "X3DH no-OPK: signal-compat secret length"
                               32 (BS.length signalSecret)
                     -- Verify native X3DH produces a 32-byte secret
@@ -339,13 +339,13 @@ testX3DHDomainSeparation = do
         dh2 = BS.pack [0x21 .. 0x40]
         dh3 = BS.pack [0x41 .. 0x60]
     -- Signal-compat X3DH derivation
-    let signalSecret = signalDeriveSecret dh1 dh2 dh3 Nothing
+    signalSecret <- signalDeriveSecret dh1 dh2 dh3 Nothing
     -- Native X3DH derivation uses "UmbraVox_X3DH_v1" info + identity key binding
     -- Signal-compat uses "WhisperText" info, no identity key binding
     -- They MUST produce different outputs (domain separation)
     r1 <- assertEq "Signal-compat X3DH produces 32 bytes" 32 (BS.length signalSecret)
     -- Verify determinism: same inputs always produce same output
-    let signalSecret2 = signalDeriveSecret dh1 dh2 dh3 Nothing
+    signalSecret2 <- signalDeriveSecret dh1 dh2 dh3 Nothing
     r2 <- assertEq "Signal-compat X3DH is deterministic" signalSecret signalSecret2
     return (r1 && r2)
 
@@ -362,7 +362,7 @@ testKDFChainMACConstruction = do
     -- Both implementations use: msgKey = HMAC(ck, 0x01), newCK = HMAC(ck, 0x02)
     let nativeMsgKey = hmacSHA256 chainKey (BS.singleton 0x01)
         nativeNewCK  = hmacSHA256 chainKey (BS.singleton 0x02)
-        (signalNewCK, signalMsgKey) = signalKdfCK chainKey
+    (signalNewCK, signalMsgKey) <- signalKdfCK chainKey
     r1 <- assertEq "KDF-CK msgKey: native HMAC == signal-compat"
               nativeMsgKey signalMsgKey
     r2 <- assertEq "KDF-CK newChainKey: native HMAC == signal-compat"
@@ -376,13 +376,13 @@ testKDFChainDeterminism = do
     let rootKey = BS.pack [0xA0 .. 0xBF]
         dhOut   = BS.pack [0xC0 .. 0xDF]
     -- Signal-compat KDF-RK
-    let (rk1, ck1) = signalKdfRK rootKey dhOut
-        (rk2, ck2) = signalKdfRK rootKey dhOut
+    (rk1, ck1) <- signalKdfRK rootKey dhOut
+    (rk2, ck2) <- signalKdfRK rootKey dhOut
     r1 <- assertEq "signalKdfRK rootKey deterministic" rk1 rk2
     r2 <- assertEq "signalKdfRK chainKey deterministic" ck1 ck2
     -- Signal-compat KDF-CK
-    let (newCK1, mk1) = signalKdfCK (BS.pack [0x01 .. 0x20])
-        (newCK2, mk2) = signalKdfCK (BS.pack [0x01 .. 0x20])
+    (newCK1, mk1) <- signalKdfCK (BS.pack [0x01 .. 0x20])
+    (newCK2, mk2) <- signalKdfCK (BS.pack [0x01 .. 0x20])
     r3 <- assertEq "signalKdfCK newChainKey deterministic" newCK1 newCK2
     r4 <- assertEq "signalKdfCK msgKey deterministic" mk1 mk2
     return (and [r1, r2, r3, r4])
@@ -403,7 +403,7 @@ testKDFChainDivergenceDocumented = do
     let rootKey = BS.replicate 32 0x00
         dhOut   = BS.replicate 32 0x01
     -- Signal-compat: HKDF-SHA-256 with "WhisperRatchet"
-    let (signalRK, signalCK) = signalKdfRK rootKey dhOut
+    (signalRK, signalCK) <- signalKdfRK rootKey dhOut
     -- Manual HKDF-SHA-256 cross-check
     let prk = hkdfSHA256Extract rootKey dhOut
         okm = hkdfSHA256Expand prk "WhisperRatchet" 64
@@ -425,11 +425,10 @@ testKDFChainIteration :: IO Bool
 testKDFChainIteration = do
     putStrLn "  [KDF-Diff] KDF chain iteration: 10 steps, all distinct"
     let startCK = BS.pack [0x01 .. 0x20]
-    -- Iterate the chain 10 times, collect all (chainKey, msgKey) pairs
-    let steps = iterate (\(ck, _) -> signalKdfCK ck) (signalKdfCK startCK)
-        first10 = take 10 steps
-        chainKeys = map fst first10
-        msgKeys   = map snd first10
+    -- Iterate the chain 10 times via IO, collect all (chainKey, msgKey) pairs
+    pairs <- iterateKdfCK startCK 10
+    let chainKeys = map fst pairs
+        msgKeys   = map snd pairs
     -- All chain keys must be distinct
     r1 <- assertEq "10 chain keys all distinct" True (allDistinct chainKeys)
     -- All message keys must be distinct
@@ -443,6 +442,13 @@ testKDFChainIteration = do
     r5 <- assertEq "all message keys 32 bytes" True
               (all (\k -> BS.length k == 32) msgKeys)
     return (and [r1, r2, r3, r4, r5])
+  where
+    iterateKdfCK :: ByteString -> Int -> IO [(ByteString, ByteString)]
+    iterateKdfCK _  0  = pure []
+    iterateKdfCK ck n  = do
+        pair@(newCK, _) <- signalKdfCK ck
+        rest <- iterateKdfCK newCK (n - 1)
+        pure (pair : rest)
 
 ------------------------------------------------------------------------
 -- Phase 3: Double Ratchet Differential Tests
@@ -458,13 +464,14 @@ testRatchetSignalCompatRoundTrip = do
         bobSPKPub = case x25519 bobSPKSec x25519Basepoint of
                         Just p  -> p
                         Nothing -> error "impossible"
-    case signalRatchetInitAlice ss bobSPKPub aliceDH of
+    mAlice <- signalRatchetInitAlice ss bobSPKPub aliceDH
+    case mAlice of
         Nothing -> do
             putStrLn "    FAIL: signalRatchetInitAlice returned Nothing"
             return False
         Just alice -> do
-            let bob = signalRatchetInitBob ss bobSPKSec
-                msg = strToBS "Differential test message"
+            bob <- signalRatchetInitBob ss bobSPKSec
+            let msg = strToBS "Differential test message"
             encResult <- signalRatchetEncrypt alice msg
             case encResult of
                 Left err -> do
@@ -492,13 +499,14 @@ testRatchetSignalCompatMultiMessage = do
         bobSPKPub = case x25519 bobSPKSec x25519Basepoint of
                         Just p  -> p
                         Nothing -> error "impossible"
-    case signalRatchetInitAlice ss bobSPKPub aliceDH of
+    mAlice0 <- signalRatchetInitAlice ss bobSPKPub aliceDH
+    case mAlice0 of
         Nothing -> do
             putStrLn "    FAIL: signalRatchetInitAlice returned Nothing"
             return False
         Just alice0 -> do
-            let bob0 = signalRatchetInitBob ss bobSPKSec
-                messages = [ strToBS ("Message " ++ show n) | n <- [1..5 :: Int] ]
+            bob0 <- signalRatchetInitBob ss bobSPKSec
+            let messages = [ strToBS ("Message " ++ show n) | n <- [1..5 :: Int] ]
             go alice0 bob0 messages 1
   where
     go _ _ [] _ = return True
@@ -533,12 +541,13 @@ testRatchetSignalCompatBidirectional = do
         bobSPKPub = case x25519 bobSPKSec x25519Basepoint of
                         Just p  -> p
                         Nothing -> error "impossible"
-    case signalRatchetInitAlice ss bobSPKPub aliceDH of
+    mAlice0b <- signalRatchetInitAlice ss bobSPKPub aliceDH
+    case mAlice0b of
         Nothing -> do
             putStrLn "    FAIL: init returned Nothing"
             return False
         Just alice0 -> do
-            let bob0 = signalRatchetInitBob ss bobSPKSec
+            bob0 <- signalRatchetInitBob ss bobSPKSec
             -- Phase 1: A -> B (2 messages)
             r1 <- sendBatchSignal alice0 bob0
                       [strToBS "A-to-B-1", strToBS "A-to-B-2"] "A->B"
@@ -570,12 +579,13 @@ testRatchetStateConsistency = do
         bobSPKPub = case x25519 bobSPKSec x25519Basepoint of
                         Just p  -> p
                         Nothing -> error "impossible"
-    case signalRatchetInitAlice ss bobSPKPub aliceDH of
+    mAliceC <- signalRatchetInitAlice ss bobSPKPub aliceDH
+    case mAliceC of
         Nothing -> do
             putStrLn "    FAIL: init returned Nothing"
             return False
         Just alice -> do
-            let bob = signalRatchetInitBob ss bobSPKSec
+            bob <- signalRatchetInitBob ss bobSPKSec
             -- Alice: srsDHRecv should be Bob's SPK pub
             r1 <- assertEq "Alice srsDHRecv == bobSPKPub"
                       (Just bobSPKPub) (srsDHRecv alice)
@@ -781,7 +791,8 @@ testRatchetInitStateFields = do
                         Just p  -> p
                         Nothing -> error "impossible"
     -- Signal-compat init
-    case signalRatchetInitAlice ss bobSPKPub aliceDH of
+    mSignalAlice <- signalRatchetInitAlice ss bobSPKPub aliceDH
+    case mSignalAlice of
         Nothing -> do
             putStrLn "    FAIL: signalRatchetInitAlice returned Nothing"
             return False
@@ -822,7 +833,8 @@ testRatchetCounterAdvancement = do
         bobSPKPub = case x25519 bobSPKSec x25519Basepoint of
                         Just p  -> p
                         Nothing -> error "impossible"
-    case signalRatchetInitAlice ss bobSPKPub aliceDH of
+    mAliceD <- signalRatchetInitAlice ss bobSPKPub aliceDH
+    case mAliceD of
         Nothing -> do
             putStrLn "    FAIL: init returned Nothing"
             return False
@@ -857,7 +869,8 @@ testRatchetChainKeyEvolution = do
         bobSPKPub = case x25519 bobSPKSec x25519Basepoint of
                         Just p  -> p
                         Nothing -> error "impossible"
-    case signalRatchetInitAlice ss bobSPKPub aliceDH of
+    mAliceE <- signalRatchetInitAlice ss bobSPKPub aliceDH
+    case mAliceE of
         Nothing -> do
             putStrLn "    FAIL: init returned Nothing"
             return False

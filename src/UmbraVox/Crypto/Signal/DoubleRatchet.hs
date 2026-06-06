@@ -35,10 +35,10 @@ import Data.Word (Word32, Word64)
 
 import UmbraVox.App.Defaults (defaultMaxSkip, defaultMaxTotalSkipped,
                               defaultMaxRatchetSkip, defaultMaxSeenDHKeys)
-import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
+import qualified UmbraVox.Crypto.Generated.FFI.HMAC as HMACFFI
+import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
+import qualified UmbraVox.Crypto.Generated.FFI.X25519 as X25519FFI
 import UmbraVox.Crypto.GCM (gcmDecrypt, gcmEncrypt)
-import UmbraVox.Crypto.HKDF (hkdfExpand, hkdfExtract)
-import UmbraVox.Crypto.HMAC (hmacSHA256)
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Crypto.SecureBytes (SecureBytes, fromByteString, toByteString, zeroAndFree)
 
@@ -233,8 +233,8 @@ evictByAge currentTimeSecs = Map.filter (\(_, _, _, ts) -> currentTimeSecs - ts 
 kdfRK :: SecureBytes -> ByteString -> IO (SecureBytes, SecureBytes)
 kdfRK rootKeySB dhOut = do
     rootKey <- toByteString rootKeySB
-    let !prk = hkdfExtract rootKey dhOut
-        !okm = hkdfExpand prk ratchetInfo 64
+    !prk <- HKDFFFI.hkdfExtract rootKey dhOut
+    !okm <- HKDFFFI.hkdfExpand prk ratchetInfo 64
     newRoot  <- fromByteString (BS.take 32 okm)
     newChain <- fromByteString (BS.drop 32 okm)
     pure (newRoot, newChain)
@@ -251,8 +251,8 @@ kdfRK rootKeySB dhOut = do
 kdfCK :: SecureBytes -> IO (SecureBytes, ByteString)
 kdfCK chainKeySB = do
     chainKey <- toByteString chainKeySB
-    let !msgKey      = hmacSHA256 chainKey (BS.singleton 0x01)
-        !newChainKey = hmacSHA256 chainKey (BS.singleton 0x02)
+    !msgKey      <- HMACFFI.hmacSHA256 chainKey (BS.singleton 0x01)
+    !newChainKey <- HMACFFI.hmacSHA256 chainKey (BS.singleton 0x02)
     newChainSB <- fromByteString newChainKey
     pure (newChainSB, msgKey)
 
@@ -266,8 +266,9 @@ kdfCK chainKeySB = do
 --
 -- M15.3: Now monadic (IO) — wraps the secret in SecureBytes.
 generateDH :: ByteString -> IO (SecureBytes, ByteString)
-generateDH secret =
-    case x25519 secret x25519Basepoint of
+generateDH secret = do
+    mPub <- X25519FFI.x25519 secret X25519FFI.x25519Basepoint
+    case mPub of
         Just !pub -> do
             secretSB <- fromByteString secret
             pure (secretSB, pub)
@@ -280,7 +281,7 @@ generateDH secret =
 dhIO :: (SecureBytes, ByteString) -> ByteString -> IO (Maybe ByteString)
 dhIO (secretSB, _) theirPublic = do
     secret <- toByteString secretSB
-    pure (x25519 secret theirPublic)
+    X25519FFI.x25519 secret theirPublic
 
 ------------------------------------------------------------------------
 -- Initialization
@@ -803,9 +804,9 @@ makeNonce chainKeySB counter = do
     chainKey <- toByteString chainKeySB
     -- Derive 8-byte nonce base from chain key via HKDF with zero salt (Signal
     -- convention: zero salt so HKDF-Extract acts as a keyed PRF on chainKey).
-    let !prk  = hkdfExtract (BS.replicate 32 0) chainKey
-        !base = hkdfExpand prk nonceInfo 8
-        -- XOR the base with the 8-byte LE counter for per-message uniqueness
+    !prk  <- HKDFFFI.hkdfExtract (BS.replicate 32 0) chainKey
+    !base <- HKDFFFI.hkdfExpand prk nonceInfo 8
+    let -- XOR the base with the 8-byte LE counter for per-message uniqueness
         !ctr  = encodeWord64LE (fromIntegral counter)
         !mixed = BS.pack (BS.zipWith xor base ctr)
     pure (BS.replicate 4 0 <> mixed)

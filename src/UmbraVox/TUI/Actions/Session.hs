@@ -23,7 +23,7 @@ import UmbraVox.TUI.Render (isPfx)
 import UmbraVox.Chat.Session
     (ChatSession, initChatSession, sendChatMessage, recvChatMessage)
 import UmbraVox.Crypto.Random (randomBytes)
-import UmbraVox.Crypto.SHA256 (sha256)
+import qualified UmbraVox.Crypto.Generated.FFI.SHA256 as SHA256FFI
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
 import UmbraVox.Network.TransportClass
     (AnyTransport, anySend, anyRecv)
@@ -142,9 +142,9 @@ sendToSession sId si msg = case siCrypto si of
 localSenderId :: AppConfig -> IO BS.ByteString
 localSenderId cfg = do
     mIk <- readIORef (cfgIdentity cfg)
-    pure $ case mIk of
-        Nothing -> BS.replicate 32 0
-        Just ik -> sha256 (ikEd25519Public ik)
+    case mIk of
+        Nothing -> pure (BS.replicate 32 0)
+        Just ik -> SHA256FFI.sha256 (ikEd25519Public ik)
 
 -- | Send the current input buffer as a message.
 sendCurrentMessage :: AppState -> IO ()

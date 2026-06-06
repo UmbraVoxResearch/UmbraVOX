@@ -24,7 +24,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import System.Posix.Process (getProcessID)
 import System.Posix.Types (CPid(..))
 
-import UmbraVox.Crypto.HKDF (hkdfExtract)
+import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
 import UmbraVox.Crypto.SecureBytes (SecureBytes, fromByteString, toByteString, zeroAndFree)
 
 ------------------------------------------------------------------------
@@ -305,10 +305,11 @@ seedCSPRNG = do
         !nonce   = BS.drop 32 entropy
         !baseSalt = BS.pack [0..31]
         !salt    = baseSalt `xorBS` encodePidTime pid time
-        -- HKDF-Extract: concentrate entropy with the process-unique salt
-        !keyBS   = BS.take 32 (hkdfExtract salt rawKey)
         !pidInt  = fromIntegral pid :: Int
         !nowSecs = round time :: Word64
+    -- HKDF-Extract (SHA-512): concentrate entropy with the process-unique salt.
+    prkBS  <- HKDFFFI.hkdfExtract salt rawKey
+    let !keyBS = BS.take 32 prkBS
     key <- fromByteString keyBS
     return CSPRNGState
         { csKey = key, csCounter = 0, csNonce = nonce
@@ -325,9 +326,9 @@ reseedCSPRNG old = do
     oldKeyBS <- toByteString (csKey old)
     let !freshKey   = BS.take 32 entropy
         !freshNonce = BS.drop 32 entropy
-        -- HKDF-Extract: salt = old key, ikm = fresh entropy
-        !prk      = hkdfExtract oldKeyBS freshKey
-        !newKeyBS = BS.take 32 prk
+    -- HKDF-Extract (SHA-512): salt = old key, ikm = fresh entropy
+    prk <- HKDFFFI.hkdfExtract oldKeyBS freshKey
+    let !newKeyBS = BS.take 32 prk
     newKey <- fromByteString newKeyBS
     -- Deterministically zero the old key before it becomes unreachable.
     zeroAndFree (csKey old)

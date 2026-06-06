@@ -11,7 +11,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 
 import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
-import UmbraVox.Crypto.HKDF (hkdfSHA256Extract, hkdfSHA256Expand)
+import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Crypto.SecureBytes (fromByteString, withSecureKey)
 
@@ -74,13 +74,16 @@ exportIterations = 100000
 --
 -- NOTE: this construction is CPU-bound but NOT memory-hard.  See the
 -- security finding block above for the Argon2id migration plan.
-deriveKey :: ByteString -> ByteString -> ByteString
-deriveKey salt password =
-    let !initial = BS.take 32 (hkdfSHA256Extract salt password)
-        go :: Int -> ByteString -> ByteString
-        go 0 !key = key
-        go n !key = go (n - 1) (BS.take 32 (hkdfSHA256Extract key password))
-    in hkdfSHA256Expand (go exportIterations initial) exportInfo 32
+deriveKey :: ByteString -> ByteString -> IO ByteString
+deriveKey salt password = do
+    !initial <- BS.take 32 <$> HKDFFFI.hkdfSHA256Extract salt password
+    let go :: Int -> ByteString -> IO ByteString
+        go 0 !key = pure key
+        go n !key = do
+            !k <- BS.take 32 <$> HKDFFFI.hkdfSHA256Extract key password
+            go (n - 1) k
+    iterated <- go exportIterations initial
+    HKDFFFI.hkdfSHA256Expand iterated exportInfo 32
 
 -- | Encrypt plaintext with a password for export.
 --
@@ -90,7 +93,8 @@ encryptExport :: ByteString -> ByteString -> IO ByteString
 encryptExport password plaintext = do
     salt  <- randomBytes 32
     nonce <- randomBytes 12
-    sbKey <- fromByteString (deriveKey salt password)
+    keyBS <- deriveKey salt password
+    sbKey <- fromByteString keyBS
     withSecureKey sbKey $ \key -> do
         let !(ct, tag) = gcmEncrypt key nonce exportInfo plaintext
         pure (salt <> nonce <> ct <> tag)
@@ -99,15 +103,15 @@ encryptExport password plaintext = do
 --
 -- @decryptExport password blob@ returns the plaintext if the password
 -- is correct and the data has not been tampered with.
-decryptExport :: ByteString -> ByteString -> Maybe ByteString
+decryptExport :: ByteString -> ByteString -> IO (Maybe ByteString)
 decryptExport password blob
-    | BS.length blob < headerLen + tagLen = Nothing
-    | otherwise =
+    | BS.length blob < headerLen + tagLen = pure Nothing
+    | otherwise = do
         let !salt  = BS.take 32 blob
             !nonce = BS.take 12 (BS.drop 32 blob)
             !rest  = BS.drop headerLen blob
             !ctLen = BS.length rest - tagLen
             !ct    = BS.take ctLen rest
             !tag   = BS.drop ctLen rest
-            !key   = deriveKey salt password
-        in gcmDecrypt key nonce exportInfo ct tag
+        !key <- deriveKey salt password
+        pure (gcmDecrypt key nonce exportInfo ct tag)

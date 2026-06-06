@@ -251,8 +251,8 @@ testPL002CrossSessionReplay = do
         !ck0       = initCK
         !h3        = mixHash h2 ePub
         !dhES      = case x25519 eSec bobPub of Just d -> d; Nothing -> error "dhES: impossible"
-        !(_ck1, !k1) = hkdfCK ck0 dhES
-        !encStaticPub = encryptAndTag k1 h3 alicePub
+    (!_ck1, !k1) <- hkdfCK ck0 dhES
+    let !encStaticPub = encryptAndTag k1 h3 alicePub
         !msg1      = ePub <> encStaticPub
 
     -- Present Bob's msg1 to Carol's responder via a loopback transport
@@ -772,8 +772,8 @@ testPL011NoiseIKIdentityMismatch = do
         !ck0       = initCK
         !h3        = mixHash h2 ePub
         !dhES      = mustX25519 eSec rStaticPub
-        !(_ck1, !k1) = hkdfCK ck0 dhES
-        !encStaticPub = encryptAndTag k1 h3 alicePub
+    (!_ck1, !k1) <- hkdfCK ck0 dhES
+    let !encStaticPub = encryptAndTag k1 h3 alicePub
         !validMsg1 = ePub <> encStaticPub
 
     -- Flip one byte in encStaticPub to tamper the static key ciphertext

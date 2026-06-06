@@ -19,7 +19,7 @@ import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 
-import UmbraVox.Crypto.HKDF (hkdfSHA256Extract, hkdfSHA256Expand)
+import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
 import UmbraVox.Network.TransportClass (AnyTransport, anySend, anyRecv)
 
 ------------------------------------------------------------------------
@@ -113,10 +113,10 @@ exchangePeers tr ours = do
 -- identity across different PEX exchanges or sessions.
 pexToken :: ByteString       -- ^ session key (unique per PEX exchange)
          -> ByteString       -- ^ pubkey fingerprint
-         -> ByteString       -- ^ 32-byte opaque token
-pexToken sessionKey pubKeyFingerprint =
-    let !prk = hkdfSHA256Extract sessionKey pubKeyFingerprint
-    in hkdfSHA256Expand prk "UmbraVox_PEX_v1" 32
+         -> IO ByteString    -- ^ 32-byte opaque token
+pexToken sessionKey pubKeyFingerprint = do
+    !prk <- HKDFFFI.hkdfSHA256Extract sessionKey pubKeyFingerprint
+    HKDFFFI.hkdfSHA256Expand prk "UmbraVox_PEX_v1" 32
 
 -- | Encode a single peer entry.
 --

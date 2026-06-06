@@ -73,7 +73,8 @@ testCompleteRegistrationHappyPath = do
             , pdProvisioningCode = provCode
             }
     msg <- buildProvisioningEnvelope rs idPriv idPub phoneB profileKey deviceId provCode
-    case completeRegistration rs msg of
+    result <- completeRegistration rs msg
+    case result of
         Left err -> assertEq "completeRegistration happy path" True False
             >>= \ok -> putStrLn ("  ERROR: " ++ show err) >> pure ok
         Right pd -> do
@@ -91,7 +92,8 @@ testCompleteRegistrationBadMac = do
     msg <- buildProvisioningEnvelope rs (BS.replicate 32 0x11) (BS.replicate 32 0x22)
         (strToBS "+1") (BS.replicate 32 0x33) 1 (strToBS "x")
     let msgBad = flipLastByte msg
-    case completeRegistration rs msgBad of
+    resultBad <- completeRegistration rs msgBad
+    case resultBad of
         Left (ProvisioningDecryptFailed _) -> assertEq "bad MAC" True True
         other -> do
             putStrLn ("  unexpected: " ++ show other)
@@ -106,7 +108,8 @@ testCompleteRegistrationBadCiphertextLen = do
         ct = BS.replicate 17 0x03
         mac = BS.replicate 32 0x04
         msg = ephPub <> iv <> ct <> mac
-    case completeRegistration rs msg of
+    resultLen <- completeRegistration rs msg
+    case resultLen of
         Left (ProvisioningDecryptFailed _) -> assertEq "bad ciphertext len" True True
         other -> do
             putStrLn ("  unexpected: " ++ show other)

@@ -42,10 +42,10 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Word (Word32, Word64)
 
-import UmbraVox.Crypto.Ed25519 (ed25519PublicKey, ed25519Sign, ed25519Verify)
+import qualified UmbraVox.Crypto.Generated.FFI.Ed25519Extended as Ed25519FFI
+import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
+import qualified UmbraVox.Crypto.Generated.FFI.HMAC as HMACFFI
 import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
-import UmbraVox.Crypto.HKDF (hkdfExpand, hkdfExtract)
-import UmbraVox.Crypto.HMAC (hmacSHA256)
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Crypto.SecureBytes (SecureBytes, fromByteString, toByteString, zeroAndFree)
 
@@ -205,8 +205,8 @@ data SenderKeyDistributionMessage = SenderKeyDistributionMessage
 --              key as 'SecureBytes' and store or zero it directly.
 senderKdfCK :: ByteString -> IO (SecureBytes, ByteString)
 senderKdfCK chainKey = do
-    let !msgKey      = hmacSHA256 chainKey (BS.singleton 0x01)
-        !newChainKey = hmacSHA256 chainKey (BS.singleton 0x02)
+    !msgKey      <- HMACFFI.hmacSHA256 chainKey (BS.singleton 0x01)
+    !newChainKey <- HMACFFI.hmacSHA256 chainKey (BS.singleton 0x02)
     newChainKeySB <- fromByteString newChainKey
     pure (newChainKeySB, msgKey)
 
@@ -218,13 +218,13 @@ senderKdfCK chainKey = do
 --
 -- Layout: 4 zero bytes || 8-byte (HKDF-derived base XOR LE counter).
 -- Same approach as DoubleRatchet.makeNonce.
-makeSenderNonce :: ByteString -> Word32 -> ByteString
-makeSenderNonce chainKey iteration =
-    let !prk   = hkdfExtract (BS.replicate 32 0) chainKey
-        !base  = hkdfExpand prk senderKeyNonceInfo 8
-        !ctr   = encodeWord64LE (fromIntegral iteration)
+makeSenderNonce :: ByteString -> Word32 -> IO ByteString
+makeSenderNonce chainKey iteration = do
+    !prk  <- HKDFFFI.hkdfExtract (BS.replicate 32 0) chainKey
+    !base <- HKDFFFI.hkdfExpand prk senderKeyNonceInfo 8
+    let !ctr   = encodeWord64LE (fromIntegral iteration)
         !mixed = BS.pack (BS.zipWith xor base ctr)
-    in BS.replicate 4 0 <> mixed
+    pure (BS.replicate 4 0 <> mixed)
 
 ------------------------------------------------------------------------
 -- Distribution
@@ -258,7 +258,7 @@ createSenderKeyDistribution senderId = do
     -- and SenderKeyDistributionMessage do not alias.
     distChainKey   <- fromByteString chainKeyRaw
     distGroupKey   <- fromByteString groupKeyRaw
-    let !ephPubKey = ed25519PublicKey ephSignKeyRaw
+    !ephPubKey <- Ed25519FFI.ed25519PublicKey ephSignKeyRaw
         st = SenderKeyState
             { sksSenderId    = senderId
             , sksChainKey    = chainKeySB
@@ -345,8 +345,8 @@ encryptSenderKey st plaintext
             signingKeyBS <- toByteString (sksSigningKey st)
             -- M15.5: senderKdfCK now returns IO (SecureBytes, ByteString).
             (newChainKeySB, msgKey) <- senderKdfCK chainKeyBS
-            let !nonce = makeSenderNonce chainKeyBS (sksIteration st)
-                -- AAD = senderId || signingKey || iteration (4 bytes BE)
+            !nonce <- makeSenderNonce chainKeyBS (sksIteration st)
+            let -- AAD = senderId || signingKey || iteration (4 bytes BE)
                 !aad = sksSenderId st
                     <> signingKeyBS
                     <> encodeWord32BE (sksIteration st)
@@ -356,7 +356,7 @@ encryptSenderKey st plaintext
                     <> encodeWord32BE (sksIteration st)
                     <> ct
                     <> tag
-                !sig = ed25519Sign ephKeyBS sigPayload
+            !sig <- Ed25519FFI.ed25519Sign ephKeyBS sigPayload
             -- Zero old chain key before it becomes unreachable (M15.5).
             zeroAndFree (sksChainKey st)
             let !st' = st
@@ -408,7 +408,8 @@ decryptSenderKey st msg nowSecs
                 <> encodeWord32BE (skmIteration msg)
                 <> skmCiphertext msg
                 <> skmTag msg
-        if not (ed25519Verify (sksSignPub st) sigPayload (skmSignature msg))
+        verified <- Ed25519FFI.ed25519Verify (sksSignPub st) sigPayload (skmSignature msg)
+        if not verified
         then pure $ Left SignatureVerificationFailed
         else do
             -- Store intermediate keys in the skipped-key cache, then
@@ -417,8 +418,8 @@ decryptSenderKey st msg nowSecs
             (advancedChainKeySB, targetChainKeyBS, targetMsgKey, skipped) <-
                 advanceChain chainKeyBS (sksIteration st) (skmIteration msg)
                              (sksSenderId st) (sksSkippedKeys st) (sksSkipSeq st) nowSecs
-            let !nonce = makeSenderNonce targetChainKeyBS (skmIteration msg)
-                !aad = sksSenderId st
+            !nonce <- makeSenderNonce targetChainKeyBS (skmIteration msg)
+            let !aad = sksSenderId st
                     <> signingKeyBS
                     <> encodeWord32BE (skmIteration msg)
             case gcmDecrypt targetMsgKey nonce aad (skmCiphertext msg) (skmTag msg) of
@@ -450,7 +451,8 @@ trySkippedSenderKeys st msg nowSecs = do
             <> encodeWord32BE (skmIteration msg)
             <> skmCiphertext msg
             <> skmTag msg
-    if not (ed25519Verify (sksSignPub st) sigPayload (skmSignature msg))
+    verified <- Ed25519FFI.ed25519Verify (sksSignPub st) sigPayload (skmSignature msg)
+    if not verified
     then pure $ Left SignatureVerificationFailed
     else do
         let !lookupKey = (sksSenderId st, skmIteration msg)
@@ -459,12 +461,12 @@ trySkippedSenderKeys st msg nowSecs = do
                 nowSecs <= ts || (nowSecs - ts) <= skippedSenderKeyMaxAgeSecs) (sksSkippedKeys st)
         case Map.lookup lookupKey pruned of
             Nothing -> pure $ Left DecryptionFailed
-            Just (msgKey, chainKey, _insertTime) ->
-                let !nonce = makeSenderNonce chainKey (skmIteration msg)
-                    !aad = sksSenderId st
+            Just (msgKey, chainKey, _insertTime) -> do
+                !nonce <- makeSenderNonce chainKey (skmIteration msg)
+                let !aad = sksSenderId st
                         <> signingKeyBS
                         <> encodeWord32BE (skmIteration msg)
-                in case gcmDecrypt msgKey nonce aad (skmCiphertext msg) (skmTag msg) of
+                case gcmDecrypt msgKey nonce aad (skmCiphertext msg) (skmTag msg) of
                     Nothing -> pure $ Left DecryptionFailed
                     Just plaintext ->
                         let !st' = st { sksSkippedKeys = Map.delete lookupKey pruned }

@@ -294,9 +294,8 @@ testEX1_blobTooShort :: IO Bool
 testEX1_blobTooShort = do
     -- headerLen = 44 (32 salt + 12 nonce), tagLen = 16 → minimum = 60
     let shortBlob = BS.replicate 40 0xde
-    let result    = decryptExport BS.empty shortBlob
-    assertEq "EX1: decryptExport short blob returns Nothing"
-        Nothing result
+    result <- decryptExport BS.empty shortBlob
+    assertEq "EX1: decryptExport short blob returns Nothing" Nothing result
 
 ------------------------------------------------------------------------
 -- Ed25519 decodePoint guard
@@ -538,31 +537,30 @@ testCS4_x25519LowOrderPoint = do
 
 -- WF1: too short for HMAC envelope
 testWF1_decodeTooShort :: IO Bool
-testWF1_decodeTooShort =
-    assertEq "WF1: decodeEnvelope too-short input returns Nothing"
-        Nothing (decodeEnvelope (BS.replicate 32 0) (BS.replicate 10 0))
+testWF1_decodeTooShort = do
+    result <- decodeEnvelope (BS.replicate 32 0) (BS.replicate 10 0)
+    assertEq "WF1: decodeEnvelope too-short input returns Nothing" Nothing result
 
 -- WF2: wrong version byte
 testWF2_decodeWrongVersion :: IO Bool
 testWF2_decodeWrongVersion = do
     let key = BS.replicate 32 0xAA
         env = wrapEnvelope 1 0 (BS.replicate 32 0) 0 0 (BS.pack [0x41])
-        wire = encodeEnvelope key env
-        -- Overwrite version byte (first byte) from 2 to 1
-        badWire = BS.cons 1 (BS.drop 1 wire)
-    assertEq "WF2: decodeEnvelope wrong version returns Nothing"
-        Nothing (decodeEnvelope key badWire)
+    wire <- encodeEnvelope key env
+    let badWire = BS.cons 1 (BS.drop 1 wire)
+    result <- decodeEnvelope key badWire
+    assertEq "WF2: decodeEnvelope wrong version returns Nothing" Nothing result
 
 -- WF3: HMAC mismatch (corrupted payload)
 testWF3_decodeHmacMismatch :: IO Bool
 testWF3_decodeHmacMismatch = do
     let key = BS.replicate 32 0xAA
         env = wrapEnvelope 1 0 (BS.replicate 32 0) 0 0 (BS.pack [0x41])
-        wire = encodeEnvelope key env
-        -- Flip a byte in the payload area (byte 45 is in the payload)
-        badWire = flipByteAt 45 wire
-    assertEq "WF3: decodeEnvelope HMAC mismatch returns Nothing"
-        Nothing (decodeEnvelope key badWire)
+    wire <- encodeEnvelope key env
+    -- Flip a byte in the payload area (byte 45 is in the payload)
+    let badWire = flipByteAt 45 wire
+    result <- decodeEnvelope key badWire
+    assertEq "WF3: decodeEnvelope HMAC mismatch returns Nothing" Nothing result
 
 -- WF4: valid encode/decode roundtrip
 testWF4_decodeRoundTrip :: IO Bool
@@ -570,43 +568,48 @@ testWF4_decodeRoundTrip = do
     let key     = BS.replicate 32 0xBB
         payload = BS.pack [0x48, 0x65, 0x6c, 0x6c, 0x6f]
         env     = wrapEnvelope 1 42 (BS.replicate 32 0xCC) 0xDD 0x1234 payload
-        wire    = encodeEnvelope key env
-    case decodeEnvelope key wire of
+    wire  <- encodeEnvelope key env
+    menv' <- decodeEnvelope key wire
+    case menv' of
         Nothing   -> putStrLn "  FAIL: WF4: decodeEnvelope returned Nothing" >> pure False
         Just env' -> assertEq "WF4: decodeEnvelope roundtrip preserves payload"
                          payload (envPayload env')
 
 -- WF5: AEAD too short
 testWF5_decodeAEADTooShort :: IO Bool
-testWF5_decodeAEADTooShort =
-    assertEq "WF5: decodeEnvelopeAEAD too-short returns Nothing"
-        Nothing (decodeEnvelopeAEAD (BS.replicate 32 0) 0 (BS.singleton 2))
+testWF5_decodeAEADTooShort = do
+    result <- decodeEnvelopeAEAD (BS.replicate 32 0) 0 (BS.singleton 2)
+    assertEq "WF5: decodeEnvelopeAEAD too-short returns Nothing" Nothing result
 
 -- WF6: AEAD wrong version
 testWF6_decodeAEADWrongVersion :: IO Bool
 testWF6_decodeAEADWrongVersion = do
-    let key = deriveEnvelopeKey (BS.replicate 32 0xDD)
-        env = wrapEnvelope 1 0 (BS.replicate 32 0) 0 0 (BS.pack [0x41])
-    case encodeEnvelopeAEAD key 0 env of
+    key <- deriveEnvelopeKey (BS.replicate 32 0xDD)
+    let env = wrapEnvelope 1 0 (BS.replicate 32 0) 0 0 (BS.pack [0x41])
+    eWire <- encodeEnvelopeAEAD key 0 env
+    case eWire of
         Left err -> putStrLn ("  FAIL: WF6: encodeEnvelopeAEAD failed: " ++ err) >> pure False
-        Right wire ->
+        Right wire -> do
             let badWire = BS.cons 1 (BS.drop 1 wire)
-            in assertEq "WF6: decodeEnvelopeAEAD wrong version returns Nothing"
-                   Nothing (decodeEnvelopeAEAD key 0 badWire)
+            result <- decodeEnvelopeAEAD key 0 badWire
+            assertEq "WF6: decodeEnvelopeAEAD wrong version returns Nothing" Nothing result
 
 -- WF7: AEAD valid encode/decode roundtrip
 testWF7_decodeAEADRoundTrip :: IO Bool
 testWF7_decodeAEADRoundTrip = do
     let transportKey = BS.replicate 32 0xEE
-        key     = deriveEnvelopeKey transportKey
         payload = BS.pack [0x48, 0x69]
         env     = wrapEnvelope 1 100 (BS.replicate 32 0xFF) 0xAA 0x5678 payload
-    case encodeEnvelopeAEAD key 100 env of
+    key   <- deriveEnvelopeKey transportKey
+    eWire <- encodeEnvelopeAEAD key 100 env
+    case eWire of
         Left err -> putStrLn ("  FAIL: WF7: encodeEnvelopeAEAD failed: " ++ err) >> pure False
-        Right wire -> case decodeEnvelopeAEAD key 100 wire of
-            Nothing   -> putStrLn "  FAIL: WF7: decodeEnvelopeAEAD returned Nothing" >> pure False
-            Just env' -> assertEq "WF7: decodeEnvelopeAEAD roundtrip preserves payload"
-                             payload (envPayload env')
+        Right wire -> do
+            menv' <- decodeEnvelopeAEAD key 100 wire
+            case menv' of
+                Nothing   -> putStrLn "  FAIL: WF7: decodeEnvelopeAEAD returned Nothing" >> pure False
+                Just env' -> assertEq "WF7: decodeEnvelopeAEAD roundtrip preserves payload"
+                                 payload (envPayload env')
 
 ------------------------------------------------------------------------
 -- Additional helpers

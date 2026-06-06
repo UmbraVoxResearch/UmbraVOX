@@ -35,8 +35,8 @@ import Data.Word (Word8, Word16, Word32)
 import qualified Data.Set as Set
 
 import UmbraVox.Protocol.Handshake (putW32BE, getW32BE)
-import UmbraVox.Crypto.HMAC (hmacSHA256)
-import UmbraVox.Crypto.HKDF (hkdfSHA256)
+import qualified UmbraVox.Crypto.Generated.FFI.HMAC as HMACFFI
+import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
 import UmbraVox.Crypto.ChaChaPoly (chachaPolyEncrypt, chachaPolyDecrypt)
 import UmbraVox.Crypto.ConstantTime (constantEq)
 
@@ -97,8 +97,8 @@ wrapEnvelope msgType seqNum ephR vTag sTag payload = Envelope
 --
 -- The first argument is the HMAC key.  The tag covers the entire
 -- serialized content (version through payload).
-encodeEnvelope :: ByteString -> Envelope -> ByteString
-encodeEnvelope key env =
+encodeEnvelope :: ByteString -> Envelope -> IO ByteString
+encodeEnvelope key env = do
     let !body = BS.concat
             [ BS.singleton (envVersion env)
             , BS.singleton (envType env)
@@ -109,19 +109,19 @@ encodeEnvelope key env =
             , putW32BE (fromIntegral (BS.length (envPayload env)))
             , envPayload env
             ]
-        !tag = hmacSHA256 key body
-    in body <> tag
+    !tag <- HMACFFI.hmacSHA256 key body
+    pure (body <> tag)
 
 -- | Deserialize wire bytes to envelope, verifying the HMAC-SHA-256 tag.
 --
 -- The first argument is the HMAC key.  Returns 'Nothing' if the input
 -- is too short, the payload length is inconsistent, or the HMAC tag
 -- does not match (checked via constant-time comparison).
-decodeEnvelope :: ByteString -> ByteString -> Maybe Envelope
+decodeEnvelope :: ByteString -> ByteString -> IO (Maybe Envelope)
 decodeEnvelope key bs
-    | BS.length bs < headerSize + hmacSize = Nothing
-    | BS.index bs 0 /= 2 = Nothing  -- reject non-v2 envelopes
-    | otherwise =
+    | BS.length bs < headerSize + hmacSize = pure Nothing
+    | BS.index bs 0 /= 2 = pure Nothing  -- reject non-v2 envelopes
+    | otherwise = do
         let !ver     = BS.index bs 0
             !typ     = BS.index bs 1
             !seqNum  = getW32BE (BS.take 4 (BS.drop 2 bs))
@@ -131,22 +131,23 @@ decodeEnvelope key bs
             !pLen    = fromIntegral (getW32BE (BS.take 4 (BS.drop 41 bs))) :: Int
             -- body = everything before the 32-byte trailing HMAC
             !bodyLen = headerSize + pLen
-            !body    = BS.take bodyLen bs
-            !tag     = BS.take hmacSize (BS.drop bodyLen bs)
-            !expected = hmacSHA256 key body
-        in if pLen < 0 || BS.length bs < bodyLen + hmacSize
-           then Nothing
-           else if not (constantEq tag expected)
-                then Nothing
-                else Just Envelope
-                     { envVersion    = ver
-                     , envType       = typ
-                     , envSequence   = seqNum
-                     , envEphemeralR = ephR
-                     , envViewTag    = vTag
-                     , envScanTag    = sTag
-                     , envPayload    = BS.take pLen (BS.drop headerSize bs)
-                     }
+        if pLen < 0 || BS.length bs < bodyLen + hmacSize
+            then pure Nothing
+            else do
+                let !body    = BS.take bodyLen bs
+                    !tag     = BS.take hmacSize (BS.drop bodyLen bs)
+                !expected <- HMACFFI.hmacSHA256 key body
+                pure (if not (constantEq tag expected)
+                      then Nothing
+                      else Just Envelope
+                           { envVersion    = ver
+                           , envType       = typ
+                           , envSequence   = seqNum
+                           , envEphemeralR = ephR
+                           , envViewTag    = vTag
+                           , envScanTag    = sTag
+                           , envPayload    = BS.take pLen (BS.drop headerSize bs)
+                           })
 
 -- | Extract payload from envelope.
 unwrapEnvelope :: Envelope -> ByteString
@@ -213,9 +214,9 @@ minAEADSize = 1 + 44 + poly1305TagSize
 -- @"UmbraVox_EnvelopeKey_v1"@.
 --
 -- See: doc/ENCRYPTED-ENVELOPE-DESIGN.md Section 4.5
-deriveEnvelopeKey :: ByteString -> ByteString
+deriveEnvelopeKey :: ByteString -> IO ByteString
 deriveEnvelopeKey transportKey =
-    hkdfSHA256 (BS.replicate 32 0) transportKey "UmbraVox_EnvelopeKey_v1" 32
+    HKDFFFI.hkdfSHA256 (BS.replicate 32 0) transportKey "UmbraVox_EnvelopeKey_v1" 32
 
 -- | Build a 12-byte nonce from a sequence number.
 --
@@ -271,17 +272,18 @@ aeadFlag = 0x80
 encodeEnvelopeAEAD :: ByteString  -- ^ 32-byte envelope key (from 'deriveEnvelopeKey')
                    -> Word32      -- ^ sequence number (used to derive nonce)
                    -> Envelope    -- ^ envelope to encode
-                   -> Either String ByteString
+                   -> IO (Either String ByteString)
 encodeEnvelopeAEAD envelopeKey seqNum env
-    | envType env == 2 =
+    | envType env == 2 = do
         -- Handshake messages use HMAC authentication (no session key yet).
         -- The HMAC path writes a full cleartext header; byte 0 = version (0x02),
         -- without the aeadFlag bit set.
-        Right (encodeEnvelope envelopeKey env)
+        !bs <- encodeEnvelope envelopeKey env
+        pure (Right bs)
     | seqNum >= seqNonceMaxSeq =
         -- M27.3.4: Refuse to encrypt past 2^31 messages; caller must re-key
-        Left "encodeEnvelopeAEAD: sequence number exceeds re-keying threshold (2^31)"
-    | otherwise =
+        pure (Left "encodeEnvelopeAEAD: sequence number exceeds re-keying threshold (2^31)")
+    | otherwise = pure $
         let -- M27.6.4: AAD is the version byte with the AEAD flag set, so the
             -- decoder can reliably distinguish this format from the HMAC format
             -- without inspecting any ciphertext byte.
@@ -335,18 +337,18 @@ encodeEnvelopeAEAD envelopeKey seqNum env
 decodeEnvelopeAEAD :: ByteString  -- ^ 32-byte envelope key (from 'deriveEnvelopeKey')
                    -> Word32      -- ^ expected sequence number (for nonce derivation)
                    -> ByteString  -- ^ wire bytes
-                   -> Maybe Envelope
+                   -> IO (Maybe Envelope)
 decodeEnvelopeAEAD envelopeKey seqNum bs
-    | BS.length bs < 2 = Nothing
+    | BS.length bs < 2 = pure Nothing
     -- Reject if base version bits (ignoring the AEAD flag) are not 2.
-    | (BS.index bs 0 .&. 0x7f) /= 2 = Nothing
+    | (BS.index bs 0 .&. 0x7f) /= 2 = pure Nothing
     | not (testBit (BS.index bs 0) 7) =
         -- AEAD flag not set: this is a legacy HMAC-authenticated handshake
         -- message with a full cleartext header.  Byte 1 is the cleartext type.
         decodeEnvelope envelopeKey bs
-    | seqNum >= seqNonceMaxSeq = Nothing  -- M27.3.4: reject past re-key threshold
-    | BS.length bs < minAEADSize = Nothing
-    | otherwise =
+    | seqNum >= seqNonceMaxSeq = pure Nothing  -- M27.3.4: reject past re-key threshold
+    | BS.length bs < minAEADSize = pure Nothing
+    | otherwise = pure $
         -- AEAD flag is set: type byte is inside the encrypted payload (M27.6.4).
         -- Byte 1 is ciphertext; do not inspect it for message type detection.
         let !aad = BS.take 1 bs

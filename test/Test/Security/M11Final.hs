@@ -563,8 +563,8 @@ testMT012HandshakeIdentityHiding = do
         h3       = mixHash h2 ePub
         dhES     = mustX25519 eSec rPub
         ck0      = initCK
-        (_, k1)  = hkdfCK ck0 dhES
-        encStatic = encryptAndTag k1 h3 iPub
+    (_, !k1)  <- hkdfCK ck0 dhES
+    let encStatic = encryptAndTag k1 h3 iPub
 
     ok1 <- assertEq "MT-012 encrypted static key /= plaintext static key"
                True (encStatic /= iPub)

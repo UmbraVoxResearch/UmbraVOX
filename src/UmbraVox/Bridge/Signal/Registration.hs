@@ -38,10 +38,10 @@ import UmbraVox.Bridge.Signal.WebSocket
     )
 import UmbraVox.Crypto.AES (aesDecrypt)
 import UmbraVox.Crypto.ConstantTime (constantEq)
-import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
-import UmbraVox.Crypto.Ed25519 (ed25519Sign)
-import UmbraVox.Crypto.HKDF (hkdfExpand, hkdfExtract)
-import UmbraVox.Crypto.HMAC (hmacSHA256)
+import qualified UmbraVox.Crypto.Generated.FFI.Ed25519Extended as Ed25519FFI
+import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
+import qualified UmbraVox.Crypto.Generated.FFI.HMAC as HMACFFI
+import qualified UmbraVox.Crypto.Generated.FFI.X25519 as X25519FFI
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Protocol.SignalWire (ProtoField(..), WireType(..), decodeFields, decodeVarint)
 
@@ -161,7 +161,8 @@ beginRegistration serverUrl = do
     -- Generate 32 random bytes for the X25519 private key.
     privKey <- randomBytes 32
     -- Derive public key: pub = X25519(priv, basepoint).
-    let pubKey = case x25519 privKey x25519Basepoint of
+    mPubKey <- X25519FFI.x25519 privKey X25519FFI.x25519Basepoint
+    let pubKey = case mPubKey of
                    Just pk -> pk
                    Nothing -> BS.replicate 32 0  -- should never happen
     pure RegistrationState
@@ -207,32 +208,35 @@ generateProvisioningQR rs =
 -- error indicating the network path is not yet wired.
 completeRegistration :: RegistrationState
                      -> ByteString       -- ^ Encrypted provisioning message
-                     -> Either RegistrationError ProvisioningData
+                     -> IO (Either RegistrationError ProvisioningData)
 completeRegistration rs encryptedMsg
     | rsPhase rs /= PhaseAwaitingQRScan
       && rsPhase rs /= PhaseAwaitingProvisionMessage
-    = Left (WrongPhase PhaseAwaitingProvisionMessage (rsPhase rs))
+    = pure (Left (WrongPhase PhaseAwaitingProvisionMessage (rsPhase rs)))
     | BS.null encryptedMsg
-    = Left (ProvisioningDecryptFailed "empty provisioning message")
+    = pure (Left (ProvisioningDecryptFailed "empty provisioning message"))
     | otherwise
-    = do
-        (ephPub, iv, ciphertext, mac) <- decodeProvisioningEnvelope encryptedMsg
-        sharedSecret <- maybe (Left (ProvisioningDecryptFailed "x25519 ECDH failed")) Right $
-            x25519 (rsProvisioningPrivKey rs) ephPub
-        let prk = hkdfExtract BS.empty sharedSecret
-            derived = hkdfExpand prk provisioningHKDFInfo 64
-            aesKey = BS.take 32 derived
-            macKey = BS.drop 32 derived
-            expectedMac = hmacSHA256 macKey (ephPub <> iv <> ciphertext)
-        if not (constantEq mac expectedMac)
-            then Left (ProvisioningDecryptFailed "HMAC verification failed")
-            else case aes256CbcPkcs7Decrypt aesKey iv ciphertext of
-                Nothing -> Left (ProvisioningDecryptFailed "AES-256-CBC decrypt failed")
-                Just pt -> do
-                    pd <- maybe (Left (ProvisioningParseFailed "failed to decode provisioning protobuf")) Right $
-                        decodeProvisioningDataProto pt
-                    validateProvisioningData pd
-                    Right pd
+    = case decodeProvisioningEnvelope encryptedMsg of
+        Left e -> pure (Left e)
+        Right (ephPub, iv, ciphertext, mac) -> do
+            mSharedSecret <- X25519FFI.x25519 (rsProvisioningPrivKey rs) ephPub
+            case mSharedSecret of
+                Nothing -> pure (Left (ProvisioningDecryptFailed "x25519 ECDH failed"))
+                Just sharedSecret -> do
+                    prk        <- HKDFFFI.hkdfExtract BS.empty sharedSecret
+                    derived    <- HKDFFFI.hkdfExpand prk provisioningHKDFInfo 64
+                    let aesKey = BS.take 32 derived
+                        macKey = BS.drop 32 derived
+                    expectedMac <- HMACFFI.hmacSHA256 macKey (ephPub <> iv <> ciphertext)
+                    if not (constantEq mac expectedMac)
+                        then pure (Left (ProvisioningDecryptFailed "HMAC verification failed"))
+                        else case aes256CbcPkcs7Decrypt aesKey iv ciphertext of
+                            Nothing -> pure (Left (ProvisioningDecryptFailed "AES-256-CBC decrypt failed"))
+                            Just pt -> case decodeProvisioningDataProto pt of
+                                Nothing -> pure (Left (ProvisioningParseFailed "failed to decode provisioning protobuf"))
+                                Just pd -> pure (case validateProvisioningData pd of
+                                    Left e  -> Left e
+                                    Right _ -> Right pd)
 
 -- | Generate a prekey bundle for upload to the Signal-Server.
 --
@@ -249,13 +253,14 @@ generatePreKeyBundle :: ProvisioningData
 generatePreKeyBundle pd = do
     -- Generate signed prekey: fresh X25519 keypair.
     signedPrePriv <- randomBytes 32
-    let signedPrePub = case x25519 signedPrePriv x25519Basepoint of
+    mSignedPrePub <- X25519FFI.x25519 signedPrePriv X25519FFI.x25519Basepoint
+    let signedPrePub = case mSignedPrePub of
                          Just pk -> pk
                          Nothing -> BS.replicate 32 0
 
     -- Sign the prekey with the identity private key (Ed25519).
     let identityPriv = pdIdentityKeyPriv pd
-        signature    = ed25519Sign identityPriv signedPrePub
+    signature <- Ed25519FFI.ed25519Sign identityPriv signedPrePub
 
     -- Generate batch of one-time prekeys (100 keys).
     otpks <- generateOneTimePrekeys 100
@@ -268,10 +273,10 @@ generateOneTimePrekeys :: Int -> IO ByteString
 generateOneTimePrekeys n = do
     keys <- mapM (\_ -> do
         priv <- randomBytes 32
-        let pub = case x25519 priv x25519Basepoint of
-                    Just pk -> pk
-                    Nothing -> BS.replicate 32 0
-        pure pub
+        mPub <- X25519FFI.x25519 priv X25519FFI.x25519Basepoint
+        pure $ case mPub of
+            Just pk -> pk
+            Nothing -> BS.replicate 32 0
         ) [1..n]
     pure (BS.concat keys)
 
@@ -487,8 +492,9 @@ provisioningSession rs conn onUuidAssigned = do
                                 Right msg2 ->
                                     case expectRequest "PUT" "/v1/message" msg2 of
                                         Left e -> pure (Left e)
-                                        Right (msgReqId, encMsg) ->
-                                            case completeRegistration rs' encMsg of
+                                        Right (msgReqId, encMsg) -> do
+                                            result <- completeRegistration rs' encMsg
+                                            case result of
                                                 Left e -> pure (Left e)
                                                 Right pd -> do
                                                     _ <- sendWSMessage conn (ackResponse msgReqId)

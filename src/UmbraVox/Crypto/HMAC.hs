@@ -1,6 +1,11 @@
 -- SPDX-License-Identifier: Apache-2.0
 -- | {-# REQ "CRYPTO-006" #-} HMAC (RFC 2104)
 --
+-- Haskell reference oracle. NOT production. NOT constant-time.
+-- Production callers must use 'UmbraVox.Crypto.Generated.FFI.HMAC' which
+-- calls HACL*-verified constant-time C via FFI.
+-- This module is retained for differential testing only.
+--
 -- Keyed-Hash Message Authentication Code.
 -- Provides both HMAC-SHA-256 (for Signal MAC) and HMAC-SHA-512 (for HKDF).
 module UmbraVox.Crypto.HMAC

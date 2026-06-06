@@ -28,8 +28,8 @@ import Data.Word (Word32)
 
 import UmbraVox.App.Defaults (maxFrameSize)
 import UmbraVox.Crypto.ChaChaPoly (chachaPolyEncrypt, chachaPolyDecrypt)
-import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
-import UmbraVox.Crypto.HKDF (hkdfSHA256Extract, hkdfSHA256Expand)
+import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
+import qualified UmbraVox.Crypto.Generated.FFI.X25519 as X25519FFI
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Crypto.SHA256 (sha256)
 import UmbraVox.Network.Noise.State
@@ -80,27 +80,30 @@ noiseHandshakeInitiator iStaticSec iStaticPub rStaticPub trustCheck transport = 
 
     -- Generate ephemeral keypair; x25519 returns Nothing on all-zero (low-order point)
     eSec <- randomBytes 32
-    case x25519 eSec x25519Basepoint of
+    mEPub <- X25519FFI.x25519 eSec X25519FFI.x25519Basepoint
+    case mEPub of
       Nothing   -> pure Nothing
       Just !ePub -> do
         -- -> e: send ephemeral public, mix into hash
         let !h3 = mixHash h2 ePub
 
         -- -> es: DH(e, rs); reject all-zero (low-order point)
-        case x25519 eSec rStaticPub of
+        mDhES <- X25519FFI.x25519 eSec rStaticPub
+        case mDhES of
           Nothing    -> pure Nothing
           Just !dhES -> do
-            let (!ck1, !k1) = hkdfCK ck0 dhES
+            (!ck1, !k1) <- hkdfCK ck0 dhES
 
             -- -> s: encrypt and send initiator's static public key
             let !encStaticPub = encryptAndTag k1 h3 iStaticPub
             let !h4 = mixHash h3 encStaticPub
 
             -- -> ss: DH(s, rs); reject all-zero (low-order point)
-            case x25519 iStaticSec rStaticPub of
+            mDhSS <- X25519FFI.x25519 iStaticSec rStaticPub
+            case mDhSS of
               Nothing    -> pure Nothing
               Just !dhSS -> do
-                let (!ck2, !_k2) = hkdfCK ck1 dhSS
+                (!ck2, !_k2) <- hkdfCK ck1 dhSS
 
                 -- Build and send message 1: ePub || encStaticPub
                 let !msg1 = ePub <> encStaticPub
@@ -123,10 +126,11 @@ noiseHandshakeInitiator iStaticSec iStaticPub rStaticPub trustCheck transport = 
                         let !h5 = mixHash h4 rEPub
 
                         -- <- ee: DH(e_i, e_r); reject all-zero
-                        case x25519 eSec rEPub of
+                        mDhEE <- X25519FFI.x25519 eSec rEPub
+                        case mDhEE of
                           Nothing    -> pure Nothing
                           Just !dhEE -> do
-                            let (!ck3, !_k3) = hkdfCK ck2 dhEE
+                            (!ck3, !_k3) <- hkdfCK ck2 dhEE
 
                             -- Finding: Noise IK `se` leg used the wrong keys, computing
                             --   DH(e_i, s_r) instead of the spec-required DH(s_i, e_r).
@@ -151,10 +155,11 @@ noiseHandshakeInitiator iStaticSec iStaticPub rStaticPub trustCheck transport = 
                             --   computes x25519 rStaticSec iEPub (= DH(s_r, e_i)), the same
                             --   value from the responder's side.
                             -- Low-order point: also reject all-zero DH (x25519 returns Maybe).
-                            case x25519 iStaticSec rEPub of
+                            mDhSE <- X25519FFI.x25519 iStaticSec rEPub
+                            case mDhSE of
                               Nothing    -> pure Nothing
                               Just !dhSE -> do
-                                let (!ck4, !_k4) = hkdfCK ck3 dhSE
+                                (!ck4, !_k4) <- hkdfCK ck3 dhSE
 
                                 -- Verify responder identity before committing to session keys.
                                 -- In IK pattern the responder's static key is pre-known, but the
@@ -164,7 +169,7 @@ noiseHandshakeInitiator iStaticSec iStaticPub rStaticPub trustCheck transport = 
                                   then pure Nothing
                                   else do
                                     -- Derive final send/recv keys (one per direction)
-                                    let (!sendEncKey, !recvEncKey) = splitKeys ck4
+                                    (!sendEncKey, !recvEncKey) <- splitKeys ck4
                                     pure (Just NoiseState
                                         { nsSendEncKey    = sendEncKey
                                         , nsRecvEncKey    = recvEncKey
@@ -208,10 +213,11 @@ noiseHandshakeResponder rStaticSec rStaticPub transport = do
             let !h3 = mixHash h2 iEPub
 
             -- -> es: DH(e_i, s_r) — responder computes DH(s_r, e_i); reject all-zero
-            case x25519 rStaticSec iEPub of
+            mDhES <- X25519FFI.x25519 rStaticSec iEPub
+            case mDhES of
               Nothing    -> pure Nothing
               Just !dhES -> do
-                let (!ck1, !k1) = hkdfCK ck0 dhES
+                (!ck1, !k1) <- hkdfCK ck0 dhES
 
                 -- -> s: decrypt initiator's static public key
                 case decryptAndVerify k1 h3 encStaticPub of
@@ -220,14 +226,16 @@ noiseHandshakeResponder rStaticSec rStaticPub transport = do
                     let !h4 = mixHash h3 encStaticPub
 
                     -- -> ss: DH(s_r, s_i) — responder computes DH(s_r, s_i); reject all-zero
-                    case x25519 rStaticSec iStaticPub of
+                    mDhSS <- X25519FFI.x25519 rStaticSec iStaticPub
+                    case mDhSS of
                       Nothing    -> pure Nothing
                       Just !dhSS -> do
-                        let (!ck2, !_k2) = hkdfCK ck1 dhSS
+                        (!ck2, !_k2) <- hkdfCK ck1 dhSS
 
                         -- Generate responder ephemeral keypair
                         eSec <- randomBytes 32
-                        case x25519 eSec x25519Basepoint of
+                        mEPub <- X25519FFI.x25519 eSec X25519FFI.x25519Basepoint
+                        case mEPub of
                           Nothing    -> pure Nothing
                           Just !ePub -> do
                             -- <- e: send ephemeral public, mix into hash
@@ -236,26 +244,28 @@ noiseHandshakeResponder rStaticSec rStaticPub transport = do
                             let !h5 = mixHash h4 ePub
 
                             -- <- ee: DH(e_r, e_i); reject all-zero
-                            case x25519 eSec iEPub of
+                            mDhEE <- X25519FFI.x25519 eSec iEPub
+                            case mDhEE of
                               Nothing    -> pure Nothing
                               Just !dhEE -> do
-                                let (!ck3, !_k3) = hkdfCK ck2 dhEE
+                                (!ck3, !_k3) <- hkdfCK ck2 dhEE
 
                                 -- <- se: DH(e_r, s_i) — responder's ephemeral, initiator's static.
                                 -- The `se` token means sender-ephemeral x recipient-static from
                                 -- the responder's side: x25519(e_r_sec, s_i_pub).
                                 -- Mirrors the initiator's DH(s_i, e_r) = x25519(iStaticSec, rEPub).
-                                case x25519 eSec iStaticPub of
+                                mDhSE <- X25519FFI.x25519 eSec iStaticPub
+                                case mDhSE of
                                   Nothing    -> pure Nothing
                                   Just !dhSE -> do
-                                    let (!ck4, !_k4) = hkdfCK ck3 dhSE
+                                    (!ck4, !_k4) <- hkdfCK ck3 dhSE
 
                                     -- Send message 2: ePub
                                     sendFrame transport ePub
 
                                     -- Derive final send/recv keys (one per direction).
                                     -- Responder's send = initiator's recv and vice versa.
-                                    let (!iSendEncKey, !iRecvEncKey) = splitKeys ck4
+                                    (!iSendEncKey, !iRecvEncKey) <- splitKeys ck4
                                     let !noiseState = NoiseState
                                             { nsSendEncKey    = iRecvEncKey
                                             , nsRecvEncKey    = iSendEncKey
@@ -287,24 +297,22 @@ mixHash !h !dat = sha256 (h <> dat)
 
 -- | Derive new chaining key and encryption key from a DH result.
 -- ck', k = HKDF(ck, dh_result)
-hkdfCK :: ByteString -> ByteString -> (ByteString, ByteString)
-hkdfCK !ck !ikm =
-    let !prk  = hkdfSHA256Extract ck ikm
-        !out  = hkdfSHA256Expand prk BS.empty 64
-        !ck'  = BS.take 32 out
-        !k    = BS.drop 32 (BS.take 64 out)
-    in (ck', k)
+hkdfCK :: ByteString -> ByteString -> IO (ByteString, ByteString)
+hkdfCK !ck !ikm = do
+    !prk <- HKDFFFI.hkdfSHA256Extract ck ikm
+    !out <- HKDFFFI.hkdfSHA256Expand prk BS.empty 64
+    pure (BS.take 32 out, BS.drop 32 (BS.take 64 out))
 
 -- | Derive final send and recv keys from the final chaining key.
 -- Returns (sendEncKey, recvEncKey) from initiator's perspective.
 -- With ChaCha20-Poly1305 AEAD a single key per direction suffices; the
 -- Poly1305 one-time key is derived internally from the encryption key.
-splitKeys :: ByteString -> (ByteString, ByteString)
-splitKeys !ck =
-    let !prk        = hkdfSHA256Extract ck BS.empty
-        !sendEncKey = hkdfSHA256Expand prk (packASCII "enc-send") 32
-        !recvEncKey = hkdfSHA256Expand prk (packASCII "enc-recv") 32
-    in (sendEncKey, recvEncKey)
+splitKeys :: ByteString -> IO (ByteString, ByteString)
+splitKeys !ck = do
+    !prk        <- HKDFFFI.hkdfSHA256Extract ck BS.empty
+    !sendEncKey <- HKDFFFI.hkdfSHA256Expand prk (packASCII "enc-send") 32
+    !recvEncKey <- HKDFFFI.hkdfSHA256Expand prk (packASCII "enc-recv") 32
+    pure (sendEncKey, recvEncKey)
 
 -- | Poly1305 tag length (16 bytes, per RFC 8439 / Noise spec §11.1).
 hsTagLen :: Int

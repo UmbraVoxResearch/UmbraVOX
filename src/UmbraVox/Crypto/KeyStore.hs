@@ -34,7 +34,7 @@ import System.Posix.Files (ownerReadMode, ownerWriteMode, setFileMode, unionFile
 
 import UmbraVox.BuildProfile (BuildPluginId(..), pluginEnabled)
 import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
-import UmbraVox.Crypto.HKDF (hkdfSHA256Extract, hkdfSHA256Expand)
+import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Crypto.SecureBytes (SecureBytes, fromByteString, toByteString, withSecureKey)
 import UmbraVox.Crypto.Signal.X3DH (IdentityKey(..))
@@ -102,10 +102,10 @@ blobLen       = nonceLen + plaintextLen + tagLen  -- 156
 ------------------------------------------------------------------------
 
 -- | Derive a 32-byte AES-256-GCM wrapping key from a passphrase and salt.
-deriveWrappingKey :: ByteString -> ByteString -> ByteString
-deriveWrappingKey salt passphrase =
-    let !prk = hkdfSHA256Extract salt passphrase
-    in hkdfSHA256Expand prk keystoreInfo 32
+deriveWrappingKey :: ByteString -> ByteString -> IO ByteString
+deriveWrappingKey salt passphrase = do
+    !prk <- HKDFFFI.hkdfSHA256Extract salt passphrase
+    HKDFFFI.hkdfSHA256Expand prk keystoreInfo 32
 
 -- | Path of the per-install salt file for the given key path.
 saltPath :: FilePath -> FilePath
@@ -209,7 +209,8 @@ saveIdentityKeyWithPassphrase path passphrase ik = do
     nonce <- randomBytes nonceLen
     salt <- loadOrGenerateSalt path
     plaintext <- encodeIdentityKey ik
-    sbKey <- fromByteString (deriveWrappingKey salt passphrase)
+    wk <- deriveWrappingKey salt passphrase
+    sbKey <- fromByteString wk
     blob <- withSecureKey sbKey $ \key -> do
         let !(ct, tag) = gcmEncrypt key nonce BS.empty plaintext
         pure (nonce <> ct <> tag)
@@ -238,7 +239,8 @@ loadIdentityKeyWithPassphrase path passphrase = do
                         !rest    = BS.drop nonceLen blob
                         !ct      = BS.take plaintextLen rest
                         !tag     = BS.drop plaintextLen rest
-                    sbKey <- fromByteString (deriveWrappingKey salt passphrase)
+                    wk <- deriveWrappingKey salt passphrase
+                    sbKey <- fromByteString wk
                     mPlaintext <- withSecureKey sbKey $ \key ->
                         pure (gcmDecrypt key nonce BS.empty ct tag)
                     case mPlaintext of

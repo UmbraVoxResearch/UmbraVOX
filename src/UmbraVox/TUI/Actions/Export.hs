@@ -79,7 +79,8 @@ startImport st = do
                                 [ EventSetInput ""
                                 , EventSetDialog (Just (DlgPrompt "Import password" $ \pw -> do
                                     blob <- BS.readFile path
-                                    case decryptExport (encodeStringUtf8 pw) blob of
+                                    mPlaintext <- decryptExport (encodeStringUtf8 pw) blob
+                                    case mPlaintext of
                                         Nothing -> setStatusLocal st "Decryption failed (wrong password?)"
                                         Just plaintext ->
                                             case decodeUtf8String plaintext of

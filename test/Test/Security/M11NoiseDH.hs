@@ -123,7 +123,7 @@ computeInitiatorChain
     -> ByteString   -- ^ Initiator ephemeral secret
     -> ByteString   -- ^ Initiator ephemeral public
     -> ByteString   -- ^ Responder ephemeral public
-    -> Maybe (ByteString, ByteString, ByteString, ByteString, ByteString)
+    -> IO (Maybe (ByteString, ByteString, ByteString, ByteString, ByteString))
 computeInitiatorChain isSec _isPub rsPub ieSec _iePub rePub = do
     -- Initialize hash and chaining key
     let !h0 = initHash
@@ -134,31 +134,36 @@ computeInitiatorChain isSec _isPub rsPub ieSec _iePub rePub = do
     -- -> e: mix initiator ephemeral into hash
     let !h3 = mixHash h2 iEphPub
 
-    -- -> es: DH(e_i, s_r)
-    dhES <- x25519 ieSec rsPub
-    let (!ck1, !k1) = hkdfCK ck0 dhES
+    -- Compute all DH outputs (pure x25519 from reference module)
+    let mDhES = x25519 ieSec rsPub
+        mDhSS = x25519 isSec rsPub
+        mDhEE = x25519 ieSec rePub
+        mDhSE = x25519 isSec rePub
 
-    -- -> s: encrypt initiator static public key
-    let !encStaticPub = encryptAndTag k1 h3 _isPub
-        !h4 = mixHash h3 encStaticPub
+    case (mDhES, mDhSS, mDhEE, mDhSE) of
+        (Just dhES, Just dhSS, Just dhEE, Just dhSE) -> do
+            -- -> es: DH(e_i, s_r)
+            (!ck1, !k1) <- hkdfCK ck0 dhES
 
-    -- -> ss: DH(s_i, s_r)
-    dhSS <- x25519 isSec rsPub
-    let (!ck2, !_k2) = hkdfCK ck1 dhSS
+            -- -> s: encrypt initiator static public key
+            let !encStaticPub = encryptAndTag k1 h3 _isPub
+                !h4 = mixHash h3 encStaticPub
 
-    -- <- e: mix responder ephemeral into hash
-    let !h5 = mixHash h4 rePub
-    _ <- pure h5
+            -- -> ss: DH(s_i, s_r)
+            (!ck2, !_k2) <- hkdfCK ck1 dhSS
 
-    -- <- ee: DH(e_i, e_r)
-    dhEE <- x25519 ieSec rePub
-    let (!ck3, !_k3) = hkdfCK ck2 dhEE
+            -- <- e: mix responder ephemeral into hash
+            let !h5 = mixHash h4 rePub
+            _ <- pure h5
 
-    -- <- se: DH(s_i, e_r)
-    dhSE <- x25519 isSec rePub
-    let (!ck4, !_k4) = hkdfCK ck3 dhSE
+            -- <- ee: DH(e_i, e_r)
+            (!ck3, !_k3) <- hkdfCK ck2 dhEE
 
-    pure (dhEE, dhES, dhSS, dhSE, ck4)
+            -- <- se: DH(s_i, e_r)
+            (!ck4, !_k4) <- hkdfCK ck3 dhSE
+
+            pure $ Just (dhEE, dhES, dhSS, dhSE, ck4)
+        _ -> pure Nothing
 
 -- | Compute the full chain from the responder's perspective.
 -- Returns (dhEE, dhES, dhSS, dhSE, ck4).
@@ -176,7 +181,7 @@ computeResponderChain
     -> ByteString   -- ^ Initiator ephemeral public
     -> ByteString   -- ^ Responder ephemeral secret
     -> ByteString   -- ^ Responder ephemeral public
-    -> Maybe (ByteString, ByteString, ByteString, ByteString, ByteString)
+    -> IO (Maybe (ByteString, ByteString, ByteString, ByteString, ByteString))
 computeResponderChain rsSec rsPub isPub iePub reSec rePub = do
     -- Initialize hash and chaining key
     let !h0 = initHash
@@ -187,31 +192,36 @@ computeResponderChain rsSec rsPub isPub iePub reSec rePub = do
     -- -> e: mix initiator ephemeral into hash
     let !h3 = mixHash h2 iePub
 
-    -- -> es: DH(s_r, e_i)
-    dhES <- x25519 rsSec iePub
-    let (!ck1, !k1) = hkdfCK ck0 dhES
+    -- Compute all DH outputs (pure x25519 from reference module)
+    let mDhES = x25519 rsSec iePub
+        mDhSS = x25519 rsSec isPub
+        mDhEE = x25519 reSec iePub
+        mDhSE = x25519 reSec isPub
 
-    -- -> s: reproduce encStaticPub that the initiator sent, to hash it
-    -- (same formula as encryptAndTag in the initiator path)
-    let !encStaticPub = encryptAndTag k1 h3 isPub
-        !h4 = mixHash h3 encStaticPub
+    case (mDhES, mDhSS, mDhEE, mDhSE) of
+        (Just dhES, Just dhSS, Just dhEE, Just dhSE) -> do
+            -- -> es: DH(s_r, e_i)
+            (!ck1, !k1) <- hkdfCK ck0 dhES
 
-    -- -> ss: DH(s_r, s_i)
-    dhSS <- x25519 rsSec isPub
-    let (!ck2, !_k2) = hkdfCK ck1 dhSS
+            -- -> s: reproduce encStaticPub that the initiator sent, to hash it
+            -- (same formula as encryptAndTag in the initiator path)
+            let !encStaticPub = encryptAndTag k1 h3 isPub
+                !h4 = mixHash h3 encStaticPub
 
-    -- <- e: mix responder ephemeral into hash
-    let !_h5 = mixHash h4 rePub
+            -- -> ss: DH(s_r, s_i)
+            (!ck2, !_k2) <- hkdfCK ck1 dhSS
 
-    -- <- ee: DH(e_r, e_i)
-    dhEE <- x25519 reSec iePub
-    let (!ck3, !_k3) = hkdfCK ck2 dhEE
+            -- <- e: mix responder ephemeral into hash
+            let !_h5 = mixHash h4 rePub
 
-    -- <- se: DH(e_r, s_i)
-    dhSE <- x25519 reSec isPub
-    let (!ck4, !_k4) = hkdfCK ck3 dhSE
+            -- <- ee: DH(e_r, e_i)
+            (!ck3, !_k3) <- hkdfCK ck2 dhEE
 
-    pure (dhEE, dhES, dhSS, dhSE, ck4)
+            -- <- se: DH(e_r, s_i)
+            (!ck4, !_k4) <- hkdfCK ck3 dhSE
+
+            pure $ Just (dhEE, dhES, dhSS, dhSE, ck4)
+        _ -> pure Nothing
 
 ------------------------------------------------------------------------
 -- DH-001 — Four DH outputs are distinct from each other
@@ -232,8 +242,9 @@ computeResponderChain rsSec rsPub isPub iePub reSec rePub = do
 
 testDH001FourLegsDistinct :: IO Bool
 testDH001FourLegsDistinct = do
-    case computeInitiatorChain iStaticSec iStaticPub rStaticPub
-             iEphSec iEphPub rEphPub of
+    mInit <- computeInitiatorChain iStaticSec iStaticPub rStaticPub
+                 iEphSec iEphPub rEphPub
+    case mInit of
       Nothing ->
           putStrLn "  FAIL: DH-001 could not compute DH chain" >> pure False
       Just (dhEE, dhES, dhSS, dhSE, _ck4) -> do
@@ -269,10 +280,10 @@ testDH001FourLegsDistinct = do
 
 testDH002BothSidesSameSessionKeys :: IO Bool
 testDH002BothSidesSameSessionKeys = do
-    let mInit = computeInitiatorChain iStaticSec iStaticPub rStaticPub
-                    iEphSec iEphPub rEphPub
-        mResp = computeResponderChain rStaticSec rStaticPub iStaticPub
-                    iEphPub rEphSec rEphPub
+    mInit <- computeInitiatorChain iStaticSec iStaticPub rStaticPub
+                 iEphSec iEphPub rEphPub
+    mResp <- computeResponderChain rStaticSec rStaticPub iStaticPub
+                 iEphPub rEphSec rEphPub
     case (mInit, mResp) of
       (Nothing, _) ->
           putStrLn "  FAIL: DH-002 initiator chain failed" >> pure False
@@ -299,22 +310,22 @@ testDH002BothSidesSameSessionKeys = do
 
 testDH003EncryptDecryptRoundTrip :: IO Bool
 testDH003EncryptDecryptRoundTrip = do
-    let mInit = computeInitiatorChain iStaticSec iStaticPub rStaticPub
-                    iEphSec iEphPub rEphPub
-        mResp = computeResponderChain rStaticSec rStaticPub iStaticPub
-                    iEphPub rEphSec rEphPub
+    mInit <- computeInitiatorChain iStaticSec iStaticPub rStaticPub
+                 iEphSec iEphPub rEphPub
+    mResp <- computeResponderChain rStaticSec rStaticPub iStaticPub
+                 iEphPub rEphSec rEphPub
     case (mInit, mResp) of
       (Nothing, _) ->
           putStrLn "  FAIL: DH-003 initiator chain failed" >> pure False
       (_, Nothing) ->
           putStrLn "  FAIL: DH-003 responder chain failed" >> pure False
       (Just (_,_,_,_, ck4I), Just (_,_,_,_, ck4R)) -> do
-          let !h5I = computeH5 iEphPub rEphPub
-              !h5R = h5I   -- both sides hash the same transcript
-              (!iSendEncKey, !iRecvEncKey) = splitKeys ck4I
-              (!rSendEncKey, !rRecvEncKey) = splitKeys ck4R
-              -- Initiator: send keys as-is
-              iState = NoiseState
+          !h5I <- computeH5 iEphPub rEphPub
+          let !h5R = h5I   -- both sides hash the same transcript
+          (!iSendEncKey, !iRecvEncKey) <- splitKeys ck4I
+          (!rSendEncKey, !rRecvEncKey) <- splitKeys ck4R
+          -- Initiator: send keys as-is
+          let iState = NoiseState
                   { nsSendEncKey   = iSendEncKey
                   , nsRecvEncKey   = iRecvEncKey
                   , nsSendN        = 0
@@ -355,11 +366,11 @@ testDH003EncryptDecryptRoundTrip = do
 testDH004DuplicateESAsSEKeysDiverge :: IO Bool
 testDH004DuplicateESAsSEKeysDiverge = do
     -- Correct responder chain
-    let mResp = computeResponderChain rStaticSec rStaticPub iStaticPub
-                    iEphPub rEphSec rEphPub
+    mResp <- computeResponderChain rStaticSec rStaticPub iStaticPub
+                 iEphPub rEphSec rEphPub
     -- Buggy initiator chain: substitute es output in place of se
-    let mBuggy = computeBuggyInitiatorChain iStaticSec iStaticPub rStaticPub
-                     iEphSec iEphPub rEphPub
+    mBuggy <- computeBuggyInitiatorChain iStaticSec iStaticPub rStaticPub
+                  iEphSec iEphPub rEphPub
     case (mBuggy, mResp) of
       (Nothing, _) ->
           putStrLn "  FAIL: DH-004 buggy chain computation failed" >> pure False
@@ -374,7 +385,7 @@ testDH004DuplicateESAsSEKeysDiverge = do
 computeBuggyInitiatorChain
     :: ByteString -> ByteString -> ByteString
     -> ByteString -> ByteString -> ByteString
-    -> Maybe ByteString
+    -> IO (Maybe ByteString)
 computeBuggyInitiatorChain isSec _isPub rsPub ieSec _iePub rePub = do
     let !h0 = initHash
         !h1 = mixHash h0 prologue
@@ -382,25 +393,29 @@ computeBuggyInitiatorChain isSec _isPub rsPub ieSec _iePub rePub = do
         !ck0 = initCK
     let !h3 = mixHash h2 iEphPub
 
-    dhES <- x25519 ieSec rsPub
-    let (!ck1, !k1) = hkdfCK ck0 dhES
+    let mDhES = x25519 ieSec rsPub
+        mDhSS = x25519 isSec rsPub
+        mDhEE = x25519 ieSec rePub
 
-    let !encStaticPub = encryptAndTag k1 h3 _isPub
-        !h4 = mixHash h3 encStaticPub
+    case (mDhES, mDhSS, mDhEE) of
+        (Just dhES, Just dhSS, Just dhEE) -> do
+            (!ck1, !k1) <- hkdfCK ck0 dhES
 
-    dhSS <- x25519 isSec rsPub
-    let (!ck2, !_k2) = hkdfCK ck1 dhSS
+            let !encStaticPub = encryptAndTag k1 h3 _isPub
+                !h4 = mixHash h3 encStaticPub
 
-    let !h5 = mixHash h4 rePub
-    _ <- pure h5
+            (!ck2, !_k2) <- hkdfCK ck1 dhSS
 
-    dhEE <- x25519 ieSec rePub
-    let (!ck3, !_k3) = hkdfCK ck2 dhEE
+            let !h5 = mixHash h4 rePub
+            _ <- pure h5
 
-    -- BUG: reuse dhES here instead of computing dhSE = x25519 isSec rePub
-    let (!ck4, !_k4) = hkdfCK ck3 dhES
+            (!ck3, !_k3) <- hkdfCK ck2 dhEE
 
-    pure ck4
+            -- BUG: reuse dhES here instead of computing dhSE = x25519 isSec rePub
+            (!ck4, !_k4) <- hkdfCK ck3 dhES
+
+            pure $ Just ck4
+        _ -> pure Nothing
 
 ------------------------------------------------------------------------
 -- DH-005 — Omitting ee (zero DH input) causes decryption failure
@@ -420,11 +435,11 @@ computeBuggyInitiatorChain isSec _isPub rsPub ieSec _iePub rePub = do
 
 testDH005ZeroEEDecryptionFails :: IO Bool
 testDH005ZeroEEDecryptionFails = do
-    let mResp = computeResponderChain rStaticSec rStaticPub iStaticPub
-                    iEphPub rEphSec rEphPub
+    mResp <- computeResponderChain rStaticSec rStaticPub iStaticPub
+                 iEphPub rEphSec rEphPub
     -- Initiator with zero ee term
-    let mBuggy = computeZeroEEInitiator iStaticSec iStaticPub rStaticPub
-                     iEphSec iEphPub rEphPub
+    mBuggy <- computeZeroEEInitiator iStaticSec iStaticPub rStaticPub
+                  iEphSec iEphPub rEphPub
     case (mBuggy, mResp) of
       (Nothing, _) ->
           -- If zero-ee causes Nothing directly, that's also a pass
@@ -433,11 +448,11 @@ testDH005ZeroEEDecryptionFails = do
       (_, Nothing) ->
           putStrLn "  FAIL: DH-005 responder chain failed" >> pure False
       (Just ck4Buggy, Just (_, _, _, _, ck4Resp)) -> do
-          let !h5I = computeH5 iEphPub rEphPub
-              !h5R = h5I
-              (!iSendEncKey, _) = splitKeys ck4Buggy
-              (!rSendEncKey, !rRecvEncKey) = splitKeys ck4Resp
-              iState = NoiseState
+          !h5I <- computeH5 iEphPub rEphPub
+          let !h5R = h5I
+          (!iSendEncKey, _) <- splitKeys ck4Buggy
+          (!rSendEncKey, !rRecvEncKey) <- splitKeys ck4Resp
+          let iState = NoiseState
                   { nsSendEncKey   = iSendEncKey
                   , nsRecvEncKey   = BS.replicate 32 0  -- doesn't matter
                   , nsSendN        = 0
@@ -463,7 +478,7 @@ testDH005ZeroEEDecryptionFails = do
 computeZeroEEInitiator
     :: ByteString -> ByteString -> ByteString
     -> ByteString -> ByteString -> ByteString
-    -> Maybe ByteString
+    -> IO (Maybe ByteString)
 computeZeroEEInitiator isSec _isPub rsPub ieSec _iePub rePub = do
     let !h0 = initHash
         !h1 = mixHash h0 prologue
@@ -471,26 +486,30 @@ computeZeroEEInitiator isSec _isPub rsPub ieSec _iePub rePub = do
         !ck0 = initCK
     let !h3 = mixHash h2 iEphPub
 
-    dhES <- x25519 ieSec rsPub
-    let (!ck1, !k1) = hkdfCK ck0 dhES
+    let mDhES = x25519 ieSec rsPub
+        mDhSS = x25519 isSec rsPub
+        mDhSE = x25519 isSec rePub
 
-    let !encStaticPub = encryptAndTag k1 h3 _isPub
-        !h4 = mixHash h3 encStaticPub
+    case (mDhES, mDhSS, mDhSE) of
+        (Just dhES, Just dhSS, Just dhSE) -> do
+            (!ck1, !k1) <- hkdfCK ck0 dhES
 
-    dhSS <- x25519 isSec rsPub
-    let (!ck2, !_k2) = hkdfCK ck1 dhSS
+            let !encStaticPub = encryptAndTag k1 h3 _isPub
+                !h4 = mixHash h3 encStaticPub
 
-    let !h5 = mixHash h4 rePub
-    _ <- pure h5
+            (!ck2, !_k2) <- hkdfCK ck1 dhSS
 
-    -- Zero out dhEE instead of computing the real DH
-    let zeroDhEE = BS.replicate 32 0x00
-        (!ck3, !_k3) = hkdfCK ck2 zeroDhEE
+            let !h5 = mixHash h4 rePub
+            _ <- pure h5
 
-    dhSE <- x25519 isSec rePub
-    let (!ck4, !_k4) = hkdfCK ck3 dhSE
+            -- Zero out dhEE instead of computing the real DH
+            let zeroDhEE = BS.replicate 32 0x00
+            (!ck3, !_k3) <- hkdfCK ck2 zeroDhEE
 
-    pure ck4
+            (!ck4, !_k4) <- hkdfCK ck3 dhSE
+
+            pure $ Just ck4
+        _ -> pure Nothing
 
 ------------------------------------------------------------------------
 -- DH-006 — Swapping initiator and responder static keys causes failure
@@ -511,10 +530,10 @@ computeZeroEEInitiator isSec _isPub rsPub ieSec _iePub rePub = do
 testDH006SwappedStaticKeysFail :: IO Bool
 testDH006SwappedStaticKeysFail = do
     -- Initiator uses rStaticSec/rStaticPub instead of iStaticSec/iStaticPub
-    let mSwapped = computeInitiatorChain rStaticSec rStaticPub rStaticPub
-                       iEphSec iEphPub rEphPub
-        mCorrect = computeResponderChain rStaticSec rStaticPub iStaticPub
-                       iEphPub rEphSec rEphPub
+    mSwapped <- computeInitiatorChain rStaticSec rStaticPub rStaticPub
+                    iEphSec iEphPub rEphPub
+    mCorrect <- computeResponderChain rStaticSec rStaticPub iStaticPub
+                    iEphPub rEphSec rEphPub
     case (mSwapped, mCorrect) of
       (Nothing, _) ->
           putStrLn "  PASS: DH-006 swapped static keys -> chain rejected (Nothing)" >> pure True
@@ -553,21 +572,21 @@ testDH007WrongResponderEphemeralFails = do
                          Nothing -> error "rEphPubAlt: impossible"
 
     -- Initiator uses the wrong rEPub (alt) for DH; responder uses the correct one
-    let mWrong = computeInitiatorChain iStaticSec iStaticPub rStaticPub
-                     iEphSec iEphPub rEphPubAlt
-        mCorrect = computeResponderChain rStaticSec rStaticPub iStaticPub
-                       iEphPub rEphSec rEphPub
+    mWrong   <- computeInitiatorChain iStaticSec iStaticPub rStaticPub
+                    iEphSec iEphPub rEphPubAlt
+    mCorrect <- computeResponderChain rStaticSec rStaticPub iStaticPub
+                    iEphPub rEphSec rEphPub
     case (mWrong, mCorrect) of
       (Nothing, _) ->
           putStrLn "  PASS: DH-007 wrong ephemeral -> chain rejected (Nothing)" >> pure True
       (_, Nothing) ->
           putStrLn "  FAIL: DH-007 correct responder chain failed" >> pure False
       (Just (_, _, _, _, ck4Wrong), Just (_, _, _, _, ck4Correct)) -> do
-          let !h5W = computeH5 iEphPub rEphPubAlt
-              !h5R = computeH5 iEphPub rEphPub
-              (!iSendEncKey, _) = splitKeys ck4Wrong
-              (!rSendEncKey, !rRecvEncKey) = splitKeys ck4Correct
-              iState = NoiseState
+          !h5W <- computeH5 iEphPub rEphPubAlt
+          !h5R <- computeH5 iEphPub rEphPub
+          (!iSendEncKey, _) <- splitKeys ck4Wrong
+          (!rSendEncKey, !rRecvEncKey) <- splitKeys ck4Correct
+          let iState = NoiseState
                   { nsSendEncKey   = iSendEncKey
                   , nsRecvEncKey   = BS.replicate 32 0
                   , nsSendN        = 0
@@ -596,8 +615,8 @@ testDH007WrongResponderEphemeralFails = do
 -- | Reproduce the h5 computation (after the four DH legs, both sides
 -- hash the same transcript up to and including the responder's ephemeral
 -- public key).
-computeH5 :: ByteString -> ByteString -> ByteString
-computeH5 iePub rePub =
+computeH5 :: ByteString -> ByteString -> IO ByteString
+computeH5 iePub rePub = do
     let !h0 = initHash
         !h1 = mixHash h0 prologue
         !h2 = mixHash h1 rStaticPub
@@ -608,8 +627,8 @@ computeH5 iePub rePub =
         !dhES = case x25519 iEphSec rStaticPub of
                     Just v -> v
                     Nothing -> error "computeH5: impossible dhES"
-        (!_ck1, !k1) = hkdfCK ck0 dhES
-        !encStaticPub = encryptAndTag k1 h3 iStaticPub
+    (!_ck1, !k1) <- hkdfCK ck0 dhES
+    let !encStaticPub = encryptAndTag k1 h3 iStaticPub
         !h4 = mixHash h3 encStaticPub
         !h5 = mixHash h4 rePub
-    in h5
+    pure h5

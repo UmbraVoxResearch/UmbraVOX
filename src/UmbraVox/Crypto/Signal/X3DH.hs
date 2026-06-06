@@ -29,9 +29,9 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Word (Word32, Word64)
 
-import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
-import UmbraVox.Crypto.Ed25519 (ed25519Sign, ed25519Verify, ed25519PublicKey)
-import UmbraVox.Crypto.HKDF (hkdf)
+import qualified UmbraVox.Crypto.Generated.FFI.Ed25519Extended as Ed25519FFI
+import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
+import qualified UmbraVox.Crypto.Generated.FFI.X25519 as X25519FFI
 import UmbraVox.Crypto.SecureBytes (SecureBytes, fromByteString, toByteString)
 
 ------------------------------------------------------------------------
@@ -84,8 +84,9 @@ data X3DHResult = X3DHResult
 -- The secret is copied into a 'SecureBytes' buffer; the original 'ByteString'
 -- argument is not zeroed (caller should avoid retaining it).
 generateKeyPair :: ByteString -> IO KeyPair
-generateKeyPair secret =
-    case x25519 secret x25519Basepoint of
+generateKeyPair secret = do
+    mPub <- X25519FFI.x25519 secret X25519FFI.x25519Basepoint
+    case mPub of
         Just pub -> do
             sbSecret <- fromByteString secret
             pure KeyPair { kpSecret = sbSecret, kpPublic = pub }
@@ -96,14 +97,16 @@ generateKeyPair secret =
 -- Both secrets are copied into 'SecureBytes' buffers; the original
 -- 'ByteString' arguments are not zeroed (caller should avoid retaining them).
 generateIdentityKey :: ByteString -> ByteString -> IO IdentityKey
-generateIdentityKey edSecret xSecret =
-    case x25519 xSecret x25519Basepoint of
+generateIdentityKey edSecret xSecret = do
+    mXPub <- X25519FFI.x25519 xSecret X25519FFI.x25519Basepoint
+    case mXPub of
         Just xPub -> do
             sbEdSecret <- fromByteString edSecret
             sbXSecret  <- fromByteString xSecret
+            edPub <- Ed25519FFI.ed25519PublicKey edSecret
             pure IdentityKey
                 { ikEd25519Secret = sbEdSecret
-                , ikEd25519Public = ed25519PublicKey edSecret
+                , ikEd25519Public = edPub
                 , ikX25519Secret  = sbXSecret
                 , ikX25519Public  = xPub
                 }
@@ -122,7 +125,7 @@ generateIdentityKey edSecret xSecret =
 signPreKey :: IdentityKey -> ByteString -> IO ByteString
 signPreKey ik spkPub = do
     edSec <- toByteString (ikEd25519Secret ik)
-    pure $ ed25519Sign edSec (ikEd25519Public ik <> spkPub)
+    Ed25519FFI.ed25519Sign edSec (ikEd25519Public ik <> spkPub)
 
 ------------------------------------------------------------------------
 -- Protocol info string
@@ -162,14 +165,14 @@ deriveSecret :: ByteString  -- ^ dh1
              -> Maybe ByteString  -- ^ dh4 (optional)
              -> ByteString  -- ^ Initiator (Alice) X25519 identity public key
              -> ByteString  -- ^ Responder (Bob) X25519 identity public key
-             -> ByteString
-deriveSecret !dh1 !dh2 !dh3 !mDh4 !aliceIKPub !bobIKPub =
-    let !pad = BS.replicate 32 0xff
+             -> IO ByteString
+deriveSecret !dh1 !dh2 !dh3 !mDh4 !aliceIKPub !bobIKPub = do
+    let !pad  = BS.replicate 32 0xff
         !salt = BS.replicate 32 0x00
-        !ikm = BS.concat $ [pad, dh1, dh2, dh3] ++ maybe [] (:[]) mDh4
+        !ikm  = BS.concat $ [pad, dh1, dh2, dh3] ++ maybe [] (:[]) mDh4
         -- M27.6.10: length-prefixed keys in info string
         !info = x3dhInfo <> lenPrefix aliceIKPub <> lenPrefix bobIKPub
-    in hkdf salt ikm info 32
+    HKDFFFI.hkdfSHA512 salt ikm info 32
 
 ------------------------------------------------------------------------
 -- X3DH Initiation (Alice's side)
@@ -183,34 +186,36 @@ deriveSecret !dh1 !dh2 !dh3 !mDh4 !aliceIKPub !bobIKPub =
 --
 -- Requires IO to extract secrets from their 'SecureBytes' wrappers.
 x3dhInitiate :: IdentityKey -> PreKeyBundle -> ByteString -> IO (Maybe X3DHResult)
-x3dhInitiate aliceIK bundle ekSecret =
+x3dhInitiate aliceIK bundle ekSecret = do
     -- Step 1: Verify SPK signature (M23.3.1: message = ikEd25519 || spkPub)
-    if not (ed25519Verify (pkbIdentityEd25519 bundle)
-                          (pkbIdentityEd25519 bundle <> pkbSignedPreKey bundle)
-                          (pkbSPKSignature bundle))
-    then pure Nothing
+    sigOk <- Ed25519FFI.ed25519Verify (pkbIdentityEd25519 bundle)
+                 (pkbIdentityEd25519 bundle <> pkbSignedPreKey bundle)
+                 (pkbSPKSignature bundle)
+    if not sigOk then pure Nothing
     else do
         -- Step 2: Generate ephemeral keypair
         ek <- generateKeyPair ekSecret
         -- Extract secrets from SecureBytes for DH operations
-        xSecret  <- toByteString (ikX25519Secret aliceIK)
+        xSecret   <- toByteString (ikX25519Secret aliceIK)
         ekSecret' <- toByteString (kpSecret ek)
         -- Step 3: Compute DH values; abort if any yields all-zero (low-order point)
-        pure $ do
-            !dh1  <- x25519 xSecret   (pkbSignedPreKey bundle)
-            !dh2  <- x25519 ekSecret' (pkbIdentityKey bundle)
-            !dh3  <- x25519 ekSecret' (pkbSignedPreKey bundle)
-            !mDh4 <- case pkbOneTimePreKey bundle of
-                         Nothing  -> Just Nothing
-                         Just opk -> fmap Just (x25519 ekSecret' opk)
-            let -- Step 4: Derive master secret (with identity binding)
-                !masterSecret = deriveSecret dh1 dh2 dh3 mDh4
+        mDh1 <- X25519FFI.x25519 xSecret   (pkbSignedPreKey bundle)
+        mDh2 <- X25519FFI.x25519 ekSecret' (pkbIdentityKey bundle)
+        mDh3 <- X25519FFI.x25519 ekSecret' (pkbSignedPreKey bundle)
+        mDh4 <- case pkbOneTimePreKey bundle of
+                     Nothing  -> pure (Just Nothing)
+                     Just opk -> fmap (fmap Just) (X25519FFI.x25519 ekSecret' opk)
+        case (mDh1, mDh2, mDh3, mDh4) of
+            (Just dh1, Just dh2, Just dh3, Just mDh4') -> do
+                -- Step 4: Derive master secret (with identity binding)
+                masterSecret <- deriveSecret dh1 dh2 dh3 mDh4'
                                     (ikX25519Public aliceIK) (pkbIdentityKey bundle)
-            Just X3DHResult
-                { x3dhSharedSecret = masterSecret
-                , x3dhEphemeralKey = kpPublic ek
-                , x3dhUsedOPK      = pkbOneTimePreKey bundle
-                }
+                pure $ Just X3DHResult
+                    { x3dhSharedSecret = masterSecret
+                    , x3dhEphemeralKey = kpPublic ek
+                    , x3dhUsedOPK      = pkbOneTimePreKey bundle
+                    }
+            _ -> pure Nothing
 
 ------------------------------------------------------------------------
 -- X3DH Response (Bob's side)
@@ -233,14 +238,16 @@ x3dhRespond bobIK spkSecret mOPKSecret aliceIKPub aliceEKPub = do
     xSecret <- toByteString (ikX25519Secret bobIK)
     -- Mirror the DH computations from Alice's perspective
     -- Abort if any DH yields all-zero (low-order point attack)
-    pure $ do
-        !dh1  <- x25519 spkSecret aliceIKPub
-        !dh2  <- x25519 xSecret   aliceEKPub
-        !dh3  <- x25519 spkSecret aliceEKPub
-        !mDh4 <- case mOPKSecret of
-                     Nothing     -> Just Nothing
-                     Just opkSec -> fmap Just (x25519 opkSec aliceEKPub)
-        Just (deriveSecret dh1 dh2 dh3 mDh4 aliceIKPub (ikX25519Public bobIK))
+    mDh1 <- X25519FFI.x25519 spkSecret aliceIKPub
+    mDh2 <- X25519FFI.x25519 xSecret   aliceEKPub
+    mDh3 <- X25519FFI.x25519 spkSecret aliceEKPub
+    mDh4 <- case mOPKSecret of
+                 Nothing     -> pure (Just Nothing)
+                 Just opkSec -> fmap (fmap Just) (X25519FFI.x25519 opkSec aliceEKPub)
+    case (mDh1, mDh2, mDh3, mDh4) of
+        (Just dh1, Just dh2, Just dh3, Just mDh4') ->
+            fmap Just (deriveSecret dh1 dh2 dh3 mDh4' aliceIKPub (ikX25519Public bobIK))
+        _ -> pure Nothing
 
 ------------------------------------------------------------------------
 -- M23.2.1: OPK depletion protection
@@ -377,13 +384,13 @@ deriveSecretWithTimestamp :: ByteString      -- ^ dh1
                          -> ByteString      -- ^ Initiator (Alice) X25519 identity public key
                          -> ByteString      -- ^ Responder (Bob) X25519 identity public key
                          -> Word64          -- ^ Bundle creation timestamp
-                         -> ByteString
-deriveSecretWithTimestamp !dh1 !dh2 !dh3 !mDh4 !aliceIKPub !bobIKPub !bundleTs =
-    let !pad = BS.replicate 32 0xff
+                         -> IO ByteString
+deriveSecretWithTimestamp !dh1 !dh2 !dh3 !mDh4 !aliceIKPub !bobIKPub !bundleTs = do
+    let !pad  = BS.replicate 32 0xff
         !salt = BS.replicate 32 0x00
-        !ikm = BS.concat $ [pad, dh1, dh2, dh3] ++ maybe [] (:[]) mDh4
+        !ikm  = BS.concat $ [pad, dh1, dh2, dh3] ++ maybe [] (:[]) mDh4
         !info = x3dhInfo <> lenPrefix aliceIKPub <> lenPrefix bobIKPub <> encodeTimestamp bundleTs
-    in hkdf salt ikm info 32
+    HKDFFFI.hkdfSHA512 salt ikm info 32
 
 -- | Alice initiates X3DH with bundle freshness validation (M23.2.2).
 --
@@ -402,31 +409,34 @@ x3dhInitiateWithTimestamp :: IdentityKey
                           -> Word64       -- ^ Bundle creation timestamp (seconds)
                           -> IO (Maybe X3DHResult)
 x3dhInitiateWithTimestamp aliceIK bundle ekSecret now bundleTs
-    -- Step 0: Reject stale bundles
     | not (isBundleFresh now bundleTs) = pure Nothing
-    -- Step 1: Verify SPK signature (M23.3.1: message = ikEd25519 || spkPub)
-    | not (ed25519Verify (pkbIdentityEd25519 bundle)
-                         (pkbIdentityEd25519 bundle <> pkbSignedPreKey bundle)
-                         (pkbSPKSignature bundle)) = pure Nothing
     | otherwise = do
-        ek <- generateKeyPair ekSecret
-        xSecret  <- toByteString (ikX25519Secret aliceIK)
-        ekSecret' <- toByteString (kpSecret ek)
-        pure $ do
-            !dh1  <- x25519 xSecret   (pkbSignedPreKey bundle)
-            !dh2  <- x25519 ekSecret' (pkbIdentityKey bundle)
-            !dh3  <- x25519 ekSecret' (pkbSignedPreKey bundle)
-            !mDh4 <- case pkbOneTimePreKey bundle of
-                         Nothing  -> Just Nothing
-                         Just opk -> fmap Just (x25519 ekSecret' opk)
-            let !masterSecret = deriveSecretWithTimestamp dh1 dh2 dh3 mDh4
-                                    (ikX25519Public aliceIK) (pkbIdentityKey bundle)
-                                    bundleTs
-            Just X3DHResult
-                { x3dhSharedSecret = masterSecret
-                , x3dhEphemeralKey = kpPublic ek
-                , x3dhUsedOPK      = pkbOneTimePreKey bundle
-                }
+        -- Step 1: Verify SPK signature (M23.3.1: message = ikEd25519 || spkPub)
+        sigOk <- Ed25519FFI.ed25519Verify (pkbIdentityEd25519 bundle)
+                     (pkbIdentityEd25519 bundle <> pkbSignedPreKey bundle)
+                     (pkbSPKSignature bundle)
+        if not sigOk then pure Nothing
+        else do
+            ek <- generateKeyPair ekSecret
+            xSecret   <- toByteString (ikX25519Secret aliceIK)
+            ekSecret' <- toByteString (kpSecret ek)
+            mDh1 <- X25519FFI.x25519 xSecret   (pkbSignedPreKey bundle)
+            mDh2 <- X25519FFI.x25519 ekSecret' (pkbIdentityKey bundle)
+            mDh3 <- X25519FFI.x25519 ekSecret' (pkbSignedPreKey bundle)
+            mDh4 <- case pkbOneTimePreKey bundle of
+                         Nothing  -> pure (Just Nothing)
+                         Just opk -> fmap (fmap Just) (X25519FFI.x25519 ekSecret' opk)
+            case (mDh1, mDh2, mDh3, mDh4) of
+                (Just dh1, Just dh2, Just dh3, Just mDh4') -> do
+                    masterSecret <- deriveSecretWithTimestamp dh1 dh2 dh3 mDh4'
+                                        (ikX25519Public aliceIK) (pkbIdentityKey bundle)
+                                        bundleTs
+                    pure $ Just X3DHResult
+                        { x3dhSharedSecret = masterSecret
+                        , x3dhEphemeralKey = kpPublic ek
+                        , x3dhUsedOPK      = pkbOneTimePreKey bundle
+                        }
+                _ -> pure Nothing
 
 -- | Bob responds to Alice's X3DH initiation with timestamp binding (M23.2.2).
 --
@@ -442,11 +452,13 @@ x3dhRespondWithTimestamp :: IdentityKey       -- ^ Bob's identity key
                          -> IO (Maybe ByteString)  -- ^ Shared secret (32 bytes), or Nothing
 x3dhRespondWithTimestamp bobIK spkSecret mOPKSecret aliceIKPub aliceEKPub bundleTs = do
     xSecret <- toByteString (ikX25519Secret bobIK)
-    pure $ do
-        !dh1  <- x25519 spkSecret aliceIKPub
-        !dh2  <- x25519 xSecret   aliceEKPub
-        !dh3  <- x25519 spkSecret aliceEKPub
-        !mDh4 <- case mOPKSecret of
-                     Nothing     -> Just Nothing
-                     Just opkSec -> fmap Just (x25519 opkSec aliceEKPub)
-        Just (deriveSecretWithTimestamp dh1 dh2 dh3 mDh4 aliceIKPub (ikX25519Public bobIK) bundleTs)
+    mDh1 <- X25519FFI.x25519 spkSecret aliceIKPub
+    mDh2 <- X25519FFI.x25519 xSecret   aliceEKPub
+    mDh3 <- X25519FFI.x25519 spkSecret aliceEKPub
+    mDh4 <- case mOPKSecret of
+                 Nothing     -> pure (Just Nothing)
+                 Just opkSec -> fmap (fmap Just) (X25519FFI.x25519 opkSec aliceEKPub)
+    case (mDh1, mDh2, mDh3, mDh4) of
+        (Just dh1, Just dh2, Just dh3, Just mDh4') ->
+            fmap Just (deriveSecretWithTimestamp dh1 dh2 dh3 mDh4' aliceIKPub (ikX25519Public bobIK) bundleTs)
+        _ -> pure Nothing

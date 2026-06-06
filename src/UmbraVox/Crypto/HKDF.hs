@@ -1,9 +1,14 @@
 -- SPDX-License-Identifier: Apache-2.0
 -- | {-# REQ "CRYPTO-006" #-} HKDF (RFC 5869)
 --
+-- Haskell reference oracle. NOT production. NOT constant-time.
+-- Production callers must use 'UmbraVox.Crypto.Generated.FFI.HKDF' which
+-- calls HACL*-verified constant-time C via FFI.
+-- This module is retained for differential testing only.
+--
 -- HMAC-based Extract-and-Expand Key Derivation Function.
 -- UmbraVox uses HKDF-SHA-512 for all protocol key derivation
--- (see attic/doc-legacy-2026-04-28/03-cryptography.md).
+-- (see doc/CRYPTO-SAFETY.md).
 module UmbraVox.Crypto.HKDF
     ( hkdfExtract
     , hkdfExpand

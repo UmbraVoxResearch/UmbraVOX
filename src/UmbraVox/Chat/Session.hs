@@ -85,12 +85,12 @@ sendChatMessage :: ChatSession
 sendChatMessage session senderId plaintext wallNow = do
     let !innerPt = encodeInnerPayload senderId plaintext
     result <- ratchetEncrypt (csRatchet session) innerPt
-    pure $ case result of
-        Left err               -> Left err
-        Right (st', hdr, ct, tag) ->
+    case result of
+        Left err               -> pure (Left err)
+        Right (st', hdr, ct, tag) -> do
             let !wire = encodeWire hdr ct tag
-                !rts' = fmap (`checkAndRotate` wallNow) (csRouteTokens session)
-            in Right (session { csRatchet = st', csRouteTokens = rts' }, wire)
+            !rts' <- traverse (`checkAndRotate` wallNow) (csRouteTokens session)
+            pure (Right (session { csRatchet = st', csRouteTokens = rts' }, wire))
 
 -- | Decrypt a received chat message.
 -- After decryption the 32-byte sender identity hash is extracted from the

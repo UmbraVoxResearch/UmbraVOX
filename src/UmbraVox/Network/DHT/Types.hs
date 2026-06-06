@@ -29,7 +29,7 @@ import Data.Word (Word64)
 
 import qualified Data.ByteString as BS
 
-import UmbraVox.Crypto.SHA256 (sha256)
+import qualified UmbraVox.Crypto.Generated.FFI.SHA256 as SHA256FFI
 
 ------------------------------------------------------------------------
 -- Node identity
@@ -53,22 +53,22 @@ xorDistance (NodeId a) (NodeId b) =
 -- The node ID is simply SHA-256 of the raw public key bytes.  During
 -- Noise IK handshake, the remote's claimed node ID is verified against
 -- the handshake public key to prevent Sybil attacks.
-deriveNodeId :: ByteString -> NodeId
-deriveNodeId pubKey = NodeId (sha256 pubKey)
+deriveNodeId :: ByteString -> IO NodeId
+deriveNodeId pubKey = NodeId <$> SHA256FFI.sha256 pubKey
 
 -- | Derive an ephemeral NodeId using a per-boot salt (M27.2.2).
 --
 -- The salt prevents linking DHT presence to long-term identity across
 -- sessions.  Each boot generates a fresh random salt, so the NodeId
 -- changes every restart while remaining stable within a single session.
-deriveEphemeralNodeId :: ByteString -> ByteString -> NodeId
+deriveEphemeralNodeId :: ByteString -> ByteString -> IO NodeId
 deriveEphemeralNodeId pubKey bootSalt =
-    NodeId (sha256 (pubKey <> bootSalt))
+    NodeId <$> SHA256FFI.sha256 (pubKey <> bootSalt)
 
 -- | Verify that a claimed NodeId matches the SHA-256 hash of the given
 -- identity public key.  Returns True if valid.
-verifyNodeId :: NodeId -> ByteString -> Bool
-verifyNodeId (NodeId claimed) pubKey = claimed == sha256 pubKey
+verifyNodeId :: NodeId -> ByteString -> IO Bool
+verifyNodeId (NodeId claimed) pubKey = (claimed ==) <$> SHA256FFI.sha256 pubKey
 
 ------------------------------------------------------------------------
 -- DHT nodes

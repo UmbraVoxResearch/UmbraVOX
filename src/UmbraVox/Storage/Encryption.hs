@@ -32,7 +32,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import System.Posix.Files (setFileMode, ownerReadMode, ownerWriteMode, unionFileModes)
 
 import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
-import UmbraVox.Crypto.HKDF (hkdfSHA256Extract, hkdfSHA256Expand)
+import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Crypto.SecureBytes (SecureBytes, fromByteString, toByteString)
 
@@ -112,8 +112,8 @@ deriveStorageKey :: ByteString  -- ^ Per-install random salt (32 bytes)
                  -> ByteString  -- ^ Identity secret (IKM)
                  -> IO StorageKey
 deriveStorageKey salt secret = do
-    let !prk    = hkdfSHA256Extract salt secret
-        !keyBS  = hkdfSHA256Expand prk (C8.pack "UmbraVox_StorageAEAD_v1") 32
+    !prk   <- HKDFFFI.hkdfSHA256Extract salt secret
+    !keyBS <- HKDFFFI.hkdfSHA256Expand prk (C8.pack "UmbraVox_StorageAEAD_v1") 32
     StorageKey <$> fromByteString keyBS
 
 -- Finding: M10.2.9 — No per-install salt file existed; all key derivation used

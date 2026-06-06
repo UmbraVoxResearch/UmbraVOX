@@ -39,10 +39,10 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Word (Word32)
 
-import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
 import UmbraVox.Crypto.GCM (gcmDecrypt, gcmEncrypt)
-import UmbraVox.Crypto.HKDF (hkdfSHA256Extract, hkdfSHA256Expand)
-import UmbraVox.Crypto.HMAC (hmacSHA256)
+import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
+import qualified UmbraVox.Crypto.Generated.FFI.HMAC as HMACFFI
+import qualified UmbraVox.Crypto.Generated.FFI.X25519 as X25519FFI
 import UmbraVox.Crypto.Random (randomBytes)
 
 ------------------------------------------------------------------------
@@ -75,22 +75,22 @@ signalX3DHInfo = "WhisperText"
 -- Signal uses HKDF-SHA-256 (not SHA-512 like UmbraVOX native):
 --   Salt = root key, IKM = DH output, Info = "WhisperRatchet"
 --   Output = 64 bytes: first 32 = new root key, last 32 = new chain key.
-signalKdfRK :: ByteString -> ByteString -> (ByteString, ByteString)
-signalKdfRK rootKey dhOut =
-    let !prk = hkdfSHA256Extract rootKey dhOut
-        !okm = hkdfSHA256Expand prk signalRatchetInfo 64
-    in (BS.take 32 okm, BS.drop 32 okm)
+signalKdfRK :: ByteString -> ByteString -> IO (ByteString, ByteString)
+signalKdfRK rootKey dhOut = do
+    !prk <- HKDFFFI.hkdfSHA256Extract rootKey dhOut
+    !okm <- HKDFFFI.hkdfSHA256Expand prk signalRatchetInfo 64
+    pure (BS.take 32 okm, BS.drop 32 okm)
 
 -- | Derive message key and new chain key from current chain key.
 --
 -- Signal uses the same HMAC-SHA256 construction as UmbraVOX:
 --   messageKey  = HMAC-SHA256(chainKey, 0x01)
 --   newChainKey = HMAC-SHA256(chainKey, 0x02)
-signalKdfCK :: ByteString -> (ByteString, ByteString)
-signalKdfCK chainKey =
-    let !msgKey      = hmacSHA256 chainKey (BS.singleton 0x01)
-        !newChainKey = hmacSHA256 chainKey (BS.singleton 0x02)
-    in (newChainKey, msgKey)
+signalKdfCK :: ByteString -> IO (ByteString, ByteString)
+signalKdfCK chainKey = do
+    !msgKey      <- HMACFFI.hmacSHA256 chainKey (BS.singleton 0x01)
+    !newChainKey <- HMACFFI.hmacSHA256 chainKey (BS.singleton 0x02)
+    pure (newChainKey, msgKey)
 
 ------------------------------------------------------------------------
 -- Signal-compatible X3DH secret derivation
@@ -107,13 +107,13 @@ signalDeriveSecret :: ByteString  -- ^ DH1 (IK_A * SPK_B)
                    -> ByteString  -- ^ DH2 (EK_A * IK_B)
                    -> ByteString  -- ^ DH3 (EK_A * SPK_B)
                    -> Maybe ByteString  -- ^ DH4 (EK_A * OPK_B), optional
-                   -> ByteString  -- ^ 32-byte shared secret
-signalDeriveSecret dh1 dh2 dh3 mDh4 =
+                   -> IO ByteString  -- ^ 32-byte shared secret
+signalDeriveSecret dh1 dh2 dh3 mDh4 = do
     let !discontinuity = BS.replicate 32 0xFF
         !ikm = BS.concat $ [discontinuity, dh1, dh2, dh3]
                          ++ maybe [] (:[]) mDh4
-        !prk = hkdfSHA256Extract signalX3DHSalt ikm
-    in hkdfSHA256Expand prk signalX3DHInfo 32
+    !prk <- HKDFFFI.hkdfSHA256Extract signalX3DHSalt ikm
+    HKDFFFI.hkdfSHA256Expand prk signalX3DHInfo 32
 
 ------------------------------------------------------------------------
 -- Signal-compatible ratchet state
@@ -153,11 +153,12 @@ data SignalRatchetHeader = SignalRatchetHeader
 -- DH helper
 ------------------------------------------------------------------------
 
-generateDH :: ByteString -> (ByteString, ByteString)
-generateDH secret =
-    case x25519 secret x25519Basepoint of
-        Just pub -> (secret, pub)
-        Nothing  -> (secret, BS.replicate 32 0)
+generateDH :: ByteString -> IO (ByteString, ByteString)
+generateDH secret = do
+    mPub <- X25519FFI.x25519 secret X25519FFI.x25519Basepoint
+    case mPub of
+        Just pub -> pure (secret, pub)
+        Nothing  -> pure (secret, BS.replicate 32 0)
 
 ------------------------------------------------------------------------
 -- Ratchet initialization
@@ -167,14 +168,15 @@ generateDH secret =
 signalRatchetInitAlice :: ByteString  -- ^ Shared secret from X3DH (32 bytes)
                        -> ByteString  -- ^ Bob's signed prekey public (32 bytes)
                        -> ByteString  -- ^ Alice's fresh DH secret (32 bytes)
-                       -> Maybe SignalRatchetState
-signalRatchetInitAlice sharedSecret bobSPK aliceDHSecret =
-    case x25519 aliceDHSecret bobSPK of
-        Nothing -> Nothing
-        Just dhOut ->
-            let !dhPair       = generateDH aliceDHSecret
-                !(rk, ck)     = signalKdfRK sharedSecret dhOut
-            in Just SignalRatchetState
+                       -> IO (Maybe SignalRatchetState)
+signalRatchetInitAlice sharedSecret bobSPK aliceDHSecret = do
+    mDhOut <- X25519FFI.x25519 aliceDHSecret bobSPK
+    case mDhOut of
+        Nothing -> pure Nothing
+        Just dhOut -> do
+            !dhPair    <- generateDH aliceDHSecret
+            !(rk, ck)  <- signalKdfRK sharedSecret dhOut
+            pure $ Just SignalRatchetState
                 { srsDHSend      = dhPair
                 , srsDHRecv      = Just bobSPK
                 , srsRootKey     = rk
@@ -189,10 +191,10 @@ signalRatchetInitAlice sharedSecret bobSPK aliceDHSecret =
 -- | Initialize Signal-compatible ratchet as Bob (responder).
 signalRatchetInitBob :: ByteString  -- ^ Shared secret from X3DH (32 bytes)
                      -> ByteString  -- ^ Bob's SPK secret (32 bytes)
-                     -> SignalRatchetState
-signalRatchetInitBob sharedSecret bobSPKSecret =
-    let !dhPair = generateDH bobSPKSecret
-    in SignalRatchetState
+                     -> IO SignalRatchetState
+signalRatchetInitBob sharedSecret bobSPKSecret = do
+    !dhPair <- generateDH bobSPKSecret
+    pure SignalRatchetState
         { srsDHSend      = dhPair
         , srsDHRecv      = Nothing
         , srsRootKey     = sharedSecret
@@ -216,12 +218,13 @@ signalRatchetEncrypt :: SignalRatchetState
 signalRatchetEncrypt st plaintext
     | srsSendN st >= 0xFFFFFFFE = pure (Left "counter exhausted")
     | otherwise = do
-        let !(newChain, msgKey) = signalKdfCK (srsSendChain st)
-            !encKey   = BS.take 32 msgKey
-            !nonce    = BS.take 12 (BS.drop 32 (hkdfSHA256Expand msgKey "WhisperMessageKeys" 80))
-            -- Signal derives 80 bytes: 32 cipher key + 32 mac key + 16 IV
-            -- We use the first 32 as AES key, derive a 12-byte nonce for GCM
-            !iv       = if BS.length nonce >= 12 then nonce else BS.replicate 12 0
+        !(newChain, msgKey) <- signalKdfCK (srsSendChain st)
+        let !encKey = BS.take 32 msgKey
+        !expanded <- HKDFFFI.hkdfSHA256Expand msgKey "WhisperMessageKeys" 80
+        -- Signal derives 80 bytes: 32 cipher key + 32 mac key + 16 IV
+        -- We use the first 32 as AES key, derive a 12-byte nonce for GCM
+        let !nonce = BS.take 12 (BS.drop 32 expanded)
+            !iv    = if BS.length nonce >= 12 then nonce else BS.replicate 12 0
         let !(ct, tag) = gcmEncrypt encKey iv BS.empty plaintext
             !hdr = SignalRatchetHeader
                 { srhDHPublic   = snd (srsDHSend st)
@@ -248,9 +251,10 @@ signalRatchetDecrypt st hdr ct tag = do
     case Map.lookup (srhDHPublic hdr, srhMsgN hdr) (srsSkippedKeys st) of
         Just msgKey -> do
             let !encKey = BS.take 32 msgKey
-                !nonce  = BS.take 12 (BS.drop 32 (hkdfSHA256Expand msgKey "WhisperMessageKeys" 80))
-                !iv     = if BS.length nonce >= 12 then nonce else BS.replicate 12 0
-                !st'    = st { srsSkippedKeys = Map.delete (srhDHPublic hdr, srhMsgN hdr) (srsSkippedKeys st) }
+            !expanded <- HKDFFFI.hkdfSHA256Expand msgKey "WhisperMessageKeys" 80
+            let !nonce = BS.take 12 (BS.drop 32 expanded)
+                !iv    = if BS.length nonce >= 12 then nonce else BS.replicate 12 0
+                !st'   = st { srsSkippedKeys = Map.delete (srhDHPublic hdr, srhMsgN hdr) (srsSkippedKeys st) }
             case gcmDecrypt encKey iv BS.empty ct tag of
                 Nothing -> pure (Right Nothing)
                 Just pt -> pure (Right (Just (st', pt)))
@@ -266,13 +270,14 @@ signalRatchetDecrypt st hdr ct tag = do
                 Left err -> pure (Left err)
                 Right st2 -> do
                     -- Skip ahead if needed
-                    let st3 = skipMessages st2 (srhMsgN hdr)
+                    st3 <- skipMessages st2 (srhMsgN hdr)
                     -- Decrypt with current receiving chain
-                    let !(newChain, msgKey) = signalKdfCK (srsRecvChain st3)
-                        !encKey = BS.take 32 msgKey
-                        !nonce  = BS.take 12 (BS.drop 32 (hkdfSHA256Expand msgKey "WhisperMessageKeys" 80))
-                        !iv     = if BS.length nonce >= 12 then nonce else BS.replicate 12 0
-                        !st4    = st3 { srsRecvChain = newChain
+                    !(newChain, msgKey) <- signalKdfCK (srsRecvChain st3)
+                    let !encKey = BS.take 32 msgKey
+                    !expanded <- HKDFFFI.hkdfSHA256Expand msgKey "WhisperMessageKeys" 80
+                    let !nonce = BS.take 12 (BS.drop 32 expanded)
+                        !iv    = if BS.length nonce >= 12 then nonce else BS.replicate 12 0
+                        !st4   = st3 { srsRecvChain = newChain
                                       , srsRecvN     = srsRecvN st3 + 1
                                       }
                     case gcmDecrypt encKey iv BS.empty ct tag of
@@ -285,16 +290,18 @@ dhRatchetStep :: SignalRatchetState -> SignalRatchetHeader
 dhRatchetStep st hdr = do
     newDHSecret <- randomBytes 32
     let peerPub = srhDHPublic hdr
-    case x25519 (fst (srsDHSend st)) peerPub of
+    mDhRecv <- X25519FFI.x25519 (fst (srsDHSend st)) peerPub
+    case mDhRecv of
         Nothing -> pure (Left "DH failed (old key)")
-        Just dhRecv ->
-            case x25519 newDHSecret peerPub of
+        Just dhRecv -> do
+            mDhSend <- X25519FFI.x25519 newDHSecret peerPub
+            case mDhSend of
                 Nothing -> pure (Left "DH failed (new key)")
-                Just dhSend ->
-                    let !(rk1, recvCK) = signalKdfRK (srsRootKey st) dhRecv
-                        !newPair       = generateDH newDHSecret
-                        !(rk2, sendCK) = signalKdfRK rk1 dhSend
-                    in pure $ Right st
+                Just dhSend -> do
+                    !(rk1, recvCK) <- signalKdfRK (srsRootKey st) dhRecv
+                    !newPair       <- generateDH newDHSecret
+                    !(rk2, sendCK) <- signalKdfRK rk1 dhSend
+                    pure $ Right st
                         { srsDHSend      = newPair
                         , srsDHRecv      = Just peerPub
                         , srsRootKey     = rk2
@@ -307,19 +314,19 @@ dhRatchetStep st hdr = do
                         }
 
 -- | Skip ahead in the receiving chain, caching skipped keys.
-skipMessages :: SignalRatchetState -> Word32 -> SignalRatchetState
+skipMessages :: SignalRatchetState -> Word32 -> IO SignalRatchetState
 skipMessages st targetN = go st
   where
     go s
-        | srsRecvN s >= targetN = s
-        | Map.size (srsSkippedKeys s) >= 1000 = s  -- safety cap
-        | otherwise =
-            let !(newChain, msgKey) = signalKdfCK (srsRecvChain s)
-                !key = (fromMaybe BS.empty (srsDHRecv s), srsRecvN s)
+        | srsRecvN s >= targetN = pure s
+        | Map.size (srsSkippedKeys s) >= 1000 = pure s  -- safety cap
+        | otherwise = do
+            !(newChain, msgKey) <- signalKdfCK (srsRecvChain s)
+            let !key = (fromMaybe BS.empty (srsDHRecv s), srsRecvN s)
                 !s'  = s { srsRecvChain   = newChain
                          , srsRecvN       = srsRecvN s + 1
                          , srsSkippedKeys = Map.insert key msgKey (srsSkippedKeys s)
                          }
-            in go s'
+            go s'
     fromMaybe def Nothing  = def
     fromMaybe _   (Just x) = x

@@ -30,9 +30,9 @@ import qualified Data.ByteString as BS
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Word (Word32, Word64)
 
-import UmbraVox.Crypto.Ed25519 (ed25519Sign, ed25519Verify, ed25519PublicKey)
-import UmbraVox.Crypto.HKDF (hkdf)
-import UmbraVox.Crypto.SHA256 (sha256)
+import qualified UmbraVox.Crypto.Generated.FFI.Ed25519Extended as Ed25519FFI
+import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
+import qualified UmbraVox.Crypto.Generated.FFI.SHA256 as SHA256FFI
 import UmbraVox.Protocol.Encoding (putWord32BE, getWord32BE, putWord64BE)
 
 ------------------------------------------------------------------------
@@ -86,11 +86,11 @@ presenceInfoPrefix = "UmbraVox_Presence_v1"
 derivePresenceKey :: ByteString  -- ^ Scan key (32 bytes, X25519 public or secret)
                   -> ByteString  -- ^ Identity public key (any length; SHA-256 hashed)
                   -> Word64      -- ^ Epoch number
-                  -> ByteString  -- ^ 32-byte stealth presence key
-derivePresenceKey scanKey identityPub epoch =
-    let !identityHash = sha256 identityPub
-        !info = presenceInfoPrefix <> putWord64BE epoch
-    in hkdf presenceSalt (scanKey <> identityHash) info 32
+                  -> IO ByteString  -- ^ 32-byte stealth presence key
+derivePresenceKey scanKey identityPub epoch = do
+    identityHash <- SHA256FFI.sha256 identityPub
+    let !info = presenceInfoPrefix <> putWord64BE epoch
+    HKDFFFI.hkdfSHA512 presenceSalt (scanKey <> identityHash) info 32
 
 ------------------------------------------------------------------------
 -- Record creation
@@ -114,14 +114,14 @@ createPresenceRecord :: ByteString  -- ^ Ed25519 secret key (32-byte seed)
 createPresenceRecord edSecret scanKey identityPub contactInfo = do
     now <- floor <$> getPOSIXTime :: IO Word64
     let !epoch = now `div` fromIntegral defaultTTL
-        !stealthKey = derivePresenceKey scanKey identityPub epoch
-        -- Build the signable payload: stealthKey || contactInfo || timestamp || ttl
+    stealthKey <- derivePresenceKey scanKey identityPub epoch
+    let -- Build the signable payload: stealthKey || contactInfo || timestamp || ttl
         !payload = stealthKey
                 <> contactInfo
                 <> putWord64BE now
                 <> putWord32BE defaultTTL
-        !sig = ed25519Sign edSecret payload
-        !pubKey = ed25519PublicKey edSecret
+    !sig <- Ed25519FFI.ed25519Sign edSecret payload
+    !pubKey <- Ed25519FFI.ed25519PublicKey edSecret
     -- Sanity: signature must be 64 bytes, public key must be 32 bytes
     if BS.length sig /= 64 || BS.length pubKey /= 32
         then return (Left "createPresenceRecord: Ed25519 produced invalid signature/key")
@@ -145,15 +145,15 @@ createPresenceRecord edSecret scanKey identityPub contactInfo = do
 -- presence records.
 verifyPresenceRecord :: ByteString      -- ^ Ed25519 public key of the signer
                      -> PresenceRecord
-                     -> Bool
-verifyPresenceRecord pubKey pr =
+                     -> IO Bool
+verifyPresenceRecord pubKey pr = do
     let !payload = prStealthPubKey pr
                 <> prContactInfo pr
                 <> putWord64BE (prTimestamp pr)
                 <> putWord32BE (prTTL pr)
-    in BS.length (prSignature pr) == 64
-       && BS.length pubKey == 32
-       && ed25519Verify pubKey payload (prSignature pr)
+    if BS.length (prSignature pr) /= 64 || BS.length pubKey /= 32
+        then pure False
+        else Ed25519FFI.ed25519Verify pubKey payload (prSignature pr)
 
 ------------------------------------------------------------------------
 -- Serialization

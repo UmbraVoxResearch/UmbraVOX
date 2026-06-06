@@ -34,13 +34,13 @@ import qualified Data.Sequence as Seq
 import Data.Word (Word64)
 
 import UmbraVox.Crypto.ChaChaPoly (chachaPolyEncrypt, chachaPolyDecrypt)
-import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
 import UmbraVox.Crypto.Ed25519
     ( ExtPoint, basepoint, pointAdd, scalarMul
     , encodePoint, decodePoint, groupL
     , decodeLE, isSmallOrder
     )
-import UmbraVox.Crypto.HKDF (hkdf)
+import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
+import qualified UmbraVox.Crypto.Generated.FFI.X25519 as X25519FFI
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Crypto.StealthAddress (StealthKeys(..), viewTag)
 import UmbraVox.Network.DHT (DHTState(..))
@@ -151,24 +151,27 @@ depositMessage :: RelayMailbox
 depositMessage mb scanPub spendPub plaintext now cfg = do
     -- Step 1: Generate a fresh ephemeral keypair.
     ephSecret <- randomBytes 32
-    case x25519 ephSecret x25519Basepoint of
+    mEphPub <- X25519FFI.x25519 ephSecret X25519FFI.x25519Basepoint
+    case mEphPub of
         Nothing -> pure Nothing
-        Just ephPub ->
+        Just ephPub -> do
             -- Step 2: ECDH shared secret with recipient's scan key.
-            case x25519 ephSecret scanPub of
+            mSharedSecret <- X25519FFI.x25519 ephSecret scanPub
+            case mSharedSecret of
                 Nothing -> pure Nothing
                 Just sharedSecret -> do
                     -- Step 3: Derive the view tag (for fast recipient filtering).
-                    let !vtBytes = hkdf relayHKDFSalt sharedSecret "UmbraVox_ViewTag_v2" 32
-                        !vt     = viewTag vtBytes
+                    !vtBytes <- HKDFFFI.hkdfSHA512 relayHKDFSalt sharedSecret "UmbraVox_ViewTag_v2" 32
+                    let !vt = viewTag vtBytes
 
                     -- Step 4: Rebuild the stealth address for AAD binding.
-                    case rebuildStealthAddress sharedSecret spendPub of
+                    mStealthAddr <- rebuildStealthAddress sharedSecret spendPub
+                    case mStealthAddr of
                         Nothing -> pure Nothing
                         Just stealthAddr -> do
                             -- Step 5: Derive encryption key (32 bytes) and nonce (12 bytes).
-                            let !derived = hkdf relayHKDFSalt sharedSecret relayEncKeyInfo 44
-                                !encKey  = BS.take 32 derived
+                            !derived <- HKDFFFI.hkdfSHA512 relayHKDFSalt sharedSecret relayEncKeyInfo 44
+                            let !encKey  = BS.take 32 derived
                                 !nonce   = BS.drop 32 derived
 
                             -- Step 6: Encrypt with ChaCha20-Poly1305.
@@ -209,51 +212,53 @@ pollMessages mb sk now = do
     -- Get all non-expired blobs, pruning expired ones.
     blobs <- pollRelay mb now
     -- Try to decrypt each blob; collect successes.
-    pure (concatMap (tryDecryptBlob sk) blobs)
+    results <- mapM (tryDecryptBlob sk) blobs
+    pure (concat results)
 
 -- | Attempt to decrypt a single relay blob with our stealth keys.
 --
 -- Wire format: [ephPub(32) | viewTag(1) | tag(16) | ciphertext]
 -- Minimum blob size: 32 + 1 + 16 = 49 bytes (empty plaintext).
-tryDecryptBlob :: StealthKeys -> ByteString -> [ByteString]
+tryDecryptBlob :: StealthKeys -> ByteString -> IO [ByteString]
 tryDecryptBlob sk blob
-    | BS.length blob < 49 = []  -- too short, not ours
-    | otherwise =
+    | BS.length blob < 49 = pure []  -- too short, not ours
+    | otherwise = do
         let !ephPub     = BS.take 32 blob
             !vt         = BS.index blob 32
             !tag        = BS.take 16 (BS.drop 33 blob)
             !ciphertext = BS.drop 49 blob
-        in case x25519 (skScanSecret sk) ephPub of
-            Nothing -> []  -- DH failure (low-order point), not ours
-            Just sharedSecret ->
+        mSharedSecret <- X25519FFI.x25519 (skScanSecret sk) ephPub
+        case mSharedSecret of
+            Nothing -> pure []  -- DH failure (low-order point), not ours
+            Just sharedSecret -> do
                 -- Fast view tag check: rejects ~255/256 of non-matching blobs.
-                let !vtDerived  = hkdf relayHKDFSalt sharedSecret "UmbraVox_ViewTag_v2" 32
-                    !expectedVT = viewTag vtDerived
-                in if expectedVT /= vt
-                   then []  -- view tag mismatch, not ours
-                   else
+                !vtDerived <- HKDFFFI.hkdfSHA512 relayHKDFSalt sharedSecret "UmbraVox_ViewTag_v2" 32
+                let !expectedVT = viewTag vtDerived
+                if expectedVT /= vt
+                   then pure []  -- view tag mismatch, not ours
+                   else do
                        -- Rebuild the stealth address for AAD verification.
-                       case rebuildStealthAddress sharedSecret (skSpendPublic sk) of
-                           Nothing -> []
-                           Just aad ->
+                       mAad <- rebuildStealthAddress sharedSecret (skSpendPublic sk)
+                       case mAad of
+                           Nothing -> pure []
+                           Just aad -> do
                                -- Derive encryption key and nonce from shared secret.
-                               let !derived = hkdf relayHKDFSalt sharedSecret relayEncKeyInfo 44
-                                   !encKey  = BS.take 32 derived
+                               !derived <- HKDFFFI.hkdfSHA512 relayHKDFSalt sharedSecret relayEncKeyInfo 44
+                               let !encKey  = BS.take 32 derived
                                    !nonce   = BS.drop 32 derived
-                               in case chachaPolyDecrypt encKey nonce aad ciphertext tag of
-                                   Nothing -> []  -- auth failure, not ours
-                                   Just pt -> [pt]
+                               case chachaPolyDecrypt encKey nonce aad ciphertext tag of
+                                   Nothing -> pure []  -- auth failure, not ours
+                                   Just pt -> pure [pt]
 
 -- | Rebuild the stealth address point from a shared secret and spend
 -- public key.  This mirrors the computation in
 -- 'UmbraVox.Crypto.StealthAddress.computeStealthAddress' but returns
 -- only the address bytes (or Nothing on failure).
-rebuildStealthAddress :: ByteString -> ByteString -> Maybe ByteString
-rebuildStealthAddress sharedSecret spendPub =
-    let !stealthScalarBytes = hkdf relayHKDFSalt sharedSecret "UmbraVox_StealthKey_v1" 32
-    in case rebuildPoint stealthScalarBytes spendPub of
-        addr | BS.null addr -> Nothing
-             | otherwise    -> Just addr
+rebuildStealthAddress :: ByteString -> ByteString -> IO (Maybe ByteString)
+rebuildStealthAddress sharedSecret spendPub = do
+    !stealthScalarBytes <- HKDFFFI.hkdfSHA512 relayHKDFSalt sharedSecret "UmbraVox_StealthKey_v1" 32
+    let addr = rebuildPoint stealthScalarBytes spendPub
+    pure $ if BS.null addr then Nothing else Just addr
 
 -- | Perform s*G + spendPub point arithmetic using the Ed25519 primitives.
 -- Imports are re-used from StealthAddress; this duplicates the logic

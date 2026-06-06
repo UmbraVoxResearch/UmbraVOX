@@ -25,7 +25,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Word (Word64)
 
-import UmbraVox.Crypto.SHA256 (sha256)
+import qualified UmbraVox.Crypto.Generated.FFI.SHA256 as SHA256FFI
 import Data.IORef (readIORef)
 
 import UmbraVox.Network.DHT.Lookup
@@ -79,7 +79,7 @@ data DHTState = DHTState
 -- linkage of DHT presence to long-term identity across sessions.
 newDHTState :: DHTConfig -> ByteString -> Maybe ByteString -> IO DHTState
 newDHTState cfg identityPubKey mBootSalt = do
-    let selfId = case mBootSalt of
+    selfId <- case mBootSalt of
             Nothing       -> deriveNodeId identityPubKey
             Just bootSalt -> deriveEphemeralNodeId identityPubKey bootSalt
     rt <- newRoutingTable selfId (dhtK cfg)
@@ -104,18 +104,20 @@ data DHTRoutingPolicy
 -- | Determine the routing policy for a DHT message.
 -- Self-referencing operations (looking up our own ID, storing our presence)
 -- use stem routing for privacy.
-routingPolicy :: DHTState -> DHTMessage -> DHTRoutingPolicy
-routingPolicy st msg = case msg of
-    FindNode _ target
-        | target == dhSelfId st -> DHTStemRoute
-        | otherwise             -> DHTDirectRoute
-    Store _ key _
-        | key == announceKey (dhSelfId st) -> DHTStemRoute
-        | otherwise                        -> DHTDirectRoute
-    FindValue _ key
-        | NodeId key == dhSelfId st -> DHTStemRoute
-        | otherwise                 -> DHTDirectRoute
-    _ -> DHTDirectRoute
+routingPolicy :: DHTState -> DHTMessage -> IO DHTRoutingPolicy
+routingPolicy st msg = do
+    myAnnounceKey <- announceKey (dhSelfId st)
+    pure $ case msg of
+        FindNode _ target
+            | target == dhSelfId st -> DHTStemRoute
+            | otherwise             -> DHTDirectRoute
+        Store _ key _
+            | key == myAnnounceKey -> DHTStemRoute
+            | otherwise            -> DHTDirectRoute
+        FindValue _ key
+            | NodeId key == dhSelfId st -> DHTStemRoute
+            | otherwise                 -> DHTDirectRoute
+        _ -> DHTDirectRoute
 
 ------------------------------------------------------------------------
 -- Announce key
@@ -126,8 +128,8 @@ routingPolicy st msg = case msg of
 -- The announce key is @SHA-256(nodeId bytes)@, giving a uniformly
 -- distributed key in the DHT keyspace under which the node stores its
 -- reachable address.
-announceKey :: NodeId -> ByteString
-announceKey (NodeId nidBytes) = sha256 nidBytes
+announceKey :: NodeId -> IO ByteString
+announceKey (NodeId nidBytes) = SHA256FFI.sha256 nidBytes
 
 ------------------------------------------------------------------------
 -- Message handling
@@ -172,7 +174,8 @@ handleMessage st msg now = do
                 Just val ->
                     return (Just (FindValueReply (dhSelfId st) (Right val)))
                 Nothing -> do
-                    closest <- findClosest (dhRoutingTable st) (deriveNodeId key) (dhtK (dhConfig st))
+                    keyNodeId <- deriveNodeId key
+                    closest <- findClosest (dhRoutingTable st) keyNodeId (dhtK (dhConfig st))
                     return (Just (FindValueReply (dhSelfId st) (Left closest)))
 
         -- Responses to our outgoing queries: no reply needed.

@@ -18,19 +18,19 @@ import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (formatTime, defaultTimeLocale)
 import Control.Monad (unless)
 import UmbraVox.Chat.Session (ChatSession, initChatSession, initChatSessionBob)
-import UmbraVox.Crypto.HMAC (hmacSHA256)
 import UmbraVox.Crypto.ConstantTime (constantEq)
 import UmbraVox.Crypto.MLKEM (mlkemKeyGen,
     MLKEMEncapKey(..), MLKEMDecapKey(..), MLKEMCiphertext(..))
-import UmbraVox.Crypto.Ed25519 (ed25519Sign)
 import UmbraVox.Crypto.Random (randomBytes)
-import UmbraVox.Crypto.SHA256 (sha256)
 import UmbraVox.Crypto.Signal.PQXDH
     (PQPreKeyBundle(..), PQXDHResult(..), pqxdhInitiate, pqxdhRespond)
 import UmbraVox.Crypto.ChaChaPoly (chachaPolyEncrypt, chachaPolyDecrypt)
-import UmbraVox.Crypto.Curve25519 (x25519)
-import UmbraVox.Crypto.HKDF (hkdfSHA256)
 import UmbraVox.Crypto.SecureBytes (toByteString)
+import qualified UmbraVox.Crypto.Generated.FFI.HMAC as HMACFFI
+import qualified UmbraVox.Crypto.Generated.FFI.SHA256 as SHA256FFI
+import qualified UmbraVox.Crypto.Generated.FFI.X25519 as X25519FFI
+import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
+import qualified UmbraVox.Crypto.Generated.FFI.Ed25519Extended as Ed25519FFI
 import UmbraVox.Crypto.Signal.X3DH
     (KeyPair(..), IdentityKey(..), generateIdentityKey, generateKeyPair,
      signPreKey)
@@ -103,7 +103,7 @@ serializeBundle :: IdentityKey -> BS.ByteString -> BS.ByteString
                 -> MLKEMEncapKey -> Maybe BS.ByteString -> IO BS.ByteString
 serializeBundle ik spkPub spkSig (MLKEMEncapKey pqpk) mOpk = do
     edSec <- toByteString (ikEd25519Secret ik)
-    let !pqSig = ed25519Sign edSec pqpk
+    !pqSig <- Ed25519FFI.ed25519Sign edSec pqpk
     pure $ BS.concat
         [ BS.singleton bundleVersion
         , ikX25519Public ik, ikEd25519Public ik, spkPub, spkSig
@@ -167,11 +167,12 @@ handshakeInitiator t aliceIK = do
     -- only Bob (who holds the SPK secret) can recover Alice's identity.
     ek <- generateKeyPair ekRand
     ekSecretBS <- toByteString (kpSecret ek)
-    encIK <- case x25519 ekSecretBS (pqpkbSignedPreKey bundle) of
+    mDhWrap <- X25519FFI.x25519 ekSecretBS (pqpkbSignedPreKey bundle)
+    encIK <- case mDhWrap of
         Nothing -> fail "PQXDH: ephemeral DH for IK wrapping returned all-zero"
         Just dhSecret -> do
-            let !wrapKey = deriveIKWrapKey dhSecret
-                !wrapNonce = BS.replicate 12 0  -- single-use key, fixed nonce is safe
+            !wrapKey <- deriveIKWrapKey dhSecret
+            let !wrapNonce = BS.replicate 12 0  -- single-use key, fixed nonce is safe
                 (!ikCt, !ikTag) = chachaPolyEncrypt wrapKey wrapNonce BS.empty
                                       (ikX25519Public aliceIK)
             pure (ikCt <> ikTag)
@@ -181,14 +182,14 @@ handshakeInitiator t aliceIK = do
     anySend t . encodeMessage $ initMsg
     -- M27.6.7: Key confirmation — exchange MACs derived from the shared
     -- secret to detect MitM relay attacks.
-    let !transcriptHash = sha256 initMsg
-        !ourMAC = keyConfirmMAC (pqxdhSharedSecret result) "initiator" transcriptHash
+    !transcriptHash <- SHA256FFI.sha256 initMsg
+    !ourMAC <- keyConfirmMAC (pqxdhSharedSecret result) "initiator" transcriptHash
     anySend t . encodeMessage $ ourMAC
     peerMACMsg <- anyRecv t 36  -- 4-byte length + 32-byte MAC
     let !peerMAC = BS.drop 4 peerMACMsg
-    unless (verifyKeyConfirmation (pqxdhSharedSecret result) "responder"
-                                  transcriptHash peerMAC) $
-        fail "PQXDH: key confirmation failed (possible MitM detected)"
+    ok1 <- verifyKeyConfirmation (pqxdhSharedSecret result) "responder"
+                                 transcriptHash peerMAC
+    unless ok1 $ fail "PQXDH: key confirmation failed (possible MitM detected)"
     xSecretBS <- toByteString (ikX25519Secret aliceIK)
     mSession <- initChatSession (pqxdhSharedSecret result)
                                 xSecretBS (pqpkbSignedPreKey bundle)
@@ -207,11 +208,12 @@ handshakeResponder t bobIK trustCheck = do
     -- DH(spkSecret, aliceEphemeralPub).  The identity key was encrypted
     -- by the initiator to prevent passive observers from learning it.
     spkSecretBS <- toByteString (kpSecret spk)
-    aliceIKPub <- case x25519 spkSecretBS aliceEKPub of
+    mDhUnwrap <- X25519FFI.x25519 spkSecretBS aliceEKPub
+    aliceIKPub <- case mDhUnwrap of
         Nothing -> fail "PQXDH: ephemeral DH for IK unwrapping returned all-zero"
         Just dhSecret -> do
-            let !wrapKey = deriveIKWrapKey dhSecret
-                !wrapNonce = BS.replicate 12 0
+            !wrapKey <- deriveIKWrapKey dhSecret
+            let !wrapNonce = BS.replicate 12 0
                 -- encAliceIK is 32 bytes ciphertext + 16 bytes Poly1305 tag
                 !ikCiphertext = BS.take 32 encAliceIK
                 !ikTag = BS.drop 32 encAliceIK
@@ -235,12 +237,12 @@ handshakeResponder t bobIK trustCheck = do
         !initMsg = BS.concat
             [ encAliceIK, aliceEKPub
             , putW32BE (fromIntegral (BS.length ctBS)), ctBS ]
-        !transcriptHash = sha256 initMsg
+    !transcriptHash <- SHA256FFI.sha256 initMsg
     peerMACMsg <- anyRecv t 36  -- 4-byte length + 32-byte MAC
     let !peerMAC = BS.drop 4 peerMACMsg
-    unless (verifyKeyConfirmation shared "initiator" transcriptHash peerMAC) $
-        fail "PQXDH: key confirmation failed (possible MitM detected)"
-    let !ourMAC = keyConfirmMAC shared "responder" transcriptHash
+    ok2 <- verifyKeyConfirmation shared "initiator" transcriptHash peerMAC
+    unless ok2 $ fail "PQXDH: key confirmation failed (possible MitM detected)"
+    !ourMAC <- keyConfirmMAC shared "responder" transcriptHash
     anySend t . encodeMessage $ ourMAC
     initChatSessionBob shared spkSecretBS
 
@@ -295,9 +297,9 @@ recvInitialMessage t = do
 -- The key is derived via HKDF-SHA-256 from the ephemeral DH shared secret
 -- DH(ephemeralKey, signedPreKey), which is known only to Alice (who holds
 -- the ephemeral secret) and Bob (who holds the SPK secret).
-deriveIKWrapKey :: BS.ByteString -> BS.ByteString
+deriveIKWrapKey :: BS.ByteString -> IO BS.ByteString
 deriveIKWrapKey dhSecret =
-    hkdfSHA256 (BS.replicate 32 0) dhSecret "UmbraVox_IKWrap_v1" 32
+    HKDFFFI.hkdfSHA256 (BS.replicate 32 0) dhSecret "UmbraVox_IKWrap_v1" 32
 
 ------------------------------------------------------------------------
 -- MitM protection: key confirmation MAC (M23.1.1j)
@@ -318,9 +320,9 @@ deriveIKWrapKey dhSecret =
 keyConfirmMAC :: BS.ByteString  -- ^ Token material (shared secret from handshake)
               -> BS.ByteString  -- ^ Role: "initiator" or "responder"
               -> BS.ByteString  -- ^ Handshake transcript hash
-              -> BS.ByteString  -- ^ 32-byte confirmation MAC
+              -> IO BS.ByteString  -- ^ 32-byte confirmation MAC
 keyConfirmMAC tokenMaterial role handshakeHash =
-    hmacSHA256 tokenMaterial ("UmbraVox_TokenConfirm_" <> role <> handshakeHash)
+    HMACFFI.hmacSHA256 tokenMaterial ("UmbraVox_TokenConfirm_" <> role <> handshakeHash)
 
 -- | Verify the peer's key confirmation MAC.
 --
@@ -334,7 +336,7 @@ verifyKeyConfirmation :: BS.ByteString  -- ^ Token material
                       -> BS.ByteString  -- ^ Peer's role ("initiator" or "responder")
                       -> BS.ByteString  -- ^ Handshake transcript hash
                       -> BS.ByteString  -- ^ Received MAC from peer
-                      -> Bool
-verifyKeyConfirmation tokenMaterial peerRole handshakeHash receivedMAC =
-    let !expectedMAC = keyConfirmMAC tokenMaterial peerRole handshakeHash
-    in constantEq expectedMAC receivedMAC
+                      -> IO Bool
+verifyKeyConfirmation tokenMaterial peerRole handshakeHash receivedMAC = do
+    !expectedMAC <- keyConfirmMAC tokenMaterial peerRole handshakeHash
+    pure (constantEq expectedMAC receivedMAC)

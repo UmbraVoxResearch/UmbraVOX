@@ -432,7 +432,7 @@ testKM022SessionKeyNonZero = do
     -- In the Noise_IK flow, ck4 is derived from multiple DH steps and
     -- cannot be all-zero unless all DH outputs are zero (a separate attack).
     let ck = BS.replicate 32 0xAB   -- non-degenerate chaining key
-        (sendEnc, recvEnc) = splitKeys ck
+    (sendEnc, recvEnc) <- splitKeys ck
     ok1 <- assertEq "KM-022 splitKeys: sendEncKey is 32 bytes"
                32 (BS.length sendEnc)
     ok2 <- assertEq "KM-022 splitKeys: recvEncKey is 32 bytes"
