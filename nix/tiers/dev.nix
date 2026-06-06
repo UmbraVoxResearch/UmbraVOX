@@ -35,7 +35,8 @@ let
   # Common outputs include src/ExtractionOCaml/word_by_word_montgomery.c and
   # related files; on nixpkgs, all generated C lives under $out/include/ and $out/src/.
   # M13.15.2-M13.15.5 will extract these C files and wire them into FFI.
-  fiatCrypto = [ pkgs.fiat-crypto ];
+  # Guard with hasAttr: fiat-crypto availability varies across nixpkgs versions/channels.
+  fiatCrypto = if builtins.hasAttr "fiat-crypto" pkgs then [ pkgs.fiat-crypto ] else [];
 
   devToolsPkgs = with pkgs; [
     (hp.ghcWithPackages (p: [ p.network ]))
