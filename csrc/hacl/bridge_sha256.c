@@ -1,13 +1,13 @@
 /* Bridge: HACL* verified SHA-256 → UmbraVOX FFI interface.
- * This file wraps Hacl_SHA2_256 to match the function signatures
- * expected by src/UmbraVox/Crypto/Generated/FFI/SHA256.hs.
+ * This file wraps Hacl_Hash_SHA2 (upstream HACL* dist) to match the function
+ * signatures expected by src/UmbraVox/Crypto/Generated/FFI/SHA256.hs.
  *
  * When HACL* is vendored, this replaces csrc/generated/sha256.c
  * in the cabal c-sources list.
  *
- * HACL* entry point (from Hacl_SHA2_256.h):
+ * HACL* entry point (from Hacl_Hash_SHA2.h):
  *
- *   void Hacl_SHA2_256_hash(uint8_t *output, uint8_t *input, uint32_t input_len);
+ *   void Hacl_Hash_SHA2_hash_256(uint8_t *output, uint8_t *input, uint32_t input_len);
  *
  * FFI symbols required by SHA256.hs:
  *   sha256_link_probe  — link-time probe; returns non-zero when present
@@ -22,8 +22,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
-/* Forward declaration — resolved when Hacl_SHA2_256.c is compiled in. */
-extern void Hacl_SHA2_256_hash(uint8_t *output, uint8_t *input, uint32_t input_len);
+/* Forward declaration — resolved when Hacl_Hash_SHA2.c is compiled in. */
+extern void Hacl_Hash_SHA2_hash_256(uint8_t *output, uint8_t *input, uint32_t input_len);
 
 /* SHA-256 output is always 32 bytes (256 bits). */
 #define SHA256_DIGEST_BYTES 32
@@ -41,7 +41,7 @@ sha256_hash(uint8_t *output, const uint8_t *input, uint32_t input_len)
 {
     /* HACL* takes a non-const pointer; the cast is safe — it does not
      * mutate the input buffer. */
-    Hacl_SHA2_256_hash(output, (uint8_t *)(uintptr_t)input, input_len);
+    Hacl_Hash_SHA2_hash_256(output, (uint8_t *)(uintptr_t)input, input_len);
 }
 
 /*

@@ -1,9 +1,28 @@
 #!/usr/bin/env bash
 # scripts/lib-vm.sh — Shared VM/QEMU/SSH helper functions (M20.7.4).
 #
-# Sourced by vm-*-setup.sh scripts to eliminate duplicated image
-# download, hash verification, QEMU invocation, SSH setup, and
-# source-tree packaging logic.
+# Sourced by platform-setup scripts (vm-freebsd-setup.sh, vm-openbsd-setup.sh,
+# vm-netbsd-setup.sh, vm-dragonfly-setup.sh, vm-illumos-setup.sh) which are
+# intentionally kept as shell per project policy (see doc/TODO.txt).
+#
+# Shell-to-Go migration status (as of v0.6.3):
+#   MIGRATED (removed from this file, Go implementation is authoritative):
+#     vm_download_and_verify  → tools/pkg/download.FetchFile
+#     vm_build_seed_disk      → tools/pkg/disk.CreateCloudInitSeedDisk
+#     vm_copy_source_ssh      → removed (no callers; Go uses 9p shares instead)
+#
+#   KEPT (platform scripts still source these; platform scripts intentionally
+#         stay as shell for portability to FreeBSD/OpenBSD/NetBSD/DragonFlyBSD/illumos):
+#     vm_log, vm_ok, vm_fail, vm_die  — logging
+#     vm_require_cmd                  — prerequisite checks
+#     vm_detect_accel                 — KVM detection
+#     vm_ensure_ssh_key               — ephemeral SSH key generation
+#     vm_wait_for_ssh                 — SSH readiness polling
+#     vm_guest_cmd                    — SSH command execution
+#     vm_create_overlay               — qcow2 COW overlay (freebsd, illumos)
+#     vm_build_source_fat             — FAT32 source disk (freebsd, illumos)
+#     vm_build_init_iso               — ISO builder (freebsd, illumos)
+#     vm_check_smoke_result           — smoke test result parsing
 #
 # Usage (from a VM setup script):
 #   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -48,33 +67,6 @@ vm_detect_accel() {
         vm_log "WARNING: /dev/kvm not present — falling back to TCG (slow)"
         export VM_ACCEL="tcg"
     fi
-}
-
-# --------------------------------------------------------------------------
-# Image download and hash verification
-# --------------------------------------------------------------------------
-
-# Download a file, verify its SHA-256, and remove it on failure.
-# Arguments: url dest_path expected_sha256
-vm_download_and_verify() {
-    local url="$1"
-    local dest="$2"
-    local expected_sha256="$3"
-
-    vm_log "Downloading: $url"
-    if command -v curl >/dev/null 2>&1; then
-        curl -L --progress-bar -o "$dest" "$url"
-    elif command -v wget >/dev/null 2>&1; then
-        wget -q --show-progress -O "$dest" "$url"
-    else
-        vm_die "neither curl nor wget found"
-    fi
-
-    echo "${expected_sha256}  ${dest}" | sha256sum -c - || {
-        vm_fail "SHA-256 verification failed for $(basename "$dest") — aborting."
-        rm -f "$dest"
-        return 1
-    }
 }
 
 # --------------------------------------------------------------------------
@@ -140,81 +132,6 @@ vm_guest_cmd() {
         -i "$key" \
         -p "$port" \
         root@127.0.0.1 "$@"
-}
-
-# Copy the source tree to the guest via tar|ssh.
-# Arguments: source_root ssh_key_path ssh_port guest_dest
-vm_copy_source_ssh() {
-    local src_root="$1"
-    local key="$2"
-    local port="$3"
-    local guest_dest="$4"
-
-    vm_log "Copying source tree to guest ${guest_dest}..."
-    vm_guest_cmd "$key" "$port" "mkdir -p $guest_dest"
-
-    if command -v rsync >/dev/null 2>&1; then
-        rsync -az --exclude='.git' --exclude='dist-newstyle' --exclude='build' \
-            -e "ssh -o StrictHostKeyChecking=no -i '${key}' -p ${port}" \
-            "${src_root}/" \
-            "root@127.0.0.1:${guest_dest}/"
-    else
-        tar -C "$src_root" \
-            --exclude='.git' --exclude='dist-newstyle' --exclude='build' \
-            -czf - . \
-        | vm_guest_cmd "$key" "$port" "tar -C $guest_dest -xzf -"
-    fi
-    vm_log "Source tree copied."
-}
-
-# --------------------------------------------------------------------------
-# cloud-init seed disk
-# --------------------------------------------------------------------------
-
-# Build a FAT cloud-init NoCloud seed disk with the given SSH public key.
-# Arguments: seed_img_path ssh_pub_key instance_id hostname
-vm_build_seed_disk() {
-    local seed_img="$1"
-    local pub_key="$2"
-    local instance_id="${3:-umbravox-vm-1}"
-    local hostname="${4:-umbravox-vm}"
-
-    local seed_tmp
-    seed_tmp="$(mktemp -d "${VM_TMP_DIR:-/tmp}/seed.XXXXXX")"
-
-    cat > "${seed_tmp}/meta-data" <<EOF
-instance-id: ${instance_id}
-local-hostname: ${hostname}
-EOF
-
-    cat > "${seed_tmp}/user-data" <<EOF
-#cloud-config
-users:
-  - name: root
-    ssh_authorized_keys:
-      - ${pub_key}
-disable_root: false
-ssh_pwauth: false
-EOF
-
-    dd if=/dev/zero of="$seed_img" bs=1M count=1 2>/dev/null
-    local fs_ok=0
-    if command -v mkdosfs >/dev/null 2>&1; then
-        mkdosfs -n cidata "$seed_img" && fs_ok=1
-    elif command -v mkfs.vfat >/dev/null 2>&1; then
-        mkfs.vfat -n CIDATA "$seed_img" && fs_ok=1
-    fi
-
-    if ((fs_ok)) && command -v mcopy >/dev/null 2>&1; then
-        mcopy -i "$seed_img" "${seed_tmp}/meta-data" ::/meta-data
-        mcopy -i "$seed_img" "${seed_tmp}/user-data"  ::/user-data
-        vm_log "cloud-init seed disk prepared: $seed_img"
-    else
-        vm_log "WARNING: cannot build cloud-init seed disk (mkdosfs/mcopy missing)"
-        seed_img=""
-    fi
-
-    rm -rf "$seed_tmp"
 }
 
 # --------------------------------------------------------------------------

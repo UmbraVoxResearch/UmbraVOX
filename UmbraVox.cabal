@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               UmbraVox
-version:            0.6.3
+version:            0.7.0
 synopsis:           Decentralized encrypted communications protocol
 description:
   UmbraVox is a research-oriented encrypted messaging project with
@@ -155,6 +155,9 @@ library
       UmbraVox.Crypto.Generated.FFI.Dandelion
       UmbraVox.Crypto.Generated.FFI.NetworkProtocol
       UmbraVox.Crypto.Generated.FFI.SessionState
+      -- M13.15.4 / M13.15.5: fiat-crypto bridge link-probe FFI modules
+      UmbraVox.Crypto.Generated.FFI.BridgeEd25519
+      UmbraVox.Crypto.Generated.FFI.BridgeX25519
       -- Network
       UmbraVox.Network.TransportClass
       UmbraVox.Network.Transport
@@ -307,13 +310,11 @@ library
       csrc/generated/mlkem768.c
       csrc/hacl/Hacl_MAC_Poly1305.c
       csrc/hacl/bridge_poly1305.c
-      -- M13.15.8: HACL* verified SHA-256 (replaces generated/sha256.c as primary impl)
-      -- generated/sha256.c is RETAINED in csrc/ as differential testing oracle.
-      csrc/hacl/Hacl_SHA2_256.c
+      -- M13.15.8/9: HACL* verified SHA-256 and SHA-512 via upstream Hacl_Hash_SHA2.
+      -- generated/sha256.c and generated/sha512.c are RETAINED as differential testing oracles.
+      -- hacl_sha256_portable.c / hacl_sha512_portable.c are retained for differential testing only.
+      csrc/hacl/Hacl_Hash_SHA2.c
       csrc/hacl/bridge_sha256.c
-      -- M13.15.9: HACL* verified SHA-512 (replaces generated/sha512.c as primary impl)
-      -- generated/sha512.c is RETAINED in csrc/ as differential testing oracle.
-      csrc/hacl/Hacl_SHA2_512.c
       csrc/hacl/bridge_sha512.c
       csrc/generated/x25519.c
       csrc/generated/vrf.c
@@ -325,8 +326,12 @@ library
       csrc/generated/networkprotocol.c
       csrc/generated/sessionstate.c
       csrc/constant_time.c
-    include-dirs: csrc csrc/hacl
-    cc-options: -fstack-protector-strong -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security
+      -- M13.15.4 / M13.15.5: fiat-crypto GF(2^255-19) field ops + Ed25519/X25519 bridges
+      csrc/fiat/fiat_25519_64.c
+      csrc/fiat/bridge_ed25519.c
+      csrc/fiat/bridge_x25519.c
+    include-dirs: csrc csrc/hacl csrc/fiat
+    cc-options: -fstack-protector-strong -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security -DFIAT_VENDORED
   if flag(pure-haskell-crypto)
     cpp-options: -DPURE_HASKELL_CRYPTO
   if flag(chaste-build)

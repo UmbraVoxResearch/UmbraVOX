@@ -1,6 +1,6 @@
 # Assumption Dependency Graph
 
-30 `assume val` declarations across 24 F* specifications.
+30 `assume val` declarations across 32 F* specifications.
 This document maps every assumption to a classification and traces
 dependency arrows so that auditors can identify the irreducible trust
 roots of the UmbraVOX formal-verification effort.

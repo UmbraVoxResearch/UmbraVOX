@@ -1,13 +1,13 @@
 /* Bridge: HACL* verified SHA-512 → UmbraVOX FFI interface.
- * This file wraps Hacl_SHA2_512 to match the function signatures
- * expected by src/UmbraVox/Crypto/Generated/FFI/SHA512.hs.
+ * This file wraps Hacl_Hash_SHA2 (upstream HACL* dist) to match the function
+ * signatures expected by src/UmbraVox/Crypto/Generated/FFI/SHA512.hs.
  *
  * When HACL* is vendored, this replaces csrc/generated/sha512.c
  * in the cabal c-sources list.
  *
- * HACL* entry point (from Hacl_SHA2_512.h):
+ * HACL* entry point (from Hacl_Hash_SHA2.h):
  *
- *   void Hacl_SHA2_512_hash(uint8_t *output, uint8_t *input, uint32_t input_len);
+ *   void Hacl_Hash_SHA2_hash_512(uint8_t *output, uint8_t *input, uint32_t input_len);
  *
  * FFI symbols required by SHA512.hs:
  *   sha512_link_probe  — link-time probe; returns non-zero when present
@@ -20,8 +20,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
-/* Forward declaration — resolved when Hacl_SHA2_512.c is compiled in. */
-extern void Hacl_SHA2_512_hash(uint8_t *output, uint8_t *input, uint32_t input_len);
+/* Forward declaration — resolved when Hacl_Hash_SHA2.c is compiled in. */
+extern void Hacl_Hash_SHA2_hash_512(uint8_t *output, uint8_t *input, uint32_t input_len);
 
 /* SHA-512 output is always 64 bytes (512 bits). */
 #define SHA512_DIGEST_BYTES 64
@@ -37,7 +37,7 @@ extern void Hacl_SHA2_512_hash(uint8_t *output, uint8_t *input, uint32_t input_l
 void
 sha512_hash(uint8_t *output, const uint8_t *input, uint32_t input_len)
 {
-    Hacl_SHA2_512_hash(output, (uint8_t *)(uintptr_t)input, input_len);
+    Hacl_Hash_SHA2_hash_512(output, (uint8_t *)(uintptr_t)input, input_len);
 }
 
 /*

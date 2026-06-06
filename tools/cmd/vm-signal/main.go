@@ -277,22 +277,33 @@ func checkJarResult(jarOutputDir string, qemuErr error) int {
 	return 1
 }
 
+// checkHealthURL performs a single HTTP GET against healthURL using client,
+// returning nil on HTTP 200, or the error/status encountered.
+// Extracted for testability (allows injecting httptest server and custom client).
+func checkHealthURL(client *http.Client, healthURL string) error {
+	resp, err := client.Get(healthURL)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		return nil
+	}
+	return fmt.Errorf("unexpected status %d from %s", resp.StatusCode, healthURL)
+}
+
 // runCheckHealth performs a host-side HTTP health check against the Signal-Server
 // admin endpoint, retrying until success or max retries exhausted.
 func runCheckHealth(host string, port int, maxRetries int) error {
 	client := &http.Client{Timeout: 5 * time.Second}
-	url := fmt.Sprintf("http://%s:%d/healthcheck", host, port)
+	healthURL := fmt.Sprintf("http://%s:%d/healthcheck", host, port)
 
 	logMsg(blue, fmt.Sprintf("Checking Signal-Server health at %s:%d...", host, port))
 
 	for i := 0; i < maxRetries; i++ {
-		resp, err := client.Get(url)
-		if err == nil {
-			resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				logMsg(green, "Health check passed")
-				return nil
-			}
+		if err := checkHealthURL(client, healthURL); err == nil {
+			logMsg(green, "Health check passed")
+			return nil
 		}
 		time.Sleep(2 * time.Second)
 	}

@@ -41,8 +41,8 @@ These components end up in the final executable.
 | filepath | GHC boot lib | BSD-3-Clause | Path manipulation |
 | process | GHC boot lib | BSD-3-Clause | Process spawning |
 | CryptoGen C | `csrc/generated/*.c` | Apache-2.0 | Our generated C code |
-| HACL* | `csrc/hacl/` | Apache-2.0 | Verified crypto (when vendored) |
-| fiat-crypto | `csrc/fiat/` | MIT | Verified field arithmetic (when vendored) |
+| HACL* (`hacl-star` 504c298) | `csrc/hacl/` | MIT | F*-verified crypto; `pkg:github/hacl-star/hacl-star@504c298` |
+| fiat-crypto (`v0.0.9`) | `csrc/fiat/` | MIT | Coq-verified field arithmetic; `pkg:github/mit-plv/fiat-crypto@v0.0.9` |
 | ct_helpers.h | `csrc/ct_helpers.h` | Apache-2.0 | Constant-time helpers (our code) |
 | constant_time.c | `csrc/constant_time.c` | Apache-2.0 | Constant-time comparisons (our code) |
 | secure_zero.c | `csrc/secure_zero.c` | Apache-2.0 | Secure memory zeroing (our code) |
@@ -95,27 +95,30 @@ CycloneDX is preferred over SPDX for this project because the dependency
 set is small and hand-audited, and CycloneDX's JSON schema integrates
 more naturally with CI tooling.
 
-## 5. Generation: `./uv sbom` (Future)
+## 5. Generation: `./uv sbom`
 
-A planned `./uv sbom` command will generate a CycloneDX JSON document
-covering all runtime dependencies. The command will:
+Run `./uv sbom` to generate a CycloneDX 1.5 JSON document covering all
+runtime dependencies. The command:
 
-1. Read the pinned dependency list from the build configuration.
-2. Walk `csrc/` to enumerate vendored C components and their licenses.
-3. Query the Cabal plan for GHC boot library versions.
-4. Emit a CycloneDX 1.5+ JSON file to `dist/sbom.cdx.json`.
-5. Validate the output against the CycloneDX JSON schema.
+1. Parses `cabal.project.freeze` for pinned Haskell package versions.
+2. Walks `csrc/generated/` for CryptoGen-generated C sources.
+3. Detects vendored HACL* in `csrc/hacl/` and emits a single `hacl-star`
+   component at commit `504c298` (MIT, `pkg:github/hacl-star/hacl-star@504c298`).
+4. Detects vendored fiat-crypto in `csrc/fiat/` and emits a single
+   `fiat-crypto` component at tag `v0.0.9` (MIT, `pkg:github/mit-plv/fiat-crypto@v0.0.9`).
+5. Parses `tools/go.mod` for Go tool dependencies.
+6. Parses `flake.lock` for pinned Nix inputs.
+7. Emits `build/sbom.cdx.json`.
 
-Until `./uv sbom` is implemented, this document serves as the
-authoritative SBOM.
+Run `./uv check sbom` to validate the generated file.
 
 ## 6. SPDX License Summary
 
 All runtime components use one of:
 
-- `Apache-2.0` -- our code, HACL*
+- `Apache-2.0` -- our code (UmbraVOX sources, CryptoGen C)
 - `BSD-3-Clause` -- GHC and its boot libraries
-- `MIT` -- fiat-crypto
+- `MIT` -- HACL* (`hacl-star` 504c298), fiat-crypto (`v0.0.9`), nixpkgs
 - `Public-domain` -- SQLite
 
 No copyleft licenses appear in the runtime dependency set.

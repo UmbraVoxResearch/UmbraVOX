@@ -6,6 +6,63 @@ The format is based on Keep a Changelog 1.1.0 and this project aims to follow Se
 
 ## [Unreleased]
 
+### v0.7.0 — HACL* verified C integration, Kyber768 differential oracle, Wycheproof vectors, ML-KEM KAT
+
+#### Formally Verified C Integration (M13.15)
+- HACL* replaces CryptoGen as primary runtime implementation for all covered primitives
+  - SHA-256: csrc/hacl/Hacl_SHA2_256.c replaces csrc/generated/sha256.c (M13.15.8)
+  - SHA-512: csrc/hacl/Hacl_SHA2_512.c replaces csrc/generated/sha512.c (M13.15.9)
+  - ChaCha20: csrc/hacl/Hacl_ChaCha20.c replaces csrc/generated/chacha20.c (M13.15.10)
+  - Poly1305: csrc/hacl/Hacl_Poly1305.c replaces csrc/generated/poly1305.c (M13.15.11)
+  - SHA3/Keccak: csrc/hacl/Hacl_SHA3.c replaces csrc/generated/keccak.c (M13.15.12)
+  - HMAC: csrc/hacl/Hacl_HMAC.c replaces csrc/generated/hmac.c (M13.15.13)
+  - HKDF: csrc/hacl/Hacl_HKDF.c replaces csrc/generated/hkdf.c (M13.15.14)
+  - HACL* C headers/sources vendored as dependency (M13.15.7)
+  - Differential test: HACL* vs CryptoGen for all replaced primitives (M13.15.15)
+- fiat-crypto GF(2^255-19) field arithmetic added (M13.15.1-3)
+  - fiat-crypto added as nix dependency (pkgs.fiat-crypto in dev.nix, shell.nix, flake.nix)
+  - csrc/fiat/fiat_25519_64.c: standalone GF(2^255-19) field arithmetic (51-bit limb ABI)
+    9 ops: mul, square, add, sub, opp, carry, to_bytes, from_bytes, selectznz
+  - bridge_ed25519.c: wires fiat ops to umbravox_ed_* (point_add, point_double, encode, decode, scalar_mult)
+  - bridge_x25519.c: full RFC 7748 §5 Montgomery ladder using fiat_25519_64.c field ops
+  - Differential test: fiat-crypto vs CryptoGen output (M13.15.6)
+  - CryptoGen retained as differential oracle for all non-HACL* primitives
+- Three-way differential infrastructure: HACL*/fiat-crypto vs CryptoGen vs libsodium/HACL* reference
+
+#### Kyber768 Differential Testing Infrastructure (M30)
+- Kyber768 reference oracle VM added (nix/vm-kyber-oracle.nix) (M30.1)
+- ./uv vm kyber generate-kat subcommand: runs oracle VM and extracts KAT vectors (M30.2)
+- Differential decaps + round-trip test against reference oracle (M30.3)
+- Oracle VM nix files moved to contrib/oracles/ (M30)
+
+#### Oracle Source Vendoring
+- 7 oracle source trees vendored offline in contrib/oracles/src/
+  - Sources available without network access for reproducible builds
+  - Third-party license inventory added (NOTICE file)
+
+#### Wycheproof Test Vectors (M25.1/M25.3)
+- Wycheproof harness loading AES-GCM, Ed25519, X25519 test vectors
+- Wycheproof-format vector files added for AES-GCM, Ed25519, X25519
+
+#### ML-KEM KAT Infrastructure (M25.2/M30.4)
+- Test.Crypto.Vectors.MLKEM_KAT: KAT vector loader + decaps/round-trip harness
+- ML-KEM KAT vectors integrated into test suite
+
+#### Builder VM Network Isolation (M28.1/M28.2)
+- restrict=on NIC added to builder VM (blocks all outbound by default)
+- guestfwd wired when network filter is active
+- SNI-based routing proxy (tools/cmd/netproxy): multi-destination allowlists
+  with per-SNI routing decisions
+
+#### Runtime Image in Builder VM (M28.3)
+- Runtime image build moved inside builder VM
+- ./uv vm build-runtime-image now executes inside isolated builder environment
+
+#### Assurance Evidence (M29.3)
+- F* spec count corrected to 32 verified specifications
+- Coq proof count updated to 19 files / 613 Qed
+- Assurance evidence gaps closed; counts reflect actual proof artifact inventory
+
 ### v0.6.0 — vmctl framework, 4-tier NixOS images, 3-tier CI, 851 tests on GHC 9.14.1
 
 #### VM Infrastructure

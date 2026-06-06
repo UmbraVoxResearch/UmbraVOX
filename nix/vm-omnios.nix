@@ -21,10 +21,26 @@ let
   imageFile     = "omnios-${omniosRelease}.cloud.vmdk.bz2";
   imageUrl      = "https://downloads.omnios.org/media/${omniosRelease}/${imageFile}";
 
-  # sha256 placeholder — replace after: nix-prefetch-url <imageUrl>
+  # M22.2 HASH RESOLUTION — run inside the builder VM (not on host):
+  #
+  #   Official checksum source:
+  #     https://downloads.omnios.org/media/r151052/omnios-r151052.cloud.vmdk.bz2.sha256
+  #   (OmniOS publishes a per-file .sha256 sidecar next to each image.)
+  #
+  #   Steps to resolve:
+  #     1. Inside builder VM, run:
+  #          nix-prefetch-url \
+  #            https://downloads.omnios.org/media/r151052/omnios-r151052.cloud.vmdk.bz2
+  #        This prints the Nix base32 sha256 — use that value below.
+  #     2. Alternatively, fetch the .sha256 sidecar:
+  #          curl https://downloads.omnios.org/media/r151052/omnios-r151052.cloud.vmdk.bz2.sha256
+  #        then convert the hex digest: nix hash to-base32 --type sha256 <hex>
+  #     3. Replace pkgs.lib.fakeSha256 with the resulting string.
+  #
+  #   Expected format: "1abc2def3..." (Nix base32, 52 chars)
   compressedImage = pkgs.fetchurl {
     url    = imageUrl;
-    sha256 = pkgs.lib.fakeSha256;
+    sha256 = pkgs.lib.fakeSha256; # TODO(M22.2): replace with real hash — see instructions above
     name   = "omnios-${omniosRelease}.cloud.vmdk.bz2";
   };
 

@@ -262,66 +262,66 @@ func scanGeneratedC(root string) []cdxComp {
 	return comps
 }
 
-// scanHACL checks for vendored HACL* sources.
+// scanHACL checks for vendored HACL* sources and emits a single component.
+// Source: https://github.com/hacl-star/hacl-star commit 504c298 (dist/gcc-compatible/).
 func scanHACL(root string) []cdxComp {
 	dir := filepath.Join(root, "csrc", "hacl")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
 	}
-	var cFiles []string
+	hasCFiles := false
 	for _, e := range entries {
 		if !e.IsDir() && strings.HasSuffix(e.Name(), ".c") {
-			cFiles = append(cFiles, strings.TrimSuffix(e.Name(), ".c"))
+			hasCFiles = true
+			break
 		}
 	}
-	if len(cFiles) == 0 {
+	if !hasCFiles {
 		return nil
 	}
-	var comps []cdxComp
-	for _, name := range cFiles {
-		comps = append(comps, cdxComp{
+	return []cdxComp{
+		{
 			Type:    "library",
-			Name:    "hacl-" + name,
-			Version: "0.0.0",
+			Name:    "hacl-star",
+			Version: "504c298",
 			Licenses: []cdxLicWrap{
-				{License: cdxLicense{ID: "Apache-2.0"}},
+				{License: cdxLicense{ID: "MIT"}},
 			},
-			PURL: "pkg:github/cryspen/hacl-packages",
-		})
+			PURL: "pkg:github/hacl-star/hacl-star@504c298",
+		},
 	}
-	return comps
 }
 
-// scanFiat checks for vendored fiat-crypto sources.
+// scanFiat checks for vendored fiat-crypto sources and emits a single component.
+// Source: https://github.com/mit-plv/fiat-crypto (fiat-c/src/); vendored at tag v0.0.9.
 func scanFiat(root string) []cdxComp {
 	dir := filepath.Join(root, "csrc", "fiat")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
 	}
-	var cFiles []string
+	hasCFiles := false
 	for _, e := range entries {
 		if !e.IsDir() && strings.HasSuffix(e.Name(), ".c") {
-			cFiles = append(cFiles, strings.TrimSuffix(e.Name(), ".c"))
+			hasCFiles = true
+			break
 		}
 	}
-	if len(cFiles) == 0 {
+	if !hasCFiles {
 		return nil
 	}
-	var comps []cdxComp
-	for _, name := range cFiles {
-		comps = append(comps, cdxComp{
+	return []cdxComp{
+		{
 			Type:    "library",
-			Name:    "fiat-" + name,
-			Version: "0.0.0",
+			Name:    "fiat-crypto",
+			Version: "v0.0.9",
 			Licenses: []cdxLicWrap{
 				{License: cdxLicense{ID: "MIT"}},
 			},
-			PURL: "pkg:github/mit-plv/fiat-crypto",
-		})
+			PURL: "pkg:github/mit-plv/fiat-crypto@v0.0.9",
+		},
 	}
-	return comps
 }
 
 // scanGoMod parses tools/go.mod for require directives.

@@ -28,7 +28,7 @@ jobs:
       - name: Generated C vs libsodium/HACL* oracle
         run: ./uv test differential
 
-      - name: F* admit count, assume inventory, assurance matrix
+      - name: F* admit count, assume inventory, assurance matrix (32 specs)
         run: ./uv check pre-release
 
       - name: Security audit (regression, negative, boundary, adversarial-proto, constant-time, key-lifecycle)

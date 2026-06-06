@@ -60,10 +60,29 @@ extern void Hacl_HKDF_expand_sha2_256(
 #define HKDF_SHA256_PRK_BYTES 32
 
 /*
+ * RFC 5869 §2.2: when salt is not provided, it is set to a string of
+ * HashLen (32) zero bytes.  HACL* does not handle a NULL salt pointer —
+ * it dereferences it unconditionally.  We provide a static zero-filled
+ * buffer and substitute it whenever the caller passes salt_len == 0
+ * with a NULL (or any) salt pointer.
+ *
+ * Bridge-level safety rule: callers MUST either pass a valid salt buffer
+ * with salt_len > 0, or pass salt_len == 0 (in which case the default
+ * zero salt is used automatically by this wrapper).
+ *
+ * The Haskell layer (UmbraVox.Crypto.HKDF.hkdfSHA256Extract) already
+ * substitutes a zero-filled ByteString for empty salt before calling,
+ * so this guard is a belt-and-suspenders check for direct C callers.
+ */
+static const uint8_t hkdf_zero_salt[HKDF_SHA256_PRK_BYTES] = {0};
+
+/*
  * hkdf_sha256_extract — HKDF-Extract with HMAC-SHA-256.
  *
  *   prk      : caller-allocated output buffer of at least 32 bytes
- *   salt     : salt bytes (pass NULL / len=0 for RFC default zero-filled salt)
+ *   salt     : salt bytes; if salt_len == 0, the RFC 5869 default
+ *              (32 zero bytes) is used automatically — do not pass
+ *              a NULL pointer with salt_len > 0.
  *   salt_len : byte length of salt
  *   ikm      : input keying material
  *   ikm_len  : byte length of ikm
@@ -73,10 +92,12 @@ hkdf_sha256_extract(uint8_t *prk,
                     const uint8_t *salt, uint32_t salt_len,
                     const uint8_t *ikm,  uint32_t ikm_len)
 {
+    const uint8_t *effective_salt = (salt_len == 0) ? hkdf_zero_salt : salt;
+    uint32_t       effective_len  = (salt_len == 0) ? HKDF_SHA256_PRK_BYTES : salt_len;
     Hacl_HKDF_extract_sha2_256(
         prk,
-        (uint8_t *)(uintptr_t)salt, salt_len,
-        (uint8_t *)(uintptr_t)ikm,  ikm_len);
+        (uint8_t *)(uintptr_t)effective_salt, effective_len,
+        (uint8_t *)(uintptr_t)ikm,            ikm_len);
 }
 
 /*
@@ -121,11 +142,14 @@ hkdf_sha256(uint8_t *okm,
             const uint8_t *info, uint32_t info_len,
             uint32_t okm_len)
 {
+    /* Apply the same RFC 5869 default-salt substitution as hkdf_sha256_extract. */
+    const uint8_t *effective_salt = (salt_len == 0) ? hkdf_zero_salt : salt;
+    uint32_t       effective_len  = (salt_len == 0) ? HKDF_SHA256_PRK_BYTES : salt_len;
     uint8_t prk[HKDF_SHA256_PRK_BYTES];
     Hacl_HKDF_extract_sha2_256(
         prk,
-        (uint8_t *)(uintptr_t)salt, salt_len,
-        (uint8_t *)(uintptr_t)ikm,  ikm_len);
+        (uint8_t *)(uintptr_t)effective_salt, effective_len,
+        (uint8_t *)(uintptr_t)ikm,            ikm_len);
     Hacl_HKDF_expand_sha2_256(
         okm,
         prk, HKDF_SHA256_PRK_BYTES,

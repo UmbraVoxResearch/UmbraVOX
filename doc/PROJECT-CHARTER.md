@@ -101,7 +101,7 @@ This project does NOT claim:
 | v0.6.1 | Coq proofs for 18 F* assume vals (Ed25519/X25519/VRF/SHA-256), verified C (HACL* + fiat-crypto), CycloneDX SBOM |
 | v0.6.2 | Security audit v2 (91 findings), SecureBytes completion, ephemeral signing, SBOM, YAML wiring |
 | v0.6.3 | Firecracker runtime path removed, stub removal, Go tests (netproxy, vmctl), CI hardening |
-| post-v0.6.3 | Signal bridge WebSocket provisioning wired (M26.1–M26.2), CI hardening (M24/M28), nix tier consistency (M23) |
+| v0.7.0 | HACL* verified C (7 primitives), fiat-crypto GF(2^255-19), Kyber768 differential oracle, Wycheproof vectors, ML-KEM KAT, builder VM network isolation, oracle vendoring (contrib/oracles/src/) |
 
 ## Team
 

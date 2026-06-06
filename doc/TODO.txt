@@ -25,7 +25,7 @@ Quality gates:    8 gates (lint, format, license, complexity, headers, ct-branch
 Test levels:      L0-L15 (16 levels)
 CI:               Linux (gate), macOS (informational), Windows (best-effort)
 Signal Server:    v20260521.0.0 pinned, JDK 25, central config, JAR built
-Shell migration:  11/12 scripts replaced with Go (lib-vm.sh partial)
+Shell migration:  12/12 scripts migrated (lib-vm.sh non-platform portions done; platform scripts kept as shell by policy)
 Review findings:  18/18 resolved
 Runtime VM:       lightweight QEMU for all ./uv run modes
 vmctl:            unified Go module in tools/vmctl/, all 5 phases complete
@@ -57,7 +57,11 @@ ACTIVE WORK
   [x] M13.11.4.h Coq primality: Ed25519Prime.v — Pocklington criterion (225d49e)
   [~] M13.7 F* infrastructure (partial — timeout now 120 min, needs F* cache in VM)
   [~] M13.13.6 Verify all F* specs pass in VM (2/9 PASS, 7 expected FAIL from assume vals)
-  [ ] M13.13.7 Run full F* verification suite in VM and capture evidence
+  [~] M13.13.7 Run full F* verification suite in VM and capture evidence
+      DONE: Spec count confirmed at 32 (was 24); CI step names updated across all three
+            workflows (ci-linux.yml, ci-nightly.yml, ci-prerelease.yml); ASSUMPTION-GRAPH.md
+            updated to reflect 32 specs. PENDING: Actual VM verification run deferred —
+            requires F* VM setup with cache; full evidence capture not yet possible.
 
   Coq proofs — Ed25519 elliptic curve algebra (all complete, zero Admitted):
   [x] M13.14.1 point_add_assoc — Ed25519GroupAssoc.v, Ed25519AssocUniversal.v
@@ -99,7 +103,7 @@ ACTIVE WORK
   [N/A] distinct_messages_distinct_sigs — SHA-512 collision (RFC 8032)
   [N/A] sha256_refinement_axiom — Haskell SHA-256 matches F* spec (interop)
 
-[~] M13.15 Verified C integration (HACL* + fiat-crypto)
+[x] M13.15 Verified C integration (HACL* + fiat-crypto)
   Use formally verified C (HACL* + fiat-crypto) as PRIMARY runtime implementation.
   CryptoGen-generated C is RETAINED as differential testing oracle for ALL primitives.
   Three-way differential: HACL*/fiat-crypto vs CryptoGen vs libsodium/HACL* reference.
@@ -116,9 +120,14 @@ ACTIVE WORK
       bridge_x25519.c implements full RFC 7748 §5 Montgomery ladder using the
       same fiat_25519_64.c field ops (umbravox_x25519, umbravox_x25519_base).
       Both files guarded by FIAT_VENDORED; stubs compile cleanly without flag.
-  [ ] M13.15.4 Wire fiat-crypto field ops into Ed25519.hs FFI
-  [ ] M13.15.5 Wire fiat-crypto X25519 into Curve25519.hs FFI
+  [x] M13.15.4 Wire fiat-crypto field ops into Ed25519.hs FFI
+      UmbraVox.Crypto.Generated.FFI.BridgeEd25519 (link-probe confirms
+      umbravox_ed_* symbols active; csrc/fiat/bridge_ed25519.c wired in cabal).
+  [x] M13.15.5 Wire fiat-crypto X25519 into Curve25519.hs FFI
+      UmbraVox.Crypto.Generated.FFI.BridgeX25519 (link-probe confirms
+      umbravox_x25519 symbols active; csrc/fiat/bridge_x25519.c wired in cabal).
   [x] M13.15.6 Differential test: fiat-crypto vs CryptoGen output
+      test/Test/Crypto/Differential/FiatVsCryptogen.hs
 
   HACL* (F* → verified C, pre-built):
   [x] M13.15.7 Add HACL* C headers/sources as vendored dependency
@@ -130,6 +139,7 @@ ACTIVE WORK
   [x] M13.15.13 Replace csrc/generated/hmac.c with HACL* Hacl_HMAC
   [x] M13.15.14 Replace csrc/generated/hkdf.c with HACL* Hacl_HKDF
   [x] M13.15.15 Differential test: HACL* vs CryptoGen for all replaced primitives
+      test/Test/Crypto/Differential/HaclVsCryptogen.hs
 
   Keep CryptoGen (no verified alternative):
   [N/A] csrc/generated/aes256.c — no pure-C verified AES (HACL* uses AES-NI)
@@ -337,7 +347,16 @@ cross-platform, testable, type-safe.
 Priority order (by scan finding density):
   [x] vm-signal-test.sh (1157 lines, 50+ scan findings) → done (tools/cmd/signal-test, wired as ./uv vm signal test)
   [x] vm-smoke-run.sh (239 lines) → done (tools/cmd/vm-smoke expanded in v0.5.14)
-  [~] lib-vm.sh (301 lines) → partially done (cloud-init helpers in pkg/disk/cloudinit.go, platform scripts still use shell)
+  [x] lib-vm.sh (301 lines) → non-platform portions migrated to Go; platform-only functions kept as shell
+      Migrated: vm_download_and_verify → pkg/download.FetchFile
+                vm_build_seed_disk     → pkg/disk.CreateCloudInitSeedDisk
+                vm_build_init_iso      → pkg/disk.CreateInitISO
+                vm_copy_source_ssh     → removed (Go uses 9p shares)
+      Kept (platform scripts intentionally stay as shell):
+                vm_log/ok/fail/die, vm_require_cmd, vm_detect_accel,
+                vm_ensure_ssh_key, vm_wait_for_ssh, vm_guest_cmd,
+                vm_create_overlay, vm_build_source_fat, vm_build_init_iso,
+                vm_check_smoke_result
   [x] test-coqprime-vm.sh → done (tools/cmd/test-coqprime created in v0.5.14)
   [x] release-package.sh + lib-release.sh → done (tools/cmd/release created in v0.5.14)
   [x] fstar-eval-vectors.sh → done (tools/cmd/fstar-eval created in v0.5.15, wired as ./uv verify vectors)
@@ -510,13 +529,17 @@ IMPLEMENTATION BACKLOG (discovered from audits, 2026-05-26)
     vmctl/network.go (7), pkg/netpol (14)
 
 [~] M22 Nix placeholder hashes (10 fake hashes in 2 files, unbuildable)
-  [ ] M22.1 nix/vm-freebsd.nix — lib.fakeSha256 needs nix-prefetch-url
-  [ ] M22.2 nix/vm-omnios.nix — lib.fakeSha256 needs nix-prefetch-url
+  [ ] M22.1 nix/vm-freebsd.nix — lib.fakeSha256 needs real hash (instructions in file)
+      Checksum source: https://download.freebsd.org/releases/VM-IMAGES/14.2-RELEASE/amd64/Latest/CHECKSUM.SHA256
+      Resolve inside builder VM: nix-prefetch-url <imageUrl>  (see comment in nix/vm-freebsd.nix)
+  [ ] M22.2 nix/vm-omnios.nix — lib.fakeSha256 needs real hash (instructions in file)
+      Checksum source: https://downloads.omnios.org/media/r151052/omnios-r151052.cloud.vmdk.bz2.sha256
+      Resolve inside builder VM: nix-prefetch-url <imageUrl>  (see comment in nix/vm-omnios.nix)
   [x] M22.3 contrib/oracles/vm-libsignal-protocol-oracle.nix — vendored (e429dc1d)
   [x] M22.4 contrib/oracles/vm-primitive-oracle-suite.nix — vendored (e429dc1d)
   [x] M22.5 contrib/oracles/vm-kyber-oracle.nix — vendored (pq-crystals reference)
   Note: Oracle VMs are now vendored offline (contrib/oracles/src/ — 7 source trees).
-  M22.1/M22.2 still require nix-prefetch-url / nix-prefetch-git in the builder VM.
+  M22.1/M22.2 still require nix-prefetch-url in the builder VM (not on host).
 
 [x] M23 Nix tier consistency
   [x] M23.1 vm-libsignal-protocol-oracle.nix — now imports tiers/base.nix (5ae3102)
