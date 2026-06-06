@@ -2,29 +2,61 @@
 
 ## 1. Overview
 
-UmbraVOX C code comes from three sources with distinct trust properties:
+UmbraVOX C code comes from multiple sources with distinct trust properties.
+The architecture distinguishes **interim production** (what runs today), **target
+production** (what will run after M36B), and **differential oracles** (never
+production; used for cross-checking).
 
-- **HACL*** (`csrc/hacl/`) — **PRIMARY** for covered primitives. Verified C
-  extracted from Low* (F* subset) via KaRaMeL. Machine-checked proofs of
-  functional correctness, memory safety, and constant-time execution. Covers
-  SHA-256/512, ChaCha20, Poly1305, Keccak, HMAC, HKDF.
+### Current architecture (v0.7.x, interim)
 
-- **fiat-crypto** (`csrc/fiat/`) — **PRIMARY** for field arithmetic. Verified
-  constant-time C extracted from Coq proofs. Covers Ed25519 and X25519 field
-  operations. Used by BoringSSL, Go stdlib, Linux kernel.
+- **HACL*** (`csrc/hacl/`) — **INTERIM PRODUCTION** for covered primitives.
+  Verified C extracted from Low* (F* subset) via KaRaMeL. Machine-checked
+  proofs of functional correctness, memory safety, and constant-time execution.
+  Covers SHA-256/512, ChaCha20, Poly1305, Keccak, HMAC, HKDF.
+  _Will transition to differential oracle in `contrib/hacl-oracle/` once
+  `csrc/extracted/` is available (post-M36B)._
 
-- **CryptoGen** (`csrc/generated/`) — 18 C files generated from `.spec` files.
-  **PRIMARY** for protocol formats, ML-KEM, AES-GCM, VRF, and any primitive
-  not covered by HACL*/fiat-crypto. **RETAINED AS DIFFERENTIAL ORACLE** for
-  all primitives — even those replaced by verified C. Three-way differential
-  testing: verified C vs CryptoGen vs libsodium ensures all implementations
-  agree.
+- **fiat-crypto** (`csrc/fiat/`) — **INTERIM PRODUCTION** for field arithmetic.
+  Verified constant-time C extracted from Coq proofs. Covers Ed25519 and X25519
+  field operations. Used by BoringSSL, Go stdlib, Linux kernel.
+  _Will transition to differential oracle in `contrib/fiat-oracle/` once
+  `csrc/extracted/` provides equivalent formally-verified field arithmetic._
 
-- **fiat-crypto** (`csrc/fiat/`) — verified C generated from machine-checked
-  Coq proofs for finite field arithmetic over GF(2^255-19). The same files are
-  used by BoringSSL, the Go standard library, and the Linux kernel. They cover
-  the field operations underlying X25519 and Ed25519. Files must be vendored
-  following `csrc/fiat/VENDORING.md`.
+- **CryptoGen** (`csrc/generated/`) — **DIFFERENTIAL ORACLE ONLY**. 18 C files
+  generated from `.spec` files. Covers protocol formats, ML-KEM, AES-GCM, VRF,
+  and primitives not covered by HACL*/fiat-crypto. Never used as production
+  code; retained exclusively for differential testing.
+
+- **Haskell reference** (`src/UmbraVox/Crypto/*.hs`) — **REFERENCE ORACLE
+  ONLY**. Pure Haskell implementations of all primitives. Correct by
+  construction but NOT constant-time. Never called in production.
+
+### Target architecture (post-M36B)
+
+- **`csrc/extracted/`** — OUR production C, KaRaMeL-extracted from UmbraVOX's
+  own F* Low* specs. 100% formally verified C derived from in-tree proofs.
+  This is the long-term production code path.
+
+- **`contrib/hacl-oracle/`** — HACL* moves here as a differential oracle once
+  `csrc/extracted/` covers its primitives.
+
+- **`contrib/fiat-oracle/`** — fiat-crypto moves here as a differential oracle
+  once `csrc/extracted/` covers field arithmetic.
+
+- **`csrc/generated/`** — CryptoGen differential oracle (unchanged role).
+
+```
+Current (v0.7.x, interim):
+  csrc/hacl/       → INTERIM production (HACL* formally verified by HACL* team)
+  csrc/fiat/       → INTERIM production (fiat-crypto Coq-verified field arithmetic)
+  csrc/generated/  → Differential oracle (CryptoGen output)
+
+Target (post-M36B):
+  csrc/extracted/      → OUR production (KaRaMeL-extracted from our F* Low* specs)
+  contrib/hacl-oracle/ → HACL* differential oracle
+  contrib/fiat-oracle/ → fiat-crypto differential oracle
+  csrc/generated/      → CryptoGen differential oracle
+```
 
 ---
 
@@ -38,7 +70,7 @@ Coq proofs (test/evidence/formal-proofs/coq/)
     v
 fiat-crypto  ──────────────────────────────────────────────────►  verified field arithmetic C
     (GF(2^255-19): mul, square, add, sub, serialize)                Ed25519 base field, X25519
-    Coq proof → extracted C (no runtime F*/Coq dependency)
+    Coq proof → extracted C (no runtime F*/Coq dependency)          (INTERIM production)
 
 F* specs (test/evidence/formal-proofs/fstar/)
     |
@@ -46,8 +78,17 @@ F* specs (test/evidence/formal-proofs/fstar/)
     |   proved via refinement lemmas, discharged by Z3
     v
 HACL* (Low* → KaRaMeL → C)  ────────────────────────────────►  verified hash/AEAD C
-    SHA-256, SHA-512, ChaCha20, Poly1305, Keccak/SHA-3,             oracle for csrc/generated/
+    SHA-256, SHA-512, ChaCha20, Poly1305, Keccak/SHA-3,             (INTERIM production)
     HMAC, HKDF
+
+UmbraVOX F* Low* specs (future, M36B)
+    |
+    | functional correctness + memory safety + constant-time
+    | proved in-tree, extracted via KaRaMeL
+    v
+csrc/extracted/  ────────────────────────────────────────────►  TARGET production C
+    (our own verified C, replaces HACL* and fiat-crypto
+     primitive-by-primitive)
 
 NIST / RFC standards
     |
@@ -57,55 +98,54 @@ NIST / RFC standards
     |        |
     |        | CryptoGen.hs (mechanical, deterministic)
     |        v
-    |    csrc/generated/*.c  ──────────────────────────────────►  active production C
+    |    csrc/generated/*.c  ──────────────────────────────────►  differential oracle only
     |        |
     +──► F* specs            differential testing (3-way):
-             |                   Haskell oracle
-             | ./uv verify        codegen C (active)
-             v                   HACL* C / fiat-crypto (verified oracle)
+             |                   HACL* / fiat-crypto (interim production)
+             | ./uv verify        codegen C (oracle)
+             v                   Haskell reference (oracle)
          internal consistency
 ```
 
 ---
 
-## 3. Primitive Coverage
+## 3. Oracle Coverage by Primitive
 
-| Primitive | Generated C file | HACL* oracle | fiat-crypto oracle | Coq proof |
-|-----------|-----------------|:------------:|:------------------:|:---------:|
-| SHA-256 | `sha256.c` | Yes (`Hacl_SHA2_256`) | — | — |
-| SHA-512 | `sha512.c` | Yes (`Hacl_SHA2_512`) | — | — |
-| ChaCha20 | `chacha20.c` | Yes (`Hacl_Chacha20`) | — | — |
-| Poly1305 | `poly1305.c` | Yes (`Hacl_Poly1305_32`) | — | — |
-| Keccak / SHA-3 | `keccak.c` | Yes (`Hacl_SHA3`) | — | — |
-| HMAC | `hmac.c` | Yes (`Hacl_HMAC`) | — | — |
-| HKDF | `hkdf.c` | Yes (`Hacl_HKDF`) | — | — |
-| X25519 | `x25519.c` | — | Yes (`fiat_25519_64`) | `X25519DH.v` |
-| Ed25519 (extended) | `ed25519extended.c` | — | Yes (`fiat_25519_64`) | `Ed25519*.v` (14 files) |
-| AES-256 | `aes256.c` | No (Vale/AES-NI only) | — | — |
-| ML-KEM-768 | `mlkem768.c` | No (FIPS 203 too recent) | — | — |
-| PQ wrapper | `pqwrapper.c` | — | — | — |
-| VRF (ECVRF) | `vrf.c` | — | Partial (field ops) | `VRFDLEQ.v` |
-| Wire format | `wireformat.c` | — | — | — |
-| Message format | `messageformat.c` | — | — | — |
-| Network protocol | `networkprotocol.c` | — | — | — |
-| Session state | `sessionstate.c` | — | — | — |
-| Dandelion | `dandelion.c` | — | — | — |
+The following table shows differential oracle depth for each primitive.
+"N-way" counts independent implementations compared in testing.
 
-**Summary:** After integration, 8 of the 18 generated C files have a formally
-verified oracle. The remaining 10 are tested exclusively via differential
-testing against the Haskell reference implementation and NIST/RFC Known Answer
-Tests.
+| Primitive | Interim production | Oracles active | Coverage |
+|-----------|-------------------|----------------|----------|
+| SHA-256 | HACL* (`csrc/hacl/`) | CryptoGen + Haskell ref | **3-way** |
+| SHA-512 | HACL* (`csrc/hacl/`) | CryptoGen + Haskell ref | **3-way** |
+| ChaCha20 | HACL* (`csrc/hacl/`) | CryptoGen + Haskell ref | **3-way** |
+| Poly1305 | HACL* (`csrc/hacl/`) | CryptoGen + Haskell ref | **3-way** |
+| Keccak / SHA-3 | HACL* (`csrc/hacl/`) | CryptoGen + Haskell ref | **3-way** |
+| HMAC | HACL* (`csrc/hacl/`) | CryptoGen + Haskell ref | **3-way** |
+| HKDF | HACL* (`csrc/hacl/`) | CryptoGen + Haskell ref | **3-way** |
+| X25519 | fiat-crypto (`csrc/fiat/`) | CryptoGen + Haskell ref | **3-way** |
+| Ed25519 | fiat-crypto (`csrc/fiat/`) | CryptoGen + Haskell ref | **3-way** |
+| AES-256-GCM | _(none — see note)_ | Wycheproof vectors + Haskell ref | **2-way** |
+| ML-KEM-768 | _(none — see note)_ | pq-crystals oracle + Haskell ref | **2-way** |
+| VRF (ECVRF) | _(none — see note)_ | Haskell reference only | **1-way** |
+| PQ wrapper | _(none)_ | — | — |
+| Wire format | _(none)_ | — | — |
+| Message format | _(none)_ | — | — |
+| Network protocol | _(none)_ | — | — |
+| Session state | _(none)_ | — | — |
+| Dandelion | _(none)_ | — | — |
 
-The three primitives with no verified oracle (AES-256, ML-KEM-768, and the
-protocol format codecs) are structurally constrained:
+**Notes on coverage gaps:**
 
-- **AES-256**: Constant-time software AES requires hardware intrinsics (AES-NI).
-  HACL* delegates this to Vale, which emits architecture-specific assembly.
-  There is no portable verified C for AES-256 in either HACL* or fiat-crypto.
-- **ML-KEM-768**: FIPS 203 was published in 2024. No public verified Low*
-  implementation exists as of this writing. See `doc/hacl-evaluation.md` §2.
-- **Protocol format codecs** (wire, message, network, session, dandelion):
-  These are protocol-specific and have no upstream verified library counterpart.
+- **AES-256-GCM**: Constant-time software AES requires hardware intrinsics
+  (AES-NI). HACL* delegates this to Vale, which emits architecture-specific
+  assembly — not portable verified C. HACL* AES-GCM vendor integration is
+  tracked as M38.2.
+- **ML-KEM-768**: FIPS 203 was published in 2024; no public verified Low*
+  implementation exists. pq-crystals oracle provides cross-check; formal C
+  assurance is ASSURANCE_PENDING.
+- **VRF**: Only the Haskell reference exists; liboqs ECVRF as a second oracle
+  is planned for M34.3.
 
 ---
 
@@ -116,8 +156,9 @@ protocol format codecs) are structurally constrained:
 | fiat-crypto | By construction | Coq proof rules out data-dependent branches and variable-time memory access patterns in the field arithmetic |
 | HACL* | By construction | Low* type system encodes CT as a type-level invariant; KaRaMeL preserves it on extraction; verified by the F* checker |
 | CryptoGen | By discipline | `csrc/ct_helpers.h` provides branchless select (`ct_select32/64`), compare (`ct_eq32`), and swap (`ct_cswap32/64`, `ct_cmov32/64`). `csrc/constant_time.c` provides `constant_time_eq` with a `volatile` accumulator. The codegen quality gate (`./uv check`) enforces no data-dependent branches in generated files |
+| Haskell reference | **None** | Pure Haskell — NOT constant-time. Reference oracle only; never called in production |
 
-CryptoGen's CT guarantee is weaker than the other two: it is a coding
+CryptoGen's CT guarantee is weaker than fiat-crypto and HACL*: it is a coding
 discipline enforced by review and tooling, not a machine-checked proof.
 Empirical agreement with HACL* and fiat-crypto oracles in differential testing
 provides strong (but not formal) evidence that the generated C is semantically
@@ -165,47 +206,87 @@ field element operations that the scalar multiplication loops in `x25519.c` and
 
 ---
 
-## 6. Assurance Implications
+## 6. Production Linkage Gap (Current State)
 
-After full integration (HACL* and fiat-crypto vendored and wired):
+As of v0.7.0, there are two compounding gaps in the production code path:
 
-- **8 of 18** generated C files will have a formally verified oracle with a
-  machine-checked proof chain: fiat-crypto via Coq for field arithmetic;
-  HACL* via F* for hash functions, AEAD stream cipher, MAC, and key derivation.
+**Gap 1**: All `src/UmbraVox/Crypto/Generated/FFI/*.hs` modules call only
+`*_link_probe` and then delegate to pure Haskell (`Crypto.SHA256`,
+`Crypto.MLKEM`, etc.). The HACL* and fiat-crypto bridge functions exist in C
+but are not called from any production path.
 
-- **10 of 18** files (AES-256, ML-KEM-768, PQ wrapper, VRF, wire format,
-  message format, network protocol, session state, dandelion, and the HKDF and
-  HMAC passthrough wrappers for formats) are tested exclusively via differential
-  testing against Haskell oracles validated on NIST/RFC Known Answer Tests.
+**Gap 2**: Production callers (`Protocol/`, `Network/`, `TUI/`) import
+`UmbraVox.Crypto.SHA256` etc. directly — the NOT-constant-time Haskell
+reference — bypassing the FFI layer entirely.
 
-- Differential testing uses a three-way comparison:
-  ```
-  Haskell oracle  vs  codegen C (active)  vs  HACL* / fiat-crypto (verified)
-  ```
-  Any pairwise disagreement is reported as a test failure. Because HACL* and
-  fiat-crypto carry machine-checked proof chains, agreement on all test inputs
-  empirically links the codegen C to formally verified implementations. This is
-  strong evidence of correctness but not a formal equivalence proof; the gap is
-  documented in `doc/hacl-evaluation.md` §4 and `doc/assurance-matrix.md`.
+This means **all production crypto currently runs through variable-time pure
+Haskell**.
 
-- The Coq proofs in `test/evidence/formal-proofs/coq/` (20 files including
-  14 Ed25519 files, `X25519DH.v`, `VRFDLEQ.v`, and `StructuralProofs.v`)
-  independently verify algebraic properties of the curve operations. These are
-  separate from the fiat-crypto Coq proofs but cover the same mathematical
-  structures, providing a second formal confirmation of correctness for the
-  field arithmetic path.
+**Resolution timeline**:
 
-### Current state vs. target state
+- **M38 (Phase 2)**: CryptoGen extended with HaclBridge backend; FFI modules
+  regenerated to call HACL* directly; production callers updated to
+  `Generated.FFI.*` (monadic interface change required).
+- **M36B (Phases 4-5)**: Our own extracted C (`csrc/extracted/`) replaces
+  HACL* primitive-by-primitive. HACL* and fiat-crypto move to oracle role.
+
+Until M38 lands, any security claim that UmbraVOX uses constant-time crypto in
+production is incorrect. This gap must be resolved before any production
+deployment.
+
+---
+
+## 7. Assurance Grade by Primitive
+
+The following table shows honest current vs. target assurance per primitive.
+
+| Primitive | Current grade | Current limiter | Target grade (post-M36B) |
+|-----------|--------------|-----------------|--------------------------|
+| SHA-256 | INTERIM | Haskell ref in prod path (not CT); HACL* bridge not wired | Formally verified extracted C |
+| SHA-512 | INTERIM | Same as SHA-256 | Formally verified extracted C |
+| ChaCha20 | INTERIM | Same as SHA-256 | Formally verified extracted C |
+| Poly1305 | INTERIM | Same as SHA-256 | Formally verified extracted C |
+| Keccak / SHA-3 | INTERIM | Same as SHA-256 | Formally verified extracted C |
+| HMAC | INTERIM | Same as SHA-256 | Formally verified extracted C |
+| HKDF | INTERIM | Same as SHA-256 | Formally verified extracted C |
+| X25519 | INTERIM | Haskell ref in prod path (not CT); fiat-crypto bridge not wired | Formally verified extracted C |
+| Ed25519 | INTERIM | Same as X25519 | Formally verified extracted C |
+| AES-256-GCM | ASSURANCE_PENDING | No verified C; Wycheproof + Haskell only; M38.2 | Vendor HACL* AES-GCM or Vale |
+| ML-KEM-768 | ASSURANCE_PENDING | No verified Low* impl; pq-crystals oracle only | Formal C TBD post-FIPS 203 ecosystem |
+| VRF (ECVRF) | ASSURANCE_PENDING | Haskell reference only; no second oracle | liboqs ECVRF oracle (M34.3) |
+| Protocol codecs | BEST_EFFORT | Protocol-specific; no upstream verified counterpart | Differential testing against Haskell |
+
+---
+
+## 8. Formal Proof Coverage
+
+The Coq proofs in `test/evidence/formal-proofs/coq/` (20 files including 14
+Ed25519 files, `X25519DH.v`, `VRFDLEQ.v`, and `StructuralProofs.v`)
+independently verify algebraic properties of the curve operations. These are
+separate from the fiat-crypto Coq proofs but cover the same mathematical
+structures, providing a second formal confirmation of correctness for the field
+arithmetic path.
+
+F* specs in `test/evidence/formal-proofs/fstar/` cover the same primitives as
+HACL*, providing internal consistency checking via `./uv verify`. These specs
+are the foundation from which `csrc/extracted/` will eventually be produced.
+
+---
+
+## 9. Current State vs. Target State Summary
 
 | Component | Current state | Target state |
 |-----------|--------------|--------------|
-| `csrc/hacl/` sources | Not vendored (infrastructure only) | Vendored from `cryspen/hacl-packages` |
-| `csrc/fiat/` sources | Not vendored (infrastructure only) | Vendored from `mit-plv/fiat-crypto` |
-| `csrc/hacl/bridge_sha256.c` | Present (bridge model) | Present and active in build |
-| Differential 3-way tests | 2-way (Haskell vs codegen C) | 3-way (+ HACL*/fiat-crypto) |
+| `csrc/hacl/` | INTERIM production (not yet vendored) | Differential oracle in `contrib/hacl-oracle/` |
+| `csrc/fiat/` | INTERIM production (not yet vendored) | Differential oracle in `contrib/fiat-oracle/` |
+| `csrc/extracted/` | Does not exist (M36B) | OUR production C from in-tree F* specs |
+| `csrc/generated/` | Differential oracle | Differential oracle (unchanged) |
+| FFI modules | Call `*_link_probe` only; delegate to Haskell | Call HACL*/extracted C directly |
+| Production callers | Import Haskell ref directly (not CT) | Import `Generated.FFI.*` (CT, via C) |
+| Differential testing | 2-way (Haskell vs codegen C) | 3-way (+ HACL*/fiat-crypto/extracted) |
 
 Vendoring instructions are in `csrc/hacl/VENDORING.md` and
 `csrc/fiat/VENDORING.md`. After vendoring, the build system integration changes
 are confined to the `c-sources` stanza in `UmbraVox.cabal` and the
 `csrc/hacl/bridge_*.c` files; the Haskell FFI layer and test harness require no
-modification.
+modification to support the interim (HACL*-based) production path.
