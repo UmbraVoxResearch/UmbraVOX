@@ -88,6 +88,20 @@ This project does NOT claim:
 | v0.1.6 | VRFDLEQ.v, pre-release check, 6 Coq files (219 Qed) |
 | v0.1.7 | sign_then_verify proved, 11 Coq files (415 Qed), ML-KEM confirmed, AFL++ |
 | v0.1.8 | Documentation sweep and release |
+| v0.2.0 | Signal-compatible chat bridge plugin, universal group law proofs (ED-003/ED-007/ED-008) |
+| v0.4.x | Security model refactor, SQLite FFI migration, DHT/discovery, relay stubs, verified C infra |
+| v0.5.0 | Unified ./uv build system (replaces Makefile), mke2fs -d disk images |
+| v0.5.3 | Codegen pipeline, M28 delivery, CI pipelines (Linux/macOS/Windows), DoubleRatchet/Ed25519 fixes |
+| v0.5.5–v0.5.9 | Code review fixes (MEDIUM/LOW), quality gates, generated-headers check, CT-branch analysis |
+| v0.5.10–v0.5.13 | Static analysis (Go CVEs, shell quoting), Go refactoring, PQXDH tests |
+| v0.5.14–v0.5.16 | Shell-to-Go migration (smoke, coqprime, release, signal-test, fstar-eval, vm-init tools) |
+| v0.5.17 | GHC 9.14.1 upgrade (from 9.6.7), SecureBytes migration (15 secret fields, 18 files) |
+| v0.5.18–v0.5.22 | Signal JAR classpath fix, F* assume val documentation, Signal Server fat JAR, path stripping |
+| v0.6.0 | vmctl unified VM framework (5-phase), 4-tier NixOS hierarchy, YAML DSL, CI strategy, 851 tests |
+| v0.6.1 | Coq proofs for 18 F* assume vals (Ed25519/X25519/VRF/SHA-256), verified C (HACL* + fiat-crypto), CycloneDX SBOM |
+| v0.6.2 | Security audit v2 (91 findings), SecureBytes completion, ephemeral signing, SBOM, YAML wiring |
+| v0.6.3 | Firecracker runtime path removed, stub removal, Go tests (netproxy, vmctl), CI hardening |
+| post-v0.6.3 | Signal bridge WebSocket provisioning wired (M26.1–M26.2), CI hardening (M24/M28), nix tier consistency (M23) |
 
 ## Team
 

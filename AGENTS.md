@@ -299,11 +299,11 @@ scripts/                       VM orchestration + test scripts
 ## Coq Proofs
 
 ```bash
-# Build all 14 files:
-nix-shell --run "cd test/evidence/formal-proofs/coq && make"  # Coq's own Makefile, not the project build system
+# Build all 14 files (runs inside builder VM via ./uv):
+./uv exec make -C test/evidence/formal-proofs/coq
 
-# Coqprime files need -native-compiler no:
-coqc -native-compiler no -R . UmbraVox Ed25519GroupUniversal.v
+# Coqprime files need -native-compiler no (run inside VM):
+./uv exec coqc -native-compiler no -R . UmbraVox test/evidence/formal-proofs/coq/Ed25519GroupUniversal.v
 
 # Count Qed:
 grep -ch 'Qed\.' test/evidence/formal-proofs/coq/*.v | paste -sd+ | bc

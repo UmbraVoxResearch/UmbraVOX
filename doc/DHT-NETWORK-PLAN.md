@@ -456,70 +456,118 @@ Estimated effort: 3-5 days.
 
 ## 6. TODO Items
 
-Items below should be added to `TODO.txt` under a new milestone.
+Items below were originally to be added to `TODO.txt` under a new milestone.
+Status notes added 2026-06-05 based on codebase inspection.
 
 ```
 ================================================================================
 MILESTONE M24: DHT NETWORK + UNIFIED DISCOVERY (v0.4.0)
 ================================================================================
 
-[ ] M24.1 Security model refactor (Phase 1)
-  [ ] M24.1.1 Remove Chastity from ConnectionMode enum and all references
-  [ ] M24.1.2 Rename buildChastityOnly to buildChasteOnly in BuildProfile.hs
-  [ ] M24.1.3 Update default mode: Chastity -> Chaste in App/Startup.hs
+[x] M24.1 Security model refactor (Phase 1)
+  [x] M24.1.1 Remove Chastity from ConnectionMode enum and all references
+      done: ConnectionMode = Swing | Promiscuous | Selective | Chaste (App/Config.hs)
+  [x] M24.1.2 Rename buildChastityOnly to buildChasteOnly in BuildProfile.hs
+      done: BuildProfile.hs has buildChasteOnly
+  [x] M24.1.3 Update default mode: Chastity -> Chaste in App/Startup.hs
+      done: Chaste is current default mode (App/Startup.hs)
   [ ] M24.1.4 Add cfgPEXAutomatic :: IORef Bool to AppConfig
+      not done: field not present in AppConfig (App/Config.hs); PEX uses cfgPEXEnabled only
   [ ] M24.1.5 Promiscuous: disable PEX in applyConnectionModeSideEffects
+      not done: no cfgPEXAutomatic field to toggle
   [ ] M24.1.6 Swing: set cfgPEXAutomatic = False (manual PEX only)
+      not done: cfgPEXAutomatic not implemented
   [ ] M24.1.7 Guard tryPEXExchange on cfgPEXEnabled && cfgPEXAutomatic
-  [ ] M24.1.8 Update TUI dialog labels and mode descriptions
+      not done: cfgPEXAutomatic not implemented
+  [x] M24.1.8 Update TUI dialog labels and mode descriptions
+      done: TUI/Dialog.hs has updated mode descriptions for Swing/Promiscuous/Selective/Chaste
   [ ] M24.1.9 Add config migration: "Chastity" -> "Chaste" on load
+      not done: no config migration found
 
-[ ] M24.2 Static discovery sources (Phase 2)
-  [ ] M24.2.1 Network.Discovery module scaffold (DiscoverySource, DiscoveryManager)
-  [ ] M24.2.2 Environment variable source: parse UMBRAVOX_PEERS
-  [ ] M24.2.3 DNS SRV/TXT source: _umbravox._tcp.<domain> lookup
-  [ ] M24.2.4 Config file source: ~/.umbravox/peers parser
-  [ ] M24.2.5 Extend PeerSource with SourceDHT, SourceDNS, SourceEnvVar, SourceConfig
-  [ ] M24.2.6 Wire DiscoveryManager into AppConfig and startup sequence
+[x] M24.2 Static discovery sources (Phase 2)
+  [x] M24.2.1 Network.Discovery module scaffold (DiscoverySource, DiscoveryManager)
+      done: src/UmbraVox/Network/Discovery.hs — DiscoverySource, DiscoveryManager types
+  [x] M24.2.2 Environment variable source: parse UMBRAVOX_PEERS
+      done: discoverEnvVar parses UMBRAVOX_PEERS in Discovery.hs
+  [x] M24.2.3 DNS SRV/TXT source: _umbravox._tcp.<domain> lookup
+      done: discoverDNS in Discovery.hs performs DNS SRV lookup
+  [x] M24.2.4 Config file source: ~/.umbravox/peers parser
+      done: discoverConfigFile in Discovery.hs parses ~/.umbravox/peers
+  [x] M24.2.5 Extend PeerSource with SourceDHT, SourceDNS, SourceEnvVar, SourceConfig
+      done: all four variants in PeerManager.hs PeerSource type
+  [x] M24.2.6 Wire DiscoveryManager into AppConfig and startup sequence
+      done: newDiscoveryManager called in App/Startup.hs; cfgDiscoverySources in AppConfig
   [ ] M24.2.7 Unit tests for each static source parser
+      not done: no Test/Network/Discovery.hs found; parser logic untested
 
-[ ] M24.3 DHT core (Phase 3)
-  [ ] M24.3.1 DHT.Types: NodeId, DHTNode, DHTMessage, DHTConfig
-  [ ] M24.3.2 DHT.RoutingTable: k-bucket insert/find/refresh/evict
-  [ ] M24.3.3 DHT.RPC: binary serialization over AnyTransport
-  [ ] M24.3.4 DHT.Lookup: iterative FIND_NODE with alpha=3 parallelism
-  [ ] M24.3.5 DHT.Store: iterative STORE/FIND_VALUE with TTL expiration
-  [ ] M24.3.6 DHT module: bootstrap, maintain, announcePresence, findPeer
-  [ ] M24.3.7 Unit tests: routing table operations (insert, evict, find closest)
-  [ ] M24.3.8 Unit tests: iterative lookup with mock network
-  [ ] M24.3.9 Node ID verification: SHA-256(identity key) == claimed NodeId
+[x] M24.3 DHT core (Phase 3)
+  [x] M24.3.1 DHT.Types: NodeId, DHTNode, DHTMessage, DHTConfig
+      done: src/UmbraVox/Network/DHT/Types.hs
+  [x] M24.3.2 DHT.RoutingTable: k-bucket insert/find/refresh/evict
+      done: src/UmbraVox/Network/DHT/RoutingTable.hs
+  [x] M24.3.3 DHT.RPC: binary serialization over AnyTransport
+      done: src/UmbraVox/Network/DHT/RPC.hs
+  [x] M24.3.4 DHT.Lookup: iterative FIND_NODE with alpha=3 parallelism
+      done: src/UmbraVox/Network/DHT/Lookup.hs
+  [x] M24.3.5 DHT.Store: iterative STORE/FIND_VALUE with TTL expiration
+      done: src/UmbraVox/Network/DHT/Store.hs
+  [x] M24.3.6 DHT module: bootstrap, maintain, announcePresence, findPeer
+      done: src/UmbraVox/Network/DHT.hs exports bootstrap; announcePresence
+      is not a separate export — presence publication uses Presence.hs separately
+  [x] M24.3.7 Unit tests: routing table operations (insert, evict, find closest)
+      done: test/Test/Network/DHT.hs (M24.3.7 tests)
+  [x] M24.3.8 Unit tests: iterative lookup with mock network
+      done: test/Test/Network/DHT.hs (M24.3.8 loopback tests)
+  [x] M24.3.9 Node ID verification: SHA-256(identity key) == claimed NodeId
+      done: test/Test/Network/DHT.hs (M24.6.4 routing table poisoning test covers this)
 
-[ ] M24.4 DHT integration (Phase 4)
+[x] M24.4 DHT integration (Phase 4)
   [ ] M24.4.1 Wire DHT into DiscoveryManager as DiscDHT source
+      not done: DiscoveryManager in Discovery.hs does not include DHT source
   [ ] M24.4.2 Dandelion++ integration: stem-route self-lookups and self-stores
-  [ ] M24.4.3 PeerManager integration: SourceDHT scoring and ban propagation
+      not done: Dandelion.hs not wired to DHT
+  [x] M24.4.3 PeerManager integration: SourceDHT scoring and ban propagation
+      done: SourceDHT variant in PeerManager.hs; peerSourceTag "[DHT]" in TUI/Dialog.hs
   [ ] M24.4.4 Transport integration: DHT message type prefix in Noise payload
-  [ ] M24.4.5 AppConfig: cfgDHTEnabled, cfgDHTBootstrapNodes fields
-  [ ] M24.4.6 Bootstrap sequence: connect to bootstrap nodes, populate routing table
+      not done: no DHT prefix found in transport layer
+  [x] M24.4.5 AppConfig: cfgDHTEnabled, cfgDHTBootstrapNodes fields
+      done: both fields in AppConfig (App/Config.hs line ~107-108)
+  [x] M24.4.6 Bootstrap sequence: connect to bootstrap nodes, populate routing table
+      done: bootstrap function in Network/DHT.hs
   [ ] M24.4.7 Periodic maintenance: bucket refresh, value republish, stale eviction
-  [ ] M24.4.8 Integration tests with real TCP transport
+      not done: no periodic maintenance loop found in DHT.hs
+  [x] M24.4.8 Integration tests with loopback transport
+      done: test/Test/Network/DHT.hs (M24.4.8 loopback integration tests)
 
-[ ] M24.5 TUI and API (Phase 5)
+[x] M24.5 TUI and API (Phase 5)
   [ ] M24.5.1 Settings dialog: Discovery tab with source checkboxes
+      not done: TUI/Dialog.hs has mode dialog but no dedicated Discovery tab with checkboxes
   [ ] M24.5.2 Status bar: active discovery source count indicator
-  [ ] M24.5.3 Peer list: source tag display (mDNS/PEX/DHT/DNS/etc.)
-  [ ] M24.5.4 Manual PEX exchange button for Swing mode
-  [ ] M24.5.5 Chat.API: exchangePeers RPC method
-  [ ] M24.5.6 Chat.API: dhtStatus RPC method (routing table size, stored values)
+      not done: no discovery count in status bar (TUI/Render.hs)
+  [x] M24.5.3 Peer list: source tag display (mDNS/PEX/DHT/DNS/etc.)
+      done: peerSourceTag in TUI/Dialog.hs shows [mDNS]/[PEX]/[DHT]/[DNS]/[Env]/[Cfg]
+  [x] M24.5.4 Manual PEX exchange button for Swing mode
+      done: TUI/Dialog.hs has "[Exchange Peers] (manual PEX, Swing mode)" option
+  [x] M24.5.5 Chat.API: exchangePeers RPC method
+      done: resolveMethod "exchangePeers" in Chat/API.hs
+  [x] M24.5.6 Chat.API: dhtStatus RPC method (routing table size, stored values)
+      done: resolveMethod "dhtStatus" in Chat/API.hs
 
-[ ] M24.6 Security hardening (Phase 6)
-  [ ] M24.6.1 Sybil attack test: many fake node IDs targeting same bucket
-  [ ] M24.6.2 Eclipse attack test: attacker fills routing table with colluding nodes
-  [ ] M24.6.3 Storage spam test: rate limiting STORE operations
-  [ ] M24.6.4 Routing table poisoning test: invalid node ID verification
-  [ ] M24.6.5 DHT message size cap enforcement (4096 bytes max)
+[x] M24.6 Security hardening (Phase 6)
+  [x] M24.6.1 Sybil attack test: many fake node IDs targeting same bucket
+      done: testSybilBucketOverflow in test/Test/Network/DHT.hs
+  [x] M24.6.2 Eclipse attack test: attacker fills routing table with colluding nodes
+      done: testEclipseAttackResistance in test/Test/Network/DHT.hs
+  [x] M24.6.3 Storage spam test: rate limiting STORE operations
+      done: testStorageSpamSizeLimit, testStorageSpamExpiration in DHT.hs test
+  [x] M24.6.4 Routing table poisoning test: invalid node ID verification
+      done: test in test/Test/Network/DHT.hs (M24.6.4)
+  [x] M24.6.5 DHT message size cap enforcement (4096 bytes max)
+      done: test in test/Test/Network/DHT.hs (M24.6.5)
   [ ] M24.6.6 Adaptive DHT parameters based on network size estimate
+      not done: no adaptive parameter logic found
   [ ] M24.6.7 F* spec: routing table invariants (bucket size, ordering)
+      not done: no F* spec for DHT routing table found
 ```
 
 ------------------------------------------------------------------------

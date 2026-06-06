@@ -336,3 +336,58 @@ Last updated: 2026-05-22
 ### Security audit findings
 - None yet (milestone in early stages). Design calls for encrypted queue
   persistence and relay storage of only encrypted blobs with no identity linkage.
+
+---
+
+## M22: Nix Placeholder Hashes (open)
+
+### What was implemented
+- Identified 12 fake/placeholder hashes across 3 nix files
+  (`vm-freebsd.nix`, `vm-omnios.nix`, `vm-libsignal-protocol-oracle.nix`,
+  `vm-primitive-oracle-suite.nix`) that prevent those VM images from building.
+- All items remain open; fix requires running `nix-prefetch-url` /
+  `nix-prefetch-git` inside the builder VM once real upstream revisions are
+  pinned.
+
+### Key files
+- `nix/vm-freebsd.nix` (lib.fakeSha256 placeholder)
+- `nix/vm-omnios.nix` (lib.fakeSha256 placeholder)
+- `nix/vm-libsignal-protocol-oracle.nix` (all-zero rev + AAAA hashes)
+- `nix/vm-primitive-oracle-suite.nix` (all-zero rev + AAAA hashes)
+
+### Tests
+- No tests until hashes are real and images build.
+
+### Design docs
+- `doc/TODO.txt` M22 section.
+
+### Security audit findings
+- None specific to M22.
+
+---
+
+## M29: Implementation Plan Execution (in progress)
+
+### What was implemented
+- M29.1: Top-level pipeline docs realigned truthfully (fast/full gate split,
+  nix store policy) — commit `fedcb90 doc(M29.1)`.
+- M29.2 (partial): Signal bridge registration crypto path (M26.1) and
+  WebSocket provisioning transport (M26.2) completed.
+- M29.4: Backlog visibility kept consistent with `doc/IMPLEMENTATION-PLAN.md`.
+- M29.3 remains open: assurance evidence gaps not yet closed.
+
+### Key files
+- `doc/IMPLEMENTATION-PLAN.md` (reference document for this milestone)
+- `src/UmbraVox/Bridge/Signal/Registration.hs` (M26.1–M26.2 implementation)
+- `doc/VM-DEVELOPMENT.md`, `doc/NIX-CACHE-POLICY.md` (pipeline alignment)
+
+### Tests
+- `test/Test/Bridge/SignalRegistration.hs` (3 test cases: happy path, bad MAC,
+  bad ciphertext; loopback integration test for WebSocket provisioning)
+
+### Design docs
+- `doc/IMPLEMENTATION-PLAN.md` (full implementation plan)
+- `doc/NIX-CACHE-POLICY.md` (nix store policy, added in M29.1)
+
+### Security audit findings
+- None specific to M29.

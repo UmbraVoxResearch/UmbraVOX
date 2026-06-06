@@ -447,68 +447,68 @@ interoperate on the wire format.  The version byte in the envelope header
 
 ### 7.1 WireFormat.hs Changes (M23.1.1a)
 
-- [ ] Bump `envVersion` to 2.
-- [ ] Remove `envSourceId` and `envDestId` fields from `Envelope`.
-- [ ] Add `envEphemeralR` (32 bytes) and `envViewTag` (1 byte) fields.
-- [ ] Update `headerSize` from 74 to 43.
-- [ ] Update `encodeEnvelope` to serialize new format.
-- [ ] Update `decodeEnvelope` to parse new format.
-- [ ] Update `wrapEnvelope` signature: remove srcId/dstId, add ephemeralR/viewTag.
-- [ ] Add version 2 check in decode (accept v2 only, reject v1).
+- [x] Bump `envVersion` to 2. (`envVersion = 2` in `Envelope`, `wrapEnvelope` sets it; `src/UmbraVox/Protocol/WireFormat.hs`)
+- [x] Remove `envSourceId` and `envDestId` fields from `Envelope`. (not present in current `Envelope` type)
+- [x] Add `envEphemeralR` (32 bytes) and `envViewTag` (1 byte) fields. (`Envelope` has both; `headerSize` = 45 with `envScanTag` also added)
+- [x] Update `headerSize` from 74 to 43. (set to 45; note: final layout also includes 2-byte `envScanTag`, documented in comment)
+- [x] Update `encodeEnvelope` to serialize new format. (`encodeEnvelope` in `WireFormat.hs`)
+- [x] Update `decodeEnvelope` to parse new format. (`decodeEnvelope` in `WireFormat.hs`)
+- [x] Update `wrapEnvelope` signature: remove srcId/dstId, add ephemeralR/viewTag. (current signature takes `msgType seqNum ephR vTag sTag payload`)
+- [x] Add version 2 check in decode (accept v2 only, reject v1). (`| BS.index bs 0 /= 2 = Nothing` in `decodeEnvelope`)
 
 ### 7.2 Route Token Module (M23.1.1b)
 
-- [ ] Create `UmbraVox.Protocol.RouteToken` module.
-- [ ] `deriveRouteTokens :: ByteString -> ByteString` (transportKey -> 32 bytes).
-- [ ] `deriveEpochTokens :: ByteString -> Word64 -> ByteString` (key + epoch).
-- [ ] `RouteTokenState` data type with current + previous epoch tokens.
-- [ ] `rotateTokens :: RouteTokenState -> Word64 -> RouteTokenState`.
-- [ ] Token lookup map: `Map ByteString SessionId`.
+- [x] Create `UmbraVox.Protocol.RouteToken` module. (`src/UmbraVox/Protocol/RouteToken.hs`)
+- [x] `deriveRouteTokens :: ByteString -> ByteString` (transportKey -> 32 bytes). (exists; signature takes handshakeHash, transportKey, myIdHash, peerIdHash)
+- [x] `deriveEpochTokens :: ByteString -> Word64 -> ByteString` (key + epoch). (exists as `deriveEpochTokens` in `RouteToken.hs`)
+- [x] `RouteTokenState` data type with current + previous epoch tokens. (`data RouteTokenState` in `RouteToken.hs`)
+- [x] `rotateTokens :: RouteTokenState -> Word64 -> RouteTokenState`. (exists in `RouteToken.hs`)
+- [x] Token lookup map: `Map ByteString SessionId`. (`lookupSession`, `registerToken` use `Map ByteString SessionId` in `RouteToken.hs`)
 
 ### 7.3 Envelope Encryption (M23.1.1c)
 
-- [ ] Derive `envelopeKey` from transport key via HKDF.
-- [ ] Encrypt inner envelope with ChaCha20-Poly1305, nonce from sequence number.
-- [ ] Poly1305 tag replaces HMAC for encrypted envelopes.
-- [ ] Handshake messages (type 2) remain HMAC-authenticated (no session key yet).
+- [x] Derive `envelopeKey` from transport key via HKDF. (`deriveEnvelopeKey` in `WireFormat.hs`)
+- [x] Encrypt inner envelope with ChaCha20-Poly1305, nonce from sequence number. (`encodeEnvelopeAEAD` / `decodeEnvelopeAEAD` in `WireFormat.hs`)
+- [x] Poly1305 tag replaces HMAC for encrypted envelopes. (AEAD path uses Poly1305 tag; HMAC path retained for handshake)
+- [x] Handshake messages (type 2) remain HMAC-authenticated (no session key yet). (`encodeEnvelopeAEAD` delegates to `encodeEnvelope` for handshake type)
 
 ### 7.4 Payload Sender Identity (M23.1.1d)
 
-- [ ] Define `InnerPayload` type (senderId + applicationData).
-- [ ] Update `sendChatMessage` to prepend senderId before ratchet encryption.
-- [ ] Update `recvChatMessage` to extract senderId after ratchet decryption.
-- [ ] Validate senderId length (exactly 32 bytes) on decode.
+- [x] Define `InnerPayload` type (senderId + applicationData). (`data InnerPayload` in `src/UmbraVox/Chat/Wire.hs`)
+- [x] Update `sendChatMessage` to prepend senderId before ratchet encryption. (`sendChatMessage` calls `encodeInnerPayload senderId plaintext` in `Chat/Session.hs`)
+- [x] Update `recvChatMessage` to extract senderId after ratchet decryption. (`recvChatMessage` calls `decodeInnerPayload pt` in `Chat/Session.hs`)
+- [x] Validate senderId length (exactly 32 bytes) on decode. (`decodeInnerPayload` returns `Nothing` if `BS.length bs < senderIdSize` in `Chat/Wire.hs`)
 
 ### 7.5 Handshake Integration (M23.1.1e)
 
-- [ ] After PQXDH completes, derive route tokens from shared transport key.
-- [ ] Store `RouteTokenState` alongside `ChatSession`.
-- [ ] Pass ephemeralR from PQXDH result into initial envelope.
-- [ ] Recipient scanning: check viewTag, then derive stealth scalar.
+- [x] After PQXDH completes, derive route tokens from shared transport key. (`handshakeInitiator` / `handshakeResponder` in `Protocol/Handshake.hs` call `initChatSession` with shared secret)
+- [x] Store `RouteTokenState` alongside `ChatSession`. (`csRouteTokens :: Maybe RouteTokenState` field in `data ChatSession`, `Chat/Session.hs`)
+- [ ] Pass ephemeralR from PQXDH result into initial envelope. (not found in `Handshake.hs` — PQXDH result not wired to `wrapEnvelope` ephemeralR)
+- [ ] Recipient scanning: check viewTag, then derive stealth scalar. (no scanning path found; `StealthAddress.hs` has scalar derivation but not wired to envelope scanning)
 
 ### 7.6 Dandelion.hs Changes (M23.1.1f)
 
-- [ ] `RouteDecision` carries `ByteString` (opaque inner envelope), not decoded `Envelope`.
-- [ ] `StemForward` includes outbound session token for the next hop.
-- [ ] Add `replaceRouteToken :: ByteString -> ByteString -> ByteString` for relay forwarding.
+- [x] `RouteDecision` carries `ByteString` (opaque inner envelope), not decoded `Envelope`. (`StemForward String ByteString` in `Network/Dandelion.hs`)
+- [ ] `StemForward` includes outbound session token for the next hop. (`StemForward` is `String ByteString` only — no session token field)
+- [ ] Add `replaceRouteToken :: ByteString -> ByteString -> ByteString` for relay forwarding. (function not present in `Dandelion.hs` or `RouteToken.hs`)
 
 ### 7.7 DHT Presence Integration (M23.1.1g)
 
-- [ ] Presence records use stealth-derived keys, not raw identity hashes.
-- [ ] Presence lookup returns encrypted contact info.
-- [ ] Wire presence publication into `announcePresence` in DHT module.
+- [x] Presence records use stealth-derived keys, not raw identity hashes. (`prStealthPubKey` derived via `derivePresenceKey` in `Network/Presence.hs`)
+- [x] Presence lookup returns encrypted contact info. (`prContactInfo` field documented as "Encrypted: address + port + capabilities" in `Presence.hs`)
+- [ ] Wire presence publication into `announcePresence` in DHT module. (`announcePresence` function not found; `Presence.hs` exports `createPresenceRecord` / `serializePresence` but no DHT wiring)
 
 ### 7.8 Test Updates (M23.1.1h)
 
-- [ ] Update all WireFormat round-trip tests for v2 format.
-- [ ] Test: session token derivation determinism.
-- [ ] Test: token rotation preserves old tokens for grace period.
-- [ ] Test: recipient can scan envelope via stealth address.
-- [ ] Test: non-recipient rejects envelope (viewTag mismatch).
-- [ ] Test: relay forwarding replaces token without touching inner envelope.
-- [ ] Test: senderId correctly extracted from decrypted payload.
-- [ ] Test: handshake messages use HMAC (not ChaCha20-Poly1305).
-- [ ] Property test: random envelopes survive encode/decode round-trip.
+- [x] Update all WireFormat round-trip tests for v2 format. (all round-trip tests verify `envVersion == 2`; `test/Test/Protocol/WireFormat.hs`)
+- [x] Test: session token derivation determinism. (`testDeterminism` in `test/Test/Protocol/RouteToken.hs`)
+- [x] Test: token rotation preserves old tokens for grace period. (`testGracePeriodAccepted` in `RouteToken.hs` test)
+- [ ] Test: recipient can scan envelope via stealth address. (no such test found)
+- [ ] Test: non-recipient rejects envelope (viewTag mismatch). (no such test found)
+- [ ] Test: relay forwarding replaces token without touching inner envelope. (no such test; `replaceRouteToken` not implemented)
+- [x] Test: senderId correctly extracted from decrypted payload. (`test/Test/Chat/Wire.hs` — `inner payload: senderId` check)
+- [ ] Test: handshake messages use HMAC (not ChaCha20-Poly1305). (AEAD round-trip test is still a stub in `WireFormat.hs` test, line ~394)
+- [x] Property test: random envelopes survive encode/decode round-trip. (`checkProperty "inner payload round-trip property (500 iterations)"` in `Chat/Wire.hs` test; WireFormat also has 500-iteration property test)
 
 ### 7.9 MitM Protections (M23.1.1j)
 
