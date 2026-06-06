@@ -1,19 +1,18 @@
 -- SPDX-License-Identifier: Apache-2.0
--- | Signal linked device registration flow (M19.3.4)
+-- | Signal linked device registration flow (M19.3.4, M19.3.5)
 --
 -- Implements the provisioning protocol used by Signal Desktop to register
 -- as a linked device.  The flow:
 --
 --   1. Generate a provisioning X25519 keypair
---   2. Connect to Signal-Server provisioning WebSocket (stub — M19.3.5)
---   3. Display QR code containing provisioning public key + server URL
+--   2. Connect to Signal-Server provisioning WebSocket
+--   3. Receive server-assigned UUID; display QR code with real UUID + pubkey
 --   4. Primary device scans QR and sends encrypted provisioning data
---   5. Linked device receives: identity key, phone number, profile key
---   6. Register with Signal-Server by uploading prekeys (stub — M19.3.5)
+--   5. Decrypt: identity key, phone number, profile key
+--   6. Register with Signal-Server by uploading prekeys
 --
--- Crypto operations (key generation, signing, HKDF) are real.
--- Network operations (WebSocket, HTTP) are stubs until the Signal-Server
--- VM is running.
+-- Crypto operations: X25519 ECDH, HKDF-SHA256, AES-256-CBC, HMAC-SHA256.
+-- Network transport: WebSocket via 'UmbraVox.Bridge.Signal.WebSocket'.
 module UmbraVox.Bridge.Signal.Registration
     ( RegistrationState(..)
     , RegistrationPhase(..)
@@ -23,13 +22,20 @@ module UmbraVox.Bridge.Signal.Registration
     , generateProvisioningQR
     , completeRegistration
     , generatePreKeyBundle
+    , runProvisioning
     ) where
 
 import Data.Bits (xor)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
-import Data.Word (Word32)
+import Data.List (stripPrefix)
+import Data.Word (Word32, Word64)
 
+import UmbraVox.Bridge.Signal.WebSocket
+    ( SignalWSConnection
+    , WSMessage(..), WSRequest(..), WSResponse(..)
+    , connectSignalWSPath, disconnectSignalWS, recvWSMessage, sendWSMessage
+    )
 import UmbraVox.Crypto.AES (aesDecrypt)
 import UmbraVox.Crypto.ConstantTime (constantEq)
 import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
@@ -411,6 +417,9 @@ lookupField n wt = go
 bytesToString :: ByteString -> String
 bytesToString = map (toEnum . fromIntegral) . BS.unpack
 
+stringToBS :: String -> ByteString
+stringToBS = BS.pack . map (fromIntegral . fromEnum)
+
 validateProvisioningData :: ProvisioningData -> Either RegistrationError ()
 validateProvisioningData pd
     | BS.length (pdIdentityKeyPriv pd) /= 32 = Left (InvalidProvisioningData "identity private key must be 32 bytes")
@@ -419,3 +428,156 @@ validateProvisioningData pd
     | pdPhoneNumber pd == ""                 = Left (InvalidProvisioningData "phone number empty")
     | BS.null (pdProvisioningCode pd)        = Left (InvalidProvisioningData "provisioning code empty")
     | otherwise                              = Right ()
+
+------------------------------------------------------------------------
+-- WebSocket provisioning transport (M26.2)
+------------------------------------------------------------------------
+
+-- | Run the full linked device provisioning flow over the Signal WebSocket.
+--
+-- Connects to the Signal-Server provisioning endpoint, receives the
+-- server-assigned UUID (for use in the QR code), waits for the primary
+-- device to scan and send encrypted provisioning data, then decrypts
+-- and returns the 'ProvisioningData'.
+--
+-- The 'onUuidAssigned' callback fires after the server assigns a UUID,
+-- allowing the caller to re-render the QR code with the real UUID
+-- (via 'generateProvisioningQR') before the provisioning message arrives.
+runProvisioning
+    :: RegistrationState
+    -> (RegistrationState -> IO ())
+       -- ^ Invoked after UUID is assigned; updated state has real UUID.
+    -> IO (Either RegistrationError ProvisioningData)
+runProvisioning rs onUuidAssigned = do
+    let (host, port) = extractHostPort (rsServerUrl rs)
+    connResult <- connectSignalWSPath host port BS.empty "/v1/websocket/provisioning/"
+    case connResult of
+        Left wsErr -> pure (Left (ServerError (show wsErr)))
+        Right conn -> do
+            result <- provisioningSession rs conn onUuidAssigned
+            disconnectSignalWS conn
+            pure result
+
+-- | Internal: run the provisioning exchange over an established connection.
+provisioningSession
+    :: RegistrationState
+    -> SignalWSConnection
+    -> (RegistrationState -> IO ())
+    -> IO (Either RegistrationError ProvisioningData)
+provisioningSession rs conn onUuidAssigned = do
+    -- Phase 1: receive UUID assignment from server.
+    msg1Result <- recvWSMessage conn
+    case msg1Result of
+        Left wsErr -> pure (Left (ServerError (show wsErr)))
+        Right msg1 ->
+            case expectRequest "PUT" "/v1/address" msg1 of
+                Left e -> pure (Left e)
+                Right (addrReqId, addrBody) ->
+                    case parseUuidBody addrBody of
+                        Left e -> pure (Left e)
+                        Right uuid -> do
+                            _ <- sendWSMessage conn (ackResponse addrReqId)
+                            let rs' = rs { rsProvisioningUuid = uuid
+                                         , rsPhase = PhaseAwaitingProvisionMessage }
+                            onUuidAssigned rs'
+                            -- Phase 2: receive encrypted provisioning message.
+                            msg2Result <- recvWSMessage conn
+                            case msg2Result of
+                                Left wsErr -> pure (Left (ServerError (show wsErr)))
+                                Right msg2 ->
+                                    case expectRequest "PUT" "/v1/message" msg2 of
+                                        Left e -> pure (Left e)
+                                        Right (msgReqId, encMsg) ->
+                                            case completeRegistration rs' encMsg of
+                                                Left e -> pure (Left e)
+                                                Right pd -> do
+                                                    _ <- sendWSMessage conn (ackResponse msgReqId)
+                                                    pure (Right pd)
+
+-- | Build a 200 OK response for a given request ID.
+ackResponse :: Word64 -> WSMessage
+ackResponse reqId = WSMsgResponse WSResponse
+    { wsRspId     = reqId
+    , wsRspStatus = 200
+    , wsRspBody   = BS.empty
+    }
+
+-- | Validate that a 'WSMessage' is a request with the expected verb and path.
+--
+-- Returns '(requestId, body)' on success, or 'ServerError' on mismatch.
+expectRequest
+    :: ByteString
+    -> ByteString
+    -> WSMessage
+    -> Either RegistrationError (Word64, ByteString)
+expectRequest verb path msg = case msg of
+    WSMsgRequest req
+        | wsReqVerb req == verb && wsReqPath req == path
+        -> Right (wsReqId req, wsReqBody req)
+        | otherwise
+        -> Left (ServerError
+            ( "unexpected request: "
+           ++ bytesToString (wsReqVerb req) ++ " "
+           ++ bytesToString (wsReqPath req)
+           ++ " (expected: "
+           ++ bytesToString verb ++ " " ++ bytesToString path ++ ")" ))
+    WSMsgResponse _ ->
+        Left (ServerError "expected WebSocket request, got response")
+    WSMsgEnvelopePush _ ->
+        Left (ServerError "expected WebSocket request, got envelope push")
+
+-- | Parse the JSON body of a server UUID-assignment message.
+--
+-- Expects the form @{\"uuid\":\"<value>\"}@ with optional whitespace.
+-- Uses a hand-rolled parser consistent with the project's no-JSON-library policy.
+parseUuidBody :: ByteString -> Either RegistrationError ByteString
+parseUuidBody bs =
+    case extractJsonStringField "uuid" (bytesToString bs) of
+        Nothing -> Left (InvalidProvisioningData
+            "cannot parse UUID from server address response")
+        Just v  -> Right (stringToBS v)
+
+-- | Extract the value of a JSON string field by key (hand-rolled, no aeson).
+--
+-- Matches @\"key\":\"value\"@ with optional surrounding whitespace.
+-- Returns 'Nothing' if the key is absent or the value is empty.
+extractJsonStringField :: String -> String -> Maybe String
+extractJsonStringField key s =
+    let needle = "\"" ++ key ++ "\":\""
+    in case findSubstring needle s of
+        Nothing  -> Nothing
+        Just idx ->
+            let afterOpen = drop (length needle + idx) s
+                val       = takeWhile (/= '"') afterOpen
+            in if null val then Nothing else Just val
+
+-- | Find the first index of @needle@ within @haystack@, or 'Nothing'.
+findSubstring :: String -> String -> Maybe Int
+findSubstring needle = go 0
+  where
+    n = length needle
+    go _ []  = Nothing
+    go i str
+        | take n str == needle = Just i
+        | otherwise            = go (i + 1) (tail str)
+
+-- | Extract hostname and port from a URL string.
+--
+-- Handles @https://host@, @http://host:port@, and bare-host forms.
+-- Defaults to port 443 for HTTPS and 8080 for HTTP.
+extractHostPort :: String -> (String, Int)
+extractHostPort url =
+    let (scheme, rest) = case stripPrefix "https://" url of
+                           Just r  -> ("https", r)
+                           Nothing -> case stripPrefix "http://" url of
+                                        Just r  -> ("http", r)
+                                        Nothing -> ("https", url)
+        hostPortPath        = takeWhile (/= '/') rest
+        (hostPart, portStr) = break (== ':') hostPortPath
+        defaultPort         = if scheme == "https" then 443 else 8080
+        port                = case portStr of
+                                (':':p) -> case reads p of
+                                             [(pn, "")] -> pn
+                                             _          -> defaultPort
+                                _       -> defaultPort
+    in (hostPart, port)

@@ -529,7 +529,9 @@ IMPLEMENTATION BACKLOG (discovered from audits, 2026-05-26)
 [~] M26 Signal bridge completion
   [x] M26.1 Registration.hs — crypto path complete: X25519 ECDH, HKDF, AES-256-CBC,
       HMAC-SHA256, protobuf parsing; 3 test cases (happy path, bad MAC, bad ciphertext)
-  [~] M26.2 Registration.hs — implement WebSocket transport (M19.3.5)
+  [x] M26.2 Registration.hs — implement WebSocket transport (M19.3.5)
+      runProvisioning: connectSignalWSPath → UUID assignment → provisioning
+      message → completeRegistration. Full loopback integration test added.
   [ ] M26.3 M19.4.7 — health endpoint verification (blocked on JAR assembly)
 
 [ ] M27 Documentation debt

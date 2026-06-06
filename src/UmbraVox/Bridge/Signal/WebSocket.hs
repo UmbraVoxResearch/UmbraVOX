@@ -17,12 +17,14 @@ module UmbraVox.Bridge.Signal.WebSocket
     , WSMessage(..)
     , WSError(..)
     , connectSignalWS
+    , connectSignalWSPath
     , disconnectSignalWS
     , sendWSMessage
     , recvWSMessage
     , wsHealthCheck
     ) where
 
+import Control.Exception (SomeException, try)
 import Data.Bits (shiftL, shiftR, xor, (.&.), (.|.))
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
@@ -124,7 +126,8 @@ opPong = 0x0A
 -- Connection lifecycle
 ------------------------------------------------------------------------
 
--- | Attempt to open a WebSocket connection to a Signal server.
+-- | Attempt to open a WebSocket connection to a Signal server on the
+-- default message endpoint (@\/v1\/websocket\/@).
 --
 -- Performs TCP connection and sends the HTTP Upgrade request.
 -- On success, transitions to ConnConnected and returns the connection.
@@ -133,7 +136,20 @@ connectSignalWS
     -> Int          -- ^ Server port
     -> ByteString   -- ^ Initial auth token
     -> IO (Either WSError SignalWSConnection)
-connectSignalWS host port token = do
+connectSignalWS host port token =
+    connectSignalWSPath host port token "/v1/websocket/"
+
+-- | Like 'connectSignalWS' but with an explicit WebSocket path.
+--
+-- Use this for non-default endpoints, e.g. the provisioning endpoint
+-- at @\/v1\/websocket\/provisioning\/@.
+connectSignalWSPath
+    :: String       -- ^ Server hostname
+    -> Int          -- ^ Server port
+    -> ByteString   -- ^ Initial auth token
+    -> String       -- ^ WebSocket path (e.g. \"\/v1\/websocket\/provisioning\/\")
+    -> IO (Either WSError SignalWSConnection)
+connectSignalWSPath host port token wsPath = do
     tokenRef <- newIORef token
     stateRef <- newIORef ConnConnecting
     sockRef  <- newIORef Nothing
@@ -151,7 +167,7 @@ connectSignalWS host port token = do
             { NS.addrSocketType = NS.Stream
             , NS.addrFamily     = NS.AF_UNSPEC
             }
-    result <- tryConnect hints conn
+    result <- tryConnect hints conn wsPath
     case result of
         Left err -> do
             writeIORef stateRef ConnDisconnected
@@ -160,7 +176,7 @@ connectSignalWS host port token = do
             writeIORef stateRef ConnConnected
             pure (Right conn)
   where
-    tryConnect hints conn = do
+    tryConnect hints conn path = do
         addrs <- NS.getAddrInfo (Just hints) (Just host) (Just (show port))
         case addrs of
             [] -> pure (Left (WSConnectionFailed ("no address for " ++ host)))
@@ -171,7 +187,7 @@ connectSignalWS host port token = do
                 -- Send WebSocket upgrade request
                 authTok <- readIORef (wscAuthToken conn)
                 let upgradeReq = strToBS
-                        ( "GET /v1/websocket/ HTTP/1.1\r\n"
+                        ( "GET " ++ path ++ " HTTP/1.1\r\n"
                        ++ "Host: " ++ host ++ "\r\n"
                        ++ "Upgrade: websocket\r\n"
                        ++ "Connection: Upgrade\r\n"
@@ -215,10 +231,11 @@ disconnectSignalWS conn = do
             case mSock of
                 Nothing -> pure ()
                 Just sock -> do
-                    -- Send close frame: FIN + opcode 0x08, masked, zero-length
+                    -- Send close frame: FIN + opcode 0x08, masked, zero-length.
+                    -- Best-effort: the peer may have already closed (RFC 6455 §7.1.7).
                     maskKey <- randomBytes 4
                     let frame = buildFrame True opClose maskKey BS.empty
-                    _ <- safeSend sock frame
+                    _ <- try (safeSend sock frame) :: IO (Either SomeException ())
                     NS.close sock
             writeIORef (wscSocket conn) Nothing
             writeIORef (wscState conn) ConnDisconnected

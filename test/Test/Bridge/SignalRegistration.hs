@@ -1,19 +1,28 @@
 -- SPDX-License-Identifier: Apache-2.0
--- | Signal bridge registration tests (M26.1).
+-- | Signal bridge registration tests (M26.1, M26.2).
 --
--- Exercises the provisioning decryption + protobuf parsing path without
--- requiring a live Signal-Server. The WebSocket transport is tested
--- separately; this suite focuses on the crypto envelope and decode logic.
+-- Two test layers:
+--   * Crypto path (M26.1): exercises 'completeRegistration' directly with
+--     synthetic encrypted envelopes — no network required.
+--   * WebSocket transport (M26.2): spins up a minimal loopback TCP server
+--     that speaks the Signal provisioning sub-protocol, then runs
+--     'runProvisioning' end-to-end against it.
 module Test.Bridge.SignalRegistration (runTests) where
 
-import Data.Bits (xor)
+import Control.Concurrent (forkIO)
+import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
+import Data.Bits (shiftL, shiftR, xor, (.&.), (.|.))
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
+import Data.Word (Word16, Word64)
+import qualified Network.Socket as NS
+import qualified Network.Socket.ByteString as NSB
 
 import Test.Util (assertEq)
 import UmbraVox.Bridge.Signal.Registration
     ( beginRegistration
     , completeRegistration
+    , runProvisioning
     , RegistrationState(..)
     , ProvisioningData(..)
     , RegistrationError(..)
@@ -35,6 +44,7 @@ runTests = do
         [ testCompleteRegistrationHappyPath
         , testCompleteRegistrationBadMac
         , testCompleteRegistrationBadCiphertextLen
+        , testRunProvisioningLoopback
         ]
     let passed = length (filter id results)
         total  = length results
@@ -42,7 +52,7 @@ runTests = do
     pure (and results)
 
 ------------------------------------------------------------------------
--- Tests
+-- Crypto path tests (M26.1)
 ------------------------------------------------------------------------
 
 testCompleteRegistrationHappyPath :: IO Bool
@@ -103,7 +113,206 @@ testCompleteRegistrationBadCiphertextLen = do
             assertEq "bad ciphertext len unexpected" True False
 
 ------------------------------------------------------------------------
--- Test-only helpers
+-- WebSocket transport test (M26.2)
+------------------------------------------------------------------------
+
+-- | End-to-end loopback test for 'runProvisioning'.
+--
+-- Spins up a raw TCP loopback server that implements the Signal
+-- provisioning WebSocket sub-protocol:
+--   1. HTTP upgrade handshake
+--   2. PUT /v1/address  {"uuid":"<uuid>"}  → client ACKs
+--   3. PUT /v1/message  <encrypted-envelope> → client ACKs, decrypts
+--
+-- Finding:     M26.2 — WebSocket transport path had no test coverage.
+-- Vulnerability: network integration errors (framing, encoding, ACK
+--                ordering) would only surface against a live server.
+-- Fix:         loopback server exercises the full round-trip without
+--              a live Signal-Server dependency.
+-- Verified:    test passes when runProvisioning returns correct ProvisioningData.
+testRunProvisioningLoopback :: IO Bool
+testRunProvisioningLoopback = do
+    -- Bind server on an OS-assigned port on loopback.
+    serverSock <- NS.socket NS.AF_INET NS.Stream NS.defaultProtocol
+    NS.setSocketOption serverSock NS.ReuseAddr 1
+    let loopback = NS.tupleToHostAddress (127, 0, 0, 1)
+    NS.bind serverSock (NS.SockAddrInet 0 loopback)
+    NS.listen serverSock 1
+    assignedAddr <- NS.getSocketName serverSock
+    let port = case assignedAddr of
+                 NS.SockAddrInet p _ -> fromIntegral p :: Int
+                 _                   -> 0
+
+    -- Build the encrypted provisioning envelope we will serve.
+    rs0 <- beginRegistration ("http://127.0.0.1:" ++ show port)
+    let testUuid  = "deadbeef-cafe-1234-5678-abcdef012345"
+        idPriv    = BS.pack [0..31]
+        idPub     = BS.pack (reverse [0..31])
+        phoneB    = strToBS "+15559876543"
+        profKey   = BS.replicate 32 0x77
+        devId     = 3 :: Int
+        provCode  = strToBS "loopback-test-code"
+    encMsg <- buildProvisioningEnvelope rs0 idPriv idPub phoneB profKey devId provCode
+
+    -- Server thread: handle one provisioning session.
+    serverDone <- newEmptyMVar
+    _ <- forkIO $ do
+        (clientSock, _) <- NS.accept serverSock
+        -- HTTP upgrade handshake.
+        _ <- NSB.recv clientSock 4096
+        NSB.sendAll clientSock (strToBS wsUpgradeResponse)
+        -- Frame 1: UUID assignment.
+        let uuidBody = strToBS ("{\"uuid\":\"" ++ testUuid ++ "\"}")
+        NSB.sendAll clientSock (buildServerFrame (buildSignalRequest 1 "PUT" "/v1/address" uuidBody))
+        -- Receive client ACK.
+        _ <- recvClientFrame clientSock
+        -- Frame 2: provisioning message.
+        NSB.sendAll clientSock (buildServerFrame (buildSignalRequest 2 "PUT" "/v1/message" encMsg))
+        -- Receive client ACK.
+        _ <- recvClientFrame clientSock
+        NS.close clientSock
+        NS.close serverSock
+        putMVar serverDone ()
+
+    -- UUID callback records the state after UUID is assigned.
+    uuidVar <- newEmptyMVar
+    let onUuidAssigned rs' = putMVar uuidVar (rsProvisioningUuid rs')
+
+    -- Run the full provisioning flow.
+    result <- runProvisioning rs0 onUuidAssigned
+    _ <- takeMVar serverDone
+
+    -- Validate results.
+    case result of
+        Left err -> do
+            putStrLn ("  [loopback] ERROR: " ++ show err)
+            assertEq "runProvisioning loopback" True False
+        Right pd -> do
+            uuid <- takeMVar uuidVar
+            ok1 <- assertEq "uuid assigned"  (strToBS testUuid)       uuid
+            ok2 <- assertEq "identityPriv"   idPriv   (pdIdentityKeyPriv pd)
+            ok3 <- assertEq "identityPub"    idPub    (pdIdentityKeyPub pd)
+            ok4 <- assertEq "phone"          "+15559876543" (pdPhoneNumber pd)
+            ok5 <- assertEq "profileKey"     profKey  (pdProfileKey pd)
+            ok6 <- assertEq "devId"          (fromIntegral devId) (pdDeviceId pd)
+            ok7 <- assertEq "provCode"       provCode (pdProvisioningCode pd)
+            pure (ok1 && ok2 && ok3 && ok4 && ok5 && ok6 && ok7)
+
+------------------------------------------------------------------------
+-- Loopback server helpers
+------------------------------------------------------------------------
+
+-- | Minimal HTTP 101 Switching Protocols response.
+wsUpgradeResponse :: String
+wsUpgradeResponse =
+    "HTTP/1.1 101 Switching Protocols\r\n"
+    ++ "Upgrade: websocket\r\n"
+    ++ "Connection: Upgrade\r\n"
+    ++ "\r\n"
+
+-- | Build an unmasked server-to-client WebSocket binary frame.
+buildServerFrame :: ByteString -> ByteString
+buildServerFrame payload =
+    let len = BS.length payload
+        hdr
+            | len < 126   = BS.pack [0x82, fromIntegral len]
+            | len < 65536 = BS.pack [ 0x82, 0x7E
+                                    , fromIntegral (len `shiftR` 8)
+                                    , fromIntegral (len .&. 0xFF)
+                                    ]
+            | otherwise   = BS.pack [ 0x82, 0x7F
+                                    , fromIntegral (len `shiftR` 56)
+                                    , fromIntegral (len `shiftR` 48 .&. 0xFF)
+                                    , fromIntegral (len `shiftR` 40 .&. 0xFF)
+                                    , fromIntegral (len `shiftR` 32 .&. 0xFF)
+                                    , fromIntegral (len `shiftR` 24 .&. 0xFF)
+                                    , fromIntegral (len `shiftR` 16 .&. 0xFF)
+                                    , fromIntegral (len `shiftR`  8 .&. 0xFF)
+                                    , fromIntegral (len .&. 0xFF)
+                                    ]
+    in hdr <> payload
+
+-- | Encode a Signal sub-protocol type-1 request.
+--
+-- Format: 0x01 + reqId-BE(8) + verbLen-BE(2) + verb + pathLen-BE(2) + path + body
+buildSignalRequest :: Word64 -> String -> String -> ByteString -> ByteString
+buildSignalRequest reqId verb path body =
+    let verbBS = strToBS verb
+        pathBS = strToBS path
+    in BS.singleton 0x01
+    <> w64BE reqId
+    <> w16BE (fromIntegral (BS.length verbBS))
+    <> verbBS
+    <> w16BE (fromIntegral (BS.length pathBS))
+    <> pathBS
+    <> body
+
+-- | Read one masked WebSocket frame from the client socket and return its payload.
+recvClientFrame :: NS.Socket -> IO ByteString
+recvClientFrame sock = do
+    hdr <- recvN sock 2
+    let byte1      = BS.index hdr 1
+        masked     = byte1 .&. 0x80 /= 0
+        len7       = fromIntegral (byte1 .&. 0x7F) :: Int
+    payloadLen <- if len7 < 126
+                    then pure len7
+                    else if len7 == 126
+                           then do ext <- recvN sock 2
+                                   pure (fromIntegral (BS.index ext 0) `shiftL` 8
+                                        .|. fromIntegral (BS.index ext 1))
+                           else do ext <- recvN sock 8
+                                   pure (fromIntegral (decodeW64BE ext))
+    maskKey <- if masked then recvN sock 4 else pure BS.empty
+    raw     <- recvN sock payloadLen
+    pure (if masked then applyMask maskKey raw else raw)
+  where
+    applyMask mk p = BS.pack
+        [ BS.index p i `xor` BS.index mk (i `mod` 4)
+        | i <- [0 .. BS.length p - 1]
+        ]
+    decodeW64BE b =
+        fromIntegral (BS.index b 0) `shiftL` 56
+        .|. fromIntegral (BS.index b 1) `shiftL` 48
+        .|. fromIntegral (BS.index b 2) `shiftL` 40
+        .|. fromIntegral (BS.index b 3) `shiftL` 32
+        .|. fromIntegral (BS.index b 4) `shiftL` 24
+        .|. fromIntegral (BS.index b 5) `shiftL` 16
+        .|. fromIntegral (BS.index b 6) `shiftL`  8
+        .|. fromIntegral (BS.index b 7) :: Word64
+
+recvN :: NS.Socket -> Int -> IO ByteString
+recvN _ 0    = pure BS.empty
+recvN sock n = go n []
+  where
+    go 0   acc = pure (BS.concat (reverse acc))
+    go rem acc = do
+        chunk <- NSB.recv sock (min rem 4096)
+        if BS.null chunk
+            then pure (BS.concat (reverse acc))
+            else go (rem - BS.length chunk) (chunk : acc)
+
+-- | Big-endian Word64 encoding.
+w64BE :: Word64 -> ByteString
+w64BE w = BS.pack
+    [ fromIntegral (w `shiftR` 56)
+    , fromIntegral (w `shiftR` 48 .&. 0xFF)
+    , fromIntegral (w `shiftR` 40 .&. 0xFF)
+    , fromIntegral (w `shiftR` 32 .&. 0xFF)
+    , fromIntegral (w `shiftR` 24 .&. 0xFF)
+    , fromIntegral (w `shiftR` 16 .&. 0xFF)
+    , fromIntegral (w `shiftR`  8 .&. 0xFF)
+    , fromIntegral (w .&. 0xFF)
+    ]
+
+-- | Big-endian Word16 encoding.
+w16BE :: Word16 -> ByteString
+w16BE w = BS.pack
+    [ fromIntegral (w `shiftR` 8 .&. 0xFF)
+    , fromIntegral (w .&. 0xFF)
+    ]
+
+------------------------------------------------------------------------
+-- Crypto test helpers
 ------------------------------------------------------------------------
 
 provisioningHKDFInfo :: ByteString
