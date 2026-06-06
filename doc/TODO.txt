@@ -544,6 +544,13 @@ IMPLEMENTATION BACKLOG (discovered from audits, 2026-05-26)
   [ ] M28.3 cmd_image.go:177 — TODO: build runtime image inside builder VM (host-isolated)
   [ ] M28.4 Remove continue-on-error: false boilerplate from CI steps (already default)
 
+[ ] M29 Implementation plan execution
+  Reference: doc/IMPLEMENTATION-PLAN.md
+  [ ] M29.1 Align top-level pipeline truthfully per doc/IMPLEMENTATION-PLAN.md
+  [ ] M29.2 Complete Signal bridge registration per doc/IMPLEMENTATION-PLAN.md
+  [ ] M29.3 Close assurance evidence gaps per doc/IMPLEMENTATION-PLAN.md
+  [ ] M29.4 Keep backlog visibility consistent per doc/IMPLEMENTATION-PLAN.md
+
 ================================================================================
 COMPLETED AGENT WORK
 ================================================================================

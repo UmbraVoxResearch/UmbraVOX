@@ -32,7 +32,7 @@ nix-shell shell-minimal.nix
 ./uv test              # Run tests
 ./uv test soak         # Longer stress suite
 ./uv verify            # F* verification pass
-./uv                   # Full quality gate (build + test + verify + check)
+./uv                   # Fast gate (build + test + check)
 ./uv dev               # Interactive development shell inside the NixOS VM
 ./uv release linux     # Build portable Linux x86_64 bundle
 ./uv clean             # Clean build artifacts
@@ -46,7 +46,8 @@ scripts/nix-flake.sh flake show --no-write-lock-file
 - `./uv test all` runs every named suite sequentially in a single VM session (~30 min).
 - `./uv test soak` runs the longer stress suite and writes artifacts under `build/test-artifacts/`.
 - `./uv verify` runs the F* verification pass.
-- `./uv` (no args) runs the full build pipeline (`build + test + verify + check`).
+- `./uv` (no args) runs the fast gate (`build + test + check`).
+- Full gate: `./uv build && ./uv test && ./uv verify && ./uv check`.
 - `./uv check` runs lint + format + license + complexity + generated-headers + constant-time-branches gates.
 - `./uv build` builds library + executables (routes to VM by default).
 - `./uv release linux` builds a portable Linux x86_64 terminal bundle with a patched local loader/lib set.
@@ -76,7 +77,7 @@ an isolated NixOS VM by default.  The host only needs QEMU and git.
 | `./uv test` | Run `required` test suite (routes to VM by default) |
 | `./uv test all` | Run all 15 named suites in a single VM session (~30 min) |
 | `./uv verify` | Run F* formal verification (routes to VM by default) |
-| `./uv` | Full quality gate (build + test + verify + check) |
+| `./uv` | Fast gate (build + test + check) |
 | `./uv check` | Lint + format + license + complexity + generated-headers + constant-time-branches |
 | `./uv vm signal test` | Signal-Server integration test suite (Go) |
 | `./uv dev` | Interactive development shell inside the NixOS VM |
@@ -92,9 +93,9 @@ See `doc/VM-DEVELOPMENT.md` for the full VM development guide and troubleshootin
 
 ## Aggregate Readiness Check
 
-- Use `./uv` (no args) as the current aggregate host-side readiness gate
-  (`build + test + verify + check`). The `check` sub-gate covers lint,
-  format, license, complexity, generated-headers, and constant-time-branches.
+- Use `./uv` (no args) as the fast aggregate gate (`build + test + check`).
+- For the full readiness gate (includes formal verification), run:
+  `./uv build && ./uv test && ./uv verify && ./uv check`.
 - Use `./uv release linux` to stage the only current prebuilt native artifact.
 - Remaining readiness gaps are unchanged: no maintained repo-owned guest image
   performs in-guest bundle verification by default, no authoritative in-guest

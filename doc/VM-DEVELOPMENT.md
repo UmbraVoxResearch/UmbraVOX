@@ -112,6 +112,9 @@ so the host's `/nix/store` is never touched.  Only needs QEMU, git,
 `./uv`, and nix on the host (nix is only used to build the lightweight
 builder image itself, not the full dev-toolchain image).
 
+For disk-pressure settings that keep both the host and the builder image
+from filling up too aggressively, see [NIX-CACHE-POLICY.md](NIX-CACHE-POLICY.md).
+
 To build directly on the host instead (legacy approach), use
 `./uv vm build-image --on-host`.  This uses ~30GB of host disk and writes
 to the host `/nix/store`.

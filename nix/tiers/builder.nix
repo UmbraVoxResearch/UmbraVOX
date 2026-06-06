@@ -14,6 +14,9 @@
   nix.enable = lib.mkForce true;
   nix.settings = {
     experimental-features = [ "nix-command" ];
+    auto-optimise-store = true;
+    min-free = 40 * 1024 * 1024 * 1024;
+    max-free = 60 * 1024 * 1024 * 1024;
     sandbox = lib.mkDefault false;  # VMs can override (builder uses true)
     trusted-users = [ "root" ];
   };
