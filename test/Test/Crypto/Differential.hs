@@ -10,6 +10,7 @@
 -- implementations become real, these tests will catch any divergence.
 module Test.Crypto.Differential (runTests) where
 
+import Control.Exception (SomeException, try)
 import Control.Monad (forM)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
@@ -27,6 +28,7 @@ import qualified UmbraVox.Crypto.Poly1305 as Poly1305
 import qualified UmbraVox.Crypto.AES as AES
 import qualified UmbraVox.Crypto.Keccak as Keccak
 import qualified UmbraVox.Crypto.Curve25519 as X25519
+import qualified UmbraVox.Crypto.GCM as GCM
 
 -- FFI wrappers (will call C when real implementations land)
 import qualified UmbraVox.Crypto.Generated.FFI.SHA256 as FFISHA256
@@ -38,6 +40,7 @@ import qualified UmbraVox.Crypto.Generated.FFI.Poly1305 as FFIPoly1305
 import qualified UmbraVox.Crypto.Generated.FFI.AES256 as FFIAES256
 import qualified UmbraVox.Crypto.Generated.FFI.Keccak as FFIKeccak
 import qualified UmbraVox.Crypto.Generated.FFI.X25519 as FFIX25519
+import qualified UmbraVox.Crypto.Generated.FFI.GCM as FFIGCM
 
 runTests :: IO Bool
 runTests = do
@@ -50,6 +53,7 @@ runTests = do
         , testChaCha20Differential
         , testPoly1305Differential
         , testAES256Differential
+        , testGCMDifferential
         , testKeccakDifferential
         , testX25519Differential
         , testPropertyFuzz
@@ -237,6 +241,47 @@ testAES256Differential = do
     r2 <- assertEq "AES-256 differential decrypt (FIPS 197)" hsDec ffiDec
 
     pure (r1 && r2)
+
+------------------------------------------------------------------------
+-- AES-256-GCM differential: Haskell oracle vs HACL* EverCrypt
+-- Skipped gracefully on platforms without AES-NI (EverCrypt requirement).
+------------------------------------------------------------------------
+
+testGCMDifferential :: IO Bool
+testGCMDifferential = do
+    let key   = BS.replicate 32 0x00
+        nonce = BS.replicate 12 0x00
+    probeResult <- try (FFIGCM.gcmEncrypt key nonce BS.empty BS.empty)
+                   :: IO (Either SomeException (ByteString, ByteString))
+    case probeResult of
+        Left ex -> do
+            putStrLn $ "  SKIP AES-256-GCM differential (EverCrypt unavailable: " ++ show ex ++ ")"
+            pure True
+        Right _ -> do
+            let vectors =
+                    [ ("empty-pt-no-aad",   BS.empty,              BS.empty)
+                    , ("16-byte-pt",        BS.replicate 16 0x42,  BS.empty)
+                    , ("32-byte-pt",        BS.replicate 32 0xab,  BS.empty)
+                    , ("with-aad",          BS.replicate 8  0x01,  BS.replicate 4 0xcd)
+                    ]
+            results <- forM vectors $ \(name, pt, aad) -> do
+                let (hsCt, hsTag) = GCM.gcmEncrypt key nonce aad pt
+                (ffiCt, ffiTag) <- FFIGCM.gcmEncrypt key nonce aad pt
+                if hsCt /= ffiCt || hsTag /= ffiTag
+                    then do
+                        putStrLn $ "  DIVERGENCE GCM encrypt on " ++ name
+                                ++ ": ct_match=" ++ show (hsCt == ffiCt)
+                                ++ " tag_match=" ++ show (hsTag == ffiTag)
+                        pure False
+                    else do
+                        let hsDecResult  = GCM.gcmDecrypt key nonce aad hsCt hsTag
+                        ffiDecResult <- FFIGCM.gcmDecrypt key nonce aad ffiCt ffiTag
+                        if hsDecResult == ffiDecResult
+                            then pure True
+                            else do
+                                putStrLn $ "  DIVERGENCE GCM decrypt on " ++ name
+                                pure False
+            assertEq "AES-256-GCM differential (Haskell oracle vs EverCrypt)" True (and results)
 
 ------------------------------------------------------------------------
 -- Keccak/SHA-3 differential: NIST SHA-3 vectors

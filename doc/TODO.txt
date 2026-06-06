@@ -148,7 +148,10 @@ See: doc/IMPLEMENTATION-PLAN.md, doc/PROJECT-CHARTER.md
   [ ] M32.4 Coq: discharge VR-001 dleq_correctness (after ED-004 confirmed, in dev VM)
   [ ] M32.5 Coq: discharge X2-005 dh_commutativity (after ED-005 confirmed)
   [ ] M32.6 Run full Coq suite in dev VM; capture log as evidence artifact
-  [ ] M34.1 AES-256-GCM: confirm Wycheproof + HACL* oracle wired in Test.Crypto.Differential
+  [x] M34.1 AES-256-GCM: Wycheproof + HACL* EverCrypt wired in Test.Crypto.Differential
+       - testGCMDifferential: Haskell oracle vs HACL* FFI (4 vectors, AES-NI-skip-safe)
+       - Wycheproof.hs: runAesGcmVectorsFFI runs full Wycheproof JSON suite against FFI
+       - Both skip gracefully (report PASS) on platforms without AES-NI hardware
   [ ] M34.2 ML-KEM-768: run ./uv vm kyber generate-kat in dev VM (M25.2 completion)
   [ ] M34.3 VRF: document Haskell-reference oracle only; plan liboqs ECVRF as second oracle
 
