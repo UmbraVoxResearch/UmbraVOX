@@ -10,7 +10,8 @@ messaging MVP.
 - [PROJECT-CHARTER.md](PROJECT-CHARTER.md) — mission, scope, assurance layers, non-claims
 - [CRYPTO-AUDIT-v0.3.0.md](CRYPTO-AUDIT-v0.3.0.md) — cryptographic audit report (v0.3.0)
 - [PROTOCOL-AUDIT-v0.3.0.md](PROTOCOL-AUDIT-v0.3.0.md) — protocol audit report (v0.3.0)
-- [CRYPTO-SAFETY.md](CRYPTO-SAFETY.md) — nonce constructions and HKDF domain-separation strings
+- [CRYPTO-SAFETY.md](CRYPTO-SAFETY.md) — nonce constructions, HKDF domain-separation strings, CT gap, and differential testing limitations
+- [VERIFIED-C.md](VERIFIED-C.md) — verified C architecture: interim vs target production, oracle coverage, linkage gap, assurance grades
 - [DHT-NETWORK-PLAN.md](DHT-NETWORK-PLAN.md) — DHT network design and implementation plan
 - [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md) — current execution plan for the next implementation slice
 - [ENCRYPTED-ENVELOPE-DESIGN.md](ENCRYPTED-ENVELOPE-DESIGN.md) — encrypted envelope and stealth addressing design
