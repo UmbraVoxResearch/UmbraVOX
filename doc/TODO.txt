@@ -126,11 +126,13 @@ See: doc/IMPLEMENTATION-PLAN.md, doc/PROJECT-CHARTER.md
   [ ] M39.3 Regenerate csrc/generated/mlkem768.c via ./uv run codegen; test with ./uv test mlkem
 
 [ ] PHASE 3: Formal Spec + Proof Closure (dev VM, M35 gated)
-  [ ] M36A KaRaMeL toolchain setup (dev VM prerequisite)
-       - Add fstarlang/karamel as flake input in flake.nix (version-pinned to match F*)
-       - Expose KRML_HOME in dev VM (nix/tiers/dev.nix)
-       - Add csrc/extracted/ directory; update UmbraVox.cabal
-       - In dev VM: verify $KRML_HOME/krml --version and trivial extraction
+  [~] M36A KaRaMeL toolchain setup (dev VM prerequisite)
+       - [x] Add fstarlang/karamel as flake input in flake.nix (rev=254e099, matches HACL* pin)
+       - [x] Expose KRML_HOME in dev VM (nix/tiers/dev.nix + vm-image.nix specialArgs)
+       - [x] Add csrc/extracted/ directory with README; update UmbraVox.cabal include-dirs
+       - [x] Wire karamelHome through flake.nix → vm-image.nix → dev.nix (nullable until lock)
+       - [ ] Run 'nix flake lock' in dev VM to populate flake.lock karamel entry (VM ONLY)
+       - [ ] Verify $KRML_HOME/krml --version and trivial extraction (VM ONLY)
   [ ] M37.1 Implement NTT in Spec.MLKEM768.fst (dev VM)
        - Cooley-Tukey radix-2, 7 layers, 128-value zeta table, q=3329, n=256, ζ=17
        - Parameters from: contrib/oracles/src/pqclean/crypto_kem/ml-kem-768/clean/ntt.c

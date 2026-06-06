@@ -4,13 +4,28 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+
+    # KaRaMeL: F* Low* → C extractor.  Pinned to the commit used by HACL* 504c298.
+    # Required for M36B (our own formally-extracted C in csrc/extracted/).
+    # flake.lock must be updated in the dev VM: nix flake lock
+    karamel = {
+      url = "github:fstarlang/karamel?rev=254e099bd586b17461845f6b0cab44c3ef5080e9";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils, karamel }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
         hp = pkgs.haskell.packages.ghc9141;
+
+        # KaRaMeL home directory (F* Low* → C extractor).  Available via
+        # karamel.packages.${system}.karamel.home once flake.lock is updated.
+        # M36A: run 'nix flake lock' in dev VM to lock the karamel input,
+        # then KRML_HOME becomes available in devShells.full and the VM image.
+        karamelPkg = karamel.packages.${system}.karamel or null;
+        karamelHome = if karamelPkg != null then karamelPkg.home else null;
 
         # Minimal tools for VM orchestration (default shell)
         vmTools = with pkgs; [
@@ -77,11 +92,17 @@
           name = "umbravox-dev";
           buildInputs = devTools;
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [ pkgs.glibc ];
+          # KRML_HOME: KaRaMeL home for F* Low* → C extraction (M36A/M36B).
+          # Available after 'nix flake lock' populates the karamel lock entry.
+          KRML_HOME = karamelHome;
           shellHook = ''
             export UMBRAVOX_ROOT="$(pwd)"
             export UMBRAVOX_DATA="$UMBRAVOX_ROOT/.umbravox-data"
             export PATH="$UMBRAVOX_ROOT/scripts:$PATH"
             echo "UmbraVOX full dev shell ready: use ./uv build/test/verify/release"
+            ${pkgs.lib.optionalString (karamelHome != null) ''
+              echo "KaRaMeL available: KRML_HOME=$KRML_HOME"
+            ''}
           '';
         };
 
@@ -192,6 +213,10 @@
 
         packages.vm-image = (import ./nix/vm-image.nix {
           pkgs = import nixpkgs { system = "x86_64-linux"; };
+          # M36A: pass karamelHome so KRML_HOME is set in the dev VM.
+          # karamelHome is null until 'nix flake lock' populates the lock entry.
+          karamelHome = let kp = karamel.packages.x86_64-linux or {};
+                        in kp.karamel.home or null;
         }).qemu;
 
         packages.qemu-runtime-image = (import ./nix/vm-runtime.nix {

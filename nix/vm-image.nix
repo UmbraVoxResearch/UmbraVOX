@@ -11,7 +11,12 @@
 #   nix-build nix/vm-image.nix      (standalone)
 #
 # The output is a raw disk image: result/nixos.raw
-{ pkgs ? import <nixpkgs> { system = "x86_64-linux"; } }:
+# M36A: karamelHome is passed from the flake (or null if not yet locked).
+# Once 'nix flake lock' is run in the VM, karamelHome is populated and
+# KRML_HOME becomes available inside the VM for F* Low* → C extraction.
+{ pkgs ? import <nixpkgs> { system = "x86_64-linux"; }
+, karamelHome ? null
+}:
 
 let
   # Auto-detect F* cache from the source tree.
@@ -24,6 +29,7 @@ let
 
   nixosConfig = { config, lib, modulesPath, pkgs, ... }: {
     imports = [ ./tiers/dev.nix ];
+    _module.args.karamelHome = karamelHome;
 
     boot.loader.grub.device = "/dev/vda";
     boot.initrd.availableKernelModules = [

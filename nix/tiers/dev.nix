@@ -4,7 +4,12 @@
 #
 # Tier hierarchy:
 #   base → network → builder → dev
-{ config, lib, modulesPath, pkgs, ... }:
+#
+# M36A: KaRaMeL (krml) for F* Low* → C extraction.
+# karamelHome is passed via specialArgs from the caller (vm-image.nix).
+# If null (lock not yet updated), KaRaMeL is unavailable but the VM boots normally.
+# To enable: run 'nix flake lock' in dev VM to populate the karamel lock entry.
+{ config, lib, modulesPath, pkgs, karamelHome ? null, ... }:
 
 let
   hp = pkgs.haskell.packages.ghc9141;
@@ -81,5 +86,15 @@ in
 {
   imports = [ ./builder.nix ];
 
-  environment.systemPackages = devToolsPkgs;
+  environment.systemPackages = devToolsPkgs
+    ++ (if karamelHome != null then [ (pkgs.writeShellScriptBin "krml" ''
+         exec ${karamelHome}/bin/krml "$@"
+       '') ] else []);
+
+  # M36A: KRML_HOME for F* Low* → C extraction (M36B).
+  # Available after 'nix flake lock' populates the karamel lock entry in the
+  # dev VM.  Once set, run: $KRML_HOME/krml --version to verify.
+  environment.variables = lib.mkIf (karamelHome != null) {
+    KRML_HOME = karamelHome;
+  };
 }

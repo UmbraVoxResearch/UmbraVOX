@@ -354,6 +354,7 @@ library
       csrc/hacl/krml
       csrc/hacl/krml/internal
       csrc/fiat
+      csrc/extracted
     cc-options: -std=c99 -fstack-protector-strong -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security
       -DFIAT_VENDORED -Wno-unused-function -Wno-unused-parameter
   -- M38.2: Vale assembly (AES-NI + GHASH) — x86-64 only
