@@ -28,6 +28,9 @@ jobs:
       - name: Generated C vs libsodium/HACL* oracle
         run: ./uv test differential
 
+      - name: HACL* vs CryptoGen + fiat-crypto vs CryptoGen differential
+        run: ./uv test differential-hacl-vs-cryptogen && ./uv test differential-fiat-vs-cryptogen
+
       - name: F* admit count, assume inventory, assurance matrix (32 specs)
         run: ./uv check pre-release
 

@@ -179,9 +179,13 @@ ACTIVE WORK
     JDK 25 required (configured in signal-server.json).
     Deterministic build flags applied (outputTimestamp, EPOCH).
     JAR built successfully with JDK 25 in build VM (nix-ld fix for protoc).
-  [~] M19.4.7 Health endpoint verification (blocked on M19.4.6)
-      Note: JAR classpath fix applied (removed -o/--offline from mvn dependency:copy-dependencies);
-      implemented in code but needs VM rebuild to verify JAR assembles correctly.
+  [~] M19.4.7 Health endpoint verification (blocked on VM rebuild)
+      JAR build fix applied (a85c815a): switched to -P exclude-spam-filter to produce
+      self-contained uber JAR (~130MB). checkHealthURL logic is fully implemented in
+      tools/cmd/vm-signal/main.go and mock-tested (TestCheckHealthURL_* 4/4 pass).
+      Remaining blocker: runtime VM image must be rebuilt with new JAR to verify
+      GET /healthcheck → 200 OK on port 8081 against a live Signal-Server instance.
+      To close: ./uv vm signal build-jar && ./uv vm signal check-health
 
 [x] Runtime VM (./uv run) — lightweight QEMU
   All ./uv run modes use lightweight QEMU runtime image (~1.6GB).
@@ -570,7 +574,9 @@ IMPLEMENTATION BACKLOG (discovered from audits, 2026-05-26)
   [x] M26.2 Registration.hs — implement WebSocket transport (M19.3.5)
       runProvisioning: connectSignalWSPath → UUID assignment → provisioning
       message → completeRegistration. Full loopback integration test added.
-  [ ] M26.3 M19.4.7 — health endpoint verification (blocked on JAR assembly)
+  [~] M26.3 M19.4.7 — health endpoint verification (blocked on VM rebuild)
+      checkHealthURL mock tests added (tools/cmd/vm-signal/main_test.go, 4/4 pass).
+      Live verification requires: ./uv vm signal build-jar && ./uv vm signal check-health
 
 [x] M27 Documentation debt
   [x] M27.1 ENCRYPTED-ENVELOPE-DESIGN.md — audited all 27 TODO items; ~28 marked done (174b41b)

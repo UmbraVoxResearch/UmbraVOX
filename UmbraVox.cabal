@@ -330,8 +330,14 @@ library
       csrc/fiat/fiat_25519_64.c
       csrc/fiat/bridge_ed25519.c
       csrc/fiat/bridge_x25519.c
-    include-dirs: csrc csrc/hacl csrc/fiat
-    cc-options: -fstack-protector-strong -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security -DFIAT_VENDORED
+    include-dirs:
+      csrc
+      csrc/hacl
+      csrc/hacl/krml
+      csrc/hacl/krml/internal
+      csrc/fiat
+    cc-options: -fstack-protector-strong -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security
+      -DFIAT_VENDORED -Wno-unused-function -Wno-unused-parameter
   if flag(pure-haskell-crypto)
     cpp-options: -DPURE_HASKELL_CRYPTO
   if flag(chaste-build)
