@@ -422,6 +422,7 @@ test-suite umbravox-test
     Test.Crypto.Differential.Negative
     Test.Crypto.Differential.Metamorphic
     Test.Crypto.Differential.Fuzz
+    Test.Crypto.Differential.Kyber
     Test.Crypto.Differential.ProtocolLibsignal
     Test.Crypto.Differential.ProtocolSelfConsistency
     Test.Crypto.Differential.Evidence

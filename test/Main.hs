@@ -24,6 +24,7 @@ import qualified Test.Crypto.Differential.Primitives as DiffPrimitives
 import qualified Test.Crypto.Differential.Negative as DiffNegative
 import qualified Test.Crypto.Differential.Metamorphic as DiffMetamorphic
 import qualified Test.Crypto.Differential.Fuzz as DiffFuzz
+import qualified Test.Crypto.Differential.Kyber as DiffKyber
 import qualified Test.Crypto.Differential.ProtocolLibsignal as DiffProtocolLibsignal
 import qualified Test.Crypto.Differential.ProtocolSelfConsistency as DiffProtocolSC
 import qualified Test.Crypto.Ed25519 as Ed25519
@@ -258,6 +259,7 @@ runSuiteArg suiteArg =
             , Suite "differential-negative" DiffNegative.differentialNegativeTests
             , Suite "differential-metamorphic" DiffMetamorphic.metamorphicTests
             , Suite "differential-fuzz" DiffFuzz.fuzzTests
+            , Suite "differential-kyber" DiffKyber.kyberDifferentialTests
             , Suite "differential-protocol-sc" DiffProtocolSC.protocolSelfConsistencyTests
             , Suite "differential-protocol-libsignal" DiffProtocolLibsignal.protocolLibsignalTests
             ]
@@ -573,7 +575,7 @@ validSuiteArgs :: [String]
 validSuiteArgs =
     [ "required", "core", "core-crypto", "core-network", "core-chat"
     , "core-tui", "core-tools", "tcp", "fault", "recovery", "tui-sim"
-    , "integrity", "soak", "deferred", "differential", "adversarial", "unicode"
+    , "integrity", "soak", "deferred", "differential", "differential-kyber", "adversarial", "unicode"
     , "regression", "regression-m7", "regression-m8", "regression-net"
     , "m11-keymgmt", "m11-symmetric", "m11-asymmetric", "m11-sidechannel"
     , "m11-protocol", "m11-high", "m11-high-auth", "m11-noise-dh", "m11-high-fs", "m11-high-proto"
