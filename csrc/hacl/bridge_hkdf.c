@@ -177,6 +177,86 @@ hkdf_sha256(uint8_t *okm,
     Lib_Memzero0_memzero0(prk, HKDF_SHA256_PRK_BYTES);
 }
 
+#define HKDF_SHA512_PRK_BYTES 64
+
+/* Forward declarations for HKDF-SHA-512 (in Hacl_HKDF.c). */
+extern void Hacl_HKDF_extract_sha2_512(
+    uint8_t *prk,
+    uint8_t *salt,  uint32_t saltlen,
+    uint8_t *ikm,   uint32_t ikmlen);
+
+extern void Hacl_HKDF_expand_sha2_512(
+    uint8_t *okm,
+    uint8_t *prk,   uint32_t prklen,
+    uint8_t *info,  uint32_t infolen,
+    uint32_t len);
+
+static const uint8_t hkdf_zero_salt_512[HKDF_SHA512_PRK_BYTES] = {0};
+
+/*
+ * hkdf_sha512_extract — HKDF-Extract with HMAC-SHA-512.
+ *
+ *   prk      : caller-allocated output buffer of at least 64 bytes
+ *   salt     : salt bytes; if salt_len == 0, RFC 5869 default (64 zero bytes)
+ *   salt_len : byte length of salt
+ *   ikm      : input keying material
+ *   ikm_len  : byte length of ikm
+ *
+ * Called by UmbraVox.Crypto.Generated.FFI.HKDF.hkdfExtract (CSPRNG init/reseed).
+ */
+void
+hkdf_sha512_extract(uint8_t *prk,
+                    const uint8_t *salt, uint32_t salt_len,
+                    const uint8_t *ikm,  uint32_t ikm_len)
+{
+    const uint8_t *effective_salt = (salt_len == 0) ? hkdf_zero_salt_512 : salt;
+    uint32_t       effective_len  = (salt_len == 0) ? HKDF_SHA512_PRK_BYTES : salt_len;
+    Hacl_HKDF_extract_sha2_512(
+        prk,
+        (uint8_t *)(uintptr_t)effective_salt, effective_len,
+        (uint8_t *)(uintptr_t)ikm,            ikm_len);
+}
+
+/*
+ * hkdf_sha512 — combined HKDF-Extract-then-Expand with HMAC-SHA-512.
+ *
+ *   okm      : caller-allocated output buffer of at least okm_len bytes
+ *   salt     : optional salt (pass salt_len=0 for RFC 5869 default)
+ *   salt_len : byte length of salt
+ *   ikm      : input keying material
+ *   ikm_len  : byte length of ikm
+ *   info     : context / application-specific info
+ *   info_len : byte length of info
+ *   okm_len  : desired output length (must be <= 255 * 64 = 16320)
+ *
+ * Called by UmbraVox.Crypto.Generated.FFI.HKDF.hkdfSHA512 (X3DH, Presence).
+ */
+void
+hkdf_sha512(uint8_t *okm,
+            const uint8_t *salt, uint32_t salt_len,
+            const uint8_t *ikm,  uint32_t ikm_len,
+            const uint8_t *info, uint32_t info_len,
+            uint32_t okm_len)
+{
+    /* RFC 5869 §2.3: L ≤ 255 * HashLen = 16320 bytes for HKDF-SHA-512. */
+    if (okm_len > 255u * HKDF_SHA512_PRK_BYTES) return;
+
+    const uint8_t *effective_salt = (salt_len == 0) ? hkdf_zero_salt_512 : salt;
+    uint32_t       effective_len  = (salt_len == 0) ? HKDF_SHA512_PRK_BYTES : salt_len;
+
+    uint8_t prk[HKDF_SHA512_PRK_BYTES];
+    Hacl_HKDF_extract_sha2_512(
+        prk,
+        (uint8_t *)(uintptr_t)effective_salt, effective_len,
+        (uint8_t *)(uintptr_t)ikm,            ikm_len);
+    Hacl_HKDF_expand_sha2_512(
+        okm,
+        prk, HKDF_SHA512_PRK_BYTES,
+        (uint8_t *)(uintptr_t)info, info_len,
+        okm_len);
+    Lib_Memzero0_memzero0(prk, HKDF_SHA512_PRK_BYTES);
+}
+
 /*
  * hkdf_link_probe — returns 1 to confirm this compilation unit was linked.
  * Called by UmbraVox.Crypto.Generated.FFI.HKDF.ffiLinked.
