@@ -5,7 +5,7 @@ Purpose: active work only.
 - Deferred/blocked items → TODO-DEFERRED.txt
 
 Status: [ ] pending, [~] in progress
-Last updated: 2026-06-05
+Last updated: 2026-06-06
 
 Rules
 -----
@@ -38,8 +38,116 @@ RECENTLY COMPLETED
 
 See CHANGELOG.txt for v0.5.0-v0.5.14 history.
 
+M31.8 (2026-06-06): Full assurance pipeline (M31-M39) designed and documented.
+  Milestones M31-M39 cover documentation fixes, interim HACL* production wiring,
+  KaRaMeL toolchain setup, F* Low* formal specs for all 11 primitives, and
+  extraction to verified C. See FULL ASSURANCE PIPELINE section below.
+
+Completed milestones moved to CHANGELOG.txt (v0.7.0 [Unreleased] section):
+  M13.14 (Coq proofs — 18 complete, 0 Admitted), M13.16 (CycloneDX SBOM),
+  M20 (security audit remediation), M23 (nix tier consistency),
+  M24 (CI hardening), M27 (documentation debt), M28 (build system polish,
+  completed items), M29 (implementation plan alignment), M21 (Go test coverage,
+  completed items), M22 (nix placeholder hashes, vendored items), M26 (signal
+  bridge completion).
+
 ================================================================================
 ACTIVE WORK
+================================================================================
+
+================================================================================
+FULL ASSURANCE PIPELINE (M31-M39)
+Goal: 100% formally verified production crypto; our own KaRaMeL-extracted C.
+See: doc/IMPLEMENTATION-PLAN.md, doc/PROJECT-CHARTER.md
+================================================================================
+
+[~] PHASE 1: Documentation + Assurance Fixes (host, M35C expert gate)
+  [ ] M31.1 Fix ASSURANCE-MATRIX.md Axiom counts (0→5 across Ed25519Prime.v, Ed25519ScalarMult.v, StructuralProofs.v)
+  [ ] M31.2 Reclassify ED-002 in ASSUMPTIONS.md: BLOCKED_BY_TOOLING → EXTERNALLY_VERIFIED
+  [ ] M31.3 Fix VRF verifiability qualification: "proved modulo VR-001 (dleq_correctness) + ED-004"
+  [ ] M31.4 Add PQ-001 coverage gap note: Spec.MLKEM768.fst is STUBS ONLY
+  [ ] M31.5 Fix csrc/hacl/README.md — relabel HACL* as interim oracle pending KaRaMeL extraction
+  [ ] M31.6 Add oracle label comments to csrc/generated/sha256.c through hkdf.c
+  [ ] M31.7 Document CT gap and differential testing limitations in doc/CRYPTO-SAFETY.md
+  [x] M31.8 Update TODO.txt/CHANGELOG.txt with all M31-M39 milestones (this task)
+  [ ] M33.1 Add third-party provenance headers to csrc/hacl/*.c and csrc/fiat/*.c
+  [ ] M33.2 Update contrib/oracles/THIRD_PARTY_LICENSES.md with HACL* and fiat-crypto entries
+
+[~] PHASE 2: Interim Production Wiring (M38, M39 — M35A+B+C expert gate required)
+  [ ] M38.1 Update CryptoGen ffiWrapperSpec with HaclBridge/ExtractedC backend type
+       - Add data EmitBackend = HaclBridge String | ExtractedC String | ReferenceHaskell String
+       - Wire SHA256, SHA512, ChaCha20, Poly1305, Keccak, HMAC, HKDF, X25519, Ed25519
+       - Regenerate all 20 Generated/FFI/*.hs modules via ./uv run codegen
+  [ ] M38.2 Vendor HACL* AES-256-GCM into csrc/hacl/ + add bridge_aesgcm.c
+       - Verify HACL* commit 504c298 includes AES-GCM; vendor correct files
+  [ ] M38.3 Regenerate all FFI modules after M38.1 change
+       - Run: ./uv build codegen && ./uv run codegen && ./uv build
+  [ ] M38.4 Update ALL production callers from Crypto.* to Generated.FFI.* (monadic change)
+       - src/UmbraVox/Protocol/ProofOfWork.hs, Handshake.hs, ConfigFile.hs
+       - src/UmbraVox/Crypto/Signal/PQXDH.hs, Crypto/HMAC.hs
+       - src/UmbraVox/TUI/Actions/Session.hs
+       - src/UmbraVox/Network/DHT/Types.hs, DHT.hs, Noise/Handshake.hs, Presence.hs
+       - All callers of Crypto.MLKEM, Crypto.GCM, Crypto.Ed25519, Crypto.Curve25519
+  [ ] M38.5 Expert review gate: M35A (code) + M35B (security) REQUIRED before landing M38
+  [ ] M38.6 Differential regression: ./uv test crypto-differential — FFI output == Reference output
+  [ ] M38.7 Mark Crypto.* modules as Haskell oracle (not production) in module headers
+  [ ] M39.1 Update app/codegen/Specs/MLKEM768.spec with real NTT butterfly steps
+       - 7-layer Cooley-Tukey, 128-value zeta table, q=3329, cross-ref pqclean ntt.c
+  [ ] M39.2 Add K-PKE + ML-KEM transform steps to MLKEM768.spec
+       - Reference: src/UmbraVox/Crypto/MLKEM.hs (~623 lines, real implementation exists)
+  [ ] M39.3 Regenerate csrc/generated/mlkem768.c via ./uv run codegen; test with ./uv test mlkem
+
+[ ] PHASE 3: Formal Spec + Proof Closure (dev VM, M35 gated)
+  [ ] M36A KaRaMeL toolchain setup (dev VM prerequisite)
+       - Add fstarlang/karamel as flake input in flake.nix (version-pinned to match F*)
+       - Expose KRML_HOME in dev VM (nix/tiers/dev.nix)
+       - Add csrc/extracted/ directory; update UmbraVox.cabal
+       - In dev VM: verify $KRML_HOME/krml --version and trivial extraction
+  [ ] M37.1 Implement NTT in Spec.MLKEM768.fst (dev VM)
+       - Cooley-Tukey radix-2, 7 layers, 128-value zeta table, q=3329, n=256, ζ=17
+       - Parameters from: contrib/oracles/src/pqclean/crypto_kem/ml-kem-768/clean/ntt.c
+  [ ] M37.2 Implement CBD (centered binomial distribution, η=2) in Spec.MLKEM768.fst
+  [ ] M37.3 Implement SampleNTT (XOF stream → polynomial) in Spec.MLKEM768.fst
+  [ ] M37.4 Implement K-PKE keygen/enc/dec in Spec.MLKEM768.fst
+  [ ] M37.5 Implement ML-KEM transform (FO, SHA3-256/512, re-encrypt check) in Spec.MLKEM768.fst
+  [ ] M37.6 F* verify NTT roundtrip: inv_ntt(ntt f) == f in dev VM
+  [ ] M37.7 Update assume baseline in test/Main.hs; update ASSURANCE-MATRIX.md ML-KEM row
+  [ ] M32.1 Coq: verify ED-004 scalar_mult_add is discharged (check Ed25519GroupScalarMultAdd.v)
+  [ ] M32.2 Coq: discharge ED-008a scalar_mult_congruence (in dev VM)
+  [ ] M32.3 Coq: discharge EE-002 encode_decode_roundtrip (Spec.Ed25519Extended)
+  [ ] M32.4 Coq: discharge VR-001 dleq_correctness (after ED-004 confirmed, in dev VM)
+  [ ] M32.5 Coq: discharge X2-005 dh_commutativity (after ED-005 confirmed)
+  [ ] M32.6 Run full Coq suite in dev VM; capture log as evidence artifact
+  [ ] M34.1 AES-256-GCM: confirm Wycheproof + HACL* oracle wired in Test.Crypto.Differential
+  [ ] M34.2 ML-KEM-768: run ./uv vm kyber generate-kat in dev VM (M25.2 completion)
+  [ ] M34.3 VRF: document Haskell-reference oracle only; plan liboqs ECVRF as second oracle
+
+[ ] PHASE 4: KaRaMeL Extraction — Simple Primitives (dev VM, M35 gated)
+  [ ] M36B.0 Write Spec.IntBridge — FStar.UInt32.t <-> Lib.IntTypes.uint32 equivalence
+  [ ] M36B.1 SHA-256 Low*: Impl.SHA256.Low.fst + equivalence proof + KaRaMeL → csrc/extracted/sha256.c
+  [ ] M36B.2 SHA-512 Low*: Impl.SHA512.Low.fst + extraction → csrc/extracted/sha512.c
+  [ ] M36B.3 ChaCha20 Low*: Impl.ChaCha20.Low.fst → csrc/extracted/chacha20.c
+  [ ] M36B.4 Poly1305 Low*: Impl.Poly1305.Low.fst → csrc/extracted/poly1305.c
+  [ ] M36B.5 Keccak/SHA-3 Low*: Impl.Keccak.Low.fst → csrc/extracted/keccak.c
+  [ ] M36B.6 HMAC Low*: Impl.HMAC.Low.fst → csrc/extracted/hmac.c
+  [ ] M36B.7 HKDF Low*: Impl.HKDF.Low.fst → csrc/extracted/hkdf.c
+  [ ] M36B.8 X25519 Low*: Impl.X25519.Low.fst (uses fiat-crypto field) → csrc/extracted/x25519.c
+  [ ] M36B.9 Ed25519 Low*: Impl.Ed25519.Low.fst → csrc/extracted/ed25519.c
+  Note: For each M36B.x, also do M36D.x: move HACL*/fiat-crypto files to contrib/hacl-oracle/
+
+[ ] PHASE 5: Advanced Primitives (dev VM, after Phase 4 complete)
+  [ ] M36B.10 AES-256-GCM: Vale evaluation + Impl.AES256GCM.Low.fst → csrc/extracted/aes256gcm.c
+  [ ] M36B.11 VRF: Impl.VRF.Low.fst composing Ed25519 + SHA-512 Low* → csrc/extracted/vrf.c
+  [ ] M36B.12 ML-KEM-768: Impl.MLKEM768.Low.fst (blocked on M37) → csrc/extracted/mlkem768.c
+       ASSURANCE_PENDING until this completes; 8-16 person-weeks, pioneering work
+
+[ ] PHASE 6: Full Validation (all phases complete)
+  [ ] ./uv verify — F* verification suite with all Low* impl files
+  [ ] ./uv test all — complete test suite in dev VM
+  [ ] ./uv test crypto-differential — 3-way differential for all 11 primitives
+  [ ] ./uv check pre-release — assurance matrix gate (all ASSURANCE_PENDING resolved)
+  [ ] M35A+B+C expert review sign-off on all extracted C
+
 ================================================================================
 
 [~] M3.1 Platform lanes
