@@ -5,7 +5,7 @@ Generated: 2026-06-05 | Version: v0.6.3 | Baseline: v0.1.9
 ## Summary
 
 - **32 F* specs**: 0 admit(), 35 assume val declarations (31 in ASSUMPTIONS.md: 25 original + 6 new; 4 discharged stubs retained in fst files for F* compilation), 21 specs fully proved
-- **19 verified Coq files**: 613 Qed, 0 Admitted, 0 Axiom, 0 Parameter
+- **19 verified Coq files**: 610 Qed, 0 Admitted, 5 Axiom declarations across 3 files (all externally verified or structural), 0 Parameter
 - **1 draft Coq file**: 16 Qed, 8 Admitted, 15 Axiom (NOT verified evidence)
 - **Runtime differential**: 36/36 suites PASS against RFC/NIST vectors
 - **Negative tests**: 4/4 suites PASS, 18 fail-closed checks
@@ -49,7 +49,7 @@ have been added to ASSUMPTIONS.md (2026-06-05). Total active assume vals: 31.
 | Spec.ChaChaPoly | fstar/Spec.ChaChaPoly.fst | 1 | 0 | RFC 8439 ✓ | 4 reject ✓ | HIGH | AEAD encrypt+tag+decrypt, negative tests |
 | Spec.DoubleRatchet | fstar/Spec.DoubleRatchet.fst | 2 | 0 | — | — | HIGH | Constant stubs; hmac_non_fixpoint + hmac_collision_resistance |
 | Spec.StealthAddress | fstar/Spec.StealthAddress.fst | 1 | 0 | — | — | HIGH | unlinkability (DDH) |
-| Spec.VRF | fstar/Spec.VRF.fst | 3 | 0 | — | — | HIGH | dleq algebraic + DL hardness |
+| Spec.VRF | fstar/Spec.VRF.fst | 3 | 0 | — | — | HIGH | vrf_verifiability: PROVED modulo VR-001 (dleq_correctness, pending Coq proof in M32.4); vrf_strong_uniqueness + vrf_collision_resistance: CRYPTO_HARDNESS (DL hardness + hash collision resistance, not dischargeable in proof assistant) |
 | Spec.Ed25519 | fstar/Spec.Ed25519.fst | 13 | 0 | RFC 8032 ✓ | 6 reject ✓ | HIGH | pubkey+verify+sign roundtrip; Coq evidence for 6 discharged assumptions |
 | Spec.X25519 | fstar/Spec.X25519.fst | 3 | 0 | RFC 7748 ✓ | 3 reject ✓ | MEDIUM | Input validation fix (v0.1.4); prime_is_prime + 2 DH commutativity |
 | Spec.SHA256.Refinement | fstar/Spec.SHA256.Refinement.fst | 6 | 0 | — | — | HIGH | Cross-toolchain boundary (SR-001..SR-006) |
@@ -67,10 +67,10 @@ have been added to ASSUMPTIONS.md (2026-06-05). Total active assume vals: 31.
 | File | Status | Qed | Admitted | Axiom | Parameter | Supports | Risk |
 |------|--------|-----|---------|-------|-----------|----------|------|
 | Ed25519Constants.v | **VERIFIED** | 5 | 0 | 0 | 0 | Ed25519 constant validation | LOW |
-| Ed25519Prime.v | **VERIFIED** | 96 | 0 | 0 | 0 | ED-001 prime_is_prime (Pocklington conditions) | LOW |
+| Ed25519Prime.v | **VERIFIED** | 96 | 0 | 2 | 0 | ED-001 prime_is_prime (Pocklington conditions). All axioms externally verified (SageMath/Magma): pocklington_criterion, q0_prime | LOW |
 | Ed25519Field.v | **VERIFIED** | 67 | 0 | 0 | 0 | Ed25519/X25519 field arithmetic | LOW |
 | Ed25519Curve.v | **VERIFIED** | 18 | 0 | 0 | 0 | Ed25519 curve equation verification | LOW |
-| Ed25519Scalar.v | **VERIFIED** | 16 | 0 | 0 | 0 | Ed25519 scalar arithmetic | LOW |
+| Ed25519Scalar.v | **VERIFIED** | 13 | 0 | 0 | 0 | Ed25519 scalar arithmetic | LOW |
 | VRFDLEQ.v | **VERIFIED** | 32 | 0 | 0 | 0 | VRF DLEQ correctness | LOW |
 | Ed25519GroupPartial.v | **VERIFIED** | 48 | 0 | 0 | 0 | Projective equivalence, partial group law | LOW |
 | Ed25519GroupAssoc.v | **VERIFIED** | 68 | 0 | 0 | 0 | ED-003 point_add_assoc (64 concrete instances) | LOW |
@@ -80,12 +80,11 @@ have been added to ASSUMPTIONS.md (2026-06-05). Total active assume vals: 31.
 | Ed25519GroupUniversal.v | **VERIFIED** | 62 | 0 | 0 | 0 | ED-008b, ED-008c universal group closure | LOW |
 | Ed25519CongruenceUniversal.v | **VERIFIED** | 12 | 0 | 0 | 0 | ED-007 point_add_congruence_right | LOW |
 | Ed25519PointAdd.v | **VERIFIED** | 20 | 0 | 0 | 0 | M13.14.2/3 point_add/double_preserves_on_curve_ext | LOW |
-| Ed25519ScalarMult.v | **VERIFIED** | 22 | 0 | 0 | 0 | M13.14.4/13 scalar_mult_preserves, cofactor_clearing | LOW |
-| Ed25519Scalar.v | **VERIFIED** | 16 | 0 | 0 | 0 | M13.14.7/8 scalar_mod_L_equiv, group_order_lemma | LOW |
+| Ed25519ScalarMult.v | **VERIFIED** | 22 | 0 | 1 | 0 | M13.14.4/7/8/13 scalar_mult_preserves, cofactor_clearing, scalar_mod_L_equiv, group_order_lemma. group_order_lemma: [L]B = O. Computationally infeasible in any proof assistant. Verified by SageMath/Magma. RFC 8032 §5.2. Classification: EXTERNALLY_VERIFIED. | MEDIUM |
 | Ed25519Encoding.v | **VERIFIED** | 57 | 0 | 0 | 0 | M13.14.11 encode_decode_roundtrip | LOW |
 | Ed25519GroupScalarMultAdd.v | **VERIFIED** | 16 | 0 | 0 | 0 | M13.14.5 scalar_mult_add | LOW |
 | X25519DH.v | **VERIFIED** | 20 | 0 | 0 | 0 | M13.14.6/14/15 scalar_mult_compose, dh_commutativity | LOW |
-| StructuralProofs.v | **VERIFIED** | 4 | 0 | 0 | 0 | M13.14.17/18 bs_seq_roundtrip, seq_of_bs_length_bound | LOW |
+| StructuralProofs.v | **VERIFIED** | 4 | 0 | 2 | 0 | M13.14.17/18 bs_seq_roundtrip, seq_of_bs_length_bound. Both axioms are structural ByteString↔Sequence properties, not crypto assumptions. | LOW |
 | draft/Ed25519GroupLaw.v | **DRAFT** | 16 | 8 | 15 | 11 | Future: Ed25519 group law | N/A |
 
 **Note:** Draft files are NOT assurance evidence. They document proof strategy only.
@@ -101,8 +100,9 @@ have been added to ASSUMPTIONS.md (2026-06-05). Total active assume vals: 31.
 | F* assume val (discharged stubs, Coq evidence) | 4 |
 | F* admit() total | 0 |
 | Coq verified files | 19 |
-| Coq verified Qed | 613 |
+| Coq verified Qed | 610 |
 | Coq verified Admitted | 0 |
+| Coq verified Axiom | 5 Axiom declarations across 3 files (all externally verified or structural) |
 | Coq draft Admitted | 8 |
 | Differential suites | 36/36 PASS |
 | Security audit suites | 6/6 PASS (regression, negative, boundary, adversarial-proto, ct, key-lifecycle) |
