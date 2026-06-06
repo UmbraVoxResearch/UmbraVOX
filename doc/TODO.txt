@@ -107,6 +107,15 @@ See: doc/IMPLEMENTATION-PLAN.md, doc/PROJECT-CHARTER.md
          StealthAddress (CT gap documented with {-# WARNING #-}), VRF (ASSURANCE_PENDING)
        - test/Test/Bridge/SignalRegistration.hs, M11NoiseDH.hs, M11Protocol.hs,
          M11Final.hs, M11KeyMgmt.hs, ProtocolLibsignal.hs all updated for IO cascade
+  [x] M38.4.1 ChaChaPoly CT gap: wire EverCrypt_Chacha20Poly1305 in ChaChaPoly.hs
+       - ChaChaPoly.hs called reference Haskell poly1305/chacha20Block internally
+         (NOT constant-time); missed during M38.4 because it is a composition layer,
+         not a direct Crypto.* importer
+       - Created csrc/hacl/bridge_chacha20poly1305.c wrapping EverCrypt (pure-software,
+         no AES-NI required, F*-proved formally CT); added to UmbraVox.cabal c-sources
+       - Rewrote chachaPolyEncryptSafe/chachaPolyDecryptSafe via unsafePerformIO
+         (safe: both are deterministic pure functions of inputs, no observable side
+         effects, NOINLINE prevents CSE); pure API preserved — no cascade to 5 callers
   [ ] M38.5 Differential regression: ./uv test crypto-differential (VM ONLY)
   [x] M38.6 Mark Crypto.* modules as Haskell oracle (not production) in module headers
        - SHA256.hs, SHA512.hs, HMAC.hs, HKDF.hs labeled "Haskell reference oracle. NOT production."

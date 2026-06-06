@@ -307,6 +307,8 @@ library
       csrc/hacl/Hacl_MAC_Poly1305_Simd256.c
       -- AES-256-GCM bridge
       csrc/hacl/bridge_aesgcm.c
+      -- ChaCha20-Poly1305 AEAD bridge (wraps EverCrypt_Chacha20Poly1305, pure-software)
+      csrc/hacl/bridge_chacha20poly1305.c
       csrc/hacl/Hacl_Chacha20.c
       csrc/hacl/bridge_chacha20.c
       -- M13.15.14: HACL* verified HKDF (replaces generated/hkdf.c as primary impl)
