@@ -1,3 +1,9 @@
+/* Third-party: HACL* (hacl-star/hacl-star commit 504c298, MIT/Apache-2.0)
+ * DO NOT EDIT — upstream HACL* auto-generated file.
+ * See contrib/oracles/THIRD_PARTY_LICENSES.md for provenance.
+ * INTERIM PRODUCTION: will move to contrib/hacl-oracle/ when csrc/extracted/ is ready.
+ */
+
 #if defined(__has_include)
 #if __has_include("config.h")
 #include "config.h"

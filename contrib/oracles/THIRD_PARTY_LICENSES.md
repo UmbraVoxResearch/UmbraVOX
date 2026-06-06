@@ -20,6 +20,8 @@ The main UmbraVOX project is licensed under Apache-2.0.
 | `src/pqclean` | [PQClean/PQClean](https://github.com/PQClean/PQClean) | 202a8f9 | Public Domain / CC0-1.0 / MIT (per algorithm) |
 | `src/liboqs` | [open-quantum-safe/liboqs](https://github.com/open-quantum-safe/liboqs) | f986aea | MIT (see src/liboqs/LICENSE.txt) |
 | `src/libsignal` | [signalapp/libsignal](https://github.com/signalapp/libsignal) | 46d867c | AGPLv3 (see src/libsignal/LICENSE) |
+| `src/hacl-star` (interim: csrc/hacl/) | [hacl-star/hacl-star](https://github.com/hacl-star/hacl-star) | 504c298 | MIT / Apache-2.0 (see csrc/hacl/README.md) |
+| `src/fiat-crypto` (interim: csrc/fiat/) | [mit-plv/fiat-crypto](https://github.com/mit-plv/fiat-crypto) | v0.0.9 | MIT |
 
 Each source tree's own LICENSE file is present under its directory and is
 authoritative.
@@ -38,6 +40,14 @@ authoritative.
 - **`src/pqclean`** contains algorithm implementations with varying public-domain,
   CC0, and MIT licenses depending on the algorithm.  See individual
   `src/pqclean/crypto_*/*/LICENSE` files.
+
+- **`csrc/hacl/` (will become `contrib/hacl-oracle/`)**: HACL* is used as INTERIM production
+  C for 8 cryptographic primitives. It will be relocated to contrib/hacl-oracle/ as
+  UmbraVOX's own KaRaMeL-extracted C (csrc/extracted/) replaces it primitive-by-primitive.
+
+- **`csrc/fiat/` (will become `contrib/fiat-oracle/`)**: fiat-crypto is used as INTERIM
+  production C for GF(2^255-19) field arithmetic (Ed25519, X25519). Will relocate to
+  contrib/fiat-oracle/ as M36B.8-9 deliver our own extracted C.
 
 ---
 

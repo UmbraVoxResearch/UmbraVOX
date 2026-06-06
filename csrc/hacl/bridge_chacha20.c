@@ -1,3 +1,10 @@
+/* Third-party: HACL* (hacl-star/hacl-star commit 504c298, MIT/Apache-2.0)
+ * Formally verified C extracted from F* Low* via KaRaMeL by Microsoft Research and Inria.
+ * This bridge connects HACL* primitives to UmbraVOX FFI (INTERIM PRODUCTION).
+ * Target: will be superseded by UmbraVOX KaRaMeL-extracted C in csrc/extracted/.
+ * See contrib/oracles/THIRD_PARTY_LICENSES.md and csrc/hacl/README.md.
+ */
+
 /* Bridge: HACL* verified ChaCha20 → UmbraVOX FFI interface.
  * This file wraps Hacl_Chacha20 to match the function signatures
  * expected by src/UmbraVox/Crypto/Generated/FFI/ChaCha20.hs.

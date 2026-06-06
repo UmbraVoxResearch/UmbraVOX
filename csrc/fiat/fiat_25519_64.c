@@ -61,6 +61,13 @@
  * -----------------------------------------------------------------------
  */
 
+/* Third-party: fiat-crypto (mit-plv/fiat-crypto v0.0.9, MIT)
+ * Coq-verified constant-time GF(2^255-19) field arithmetic.
+ * INTERIM PRODUCTION for Ed25519/X25519 field ops.
+ * Will move to contrib/fiat-oracle/ when csrc/extracted/ed25519.c is ready (M36B.9).
+ * See contrib/oracles/THIRD_PARTY_LICENSES.md.
+ */
+
 #include "fiat_25519_64.h"
 #include <stddef.h>
 #include <string.h>

@@ -1,5 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0
  *
+ * UmbraVOX bridge: wires fiat-crypto GF(2^255-19) field ops to Ed25519/X25519.
+ * Third-party dependency: fiat-crypto (MIT). See contrib/oracles/THIRD_PARTY_LICENSES.md.
+ *
  * csrc/fiat/bridge_ed25519.c — FFI bridge: fiat-crypto field ops -> Ed25519 group law
  *
  * This file maps the formally-verified fiat-crypto GF(2^255-19) field arithmetic
