@@ -169,136 +169,199 @@ algorithm MLKEM768 {
 
   steps {
     -- ================================================================
-    -- FIPS 203 Algorithm 9 — Number Theoretic Transform (NTT)
+    -- Hash function definitions (FIPS 203 Section 4.1)
+    -- ================================================================
+    -- H(x)          = SHA3-256(x)                          → 32 bytes
+    -- G(x)          = SHA3-512(x) → split into (lo32, hi32)
+    -- PRF(s, b, n)  = SHAKE-256(s || byte(b))[:n]         → n bytes
+    -- J(z, ct)      = SHAKE-256(z || ct)[:32]             → 32 bytes
+    -- XOF(rho,i,j)  = SHAKE-128(rho || byte(i) || byte(j)) → stream
+
+    -- ================================================================
+    -- FIPS 203 Algorithm 4 — Compress_d
+    -- ================================================================
+    -- Input: x in [0, q-1], bit-width d
+    -- Output: ((x << d) + q/2) / q mod 2^d   (integer rounding)
+    -- For ML-KEM-768: d=10 for u-components, d=4 for v-component
+
+    -- ================================================================
+    -- FIPS 203 Algorithm 5 — Decompress_d
+    -- ================================================================
+    -- Input: y in [0, 2^d - 1], bit-width d
+    -- Output: (y * q + 2^(d-1)) >> d          (integer rounding)
+
+    -- ================================================================
+    -- FIPS 203 Algorithm 6 — ByteEncode_d
+    -- ================================================================
+    -- Encode poly: for each coefficient (0..255), emit d bits LSB-first.
+    -- Output: (256 * d / 8) bytes.
+    -- For d=12 (NTT domain): 384 bytes per polynomial.
+    -- For d=10 (u compress): 320 bytes per polynomial.
+    -- For d=4  (v compress):  128 bytes total for v.
+    -- For d=1  (message):     32 bytes for the 256-bit message.
+
+    -- ================================================================
+    -- FIPS 203 Algorithm 7 — ByteDecode_d
+    -- ================================================================
+    -- Inverse of ByteEncode_d.  For d=12: reduce each 12-bit value mod q.
+    -- For d=10,4,1: no reduction needed.
+
+    -- ================================================================
+    -- FIPS 203 Algorithm 8 — CBD_eta (Centered Binomial Distribution)
+    -- ================================================================
+    -- Input: 64*eta bytes (128 bytes for eta=2).
+    -- Convert to bit array (LSB-first per byte).
+    -- For each coefficient i in [0..255]:
+    --   x = sum(bits[2*eta*i .. 2*eta*i + eta - 1])     (eta bits)
+    --   y = sum(bits[2*eta*i + eta .. 2*eta*i + 2*eta - 1])
+    --   coeff[i] = (x - y) mod q
+    -- For eta=2: each coefficient in {-2,-1,0,1,2}, stored mod q.
+
+    -- ================================================================
+    -- FIPS 203 Algorithm 9 — SampleNTT (rejection sampling)
+    -- ================================================================
+    -- Input: seed = rho || byte(i) || byte(j)   (34 bytes)
+    -- Stream: SHAKE-128(seed) as infinite byte stream
+    -- Process 3 bytes (b0,b1,b2) at a time:
+    --   d1 = b0 + 256 * (b1 & 0x0F)
+    --   d2 = (b1 >> 4) + 16 * b2
+    --   if d1 < q: accept d1 as next coefficient
+    --   if d2 < q: accept d2 as next coefficient
+    -- Continue until 256 coefficients accepted.
+    -- Implementation: generate 840-byte SHAKE-128 stream upfront;
+    -- double on retry (acceptance rate ≈ 81.3%, so 840 bytes suffices
+    -- for 256 accepted with high probability).
+
+    -- ================================================================
+    -- FIPS 203 Algorithm 10 — NTT (Number Theoretic Transform)
     -- ================================================================
     -- Input: polynomial f with 256 coefficients in [0, q-1]
-    -- Output: NTT(f) with 256 coefficients in [0, q-1]
+    -- Output: NTT(f) — 7-layer Cooley-Tukey butterfly in-place.
     --
     -- k = 1; len = 128
     -- while len >= 2:
-    --   for start = 0 to 255 by 2*len:
+    --   for start = 0 to 255 step 2*len:
     --     z = zetaTable[k]; k++
     --     for j = start to start+len-1:
     --       t = z * f[j+len] mod q
     --       f[j+len] = (f[j] - t + q) mod q
     --       f[j]     = (f[j] + t) mod q
     --   len = len / 2
+    -- Intermediate products: z * f[j+len] ≤ (q-1)^2 ≈ 1.1e7, fits in 32-bit.
 
     -- ================================================================
-    -- FIPS 203 Algorithm 10 — Inverse NTT
+    -- FIPS 203 Algorithm 11 — InvNTT
     -- ================================================================
+    -- Input: f_hat with 256 coefficients in [0, q-1]
+    -- Output: InvNTT(f_hat) — 7-layer Gentleman-Sande butterfly.
+    --
     -- k = 127; len = 2
     -- while len <= 128:
-    --   for start = 0 to 255 by 2*len:
+    --   for start = 0 to 255 step 2*len:
     --     z = zetaTable[k]; k--
     --     for j = start to start+len-1:
     --       t = f[j]
     --       f[j]     = (t + f[j+len]) mod q
-    --       f[j+len] = z * (f[j+len] - t + q) mod q
+    --       f[j+len] = z * ((f[j+len] - t + q) mod q) mod q
     --   len = len * 2
-    -- for i = 0 to 255: f[i] = f[i] * N_INV mod q
+    -- for i = 0 to 255: f[i] = f[i] * N_INV mod q   (N_INV = 3303)
 
     -- ================================================================
-    -- FIPS 203 Algorithm 11 — Polynomial base-case multiply
+    -- FIPS 203 Algorithm 12 — PolyBaseMul (pointwise NTT-domain mul)
     -- ================================================================
-    -- For pairs i = 0..63:
-    --   gamma = zetaTable[64 + i]
-    --   c[4i]   = (a[4i]*b[4i] + a[4i+1]*b[4i+1]*gamma) mod q
-    --   c[4i+1] = (a[4i]*b[4i+1] + a[4i+1]*b[4i]) mod q
-    --   gamma2 = (q - gamma) mod q
-    --   c[4i+2] = (a[4i+2]*b[4i+2] + a[4i+3]*b[4i+3]*gamma2) mod q
-    --   c[4i+3] = (a[4i+2]*b[4i+3] + a[4i+3]*b[4i+2]) mod q
+    -- For pairs i = 0..63 (each pair covers 4 coefficients):
+    --   idx = 4*i
+    --   gamma = zetaTable[64 + i]    (= 17^(2*bitrev7(i)+1) mod q)
+    --   gamma2 = (q - gamma) mod q   (negated zeta for second sub-pair)
+    --   c[idx]   = (a[idx]*b[idx] + a[idx+1]*b[idx+1]*gamma) mod q
+    --   c[idx+1] = (a[idx]*b[idx+1] + a[idx+1]*b[idx]) mod q
+    --   c[idx+2] = (a[idx+2]*b[idx+2] + a[idx+3]*b[idx+3]*gamma2) mod q
+    --   c[idx+3] = (a[idx+2]*b[idx+3] + a[idx+3]*b[idx+2]) mod q
+    -- Note: intermediate products may reach (q-1)^3 ≈ 3.7e10; use Int64.
 
     -- ================================================================
-    -- FIPS 203 Algorithm 7 — Centered Binomial Distribution (CBD)
+    -- FIPS 203 Algorithm 13 — K-PKE.KeyGen
     -- ================================================================
-    -- Input: eta, 64*eta random bytes
-    -- Output: polynomial with coefficients in [-eta, eta]
-    -- For each coefficient i (0..255):
-    --   x = sum of bits[2*eta*i .. 2*eta*i+eta-1]
-    --   y = sum of bits[2*eta*i+eta .. 2*eta*i+2*eta-1]
-    --   coeff[i] = (x - y) mod q
+    -- Input: seed_d (32 bytes random)
+    -- (rho, sigma) = G(seed_d)                  [SHA3-512 → 32+32 bytes]
+    -- for i,j in [0,K): A_hat[i][j] = SampleNTT(rho || byte(i) || byte(j))
+    -- for i in [0,K):
+    --   s[i] = NTT(CBD_eta1(PRF(sigma, i,   128)))   [SHAKE-256(sigma||i)[:128]]
+    --   e[i] = NTT(CBD_eta1(PRF(sigma, K+i, 128)))
+    -- t_hat[i] = sum(A_hat[i][j] * s[j] for j in [0,K)) + e[i]  [NTT-domain]
+    -- ek     = ByteEncode_12(t_hat[0]) || ... || ByteEncode_12(t_hat[K-1]) || rho
+    --        = 384*K + 32 = 1184 bytes (encapsulation key)
+    -- dk_pke = ByteEncode_12(s[0]) || ... || ByteEncode_12(s[K-1])
+    --        = 384*K = 1152 bytes (K-PKE decapsulation key)
 
     -- ================================================================
-    -- FIPS 203 Algorithm 8 — SampleNTT (rejection sampling)
+    -- FIPS 203 Algorithm 14 — K-PKE.Encrypt
     -- ================================================================
-    -- Input: XOF stream (SHAKE-128)
-    -- Output: polynomial in NTT domain with coefficients in [0, q-1]
-    -- Process 3 bytes at a time:
-    --   d1 = b0 + 256*(b1 & 0x0F)
-    --   d2 = (b1 >> 4) + 16*b2
-    --   if d1 < q: accept d1
-    --   if d2 < q: accept d2
-    -- Continue until 256 coefficients accepted
+    -- Input: ek (1184 bytes), m (32 bytes message), r (32 bytes random)
+    -- (t_hat, rho) = split(ek, 1152, 32)    [t_hat = K polys, rho = 32 bytes]
+    -- for i,j in [0,K): A_hat[i][j] = SampleNTT(rho || byte(i) || byte(j))
+    -- for i in [0,K):
+    --   r_vec[i] = NTT(CBD_eta1(PRF(r, i,   128)))
+    --   e1[i]    = CBD_eta2(PRF(r, K+i, 128))      [NOT in NTT domain]
+    --   (e2 after loop)
+    -- e2 = CBD_eta2(PRF(r, 2*K, 128))
+    -- u[i] = InvNTT(sum(A_hat[j][i] * r_vec[j] for j in [0,K))) + e1[i]  [A^T * r]
+    -- mu = Decompress_1(ByteDecode_1(m))   [message as polynomial]
+    -- v = InvNTT(sum(t_hat[i] * r_vec[i] for i in [0,K))) + e2 + mu
+    -- c1 = concat(ByteEncode_DU(Compress_DU(u[i])) for i in [0,K))   [320*K=960 bytes]
+    -- c2 = ByteEncode_DV(Compress_DV(v))                              [128 bytes]
+    -- ct = c1 || c2 = 1088 bytes
 
     -- ================================================================
-    -- FIPS 203 Algorithms 4-5 — Compress/Decompress
+    -- FIPS 203 Algorithm 15 — K-PKE.Decrypt
     -- ================================================================
-    -- Compress_d(x) = round(2^d / q * x) mod 2^d
-    -- Decompress_d(y) = round(q / 2^d * y)
+    -- Input: dk_pke (1152 bytes), ct (1088 bytes)
+    -- s_hat[i] = ByteDecode_12(dk_pke[i*384 : (i+1)*384])
+    -- c1 = ct[:K*N*DU/8] = ct[:960 bytes]
+    -- c2 = ct[960:]       = ct[960:1088]
+    -- u[i] = Decompress_DU(ByteDecode_DU(c1[i*320 : (i+1)*320]))
+    -- v    = Decompress_DV(ByteDecode_DV(c2))
+    -- w = v - InvNTT(sum(s_hat[i] * NTT(u[i]) for i in [0,K)))
+    -- m = ByteEncode_1(Compress_1(w))   [32 bytes]
 
     -- ================================================================
-    -- FIPS 203 Algorithms 6-7 — ByteEncode/ByteDecode
+    -- FIPS 203 Algorithm 16 — ML-KEM.KeyGen
     -- ================================================================
-    -- Encode: d bits per coefficient, LSB first
-    -- Decode: inverse, with mod q for d=12
-
-    -- ================================================================
-    -- FIPS 203 Algorithm 12 — K-PKE.KeyGen
-    -- ================================================================
-    -- (rho, sigma) = G(seed_d)           -- SHA3-512
-    -- A[i][j] = SampleNTT(XOF(rho, i, j))  -- SHAKE-128, for i,j in [0,K)
-    -- s[i] = NTT(CBD_eta1(PRF(sigma, i)))   -- SHAKE-256, for i in [0,K)
-    -- e[i] = NTT(CBD_eta1(PRF(sigma, K+i))) -- SHAKE-256, for i in [0,K)
-    -- t_hat = A * s + e                     -- polynomial matrix multiply in NTT domain
-    -- ek = ByteEncode_12(t_hat) || rho      -- 1184 bytes
-    -- dk = ByteEncode_12(s)                 -- 1152 bytes
-
-    -- ================================================================
-    -- FIPS 203 Algorithm 13 — K-PKE.Encrypt
-    -- ================================================================
-    -- (t_hat, rho) = decodeEK(ek)
-    -- A[i][j] = SampleNTT(XOF(rho, i, j))
-    -- r[i] = NTT(CBD_eta1(PRF(rand, i)))
-    -- e1[i] = CBD_eta2(PRF(rand, K+i))
-    -- e2 = CBD_eta2(PRF(rand, 2*K))
-    -- u = InvNTT(A^T * r) + e1
-    -- mu = Decompress_1(ByteDecode_1(m))
-    -- v = InvNTT(t_hat^T * r) + e2 + mu
-    -- c1 = ByteEncode_du(Compress_du(u))    -- K*N*du/8 bytes
-    -- c2 = ByteEncode_dv(Compress_dv(v))    -- N*dv/8 bytes
-
-    -- ================================================================
-    -- FIPS 203 Algorithm 14 — K-PKE.Decrypt
-    -- ================================================================
-    -- s_hat = decodeDK(dk)
-    -- u = Decompress_du(ByteDecode_du(c1))
-    -- v = Decompress_dv(ByteDecode_dv(c2))
-    -- w = v - InvNTT(s_hat^T * NTT(u))
-    -- m = ByteEncode_1(Compress_1(w))
-
-    -- ================================================================
-    -- FIPS 203 Algorithm 15 — ML-KEM.KeyGen
-    -- ================================================================
+    -- Input: seed_d (32 bytes), seed_z (32 bytes)
     -- (ek, dk_pke) = K-PKE.KeyGen(seed_d)
-    -- dk = dk_pke || ek || H(ek) || seed_z   -- 2400 bytes
+    -- ek_hash = H(ek)                            [SHA3-256 → 32 bytes]
+    -- fullDK = dk_pke || ek || ek_hash || seed_z
+    --        = 1152 + 1184 + 32 + 32 = 2400 bytes (ML-KEM decapsulation key)
+    -- Byte offsets in fullDK:
+    --   [0..1151]    dk_pke  (K-PKE secret key)
+    --   [1152..2335] ek      (encapsulation key; K*384+32 bytes)
+    --   [2336..2367] H(ek)   (32-byte encapsulation key hash)
+    --   [2368..2399] z       (32-byte implicit rejection seed)
 
     -- ================================================================
-    -- FIPS 203 Algorithm 16 — ML-KEM.Encaps
+    -- FIPS 203 Algorithm 17 — ML-KEM.Encaps
     -- ================================================================
-    -- (K, r) = G(m || H(ek))                 -- SHA3-512
-    -- ct = K-PKE.Encrypt(ek, m, r)
-    -- return (ct, K)
+    -- Input: ek (1184 bytes), m (32 bytes random message)
+    -- (shared_secret, r) = G(m || H(ek))         [SHA3-512 → 32+32 bytes]
+    -- ct = K-PKE.Encrypt(ek, m, r)               [1088 bytes]
+    -- return (ct, shared_secret)
 
     -- ================================================================
-    -- FIPS 203 Algorithm 17 — ML-KEM.Decaps
+    -- FIPS 203 Algorithm 18 — ML-KEM.Decaps
     -- ================================================================
-    -- m' = K-PKE.Decrypt(dk_pke, ct)
-    -- (K', r') = G(m' || H(ek))
+    -- Input: fullDK (2400 bytes), ct (1088 bytes)
+    -- Parse fullDK:
+    --   dk_pke  = fullDK[0..1151]
+    --   ek      = fullDK[1152..2335]
+    --   ek_hash = fullDK[2336..2367]
+    --   z       = fullDK[2368..2399]
+    -- m'  = K-PKE.Decrypt(dk_pke, ct)
+    -- (shared_secret', r') = G(m' || ek_hash)    [SHA3-512]
     -- ct' = K-PKE.Encrypt(ek, m', r')
-    -- if ct' == ct:                          -- constant-time comparison!
-    --   return K'
-    -- else:
-    --   return J(z || ct)                    -- SHAKE-256 implicit rejection
+    -- CONSTANT-TIME comparison of ct' vs ct:
+    --   if ct' == ct: return shared_secret'       [accept]
+    --   else:         return J(z, ct)             [implicit rejection: SHAKE-256(z||ct)[:32]]
+    -- The constant-time check prevents timing-based distinguishers that would
+    -- break IND-CCA2 security by leaking which branch was taken.
   }
 }

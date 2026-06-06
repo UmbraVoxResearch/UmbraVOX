@@ -116,8 +116,13 @@ See: doc/IMPLEMENTATION-PLAN.md, doc/PROJECT-CHARTER.md
        - All 128 zeta values: 17^bitrev7(i) mod 3329, cross-verified vs PQClean Montgomery table
        - Fixed N_INV: 0xf01=3841 (wrong, > q) → 0xCEF=3303 = 128^{-1} mod 3329
        - Updated csrc/generated/mlkem768.c constants to match (stub body unchanged; M39.3 VM)
-  [ ] M39.2 Add K-PKE + ML-KEM transform steps to MLKEM768.spec
+  [x] M39.2 Add K-PKE + ML-KEM transform steps to MLKEM768.spec
        - Reference: src/UmbraVox/Crypto/MLKEM.hs (~623 lines, real implementation exists)
+       - Added all 8 sub-algorithms: hash defs, CBD, SampleNTT, NTT, InvNTT, PolyBaseMul,
+         K-PKE.KeyGen/Encrypt/Decrypt, ML-KEM.KeyGen/Encaps/Decaps (Algs 13-18)
+       - Exact byte layouts: ek=1184, dk_pke=1152, ct=1088, fullDK=2400 with offsets
+       - PRF/XOF/J seed construction and output lengths explicit
+       - Constant-time comparison note on Decaps IND-CCA2 branch
   [ ] M39.3 Regenerate csrc/generated/mlkem768.c via ./uv run codegen; test with ./uv test mlkem
 
 [ ] PHASE 3: Formal Spec + Proof Closure (dev VM, M35 gated)
