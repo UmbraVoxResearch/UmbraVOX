@@ -10,8 +10,8 @@
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
  *
- * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software.
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
  *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -22,9 +22,11 @@
  * SOFTWARE.
  */
 
+/* Public header for Hacl_MAC_Poly1305_Simd256 (HACL* commit 504c298).
+ * Third-party: MIT/Apache-2.0 — see contrib/oracles/THIRD_PARTY_LICENSES.md */
 
-#ifndef Hacl_Krmllib_H
-#define Hacl_Krmllib_H
+#ifndef Hacl_MAC_Poly1305_Simd256_H
+#define Hacl_MAC_Poly1305_Simd256_H
 
 #if defined(__cplusplus)
 extern "C" {
@@ -35,21 +37,39 @@ extern "C" {
 #include "krml/lowstar_endianness.h"
 #include "krml/internal/target.h"
 
-/* FStar integer mask helpers — defined as external symbols in hacl_fsmath.c.
- * Using extern declarations so all TUs resolve via the linker (avoids static
- * linkage issues with GHC's C compilation pipeline). */
+#include "Hacl_Streaming_Types.h"
 
-extern uint8_t  FStar_UInt8_eq_mask(uint8_t a, uint8_t b);
-extern uint8_t  FStar_UInt8_gte_mask(uint8_t a, uint8_t b);
-extern uint16_t FStar_UInt16_eq_mask(uint16_t a, uint16_t b);
-extern uint32_t FStar_UInt32_eq_mask(uint32_t a, uint32_t b);
-extern uint32_t FStar_UInt32_gte_mask(uint32_t a, uint32_t b);
-extern uint64_t FStar_UInt64_eq_mask(uint64_t a, uint64_t b);
-extern uint64_t FStar_UInt64_gte_mask(uint64_t a, uint64_t b);
+typedef struct Hacl_MAC_Poly1305_Simd256_state_t_s Hacl_MAC_Poly1305_Simd256_state_t;
+
+Hacl_MAC_Poly1305_Simd256_state_t *Hacl_MAC_Poly1305_Simd256_malloc(uint8_t *key);
+
+void Hacl_MAC_Poly1305_Simd256_reset(Hacl_MAC_Poly1305_Simd256_state_t *state, uint8_t *key);
+
+/**
+0 = success, 1 = max length exceeded
+*/
+Hacl_Streaming_Types_error_code
+Hacl_MAC_Poly1305_Simd256_update(
+  Hacl_MAC_Poly1305_Simd256_state_t *state,
+  uint8_t *chunk,
+  uint32_t chunk_len
+);
+
+void Hacl_MAC_Poly1305_Simd256_digest(Hacl_MAC_Poly1305_Simd256_state_t *state, uint8_t *output);
+
+void Hacl_MAC_Poly1305_Simd256_free(Hacl_MAC_Poly1305_Simd256_state_t *state);
+
+void
+Hacl_MAC_Poly1305_Simd256_mac(
+  uint8_t *output,
+  uint8_t *input,
+  uint32_t input_len,
+  uint8_t *key
+);
 
 #if defined(__cplusplus)
 }
 #endif
 
-#define Hacl_Krmllib_H_DEFINED
-#endif /* Hacl_Krmllib_H */
+#define Hacl_MAC_Poly1305_Simd256_H_DEFINED
+#endif /* Hacl_MAC_Poly1305_Simd256_H */

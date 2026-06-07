@@ -14,7 +14,8 @@
 /* Enable SSE2/AES-NI intrinsic headers (actual use is runtime-gated by check_aesni) */
 #define HACL_CAN_COMPILE_VEC128 1
 
-/* AVX2 (VEC256): not required for AES-256-GCM; leave undefined for now */
-/* #define HACL_CAN_COMPILE_VEC256 1 */
+/* AVX2 (VEC256): required by Hacl_AEAD_Chacha20Poly1305_Simd256 and Hacl_MAC_Poly1305_Simd256.
+ * Runtime use is gated by EverCrypt_AutoConfig2 (CPU capability check). */
+#define HACL_CAN_COMPILE_VEC256 1
 
 #endif /* UMBRAVOX_EVERCRYPT_CONFIG_H */

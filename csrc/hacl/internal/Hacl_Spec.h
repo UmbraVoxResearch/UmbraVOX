@@ -22,9 +22,18 @@
  * SOFTWARE.
  */
 
+/* internal/Hacl_Spec.h — internal types for EverCrypt (HACL* dist/gcc-compatible)
+ *
+ * This file defines implementation-discriminant types used by EverCrypt_AEAD
+ * and EverCrypt_AutoConfig2.  These types are separate from the public Hacl_Spec.h
+ * to keep implementation details out of the public API surface.
+ *
+ * Reconstructed from HACL* commit 504c298 (hacl-star/hacl-star).
+ * Third-party: MIT/Apache-2.0 — see contrib/oracles/THIRD_PARTY_LICENSES.md
+ */
 
-#ifndef Hacl_Krmllib_H
-#define Hacl_Krmllib_H
+#ifndef internal_Hacl_Spec_H
+#define internal_Hacl_Spec_H
 
 #if defined(__cplusplus)
 extern "C" {
@@ -35,21 +44,19 @@ extern "C" {
 #include "krml/lowstar_endianness.h"
 #include "krml/internal/target.h"
 
-/* FStar integer mask helpers — defined as external symbols in hacl_fsmath.c.
- * Using extern declarations so all TUs resolve via the linker (avoids static
- * linkage issues with GHC's C compilation pipeline). */
+/* Pull in the public Spec_Agile_AEAD_alg, Spec_Hash_Definitions etc. */
+#include "Hacl_Spec.h"
 
-extern uint8_t  FStar_UInt8_eq_mask(uint8_t a, uint8_t b);
-extern uint8_t  FStar_UInt8_gte_mask(uint8_t a, uint8_t b);
-extern uint16_t FStar_UInt16_eq_mask(uint16_t a, uint16_t b);
-extern uint32_t FStar_UInt32_eq_mask(uint32_t a, uint32_t b);
-extern uint32_t FStar_UInt32_gte_mask(uint32_t a, uint32_t b);
-extern uint64_t FStar_UInt64_eq_mask(uint64_t a, uint64_t b);
-extern uint64_t FStar_UInt64_gte_mask(uint64_t a, uint64_t b);
+/* Cipher expansion implementation discriminant — used internally by
+ * EverCrypt_AEAD to select between HACL* ChaCha20-Poly1305 and Vale AES-GCM. */
+typedef uint8_t Spec_Cipher_Expansion_impl;
+
+#define Spec_Cipher_Expansion_Hacl_CHACHA20 ((uint8_t)0U)
+#define Spec_Cipher_Expansion_Vale_AES128   ((uint8_t)1U)
+#define Spec_Cipher_Expansion_Vale_AES256   ((uint8_t)2U)
 
 #if defined(__cplusplus)
 }
 #endif
 
-#define Hacl_Krmllib_H_DEFINED
-#endif /* Hacl_Krmllib_H */
+#endif /* internal_Hacl_Spec_H */

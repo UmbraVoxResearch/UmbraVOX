@@ -45,6 +45,10 @@ typedef uint64_t fiat_25519_loose_field_element[5];
 /* Convenience alias used by bridge_ed25519.c and bridge_x25519.c */
 typedef uint64_t fiat_25519_limb_t;
 
+/* Uniform field element alias — structurally identical to tight/loose variants.
+ * Used throughout bridge_ed25519.c and bridge_x25519.c as a single array type. */
+typedef uint64_t fiat_25519_felem[5];
+
 /* -------------------------------------------------------------------------
  * Field operations — declared here, defined in the vendored .c file.
  *

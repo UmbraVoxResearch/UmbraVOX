@@ -258,6 +258,34 @@ hkdf_sha512(uint8_t *okm,
 }
 
 /*
+ * hkdf_sha512_expand — HKDF-Expand with HMAC-SHA-512.
+ *
+ *   okm      : caller-allocated output buffer of at least okm_len bytes
+ *   prk      : pseudorandom key (from hkdf_sha512_extract), at least 64 bytes
+ *   prk_len  : byte length of prk
+ *   info     : context / application-specific info
+ *   info_len : byte length of info
+ *   okm_len  : desired output length (must be <= 16320)
+ *
+ * Called by UmbraVox.Crypto.Generated.FFI.HKDF.hkdfExpand (DoubleRatchet kdfRK,
+ * Registration provisioning decrypt, Signal nonce derivation).
+ */
+void
+hkdf_sha512_expand(uint8_t *okm,
+                   const uint8_t *prk,  uint32_t prk_len,
+                   const uint8_t *info, uint32_t info_len,
+                   uint32_t okm_len)
+{
+    /* RFC 5869 §2.3: L ≤ 255 * HashLen = 16320 bytes for HKDF-SHA-512. */
+    if (okm_len > 255u * HKDF_SHA512_PRK_BYTES) return;
+    Hacl_HKDF_expand_sha2_512(
+        okm,
+        (uint8_t *)(uintptr_t)prk,  prk_len,
+        (uint8_t *)(uintptr_t)info, info_len,
+        okm_len);
+}
+
+/*
  * hkdf_link_probe — returns 1 to confirm this compilation unit was linked.
  * Called by UmbraVox.Crypto.Generated.FFI.HKDF.ffiLinked.
  */

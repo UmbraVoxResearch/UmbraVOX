@@ -37,28 +37,37 @@ extern "C" {
 
 #include "../Hacl_Krmllib.h"
 
-static KRML_NOINLINE uint32_t FStar_UInt32_eq_mask(uint32_t a, uint32_t b);
+/* FStar integer mask helpers — extern declarations; defined in hacl_fsmath.c.
+ * The full declarations are already pulled in via ../Hacl_Krmllib.h above. */
 
-static KRML_NOINLINE uint32_t FStar_UInt32_gte_mask(uint32_t a, uint32_t b);
-
-static KRML_NOINLINE uint8_t FStar_UInt8_eq_mask(uint8_t a, uint8_t b);
-
-static KRML_NOINLINE uint16_t FStar_UInt16_eq_mask(uint16_t a, uint16_t b);
+/* FStar.UInt128 operations via native __uint128_t (GCC/Clang x86-64) */
+static inline FStar_UInt128_uint128
+FStar_UInt128_add(FStar_UInt128_uint128 a, FStar_UInt128_uint128 b)
+  { return a + b; }
 
 static inline FStar_UInt128_uint128
-FStar_UInt128_add(FStar_UInt128_uint128 a, FStar_UInt128_uint128 b);
+FStar_UInt128_logor(FStar_UInt128_uint128 a, FStar_UInt128_uint128 b)
+  { return a | b; }
 
 static inline FStar_UInt128_uint128
-FStar_UInt128_logor(FStar_UInt128_uint128 a, FStar_UInt128_uint128 b);
+FStar_UInt128_shift_left(FStar_UInt128_uint128 a, uint32_t s)
+  { return a << s; }
 
-static inline FStar_UInt128_uint128
-FStar_UInt128_shift_left(FStar_UInt128_uint128 a, uint32_t s);
+static inline FStar_UInt128_uint128 FStar_UInt128_mul_wide(uint64_t x, uint64_t y)
+  { return (FStar_UInt128_uint128)x * (FStar_UInt128_uint128)y; }
 
-static inline FStar_UInt128_uint128 FStar_UInt128_mul_wide(uint64_t x, uint64_t y);
+static inline void store128_be(uint8_t *b, FStar_UInt128_uint128 n)
+{
+  store64_be(b,     (uint64_t)(n >> 64U));
+  store64_be(b + 8, (uint64_t)n);
+}
 
-static inline void store128_be(uint8_t *x0, FStar_UInt128_uint128 x1);
-
-static inline FStar_UInt128_uint128 load128_be(uint8_t *x0);
+static inline FStar_UInt128_uint128 load128_be(uint8_t *b)
+{
+  FStar_UInt128_uint128 h = (FStar_UInt128_uint128)load64_be(b);
+  FStar_UInt128_uint128 l = (FStar_UInt128_uint128)load64_be(b + 8);
+  return (h << 64U) | l;
+}
 
 #if defined(__cplusplus)
 }

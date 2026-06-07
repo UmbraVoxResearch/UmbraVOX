@@ -297,6 +297,8 @@ library
       csrc/hacl/EverCrypt_Chacha20Poly1305.c
       csrc/hacl/EverCrypt_Cipher.c
       csrc/hacl/Vale.c
+      csrc/hacl/Lib_Memzero0.c
+      csrc/hacl/hacl_fsmath.c
       -- ChaCha20-Poly1305 AEAD: scalar + SIMD128 + SIMD256
       csrc/hacl/Hacl_AEAD_Chacha20Poly1305.c
       csrc/hacl/Hacl_AEAD_Chacha20Poly1305_Simd128.c
@@ -357,7 +359,7 @@ library
       csrc/hacl/krml/internal
       csrc/fiat
       csrc/extracted
-    cc-options: -std=c99 -fstack-protector-strong -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security
+    cc-options: -std=c99 -D_DEFAULT_SOURCE=1 -D_ISOC11_SOURCE=1 -fstack-protector-strong -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security
       -DFIAT_VENDORED -Wno-unused-function -Wno-unused-parameter
   -- M38.2: Vale assembly (AES-NI + GHASH) — x86-64 only
   if !flag(wasm) && !os(windows) && arch(x86_64) && os(linux)
