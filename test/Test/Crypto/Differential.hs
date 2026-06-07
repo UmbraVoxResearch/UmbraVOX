@@ -179,7 +179,8 @@ testHKDFDifferential = do
 
     results <- forM [(ikm1,salt1,info1,len1,"tc1"),(ikm2,salt2,info2,len2,"tc2")] $
         \(ikm, salt, info, len, name) -> do
-            let hsResult = HKDF.hkdf salt ikm info len
+            -- RFC 5869 TC1/TC2 use HMAC-SHA-256; compare like-for-like
+            let hsResult = HKDF.hkdfSHA256 salt ikm info len
             ffiResult <- FFIHKDF.hkdf salt ikm info len
             let match = hsResult == ffiResult
             if match

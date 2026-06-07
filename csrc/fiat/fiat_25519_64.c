@@ -204,6 +204,22 @@ void fiat_25519_mul(
     c  = t4 >> 51; r4 = (uint64_t)t4 & MASK51;
     r0 += 19 * (uint64_t)c;
 
+    /* Second carry pass: the 19*carry above can leave r0 >> 2^51.
+     * Propagate the excess through r1..r4 and back to r0. */
+    {
+        uint64_t c2;
+        c2 = r0 >> 51; r0 &= MASK51;
+        r1 += c2;
+        c2 = r1 >> 51; r1 &= MASK51;
+        r2 += c2;
+        c2 = r2 >> 51; r2 &= MASK51;
+        r3 += c2;
+        c2 = r3 >> 51; r3 &= MASK51;
+        r4 += c2;
+        c2 = r4 >> 51; r4 &= MASK51;
+        r0 += 19 * c2;
+    }
+
     out[0] = r0; out[1] = r1; out[2] = r2; out[3] = r3; out[4] = r4;
 }
 
@@ -257,6 +273,22 @@ void fiat_25519_square(
     t4 += c;
     c  = t4 >> 51; r4 = (uint64_t)t4 & MASK51;
     r0 += 19 * (uint64_t)c;
+
+    /* Second carry pass: the 19*carry above can leave r0 >> 2^51.
+     * Propagate the excess through r1..r4 and back to r0. */
+    {
+        uint64_t c2;
+        c2 = r0 >> 51; r0 &= MASK51;
+        r1 += c2;
+        c2 = r1 >> 51; r1 &= MASK51;
+        r2 += c2;
+        c2 = r2 >> 51; r2 &= MASK51;
+        r3 += c2;
+        c2 = r3 >> 51; r3 &= MASK51;
+        r4 += c2;
+        c2 = r4 >> 51; r4 &= MASK51;
+        r0 += 19 * c2;
+    }
 
     out[0] = r0; out[1] = r1; out[2] = r2; out[3] = r3; out[4] = r4;
 }
