@@ -5,7 +5,7 @@ Generated: 2026-06-07 | Version: v0.7.0 | Baseline: v0.1.9
 ## Summary
 
 - **32 F* specs**: 0 admit(), 35 assume val declarations (27 active in ASSUMPTIONS.md: 31 − 4 newly discharged; 4 discharged stubs retained in fst files for F* compilation), 21 specs fully proved
-- **20 verified Coq files**: 616 Qed, 0 Admitted, 5 Axiom declarations across 3 files (all externally verified or structural), 0 Parameter. 15 assume vals discharged (up from 11 — ED-005, VR-001, X2-005, X2-006 newly confirmed from existing verified Coq files).
+- **21 verified Coq files**: 627 Qed, 0 Admitted, 5 Axiom declarations across 3 files (all externally verified or structural), 0 Parameter. 15 assume vals discharged (up from 11 — ED-005, VR-001, X2-005, X2-006 newly confirmed from existing verified Coq files).
 - **1 draft Coq file**: 16 Qed, 8 Admitted, 15 Axiom (NOT verified evidence)
 - **Runtime differential**: 36/36 suites PASS against RFC/NIST vectors
 - **Negative tests**: 4/4 suites PASS, 18 fail-closed checks
@@ -78,10 +78,11 @@ have been added to ASSUMPTIONS.md (2026-06-05). Total active assume vals: 31.
 | Ed25519GroupIdentity.v | **VERIFIED** | 26 | 0 | 0 | 0 | Group identity properties | LOW |
 | Ed25519AssocUniversal.v | **VERIFIED** | 9 | 0 | 0 | 0 | ED-003 universal associativity (GZnZ ring) | LOW |
 | Ed25519GroupUniversal.v | **VERIFIED** | 62 | 0 | 0 | 0 | ED-008b, ED-008c universal group closure | LOW |
-| Ed25519CongruenceUniversal.v | **VERIFIED** | 12 | 0 | 0 | 0 | ED-007 point_add_congruence_right | LOW |
+| Ed25519CongruenceUniversal.v | **VERIFIED** | 12 | 0 | 0 | 0 | ED-007 point_add_congruence_right (left-arg variant: fix P2, vary P1) | LOW |
+| Ed25519CongruenceRight.v | **VERIFIED** | 11 | 0 | 0 | 0 | ED-008a H_cong_right: point_add_congruence_arg2 (right-arg variant: fix P1, vary P2). Provides H_cong_right for AbstractCongruence in Ed25519ScalarMultCongruence.v. | LOW |
 | Ed25519PointAdd.v | **VERIFIED** | 20 | 0 | 0 | 0 | M13.14.2/3 point_add/double_preserves_on_curve_ext | LOW |
 | Ed25519ScalarMult.v | **VERIFIED** | 22 | 0 | 1 | 0 | M13.14.4/7/8/13 scalar_mult_preserves, cofactor_clearing, scalar_mod_L_equiv, group_order_lemma. group_order_lemma: [L]B = O. Computationally infeasible in any proof assistant. Verified by SageMath/Magma. RFC 8032 §5.2. Classification: EXTERNALLY_VERIFIED. | MEDIUM |
-| Ed25519ScalarMultCongruence.v | **VERIFIED** | 6 | 0 | 0 | 0 | ED-008a scalar_mult_congruence: abstract universal proof (Section AbstractCongruence, conditional on H_cong_left) + concrete projective equivalence evidence for base point (B_proj_equiv_X, B_proj_equiv_Y). H_cong_left unresolved pending commutativity bridge. | MEDIUM |
+| Ed25519ScalarMultCongruence.v | **VERIFIED** | 6 | 0 | 0 | 0 | ED-008a scalar_mult_congruence: abstract universal proof (Section AbstractCongruence, conditional on H_cong_left + H_cong_right) + concrete projective equivalence evidence for base point (B_proj_equiv_X, B_proj_equiv_Y). H_cong_left from Ed25519CongruenceUniversal.v (DISCHARGED); H_cong_right from Ed25519CongruenceRight.v (DISCHARGED). Full concrete instantiation pending ext_wf preservation bridge. | MEDIUM |
 | Ed25519Encoding.v | **VERIFIED** | 57 | 0 | 0 | 0 | M13.14.11 encode_decode_roundtrip | LOW |
 | Ed25519GroupScalarMultAdd.v | **VERIFIED** | 16 | 0 | 0 | 0 | M13.14.5 scalar_mult_add | LOW |
 | X25519DH.v | **VERIFIED** | 20 | 0 | 0 | 0 | M13.14.6/14/15 scalar_mult_compose, dh_commutativity | LOW |
@@ -100,8 +101,8 @@ have been added to ASSUMPTIONS.md (2026-06-05). Total active assume vals: 31.
 | F* assume val (active per ASSUMPTIONS.md) | 27 |
 | F* assume val (discharged stubs, Coq evidence) | 4 + 4 newly confirmed = 15 total discharged |
 | F* admit() total | 0 |
-| Coq verified files | 20 |
-| Coq verified Qed | 616 |
+| Coq verified files | 21 |
+| Coq verified Qed | 627 |
 | Coq verified Admitted | 0 |
 | Coq verified Axiom | 5 Axiom declarations across 3 files (all externally verified or structural) |
 | Coq draft Admitted | 8 |

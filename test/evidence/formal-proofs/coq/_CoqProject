@@ -12,6 +12,7 @@ VRFDLEQ.v
 Ed25519GroupUniversal.v
 Ed25519AssocUniversal.v
 Ed25519CongruenceUniversal.v
+Ed25519CongruenceRight.v
 Ed25519GroupScalarMultAdd.v
 Ed25519ScalarMult.v
 Ed25519Encoding.v
