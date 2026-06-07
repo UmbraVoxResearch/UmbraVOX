@@ -8,6 +8,7 @@ module UmbraVox.Crypto.Generated.FFI.HKDF
     , hkdf
     , hkdfSHA256
     , hkdfExtract
+    , hkdfExpand
     , hkdfSHA512
     , hkdfSHA256Extract
     , hkdfSHA256Expand
@@ -122,6 +123,30 @@ foreign import ccall safe "hkdf_sha512"
         -> Ptr Word8 -> Word32  -- info, info_len
         -> Word32               -- okm_len
         -> IO ()
+
+foreign import ccall safe "hkdf_sha512_expand"
+    c_hkdf_sha512_expand
+        :: Ptr Word8            -- okm out (okm_len bytes, caller-allocated)
+        -> Ptr Word8 -> Word32  -- prk, prk_len
+        -> Ptr Word8 -> Word32  -- info, info_len
+        -> Word32               -- okm_len
+        -> IO ()
+
+-- | HKDF-Expand with HMAC-SHA-512.
+-- Companion to 'hkdfExtract'; used in DoubleRatchet kdfRK and nonce derivation.
+--
+-- @hkdfExpand prk info len@
+-- @prk@ should be 64 bytes (from 'hkdfExtract'). @len@ must be <= 16320.
+hkdfExpand :: ByteString -> ByteString -> Int -> IO ByteString
+hkdfExpand prk info len =
+    allocaBytes len $ \okmPtr ->
+    BSU.unsafeUseAsCStringLen prk  $ \(prkPtr,  prkLen) ->
+    BSU.unsafeUseAsCStringLen info $ \(infoPtr, infoLen) -> do
+        c_hkdf_sha512_expand okmPtr
+            (castPtr prkPtr)  (fromIntegral prkLen)
+            (castPtr infoPtr) (fromIntegral infoLen)
+            (fromIntegral len)
+        BS.packCStringLen (castPtr okmPtr, len)
 
 -- | HKDF-Extract with HMAC-SHA-512. Returns a 64-byte PRK.
 -- Used for CSPRNG initialisation and reseed paths.

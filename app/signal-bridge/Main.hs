@@ -86,7 +86,7 @@ handleAuth :: IORef (Maybe SignalBridgeSession) -> IO ()
 handleAuth sessionRef = do
     let sharedSecret = BS.replicate 32 0x42  -- placeholder
         bobSPK       = BS.replicate 32 0x13  -- placeholder
-        ratchetState = signalRatchetInitBob sharedSecret bobSPK
+    ratchetState <- signalRatchetInitBob sharedSecret bobSPK
     session <- initBridgeSession "wss://localhost:8080" ratchetState 1 1
     writeIORef sessionRef (Just session)
     respond "AUTH_OK"

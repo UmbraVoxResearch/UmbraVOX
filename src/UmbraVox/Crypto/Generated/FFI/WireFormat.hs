@@ -32,12 +32,12 @@ wrapEnvelope msgType seqNum ephR vTag sTag payload = do
 encodeEnvelope :: ByteString -> Envelope -> IO ByteString
 encodeEnvelope key env = do
     _ <- c_wireformat_link_probe
-    pure (Reference.encodeEnvelope key env)
+    Reference.encodeEnvelope key env
 
 decodeEnvelope :: ByteString -> ByteString -> IO (Maybe Envelope)
 decodeEnvelope key bs = do
     _ <- c_wireformat_link_probe
-    pure (Reference.decodeEnvelope key bs)
+    Reference.decodeEnvelope key bs
 
 unwrapEnvelope :: Envelope -> IO ByteString
 unwrapEnvelope env = do
@@ -47,14 +47,14 @@ unwrapEnvelope env = do
 deriveEnvelopeKey :: ByteString -> IO ByteString
 deriveEnvelopeKey transportKey = do
     _ <- c_wireformat_link_probe
-    pure (Reference.deriveEnvelopeKey transportKey)
+    Reference.deriveEnvelopeKey transportKey
 
 encodeEnvelopeAEAD :: ByteString -> Word32 -> Envelope -> IO (Either String ByteString)
 encodeEnvelopeAEAD key seqNum env = do
     _ <- c_wireformat_link_probe
-    pure (Reference.encodeEnvelopeAEAD key seqNum env)
+    Reference.encodeEnvelopeAEAD key seqNum env
 
 decodeEnvelopeAEAD :: ByteString -> Word32 -> ByteString -> IO (Maybe Envelope)
 decodeEnvelopeAEAD key seqNum bs = do
     _ <- c_wireformat_link_probe
-    pure (Reference.decodeEnvelopeAEAD key seqNum bs)
+    Reference.decodeEnvelopeAEAD key seqNum bs

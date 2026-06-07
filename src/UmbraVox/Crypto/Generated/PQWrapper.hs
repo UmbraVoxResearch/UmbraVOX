@@ -11,5 +11,5 @@ import qualified UmbraVox.Crypto.PQWrapper as Reference
 pqEncrypt :: ByteString -> ByteString -> IO ByteString
 pqEncrypt = Reference.pqEncrypt
 
-pqDecrypt :: ByteString -> ByteString -> Maybe ByteString
+pqDecrypt :: ByteString -> ByteString -> IO (Maybe ByteString)
 pqDecrypt = Reference.pqDecrypt

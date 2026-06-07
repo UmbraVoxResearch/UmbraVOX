@@ -259,7 +259,7 @@ createSenderKeyDistribution senderId = do
     distChainKey   <- fromByteString chainKeyRaw
     distGroupKey   <- fromByteString groupKeyRaw
     !ephPubKey <- Ed25519FFI.ed25519PublicKey ephSignKeyRaw
-        st = SenderKeyState
+    let st = SenderKeyState
             { sksSenderId    = senderId
             , sksChainKey    = chainKeySB
             , sksIteration   = 0

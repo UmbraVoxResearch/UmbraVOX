@@ -24,4 +24,4 @@ pqEncrypt ek pt = do
 pqDecrypt :: ByteString -> ByteString -> IO (Maybe ByteString)
 pqDecrypt dk ct = do
     _ <- c_pqwrapper_link_probe
-    pure (Reference.pqDecrypt dk ct)
+    Reference.pqDecrypt dk ct
