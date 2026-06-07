@@ -240,17 +240,21 @@ testKM015ExportPassphraseDiffs = do
     ok1 <- assertEq "KM-015 export: different passphrases yield different blobs"
                True (blob1 /= blob2)
 
+    d1 <- decryptExport pass1 blob1
     ok2 <- assertEq "KM-015 export: blob1 decrypts with pass1"
-               (Just plaintext) (decryptExport pass1 blob1)
+               (Just plaintext) d1
 
+    d2 <- decryptExport pass2 blob2
     ok3 <- assertEq "KM-015 export: blob2 decrypts with pass2"
-               (Just plaintext) (decryptExport pass2 blob2)
+               (Just plaintext) d2
 
+    d3 <- decryptExport pass2 blob1
     ok4 <- assertEq "KM-015 export: blob1 does NOT decrypt with pass2"
-               True (decryptExport pass2 blob1 == Nothing)
+               True (d3 == Nothing)
 
+    d4 <- decryptExport pass1 blob2
     ok5 <- assertEq "KM-015 export: blob2 does NOT decrypt with pass1"
-               True (decryptExport pass1 blob2 == Nothing)
+               True (d4 == Nothing)
 
     pure (ok1 && ok2 && ok3 && ok4 && ok5)
 

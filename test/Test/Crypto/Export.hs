@@ -29,7 +29,8 @@ testRoundTrip = do
     let password  = strToBS "correct-horse-battery-staple"
         plaintext = strToBS "This is a secret conversation export."
     blob <- encryptExport password plaintext
-    case decryptExport password blob of
+    dec <- decryptExport password blob
+    case dec of
         Just decrypted -> assertEq "round-trip plaintext" plaintext decrypted
         Nothing        -> assertEq "round-trip succeeded" True False
 
@@ -40,7 +41,7 @@ testWrongPassword = do
         wrongPass   = strToBS "wrong-password"
         plaintext   = strToBS "Secret data here."
     blob <- encryptExport password plaintext
-    let result = decryptExport wrongPass blob
+    result <- decryptExport wrongPass blob
     assertEq "wrong password returns Nothing" Nothing result
 
 -- | Empty plaintext round-trips correctly.
@@ -49,7 +50,8 @@ testEmptyPlaintext = do
     let password  = strToBS "my-password"
         plaintext = BS.empty
     blob <- encryptExport password plaintext
-    case decryptExport password blob of
+    dec <- decryptExport password blob
+    case dec of
         Just decrypted -> assertEq "empty plaintext round-trip" plaintext decrypted
         Nothing        -> assertEq "empty plaintext succeeded" True False
 

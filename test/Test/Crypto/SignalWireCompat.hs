@@ -176,12 +176,13 @@ testSignalEnvelopeRoundTrip = do
 
 testBridgeSessionEncryptDecrypt :: IO Bool
 testBridgeSessionEncryptDecrypt = do
-    case signalRatchetInitAlice sharedSecret bobSPKPublic aliceDHSecret of
+    mAlice <- signalRatchetInitAlice sharedSecret bobSPKPublic aliceDHSecret
+    case mAlice of
         Nothing -> do
             putStrLn "  FAIL: signalRatchetInitAlice returned Nothing"
             pure False
         Just aliceRatchet -> do
-            let bobRatchet = signalRatchetInitBob sharedSecret bobSPKSecret
+            bobRatchet <- signalRatchetInitBob sharedSecret bobSPKSecret
             -- Create bridge sessions for both parties
             aliceSession <- initBridgeSession "wss://test.signal.org" aliceRatchet 1 1000
             bobSession   <- initBridgeSession "wss://test.signal.org" bobRatchet   2 2000
@@ -217,12 +218,13 @@ testBridgeSessionEncryptDecrypt = do
 
 testBridgeEnvelopeWrap :: IO Bool
 testBridgeEnvelopeWrap = do
-    case signalRatchetInitAlice sharedSecret bobSPKPublic aliceDHSecret of
+    mAlice <- signalRatchetInitAlice sharedSecret bobSPKPublic aliceDHSecret
+    case mAlice of
         Nothing -> do
             putStrLn "  FAIL: signalRatchetInitAlice returned Nothing"
             pure False
         Just aliceRatchet -> do
-            let bobRatchet = signalRatchetInitBob sharedSecret bobSPKSecret
+            bobRatchet <- signalRatchetInitBob sharedSecret bobSPKSecret
             aliceSession <- initBridgeSession "wss://test.signal.org" aliceRatchet 1 1000
             bobSession   <- initBridgeSession "wss://test.signal.org" bobRatchet   2 2000
             let plaintext = strToBS "Envelope-wrapped wire-compatible message"
@@ -268,12 +270,13 @@ testBridgeEnvelopeWrap = do
 
 testMultiMessageRatchet :: IO Bool
 testMultiMessageRatchet = do
-    case signalRatchetInitAlice sharedSecret bobSPKPublic aliceDHSecret of
+    mAlice <- signalRatchetInitAlice sharedSecret bobSPKPublic aliceDHSecret
+    case mAlice of
         Nothing -> do
             putStrLn "  FAIL: signalRatchetInitAlice returned Nothing"
             pure False
         Just aliceRatchet -> do
-            let bobRatchet = signalRatchetInitBob sharedSecret bobSPKSecret
+            bobRatchet <- signalRatchetInitBob sharedSecret bobSPKSecret
             aliceSession <- initBridgeSession "wss://test.signal.org" aliceRatchet 1 1000
             bobSession   <- initBridgeSession "wss://test.signal.org" bobRatchet   2 2000
             let msg1 = strToBS "Wire-compat message 1"

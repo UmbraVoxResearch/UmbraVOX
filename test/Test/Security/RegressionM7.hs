@@ -338,7 +338,7 @@ testExportDifferentPassphrasesDifferentKeys = do
         plaintext = strToBS "Same message for both."
     blob <- encryptExport pass1 plaintext
     -- Decrypting with pass2 must return Nothing (different keys, different tag).
-    let result = decryptExport pass2 blob
+    result <- decryptExport pass2 blob
     assertEq "M7.3.3 Export: wrong passphrase returns Nothing"
         Nothing
         result
@@ -351,7 +351,8 @@ testExportRoundTrip = do
     let password  = strToBS "correct-horse-battery-staple"
         plaintext = strToBS "M7.3.3 round-trip test payload."
     blob <- encryptExport password plaintext
-    case decryptExport password blob of
+    dec <- decryptExport password blob
+    case dec of
         Just recovered ->
             assertEq "M7.3.3 Export: correct passphrase recovers plaintext"
                 plaintext recovered

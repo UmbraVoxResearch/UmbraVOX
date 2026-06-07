@@ -631,7 +631,7 @@ testFS010ExportKeyFS = do
                True (blob1 /= blob2)
 
     -- (b) Correct password decrypts
-    let dec1 = decryptExport password blob1
+    dec1 <- decryptExport password blob1
     ok2 <- assertEq "FS-010 correct password: decryption succeeds"
                True (dec1 /= Nothing)
     ok3 <- case dec1 of
@@ -641,7 +641,7 @@ testFS010ExportKeyFS = do
 
     -- (c) Wrong password returns Nothing
     let wrongPass = strToBS "wrong-passphrase"
-        decWrong  = decryptExport wrongPass blob1
+    decWrong <- decryptExport wrongPass blob1
     ok4 <- assertEq "FS-010 wrong password: decryption returns Nothing"
                Nothing decWrong
 

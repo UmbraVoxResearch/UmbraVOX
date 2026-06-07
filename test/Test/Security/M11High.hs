@@ -1031,13 +1031,14 @@ testSY026Export100KIterations = do
         plaintext = strToBS "sensitive export content"
 
     blob <- encryptExport password plaintext
-    let result = decryptExport password blob
+    result <- decryptExport password blob
     ok1 <- assertEq "SY-026 export round-trip: correct password recovers plaintext"
                (Just plaintext) result
 
     let wrongPwd = strToBS "wrongpassword"
+    wr <- decryptExport wrongPwd blob
     ok2 <- assertEq "SY-026 export: wrong password -> Nothing"
-               True (decryptExport wrongPwd blob == Nothing)
+               True (wr == Nothing)
 
     ok3 <- assertEq "SY-026 export blob: minimum size (32+12+1+16=61)"
                True (BS.length blob >= 61)
@@ -1046,8 +1047,9 @@ testSY026Export100KIterations = do
     ok4 <- assertEq "SY-026 export: different blobs per call"
                True (blob /= blob2)
 
+    d5 <- decryptExport password blob2
     ok5 <- assertEq "SY-026 export: second blob also decrypts"
-               (Just plaintext) (decryptExport password blob2)
+               (Just plaintext) d5
 
     pure (ok1 && ok2 && ok3 && ok4 && ok5)
 

@@ -321,9 +321,9 @@ testDeriveEphemeralId = do
     let identityKey = BS.pack [0x01, 0x02, 0x03, 0x04]
         nonce1 = BS.replicate 32 0xAA
         nonce2 = BS.replicate 32 0xBB
-        eid1 = deriveEphemeralId identityKey nonce1
-        eid1b = deriveEphemeralId identityKey nonce1
-        eid2 = deriveEphemeralId identityKey nonce2
+    eid1  <- deriveEphemeralId identityKey nonce1
+    eid1b <- deriveEphemeralId identityKey nonce1
+    eid2  <- deriveEphemeralId identityKey nonce2
     a <- assertEq "ephemeral ID length" 32 (BS.length eid1)
     b <- assertEq "ephemeral ID deterministic" eid1 eid1b
     c <- assertEq "ephemeral ID varies with nonce" True (eid1 /= eid2)

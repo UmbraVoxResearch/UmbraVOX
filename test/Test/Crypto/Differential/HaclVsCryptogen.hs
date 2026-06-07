@@ -465,7 +465,7 @@ extractIntField key json =
             | needle `isPrefixOf` x =
                 let rest    = drop (length needle) x
                     trimmed = dropWhile (== ' ') rest
-                    digits  = takeWhile (`elem` "0123456789") trimmed
+                    digits  = takeWhile (`elem` ("0123456789" :: String)) trimmed
                 in case reads digits of
                     [(n, "")] -> n : go xs
                     [(n, _)]  -> n : go xs

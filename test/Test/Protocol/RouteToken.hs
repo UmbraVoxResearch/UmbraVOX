@@ -61,11 +61,11 @@ testPeerIdHash :: ByteString
 testPeerIdHash = BS.replicate 32 0xBB
 
 -- | Build an initial RouteTokenState from the test keys.
-mkInitialState :: RouteTokenState
-mkInitialState =
-    let (s, r) = deriveRouteTokens testHandshakeHash testTransportKey
-                                   testMyIdHash testPeerIdHash
-    in RouteTokenState
+mkInitialState :: IO RouteTokenState
+mkInitialState = do
+    (s, r) <- deriveRouteTokens testHandshakeHash testTransportKey
+                                testMyIdHash testPeerIdHash
+    pure RouteTokenState
         { rtsCurrentSend   = s
         , rtsCurrentRecv   = r
         , rtsPrevRecv      = Nothing
@@ -85,10 +85,10 @@ mkInitialState =
 -- | Same inputs always produce the same tokens.
 testDeterminism :: IO Bool
 testDeterminism = do
-    let (s1, r1) = deriveRouteTokens testHandshakeHash testTransportKey
-                                     testMyIdHash testPeerIdHash
-        (s2, r2) = deriveRouteTokens testHandshakeHash testTransportKey
-                                     testMyIdHash testPeerIdHash
+    (s1, r1) <- deriveRouteTokens testHandshakeHash testTransportKey
+                                  testMyIdHash testPeerIdHash
+    (s2, r2) <- deriveRouteTokens testHandshakeHash testTransportKey
+                                  testMyIdHash testPeerIdHash
     r1ok <- assertEq "determinism: send tokens match" s1 s2
     r2ok <- assertEq "determinism: recv tokens match" r1 r2
     r3ok <- assertEq "determinism: send token is 16 bytes" 16 (BS.length s1)
@@ -98,9 +98,10 @@ testDeterminism = do
 -- | Rotation triggers when message counter reaches 100.
 testRotationAtMessageCount :: IO Bool
 testRotationAtMessageCount = do
-    let rts = mkInitialState { rtsMsgCounter = 100 }
-        -- wallNow=0, wallBase=0 so wall-clock does not trigger
-        rotated = rotateTokens rts 0
+    rts0 <- mkInitialState
+    let rts = rts0 { rtsMsgCounter = 100 }
+    -- wallNow=0, wallBase=0 so wall-clock does not trigger
+    rotated <- rotateTokens rts 0
     r1 <- assertEq "msg-count rotation: epoch incremented"
               (rtsEpochCounter rts + 1) (rtsEpochCounter rotated)
     r2 <- assertEq "msg-count rotation: counter reset" 0 (rtsMsgCounter rotated)
@@ -111,9 +112,10 @@ testRotationAtMessageCount = do
 -- | Rotation triggers when wall-clock epoch (600s) elapses.
 testRotationAtWallClock :: IO Bool
 testRotationAtWallClock = do
-    let rts = mkInitialState { rtsMsgCounter = 5, rtsLastRotation = 100 }
-        -- wallNow - rtsLastRotation = 600
-        rotated = rotateTokens rts 700
+    rts0 <- mkInitialState
+    let rts = rts0 { rtsMsgCounter = 5, rtsLastRotation = 100 }
+    -- wallNow - rtsLastRotation = 600
+    rotated <- rotateTokens rts 700
     r1 <- assertEq "wall-clock rotation: epoch incremented"
               (rtsEpochCounter rts + 1) (rtsEpochCounter rotated)
     r2 <- assertEq "wall-clock rotation: counter reset" 0 (rtsMsgCounter rotated)
@@ -122,29 +124,31 @@ testRotationAtWallClock = do
 -- | After rotation the old recv token is available in the grace window.
 testGracePeriodAccepted :: IO Bool
 testGracePeriodAccepted = do
-    let rts0 = mkInitialState { rtsMsgCounter = 100 }
-        oldRecv = rtsCurrentRecv rts0
-        rotated = rotateTokens rts0 0
+    rts0 <- mkInitialState
+    let rts = rts0 { rtsMsgCounter = 100 }
+        oldRecv = rtsCurrentRecv rts
+    rotated <- rotateTokens rts 0
     check "grace period: old token present" (rtsPrevRecv rotated == Just oldRecv)
 
 -- | After a second rotation the initial recv token is no longer in the
 -- grace window (only the immediately-previous epoch survives).
 testGracePeriodExpired :: IO Bool
 testGracePeriodExpired = do
-    let rts0 = mkInitialState { rtsMsgCounter = 100 }
+    rts0base <- mkInitialState
+    let rts0 = rts0base { rtsMsgCounter = 100 }
         oldRecv = rtsCurrentRecv rts0
-        -- First rotation: oldRecv -> prevRecv
-        rts1 = rotateTokens rts0 0
-        -- Derive new epoch tokens for rts1's epoch counter
-        (newSend, newRecv) = deriveEpochTokens testHandshakeHash testTransportKey
-                                               testMyIdHash testPeerIdHash
-                                               (rtsEpochCounter rts1)
-        rts2 = rts1 { rtsCurrentSend = newSend
+    -- First rotation: oldRecv -> prevRecv
+    rts1 <- rotateTokens rts0 0
+    -- Derive new epoch tokens for rts1's epoch counter
+    (newSend, newRecv) <- deriveEpochTokens testHandshakeHash testTransportKey
+                                            testMyIdHash testPeerIdHash
+                                            (rtsEpochCounter rts1)
+    let rts2 = rts1 { rtsCurrentSend = newSend
                      , rtsCurrentRecv = newRecv
                      , rtsMsgCounter  = 100
                      }
-        -- Second rotation: newRecv -> prevRecv, oldRecv gone
-        rts3 = rotateTokens rts2 0
+    -- Second rotation: newRecv -> prevRecv, oldRecv gone
+    rts3 <- rotateTokens rts2 0
     r1 <- check "grace expired: old token not in prevRecv"
               (rtsPrevRecv rts3 /= Just oldRecv)
     r2 <- assertEq "grace expired: prevRecv is newRecv"
@@ -154,11 +158,11 @@ testGracePeriodExpired = do
 -- | Different identity keys produce different tokens.
 testIdentityBinding :: IO Bool
 testIdentityBinding = do
-    let (s1, r1) = deriveRouteTokens testHandshakeHash testTransportKey
-                                     testMyIdHash testPeerIdHash
-        altIdHash = BS.replicate 32 0xFF
-        (s2, r2) = deriveRouteTokens testHandshakeHash testTransportKey
-                                     altIdHash testPeerIdHash
+    (s1, r1) <- deriveRouteTokens testHandshakeHash testTransportKey
+                                  testMyIdHash testPeerIdHash
+    let altIdHash = BS.replicate 32 0xFF
+    (s2, r2) <- deriveRouteTokens testHandshakeHash testTransportKey
+                                  altIdHash testPeerIdHash
     r1ok <- check "identity binding: send tokens differ" (s1 /= s2)
     r2ok <- check "identity binding: recv tokens differ" (r1 /= r2)
     pure (r1ok && r2ok)
@@ -166,11 +170,11 @@ testIdentityBinding = do
 -- | Different handshake hashes produce different tokens.
 testChannelBinding :: IO Bool
 testChannelBinding = do
-    let (s1, r1) = deriveRouteTokens testHandshakeHash testTransportKey
-                                     testMyIdHash testPeerIdHash
-        altHH = BS.replicate 32 0xCC
-        (s2, r2) = deriveRouteTokens altHH testTransportKey
-                                     testMyIdHash testPeerIdHash
+    (s1, r1) <- deriveRouteTokens testHandshakeHash testTransportKey
+                                  testMyIdHash testPeerIdHash
+    let altHH = BS.replicate 32 0xCC
+    (s2, r2) <- deriveRouteTokens altHH testTransportKey
+                                  testMyIdHash testPeerIdHash
     r1ok <- check "channel binding: send tokens differ" (s1 /= s2)
     r2ok <- check "channel binding: recv tokens differ" (r1 /= r2)
     pure (r1ok && r2ok)

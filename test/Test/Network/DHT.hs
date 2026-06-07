@@ -291,44 +291,51 @@ roundTrip name msg = do
     assertEq ("round-trip " ++ name) (Just msg) decoded
 
 testRoundTripPing :: IO Bool
-testRoundTripPing = roundTrip "Ping" (Ping (deriveNodeId (strToBS "alice")))
+testRoundTripPing = do
+    nid <- deriveNodeId (strToBS "alice")
+    roundTrip "Ping" (Ping nid)
 
 testRoundTripPong :: IO Bool
-testRoundTripPong = roundTrip "Pong" (Pong (deriveNodeId (strToBS "bob")))
+testRoundTripPong = do
+    nid <- deriveNodeId (strToBS "bob")
+    roundTrip "Pong" (Pong nid)
 
 testRoundTripFindNode :: IO Bool
-testRoundTripFindNode =
-    roundTrip "FindNode" (FindNode (deriveNodeId (strToBS "alice"))
-                                   (deriveNodeId (strToBS "target")))
+testRoundTripFindNode = do
+    alice  <- deriveNodeId (strToBS "alice")
+    target <- deriveNodeId (strToBS "target")
+    roundTrip "FindNode" (FindNode alice target)
 
 testRoundTripFindNodeReply :: IO Bool
 testRoundTripFindNodeReply = do
-    let sender = deriveNodeId (strToBS "alice")
-        node1 = DHTNode (deriveNodeId (strToBS "n1")) "host1:80" 1000 Nothing
-        node2 = DHTNode (deriveNodeId (strToBS "n2")) "host2:80" 2000 (Just 500)
+    sender <- deriveNodeId (strToBS "alice")
+    n1id   <- deriveNodeId (strToBS "n1")
+    n2id   <- deriveNodeId (strToBS "n2")
+    let node1 = DHTNode n1id "host1:80" 1000 Nothing
+        node2 = DHTNode n2id "host2:80" 2000 (Just 500)
     roundTrip "FindNodeReply" (FindNodeReply sender [node1, node2])
 
 testRoundTripStore :: IO Bool
-testRoundTripStore =
-    roundTrip "Store" (Store (deriveNodeId (strToBS "alice"))
-                             (strToBS "mykey")
-                             (strToBS "myvalue"))
+testRoundTripStore = do
+    alice <- deriveNodeId (strToBS "alice")
+    roundTrip "Store" (Store alice (strToBS "mykey") (strToBS "myvalue"))
 
 testRoundTripFindValue :: IO Bool
-testRoundTripFindValue =
-    roundTrip "FindValue" (FindValue (deriveNodeId (strToBS "alice"))
-                                     (strToBS "mykey"))
+testRoundTripFindValue = do
+    alice <- deriveNodeId (strToBS "alice")
+    roundTrip "FindValue" (FindValue alice (strToBS "mykey"))
 
 testRoundTripFindValueReplyValue :: IO Bool
-testRoundTripFindValueReplyValue =
+testRoundTripFindValueReplyValue = do
+    alice <- deriveNodeId (strToBS "alice")
     roundTrip "FindValueReply(value)"
-        (FindValueReply (deriveNodeId (strToBS "alice"))
-                        (Right (strToBS "found-value")))
+        (FindValueReply alice (Right (strToBS "found-value")))
 
 testRoundTripFindValueReplyNodes :: IO Bool
 testRoundTripFindValueReplyNodes = do
-    let sender = deriveNodeId (strToBS "alice")
-        node1 = DHTNode (deriveNodeId (strToBS "n1")) "host1:80" 1000 Nothing
+    sender <- deriveNodeId (strToBS "alice")
+    n1id   <- deriveNodeId (strToBS "n1")
+    let node1 = DHTNode n1id "host1:80" 1000 Nothing
     roundTrip "FindValueReply(nodes)"
         (FindValueReply sender (Left [node1]))
 
@@ -363,7 +370,7 @@ testHandlePingReturnsPong :: IO Bool
 testHandlePingReturnsPong = do
     let cfg = defaultDHTConfig
     st <- newDHTState cfg (strToBS "server-key") Nothing
-    let senderId = deriveNodeId (strToBS "client-key")
+    senderId <- deriveNodeId (strToBS "client-key")
     resp <- handleMessage st (Ping senderId) 1000
     assertEq "Ping -> Pong" (Just (Pong (dhSelfId st))) resp
 
@@ -373,11 +380,11 @@ testHandleFindNodeReturnsClosest = do
     let cfg = defaultDHTConfig
     st <- newDHTState cfg (strToBS "server-key") Nothing
     -- Insert a node into the routing table first
-    let nodeId1 = deriveNodeId (strToBS "node1")
-        node1 = DHTNode nodeId1 "host1:80" 500 Nothing
+    nodeId1  <- deriveNodeId (strToBS "node1")
+    let node1 = DHTNode nodeId1 "host1:80" 500 Nothing
     _ <- insertNode (dhRoutingTable st) node1
-    let senderId = deriveNodeId (strToBS "client-key")
-        target = deriveNodeId (strToBS "target")
+    senderId <- deriveNodeId (strToBS "client-key")
+    target   <- deriveNodeId (strToBS "target")
     resp <- handleMessage st (FindNode senderId target) 1000
     case resp of
         Just (FindNodeReply respSender nodes) -> do
@@ -394,8 +401,8 @@ testHandleStoreAndFindValue :: IO Bool
 testHandleStoreAndFindValue = do
     let cfg = defaultDHTConfig
     st <- newDHTState cfg (strToBS "server-key") Nothing
-    let senderId = deriveNodeId (strToBS "client-key")
-        key = strToBS "test-key"
+    senderId <- deriveNodeId (strToBS "client-key")
+    let key   = strToBS "test-key"
         value = strToBS "test-value"
     -- Store should return Nothing (no response)
     storeResp <- handleMessage st (Store senderId key value) 1000
@@ -418,8 +425,8 @@ testHandleFindValueMissingKey :: IO Bool
 testHandleFindValueMissingKey = do
     let cfg = defaultDHTConfig
     st <- newDHTState cfg (strToBS "server-key") Nothing
-    let senderId = deriveNodeId (strToBS "client-key")
-        key = strToBS "nonexistent-key"
+    senderId <- deriveNodeId (strToBS "client-key")
+    let key = strToBS "nonexistent-key"
     resp <- handleMessage st (FindValue senderId key) 1000
     case resp of
         Just (FindValueReply _ (Left _nodes)) ->
@@ -439,16 +446,18 @@ testHandleFindValueMissingKey = do
 testVerifyNodeIdValid :: IO Bool
 testVerifyNodeIdValid = do
     let pubKey = strToBS "my-identity-public-key"
-        nid = deriveNodeId pubKey
-    assertEq "verifyNodeId valid" True (verifyNodeId nid pubKey)
+    nid     <- deriveNodeId pubKey
+    isValid <- verifyNodeId nid pubKey
+    assertEq "verifyNodeId valid" True isValid
 
 -- | Wrong key produces False.
 testVerifyNodeIdInvalid :: IO Bool
 testVerifyNodeIdInvalid = do
-    let pubKey = strToBS "my-identity-public-key"
+    let pubKey   = strToBS "my-identity-public-key"
         wrongKey = strToBS "different-key"
-        nid = deriveNodeId pubKey
-    assertEq "verifyNodeId invalid" False (verifyNodeId nid wrongKey)
+    nid       <- deriveNodeId pubKey
+    isInvalid <- verifyNodeId nid wrongKey
+    assertEq "verifyNodeId invalid" False isInvalid
 
 ------------------------------------------------------------------------
 -- M24.6.1: Sybil attack resistance
@@ -594,18 +603,18 @@ testStorageSpamExpiration = do
 testRoutingTablePoisoning :: IO Bool
 testRoutingTablePoisoning = do
     let realPubKey = strToBS "legitimate-node-public-key"
-        realNodeId = deriveNodeId realPubKey
+    realNodeId <- deriveNodeId realPubKey
     -- Forge a NodeId that doesn't match any key
     let forgedNodeId = mkNodeId (BS.replicate 32 0xFF)
-    r1 <- assertEq "poison: forged NodeId rejected"
-              False (verifyNodeId forgedNodeId realPubKey)
+    v1 <- verifyNodeId forgedNodeId realPubKey
+    r1 <- assertEq "poison: forged NodeId rejected" False v1
     -- Verify the real NodeId passes
-    r2 <- assertEq "poison: legitimate NodeId accepted"
-              True (verifyNodeId realNodeId realPubKey)
+    v2 <- verifyNodeId realNodeId realPubKey
+    r2 <- assertEq "poison: legitimate NodeId accepted" True v2
     -- Also verify with a completely different public key
     let otherPubKey = strToBS "other-node-public-key"
-    r3 <- assertEq "poison: wrong key rejected"
-              False (verifyNodeId realNodeId otherPubKey)
+    v3 <- verifyNodeId realNodeId otherPubKey
+    r3 <- assertEq "poison: wrong key rejected" False v3
     pure (r1 && r2 && r3)
 
 ------------------------------------------------------------------------
@@ -624,8 +633,8 @@ testRoutingTablePoisoning = do
 testMessageSizeCapOversized :: IO Bool
 testMessageSizeCapOversized = do
     -- Encode a valid Ping message
-    let sender = deriveNodeId (strToBS "test-sender")
-        validMsg = encodeDHTMessage (Ping sender)
+    sender <- deriveNodeId (strToBS "test-sender")
+    let validMsg = encodeDHTMessage (Ping sender)
     -- Pad to exceed 4096 bytes
     let oversized = validMsg <> BS.replicate (maxDHTMessageSize + 1) 0x00
     r1 <- assertEq "size-cap: oversized rejected" Nothing
@@ -662,8 +671,8 @@ testMessageSizeCapAtLimit = do
     -- not from the size guard.  We can't distinguish the two Nothings
     -- directly, so instead verify a valid message at the boundary:
     -- Construct a Store message that is exactly 4096 bytes.
-    let sender = deriveNodeId (strToBS "size-test")
-        key = strToBS "k"
+    sender <- deriveNodeId (strToBS "size-test")
+    let key = strToBS "k"
         -- type(1) + NodeId(32) + keyLen(4) + key(1) + valLen(4) + val(?) = 4096
         -- val size = 4096 - 1 - 32 - 4 - 1 - 4 = 4054
         val = BS.replicate 4054 0x58
@@ -812,20 +821,23 @@ testMaintenance :: IO Bool
 testMaintenance = do
     st <- mkTestState "maint-key"
     -- Insert nodes with old timestamps (lastSeen = 100).
+    stale1Id <- deriveNodeId (strToBS "stale-1")
+    stale2Id <- deriveNodeId (strToBS "stale-2")
+    fresh1Id <- deriveNodeId (strToBS "fresh-1")
     let staleNode1 = DHTNode
-            { dhtNodeId   = deriveNodeId (strToBS "stale-1")
+            { dhtNodeId   = stale1Id
             , dhtAddress  = "host1:80"
             , dhtLastSeen = 100
             , dhtRTT      = Nothing
             }
         staleNode2 = DHTNode
-            { dhtNodeId   = deriveNodeId (strToBS "stale-2")
+            { dhtNodeId   = stale2Id
             , dhtAddress  = "host2:80"
             , dhtLastSeen = 100
             , dhtRTT      = Nothing
             }
         freshNode = DHTNode
-            { dhtNodeId   = deriveNodeId (strToBS "fresh-1")
+            { dhtNodeId   = fresh1Id
             , dhtAddress  = "host3:80"
             , dhtLastSeen = 5000
             , dhtRTT      = Nothing

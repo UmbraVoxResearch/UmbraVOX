@@ -15,6 +15,7 @@ import qualified Data.ByteString as BS
 import Test.Util
 import UmbraVox.Crypto.MLKEM
     ( MLKEMCiphertext(..)
+    , MLKEMDecapKey
     , mlkemKeyGen
     , mlkemEncaps
     , mlkemDecaps
@@ -117,7 +118,7 @@ flipCTByte i (MLKEMCiphertext bs) =
     in MLKEMCiphertext (BS.concat [BS.take i bs, BS.singleton b, BS.drop (i + 1) bs])
 
 -- | Common setup used by all implicit rejection tests.
-withKEM :: (MLKEMCiphertext -> BS.ByteString -> BS.ByteString -> IO Bool) -> IO Bool
+withKEM :: (MLKEMCiphertext -> BS.ByteString -> MLKEMDecapKey -> IO Bool) -> IO Bool
 withKEM f = do
     let d  = BS.pack (replicate 32 0x10)
         z  = BS.pack (replicate 32 0x20)
