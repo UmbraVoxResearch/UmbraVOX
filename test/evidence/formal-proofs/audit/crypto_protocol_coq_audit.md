@@ -190,7 +190,7 @@ Honest and well-scoped. Structural properties are genuine. Parameterization over
 
 | Claim | Stated | Actual |
 |---|---|---|
-| Verifiability | prove then verify succeeds | PROVED modulo dleq_correctness (VR-001, UNBLOCKED but not yet DISCHARGED via Coq) and scalar_mult_add (ED-004, DISCHARGED in Ed25519GroupScalarMultAdd.v). Full proof chain pending VR-001 Coq proof (M32.4). |
+| Verifiability | prove then verify succeeds | PROVED modulo scalar_mult_add (ED-004, concrete instances DISCHARGED in Ed25519GroupScalarMultAdd.v; universal proof pending). VR-001 dleq_correctness DISCHARGED 2026-06-07 by VRFDLEQ.v (32 Qed, zero Admitted/Axiom). Full proof chain: VR-001 closed; residual gap is universal ED-004. |
 | Uniqueness (weak) | same (sk,msg) gives same proof | TRIVIALLY TRUE: function determinism |
 | Strong uniqueness | any two valid proofs give same beta | AXIOM: requires discrete-log hardness |
 | Pseudorandomness | Placeholder -- proves True | NO PROOF |
@@ -202,7 +202,7 @@ Honest and well-scoped. Structural properties are genuine. Parameterization over
 - Missing: hash_to_curve is a constant stub (try-and-increment not modeled), nonce generation is a constant stub
 - Concrete: scalar arithmetic, challenge generation, point operations delegate to Spec.Ed25519
 
-**FINDING:** This is the most sophisticated F\* spec. It uses concrete Ed25519 operations (not constant stubs) for most of the protocol. The verifiability proof is genuine modulo dleq_correctness (VR-001, UNBLOCKED but not yet DISCHARGED via Coq proof) and scalar_mult_add (ED-004, DISCHARGED in Ed25519GroupScalarMultAdd.v); full proof chain is pending VR-001 Coq proof (M32.4). Of the 3 assume vals: dleq_correctness (VR-001) is an algebraic property pending Coq discharge; vrf_strong_uniqueness and vrf_collision_resistance are irreducible CRYPTO_HARDNESS assumptions (discrete-log and hash collision resistance respectively), not provable in any proof assistant.
+**FINDING:** This is the most sophisticated F\* spec. It uses concrete Ed25519 operations (not constant stubs) for most of the protocol. The verifiability proof is genuine modulo scalar_mult_add (ED-004, concrete instances DISCHARGED; universal proof pending). VR-001 dleq_correctness was DISCHARGED 2026-06-07 by VRFDLEQ.v (32 Qed, zero Admitted/Axiom, universal proof over Z/L). Of the 3 assume vals: dleq_correctness (VR-001) has Coq evidence via VRFDLEQ.v but F* assume val declaration retained; vrf_strong_uniqueness and vrf_collision_resistance are irreducible CRYPTO_HARDNESS assumptions (discrete-log and hash collision resistance respectively), not provable in any proof assistant.
 
 **Assurance Grade: B-**
 Best protocol spec. Concrete Ed25519 delegation. Honest axioms for computational properties. hash_to_curve stub is a real gap.
@@ -490,7 +490,7 @@ cryptographic security properties.
 - hmac_prf_placeholder (SenderKeys) -- proves True, says so
 - hmac_non_fixpoint (DoubleRatchet) -- assume val, documented
 - hmac_collision_resistance (DoubleRatchet) -- assume val, documented
-- dleq_correctness (VRF) -- assume val, well-documented algebraic axiom
+- dleq_correctness (VRF) -- assume val, DISCHARGED 2026-06-07 by VRFDLEQ.v (Coq evidence; F* assume val declaration retained)
 - vrf_strong_uniqueness (VRF) -- assume val, hardness assumption
 - vrf_collision_resistance (VRF) -- assume val, hardness assumption
 - unlinkability (StealthAddress) -- assume val, DDH assumption

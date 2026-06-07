@@ -5,7 +5,7 @@ Generated: 2026-06-07 | Version: v0.7.0 | Baseline: v0.1.9
 ## Summary
 
 - **32 F* specs**: 0 admit(), 35 assume val declarations (27 active in ASSUMPTIONS.md: 31 − 4 newly discharged; 4 discharged stubs retained in fst files for F* compilation), 21 specs fully proved
-- **19 verified Coq files**: 610 Qed, 0 Admitted, 5 Axiom declarations across 3 files (all externally verified or structural), 0 Parameter. 15 assume vals discharged (up from 11 — ED-005, VR-001, X2-005, X2-006 newly confirmed from existing verified Coq files).
+- **20 verified Coq files**: 616 Qed, 0 Admitted, 5 Axiom declarations across 3 files (all externally verified or structural), 0 Parameter. 15 assume vals discharged (up from 11 — ED-005, VR-001, X2-005, X2-006 newly confirmed from existing verified Coq files).
 - **1 draft Coq file**: 16 Qed, 8 Admitted, 15 Axiom (NOT verified evidence)
 - **Runtime differential**: 36/36 suites PASS against RFC/NIST vectors
 - **Negative tests**: 4/4 suites PASS, 18 fail-closed checks
