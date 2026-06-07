@@ -641,11 +641,14 @@ func checkPreRelease() int {
 		if _, err := os.Stat(coqDir); err != nil {
 			return -1, "skip (coq dir not found)"
 		}
-		clean := exec.Command("make", "-C", coqDir, "clean")
+		// Use -f to provide the Makefile path explicitly; avoids issues with
+		// shell aliases shadowing the make binary in some VM environments.
+		makeFile := filepath.Join(coqDir, "Makefile")
+		clean := exec.Command("make", "-f", makeFile, "-C", coqDir, "clean")
 		if err := clean.Run(); err != nil {
 			return 1, ""
 		}
-		build := exec.Command("make", "-C", coqDir)
+		build := exec.Command("make", "-f", makeFile, "-C", coqDir)
 		if err := build.Run(); err != nil {
 			return 1, ""
 		}

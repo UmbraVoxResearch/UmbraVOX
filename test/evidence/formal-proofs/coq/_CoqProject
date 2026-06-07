@@ -18,3 +18,4 @@ Ed25519Encoding.v
 Ed25519PointAdd.v
 StructuralProofs.v
 X25519DH.v
+Ed25519ScalarMultCongruence.v

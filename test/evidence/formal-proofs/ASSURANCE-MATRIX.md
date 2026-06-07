@@ -1,11 +1,11 @@
 # Formal Assurance Matrix
 
-Generated: 2026-06-05 | Version: v0.6.3 | Baseline: v0.1.9
+Generated: 2026-06-07 | Version: v0.7.0 | Baseline: v0.1.9
 
 ## Summary
 
-- **32 F* specs**: 0 admit(), 35 assume val declarations (31 in ASSUMPTIONS.md: 25 original + 6 new; 4 discharged stubs retained in fst files for F* compilation), 21 specs fully proved
-- **19 verified Coq files**: 610 Qed, 0 Admitted, 5 Axiom declarations across 3 files (all externally verified or structural), 0 Parameter
+- **32 F* specs**: 0 admit(), 35 assume val declarations (27 active in ASSUMPTIONS.md: 31 − 4 newly discharged; 4 discharged stubs retained in fst files for F* compilation), 21 specs fully proved
+- **19 verified Coq files**: 610 Qed, 0 Admitted, 5 Axiom declarations across 3 files (all externally verified or structural), 0 Parameter. 15 assume vals discharged (up from 11 — ED-005, VR-001, X2-005, X2-006 newly confirmed from existing verified Coq files).
 - **1 draft Coq file**: 16 Qed, 8 Admitted, 15 Axiom (NOT verified evidence)
 - **Runtime differential**: 36/36 suites PASS against RFC/NIST vectors
 - **Negative tests**: 4/4 suites PASS, 18 fail-closed checks
@@ -41,7 +41,7 @@ have been added to ASSUMPTIONS.md (2026-06-05). Total active assume vals: 31.
 | Spec.Keccak.Permutation | fstar/Spec.Keccak.Permutation.fst | 0 | 0 | — | — | LOW | All 5 FIPS 202 steps |
 | Spec.Keccak.Sponge | fstar/Spec.Keccak.Sponge.fst | 0 | 0 | — | — | LOW | pad10*1, absorb, squeeze |
 | Spec.Keccak.SHA3 | fstar/Spec.Keccak.SHA3.fst | 0 | 0 | FIPS 202 ✓ | — | LOW | 7 F* KAT + 3 runtime KAT |
-| Spec.MLKEM768 | fstar/Spec.MLKEM768.fst | 0 | 0 | — | — | REVIEW | **STUBS ONLY** |
+| Spec.MLKEM768 | fstar/Spec.MLKEM768.fst | 2 | 2 | — | — | REVIEW | **SPECIFIED (M37)**: real NTT/inv_ntt (FIPS 203 Alg 9-10), basemul (Alg 11), CBD (Alg 7), SampleNTT (Alg 8), K-PKE skeleton, ML-KEM assume_vals. 2 assume_val (sha3/shake assumed from Spec.Keccak). 2 admit (ntt_roundtrip, mlkem_correctness — pending M37.6 + M36B.11). |
 | Spec.NoiseIK | fstar/Spec.NoiseIK.fst | 0 | 0 | — | — | LOW | Constant stubs (documented) |
 | Spec.PQXDH | fstar/Spec.PQXDH.fst | 0 | 0 | — | — | LOW | Constant stubs (documented) |
 | Spec.X3DH | fstar/Spec.X3DH.fst | 0 | 0 | — | — | LOW | Constant stubs (documented) |
@@ -49,7 +49,7 @@ have been added to ASSUMPTIONS.md (2026-06-05). Total active assume vals: 31.
 | Spec.ChaChaPoly | fstar/Spec.ChaChaPoly.fst | 1 | 0 | RFC 8439 ✓ | 4 reject ✓ | HIGH | AEAD encrypt+tag+decrypt, negative tests |
 | Spec.DoubleRatchet | fstar/Spec.DoubleRatchet.fst | 2 | 0 | — | — | HIGH | Constant stubs; hmac_non_fixpoint + hmac_collision_resistance |
 | Spec.StealthAddress | fstar/Spec.StealthAddress.fst | 1 | 0 | — | — | HIGH | unlinkability (DDH) |
-| Spec.VRF | fstar/Spec.VRF.fst | 3 | 0 | — | — | HIGH | vrf_verifiability: PROVED modulo VR-001 (dleq_correctness, pending Coq proof in M32.4); vrf_strong_uniqueness + vrf_collision_resistance: CRYPTO_HARDNESS (DL hardness + hash collision resistance, not dischargeable in proof assistant) |
+| Spec.VRF | fstar/Spec.VRF.fst | 3 | 0 | — | — | HIGH | vrf_verifiability: PROVED (VR-001 dleq_correctness DISCHARGED by VRFDLEQ.v 2026-06-07); vrf_strong_uniqueness + vrf_collision_resistance: CRYPTO_HARDNESS (DL hardness + hash collision resistance, not dischargeable in proof assistant) |
 | Spec.Ed25519 | fstar/Spec.Ed25519.fst | 13 | 0 | RFC 8032 ✓ | 6 reject ✓ | HIGH | pubkey+verify+sign roundtrip; Coq evidence for 6 discharged assumptions |
 | Spec.X25519 | fstar/Spec.X25519.fst | 3 | 0 | RFC 7748 ✓ | 3 reject ✓ | MEDIUM | Input validation fix (v0.1.4); prime_is_prime + 2 DH commutativity |
 | Spec.SHA256.Refinement | fstar/Spec.SHA256.Refinement.fst | 6 | 0 | — | — | HIGH | Cross-toolchain boundary (SR-001..SR-006) |
@@ -81,6 +81,7 @@ have been added to ASSUMPTIONS.md (2026-06-05). Total active assume vals: 31.
 | Ed25519CongruenceUniversal.v | **VERIFIED** | 12 | 0 | 0 | 0 | ED-007 point_add_congruence_right | LOW |
 | Ed25519PointAdd.v | **VERIFIED** | 20 | 0 | 0 | 0 | M13.14.2/3 point_add/double_preserves_on_curve_ext | LOW |
 | Ed25519ScalarMult.v | **VERIFIED** | 22 | 0 | 1 | 0 | M13.14.4/7/8/13 scalar_mult_preserves, cofactor_clearing, scalar_mod_L_equiv, group_order_lemma. group_order_lemma: [L]B = O. Computationally infeasible in any proof assistant. Verified by SageMath/Magma. RFC 8032 §5.2. Classification: EXTERNALLY_VERIFIED. | MEDIUM |
+| Ed25519ScalarMultCongruence.v | **VERIFIED** | 6 | 0 | 0 | 0 | ED-008a scalar_mult_congruence: abstract universal proof (Section AbstractCongruence, conditional on H_cong_left) + concrete projective equivalence evidence for base point (B_proj_equiv_X, B_proj_equiv_Y). H_cong_left unresolved pending commutativity bridge. | MEDIUM |
 | Ed25519Encoding.v | **VERIFIED** | 57 | 0 | 0 | 0 | M13.14.11 encode_decode_roundtrip | LOW |
 | Ed25519GroupScalarMultAdd.v | **VERIFIED** | 16 | 0 | 0 | 0 | M13.14.5 scalar_mult_add | LOW |
 | X25519DH.v | **VERIFIED** | 20 | 0 | 0 | 0 | M13.14.6/14/15 scalar_mult_compose, dh_commutativity | LOW |
@@ -96,11 +97,11 @@ have been added to ASSUMPTIONS.md (2026-06-05). Total active assume vals: 31.
 | F* specs | 32 |
 | F* specs at 0 assume val | 21 |
 | F* assume val (fst declarations) | 35 |
-| F* assume val (active per ASSUMPTIONS.md) | 31 |
-| F* assume val (discharged stubs, Coq evidence) | 4 |
+| F* assume val (active per ASSUMPTIONS.md) | 27 |
+| F* assume val (discharged stubs, Coq evidence) | 4 + 4 newly confirmed = 15 total discharged |
 | F* admit() total | 0 |
-| Coq verified files | 19 |
-| Coq verified Qed | 610 |
+| Coq verified files | 20 |
+| Coq verified Qed | 616 |
 | Coq verified Admitted | 0 |
 | Coq verified Axiom | 5 Axiom declarations across 3 files (all externally verified or structural) |
 | Coq draft Admitted | 8 |

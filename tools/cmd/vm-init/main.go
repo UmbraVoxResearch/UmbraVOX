@@ -150,9 +150,14 @@ func copySourceToWorkspace() {
 		return // already copied
 	}
 	os.MkdirAll(workDir, 0o755)
-	// Use cp -a for faithful copy including symlinks and permissions,
-	// matching the original shell script behavior.
-	exec.Command("cp", "-a", srcMount+"/.", workDir+"/").Run()
+	// Use cp -a --sparse=never for faithful copy including symlinks and
+	// permissions.  --sparse=never ensures files are fully materialized even
+	// when the source ext2 disk contains sparse inodes (genext2fs quirk),
+	// preventing zero-byte reads of files that have the correct size in ls.
+	if err := exec.Command("cp", "-a", "--sparse=never", srcMount+"/.", workDir+"/").Run(); err != nil {
+		// Fallback: try without --sparse=never (BSD cp / non-GNU platforms).
+		exec.Command("cp", "-a", srcMount+"/.", workDir+"/").Run()
+	}
 	os.WriteFile(readyFile, nil, 0o644)
 }
 

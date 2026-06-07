@@ -3,6 +3,7 @@ package disk
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -87,11 +88,38 @@ func CreateSourceDisk(repoRoot, tmpDir, initScript, execCmd string) (string, err
 		}
 	}
 
+	// Calculate actual content size and add 50% headroom + 64 MB for inodes.
+	// This avoids creating a fixed-size 1 GB image when disk space is tight.
+	sizeBlocks := sourceDiskBlocks(srcDir)
+
 	// Build ext2 image via vmctl
 	dm := &vmctl.DiskManager{}
-	if err := dm.CreateSourceDisk(srcDir, diskPath, 1048576); err != nil {
+	if err := dm.CreateSourceDisk(srcDir, diskPath, sizeBlocks); err != nil {
 		return "", err
 	}
 
 	return diskPath, nil
+}
+
+// sourceDiskBlocks calculates the ext2 block count (1 KB blocks) needed to
+// hold srcDir.  It walks the directory, sums file sizes, and adds 50%
+// headroom plus 64 MB for filesystem metadata and inodes.  The minimum
+// returned is 65536 (64 MB) to satisfy genext2fs minimum requirements.
+func sourceDiskBlocks(srcDir string) int {
+	var totalBytes int64
+	_ = filepath.WalkDir(srcDir, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		if info, err := d.Info(); err == nil {
+			totalBytes += info.Size()
+		}
+		return nil
+	})
+	// 1 KB blocks, 50% headroom, 64 MB metadata floor.
+	blocks := int(totalBytes/1024*3/2) + 65536
+	if blocks < 65536 {
+		blocks = 65536
+	}
+	return blocks
 }

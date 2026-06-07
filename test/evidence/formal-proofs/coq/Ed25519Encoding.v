@@ -164,7 +164,7 @@ Lemma encode_basepoint_y :
 Proof.
   unfold encode_point; simpl.
   apply Z.mod_small.
-  exact By_range.
+  pose proof By_range; lia.
 Qed.
 
 Lemma encode_basepoint_sign :
@@ -243,20 +243,17 @@ Lemma two_roots : forall x0 u v,
   fmul (fmul ((ed25519_p - x0) mod ed25519_p) ((ed25519_p - x0) mod ed25519_p)) v = u.
 Proof.
   intros x0 u v H.
-  (* Step 1: (p - x0) mod p ≡ -x0 mod p *)
+  (* Step 1: (p - x0) mod p ≡ -x0 mod p.
+     Use Z.mod_add: (a + b*n) mod n = a mod n, with a=-x0, b=1, n=p.
+     Then p - x0 = -x0 + 1*p, so (p - x0) mod p = (-x0) mod p. *)
   assert (Hneg : (ed25519_p - x0) mod ed25519_p = (- x0) mod ed25519_p).
-  { rewrite Zminus_mod.
-    rewrite Z.mod_same by (pose proof p_pos; lia).
-    rewrite Z.sub_0_l.
-    reflexivity. }
+  { rewrite <- (Z.mod_add (- x0) 1 ed25519_p) by (pose proof p_pos; lia).
+    f_equal. ring. }
   (* Step 2: fmul ((-x0) mod p) ((-x0) mod p) = fmul x0 x0 *)
   assert (Heq : fmul ((- x0) mod ed25519_p) ((- x0) mod ed25519_p) = fmul x0 x0).
   { unfold fmul.
-    rewrite Zmult_mod_idemp_l.
-    rewrite Zmult_mod_idemp_r.
-    rewrite (Zmult_mod_idemp_l x0).
-    rewrite (Zmult_mod_idemp_r x0).
-    (* Now: ((-x0) * (-x0)) mod p = (x0 * x0) mod p *)
+    (* Use Zmult_mod to reduce (a mod n)*(b mod n) mod n = a*b mod n, then ring. *)
+    rewrite <- Zmult_mod.
     f_equal. ring. }
   rewrite Hneg. rewrite Heq.
   exact H.
@@ -306,10 +303,11 @@ Lemma p_mod_8 : ed25519_p mod 8 = 5.
 Proof. vm_compute. reflexivity. Qed.
 
 (** The key identity: for the p = 5 mod 8 Tonelli-Shanks exponent,
-    ((uv^7)^((p-5)/8))^2 * uv^7 = (uv^7)^((p-1)/2) * uv^7.
-    We state the exponent relationship. *)
+    ((uv^7)^((p-5)/8))^2 * uv^7 = (uv^7)^((p-1)/4).
+    We state the exponent relationship:
+      2 * ((p-5)/8) + 1 = (p-5)/4 + 1 = (p-1)/4. *)
 Lemma sqrt_exp_relation :
-  2 * sqrt_exp + 1 = (ed25519_p - 1) / 2.
+  2 * sqrt_exp + 1 = (ed25519_p - 1) / 4.
 Proof. vm_compute. reflexivity. Qed.
 
 (** Concrete: sqrt_candidate satisfies x^2 * v = u for basepoint inputs *)
@@ -373,10 +371,11 @@ Proof. unfold ed25519_cofactor, ed25519_L. ring. Qed.
 
 (** We work with ext_scalar_mult from Ed25519GroupPartial. *)
 
-(** [8]O = O *)
+(** [8]O ~ O (projective equivalence; HWCD add formula preserves Y/Z = 1 but
+    may produce Y=Z=k for some k, not necessarily k=1). *)
 Lemma scalar_8_identity :
-  ext_scalar_mult 8 ext_identity = ext_identity.
-Proof. vm_compute. reflexivity. Qed.
+  proj_eq (ext_scalar_mult 8 ext_identity) ext_identity.
+Proof. apply proj_eq_b_correct. vm_compute. reflexivity. Qed.
 
 (** [8]B is on the curve. *)
 Lemma scalar_8_basepoint_on_curve :
@@ -429,11 +428,11 @@ Proof. vm_compute. reflexivity. Qed.
 Lemma L_pos : ed25519_L > 0.
 Proof. pose proof L_positive. lia. Qed.
 
-(** L mod 8 = 1 -- the cofactor 8 and group order L are coprime. *)
-Lemma L_mod_8 : ed25519_L mod 8 = 1.
+(** L mod 8 = 5 -- L is an odd prime; gcd(8, L) = 1. *)
+Lemma L_mod_8 : ed25519_L mod 8 = 5.
 Proof. vm_compute. reflexivity. Qed.
 
-(** Because L mod 8 = 1, we have 8 * L mod 8 = 0 and gcd(8, L) = 1.
+(** Because L is an odd prime (L mod 8 = 5), gcd(8, L) = 1.
     This means the cofactor subgroup and the prime subgroup intersect
     only at the identity. *)
 Lemma gcd_8_L : Z.gcd 8 ed25519_L = 1.
@@ -468,13 +467,6 @@ Proof. vm_compute. reflexivity. Qed.
     Therefore [8]P is in the prime-order subgroup.
 
     We formalize the algebraic chain: [L*8]P = [L]([8]P). *)
-
-Lemma L_times_8_to_nat :
-  Z.to_nat (ed25519_L * 8) = Z.to_nat ed25519_L * 8.
-Proof.
-  rewrite Z2Nat.inj_mul by (unfold ed25519_L; lia).
-  simpl. reflexivity.
-Qed.
 
 (** The universal factoring [8*n]P = [8]([n]P) requires group associativity
     (the same blocker as Ed25519GroupPartial.v Section 19).  We verify it
@@ -568,9 +560,10 @@ Proof. apply proj_eq_b_correct. vm_compute. reflexivity. Qed.
     Ed25519 has specific torsion points at coordinates related to sqrt(-1). *)
 
 (** sqrt(-1) mod p -- a square root of -1 mod p.
-    Since p = 5 mod 8, -1 is a quadratic residue mod p. *)
+    Since p ≡ 5 mod 8, Legendre(2, p) = -1, so 2^((p-1)/4) is sqrt(-1).
+    Concretely: 2^((p-1)/4) mod p. *)
 Definition sqrt_neg1 : Z :=
-  pow_mod (ed25519_p - 1) ((ed25519_p - 1) / 4) ed25519_p.
+  pow_mod 2 ((ed25519_p - 1) / 4) ed25519_p.
 
 Lemma sqrt_neg1_squared : fmul sqrt_neg1 sqrt_neg1 = ed25519_p - 1.
 Proof. vm_compute. reflexivity. Qed.
@@ -668,14 +661,14 @@ Proof. vm_compute. reflexivity. Qed.
       - Formula: x = (u*v^3)*(u*v^7)^((p-5)/8) mod p
       - Exponent: (p-5)/8 = 2^252 - 3  (vm_compute)
       - p mod 8 = 5  (vm_compute -- the required congruence class)
-      - 2 * ((p-5)/8) + 1 = (p-1)/2  (algebraic identity)
+      - 2 * ((p-5)/8) + 1 = (p-1)/4  (algebraic identity)
       - x^2 * v = u for identity inputs    (vm_compute)
       - x^2 * v = u for basepoint inputs   (vm_compute)
       - x^2 * v = u for [2]B inputs        (vm_compute)
 
     M13.14.13  cofactor_clearing:
       - ed25519_cofactor = 8  (definitional)
-      - ed25519_L mod 8 = 1, gcd(8, L) = 1  (vm_compute)
+      - ed25519_L mod 8 = 5, gcd(8, L) = 1  (vm_compute)
       - [8](T2) ~ O  (vm_compute -- order-2 torsion killed)
       - [8](T4a) ~ O  (vm_compute -- order-4 torsion killed)
       - [8](B + T2) ~ [8]B  (vm_compute -- torsion component stripped)
