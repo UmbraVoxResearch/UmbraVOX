@@ -2,7 +2,7 @@
 -- | HKDF test suite: RFC 5869 KAT vectors + edge cases + property/fuzz tests.
 module Test.Crypto.HKDF (runTests) where
 
-import Control.Exception (IOException, try)
+import Control.Exception (IOException, catch, evaluate)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 
@@ -57,18 +57,22 @@ runTests = do
 -- | Assert that an IO action throws an IOException.
 testThrows :: String -> IO a -> IO Bool
 testThrows label action = do
-    result <- try action :: IO (Either IOException a)
-    case result of
-        Left _  -> putStrLn ("  PASS: " ++ label) >> pure True
-        Right _ -> putStrLn ("  FAIL: " ++ label ++ " (expected IOException, got success)") >> pure False
+    threw <- (action >> pure False)
+        `catch` (\(_ :: IOException) -> pure True)
+    if threw
+        then putStrLn ("  PASS: " ++ label) >> pure True
+        else putStrLn ("  FAIL: " ++ label ++ " (expected IOException, got success)") >> pure False
 
 -- | Assert that an IO action succeeds without throwing.
 testNoThrow :: String -> IO a -> IO Bool
 testNoThrow label action = do
-    result <- try action :: IO (Either IOException a)
-    case result of
-        Right _ -> putStrLn ("  PASS: " ++ label) >> pure True
-        Left e  -> putStrLn ("  FAIL: " ++ label ++ " (unexpected IOException: " ++ show e ++ ")") >> pure False
+    ok <- (evaluate =<< (action >> pure True))
+        `catch` (\(e :: IOException) ->
+            putStrLn ("  FAIL: " ++ label ++ " (unexpected IOException: " ++ show e ++ ")")
+            >> pure False)
+    if ok
+        then putStrLn ("  PASS: " ++ label) >> pure True
+        else pure False
 
 data HKDFVec = HKDFVec
     { hvName :: String, hvIKM :: ByteString, hvSalt :: ByteString
