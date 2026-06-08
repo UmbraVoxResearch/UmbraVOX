@@ -15,9 +15,12 @@ Ed25519CongruenceUniversal.v
 Ed25519CongruenceRight.v
 Ed25519GroupScalarMultAdd.v
 Ed25519ScalarMult.v
+Ed25519ScalarMultPreserves.v
 Ed25519Encoding.v
 Ed25519ExtendedEncoding.v
+Ed25519ExtendedCofactor.v
 Ed25519PointAdd.v
 StructuralProofs.v
 X25519DH.v
 Ed25519ScalarMultCongruence.v
+Ed25519ScalarMultAddUniversal.v

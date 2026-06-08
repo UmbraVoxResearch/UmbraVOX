@@ -5,7 +5,7 @@ VOFILES = $(VFILES:.v=.vo)
 
 # Files that import coqprime require -native-compiler no
 # (workaround for coq-bignums findlib plugin issue in nixpkgs Rocq 9.1.1)
-COQPRIME_FILES = Ed25519GroupUniversal.v Ed25519AssocUniversal.v Ed25519CongruenceUniversal.v Ed25519CongruenceRight.v Ed25519PointAdd.v Ed25519ScalarMultCongruence.v Ed25519Encoding.v Ed25519ExtendedEncoding.v
+COQPRIME_FILES = Ed25519GroupUniversal.v Ed25519AssocUniversal.v Ed25519CongruenceUniversal.v Ed25519CongruenceRight.v Ed25519PointAdd.v Ed25519ScalarMultCongruence.v Ed25519Encoding.v Ed25519ExtendedEncoding.v Ed25519ExtendedCofactor.v Ed25519ScalarMultPreserves.v Ed25519ScalarMultAddUniversal.v
 
 all: $(VOFILES)
 	@echo "Coq proofs: all checked."

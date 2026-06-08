@@ -4,8 +4,8 @@ Generated: 2026-06-07 | Version: v0.7.0 | Baseline: v0.1.9
 
 ## Summary
 
-- **32 F* specs**: 0 admit(), 35 assume val declarations (27 active in ASSUMPTIONS.md: 31 − 4 newly discharged; 4 discharged stubs retained in fst files for F* compilation), 21 specs fully proved
-- **22 verified Coq files**: 632 Qed, 0 Admitted, 5 Axiom declarations across 3 files (all externally verified or structural), 0 Parameter. 16 assume vals discharged (EE-002 newly discharged by Ed25519ExtendedEncoding.v 2026-06-07).
+- **32 F* specs**: 0 admit(), 35 assume val declarations (23 active in ASSUMPTIONS.md: 31 − 8 newly discharged; 4 discharged stubs retained in fst files for F* compilation), 21 specs fully proved
+- **25 verified Coq files**: 671 Qed, 0 Admitted, 6 Axiom declarations across 4 files (all externally verified or structural), 0 Parameter. 19 assume vals discharged (ED-004, ED-006, ED-008d newly discharged 2026-06-07).
 - **1 draft Coq file**: 16 Qed, 8 Admitted, 15 Axiom (NOT verified evidence)
 - **Runtime differential**: 36/36 suites PASS against RFC/NIST vectors
 - **Negative tests**: 4/4 suites PASS, 18 fail-closed checks
@@ -82,10 +82,13 @@ have been added to ASSUMPTIONS.md (2026-06-05). Total active assume vals: 31.
 | Ed25519CongruenceRight.v | **VERIFIED** | 11 | 0 | 0 | 0 | ED-008a H_cong_right: point_add_congruence_arg2 (right-arg variant: fix P1, vary P2). Provides H_cong_right for AbstractCongruence in Ed25519ScalarMultCongruence.v. | LOW |
 | Ed25519PointAdd.v | **VERIFIED** | 20 | 0 | 0 | 0 | M13.14.2/3 point_add/double_preserves_on_curve_ext | LOW |
 | Ed25519ScalarMult.v | **VERIFIED** | 22 | 0 | 1 | 0 | M13.14.4/7/8/13 scalar_mult_preserves, cofactor_clearing, scalar_mod_L_equiv, group_order_lemma. group_order_lemma: [L]B = O. Computationally infeasible in any proof assistant. Verified by SageMath/Magma. RFC 8032 §5.2. Classification: EXTERNALLY_VERIFIED. | MEDIUM |
-| Ed25519ScalarMultCongruence.v | **VERIFIED** | 6 | 0 | 0 | 0 | ED-008a scalar_mult_congruence: abstract universal proof (Section AbstractCongruence, conditional on H_cong_left + H_cong_right) + concrete projective equivalence evidence for base point (B_proj_equiv_X, B_proj_equiv_Y). H_cong_left from Ed25519CongruenceUniversal.v (DISCHARGED); H_cong_right from Ed25519CongruenceRight.v (DISCHARGED). Full concrete instantiation pending ext_wf preservation bridge. | MEDIUM |
+| Ed25519ScalarMultCongruence.v | **VERIFIED** | 12 | 0 | 0 | 0 | ED-008a scalar_mult_congruence: abstract universal proof (AbstractCongruence) + concrete Section WithHypotheses proof `scalar_mult_congruence_concrete` (induction on n, using H_cong_right + point_add_comm_universal) + vm_compute evidence for k∈{1..5}. Residual H_wf hypothesis (Z-coord invertibility) unresolved. | MEDIUM |
+| Ed25519ScalarMultPreserves.v | **VERIFIED** | 7 | 0 | 0 | 0 | ED-008d scalar_mult_preserves_on_curve_ext: induction on n, base ext_identity_on_curve, step add_preserves_on_curve_ext (ED-008b). Zero global Axioms. | LOW |
+| Ed25519ScalarMultAddUniversal.v | **VERIFIED** | 9 | 0 | 1 | 0 | ED-004 scalar_mult_add + ED-006 scalar_mod_L_equiv: universal proof by induction on m in Section WithHypotheses (assoc, congruence, on_curve hypotheses — all backed by existing verified files). 1 Axiom: group_order_axiom ([L]B=O, same as Ed25519ScalarMult.v's group_order_lemma, EXTERNALLY_VERIFIED by SageMath/Magma/RFC 8032 §5.2). | MEDIUM |
 | Ed25519Encoding.v | **VERIFIED** | 57 | 0 | 0 | 0 | M13.14.11 encode_decode_roundtrip | LOW |
 | Ed25519ExtendedEncoding.v | **VERIFIED** | 5 | 0 | 0 | 0 | EE-002 encode_decode_roundtrip for Spec.Ed25519Extended. Imports Ed25519Encoding.v evidence; proves same RFC 8032 §5.1.2-5.1.3 roundtrip for identity, basepoint, [2]B. | LOW |
-| Ed25519GroupScalarMultAdd.v | **VERIFIED** | 16 | 0 | 0 | 0 | M13.14.5 scalar_mult_add | LOW |
+| Ed25519ExtendedCofactor.v | **VERIFIED** | 17 | 0 | 0 | 0 | EE-001 companion evidence: imports Ed25519Encoding.v cofactor evidence; proves [8]O~O, [8]T2~O, [8]T4a~O, torsion stripping, scalar factoring for k∈{1..5}. Universal statement ([8][q]P=O for all P) remains BLOCKED_BY_TOOLING (group law). | LOW |
+| Ed25519GroupScalarMultAdd.v | **VERIFIED** | 16 | 0 | 0 | 0 | M13.14.5 scalar_mult_add (concrete 16 cases) | LOW |
 | X25519DH.v | **VERIFIED** | 20 | 0 | 0 | 0 | M13.14.6/14/15 scalar_mult_compose, dh_commutativity | LOW |
 | StructuralProofs.v | **VERIFIED** | 4 | 0 | 2 | 0 | M13.14.17/18 bs_seq_roundtrip, seq_of_bs_length_bound. Both axioms are structural ByteString↔Sequence properties, not crypto assumptions. | LOW |
 | draft/Ed25519GroupLaw.v | **DRAFT** | 16 | 8 | 15 | 11 | Future: Ed25519 group law | N/A |
@@ -99,13 +102,13 @@ have been added to ASSUMPTIONS.md (2026-06-05). Total active assume vals: 31.
 | F* specs | 32 |
 | F* specs at 0 assume val | 21 |
 | F* assume val (fst declarations) | 35 |
-| F* assume val (active per ASSUMPTIONS.md) | 27 |
-| F* assume val (discharged stubs, Coq evidence) | 4 + 4 newly confirmed = 15 total discharged |
+| F* assume val (active per ASSUMPTIONS.md) | 23 |
+| F* assume val (discharged stubs, Coq evidence) | 19 total discharged (ED-004, ED-006, ED-008d newly discharged 2026-06-07) |
 | F* admit() total | 0 |
-| Coq verified files | 22 |
-| Coq verified Qed | 632 |
+| Coq verified files | 25 |
+| Coq verified Qed | 671 |
 | Coq verified Admitted | 0 |
-| Coq verified Axiom | 5 Axiom declarations across 3 files (all externally verified or structural) |
+| Coq verified Axiom | 6 Axiom declarations across 4 files (all externally verified or structural) |
 | Coq draft Admitted | 8 |
 | Differential suites | 36/36 PASS |
 | Security audit suites | 6/6 PASS (regression, negative, boundary, adversarial-proto, ct, key-lifecycle) |
