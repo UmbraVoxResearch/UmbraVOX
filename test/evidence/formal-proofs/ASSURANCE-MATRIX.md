@@ -5,7 +5,7 @@ Generated: 2026-06-07 | Version: v0.7.0 | Baseline: v0.1.9
 ## Summary
 
 - **32 F* specs**: 0 admit(), 35 assume val declarations (27 active in ASSUMPTIONS.md: 31 − 4 newly discharged; 4 discharged stubs retained in fst files for F* compilation), 21 specs fully proved
-- **21 verified Coq files**: 627 Qed, 0 Admitted, 5 Axiom declarations across 3 files (all externally verified or structural), 0 Parameter. 15 assume vals discharged (up from 11 — ED-005, VR-001, X2-005, X2-006 newly confirmed from existing verified Coq files).
+- **22 verified Coq files**: 632 Qed, 0 Admitted, 5 Axiom declarations across 3 files (all externally verified or structural), 0 Parameter. 16 assume vals discharged (EE-002 newly discharged by Ed25519ExtendedEncoding.v 2026-06-07).
 - **1 draft Coq file**: 16 Qed, 8 Admitted, 15 Axiom (NOT verified evidence)
 - **Runtime differential**: 36/36 suites PASS against RFC/NIST vectors
 - **Negative tests**: 4/4 suites PASS, 18 fail-closed checks
@@ -84,6 +84,7 @@ have been added to ASSUMPTIONS.md (2026-06-05). Total active assume vals: 31.
 | Ed25519ScalarMult.v | **VERIFIED** | 22 | 0 | 1 | 0 | M13.14.4/7/8/13 scalar_mult_preserves, cofactor_clearing, scalar_mod_L_equiv, group_order_lemma. group_order_lemma: [L]B = O. Computationally infeasible in any proof assistant. Verified by SageMath/Magma. RFC 8032 §5.2. Classification: EXTERNALLY_VERIFIED. | MEDIUM |
 | Ed25519ScalarMultCongruence.v | **VERIFIED** | 6 | 0 | 0 | 0 | ED-008a scalar_mult_congruence: abstract universal proof (Section AbstractCongruence, conditional on H_cong_left + H_cong_right) + concrete projective equivalence evidence for base point (B_proj_equiv_X, B_proj_equiv_Y). H_cong_left from Ed25519CongruenceUniversal.v (DISCHARGED); H_cong_right from Ed25519CongruenceRight.v (DISCHARGED). Full concrete instantiation pending ext_wf preservation bridge. | MEDIUM |
 | Ed25519Encoding.v | **VERIFIED** | 57 | 0 | 0 | 0 | M13.14.11 encode_decode_roundtrip | LOW |
+| Ed25519ExtendedEncoding.v | **VERIFIED** | 5 | 0 | 0 | 0 | EE-002 encode_decode_roundtrip for Spec.Ed25519Extended. Imports Ed25519Encoding.v evidence; proves same RFC 8032 §5.1.2-5.1.3 roundtrip for identity, basepoint, [2]B. | LOW |
 | Ed25519GroupScalarMultAdd.v | **VERIFIED** | 16 | 0 | 0 | 0 | M13.14.5 scalar_mult_add | LOW |
 | X25519DH.v | **VERIFIED** | 20 | 0 | 0 | 0 | M13.14.6/14/15 scalar_mult_compose, dh_commutativity | LOW |
 | StructuralProofs.v | **VERIFIED** | 4 | 0 | 2 | 0 | M13.14.17/18 bs_seq_roundtrip, seq_of_bs_length_bound. Both axioms are structural ByteString↔Sequence properties, not crypto assumptions. | LOW |
@@ -101,8 +102,8 @@ have been added to ASSUMPTIONS.md (2026-06-05). Total active assume vals: 31.
 | F* assume val (active per ASSUMPTIONS.md) | 27 |
 | F* assume val (discharged stubs, Coq evidence) | 4 + 4 newly confirmed = 15 total discharged |
 | F* admit() total | 0 |
-| Coq verified files | 21 |
-| Coq verified Qed | 627 |
+| Coq verified files | 22 |
+| Coq verified Qed | 632 |
 | Coq verified Admitted | 0 |
 | Coq verified Axiom | 5 Axiom declarations across 3 files (all externally verified or structural) |
 | Coq draft Admitted | 8 |

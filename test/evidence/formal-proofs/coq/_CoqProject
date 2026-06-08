@@ -16,6 +16,7 @@ Ed25519CongruenceRight.v
 Ed25519GroupScalarMultAdd.v
 Ed25519ScalarMult.v
 Ed25519Encoding.v
+Ed25519ExtendedEncoding.v
 Ed25519PointAdd.v
 StructuralProofs.v
 X25519DH.v

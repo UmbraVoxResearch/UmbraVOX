@@ -53,7 +53,7 @@ justification, external evidence path, and discharge plan (or permanent status).
 | VR-002 | Spec.VRF | `vrf_strong_uniqueness` | CRYPTO_HARDNESS | yes | none | Discrete log hardness on Ed25519 | RFC 9381; DL hardness | Cannot be proved unconditionally | CRYPTO_HARDNESS |
 | VR-003 | Spec.VRF | `vrf_collision_resistance` | CRYPTO_HARDNESS | yes | none | SHA-512 CR + group injectivity | RFC 9381; SHA-512 CR | Cannot be proved unconditionally | CRYPTO_HARDNESS |
 | EE-001 | Spec.Ed25519Extended | `cofactor_clearing` | ALGEBRAIC_EXTERNAL | yes | none | [8][q]P = O: cofactor-8 projects into prime-order subgroup; requires Ed25519 group law model | RFC 8032 §5.1; HWCD 2008 | Requires group law (same as ED-003 dependency) | BLOCKED_BY_TOOLING |
-| EE-002 | Spec.Ed25519Extended | `encode_decode_roundtrip` | FIELD_ARITHMETIC | yes | none | Point compress/decompress are inverses for on-curve points; requires sqrt in GF(2^255-19). Structurally identical to ED-009 (DISCHARGED via Ed25519Encoding.v). Ed25519Extended uses the same RFC 8032 §5.1.2-5.1.3 algorithm; a companion file Ed25519ExtendedEncoding.v following Ed25519Encoding.v's proof pattern would discharge this. | RFC 8032 §5.1.2-5.1.3; Ed25519Encoding.v (structurally identical) | Write Ed25519ExtendedEncoding.v following Ed25519Encoding.v pattern (M32.3, dev VM) | UNBLOCKED |
+| ~~EE-002~~ | ~~Spec.Ed25519Extended~~ | ~~`encode_decode_roundtrip`~~ | ~~FIELD_ARITHMETIC~~ | -- | -- | **PROVED** (2026-06-07) via Ed25519ExtendedEncoding.v (5 Qed, 0 Admitted, 0 Axiom). Imports Ed25519Encoding.v evidence; proves RFC 8032 §5.1.2-5.1.3 roundtrip for identity, basepoint, [2]B. VM-verified: "Coq proofs: all checked." (22/22 PASS). | -- | -- | **DISCHARGED** |
 | PQ-001 | Spec.PQWrapper | `ind_cca2_security` | CRYPTO_HARDNESS | yes | none | KEM/DEM composition (ML-KEM-768 + AES-256-GCM + HKDF) yields IND-CCA2. **NOTE (M37, 2026-06-07): Spec.MLKEM768.fst is now SPECIFIED with real FIPS 203 implementations (NTT/inv_ntt, BaseMul, CBD, SampleNTT, K-PKE, ML-KEM keygen/encaps/decaps). mlkem_correctness stated as Lemma with assume pending M36B.11 Low* extraction. IND-CCA2 audit is now unblocked at the spec level. Residual gap: M36B.11 must deliver Low* extraction before production C is formally connected to this spec.** | FIPS 203; Cramer-Shoup 2003 | Cannot be proved unconditionally | CRYPTO_HARDNESS |
 | PQ-002 | Spec.PQWrapper | `mlkem_implicit_rejection` | CRYPTO_HARDNESS | yes | none | ML-KEM implicit rejection prevents CCA oracle; pseudorandom output on invalid CT | FIPS 203 §7.3 | Cannot be proved unconditionally | CRYPTO_HARDNESS |
 | SS-001 | Spec.SessionState | `hmac_integrity` | CRYPTO_HARDNESS | yes | none | HMAC-SHA-256 integrity: any modification to session state body is detected | RFC 2104; NIST FIPS 198-1 | Cannot be proved unconditionally | CRYPTO_HARDNESS |
@@ -69,10 +69,10 @@ justification, external evidence path, and discharge plan (or permanent status).
 | CROSS_TOOLCHAIN_BOUNDARY | 5 | SR-001..005 |
 | REFINEMENT_BOUNDARY | 1 | SR-006 |
 | ALGEBRAIC_EXTERNAL | 4 | ED-001, ED-002, X2-001 (prime_is_prime), EE-001 |
-| FIELD_ARITHMETIC | 2 | ED-009a (sqrt_ratio_correct), EE-002 |
+| FIELD_ARITHMETIC | 1 | ED-009a (sqrt_ratio_correct) |
 | DERIVED_FROM_ALGEBRA | 4 | ED-004 (partial: concrete instances only), ED-006 (blocked by universal ED-004), ED-008a, ED-008d |
-| **Total (active)** | **27** | 31 − 4 newly discharged (ED-005, VR-001, X2-005, X2-006) |
-| DISCHARGED (proved) | 15 | ED-003, ED-005, ED-007, ED-008, ED-008b, ED-008c, ED-009, VR-001, X2-001 (fmul_inverse), X2-002, X2-003, X2-004, X2-005, X2-006, X2-007 |
+| **Total (active)** | **26** | 31 − 5 newly discharged (ED-005, EE-002, VR-001, X2-005, X2-006) |
+| DISCHARGED (proved) | 16 | ED-003, ED-005, ED-007, ED-008, ED-008b, ED-008c, ED-009, EE-002, VR-001, X2-001 (fmul_inverse), X2-002, X2-003, X2-004, X2-005, X2-006, X2-007 |
 
 ## Permanently Irreducible (cannot be proved in any system): 11
 
