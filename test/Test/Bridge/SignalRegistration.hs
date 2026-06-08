@@ -28,9 +28,9 @@ import UmbraVox.Bridge.Signal.Registration
     , RegistrationError(..)
     )
 import UmbraVox.Crypto.AES (aesEncrypt)
-import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
-import UmbraVox.Crypto.HKDF (hkdfExpand, hkdfExtract)
-import UmbraVox.Crypto.HMAC (hmacSHA256)
+import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
+import qualified UmbraVox.Crypto.Generated.FFI.HMAC as HMACFFI
+import qualified UmbraVox.Crypto.Generated.FFI.X25519 as X25519FFI
 import UmbraVox.Protocol.SignalWire (WireType(..), encodeField, encodeVarint)
 
 ------------------------------------------------------------------------
@@ -321,6 +321,8 @@ w16BE w = BS.pack
 provisioningHKDFInfo :: ByteString
 provisioningHKDFInfo = "UmbraVox Provisioning v1"
 
+-- | Build a correctly-encrypted provisioning envelope using the SAME FFI
+-- implementations as 'completeRegistration', ensuring the crypto paths agree.
 buildProvisioningEnvelope
     :: RegistrationState
     -> ByteString
@@ -332,17 +334,26 @@ buildProvisioningEnvelope
     -> IO ByteString
 buildProvisioningEnvelope rs idPriv idPub phoneB profileKey deviceId provCode = do
     let ephPriv = BS.replicate 32 0x09
-        ephPub  = maybe (BS.replicate 32 0) id (x25519 ephPriv x25519Basepoint)
         provPub = rsProvisioningPubKey rs
-        shared  = maybe (BS.replicate 32 0) id (x25519 ephPriv provPub)
-        prk     = hkdfExtract BS.empty shared
-        derived = hkdfExpand prk provisioningHKDFInfo 64
-        aesKey  = BS.take 32 derived
-        macKey  = BS.drop 32 derived
         iv      = BS.replicate 16 0xAA
-        pt      = encodeProvisioningProto idPriv idPub phoneB profileKey deviceId provCode
-        ct      = aes256CbcPkcs7Encrypt aesKey iv pt
-        mac     = hmacSHA256 macKey (ephPub <> iv <> ct)
+    -- Use FFI X25519 (same as completeRegistration) to ensure shared secret agrees.
+    mEphPub <- X25519FFI.x25519 ephPriv X25519FFI.x25519Basepoint
+    let ephPub = case mEphPub of
+                   Just pk -> pk
+                   Nothing -> error "buildProvisioningEnvelope: x25519(ephPriv, G) returned Nothing"
+    mShared <- X25519FFI.x25519 ephPriv provPub
+    let shared = case mShared of
+                   Just s  -> s
+                   Nothing -> error "buildProvisioningEnvelope: x25519(ephPriv, provPub) returned Nothing"
+    -- Use FFI HKDF-SHA-512 (same as completeRegistration).
+    prk     <- HKDFFFI.hkdfExtract BS.empty shared
+    derived <- HKDFFFI.hkdfExpand prk provisioningHKDFInfo 64
+    let aesKey = BS.take 32 derived
+        macKey = BS.drop 32 derived
+        pt     = encodeProvisioningProto idPriv idPub phoneB profileKey deviceId provCode
+        ct     = aes256CbcPkcs7Encrypt aesKey iv pt
+    -- Use FFI HMAC-SHA-256 (same as completeRegistration).
+    mac <- HMACFFI.hmacSHA256 macKey (ephPub <> iv <> ct)
     pure (ephPub <> iv <> ct <> mac)
 
 encodeProvisioningProto :: ByteString -> ByteString -> ByteString -> ByteString -> Int -> ByteString -> ByteString

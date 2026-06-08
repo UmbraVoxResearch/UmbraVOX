@@ -617,6 +617,7 @@ test-suite umbravox-test
     Test.Security.Boundary
     Test.Security.AdversarialProto
     Test.Bridge.UmbraClaw
+    Test.Bridge.SignalRegistration
     Test.VectorIntegrity
     Test.Crypto.Vectors.AES
     Test.Crypto.Vectors.GCM

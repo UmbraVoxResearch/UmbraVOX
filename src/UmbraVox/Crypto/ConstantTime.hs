@@ -62,13 +62,25 @@ foreign import ccall unsafe "constant_time_eq"
 -- Vulnerability: Timing side-channel that leaks whether two ByteStrings
 --              share the same length, useful for oracle attacks on MACs or
 --              password hashes stored with their length.
--- Fix:       Pad both inputs to max(lenA, lenB) with zero bytes and XOR a
---              length-mismatch sentinel (1) into the C accumulator result so
---              that the C path always runs over the full max-length buffer.
---              Equal-length inputs follow the existing fast path unchanged.
+-- Fix:       Pad both inputs to max(lenA, lenB) with zero bytes so the C
+--              path always runs over the full max-length buffer.  A separate
+--              length sentinel ensures different-length inputs return False
+--              even when their padded byte contents are identical.
 -- Verified:  The C function is always invoked with equal-length buffers;
 --              the sentinel ensures different-length inputs still return False
 --              even when their padded byte contents happen to be identical.
+--
+-- Finding:   M27.6.6b — The original wrapper used '(r `xor` lenSentinel) == 0'
+--              but constant_time_eq returns 1 for equal and 0 for different
+--              (not 0 for equal as the formula assumed). This inverted the
+--              result: equal buffers returned False, different ones True.
+-- Vulnerability: Every constantEq call was a no-op guard — accepted wrong
+--              MACs, rejected correct ones. Affected: GCM tag check,
+--              HMAC-SHA256 MAC verification, handshake authentication.
+-- Fix:       'r == 1' correctly tests the C return value (1 = equal).
+--              'lenSentinel == 0' ensures different-length inputs are False.
+-- Verified:  Registration HMAC checks, GCM tag verification, and handshake
+--              MAC checks all pass after this fix.
 constantEq :: ByteString -> ByteString -> Bool
 constantEq a b = unsafeDupablePerformIO $
     let !lenA    = BS.length a
@@ -79,8 +91,8 @@ constantEq a b = unsafeDupablePerformIO $
                    else a <> BS.replicate (maxLen - lenA) 0
         !b'      = if lenB == maxLen then b
                    else b <> BS.replicate (maxLen - lenB) 0
-        -- Sentinel: 1 when lengths differ, 0 otherwise.  XOR'd into the C
-        -- result so a length mismatch always yields a non-zero accumulator.
+        -- Sentinel: 0 when lengths match, 1 when they differ.
+        -- Used to force False when lengths differ, even if padded content matches.
         !lenSentinel = if lenA == lenB then 0 else 1 :: CInt
     in if maxLen == 0
        then return (lenSentinel == 0)   -- both empty → equal
@@ -88,6 +100,8 @@ constantEq a b = unsafeDupablePerformIO $
             BSU.unsafeUseAsCStringLen b' $ \(ptrB, _)  ->
                 let r = c_constant_time_eq (castPtr ptrA) (castPtr ptrB)
                                            (fromIntegral len)
-                in return ((r `xor` lenSentinel) == 0)
+                -- c_constant_time_eq returns 1 when equal, 0 when different.
+                -- Equal iff content matches (r == 1) AND lengths match (lenSentinel == 0).
+                in return (r == 1 && lenSentinel == 0)
 
 #endif
