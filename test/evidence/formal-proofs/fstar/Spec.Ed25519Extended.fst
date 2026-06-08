@@ -147,15 +147,31 @@ let elligator2_hash input = point_identity (* structural stub *)
 (** Key invariants                                                       **)
 (** -------------------------------------------------------------------- **)
 
-(** Identity is the neutral element for point addition. *)
-val identity_neutral_add : p:ext_point
+(* ASSUME JUSTIFICATION: identity_neutral_add (EE-003)
+   Category: Algebraic property
+   Reference: RFC 8032; Hisil et al., "Twisted Edwards Curves Revisited" (2008)
+   Status: point_add is a structural stub returning point_identity for all inputs.
+   The intended algebraic property — identity is the neutral element for point addition —
+   is a standard group axiom for Ed25519 that holds for the real HWCD unified addition
+   formula but cannot be proved over the stub implementation (the stub makes the
+   statement false computationally). Becomes provable once point_add is fully specified
+   (M36B.8 / M37 Low* implementation). This replaces a prior admit() which was
+   syntactically equivalent but undocumented. *)
+assume val identity_neutral_add : p:ext_point
     -> Lemma (point_add point_identity p == p)
-let identity_neutral_add p = admit () (* requires algebraic model *)
 
-(** Double negation is identity. *)
-val double_negate : p:ext_point
+(* ASSUME JUSTIFICATION: double_negate (EE-004)
+   Category: Field arithmetic property
+   Reference: GF(2^255-19) axioms; RFC 8032 §5.1.4
+   Status: point_negate is structurally implemented (not a stub), but F*/Z3 cannot
+   prove the double-negation identity -((-x mod p) mod p) = x via type-level
+   arithmetic on the 255-bit prime without explicit field-arithmetic lemmas.
+   The property holds by definition of GF(p) negation: -(-x) = x for all x in GF(p),
+   which is straightforward once modular field lemmas are in scope (see Ed25519Field.v
+   in Coq). Becomes provable with explicit F* field-arithmetic lemmas. This replaces
+   a prior admit() which was syntactically equivalent but undocumented. *)
+assume val double_negate : p:ext_point
     -> Lemma (point_negate (point_negate p) == p)
-let double_negate p = admit () (* requires field arithmetic model *)
 
 (** Negation of identity is identity. *)
 val negate_identity : unit

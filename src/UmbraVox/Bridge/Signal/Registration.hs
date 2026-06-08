@@ -161,10 +161,23 @@ beginRegistration serverUrl = do
     -- Generate 32 random bytes for the X25519 private key.
     privKey <- randomBytes 32
     -- Derive public key: pub = X25519(priv, basepoint).
+    --
+    -- Finding:       M27.6.2 — X25519 failure path silently substituted an
+    --                all-zero public key (the low-order identity point on Curve25519).
+    -- Vulnerability: A device registered with a zero public key is trivially
+    --                compromised: ECDH always produces the predictable zero shared
+    --                secret, leaking all derived session keys.
+    -- Fix:           Fail loudly via ioError. X25519(random_key, basepoint) cannot
+    --                return all-zero in practice (basepoint is high-order); Nothing
+    --                indicates a library or hardware fault that must not be swallowed.
+    -- Verified:      The Nothing branch now raises ioError; callers catch an
+    --                IOException and cannot continue registration with a degenerate key.
     mPubKey <- X25519FFI.x25519 privKey X25519FFI.x25519Basepoint
-    let pubKey = case mPubKey of
-                   Just pk -> pk
-                   Nothing -> BS.replicate 32 0  -- should never happen
+    pubKey <- case mPubKey of
+                Just pk -> pure pk
+                Nothing -> ioError (userError
+                    "Registration.beginRegistration: X25519(privKey, basepoint) \
+                    \returned all-zero — library or hardware fault; aborting key generation")
     pure RegistrationState
         { rsProvisioningPrivKey = privKey
         , rsProvisioningPubKey  = pubKey
@@ -254,9 +267,11 @@ generatePreKeyBundle pd = do
     -- Generate signed prekey: fresh X25519 keypair.
     signedPrePriv <- randomBytes 32
     mSignedPrePub <- X25519FFI.x25519 signedPrePriv X25519FFI.x25519Basepoint
-    let signedPrePub = case mSignedPrePub of
-                         Just pk -> pk
-                         Nothing -> BS.replicate 32 0
+    signedPrePub <- case mSignedPrePub of
+                      Just pk -> pure pk
+                      Nothing -> ioError (userError
+                          "Registration.generatePreKeyBundle: X25519(prekeyPriv, basepoint) \
+                          \returned all-zero — library or hardware fault; aborting prekey generation")
 
     -- Sign the prekey with the identity private key (Ed25519).
     let identityPriv = pdIdentityKeyPriv pd
@@ -274,9 +289,11 @@ generateOneTimePrekeys n = do
     keys <- mapM (\_ -> do
         priv <- randomBytes 32
         mPub <- X25519FFI.x25519 priv X25519FFI.x25519Basepoint
-        pure $ case mPub of
-            Just pk -> pk
-            Nothing -> BS.replicate 32 0
+        case mPub of
+            Just pk -> pure pk
+            Nothing -> ioError (userError
+                "Registration.generateOneTimePrekeys: X25519(privKey, basepoint) \
+                \returned all-zero — library or hardware fault; aborting prekey generation")
         ) [1..n]
     pure (BS.concat keys)
 

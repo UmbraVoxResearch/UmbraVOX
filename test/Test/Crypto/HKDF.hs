@@ -2,11 +2,13 @@
 -- | HKDF test suite: RFC 5869 KAT vectors + edge cases + property/fuzz tests.
 module Test.Crypto.HKDF (runTests) where
 
+import Control.Exception (IOException, try)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 
 import Test.Util
 import UmbraVox.Crypto.HKDF (hkdfSHA256Extract, hkdfSHA256Expand)
+import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
 
 runTests :: IO Bool
 runTests = do
@@ -23,11 +25,50 @@ runTests = do
         [ checkProperty "output length matches request (1000 random)" 1000 propOutputLen
         , checkProperty "deterministic (1000 random)" 1000 propDeterminism
         ]
-    let results = katResults ++ edgeResults ++ propResults
+    -- Finding:       M27.6.3 — HKDF FFI wrappers passed unchecked len to C;
+    --                C silently returns early on len > 8160, leaving uninitialized
+    --                memory to be read back as "derived key material".
+    -- Vulnerability: Oversized len requests return garbage bytes masquerading as keys.
+    -- Fix:           Haskell-side bounds check raises IOException before allocaBytes.
+    -- Verified:      These tests confirm ioError is raised for len > RFC 5869 maximum.
+    putStrLn "[HKDF] Running FFI bounds rejection tests..."
+    boundsResults <- sequence
+        [ testThrows "FFI SHA-256 expand rejects len=8161"
+            (HKDFFFI.hkdfSHA256Expand (BS.replicate 32 0x0b) BS.empty 8161)
+        , testThrows "FFI SHA-256 expand rejects len=maxBound"
+            (HKDFFFI.hkdfSHA256Expand (BS.replicate 32 0x0b) BS.empty maxBound)
+        , testThrows "FFI hkdf rejects len=8161"
+            (HKDFFFI.hkdf BS.empty (BS.replicate 22 0x0b) BS.empty 8161)
+        , testThrows "FFI hkdfExpand (SHA-512) rejects len=16321"
+            (HKDFFFI.hkdfExpand (BS.replicate 64 0x0b) BS.empty 16321)
+        , testThrows "FFI hkdfSHA512 rejects len=16321"
+            (HKDFFFI.hkdfSHA512 BS.empty (BS.replicate 22 0x0b) BS.empty 16321)
+        , testNoThrow "FFI SHA-256 expand accepts len=8160 (max valid)"
+            (HKDFFFI.hkdfSHA256Expand (BS.replicate 32 0x0b) BS.empty 8160)
+        , testNoThrow "FFI hkdfExpand (SHA-512) accepts len=16320 (max valid)"
+            (HKDFFFI.hkdfExpand (BS.replicate 64 0x0b) BS.empty 16320)
+        ]
+    let results = katResults ++ edgeResults ++ propResults ++ boundsResults
         passed = length (filter id results)
         total  = length results
     putStrLn $ "[HKDF] " ++ show passed ++ "/" ++ show total ++ " passed."
     pure (and results)
+
+-- | Assert that an IO action throws an IOException.
+testThrows :: String -> IO a -> IO Bool
+testThrows label action = do
+    result <- try action :: IO (Either IOException a)
+    case result of
+        Left _  -> putStrLn ("  PASS: " ++ label) >> pure True
+        Right _ -> putStrLn ("  FAIL: " ++ label ++ " (expected IOException, got success)") >> pure False
+
+-- | Assert that an IO action succeeds without throwing.
+testNoThrow :: String -> IO a -> IO Bool
+testNoThrow label action = do
+    result <- try action :: IO (Either IOException a)
+    case result of
+        Right _ -> putStrLn ("  PASS: " ++ label) >> pure True
+        Left e  -> putStrLn ("  FAIL: " ++ label ++ " (unexpected IOException: " ++ show e ++ ")") >> pure False
 
 data HKDFVec = HKDFVec
     { hvName :: String, hvIKM :: ByteString, hvSalt :: ByteString

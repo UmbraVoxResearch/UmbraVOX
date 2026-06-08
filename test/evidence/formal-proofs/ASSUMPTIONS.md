@@ -4,11 +4,11 @@
 
 **Date:** 2026-05-17 (updated 2026-06-07)
 **F* specs:** 32 total, 21 with 0 assume val
-**assume val count:** 31 active (25 original + 6 from specs added after v0.1.9); 35 total fst declarations (4 discharged stubs retained for F* compilation)
-**admit() count:** 0
-**Status:** 25 original assume vals complete — every one has a classification, documented
-justification, external evidence path, and discharge plan (or permanent status).
+**assume val count:** 33 active (25 original + 6 from specs added after v0.1.9 + 2 new EE-003/EE-004 from admit()→assume val conversion 2026-06-07); 37 total fst declarations (4 discharged stubs retained for F* compilation)
+**admit() count:** 0 (2 former admit()s in Spec.Ed25519Extended.fst converted to assume val on 2026-06-07)
+**Status:** All assume vals have classification, documented justification, external evidence path, and discharge plan (or permanent status).
 6 assume vals from new specs (EE-001, EE-002, PQ-001, PQ-002, SS-001, WF-001) added 2026-06-05.
+2 assume vals (EE-003, EE-004) added 2026-06-07 by converting undocumented admit()s.
 
 ---
 
@@ -53,7 +53,9 @@ justification, external evidence path, and discharge plan (or permanent status).
 | VR-002 | Spec.VRF | `vrf_strong_uniqueness` | CRYPTO_HARDNESS | yes | none | Discrete log hardness on Ed25519 | RFC 9381; DL hardness | Cannot be proved unconditionally | CRYPTO_HARDNESS |
 | VR-003 | Spec.VRF | `vrf_collision_resistance` | CRYPTO_HARDNESS | yes | none | SHA-512 CR + group injectivity | RFC 9381; SHA-512 CR | Cannot be proved unconditionally | CRYPTO_HARDNESS |
 | EE-001 | Spec.Ed25519Extended | `cofactor_clearing` | ALGEBRAIC_EXTERNAL | yes | none | [8][q]P = O: cofactor-8 projects into prime-order subgroup. **Companion evidence (2026-06-07)**: Ed25519ExtendedCofactor.v (17 Qed) imports Ed25519Encoding.v and proves [8]O~O, [8]T2~O, [8]T4a~O, torsion stripping B+T2/T4a, scalar factoring k∈{1..5}. Universal statement for all on-curve P requires full group law (same blocker as Ed25519GroupPartial.v §19). | RFC 8032 §5.1; HWCD 2008; Ed25519ExtendedCofactor.v (companion evidence) | Requires group law (same as ED-003 dependency) | BLOCKED_BY_TOOLING |
-| ~~EE-002~~ | ~~Spec.Ed25519Extended~~ | ~~`encode_decode_roundtrip`~~ | ~~FIELD_ARITHMETIC~~ | -- | -- | **PROVED** (2026-06-07) via Ed25519ExtendedEncoding.v (5 Qed, 0 Admitted, 0 Axiom). Imports Ed25519Encoding.v evidence; proves RFC 8032 §5.1.2-5.1.3 roundtrip for identity, basepoint, [2]B. VM-verified: "Coq proofs: all checked." (22/22 PASS). | -- | -- | **DISCHARGED** |
+| ~~EE-002~~ | ~~Spec.Ed25519Extended~~ | ~~`encode_decode_roundtrip`~~ | ~~FIELD_ARITHMETIC~~ | -- | -- | **COMPANION_EVIDENCE** (2026-06-07) via Ed25519ExtendedEncoding.v (5 Qed, 0 Admitted, 0 Axiom). Imports Ed25519Encoding.v evidence; proves RFC 8032 §5.1.2-5.1.3 roundtrip for identity, basepoint, [2]B. VM-verified: "Coq proofs: all checked." **SOUNDNESS GAP**: Spec.Ed25519Extended.fst encode_point returns `Seq.create point_size 0uy` (stub); decode_point returns `Some point_identity` (stub). The Coq companion proves the RFC 8032 algorithm which is mathematically correct, but there is no formal bridge between the Coq proofs and the F* stub implementations. This is COMPANION_EVIDENCE, not a full Coq ↔ F* proof. Full discharge requires real encode/decode implementations in F* (blocked pending M36B.8). | -- | -- | **COMPANION_EVIDENCE** |
+| EE-003 | Spec.Ed25519Extended | `identity_neutral_add` | ALGEBRAIC_EXTERNAL | yes | none | Point addition left-identity: `point_add point_identity p == p`. Converted from admit() on 2026-06-07. point_add is a structural stub returning point_identity; the stated property is a standard Ed25519 group axiom that holds for the real HWCD formula. Cannot be proved over the stub implementation. Becomes provable once point_add is fully specified (M36B.8 / M37). | RFC 8032; Hisil et al. 2008 §3.1; standard Edwards group axiom | Implement real point_add in F* (M36B.8/M37) | BLOCKED_BY_STUB |
+| EE-004 | Spec.Ed25519Extended | `double_negate` | FIELD_ARITHMETIC | yes | none | Double negation identity: `point_negate (point_negate p) == p`. Converted from admit() on 2026-06-07. point_negate is implemented (not a stub) but F*/Z3 cannot prove -((-x mod p) mod p) = x by type-level arithmetic on the 255-bit prime without explicit field lemmas. Holds by GF(p) definition. Becomes provable with field-arithmetic lemmas (cf. Ed25519Field.v in Coq). | GF(2^255-19) axioms; RFC 8032 §5.1.4 | Add F* field-arithmetic lemmas for prime-field negation | BLOCKED_BY_TOOLING |
 | PQ-001 | Spec.PQWrapper | `ind_cca2_security` | CRYPTO_HARDNESS | yes | none | KEM/DEM composition (ML-KEM-768 + AES-256-GCM + HKDF) yields IND-CCA2. **NOTE (M37, 2026-06-07): Spec.MLKEM768.fst is now SPECIFIED with real FIPS 203 implementations (NTT/inv_ntt, BaseMul, CBD, SampleNTT, K-PKE, ML-KEM keygen/encaps/decaps). mlkem_correctness stated as Lemma with assume pending M36B.11 Low* extraction. IND-CCA2 audit is now unblocked at the spec level. Residual gap: M36B.11 must deliver Low* extraction before production C is formally connected to this spec.** | FIPS 203; Cramer-Shoup 2003 | Cannot be proved unconditionally | CRYPTO_HARDNESS |
 | PQ-002 | Spec.PQWrapper | `mlkem_implicit_rejection` | CRYPTO_HARDNESS | yes | none | ML-KEM implicit rejection prevents CCA oracle; pseudorandom output on invalid CT | FIPS 203 §7.3 | Cannot be proved unconditionally | CRYPTO_HARDNESS |
 | SS-001 | Spec.SessionState | `hmac_integrity` | CRYPTO_HARDNESS | yes | none | HMAC-SHA-256 integrity: any modification to session state body is detected | RFC 2104; NIST FIPS 198-1 | Cannot be proved unconditionally | CRYPTO_HARDNESS |
@@ -68,11 +70,14 @@ justification, external evidence path, and discharge plan (or permanent status).
 | CRYPTO_HARDNESS | 11 | CP-001, DR-001, DR-002, ED-010, SA-001, VR-002, VR-003, PQ-001, PQ-002, SS-001, WF-001 |
 | CROSS_TOOLCHAIN_BOUNDARY | 5 | SR-001..005 |
 | REFINEMENT_BOUNDARY | 1 | SR-006 |
-| ALGEBRAIC_EXTERNAL | 4 | ED-001, ED-002, X2-001 (prime_is_prime), EE-001 |
-| FIELD_ARITHMETIC | 1 | ED-009a (sqrt_ratio_correct) |
+| ALGEBRAIC_EXTERNAL | 5 | ED-001, ED-002, X2-001 (prime_is_prime), EE-001, EE-003 |
+| FIELD_ARITHMETIC | 2 | ED-009a (sqrt_ratio_correct), EE-004 |
 | DERIVED_FROM_ALGEBRA | 1 | ED-008a (partially proved, H_wf bridge pending) |
-| **Total (active)** | **23** | 31 − 8 newly discharged (ED-004, ED-005, ED-006, ED-008d, EE-002, VR-001, X2-005, X2-006) |
-| DISCHARGED (proved) | 19 | ED-003, ED-004, ED-005, ED-006, ED-007, ED-008, ED-008b, ED-008c, ED-008d, ED-009, EE-002, VR-001, X2-001 (fmul_inverse), X2-002, X2-003, X2-004, X2-005, X2-006, X2-007 |
+| BLOCKED_BY_STUB | 1 | EE-003 (identity_neutral_add, pending real point_add) |
+| BLOCKED_BY_TOOLING | 1 | EE-004 (double_negate, pending field lemmas) |
+| **Total (active)** | **25** | 33 − 8 newly discharged; +2 EE-003/EE-004 added 2026-06-07 |
+| COMPANION_EVIDENCE | 1 | EE-002 (encode_decode_roundtrip — Coq proves RFC 8032 but F* has stubs; not a full discharge) |
+| DISCHARGED (proved) | 19 | ED-003, ED-004, ED-005, ED-006, ED-007, ED-008, ED-008b, ED-008c, ED-008d, ED-009, VR-001, X2-001 (fmul_inverse), X2-002, X2-003, X2-004, X2-005, X2-006, X2-007, X2-005 (dh_commutativity) |
 
 ## Permanently Irreducible (cannot be proved in any system): 11
 

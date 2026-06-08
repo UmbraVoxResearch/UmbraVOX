@@ -24,7 +24,16 @@ import qualified Data.ByteString.Unsafe as BSU
 
 -- Bridge: calls HACL* hkdf_sha256 (csrc/hacl/bridge_hkdf.c).
 -- The C bridge securely zeroes the intermediate PRK (M35B fix).
--- RFC 5869 max output: 255 * 32 = 8160 bytes; enforced in C bridge.
+-- RFC 5869 max output: 255 * 32 = 8160 bytes; enforced in C bridge AND Haskell layer.
+-- Finding:       M27.6.3 — HKDF Haskell wrappers passed unchecked len to C; the C
+--                bridge silently returns without writing when len > 8160, causing
+--                allocaBytes to return uninitialized memory as "key material".
+-- Vulnerability: Callers requesting > 8160 bytes receive garbage bytes masquerading
+--                as derived keys, breaking all downstream cryptographic operations.
+-- Fix:           Haskell-side bounds check added to each wrapper; ioError raised on
+--                out-of-range len before allocaBytes is called.
+-- Verified:      Bounds check enforced at Haskell layer; C bridge guard is belt-and-
+--                suspenders for direct C callers only.
 -- INTERIM PRODUCTION: superseded by csrc/extracted/hkdf.c when M36B.6 lands.
 foreign import ccall "hkdf_link_probe" c_hkdf_link_probe :: IO CInt
 
@@ -39,17 +48,22 @@ ffiLinked :: IO Bool
 ffiLinked = (/= 0) <$> c_hkdf_link_probe
 
 hkdf :: ByteString -> ByteString -> ByteString -> Int -> IO ByteString
-hkdf salt ikm info len =
-    allocaBytes len $ \okmPtr ->
-    BSU.unsafeUseAsCStringLen salt $ \(saltPtr, saltLen) ->
-    BSU.unsafeUseAsCStringLen ikm  $ \(ikmPtr,  ikmLen) ->
-    BSU.unsafeUseAsCStringLen info $ \(infoPtr, infoLen) -> do
-        c_hkdf_sha256 okmPtr
-            (castPtr saltPtr) (fromIntegral saltLen)
-            (castPtr ikmPtr)  (fromIntegral ikmLen)
-            (castPtr infoPtr) (fromIntegral infoLen)
-            (fromIntegral len)
-        BS.packCStringLen (castPtr okmPtr, len)
+hkdf salt ikm info len
+    | len <= 0   = pure BS.empty
+    | len > 8160 = ioError (userError
+        ("hkdf: requested " ++ show len ++ " bytes exceeds RFC 5869 \
+        \HKDF-SHA-256 maximum of 8160 (255 * HashLen)"))
+    | otherwise  =
+        allocaBytes len $ \okmPtr ->
+        BSU.unsafeUseAsCStringLen salt $ \(saltPtr, saltLen) ->
+        BSU.unsafeUseAsCStringLen ikm  $ \(ikmPtr,  ikmLen) ->
+        BSU.unsafeUseAsCStringLen info $ \(infoPtr, infoLen) -> do
+            c_hkdf_sha256 okmPtr
+                (castPtr saltPtr) (fromIntegral saltLen)
+                (castPtr ikmPtr)  (fromIntegral ikmLen)
+                (castPtr infoPtr) (fromIntegral infoLen)
+                (fromIntegral len)
+            BS.packCStringLen (castPtr okmPtr, len)
 
 hkdfSHA256 :: ByteString -> ByteString -> ByteString -> Int -> IO ByteString
 hkdfSHA256 = hkdf
@@ -92,15 +106,20 @@ hkdfSHA256Extract salt ikm =
 -- @hkdfSHA256Expand prk info len@
 -- @prk@ must be at least 32 bytes. @len@ must be <= 8160.
 hkdfSHA256Expand :: ByteString -> ByteString -> Int -> IO ByteString
-hkdfSHA256Expand prk info len =
-    allocaBytes len $ \okmPtr ->
-    BSU.unsafeUseAsCStringLen prk  $ \(prkPtr,  prkLen) ->
-    BSU.unsafeUseAsCStringLen info $ \(infoPtr, infoLen) -> do
-        c_hkdf_sha256_expand okmPtr
-            (castPtr prkPtr)  (fromIntegral prkLen)
-            (castPtr infoPtr) (fromIntegral infoLen)
-            (fromIntegral len)
-        BS.packCStringLen (castPtr okmPtr, len)
+hkdfSHA256Expand prk info len
+    | len <= 0   = pure BS.empty
+    | len > 8160 = ioError (userError
+        ("hkdfSHA256Expand: requested " ++ show len ++ " bytes exceeds RFC 5869 \
+        \HKDF-SHA-256 maximum of 8160 (255 * HashLen)"))
+    | otherwise  =
+        allocaBytes len $ \okmPtr ->
+        BSU.unsafeUseAsCStringLen prk  $ \(prkPtr,  prkLen) ->
+        BSU.unsafeUseAsCStringLen info $ \(infoPtr, infoLen) -> do
+            c_hkdf_sha256_expand okmPtr
+                (castPtr prkPtr)  (fromIntegral prkLen)
+                (castPtr infoPtr) (fromIntegral infoLen)
+                (fromIntegral len)
+            BS.packCStringLen (castPtr okmPtr, len)
 
 ------------------------------------------------------------------------
 -- SHA-512 HKDF (for CSPRNG reseed and X3DH/Presence key derivation)
@@ -138,15 +157,20 @@ foreign import ccall safe "hkdf_sha512_expand"
 -- @hkdfExpand prk info len@
 -- @prk@ should be 64 bytes (from 'hkdfExtract'). @len@ must be <= 16320.
 hkdfExpand :: ByteString -> ByteString -> Int -> IO ByteString
-hkdfExpand prk info len =
-    allocaBytes len $ \okmPtr ->
-    BSU.unsafeUseAsCStringLen prk  $ \(prkPtr,  prkLen) ->
-    BSU.unsafeUseAsCStringLen info $ \(infoPtr, infoLen) -> do
-        c_hkdf_sha512_expand okmPtr
-            (castPtr prkPtr)  (fromIntegral prkLen)
-            (castPtr infoPtr) (fromIntegral infoLen)
-            (fromIntegral len)
-        BS.packCStringLen (castPtr okmPtr, len)
+hkdfExpand prk info len
+    | len <= 0   = pure BS.empty
+    | len > 16320 = ioError (userError
+        ("hkdfExpand: requested " ++ show len ++ " bytes exceeds RFC 5869 \
+        \HKDF-SHA-512 maximum of 16320 (255 * HashLen)"))
+    | otherwise   =
+        allocaBytes len $ \okmPtr ->
+        BSU.unsafeUseAsCStringLen prk  $ \(prkPtr,  prkLen) ->
+        BSU.unsafeUseAsCStringLen info $ \(infoPtr, infoLen) -> do
+            c_hkdf_sha512_expand okmPtr
+                (castPtr prkPtr)  (fromIntegral prkLen)
+                (castPtr infoPtr) (fromIntegral infoLen)
+                (fromIntegral len)
+            BS.packCStringLen (castPtr okmPtr, len)
 
 -- | HKDF-Extract with HMAC-SHA-512. Returns a 64-byte PRK.
 -- Used for CSPRNG initialisation and reseed paths.
@@ -168,14 +192,19 @@ hkdfExtract salt ikm =
 -- @hkdfSHA512 salt ikm info len@
 -- @len@ must be <= 16320 (255 * 64).
 hkdfSHA512 :: ByteString -> ByteString -> ByteString -> Int -> IO ByteString
-hkdfSHA512 salt ikm info len =
-    allocaBytes len $ \okmPtr ->
-    BSU.unsafeUseAsCStringLen salt $ \(saltPtr, saltLen) ->
-    BSU.unsafeUseAsCStringLen ikm  $ \(ikmPtr,  ikmLen) ->
-    BSU.unsafeUseAsCStringLen info $ \(infoPtr, infoLen) -> do
-        c_hkdf_sha512 okmPtr
-            (castPtr saltPtr) (fromIntegral saltLen)
-            (castPtr ikmPtr)  (fromIntegral ikmLen)
-            (castPtr infoPtr) (fromIntegral infoLen)
-            (fromIntegral len)
-        BS.packCStringLen (castPtr okmPtr, len)
+hkdfSHA512 salt ikm info len
+    | len <= 0   = pure BS.empty
+    | len > 16320 = ioError (userError
+        ("hkdfSHA512: requested " ++ show len ++ " bytes exceeds RFC 5869 \
+        \HKDF-SHA-512 maximum of 16320 (255 * HashLen)"))
+    | otherwise   =
+        allocaBytes len $ \okmPtr ->
+        BSU.unsafeUseAsCStringLen salt $ \(saltPtr, saltLen) ->
+        BSU.unsafeUseAsCStringLen ikm  $ \(ikmPtr,  ikmLen) ->
+        BSU.unsafeUseAsCStringLen info $ \(infoPtr, infoLen) -> do
+            c_hkdf_sha512 okmPtr
+                (castPtr saltPtr) (fromIntegral saltLen)
+                (castPtr ikmPtr)  (fromIntegral ikmLen)
+                (castPtr infoPtr) (fromIntegral infoLen)
+                (fromIntegral len)
+            BS.packCStringLen (castPtr okmPtr, len)

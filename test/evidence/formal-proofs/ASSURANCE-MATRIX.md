@@ -4,8 +4,8 @@ Generated: 2026-06-07 | Version: v0.7.0 | Baseline: v0.1.9
 
 ## Summary
 
-- **32 F* specs**: 0 admit(), 35 assume val declarations (23 active in ASSUMPTIONS.md: 31 − 8 newly discharged; 4 discharged stubs retained in fst files for F* compilation), 21 specs fully proved
-- **25 verified Coq files**: 671 Qed, 0 Admitted, 6 Axiom declarations across 4 files (all externally verified or structural), 0 Parameter. 19 assume vals discharged (ED-004, ED-006, ED-008d newly discharged 2026-06-07).
+- **32 F* specs**: 0 admit(), 37 assume val declarations (25 active in ASSUMPTIONS.md: 31 + 2 newly added EE-003/EE-004 − 8 newly discharged; 4 discharged stubs retained in fst files for F* compilation), 21 specs fully proved
+- **25 verified Coq files**: 679 Qed, 0 Admitted, 6 Axiom declarations across 4 files (all externally verified or structural), 3 Parameter declarations in StructuralProofs.v (ByteString, seq_of_bs, bs_of_seq — structural cross-toolchain types, not crypto assumptions). 19 assume vals discharged (ED-004, ED-006, ED-008d newly discharged 2026-06-07).
 - **1 draft Coq file**: 16 Qed, 8 Admitted, 15 Axiom (NOT verified evidence)
 - **Runtime differential**: 36/36 suites PASS against RFC/NIST vectors
 - **Negative tests**: 4/4 suites PASS, 18 fail-closed checks
@@ -54,7 +54,7 @@ have been added to ASSUMPTIONS.md (2026-06-05). Total active assume vals: 31.
 | Spec.X25519 | fstar/Spec.X25519.fst | 3 | 0 | RFC 7748 ✓ | 3 reject ✓ | MEDIUM | Input validation fix (v0.1.4); prime_is_prime + 2 DH commutativity |
 | Spec.SHA256.Refinement | fstar/Spec.SHA256.Refinement.fst | 6 | 0 | — | — | HIGH | Cross-toolchain boundary (SR-001..SR-006) |
 | Spec.Dandelion | fstar/Spec.Dandelion.fst | 0 | 0 | — | — | LOW | Dandelion++ routing decision; stem/fluff phase spec |
-| Spec.Ed25519Extended | fstar/Spec.Ed25519Extended.fst | 2 | 0 | — | — | HIGH | Extended Ed25519 point ops for VRF + key blinding |
+| Spec.Ed25519Extended | fstar/Spec.Ed25519Extended.fst | 4 | 0 | — | — | HIGH | Extended Ed25519 point ops for VRF + key blinding. EE-001 cofactor_clearing, EE-002 encode_decode_roundtrip (DISCHARGED — Coq evidence, but NOTE: F* stubs return point_identity/zero; Coq proves RFC 8032 algorithm — no formal bridge between Coq evidence and stub implementations), EE-003 identity_neutral_add, EE-004 double_negate. |
 | Spec.Keccak | fstar/Spec.Keccak.fst | 0 | 0 | — | — | LOW | Thin re-export wrapper for Keccak sub-modules |
 | Spec.MessageFormat | fstar/Spec.MessageFormat.fst | 0 | 0 | — | — | LOW | 1024-byte block padding; length side-channel elimination |
 | Spec.NetworkProtocol | fstar/Spec.NetworkProtocol.fst | 0 | 0 | — | — | LOW | P2P wire message encoding; type/length/payload spec |
@@ -86,11 +86,11 @@ have been added to ASSUMPTIONS.md (2026-06-05). Total active assume vals: 31.
 | Ed25519ScalarMultPreserves.v | **VERIFIED** | 7 | 0 | 0 | 0 | ED-008d scalar_mult_preserves_on_curve_ext: induction on n, base ext_identity_on_curve, step add_preserves_on_curve_ext (ED-008b). Zero global Axioms. | LOW |
 | Ed25519ScalarMultAddUniversal.v | **VERIFIED** | 9 | 0 | 1 | 0 | ED-004 scalar_mult_add + ED-006 scalar_mod_L_equiv: universal proof by induction on m in Section WithHypotheses (assoc, congruence, on_curve hypotheses — all backed by existing verified files). 1 Axiom: group_order_axiom ([L]B=O, same as Ed25519ScalarMult.v's group_order_lemma, EXTERNALLY_VERIFIED by SageMath/Magma/RFC 8032 §5.2). | MEDIUM |
 | Ed25519Encoding.v | **VERIFIED** | 57 | 0 | 0 | 0 | M13.14.11 encode_decode_roundtrip | LOW |
-| Ed25519ExtendedEncoding.v | **VERIFIED** | 5 | 0 | 0 | 0 | EE-002 encode_decode_roundtrip for Spec.Ed25519Extended. Imports Ed25519Encoding.v evidence; proves same RFC 8032 §5.1.2-5.1.3 roundtrip for identity, basepoint, [2]B. | LOW |
+| Ed25519ExtendedEncoding.v | **VERIFIED** | 5 | 0 | 0 | 0 | EE-002 encode_decode_roundtrip for Spec.Ed25519Extended. Imports Ed25519Encoding.v evidence; proves same RFC 8032 §5.1.2-5.1.3 roundtrip for identity, basepoint, [2]B. **SOUNDNESS GAP**: Spec.Ed25519Extended.fst encode_point/decode_point are structural stubs (return zero/point_identity). This Coq file proves RFC 8032 properties which are mathematically correct but not formally connected to the F* stub implementations. EE-002 discharge is best classified as COMPANION_EVIDENCE rather than a full Coq ↔ F* proof. | LOW |
 | Ed25519ExtendedCofactor.v | **VERIFIED** | 17 | 0 | 0 | 0 | EE-001 companion evidence: imports Ed25519Encoding.v cofactor evidence; proves [8]O~O, [8]T2~O, [8]T4a~O, torsion stripping, scalar factoring for k∈{1..5}. Universal statement ([8][q]P=O for all P) remains BLOCKED_BY_TOOLING (group law). | LOW |
 | Ed25519GroupScalarMultAdd.v | **VERIFIED** | 16 | 0 | 0 | 0 | M13.14.5 scalar_mult_add (concrete 16 cases) | LOW |
 | X25519DH.v | **VERIFIED** | 20 | 0 | 0 | 0 | M13.14.6/14/15 scalar_mult_compose, dh_commutativity | LOW |
-| StructuralProofs.v | **VERIFIED** | 4 | 0 | 2 | 0 | M13.14.17/18 bs_seq_roundtrip, seq_of_bs_length_bound. Both axioms are structural ByteString↔Sequence properties, not crypto assumptions. | LOW |
+| StructuralProofs.v | **VERIFIED** | 4 | 0 | 2 | 3 | M13.14.17/18 bs_seq_roundtrip, seq_of_bs_length_bound. Both axioms are structural ByteString↔Sequence properties, not crypto assumptions. 3 Parameter declarations: ByteString (abstract type), seq_of_bs and bs_of_seq (abstract conversion functions) — all structural cross-toolchain type modelling, not crypto assumptions. | LOW |
 | draft/Ed25519GroupLaw.v | **DRAFT** | 16 | 8 | 15 | 11 | Future: Ed25519 group law | N/A |
 
 **Note:** Draft files are NOT assurance evidence. They document proof strategy only.
@@ -101,14 +101,15 @@ have been added to ASSUMPTIONS.md (2026-06-05). Total active assume vals: 31.
 |--------|-------|
 | F* specs | 32 |
 | F* specs at 0 assume val | 21 |
-| F* assume val (fst declarations) | 35 |
-| F* assume val (active per ASSUMPTIONS.md) | 23 |
-| F* assume val (discharged stubs, Coq evidence) | 19 total discharged (ED-004, ED-006, ED-008d newly discharged 2026-06-07) |
-| F* admit() total | 0 |
+| F* assume val (fst declarations) | 37 |
+| F* assume val (active per ASSUMPTIONS.md) | 25 |
+| F* assume val (discharged stubs, Coq evidence) | 19 total discharged (ED-004, ED-006, ED-008d newly discharged 2026-06-07); EE-002 reclassified COMPANION_EVIDENCE (soundness gap: Coq proves RFC 8032, F* stubs are structural) |
+| F* admit() total | 0 (2 former admit()s in Spec.Ed25519Extended.fst converted to assume val EE-003/EE-004 on 2026-06-07) |
 | Coq verified files | 25 |
-| Coq verified Qed | 671 |
+| Coq verified Qed | 679 |
 | Coq verified Admitted | 0 |
 | Coq verified Axiom | 6 Axiom declarations across 4 files (all externally verified or structural) |
+| Coq verified Parameter | 3 Parameter declarations in StructuralProofs.v (structural cross-toolchain types, not crypto assumptions) |
 | Coq draft Admitted | 8 |
 | Differential suites | 36/36 PASS |
 | Security audit suites | 6/6 PASS (regression, negative, boundary, adversarial-proto, ct, key-lifecycle) |
