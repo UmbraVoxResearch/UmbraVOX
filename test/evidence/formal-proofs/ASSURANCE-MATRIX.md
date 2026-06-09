@@ -41,10 +41,10 @@ have been added to ASSUMPTIONS.md (2026-06-05). Total active assume vals: 31.
 | Spec.Keccak.Permutation | fstar/Spec.Keccak.Permutation.fst | 0 | 0 | — | — | LOW | All 5 FIPS 202 steps |
 | Spec.Keccak.Sponge | fstar/Spec.Keccak.Sponge.fst | 0 | 0 | — | — | LOW | pad10*1, absorb, squeeze |
 | Spec.Keccak.SHA3 | fstar/Spec.Keccak.SHA3.fst | 0 | 0 | FIPS 202 ✓ | — | LOW | 7 F* KAT + 3 runtime KAT |
-| Spec.MLKEM768 | fstar/Spec.MLKEM768.fst | 2 | 2 | — | — | REVIEW | **SPECIFIED (M37)**: real NTT/inv_ntt (FIPS 203 Alg 9-10), basemul (Alg 11), CBD (Alg 7), SampleNTT (Alg 8), K-PKE skeleton, ML-KEM assume_vals. 2 assume_val (sha3/shake assumed from Spec.Keccak). 2 admit (ntt_roundtrip, mlkem_correctness — pending M37.6 + M36B.11). |
+| Spec.MLKEM768 | fstar/Spec.MLKEM768.fst | 2 | 2 | — | — | REVIEW | **PARTIAL SPECIFICATION (M37 IN PROGRESS)**: real NTT/inv_ntt (FIPS 203 Alg 9-10), basemul (Alg 11), CBD (Alg 7), SampleNTT (Alg 8), K-PKE skeleton specified. mlkem_keygen/mlkem_encaps/mlkem_decaps are `assume val` stubs (pending M36B.11 Low* extraction). 2 assume_val (sha3/shake assumed from Spec.Keccak). 2 admit (ntt_roundtrip, mlkem_correctness — pending M37.6 + M36B.11). PQ-001 IND-CCA2 claim CANNOT be audited until stubs are replaced. |
 | Spec.NoiseIK | fstar/Spec.NoiseIK.fst | 0 | 0 | — | — | LOW | Constant stubs (documented) |
-| Spec.PQXDH | fstar/Spec.PQXDH.fst | 0 | 0 | — | — | LOW | Constant stubs (documented) |
-| Spec.X3DH | fstar/Spec.X3DH.fst | 0 | 0 | — | — | LOW | Constant stubs (documented) |
+| Spec.PQXDH | fstar/Spec.PQXDH.fst | 0 | 0 | — | — | LOW | Constant stubs (documented). **M35C fixes (Round 6)**: `derive_pq_secret` now includes `sha256(pq_ct)` in IKM (prevents CT substitution) and identity keys (`alice_ik_pub`, `bob_ik_pub`) in HKDF info (implements M27.6.10 identity binding). `pqxdh_initiate` passes `ik_a_public`. |
+| Spec.X3DH | fstar/Spec.X3DH.fst | 0 | 0 | — | — | LOW | Constant stubs (documented). **M35C fix (Round 6)**: `derive_secret` now includes `alice_ik_pub` and `bob_ik_pub` in HKDF info string (implements M27.6.10 identity binding); `x3dh_initiate` updated accordingly. |
 | Spec.SenderKeys | fstar/Spec.SenderKeys.fst | 0 | 0 | — | — | LOW | Chain monotonicity |
 | Spec.ChaChaPoly | fstar/Spec.ChaChaPoly.fst | 1 | 0 | RFC 8439 ✓ | 4 reject ✓ | HIGH | AEAD encrypt+tag+decrypt, negative tests |
 | Spec.DoubleRatchet | fstar/Spec.DoubleRatchet.fst | 2 | 0 | — | — | HIGH | Constant stubs; hmac_non_fixpoint + hmac_collision_resistance |

@@ -2,8 +2,9 @@
 
 ## Status
 
-HACL* serves as the INTERIM production implementation for the 8 cryptographic primitives
+HACL* serves as the INTERIM production implementation for the 7 cryptographic primitives
 listed below, until UmbraVOX's own KaRaMeL-extracted C (from our F* Low* specs) is ready.
+(Ed25519 and X25519 use csrc/fiat/ bridges — not HACL*.)
 
 **Intended final state**: Our own formally-extracted C in `csrc/extracted/` will replace
 HACL* in production. HACL* will then move to `contrib/hacl-oracle/` and serve as a
