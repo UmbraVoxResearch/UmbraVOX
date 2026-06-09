@@ -4,7 +4,7 @@
 
 **Date:** 2026-05-17 (updated 2026-06-07)
 **F* specs:** 32 total, 21 with 0 assume val
-**assume val count:** 33 active (25 original + 6 from specs added after v0.1.9 + 2 new EE-003/EE-004 from admit()→assume val conversion 2026-06-07); 37 total fst declarations (4 discharged stubs retained for F* compilation)
+**assume val count:** 25 active (37 total fst declarations − 8 discharged, of which 4 stubs retained for F* compilation; original 25 + 6 from specs added after v0.1.9 + 2 EE-003/EE-004 from admit()→assume val 2026-06-07 = 33 ever declared, 8 discharged = 25 active)
 **admit() count:** 0 (2 former admit()s in Spec.Ed25519Extended.fst converted to assume val on 2026-06-07)
 **Status:** All assume vals have classification, documented justification, external evidence path, and discharge plan (or permanent status).
 6 assume vals from new specs (EE-001, EE-002, PQ-001, PQ-002, SS-001, WF-001) added 2026-06-05.

@@ -81,6 +81,23 @@ foreign import ccall unsafe "constant_time_eq"
 --              'lenSentinel == 0' ensures different-length inputs are False.
 -- Verified:  Registration HMAC checks, GCM tag verification, and handshake
 --              MAC checks all pass after this fix.
+-- Note — 'unsafeDupablePerformIO': two threads may evaluate the same thunk
+-- concurrently.  Duplicate evaluation is harmless here: both threads call
+-- c_constant_time_eq on the same read-only data and produce identical Bool
+-- values; the extra evaluation is discarded.  The C function has no
+-- observable side effects.
+--
+-- Note — Residual timing channel on length difference (M35B): the Haskell
+-- wrapper allocates `BS.replicate (maxLen - shortLen) 0` on the GC heap
+-- before reaching C.  Allocation time is proportional to |lenA - lenB|,
+-- creating a measurable channel on the length difference.  This is
+-- documented as a known gap: the C volatile-accumulator loop is
+-- constant-time, but the Haskell preamble is not.  Callers that must hide
+-- the existence of a length difference (e.g., comparing MACs of different
+-- candidate lengths) should pre-pad to a fixed width before calling
+-- constantEq.  In practice all production call sites (GCM tag, HMAC-SHA256
+-- MAC, handshake tokens) compare equal-length ByteStrings, so the channel
+-- carries no useful information.
 constantEq :: ByteString -> ByteString -> Bool
 constantEq a b = unsafeDupablePerformIO $
     let !lenA    = BS.length a
