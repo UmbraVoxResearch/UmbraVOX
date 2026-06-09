@@ -13,6 +13,16 @@ import qualified Data.ByteString as BS
 
 import UmbraVox.Crypto.Random (randomBytes)
 
+-- TODO(M15.6): CRITICAL — generatePassphrase returns IO String.  All entropy
+-- material (the raw randomBytes output) and the derived word strings live on
+-- the GC heap as plain ByteString / [String] values and are never explicitly
+-- zeroed.  A heap dump or swap file at any point after randomBytes and before
+-- the caller discards the returned String exposes the passphrase material.
+-- Blast radius: full passphrase recovery, enabling offline decryption of any
+-- export blob.  Fix: migrate to SecureBytes for entropy; use a SecureString
+-- (pinned, mlock'd, volatile-zeroed) for the passphrase output; zero
+-- intermediate word-list selections.
+
 -- | Generate an n-word passphrase from the BIP39 wordlist.
 -- Each word is selected uniformly from the 2048-word list using
 -- 2 random bytes per word (mod 2048 for uniform distribution).

@@ -113,5 +113,20 @@ decryptExport password blob
             !ctLen = BS.length rest - tagLen
             !ct    = BS.take ctLen rest
             !tag   = BS.drop ctLen rest
-        !key <- deriveKey salt password
-        GCMFFI.gcmDecrypt key nonce exportInfo ct tag
+        -- Finding    M35A/B.1 — decryptExport passed the derived key as a plain
+        --            ByteString to gcmDecrypt, leaving it on the GC heap.
+        --            encryptExport already used withSecureKey; decryptExport did not.
+        -- Vulnerability: The 32-byte AES-256-GCM decryption key lives on the GC
+        --            heap and is never explicitly zeroed.  A heap dump or swap
+        --            file at the moment of decryption exposes the derived key,
+        --            allowing decryption of any export blob encrypted with the
+        --            same password and salt.
+        -- Fix:       Wrap the derived key in SecureBytes via fromByteString and
+        --            use withSecureKey so the key material is mlock'd and zeroed
+        --            on release, matching the symmetric encryptExport path.
+        -- Verified:  withSecureKey passes the key ByteString only within the
+        --            bracketed scope; gcmDecrypt completes before key is zeroed.
+        !keyBS <- deriveKey salt password
+        sbKey  <- fromByteString keyBS
+        withSecureKey sbKey $ \key ->
+            GCMFFI.gcmDecrypt key nonce exportInfo ct tag

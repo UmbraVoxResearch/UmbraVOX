@@ -150,6 +150,18 @@ lenPrefix bs =
 -- Shared secret derivation (common to initiator and responder)
 ------------------------------------------------------------------------
 
+-- TODO(M15.7): HIGH — deriveSecret takes dh1/dh2/dh3/dh4 and computes ikm as
+-- plain ByteString values on the GC heap.  None of these DH outputs or the
+-- concatenated ikm are pinned or explicitly zeroed after HKDF.  Callers pass
+-- spkSecret and opkSecret (one-time prekey secrets) as plain ByteString args.
+-- Blast radius: heap dump or swap file between the X25519 DH calls and HKDF
+-- completion exposes all DH outputs; combined with intercepted ciphertexts,
+-- this allows retroactive decryption of the established session.
+-- Fix: wrap each dh* output in SecureBytes immediately after X25519FFI.x25519;
+-- use withSecureKey for each; concatenate into a single zeroed SecureBytes ikm
+-- buffer; pass to hkdfSHA512 via a pinned-buffer variant.  The function
+-- signature must then become SecureBytes → … → IO ByteString (or SecureBytes).
+
 -- | Derive the master secret from DH outputs.
 -- ikm = 0xFF*32 || dh1 || dh2 || dh3 || [dh4]
 -- salt = 0x00*32

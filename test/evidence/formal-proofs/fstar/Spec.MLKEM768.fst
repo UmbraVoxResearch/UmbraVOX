@@ -1,15 +1,27 @@
 (**
  * Spec.MLKEM768 -- Pure functional specification of ML-KEM-768 (FIPS 203)
  *
- * REAL SPECIFICATION (M37): all core functions (ntt, inv_ntt, cbd,
- * sample_ntt, kpke_keygen/encrypt/decrypt, mlkem_keygen/encaps/decaps)
- * now have genuine functional implementations matching FIPS 203.
+ * PARTIAL SPECIFICATION (M37 IN PROGRESS — Finding M35C/M31.4):
  *
- * The NTT follows FIPS 203 Algorithms 9-11 (Cooley-Tukey forward,
- * Gentleman-Sande inverse, degree-1 base-case multiply).
- * CBD follows FIPS 203 Algorithm 7.
- * K-PKE follows FIPS 203 Section 5.1 (Algorithms 12-14).
- * ML-KEM follows FIPS 203 Section 6 (Algorithms 15-17).
+ * Sub-algorithm functions (ntt, inv_ntt, cbd, sample_ntt, kpke_keygen,
+ * kpke_encrypt, kpke_decrypt) have genuine functional implementations
+ * matching FIPS 203 Algorithms 7–14.
+ *
+ * Top-level ML-KEM operations remain ASSUME VAL STUBS:
+ *   mlkem_keygen  (FIPS 203 Algorithm 15) — assume val stub
+ *   mlkem_encaps  (FIPS 203 Algorithm 16) — assume val stub
+ *   mlkem_decaps  (FIPS 203 Algorithm 17) — assume val stub
+ *
+ * The IND-CCA2 correctness property (PQ-001) CANNOT be audited until
+ * the three top-level functions are fully specified.  These stubs must
+ * be replaced before M36B.11 (Low* extraction) or PQ-001 review.
+ * See also: ASSUMPTIONS.md PQ-001 gap note (M31.4).
+ *
+ * Sub-algorithm status:
+ *   NTT: FIPS 203 Algorithms 9-11 (Cooley-Tukey / Gentleman-Sande / basemul)
+ *   CBD: FIPS 203 Algorithm 7
+ *   K-PKE: FIPS 203 Section 5.1, Algorithms 12-14 (keygen/enc/dec)
+ *   byte_encode / byte_decode: assume val (bit-packing, Algorithm 6/7)
  *
  * External hash dependencies (specified in Spec.Keccak.SHA3):
  *   sha3_256 : bytes → bytes   (G in FIPS 203)
