@@ -130,8 +130,14 @@ decodeEnvelope key bs
             !sTag    = getW16BE (BS.take 2 (BS.drop 39 bs))
             !pLen    = fromIntegral (getW32BE (BS.take 4 (BS.drop 41 bs))) :: Int
             -- body = everything before the 32-byte trailing HMAC
+            -- Finding M35A.WF: pLen is a Word32 cast to Int.  On 64-bit systems
+            -- Int is 64-bit so the cast is lossless, but the subsequent addition
+            -- headerSize + pLen could still overflow if pLen is near maxBound.
+            -- Guard: reject packets where pLen alone exceeds the maximum sane
+            -- frame size (64 MiB) before doing arithmetic.
             !bodyLen = headerSize + pLen
-        if pLen < 0 || BS.length bs < bodyLen + hmacSize
+        if pLen < 0 || pLen > 67108864 {- 64 MiB -}
+              || BS.length bs < bodyLen + hmacSize
             then pure Nothing
             else do
                 let !body    = BS.take bodyLen bs

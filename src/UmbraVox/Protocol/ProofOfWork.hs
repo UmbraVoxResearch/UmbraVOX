@@ -22,6 +22,7 @@ module UmbraVox.Protocol.ProofOfWork
     , nonceSize
     , difficultyBits
     , challengeExpirySeconds
+    , maxSolverIterations
     ) where
 
 import Data.Bits (shiftR, (.&.))
@@ -52,6 +53,27 @@ difficultyBits = 16
 challengeExpirySeconds :: Word64
 challengeExpirySeconds = 30
 
+-- | Maximum iterations for the PoW solver (M35A DoS mitigation).
+--
+-- At difficulty 16 (~65K expected hashes), this allows 16× margin before
+-- giving up.  An unsolvable or deliberately broken challenge (e.g. all bits
+-- set) cannot cause the solver to loop indefinitely.  Callers receive
+-- 'Nothing' and should disconnect or report an error.
+--
+-- Finding    M35A.PoW — Prior solver looped unconditionally over all 2^64
+--            Word64 values with no bound.  A crafted challenge with no
+--            feasible solution would cause the client to spin indefinitely.
+-- Vulnerability: Peer sends a challenge that can never satisfy the PoW
+--            predicate (e.g. requires 64 leading zero bits); the solver
+--            thread hangs, consuming CPU indefinitely — a DoS against the
+--            connecting client.
+-- Fix:       Abort after 'maxSolverIterations' and return 'Nothing'.
+-- Verified:  Both 'solveChallenge' and 'solveBoundChallenge' now return
+--            'IO (Maybe ByteString)'; callers treat 'Nothing' as a
+--            connection error.
+maxSolverIterations :: Word64
+maxSolverIterations = 1048576  -- 2^20 ≈ 1M iterations, 16× margin at difficulty 16
+
 -- | Generate a random 32-byte challenge.
 generateChallenge :: IO ByteString
 generateChallenge = randomBytes challengeSize
@@ -81,17 +103,20 @@ generateBoundChallenge serverNonce timestamp = do
 -- | Solve a challenge by finding a nonce such that
 -- @SHA-256(challenge || nonce)@ has 'difficultyBits' leading zero bits.
 --
--- Returns an 8-byte nonce (big-endian encoding of the solution counter).
-solveChallenge :: ByteString -> IO ByteString
+-- Returns @Just nonce@ (8-byte big-endian counter) on success, or
+-- @Nothing@ if no solution is found within 'maxSolverIterations'.
+solveChallenge :: ByteString -> IO (Maybe ByteString)
 solveChallenge challenge = go 0
   where
-    go :: Word64 -> IO ByteString
-    go !n = do
-        let !nonceBS = putWord64BE (fromIntegral n)
-        !hash <- SHA256FFI.sha256 (challenge <> nonceBS)
-        if hasLeadingZeroBits difficultyBits hash
-            then pure nonceBS
-            else go (n + 1)
+    go :: Word64 -> IO (Maybe ByteString)
+    go !n
+        | n >= maxSolverIterations = pure Nothing
+        | otherwise = do
+            let !nonceBS = putWord64BE (fromIntegral n)
+            !hash <- SHA256FFI.sha256 (challenge <> nonceBS)
+            if hasLeadingZeroBits difficultyBits hash
+                then pure (Just nonceBS)
+                else go (n + 1)
 
 -- | Verify that @SHA-256(challenge || nonce)@ has 'difficultyBits' leading
 -- zero bits.
@@ -110,18 +135,21 @@ verifyChallenge challenge nonce
 --
 -- Identical to 'solveChallenge' but takes an explicit server nonce that is
 -- prepended to the hash input, binding the solution to this connection.
+-- Returns @Nothing@ if no solution found within 'maxSolverIterations'.
 solveBoundChallenge :: ByteString  -- ^ challenge (from 'generateBoundChallenge')
                     -> ByteString  -- ^ server nonce
-                    -> IO ByteString  -- ^ 8-byte solution nonce
+                    -> IO (Maybe ByteString)  -- ^ 8-byte solution nonce, or Nothing
 solveBoundChallenge challenge serverNonce = go 0
   where
-    go :: Word64 -> IO ByteString
-    go !n = do
-        let !nonceBS = putWord64BE (fromIntegral n)
-        !hash <- SHA256FFI.sha256 (serverNonce <> challenge <> nonceBS)
-        if hasLeadingZeroBits difficultyBits hash
-            then pure nonceBS
-            else go (n + 1)
+    go :: Word64 -> IO (Maybe ByteString)
+    go !n
+        | n >= maxSolverIterations = pure Nothing
+        | otherwise = do
+            let !nonceBS = putWord64BE (fromIntegral n)
+            !hash <- SHA256FFI.sha256 (serverNonce <> challenge <> nonceBS)
+            if hasLeadingZeroBits difficultyBits hash
+                then pure (Just nonceBS)
+                else go (n + 1)
 
 -- | M27.6.8: Verify a connection-bound PoW solution with expiry.
 --

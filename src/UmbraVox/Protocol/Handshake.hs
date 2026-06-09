@@ -99,6 +99,18 @@ genPQPreKey = do
 bundleVersion :: Word8
 bundleVersion = 0x01
 
+-- TODO(M15.9): CRITICAL — Multiple toByteString calls in this module (serializeBundle,
+-- initiateHandshake, acceptHandshake) create plain ByteString GC-heap copies of
+-- secret key material (edSec, ekSecretBS, dhSecret, wrapKey, xSecretBS,
+-- spkSecretBS) that are never explicitly zeroed.  Blast radius: heap/swap dump
+-- during or after a handshake exposes Ed25519 signing key, ephemeral X25519
+-- secret, DH output, derived wrap key, and long-term X25519 identity secret.
+-- Fix: replace toByteString calls with withSecurePtr / withSecureKey scoped
+-- brackets so the secret never leaves the mlock'd allocation.  Requires
+-- refactoring X25519FFI.x25519 and Ed25519FFI.ed25519Sign to accept raw
+-- Ptr Word8 inputs (or a withSecureKey variant).  Coordinate with M15.7 (X3DH)
+-- and M15.8 (PQXDH) which have the same structural problem.
+
 serializeBundle :: IdentityKey -> BS.ByteString -> BS.ByteString
                 -> MLKEMEncapKey -> Maybe BS.ByteString -> IO BS.ByteString
 serializeBundle ik spkPub spkSig (MLKEMEncapKey pqpk) mOpk = do

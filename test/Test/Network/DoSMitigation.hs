@@ -130,11 +130,16 @@ testPoWGenerateSize = do
 testPoWSolveVerify :: IO Bool
 testPoWSolveVerify = do
     challenge <- generateChallenge
-    nonce <- solveChallenge challenge
-    r1 <- assertEq "nonce is 8 bytes" nonceSize (BS.length nonce)
-    verified <- verifyChallenge challenge nonce
-    r2 <- assertEq "solved nonce verifies" True verified
-    pure (r1 && r2)
+    mNonce <- solveChallenge challenge
+    case mNonce of
+        Nothing -> do
+            putStrLn "FAIL: solveChallenge exhausted maxSolverIterations"
+            pure False
+        Just nonce -> do
+            r1 <- assertEq "nonce is 8 bytes" nonceSize (BS.length nonce)
+            verified <- verifyChallenge challenge nonce
+            r2 <- assertEq "solved nonce verifies" True verified
+            pure (r1 && r2)
 
 -- | Wrong nonce does not verify.
 testPoWWrongNonce :: IO Bool
@@ -148,10 +153,15 @@ testPoWWrongNonce = do
 testPoWWrongChallenge :: IO Bool
 testPoWWrongChallenge = do
     challenge <- generateChallenge
-    nonce <- solveChallenge challenge
-    let wrongChallenge = BS.replicate challengeSize 0xAA
-    result <- verifyChallenge wrongChallenge nonce
-    assertEq "wrong challenge does not verify" False result
+    mNonce <- solveChallenge challenge
+    case mNonce of
+        Nothing -> do
+            putStrLn "FAIL: solveChallenge exhausted maxSolverIterations"
+            pure False
+        Just nonce -> do
+            let wrongChallenge = BS.replicate challengeSize 0xAA
+            result <- verifyChallenge wrongChallenge nonce
+            assertEq "wrong challenge does not verify" False result
 
 -- | Bad input lengths are rejected.
 testPoWBadLengths :: IO Bool
