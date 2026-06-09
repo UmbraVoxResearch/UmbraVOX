@@ -21,7 +21,7 @@ The main UmbraVOX project is licensed under Apache-2.0.
 | `src/liboqs` | [open-quantum-safe/liboqs](https://github.com/open-quantum-safe/liboqs) | f986aea | MIT (see src/liboqs/LICENSE.txt) |
 | `src/libsignal` | [signalapp/libsignal](https://github.com/signalapp/libsignal) | 46d867c | AGPLv3 (see src/libsignal/LICENSE) |
 | `src/hacl-star` (interim: csrc/hacl/) | [hacl-star/hacl-star](https://github.com/hacl-star/hacl-star) | 504c298 | MIT / Apache-2.0 (see csrc/hacl/README.md) |
-| `src/fiat-crypto` (interim: csrc/fiat/) | [mit-plv/fiat-crypto](https://github.com/mit-plv/fiat-crypto) | v0.0.9 | MIT |
+| `src/fiat-crypto` (interim: csrc/fiat/) | [mit-plv/fiat-crypto](https://github.com/mit-plv/fiat-crypto) | 4217de0 (v0.0.9) | MIT |
 
 Each source tree's own LICENSE file is present under its directory and is
 authoritative.

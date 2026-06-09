@@ -78,8 +78,16 @@ validateAuth tokenRef req = do
     case provided of
         Nothing -> pure (Just (formatError (rpcId req) (-32600) "Unauthorized"))
         Just t
+            -- Finding M35B: attacker-controlled 't' without length
+            -- normalisation allowed a timing oracle to determine the
+            -- token length via BS.replicate allocation time in constantEq.
+            -- Fix: reject any token whose encoded length differs from the
+            -- expected 64-byte hex string before reaching constantEq.
+            | length t /= length expected ->
+                pure (Just (formatError (rpcId req) (-32600) "Unauthorized"))
             | constantEq (BS8.pack t) (BS8.pack expected) -> pure Nothing
-            | otherwise     -> pure (Just (formatError (rpcId req) (-32600) "Unauthorized"))
+            | otherwise ->
+                pure (Just (formatError (rpcId req) (-32600) "Unauthorized"))
 
 -- | Start the JSON-RPC API server on the given port.
 -- Binds to 127.0.0.1 only (local access).

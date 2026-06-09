@@ -80,8 +80,12 @@ let x25519 secret public_key = Seq.create key_size 0uy
 val kdf_ck : chain_key:seq UInt8.t{Seq.length chain_key = chain_key_size}
     -> Tot (seq UInt8.t & seq UInt8.t)
 let kdf_ck chain_key =
-  let new_chain_key = hmac_sha256 chain_key (Seq.create 1 0x01uy) in
-  let msg_key       = hmac_sha256 chain_key (Seq.create 1 0x02uy) in
+  (* Signal Double Ratchet §2.2: mk = HMAC(CK, 0x01), CK' = HMAC(CK, 0x02).
+     Finding M35C: constants were previously inverted (0x01→CK', 0x02→mk),
+     diverging from both the Signal spec and the production Haskell implementation.
+     Fixed to match Signal spec and src/UmbraVox/Crypto/Signal/DoubleRatchet.hs. *)
+  let msg_key       = hmac_sha256 chain_key (Seq.create 1 0x01uy) in
+  let new_chain_key = hmac_sha256 chain_key (Seq.create 1 0x02uy) in
   (new_chain_key, msg_key)
 
 (** kdf_ck always produces 32-byte keys *)
@@ -94,16 +98,16 @@ let kdf_ck_length_lemma ck = ()
 (** Chain key advancement: structural proof that kdf_ck produces a
     well-formed new chain key of the correct length from any valid input.
     This is the structural backbone of forward secrecy: each ratchet step
-    feeds the current chain key through HMAC-SHA256 with constant input 0x01,
+    feeds the current chain key through HMAC-SHA256 with constant input 0x02,
     producing a deterministic but one-way chain.
 
-    The cryptographic non-fixpoint property (HMAC(ck, 0x01) != ck) is
+    The cryptographic non-fixpoint property (HMAC(ck, 0x02) != ck) is
     captured separately as an assume val axiom below. *)
 val kdf_ck_distinct_lemma :
     ck:seq UInt8.t{Seq.length ck = chain_key_size}
     -> Lemma (let (ck1, mk1) = kdf_ck ck in
               Seq.length ck1 = chain_key_size /\
-              ck1 == hmac_sha256 ck (Seq.create 1 0x01uy))
+              ck1 == hmac_sha256 ck (Seq.create 1 0x02uy))
 let kdf_ck_distinct_lemma ck = ()
 
 (* ASSUME JUSTIFICATION: hmac_non_fixpoint
@@ -114,11 +118,11 @@ let kdf_ck_distinct_lemma ck = ()
    Discharging this would require a concrete HMAC model and SHA-256 collision resistance. *)
 assume val hmac_non_fixpoint :
     ck:seq UInt8.t{Seq.length ck = chain_key_size}
-    -> Lemma (hmac_sha256 ck (Seq.create 1 0x01uy) =!= ck)
+    -> Lemma (hmac_sha256 ck (Seq.create 1 0x02uy) =!= ck)
 
 (** Chain key / message key independence: structural proof that kdf_ck
     derives the chain key and message key from distinct HMAC inputs.
-    The chain key uses constant 0x01; the message key uses constant 0x02.
+    The chain key uses constant 0x02; the message key uses constant 0x01.
     Input separation is the structural guarantee; collision resistance
     of HMAC-SHA256 elevates this to key independence.
 
@@ -129,8 +133,8 @@ val kdf_ck_independence_lemma :
     -> Lemma (let (ck', mk) = kdf_ck ck in
               Seq.length ck' = chain_key_size /\
               Seq.length mk = msg_key_size /\
-              ck' == hmac_sha256 ck (Seq.create 1 0x01uy) /\
-              mk == hmac_sha256 ck (Seq.create 1 0x02uy) /\
+              ck' == hmac_sha256 ck (Seq.create 1 0x02uy) /\
+              mk == hmac_sha256 ck (Seq.create 1 0x01uy) /\
               Seq.create 1 0x01uy =!= Seq.create 1 0x02uy)
 let kdf_ck_independence_lemma ck =
   (* The two HMAC inputs are single-byte sequences with distinct values.
