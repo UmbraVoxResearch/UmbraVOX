@@ -7,8 +7,13 @@
  * Reproducer:
  *   fiat-crypto v0.0.9 (https://github.com/mit-plv/fiat-crypto)
  *   Tag:    v0.0.9
- *   Commit: see upstream release
+ *   Commit: 4217de0 (v0.0.9 release tag, mit-plv/fiat-crypto)
  *   Source: fiat-c/src/fiat_25519_64.c
+ *
+ * Third-party: fiat-crypto (mit-plv/fiat-crypto v0.0.9, MIT)
+ * Coq-verified constant-time GF(2^255-19) field arithmetic.
+ * PRIMARY PRODUCTION IMPLEMENTATION for Ed25519/X25519 field operations.
+ * See contrib/oracles/THIRD_PARTY_LICENSES.md.
  *
  * SPDX-License-Identifier: MIT
  *

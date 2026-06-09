@@ -201,10 +201,20 @@ checkAndRotate rts0 wallNow = do
 
 -- | Check whether an inbound route token matches the current recv token
 -- or the previous-epoch grace token (constant-time).
+--
+-- Finding:     M35A/B — calling constantEq with an unvalidated-length 'tok'
+--              triggered the Haskell preamble's BS.replicate allocation,
+--              whose cost is proportional to |lenTok - 16|, leaking token
+--              length information via a timing channel.
+-- Fix:         Reject tokens that are not exactly 16 bytes before reaching
+--              constantEq.  Both rtsCurrentRecv and rtsPrevRecv are always
+--              16 bytes (derived by deriveRouteTokens/deriveEpochTokens).
 matchesRecvToken :: RouteTokenState -> ByteString -> Bool
-matchesRecvToken rts tok =
-    constantEq tok (rtsCurrentRecv rts)
-    || maybe False (constantEq tok) (rtsPrevRecv rts)
+matchesRecvToken rts tok
+    | BS.length tok /= 16 = False
+    | otherwise =
+        constantEq tok (rtsCurrentRecv rts)
+        || maybe False (constantEq tok) (rtsPrevRecv rts)
 
 ------------------------------------------------------------------------
 -- Session lookup by token

@@ -585,7 +585,13 @@ mlkemDecaps (MLKEMDecapKey fullDK) (MLKEMCiphertext ct) =
             let m' = kpkeDecrypt dkPKE ct
                 (sharedSecret', r') = hashG (m' `BS.append` ekHash)
                 ct' = kpkeEncrypt ek m' r'
-            in if constantEq ct' ct
+            -- Finding:     M35A/B — constantEq on a caller-supplied ct of
+            --              unknown length leaks |len(ct) - 1088| via the
+            --              Haskell preamble's BS.replicate timing channel.
+            -- Fix:         Pre-check that ct is exactly the same length as
+            --              ct' (always 1088 bytes for ML-KEM-768).  A
+            --              length mismatch is treated as implicit rejection.
+            in if BS.length ct == BS.length ct' && constantEq ct' ct
                then sharedSecret'
                else rejectionSecret
 
