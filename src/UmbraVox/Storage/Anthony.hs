@@ -440,7 +440,10 @@ loadTrustedKeys db =
                 case fromHex (C8.pack hexPk) of
                     Just pk -> pure (pk, lbl)
                     Nothing -> pure (BS.empty, lbl)
-            pure (filter (\(pk, _) -> not (BS.null pk)) rows)
+            -- M35B: reject malformed keys (not exactly 32 bytes) at load time
+            -- so that constantEq call sites in Listener.hs are always given
+            -- equal-length operands, avoiding the length-timing channel.
+            pure (filter (\(pk, _) -> BS.length pk == 32) rows)
 
 -- | Remove a trusted key by its public key.
 removeTrustedKey :: AnthonyDB -> ByteString -> IO ()

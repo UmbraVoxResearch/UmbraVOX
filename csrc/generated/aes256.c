@@ -2,13 +2,17 @@
  * To modify: edit the .spec file or app/codegen/CryptoGen.hs, then run ./uv build.
  * See AGENTS.md "Codegen Pipeline" for the full workflow. */
 
-/* DIFFERENTIAL TESTING ORACLE — NOT IN PRODUCTION BUILD
- * This file is retained for three-way differential testing:
- *   (1) CryptoGen oracle (this file)
+/* DIFFERENTIAL TESTING ORACLE — algorithm implementation is NOT in production use.
+ * This file is compiled only to provide the link probe symbol (aes256_link_probe).
+ * The algorithmic content is CryptoGen oracle quality only:
+ *   (1) CryptoGen oracle (this file, for differential testing)
  *   (2) HACL* interim production (csrc/hacl/bridge_<prim>.c) or external oracle
  *   (3) Haskell reference (src/UmbraVox/Crypto/<prim>.hs)
- * Not included in UmbraVox.cabal c-sources list.
- * Production C will be in csrc/extracted/<prim>.c (KaRaMeL extraction, M36B).
+ * Production callers delegate to the Haskell reference implementation, not to
+ * the C functions in this file.  Production C will be in csrc/extracted/<prim>.c
+ * (KaRaMeL extraction, M36B).
+ * Finding M35A: prior header incorrectly stated "Not included in UmbraVox.cabal
+ * c-sources list" — the file IS compiled for the link probe symbol.
  */
 #include <stdint.h>
 #include <stddef.h>

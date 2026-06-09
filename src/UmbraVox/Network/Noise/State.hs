@@ -98,6 +98,13 @@ import Data.Word (Word8, Word64)
 -- Verified:  noiseEncrypt calls chachaPolyEncrypt(nsSendEncKey, nonce, aad,
 --            plaintext) and noiseDecrypt calls chachaPolyDecrypt; no separate
 --            MAC key fields are needed.
+-- TODO(M15.4): nsSendEncKey and nsRecvEncKey are plain ByteString values on the
+-- GC heap and are never explicitly zeroed.  All Noise handshake intermediates
+-- (ephemeral DH outputs, chaining keys, temp keys) in Handshake.hs are also
+-- plain ByteStrings.  Migration to SecureBytes requires making NoiseState
+-- fields SecureBytes and zeroing them on session teardown / handshake failure.
+-- Blast radius: heap dump or swap file exposes traffic keys + ephemeral DH secret
+-- (sufficient to decrypt the session if static keys are also compromised).
 data NoiseState = NoiseState
     { nsSendEncKey     :: !ByteString   -- ^ 32-byte ChaCha20-Poly1305 key for sending
     , nsRecvEncKey     :: !ByteString   -- ^ 32-byte ChaCha20-Poly1305 key for receiving

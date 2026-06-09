@@ -138,6 +138,12 @@ data RatchetState = RatchetState
       -- M27.6.9: wallTimestamp records wall-clock insertion time for
       -- time-based expiry (48h).  insertSeq records insertion order
       -- for FIFO eviction.
+      -- TODO(M15.5): msgKey and chainKey values are plain ByteString on the
+      -- GC heap and are NOT zeroed on session teardown or key eviction.
+      -- Migration requires replacing ByteString with SecureBytes here and
+      -- calling zeroAndFree when entries are removed from the map.
+      -- Blast radius: heap snapshot after session close retains all cached
+      -- skipped message keys, sufficient to decrypt the corresponding messages.
     , rsSkipSeq :: !Word64
       -- ^ Monotonic counter incremented on each skipped-key insertion.
       -- Used by 'evictOldest' to remove the truly oldest entry (by
