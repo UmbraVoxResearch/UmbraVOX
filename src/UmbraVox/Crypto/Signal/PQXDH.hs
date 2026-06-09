@@ -169,6 +169,17 @@ pqxdhInitiate aliceIK bundle ekSecret mlkemRand = do
         if not pqOk then pure Nothing
         else initSession aliceIK bundle ekSecret mlkemRand
 
+-- TODO(M15.8): CRITICAL — dh1/dh2/dh3/dh4 (lines ~182-187) and pqSS (line ~191)
+-- are all plain ByteString values on the GC heap once extracted from SecureBytes
+-- (toByteString creates an unprotected copy).  None are explicitly zeroed after
+-- derivePQSecret completes.  Blast radius: heap dump or swap file between the
+-- X25519 calls and HKDF completion exposes all DH outputs and the ML-KEM shared
+-- secret; combined with intercepted ciphertexts this allows retroactive session
+-- decryption.  Fix (M15.8): wrap each DH output in SecureBytes immediately after
+-- X25519FFI.x25519; use withSecureKey for each; concatenate into a single zeroed
+-- SecureBytes ikm buffer; pass pqSS as SecureBytes; zero all intermediates after
+-- HKDF.  Coordinate with mlkemEncaps returning SecureBytes for pqSS.
+
 -- | Compute the PQXDH session after SPK verification succeeds.
 -- Returns Nothing if any DH output is all-zero (low-order point).
 initSession :: IdentityKey -> PQPreKeyBundle -> ByteString -> ByteString -> IO (Maybe PQXDHResult)

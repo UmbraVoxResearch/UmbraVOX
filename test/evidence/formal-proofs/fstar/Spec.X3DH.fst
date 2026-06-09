@@ -110,9 +110,18 @@ let compute_dh_bob ik_b_secret spk_b_secret opk_b_secret ik_a_public ek_a_public
 (** -------------------------------------------------------------------- **)
 (** HKDF Secret Derivation                                               **)
 (**                                                                       **)
-(** ikm = 0xFF*32 || dh1 || dh2 || dh3 || [dh4]                         **)
+(** ikm  = 0xFF*32 || dh1 || dh2 || dh3 || [dh4]                        **)
 (** salt = 0x00*32                                                       **)
-(** info = "UmbraVox_X3DH_v1"                                           **)
+(** info = "UmbraVox_X3DH_v1" || alice_ik_pub || bob_ik_pub             **)
+(**                                                                       **)
+(** Finding M35C.1: the prior spec omitted alice_ik_pub and bob_ik_pub   **)
+(** from the HKDF info string, diverging from the production code which  **)
+(** binds the identity public keys per Signal X3DH §3.3 (M27.6.10).     **)
+(** The binding prevents cross-identity re-use: a session derived for    **)
+(** (Alice_1, Bob_1) cannot be replayed as (Alice_2, Bob_2) even if the  **)
+(** DH outputs collide.  Production adds 4-byte LE length prefixes       **)
+(** (fixed 0x00000020 for 32-byte keys); the spec abstracts this as      **)
+(** direct concatenation since key_size is a fixed constant.             **)
 (** output = 32 bytes                                                    **)
 (** -------------------------------------------------------------------- **)
 
@@ -121,18 +130,24 @@ val derive_secret :
     -> dh2:seq UInt8.t{Seq.length dh2 = key_size}
     -> dh3:seq UInt8.t{Seq.length dh3 = key_size}
     -> dh4:option (seq UInt8.t)
+    -> alice_ik_pub:seq UInt8.t{Seq.length alice_ik_pub = key_size}
+    -> bob_ik_pub:seq UInt8.t{Seq.length bob_ik_pub = key_size}
     -> Tot (seq UInt8.t)
-let derive_secret dh1 dh2 dh3 dh4 =
+let derive_secret dh1 dh2 dh3 dh4 alice_ik_pub bob_ik_pub =
   let pad  = Seq.create 32 0xffuy in
   let salt = Seq.create 32 0x00uy in
   let ikm_base = Seq.append pad (Seq.append dh1 (Seq.append dh2 dh3)) in
   let ikm = match dh4 with
             | Some d4 -> Seq.append ikm_base d4
             | None -> ikm_base in
+  (* Bind identity public keys into the HKDF info string (Signal X3DH §3.3).
+     Production prefixes each key with its 4-byte length; spec abstracts this
+     as direct concatenation since key_size = 32 is a fixed constant. *)
+  let info = Seq.append x3dh_info (Seq.append alice_ik_pub bob_ik_pub) in
   (* hkdf is defined as Seq.create len 0uy, so its length equals len = secret_size.
      This is a structural fact about the abstract stub, not a cryptographic assumption. *)
-  assert (Seq.length (hkdf salt ikm x3dh_info secret_size) = secret_size);
-  hkdf salt ikm x3dh_info secret_size
+  assert (Seq.length (hkdf salt ikm info secret_size) = secret_size);
+  hkdf salt ikm info secret_size
 
 (** -------------------------------------------------------------------- **)
 (** SPK Signature Verification                                           **)
@@ -150,9 +165,13 @@ let verify_spk bob_ed25519_pub spk_public signature =
 (** Full X3DH Protocol                                                   **)
 (** -------------------------------------------------------------------- **)
 
-(** Alice initiates X3DH. Returns None if SPK signature is invalid. *)
+(** Alice initiates X3DH. Returns None if SPK signature is invalid.
+    ik_a_public must be Alice's X25519 identity public key (the 32-byte public
+    part of ik_a_secret); it is bound into the HKDF info string alongside Bob's
+    identity public key for cross-identity session isolation (Signal X3DH §3.3). *)
 val x3dh_initiate :
     ik_a_secret:seq UInt8.t{Seq.length ik_a_secret = key_size}
+    -> ik_a_public:seq UInt8.t{Seq.length ik_a_public = key_size}
     -> ek_a_secret:seq UInt8.t{Seq.length ek_a_secret = key_size}
     -> ik_b_public:seq UInt8.t{Seq.length ik_b_public = key_size}
     -> spk_b_public:seq UInt8.t{Seq.length spk_b_public = key_size}
@@ -160,13 +179,13 @@ val x3dh_initiate :
     -> spk_sig:seq UInt8.t
     -> opk_b:option (s:seq UInt8.t{Seq.length s = key_size})
     -> Tot (option (seq UInt8.t))
-let x3dh_initiate ik_a_secret ek_a_secret ik_b_public spk_b_public
+let x3dh_initiate ik_a_secret ik_a_public ek_a_secret ik_b_public spk_b_public
                    bob_ed25519_pub spk_sig opk_b =
   if not (verify_spk bob_ed25519_pub spk_b_public spk_sig) then None
   else
     let (dh1, dh2, dh3, dh4) =
       compute_dh_alice ik_a_secret ek_a_secret ik_b_public spk_b_public opk_b in
-    Some (derive_secret dh1 dh2 dh3 dh4)
+    Some (derive_secret dh1 dh2 dh3 dh4 ik_a_public ik_b_public)
 
 (** -------------------------------------------------------------------- **)
 (** Cryptographic axiom: DH commutativity                                **)
@@ -281,5 +300,6 @@ val spk_rejection_lemma : pub:seq UInt8.t -> spk:seq UInt8.t
     -> Lemma (not (ed25519_verify pub spk bad_sig) ==>
               x3dh_initiate
                 (Seq.create key_size 0uy) (Seq.create key_size 0uy)
+                (Seq.create key_size 0uy)
                 (Seq.create key_size 0uy) spk pub bad_sig None == None)
 let spk_rejection_lemma pub spk bad_sig = ()

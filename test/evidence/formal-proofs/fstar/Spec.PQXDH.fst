@@ -68,6 +68,10 @@ val mlkem_decaps : dk:seq UInt8.t -> ct:seq UInt8.t
     -> Tot (seq UInt8.t)
 let mlkem_decaps dk ct = Seq.create mlkem_ss_size 0uy
 
+(** SHA-256 hash (from Spec.SHA256) — used to bind pq_ct into HKDF IKM *)
+val sha256 : msg:seq UInt8.t -> Tot (s:seq UInt8.t{Seq.length s = 32})
+let sha256 msg = Seq.create 32 0uy  (* abstract -- specified by Spec.SHA256 *)
+
 (** -------------------------------------------------------------------- **)
 (** Classical 4-DH Computations (same as X3DH)                          **)
 (** -------------------------------------------------------------------- **)
@@ -104,10 +108,21 @@ let pq_encapsulate pq_ek randomness =
 (** -------------------------------------------------------------------- **)
 (** HKDF Secret Derivation (hybrid)                                      **)
 (**                                                                       **)
-(** ikm = 0xFF*32 || dh1 || dh2 || dh3 || [dh4] || pq_ss               **)
+(** ikm  = 0xFF*32 || dh1 || dh2 || dh3 || [dh4] || pq_ss || SHA256(pq_ct) **)
 (** salt = 0x00*32                                                       **)
-(** info = "UmbraVox_PQXDH_v1"                                          **)
+(** info = "UmbraVox_PQXDH_v1" || alice_ik_pub || bob_ik_pub            **)
 (** output = 32 bytes                                                    **)
+(**                                                                       **)
+(** Finding M35C.1 (two sub-issues):                                     **)
+(**   (a) Prior spec omitted SHA256(pq_ct) from the IKM.  The production **)
+(**       code binds the ML-KEM ciphertext via SHA256(pq_ct) so that     **)
+(**       both parties commit to the same ciphertext, preventing KEM     **)
+(**       ciphertext substitution attacks.                                **)
+(**   (b) Prior spec omitted identity key binding from the info string.  **)
+(**       Production code appends alice_ik_pub and bob_ik_pub (with 4-   **)
+(**       byte length prefixes per M27.6.10) for cross-identity session  **)
+(**       isolation.  Spec abstracts length prefixes as direct concat    **)
+(**       since key_size = 32 is a fixed constant.                       **)
 (** -------------------------------------------------------------------- **)
 
 val derive_pq_secret :
@@ -116,19 +131,24 @@ val derive_pq_secret :
     -> dh3:seq UInt8.t{Seq.length dh3 = key_size}
     -> dh4:option (seq UInt8.t)
     -> pq_ss:seq UInt8.t
+    -> pq_ct:seq UInt8.t
+    -> alice_ik_pub:seq UInt8.t{Seq.length alice_ik_pub = key_size}
+    -> bob_ik_pub:seq UInt8.t{Seq.length bob_ik_pub = key_size}
     -> Tot (seq UInt8.t)
-let derive_pq_secret dh1 dh2 dh3 dh4 pq_ss =
+let derive_pq_secret dh1 dh2 dh3 dh4 pq_ss pq_ct alice_ik_pub bob_ik_pub =
   let pad  = Seq.create 32 0xffuy in
   let salt = Seq.create 32 0x00uy in
+  let ct_hash = sha256 pq_ct in  (* ciphertext binding: prevents KEM CT substitution *)
   let ikm_base = Seq.append pad (Seq.append dh1 (Seq.append dh2 dh3)) in
   let ikm_with_dh4 = match dh4 with
                      | Some d4 -> Seq.append ikm_base d4
                      | None -> ikm_base in
-  let ikm = Seq.append ikm_with_dh4 pq_ss in
+  let ikm = Seq.append (Seq.append ikm_with_dh4 pq_ss) ct_hash in
+  let info = Seq.append pqxdh_info (Seq.append alice_ik_pub bob_ik_pub) in
   (* hkdf is defined as Seq.create len 0uy, so its length equals len = secret_size.
      This is a structural fact about the abstract stub, not a cryptographic assumption. *)
-  assert (Seq.length (hkdf salt ikm pqxdh_info secret_size) = secret_size);
-  hkdf salt ikm pqxdh_info secret_size
+  assert (Seq.length (hkdf salt ikm info secret_size) = secret_size);
+  hkdf salt ikm info secret_size
 
 (** -------------------------------------------------------------------- **)
 (** Full PQXDH Protocol (Alice initiates)                                **)
@@ -136,6 +156,7 @@ let derive_pq_secret dh1 dh2 dh3 dh4 pq_ss =
 
 val pqxdh_initiate :
     ik_a_secret:seq UInt8.t{Seq.length ik_a_secret = key_size}
+    -> ik_a_public:seq UInt8.t{Seq.length ik_a_public = key_size}
     -> ek_a_secret:seq UInt8.t{Seq.length ek_a_secret = key_size}
     -> ik_b_public:seq UInt8.t{Seq.length ik_b_public = key_size}
     -> spk_b_public:seq UInt8.t{Seq.length spk_b_public = key_size}
@@ -145,7 +166,7 @@ val pqxdh_initiate :
     -> pq_ek:seq UInt8.t
     -> pq_randomness:seq UInt8.t
     -> Tot (option (seq UInt8.t & seq UInt8.t))
-let pqxdh_initiate ik_a_secret ek_a_secret ik_b_public spk_b_public
+let pqxdh_initiate ik_a_secret ik_a_public ek_a_secret ik_b_public spk_b_public
                     bob_ed25519_pub spk_sig opk_b pq_ek pq_randomness =
   if not (ed25519_verify bob_ed25519_pub spk_b_public spk_sig) then None
   else
@@ -155,7 +176,7 @@ let pqxdh_initiate ik_a_secret ek_a_secret ik_b_public spk_b_public
     (* pq_ss = fst (mlkem_encaps pq_ek pq_randomness) = fst (Seq.create mlkem_ss_size 0uy, Seq.empty).
        Its length is therefore mlkem_ss_size by the definition of the abstract stub. *)
     assert (Seq.length pq_ss = mlkem_ss_size);
-    let master = derive_pq_secret dh1 dh2 dh3 dh4 pq_ss in
+    let master = derive_pq_secret dh1 dh2 dh3 dh4 pq_ss pq_ct ik_a_public ik_b_public in
     Some (master, pq_ct)
 
 (** -------------------------------------------------------------------- **)

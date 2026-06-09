@@ -394,6 +394,14 @@ decryptSenderKey
     -> Word64               -- ^ Current POSIX time (seconds)
     -> IO (Either SenderKeyError (SenderKeyState, ByteString))
 decryptSenderKey st msg nowSecs
+    -- Note (M35B): the sender ID comparison below uses non-CT (==).  Sender
+    -- IDs are public identifiers (Ed25519 public keys) and the early return
+    -- intentionally distinguishes UnknownSender from other errors for UX
+    -- purposes.  The timing difference may allow a network observer to infer
+    -- whether a sender is recognized by this node.  This is accepted as a
+    -- metadata-privacy trade-off; the lookup is architecturally unavoidable
+    -- (we need the state to verify the signature, and state is keyed by
+    -- sender ID).  Signature is verified before any key material is used.
     | skmSenderId msg /= sksSenderId st
     = pure $ Left (UnknownSender (skmSenderId msg))
     | skmIteration msg < sksIteration st

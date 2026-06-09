@@ -102,8 +102,17 @@ data SecureBytes = SecureBytes
 
 -- | Allocate a new 'SecureBytes' of @n@ bytes, all initialised to zero.
 --
--- The buffer is mlock'd to prevent swap-out and excluded from core dumps.
--- Both calls are best-effort; failure is silently ignored.
+-- The buffer is mlock'd to prevent swap-out and excluded from core dumps
+-- via @madvise(MADV_DONTDUMP)@.  Both calls are best-effort: on systems
+-- with a low @RLIMIT_MEMLOCK@ (or when the process limit is exhausted)
+-- @mlock@ may fail silently, meaning the buffer __is not__ actually locked
+-- into RAM and may be swapped to disk.  Callers have no visibility into
+-- which buffers are actually protected.
+--
+-- TODO(M35B.mlock): Log or return a warning when @mlock@/@madvise@ fails.
+-- Recommended: verify at process startup that @RLIMIT_MEMLOCK@ is at least
+-- @total_key_material_bytes@ and abort with a clear error if not.  This
+-- gives operators early notice rather than silent degraded protection.
 newSecureBytes :: Int -> IO SecureBytes
 newSecureBytes n = do
     p  <- mallocBytes n :: IO (Ptr Word8)
