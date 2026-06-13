@@ -132,18 +132,18 @@ data RatchetState = RatchetState
       -- ^ Receiving message counter
     , rsPrevChainN  :: !Word32
       -- ^ Previous sending chain length (sent in header)
-    , rsSkippedKeys :: !(Map (ByteString, Word32) (ByteString, ByteString, Word64, Word64))
+    , rsSkippedKeys :: !(Map (ByteString, Word32) (SecureBytes, SecureBytes, Word64, Word64))
       -- ^ Skipped message keys indexed by (DH public key, counter).
       -- Each entry is (msgKey, chainKey, insertSeq, wallTimestamp).
       -- M27.6.9: wallTimestamp records wall-clock insertion time for
       -- time-based expiry (48h).  insertSeq records insertion order
       -- for FIFO eviction.
-      -- TODO(M15.5): msgKey and chainKey values are plain ByteString on the
-      -- GC heap and are NOT zeroed on session teardown or key eviction.
-      -- Migration requires replacing ByteString with SecureBytes here and
-      -- calling zeroAndFree when entries are removed from the map.
-      -- Blast radius: heap snapshot after session close retains all cached
-      -- skipped message keys, sufficient to decrypt the corresponding messages.
+      -- M40.32 (closes M15.5): msgKey and chainKey are 'SecureBytes'
+      -- (mlock'd, MADV_DONTDUMP) and are zeroed via 'zeroSkippedEntry'
+      -- whenever an entry leaves the map — on consumption ('trySkippedKeys'),
+      -- FIFO eviction ('evictOldest'), or age expiry ('evictByAge').  This
+      -- closes the prior gap where plaintext key material survived on the GC
+      -- heap (and in session snapshots) for the whole out-of-order window.
     , rsSkipSeq :: !Word64
       -- ^ Monotonic counter incremented on each skipped-key insertion.
       -- Used by 'evictOldest' to remove the truly oldest entry (by
@@ -217,12 +217,47 @@ maxSeenDHKeys = defaultMaxSeenDHKeys
 skippedKeyMaxAgeSecs :: Word64
 skippedKeyMaxAgeSecs = 172800
 
+-- | M40.32: Zero the key material (msgKey + chainKey) of a skipped-key
+-- entry.  Called on every path that removes an entry from 'rsSkippedKeys'
+-- (consumption in 'trySkippedKeys', FIFO eviction in 'evictOldest', age
+-- expiry in 'evictByAge') so plaintext key bytes never survive on the GC
+-- heap or in a session snapshot beyond their lifetime.  Runs in 'IO' via
+-- strict 'mapM_'/sequencing — never inside a lazy 'Map' thunk.
+zeroSkippedEntry :: (SecureBytes, SecureBytes, Word64, Word64) -> IO ()
+zeroSkippedEntry (msgKeySB, chainKeySB, _, _) = do
+    zeroAndFree msgKeySB
+    zeroAndFree chainKeySB
+
 -- | Evict skipped keys older than 'skippedKeyMaxAgeSecs'.
 -- Uses the wall-clock timestamp (4th tuple element) for age comparison.
 -- Evicts entries where (currentTimeSecs - wallTimestamp) >= threshold.
-evictByAge :: Word64 -> Map (ByteString, Word32) (ByteString, ByteString, Word64, Word64)
-           -> Map (ByteString, Word32) (ByteString, ByteString, Word64, Word64)
-evictByAge currentTimeSecs = Map.filter (\(_, _, _, ts) -> currentTimeSecs - ts < skippedKeyMaxAgeSecs)
+--
+-- Finding:       M40 round-2 (DR-H2) — the prior predicate computed the
+--                unguarded subtraction @currentTimeSecs - ts@ on 'Word64'.
+--                A future-dated @ts@ (ts > currentTimeSecs) — e.g. clock
+--                skew, or a 'wallTs' injected via a restored/imported
+--                session — underflows to a huge value, so the entry was
+--                evicted immediately instead of kept.
+-- Vulnerability: Inconsistent expiry vs 'trySkippedKeys' (which guards the
+--                same subtraction at line ~633): legitimate out-of-order
+--                skipped keys could be silently dropped (loss of delivery),
+--                or — with the opposite skew — the 48h cap circumvented.
+-- Fix:           Guard the future-timestamp case before subtracting, mirroring
+--                'trySkippedKeys': keep when @currentTimeSecs <= ts@ or the
+--                bounded age is under the threshold.
+-- Verified:      Predicate now matches 'trySkippedKeys' pruning semantics;
+--                no 'Word64' underflow path remains.
+--
+-- M40.32: now runs in 'IO' so it can zero the key material of every entry
+-- it drops (the keep predicate is unchanged).
+evictByAge :: Word64 -> Map (ByteString, Word32) (SecureBytes, SecureBytes, Word64, Word64)
+           -> IO (Map (ByteString, Word32) (SecureBytes, SecureBytes, Word64, Word64))
+evictByAge currentTimeSecs m = do
+    let keepP (_, _, _, ts) =
+            currentTimeSecs <= ts || (currentTimeSecs - ts) < skippedKeyMaxAgeSecs
+        (kept, expired) = Map.partition keepP m
+    mapM_ zeroSkippedEntry (Map.elems expired)
+    pure kept
 
 ------------------------------------------------------------------------
 -- KDF helpers
@@ -622,30 +657,37 @@ dhRatchet st header nowSecs = do
 -- rejected and evicted from the cache before lookup.
 --
 -- M15.3: Now monadic (IO) — makeNonce requires IO for SecureBytes.
--- The stored chain key (ByteString) is temporarily wrapped in SecureBytes
--- for nonce re-derivation.
+-- M40.32: the stored msgKey/chainKey are 'SecureBytes'; the chain key is
+-- passed straight to 'makeNonce' and the consumed entry is zeroed after use.
 trySkippedKeys :: RatchetState -> Word64 -> RatchetHeader -> ByteString -> ByteString
                -> IO (Maybe (RatchetState, ByteString))
 trySkippedKeys st nowSecs header ct tag = do
     let !lookupKey = (rhDHPublic header, rhMsgN header)
-        -- M27.6.9: evict expired entries based on wall-clock timestamp
-        !pruned = Map.filter (\(_, _, _, ts) ->
-            nowSecs <= ts || (nowSecs - ts) <= skippedKeyMaxAgeSecs) (rsSkippedKeys st)
-        !st0 = st { rsSkippedKeys = pruned }
+        -- M27.6.9: split expired entries (by wall-clock timestamp) from live
+        -- ones so the expired key material can be zeroed (M40.32) rather than
+        -- silently dropped from the GC heap.
+        keepP (_, _, _, ts) = nowSecs <= ts || (nowSecs - ts) <= skippedKeyMaxAgeSecs
+        (!pruned, !expired) = Map.partition keepP (rsSkippedKeys st)
+    -- M40.32: zero the key material of every entry dropped by age expiry.
+    mapM_ zeroSkippedEntry (Map.elems expired)
+    let !st0 = st { rsSkippedKeys = pruned }
     case Map.lookup lookupKey pruned of
         Nothing -> pure Nothing
-        Just (msgKey, chainKey, _insertSeq, _insertTime) -> do
+        Just entry@(msgKeySB, chainKeySB, _insertSeq, _insertTime) -> do
             -- Re-derive nonce from the stored chain key, matching the nonce
             -- used during encryption (M10.2.5: nonce comes from chain key).
-            chainKeySB <- fromByteString chainKey
             nonce <- makeNonce chainKeySB (rhMsgN header)
+            msgKey <- toByteString msgKeySB
             let !aad = encodeHeader header
             mPt <- GCMFFI.gcmDecrypt msgKey nonce aad ct tag
-            pure $ case mPt of
-                Just plaintext ->
+            case mPt of
+                Just plaintext -> do
+                    -- M40.32: zero the consumed key material immediately after
+                    -- use (the GCM call has already completed above).
+                    zeroSkippedEntry entry
                     let !st' = st0 { rsSkippedKeys = Map.delete lookupKey pruned }
-                    in Just (st', plaintext)
-                Nothing -> Nothing
+                    pure (Just (st', plaintext))
+                Nothing -> pure Nothing
 
 -- | Skip message keys from current counter up to (but not including) @until@.
 -- Stores derived keys in rsSkippedKeys. Returns Nothing if too many would be
@@ -664,18 +706,25 @@ skipMessageKeys st until' nowSecs
         Nothing -> pure Nothing
         Just _  -> do
             result <- go st
-            let -- M7.3.6: enforce total skipped-key cap across all DH ratchets
-                !aged   = evictByAge nowSecs (rsSkippedKeys result)
-                !pruned = evictOldest aged
+            -- M7.3.6: enforce total skipped-key cap across all DH ratchets.
+            -- M40.32: evictByAge/evictOldest now run in IO and zero the key
+            -- material of any entry they drop, so expired/over-cap keys never
+            -- linger in memory.
+            aged   <- evictByAge nowSecs (rsSkippedKeys result)
+            pruned <- evictOldest aged
             pure $ Just result { rsSkippedKeys = pruned }
   where
     go s
         | rsRecvN s >= until' = pure s
         | otherwise = do
-            -- M15.3: extract chain key for HMAC, then store the ByteString
-            -- copy in the skipped-keys map for nonce re-derivation
+            -- M15.3: extract chain key for HMAC, then store a copy in the
+            -- skipped-keys map for nonce re-derivation.
             oldChainKeyBS <- toByteString (rsRecvChain s)
             (newChainKey, msgKey) <- kdfCK (rsRecvChain s)
+            -- M40.32: store msgKey + chainKey as SecureBytes (mlock'd, zeroed
+            -- on removal) rather than plain GC-heap ByteString.
+            msgKeySB   <- fromByteString msgKey
+            chainKeySB <- fromByteString oldChainKeyBS
             let !peerKey = case rsDHRecv s of
                     Just pk -> pk
                     Nothing -> error "skipMessageKeys: impossible: rsDHRecv is Nothing (guarded above)"
@@ -685,7 +734,7 @@ skipMessageKeys st until' nowSecs
                 -- can re-derive the nonce, evictOldest can find the truly
                 -- oldest entry by insertion order, and evictByAge can
                 -- expire stale entries by wall-clock time (M27.6.9).
-                !skipped = Map.insert key (msgKey, oldChainKeyBS, seq', nowSecs) (rsSkippedKeys s)
+                !skipped = Map.insert key (msgKeySB, chainKeySB, seq', nowSecs) (rsSkippedKeys s)
             go s
                 { rsRecvChain   = newChainKey
                 , rsRecvN       = rsRecvN s + 1
@@ -735,10 +784,13 @@ skipMessageKeys st until' nowSecs
 --
 -- M23.3.4: Uses a secondary index (Map Word64 key) for O(log n) per
 -- eviction instead of O(n) linear scan.
-evictOldest :: Map (ByteString, Word32) (ByteString, ByteString, Word64, Word64)
-            -> Map (ByteString, Word32) (ByteString, ByteString, Word64, Word64)
+--
+-- M40.32: now runs in 'IO' so each evicted entry's key material is zeroed
+-- (via 'zeroSkippedEntry') on every recursion step before it is dropped.
+evictOldest :: Map (ByteString, Word32) (SecureBytes, SecureBytes, Word64, Word64)
+            -> IO (Map (ByteString, Word32) (SecureBytes, SecureBytes, Word64, Word64))
 evictOldest m
-    | Map.size m <= maxTotalSkipped = m
+    | Map.size m <= maxTotalSkipped = pure m
     | otherwise =
         -- Build a secondary index: insertSeq -> primary key, then evict
         -- entries with the smallest insertion sequence numbers.
@@ -748,16 +800,20 @@ evictOldest m
                 m
         in evictWithIndex m seqIndex
   where
-    evictWithIndex :: Map (ByteString, Word32) (ByteString, ByteString, Word64, Word64)
+    evictWithIndex :: Map (ByteString, Word32) (SecureBytes, SecureBytes, Word64, Word64)
                    -> Map Word64 (ByteString, Word32)
-                   -> Map (ByteString, Word32) (ByteString, ByteString, Word64, Word64)
+                   -> IO (Map (ByteString, Word32) (SecureBytes, SecureBytes, Word64, Word64))
     evictWithIndex primary idx
-        | Map.size primary <= maxTotalSkipped = primary
-        | Map.null idx = primary
-        | otherwise =
+        | Map.size primary <= maxTotalSkipped = pure primary
+        | Map.null idx = pure primary
+        | otherwise = do
             let ((_minSeq, oldestKey), idx') = Map.deleteFindMin idx
-                !primary' = Map.delete oldestKey primary
-            in evictWithIndex primary' idx'
+            -- M40.32: zero the evicted entry's key material before dropping it.
+            case Map.lookup oldestKey primary of
+                Just entry -> zeroSkippedEntry entry
+                Nothing    -> pure ()
+            let !primary' = Map.delete oldestKey primary
+            evictWithIndex primary' idx'
 
 ------------------------------------------------------------------------
 -- Nonce and header encoding

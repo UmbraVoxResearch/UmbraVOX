@@ -166,7 +166,13 @@ verifyBoundChallenge :: ByteString  -- ^ challenge
 verifyBoundChallenge challenge serverNonce nonce createdAt now
     | BS.length challenge /= challengeSize = pure False
     | BS.length nonce /= nonceSize = pure False
-    | now > createdAt && (now - createdAt) > challengeExpirySeconds = pure False
+    -- M40.23: A future-dated challenge (now < createdAt) previously bypassed the
+    -- expiry check, because the `now > createdAt` guard short-circuited the whole
+    -- condition to False and the challenge was accepted regardless of age.  Reject
+    -- future timestamps outright (clock skew / tampered createdAt), then apply the
+    -- expiry window unconditionally — `now >= createdAt` makes the subtraction safe.
+    | now < createdAt = pure False
+    | (now - createdAt) > challengeExpirySeconds = pure False
     | otherwise = do
         !hash <- SHA256FFI.sha256 (serverNonce <> challenge <> nonce)
         pure (hasLeadingZeroBits difficultyBits hash)

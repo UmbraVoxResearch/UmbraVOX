@@ -291,13 +291,24 @@ recvInitialMessage t = do
                          ++ " exceeds limit " ++ show maxInitialMessageSize
                 else do
                     payload <- anyRecv t n
-                    -- encIK(48) + ephemeralPub(32) = 80 bytes before ctLen
-                    case getW32BESafe (bsSlice 80 4 payload) of
+                    -- M40.3: anyRecv may return fewer than n bytes (single recv),
+                    -- and the declared length, the fixed prefix (encIK 48 +
+                    -- ephemeralPub 32 + ctLen 4 = 84), and the inner ciphertext
+                    -- length are all peer-controlled.  Validate the framing
+                    -- exactly before slicing so a truncated or inconsistent
+                    -- message cannot silently yield a wrong-length MLKEM ciphertext.
+                    if BS.length payload /= n
+                        then fail "PQXDH: truncated initial message (short read)"
+                    else if n < 84
+                        then fail "PQXDH: initial message too short for header"
+                    else case getW32BESafe (bsSlice 80 4 payload) of
                         Nothing -> fail "PQXDH: incomplete initial message payload"
                         Just ctLen -> do
                             let !ct = fromIntegral ctLen :: Int
-                            pure (bsSlice 0 48 payload, bsSlice 48 32 payload,
-                                  MLKEMCiphertext (bsSlice 84 ct payload))
+                            if 84 + ct /= n
+                                then fail "PQXDH: declared ciphertext length inconsistent with message"
+                                else pure (bsSlice 0 48 payload, bsSlice 48 32 payload,
+                                           MLKEMCiphertext (bsSlice 84 ct payload))
 
 ------------------------------------------------------------------------
 -- Identity key wrapping (M27.2.4)

@@ -213,7 +213,7 @@ gcmDecryptSafe :: ByteString -> ByteString -> ByteString -> ByteString
 gcmDecryptSafe !key !nonce !aad !ct !tag
     | BS.length key /= 32   = Left "AES-256-GCM: key must be 32 bytes"
     | BS.length nonce /= 12 = Left "AES-256-GCM: nonce must be 12 bytes"
-    | BS.length tag /= 16   = Right Nothing
+    | BS.length tag /= 16   = Left "AES-256-GCM: tag must be 16 bytes"
     | otherwise = Right $
     let !h  = bsToGF (aesEncrypt key (BS.replicate 16 0))
         !j0 = nonce <> BS.pack [0, 0, 0, 1]

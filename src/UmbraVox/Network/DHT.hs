@@ -23,6 +23,7 @@ module UmbraVox.Network.DHT
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as BS8
 import Data.Word (Word64)
 
 import qualified UmbraVox.Crypto.Generated.FFI.SHA256 as SHA256FFI

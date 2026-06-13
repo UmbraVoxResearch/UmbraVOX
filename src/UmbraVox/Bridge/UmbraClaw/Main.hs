@@ -96,34 +96,50 @@ dispatch sessionRef line =
 
 -- | AUTH [hex-credentials]: create and authenticate an UmbraClaw session.
 --
--- If hex credentials are provided, they are decoded as "username:token".
--- Otherwise a default session is created with stub credentials.
+-- Credentials must be hex-encoded "username:token".  Missing, empty, or
+-- malformed credentials are rejected with AUTH_FAIL — there is no stub
+-- fallback.
+--
+-- Finding    M35-R8-F02 — Prior code fell back to hardcoded stub
+--            credentials ("umbraclaw"/"stub-token") when AUTH received
+--            empty or malformed hex input, allowing any process with
+--            access to the IPC channel to obtain an authenticated session
+--            without supplying valid credentials.
+-- Vulnerability: IPC-accessible process sends AUTH with no data; bridge
+--            accepts it as authenticated via stub fallback.
+-- Fix:       parseCredentials returns Maybe; handleAuth responds
+--            AUTH_FAIL on Nothing instead of falling back to stubs.
+-- Verified:  Stub fallback removed; all error paths return AUTH_FAIL.
 handleAuth :: IORef (Maybe UmbraClawSession) -> String -> IO ()
 handleAuth sessionRef hexCreds = do
-    session <- initSession "localhost" 9000
-    let (user, tok) = parseCredentials hexCreds
-    authResult <- authenticate session user tok
-    case authResult of
-        AuthComplete -> do
-            writeIORef sessionRef (Just session)
-            respond "AUTH_OK"
-        AuthFailed reason ->
-            respond ("AUTH_FAIL " ++ reason)
-        _ ->
-            respond "ERR unexpected auth state"
+    case parseCredentials hexCreds of
+        Nothing ->
+            respond "AUTH_FAIL invalid credentials format"
+        Just (user, tok) -> do
+            session <- initSession "localhost" 9000
+            authResult <- authenticate session user tok
+            case authResult of
+                AuthComplete -> do
+                    writeIORef sessionRef (Just session)
+                    respond "AUTH_OK"
+                AuthFailed reason ->
+                    respond ("AUTH_FAIL " ++ reason)
+                _ ->
+                    respond "ERR unexpected auth state"
 
 -- | Parse hex-encoded credentials in "username:token" format.
--- Returns default stub credentials if input is empty or invalid.
-parseCredentials :: String -> (ByteString, ByteString)
+-- Returns @Nothing@ if the input is empty, not valid hex, or missing the
+-- colon separator — callers must reject rather than substitute defaults.
+parseCredentials :: String -> Maybe (ByteString, ByteString)
 parseCredentials hexStr =
     case hexToBytes hexStr of
-        Nothing -> (stringToBytes "umbraclaw", stringToBytes "stub-token")
+        Nothing -> Nothing
         Just bs ->
             let s = bytesToString bs
                 (u, rest) = break (== ':') s
-            in if null rest
-                then (stringToBytes "umbraclaw", stringToBytes "stub-token")
-                else (stringToBytes u, stringToBytes (drop 1 rest))
+            in if null u || null rest
+                then Nothing
+                else Just (stringToBytes u, stringToBytes (drop 1 rest))
 
 -- | SEND <hex>: encode message and enqueue for UmbraClaw transport.
 handleSend :: IORef (Maybe UmbraClawSession) -> String -> IO ()

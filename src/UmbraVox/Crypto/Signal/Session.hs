@@ -18,7 +18,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.Map.Strict as Map
 import qualified Data.Sequence as Seq
-import Data.Word (Word32, Word64)
+import Data.Word (Word8, Word32, Word64)
 
 import UmbraVox.Crypto.Signal.DoubleRatchet (RatchetState(..))
 import UmbraVox.Crypto.SecureBytes (SecureBytes, fromByteString, toByteString)
@@ -82,6 +82,17 @@ initSession sharedSecret = do
 -- Serialization
 ------------------------------------------------------------------------
 
+-- | M40.32a: version byte prefixing the skipped-key block.  Legacy sessions
+-- (written before this byte existed) began the block directly with the
+-- 4-byte big-endian skipped-key count, whose most-significant byte was always
+-- 0x00 (the count is bounded well below 16 777 216 by the eviction cap
+-- 'maxTotalSkipped').  A reader therefore disambiguates by peeking one byte:
+-- 0x01 => versioned (consume the byte, then read the count); 0x00 => legacy
+-- (the byte is the count MSB; read the full 4-byte count without consuming a
+-- version byte).  Per-entry layout is identical in both versions.
+skippedVersion :: Word8
+skippedVersion = 0x01
+
 -- | Serialize a session state to bytes for persistent storage.
 --
 -- Wire format (all lengths big-endian):
@@ -95,6 +106,7 @@ initSession sharedSecret = do
 --   [4: recvChain len][recvChain]
 --   [4: sendN][4: recvN][4: prevChainN]
 --   [8: skipSeq][8: nonceCounter]
+--   [1: skippedVersion = 0x01]   (M40.32a; legacy = absent, count MSB = 0x00)
 --   [4: skippedKeys count]
 --     for each entry:
 --       [4: dhPub len][dhPub][4: counter]
@@ -115,18 +127,21 @@ serializeSession ss = do
     rootKey   <- toByteString (rsRootKey rs)
     sendChain <- toByteString (rsSendChain rs)
     recvChain <- toByteString (rsRecvChain rs)
+    -- M40.32: skipped-key msgKey/chainKey are SecureBytes; extract to bytes
+    -- in IO before framing (wire layout is unchanged from the ByteString form).
+    let skippedList = Map.toList (rsSkippedKeys rs)
+        skippedCount = fromIntegral (length skippedList) :: Word32
+    skippedBytes <- fmap mconcat $ mapM
+        (\((k, n), (mkSB, ckSB, iseq, wallTs)) -> do
+            mk <- toByteString mkSB
+            ck <- toByteString ckSB
+            pure (putBlob k <> putWord32BE n
+                  <> putBlob mk <> putBlob ck <> putWord64BE iseq <> putWord64BE wallTs))
+        skippedList
     let -- DH recv
         dhRecvBytes = case rsDHRecv rs of
             Nothing  -> BS.singleton 0
             Just pk  -> BS.singleton 1 <> putBlob pk
-        -- Skipped keys
-        skippedList = Map.toList (rsSkippedKeys rs)
-        skippedCount = fromIntegral (length skippedList) :: Word32
-        skippedBytes = mconcat
-            [ putBlob k <> putWord32BE n
-              <> putBlob mk <> putBlob ck <> putWord64BE iseq <> putWord64BE wallTs
-            | ((k, n), (mk, ck, iseq, wallTs)) <- skippedList
-            ]
         -- Seen DH keys (replay detection FIFO)
         seenList  = foldr (:) [] (rsSeenDHKeys rs)
         seenCount = fromIntegral (length seenList) :: Word32
@@ -143,6 +158,7 @@ serializeSession ss = do
         , putWord32BE (rsPrevChainN rs)
         , putWord64BE (rsSkipSeq rs)
         , putWord64BE (rsNonceCounter rs)
+        , BS.singleton skippedVersion       -- M40.32a: skipped-block version
         , putWord32BE skippedCount
         , skippedBytes
         , putBlob (ssPeerIdentity ss)
@@ -168,6 +184,13 @@ deserializeSession bs0 =
             rootKeySB  <- fromByteString rootKey
             sendChainSB <- fromByteString sendChain
             recvChainSB <- fromByteString recvChain
+            -- M40.32: wrap each skipped entry's msgKey/chainKey into SecureBytes.
+            skippedSB <- traverse
+                (\(mk, ck, iseq, wallTs) -> do
+                    mkSB <- fromByteString mk
+                    ckSB <- fromByteString ck
+                    pure (mkSB, ckSB, iseq, wallTs))
+                skipped
             pure $ Just SessionState
                 { ssRatchetState = RatchetState
                     { rsDHSend      = (dhSecSB, dhPub)
@@ -178,7 +201,7 @@ deserializeSession bs0 =
                     , rsSendN       = sendN
                     , rsRecvN       = recvN
                     , rsPrevChainN  = prevChainN
-                    , rsSkippedKeys = skipped
+                    , rsSkippedKeys = skippedSB
                     , rsSkipSeq     = skipSeq
                     , rsNonceCounter = nonceCtr
                     , rsSeenDHKeys  = seenDH
@@ -216,7 +239,7 @@ parseSessionBytes bs0 = do
     (prevChainN, bs10) <- getW32 bs9
     (skipSeq, bs11)    <- getW64 bs10
     (nonceCtr, bs12)   <- getW64 bs11
-    (skCount, bs13)    <- getW32 bs12
+    (skCount, bs13)    <- getSkippedHeader bs12
     (skipped, bs14)    <- getSkippedKeys (fromIntegral skCount) bs13
     (peerIdent, bs15)  <- getBlob bs14
     (createdAt, bs16)  <- getW64 bs15
@@ -275,6 +298,16 @@ getW64 bs
                  (fromIntegral (BS.index bs 6) `shiftL`  8) .|.
                   fromIntegral (BS.index bs 7) :: Word64
         in Just (w, BS.drop 8 bs)
+
+-- | M40.32a: Read the skipped-key block header, returning the entry count and
+-- the remaining bytes.  Disambiguates the versioned format (leading 0x01
+-- version byte) from the legacy format (block begins directly with the 4-byte
+-- count, MSB always 0x00) by peeking the first byte.  See 'skippedVersion'.
+getSkippedHeader :: ByteString -> Maybe (Word32, ByteString)
+getSkippedHeader bs
+    | BS.null bs                      = Nothing
+    | BS.index bs 0 == skippedVersion = getW32 (BS.drop 1 bs)  -- versioned
+    | otherwise                       = getW32 bs              -- legacy
 
 -- | Read N skipped-key entries from the wire format.
 -- M27.6.9: Each entry now includes a wall-clock timestamp (Word64) for

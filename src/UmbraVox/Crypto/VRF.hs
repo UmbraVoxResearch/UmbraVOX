@@ -349,6 +349,24 @@ vrfVerify !pkBytes !alpha !proof
         case decodePoint pkBytes of
             Nothing -> Nothing
             Just !pkPoint ->
+                -- M35.VRF (M35-005): RFC 9381 §5.6.1 Step 2 — public key must be
+                -- in the prime-order subgroup.  Ed25519 has cofactor h=8; a small-
+                -- order public key (any of the 8 low-order points) collapses c*pk
+                -- to a fixed value for all c, enabling trivially forged proofs that
+                -- pass verification regardless of the input.  Reject such keys.
+                --
+                -- Finding    M35.VRF — vrfVerify validated Gamma against the prime-
+                --            order subgroup but did not validate the public key.
+                -- Vulnerability: Attacker supplies a small-order public key; for
+                --            any input α, a forged proof passes the challenge check
+                --            because c*pk == identity for all c, making U = s*B.
+                -- Fix:       Check [L]pk == identity before processing the proof.
+                -- Verified:  public key subgroup guard added (same pattern as Gamma).
+                let !pkIdentityEnc = BS.singleton 0x01 `BS.append` BS.replicate 31 0x00
+                    !lPk = scalarMul groupL pkPoint
+                in if encodePoint lPk /= pkIdentityEnc
+                then Nothing  -- pk not in prime-order subgroup (RFC 9381 §5.6.1 Step 2)
+                else
                 -- Step 2: Parse proof: Gamma (32) || c (16) || s (32)
                 let !gammaBytes = BS.take 32 proof
                     !cBytes = BS.take 16 (BS.drop 32 proof)

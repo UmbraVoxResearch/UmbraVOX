@@ -32,7 +32,7 @@ import UmbraVox.Crypto.GCM (gcmEncrypt, gcmDecrypt)
 import UmbraVox.Crypto.KeyStore (saveIdentityKeyAt)
 import UmbraVox.Crypto.Random (randomBytes)
 import UmbraVox.Crypto.Curve25519 (x25519, x25519Basepoint)
-import UmbraVox.Crypto.SecureBytes (toByteString)
+import UmbraVox.Crypto.SecureBytes (toByteString, fromByteString)
 import UmbraVox.Crypto.Signal.DoubleRatchet
     ( RatchetState(..)
     , ratchetInitAlice, ratchetInitBob
@@ -469,19 +469,20 @@ testDoubleRatchetMaxTotalSkipped = do
     -- using fake keys.  After skipMessageKeys adds ~100 more entries (total
     -- ~5060) evictOldest must trim the map back to exactly 5000.
     let fakeKey = BS.replicate 32 0xFF
-        -- Use counter values that sort before Alice's real keys so they
-        -- get evicted first.
-        preMap  = Map.fromList
-                    [ ((fakeKey, fromIntegral i), ( BS.replicate 32 (fromIntegral (i .&. 255))
-                                                   , BS.replicate 32 (fromIntegral ((i + 1) .&. 255))
-                                                   , fromIntegral i
-                                                   , 0 ))
-                    | i <- [0 :: Int .. 4959] ]
-        -- rsSkipSeq must be set to 4960 so that skipMessageKeys assigns
-        -- sequence numbers 4960..5059 to the real skipped keys, making
-        -- the pre-populated fake entries (seq 0..4959) the oldest and
-        -- therefore the first to be evicted by evictOldest (M10.3.5).
-        bobWithPreMap = bobSt0 { rsSkippedKeys = preMap, rsSkipSeq = 4960 }
+    -- Use counter values that sort before Alice's real keys so they get
+    -- evicted first.  M40.32: skipped-key values are now SecureBytes, so the
+    -- map must be built in IO via 'fromByteString'.
+    preMap <- fmap Map.fromList $ mapM
+                (\i -> do
+                    mkSB <- fromByteString (BS.replicate 32 (fromIntegral (i .&. 255)))
+                    ckSB <- fromByteString (BS.replicate 32 (fromIntegral ((i + 1) .&. 255)))
+                    pure ((fakeKey, fromIntegral i), (mkSB, ckSB, fromIntegral i, 0)))
+                [0 :: Int .. 4959]
+    -- rsSkipSeq must be set to 4960 so that skipMessageKeys assigns sequence
+    -- numbers 4960..5059 to the real skipped keys, making the pre-populated
+    -- fake entries (seq 0..4959) the oldest and therefore the first to be
+    -- evicted by evictOldest (M10.3.5).
+    let bobWithPreMap = bobSt0 { rsSkippedKeys = preMap, rsSkipSeq = 4960 }
 
     result <- ratchetDecrypt bobWithPreMap hdrLast ctLast tagLast
     case result of
