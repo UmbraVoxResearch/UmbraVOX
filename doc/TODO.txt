@@ -349,6 +349,21 @@ CLUSTER 3 — DHT (split: minimal safe subset NOW; rest BLOCKED on M24.4):
       bucket-protection bypass (Lookup.hs:206-207). BLOCKED on M40.4 verification path.
 Prereq order: M40.4a → M24.4 → M40.4b → M40.4c → M40.10 → M40.34.
 --------------------------------------------------------------------------------
+PRE-EXISTING core-network test failures (found 2026-06-13, NOT Cluster-3 regressions;
+PeerManager 9/9 + Presence 5/5 pass — these are in unrelated suites):
+[ ] T-PEX-1  [LOW] PeerExchange "single peer timestamp": test expects raw 1700000000
+      but impl quantizes to the hour (got 1699999200) — the hour-bucket feature landed
+      ([x] "Quantize PEX timestamps to 1-hour buckets") but its test vector was not
+      updated. Decide test-vs-spec; if quantization is intended, update the expected
+      value to the floored bucket.
+[ ] T-DHT-1  [MED] DHT "sybil: replacement cache non-empty" expects True, got False —
+      rejected sybil nodes are not landing in the replacement cache. Likely same area
+      as M40.34 (route unverifiable reply-nodes to replacement cache); investigate
+      whether this is the pre-existing gap M40.34 will close or a separate regression.
+[ ] T-DAN-1  [LOW] Dandelion "expected StemForward, got FluffBroadcast": probabilistic
+      stem/fluff routing test — confirm whether flaky (seed/randomness dependent) or a
+      real stem-forwarding regression before fixing.
+--------------------------------------------------------------------------------
 
 ================================================================================
 FULL ASSURANCE PIPELINE (M31-M39)
