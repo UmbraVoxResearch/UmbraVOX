@@ -19,11 +19,11 @@ import Control.Concurrent.MVar
 import Control.Monad (when)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Word (Word8, Word32, Word64)
-import System.IO (withBinaryFile, IOMode(..))
 import System.IO.Unsafe (unsafePerformIO)
 import System.Posix.Process (getProcessID)
 import System.Posix.Types (CPid(..))
 
+import qualified UmbraVox.Crypto.Generated.FFI.Entropy as Entropy
 import qualified UmbraVox.Crypto.Generated.FFI.HKDF as HKDFFFI
 import UmbraVox.Crypto.SecureBytes (SecureBytes, fromByteString, toByteString, zeroAndFree)
 
@@ -224,39 +224,42 @@ globalCSPRNG = unsafePerformIO newEmptyMVar
 -- already full).
 initCSPRNG :: IO ()
 initCSPRNG = do
+    -- M40.33c: register the pthread_atfork child handler (idempotent via
+    -- pthread_once) so a fork() sets the C-side flag that 'ensureState'
+    -- reads to force an immediate reseed in the child.
+    Entropy.entropyInit
     empty <- isEmptyMVar globalCSPRNG
     when empty $ do
         st <- seedCSPRNG
         _ <- tryPutMVar globalCSPRNG st
         pure ()
 
--- | Read entropy from @\/dev\/urandom@, retrying until exactly @n@ bytes
--- are obtained (handles partial reads from the OS).
+-- | Read exactly @n@ bytes of OS entropy with pool-ready (blocking) semantics.
 --
--- Finding: An implicit assumption that @\/dev\/urandom@ exists was never
---   documented, leaving it unclear whether this function is portable.
--- Vulnerability: None — @\/dev\/urandom@ is available on all POSIX platforms
---   targeted by UmbraVOX (Linux, macOS, FreeBSD, OpenBSD, NetBSD,
---   illumos/Solaris).  It is a mandatory POSIX extension on all modern BSDs
---   and is present on every macOS and Linux kernel since the early 1990s.
---   No code change is needed; this comment records the audit finding.
--- Fix: Documentation only — no code change required.
--- Verified: Confirmed @\/dev\/urandom@ presence on all CI target platforms.
+-- Finding:     M40.7 / M40.35 — the CSPRNG previously read both its key and its
+--   nonce from a non-blocking @\/dev\/urandom@ handle. On Linux @\/dev\/urandom@
+--   does NOT block before the kernel entropy pool is initialised, so early-boot
+--   reads can return low-quality bytes; HKDF-Extract debiases but cannot ADD
+--   missing entropy.
+-- Vulnerability: identity/prekey secrets generated at early boot could be
+--   derived from an under-seeded pool.
+-- Fix:         Delegates to 'Entropy.entropyRead' (csrc/entropy/bridge_entropy.c),
+--   which uses getrandom(2) flags=0 on Linux (blocks until the pool is ready),
+--   getentropy(2) on BSD/illumos/macOS, BCryptGenRandom on Windows, and a
+--   bounded @\/dev\/urandom@ fallback only when those are unavailable.
+-- Verified:    Returns exactly @n@ bytes or raises an error; the C bridge writes
+--   @n@ bytes and reports success (rc == 0) only after a complete read.
 readEntropy :: Int -> IO ByteString
 readEntropy n = do
-    result <- withBinaryFile "/dev/urandom" ReadMode (\h -> readLoop h n BS.empty)
-    if BS.length result < n
-        then error $ "readEntropy: short read from /dev/urandom (got "
-                   ++ show (BS.length result) ++ ", expected " ++ show n ++ ")"
-        else return result
-  where
-    readLoop h remaining acc
-        | remaining <= 0 = return acc
-        | otherwise = do
-            chunk <- BS.hGet h remaining
-            if BS.null chunk
-                then return acc  -- EOF, should not happen for /dev/urandom
-                else readLoop h (remaining - BS.length chunk) (acc <> chunk)
+    result <- Entropy.entropyRead n
+    case result of
+        Just bytes
+            | BS.length bytes == n -> return bytes
+            | otherwise ->
+                error $ "readEntropy: OS CSPRNG returned "
+                      ++ show (BS.length bytes) ++ " bytes, expected " ++ show n
+        Nothing ->
+            error $ "readEntropy: OS CSPRNG failed to provide " ++ show n ++ " bytes"
 
 -- | Encode PID and POSIX time into a 32-byte salt for HKDF-Extract.
 -- This makes the salt unique per process and per seeding event,
@@ -339,18 +342,41 @@ reseedCSPRNG old = do
 
 -- | Obtain a valid CSPRNG state, reseeding if needed.
 --
--- Reseeds on three conditions:
+-- Reseeds on four conditions:
 --
---   1. Fork detected (PID changed) — create a fresh state from OS entropy.
+--   1. Fork detected — via EITHER the pthread_atfork child flag ('M40.33c')
+--      OR a changed PID (lazy check). Creates a fresh state from OS entropy.
 --   2. Output count reached 'reseedInterval' — forward secrecy reseed.
 --   3. Time since last reseed exceeds 'reseedIntervalSecs' (M20.1.3) —
 --      time-based reseed for low-throughput processes.
+--
+-- M40.33e — Fork window is NARROWED, not closed. The pthread_atfork child
+-- handler sets a C11 atomic flag immediately on fork(), and 'entropyForked'
+-- reads+clears it here before any keystream is produced in the child, so a
+-- child cannot emit bytes derived from the parent's pre-fork state. However,
+-- under the threaded RTS the handler runs in an async-signal context; it only
+-- performs an async-signal-safe atomic store (no allocation, no locks), and
+-- the actual reseed happens lazily on the child's next 'randomBytes' call
+-- under the MVar. Between fork() and that first draw the child holds, but does
+-- not use, the inherited state.
+--
+-- RESIDUAL (M40.36 / review F6a — liveness, NOT confidentiality): if a thread
+-- forks() while another thread is inside 'modifyMVar globalCSPRNG', the child
+-- inherits the MVar in its locked state with no thread alive to release it, so
+-- the child's first 'randomBytes' deadlocks. This is the standard
+-- locked-mutex-across-fork hazard and is a denial-of-service, not a key-reuse,
+-- failure (a deadlocked child emits NO bytes, so it cannot leak parent-derived
+-- keystream). Closing it fully requires a pthread_atfork PREPARE/PARENT pair
+-- that takes and releases the MVar around fork — tracked as a TODO; the
+-- supported model meanwhile is fork-then-exec, or fork only from a thread that
+-- is not concurrently drawing randomness.
 ensureState :: CSPRNGState -> IO CSPRNGState
 ensureState s = do
+    forked  <- Entropy.entropyForked
     pid     <- fromIntegral <$> getProcessID
     nowSecs <- round <$> getPOSIXTime :: IO Word64
-    if csPID s /= pid then do
-        -- Fork detected — zero old key and create fresh state.
+    if forked || csPID s /= pid then do
+        -- Fork detected (atfork flag or PID change) — zero old key, fresh state.
         zeroAndFree (csKey s)
         seedCSPRNG
     else if csOutputs s >= reseedInterval then

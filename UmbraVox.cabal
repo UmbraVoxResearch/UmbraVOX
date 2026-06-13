@@ -156,6 +156,7 @@ library
       UmbraVox.Crypto.Generated.FFI.Dandelion
       UmbraVox.Crypto.Generated.FFI.NetworkProtocol
       UmbraVox.Crypto.Generated.FFI.SessionState
+      UmbraVox.Crypto.Generated.FFI.Entropy
       -- M13.15.4 / M13.15.5: fiat-crypto bridge link-probe FFI modules
       UmbraVox.Crypto.Generated.FFI.BridgeEd25519
       UmbraVox.Crypto.Generated.FFI.BridgeX25519
@@ -348,6 +349,10 @@ library
       csrc/generated/networkprotocol.c
       csrc/generated/sessionstate.c
       csrc/constant_time.c
+      -- M40.33: platform-aware OS entropy source (getrandom/getentropy/BCrypt).
+      -- Replaces raw /dev/urandom reads in Crypto.Random; csrc/generated/entropy.c
+      -- is a documented non-oracle stub and is intentionally NOT compiled.
+      csrc/entropy/bridge_entropy.c
       -- M13.15.4 / M13.15.5: fiat-crypto GF(2^255-19) field ops + Ed25519/X25519 bridges
       csrc/fiat/fiat_25519_64.c
       csrc/fiat/bridge_ed25519.c
@@ -358,8 +363,12 @@ library
       csrc/hacl/krml
       csrc/hacl/krml/internal
       csrc/fiat
+      csrc/entropy
       csrc/extracted
-    cc-options: -std=c99 -D_DEFAULT_SOURCE=1 -D_ISOC11_SOURCE=1 -fstack-protector-strong -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security
+    -- M40.33: -std=gnu11 (was c99) so csrc/entropy/bridge_entropy.c can use
+    -- C11 <stdatomic.h> for the pthread_atfork flag. gnu11 is a backward-
+    -- compatible superset of gnu99 and retains the GNU extensions HACL* uses.
+    cc-options: -std=gnu11 -D_DEFAULT_SOURCE=1 -D_ISOC11_SOURCE=1 -fstack-protector-strong -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security
       -DFIAT_VENDORED -Wno-unused-function -Wno-unused-parameter
   -- M38.2: Vale assembly (AES-NI + GHASH) — x86-64 only
   if !flag(wasm) && !os(windows) && arch(x86_64) && os(linux)
@@ -372,6 +381,21 @@ library
   -- M38.2: SIMD intrinsic flags required by EverCrypt SIMD ChaCha20-Poly1305
   if !flag(wasm) && !os(windows) && arch(x86_64)
     cc-options: -maes -mpclmul -msse4.2 -mavx -mavx2
+  -- M40.33d: Windows entropy bridge (BCryptGenRandom). Only the entropy
+  -- primitive is wired for Windows today; the remaining C crypto bridges are
+  -- POSIX-only (see the !os(windows) block above), so a full Windows build is
+  -- not yet supported. This stanza is forward-looking so the OS CSPRNG entropy
+  -- source is in place when Windows support is completed. bridge_entropy.c uses
+  -- only <bcrypt.h> on Windows (no pthread/fork), linked via -lbcrypt.
+  if os(windows)
+    c-sources:
+      csrc/entropy/bridge_entropy.c
+    include-dirs:
+      csrc
+      csrc/entropy
+    cc-options: -std=c11 -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security
+      -Wno-unused-function -Wno-unused-parameter
+    extra-libraries: bcrypt
   if flag(pure-haskell-crypto)
     cpp-options: -DPURE_HASKELL_CRYPTO
   if flag(chaste-build)

@@ -299,19 +299,23 @@ CLUSTER 1 — Skipped-key FS + persistence (SAFE TO LAND NOW; no external prereq
 [ ] M40.32e [DOC] Note nonce NOT persisted (derivable via makeNonce); no silent
       count=0 message loss. (Folds M40.33 into M40.32 — nonce-store rejected.)
 CLUSTER 2 — CSPRNG hardening (SAFE TO LAND NOW; no external prereq):
-[ ] M40.33a [HIGH] Add CryptoGen ffiWrapperSpec "Entropy" case; generate Entropy.hs
+[x] M40.33a [HIGH] Add CryptoGen ffiWrapperSpec "Entropy" case; generate Entropy.hs
       (NOT hand-written — M38.4 drift hazard).
-[ ] M40.33b [HIGH] C: Linux getrandom + glibc /dev/urandom fallback; libc getentropy
+[x] M40.33b [HIGH] C: Linux getrandom + glibc /dev/urandom fallback; libc getentropy
       (256-byte cap loop) on BSD/illumos/macOS (__sun, __EXTENSIONS__); BCryptGenRandom
       +link bcrypt on Windows (BCRYPT_SUCCESS); bounded ENOSYS/EINTR /dev/urandom
       fallback. NO raw syscall(SYS_getrandom) (NetBSD/BSD lack it). Feature-test macros
       _GNU_SOURCE/_DEFAULT_SOURCE/__EXTENSIONS__. WASM stays /dev/urandom.
-[ ] M40.33c [HIGH] C11 atomic_int atfork flag (not bare volatile); pthread_atfork +
+[x] M40.33c [HIGH] C11 atomic_int atfork flag (not bare volatile); pthread_atfork +
       keep lazy PID check; ccall safe (blocking entropy) / unsafe (flag read).
-[ ] M40.33d [HIGH] cabal `if os(windows)` stanza: re-declare include-dirs csrc, own
+[x] M40.33d [HIGH] cabal `if os(windows)` stanza: re-declare include-dirs csrc, own
       cc-options, CPP atfork/PID fallback (no unix dep), link bcrypt.
-[ ] M40.33e [DOC] Fork window "narrowed not closed"; threaded-RTS async-signal-safe
+[x] M40.33e [DOC] Fork window "narrowed not closed"; threaded-RTS async-signal-safe
       child-after-fork contract.
+[ ] M40.33f [MED] (review F6a, liveness/DoS) fork-while-MVar-held: child inherits a
+      locked globalCSPRNG MVar and deadlocks on first randomBytes. Add pthread_atfork
+      PREPARE/PARENT pair to take+release the MVar around fork. Documented residual in
+      Random.hs ensureState; not a key-reuse risk (deadlocked child emits no bytes).
 CLUSTER 3 — DHT (split: minimal safe subset NOW; rest BLOCKED on M24.4):
 [ ] M40.11  [MED] Remove placeholder NodeId stub (updateSender dhtAddress="") — SAFE NOW.
 [ ] M40.41a [MED] Presence staleness + 300s future-skew (keep 300s) — SAFE NOW.
