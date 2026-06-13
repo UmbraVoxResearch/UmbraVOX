@@ -372,8 +372,21 @@ set +e
 # input) and may contain shell features like pipes and redirects.  The VM
 # is sandboxed by QEMU with no network access, so this does not expand
 # the trust boundary.
-eval "$VM_EXEC_CMD"
-STATUS=$?
+#
+# Tee the full output to the output share.  The serial console is fed through
+# systemd's journal, which rate-limits under burst and silently DROPS lines
+# (e.g. a wall of GHC diagnostics), so a failure's real error can vanish from
+# the console log.  The /output/vm-exec.log copy is written straight to the 9p
+# share, so it is complete and rate-limit-immune (host: build/vm-output/vm-exec.log).
+# pipefail + PIPESTATUS preserves the command's exit status across the pipe.
+set -o pipefail
+if [ -d /output ]; then
+    eval "$VM_EXEC_CMD" 2>&1 | tee /output/vm-exec.log
+else
+    eval "$VM_EXEC_CMD"
+fi
+STATUS=${PIPESTATUS[0]}
+set +o pipefail
 set -e
 
 if [ -d /output ]; then

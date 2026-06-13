@@ -196,6 +196,28 @@ For exec mode debugging:
 echo $?  # exit code from the VM command
 ```
 
+### Where the logs are (READ THIS before trusting a build)
+
+Every command run inside a VM tees its full stdout/stderr to the host via the
+`/output` 9p share. Agents should read these files directly on the host:
+
+| Host path | Contents |
+|-----------|----------|
+| `build/vm-output/vm-exec.log` | Full output of the last in-VM command (`./uv build`, `./uv test`, `./uv exec`, codegen, cabal, cc) |
+| `build/vm-output/vm-exec-status` | Exit status of the last in-VM command |
+
+**CRITICAL: `./uv build` (and other `./uv` wrappers) can exit 0 even when the
+in-VM `cabal`/`cc` build actually failed.** The wrapper's exit code reflects the
+VM lifecycle, not the inner compile. Never conclude a build passed from the
+wrapper's exit code alone. Always confirm by scanning the log for real failures:
+
+```bash
+grep -nE "error:|Failed to build|Not in scope|Couldn't match|implicit declaration|undefined reference|cc' failed" build/vm-output/vm-exec.log
+```
+
+An empty result there means the build is clean; any match means it is red,
+regardless of what the wrapper returned.
+
 ### Quick Reference
 
 ```bash

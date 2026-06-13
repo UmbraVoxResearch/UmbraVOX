@@ -125,12 +125,21 @@ sanitizeFieldValue key value
 
 -- | Fields whose values are safe to show in logs (denylist-by-default).
 -- All field values are redacted unless the key appears in this list.
+--
+-- Criteria for inclusion: value carries no secret material (not a key,
+-- password, peer identity, or session token) and provides operational
+-- value for incident diagnosis.  Non-secret counts, booleans, and
+-- human-readable error descriptions qualify; network topology (port,
+-- host) does not.
 safeFieldKeys :: [String]
 safeFieldKeys =
-    [ "count"
+    [ "active"     -- connection/session boolean or count
+    , "count"
     , "direction"
+    , "drained"    -- drain-complete boolean
     , "level"
     , "mode"
+    , "reason"     -- human-readable error/close reason; no secret content
     , "result"
     , "status"
     , "type"

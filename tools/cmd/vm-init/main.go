@@ -18,6 +18,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -237,10 +238,28 @@ func runExec() int {
 	// input) and may contain shell features like pipes and redirects. The VM
 	// is sandboxed by QEMU with no network access, so this does not expand
 	// the trust boundary.
+	// Capture the full command output to a file on the output share in
+	// addition to the serial console.  The serial console is fed through the
+	// guest's systemd journal, which rate-limits under burst and silently
+	// DROPS lines (e.g. a wall of GHC diagnostics), so a build failure's real
+	// error can vanish from the console log.  The /output/vm-exec.log copy is
+	// written straight to the 9p share and is therefore complete and
+	// rate-limit-immune; the host picks it up at build/vm-output/vm-exec.log.
+	var outW io.Writer = os.Stdout
+	var errW io.Writer = os.Stderr
+	logPath := filepath.Join(outputDir, "vm-exec.log")
+	if logFile, logErr := os.Create(logPath); logErr == nil {
+		defer logFile.Close()
+		outW = io.MultiWriter(os.Stdout, logFile)
+		errW = io.MultiWriter(os.Stderr, logFile)
+	} else {
+		fmt.Fprintf(os.Stderr, "vm-init: cannot create %s: %v (console-only logging)\n", logPath, logErr)
+	}
+
 	cmd := exec.Command("/bin/bash", "-c", cmdStr)
 	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = outW
+	cmd.Stderr = errW
 	cmd.Env = os.Environ()
 
 	status := 0
