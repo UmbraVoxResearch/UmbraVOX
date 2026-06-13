@@ -89,7 +89,7 @@ Actions:
   build-image [--on-host]    Build NixOS VM image
   build-runtime-image [--on-host] Build lightweight runtime VM images
   clean-image                Remove cached VM image
-  smoke [TARGET]             Platform smoke (freebsd, openbsd, netbsd, illumos, dragonfly, arm64, release)
+  smoke [TARGET]             Platform smoke (freebsd, openbsd, netbsd, illumos, dragonfly, tinycore, arm64, release)
   signal build-jar|update|test|run|health Signal Server VM
   kyber generate-kat         Generate Kyber768 KAT vectors via oracle VM
   integration [--dual-lan]   Multi-VM integration test
@@ -856,7 +856,7 @@ func formatSize(bytes uint64) string {
 func vmSmoke(args []string) int {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "Usage: ./uv vm smoke <target>")
-		fmt.Fprintln(os.Stderr, "Targets: freebsd, openbsd, netbsd, illumos, dragonfly, arm64, release")
+		fmt.Fprintln(os.Stderr, "Targets: freebsd, openbsd, netbsd, illumos, dragonfly, tinycore, arm64, release")
 		return 2
 	}
 
@@ -873,6 +873,7 @@ func vmSmoke(args []string) int {
 		"netbsd":    "scripts/vm-netbsd-setup.sh",
 		"illumos":   "scripts/vm-illumos-setup.sh",
 		"dragonfly": "scripts/vm-dragonfly-setup.sh",
+		"tinycore":  "scripts/vm-tinycore-setup.sh",
 	}
 
 	if script, ok := scriptMap[target]; ok {

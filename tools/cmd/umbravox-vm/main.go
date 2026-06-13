@@ -114,7 +114,7 @@ Test suites:
 VM actions:
   build-image [--on-host]    Build NixOS VM image
   clean-image                Remove cached VM image
-  smoke [TARGET]             Platform smoke test (freebsd, openbsd, netbsd, illumos, dragonfly, arm64, release)
+  smoke [TARGET]             Platform smoke test (freebsd, openbsd, netbsd, illumos, dragonfly, tinycore, arm64, release)
   signal build-jar|update|test|run|health  Signal Server VM
   integration [--dual-lan]   Multi-VM integration test
   info                       VM config diagnostics

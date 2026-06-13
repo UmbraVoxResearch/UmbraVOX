@@ -1,0 +1,26 @@
+# tinycore.yaml — tiny-core-linux (TCL) runtime-only integration-test VM
+#
+# A ~5s-boot, tiny-footprint QEMU VM (CorePure64) that contains NO GHC/F*/Coq
+# toolchain.  The statically-linked umbravox binary built at
+# build/runtime/bin/umbravox is dropped in via a virtio app disk and exercised
+# by integration/e2e smoke tests.  Distinct from the heavyweight NixOS dev/build
+# VM (dev.yaml) and the GUI runtime VM (runtime-qemu.yaml).
+#
+# Used by:
+#   ./uv vm smoke tinycore   — fetch ISO (nix/vm-tinycore.nix) + boot + run
+#
+# No network: the runtime binary is self-contained and the ISO is pinned by
+# SHA256.  Serial console (no display); resources are tiny since TCL is light.
+
+name: tinycore
+tier: base
+hypervisor: qemu
+resources:
+  fraction: 15
+  min_cores: 1
+  min_memory: 512
+network:
+  mode: none
+boot:
+  timeout: 5m
+  no_reboot: true
