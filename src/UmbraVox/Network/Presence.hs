@@ -137,21 +137,57 @@ createPresenceRecord edSecret scanKey identityPub contactInfo = do
 -- Record verification
 ------------------------------------------------------------------------
 
--- | Verify a presence record's Ed25519 signature.
+-- | Maximum tolerated clock skew (seconds) for a record dated in the
+-- future. A presence/gossip record stamped more than this far ahead of
+-- the verifier's clock is rejected as implausible. 300s is the standard
+-- NTP-class allowance.
+maxFutureSkewSecs :: Word64
+maxFutureSkewSecs = 300
+
+-- | Verify a presence record's Ed25519 signature AND freshness.
 --
 -- The verifier must supply the public key corresponding to the secret
 -- that signed the record (obtained out-of-band or from a prior
--- handshake).  This prevents the DHT from being polluted with forged
--- presence records.
+-- handshake) and the current POSIX time @now@.  This prevents the DHT
+-- from being polluted with forged or stale presence records.
+--
+-- Finding:     M40.41a — 'verifyPresenceRecord' validated only the
+--              Ed25519 signature over @stealthKey‖contactInfo‖timestamp‖ttl@,
+--              ignoring 'prTimestamp'/'prTTL' entirely.
+-- Vulnerability:
+--              (1) Replay: a captured but validly-signed record stays
+--                  signature-valid forever, so an attacker could resurrect
+--                  a stale/abandoned contact address or pin a victim to a
+--                  decommissioned relay long after key rotation.
+--              (2) Future-dating: a record stamped far in the future would
+--                  win "newest wins" relay-selection races indefinitely.
+-- Fix:         After the signature check, reject records that are expired
+--              (@now > prTimestamp + prTTL@) or implausibly future-dated
+--              (@prTimestamp > now + maxFutureSkewSecs@). The full-TTL past
+--              bound plus the skew allowance tolerate the epoch±1 boundary
+--              of the stealth-key derivation (epoch = now `div` defaultTTL).
+-- Verified:    A fresh record verifies; one older than its TTL or dated
+--              beyond the skew bound returns False (see Test.Network.Presence).
+--
+-- Note: re-checking that 'prStealthPubKey' matches the claimed epoch is
+-- out of scope here — this function has no scan key, so only the intended
+-- recipient (who holds the scan secret) can recompute 'derivePresenceKey'.
 verifyPresenceRecord :: ByteString      -- ^ Ed25519 public key of the signer
+                     -> Word64           -- ^ current POSIX time (seconds)
                      -> PresenceRecord
                      -> IO Bool
-verifyPresenceRecord pubKey pr = do
+verifyPresenceRecord pubKey now pr = do
     let !payload = prStealthPubKey pr
                 <> prContactInfo pr
                 <> putWord64BE (prTimestamp pr)
                 <> putWord32BE (prTTL pr)
-    if BS.length (prSignature pr) /= 64 || BS.length pubKey /= 32
+        !ts      = prTimestamp pr
+        !expiry  = ts + fromIntegral (prTTL pr)
+        !fresh   = ts <= now + maxFutureSkewSecs  -- not implausibly future-dated
+                && now <= expiry                  -- not expired
+    if not fresh
+          || BS.length (prSignature pr) /= 64
+          || BS.length pubKey /= 32
         then pure False
         else Ed25519FFI.ed25519Verify pubKey payload (prSignature pr)
 

@@ -136,10 +136,12 @@ Status: [ ] pending, [~] in progress, [x] fixed. Severity in brackets.
       — Network/DHT.hs:167-170; DHT/Store.hs
       Fix: require signed values for presence keys, or restrict writes to
       key == announceKey(senderId); verify signature on store + serve.
-[ ] M40.11 [MEDIUM] DHT bootstrap inserts all-zero placeholder NodeId — Network/DHT.hs:307-317
+[ ] M40.11 [MEDIUM][BLOCKED:M24.4] DHT bootstrap inserts all-zero placeholder NodeId — Network/DHT.hs:307-317
       Vuln: bootstrap peers dedup-collide on one ID (availability loss); zero-ID occupies
       a deterministic targetable bucket. Fix: keep bootstrap addrs in a separate seed list,
       do not insert placeholder-ID nodes into the routing table.
+      Deconfliction: DEFER to M24.4 — the authenticated NodeId is only available once
+      M24.4 threads it onto the connection. See Cluster 3 below.
 [ ] M40.12 [MEDIUM] PQWrapper deriveKeyNonce uses shared secret as both HKDF salt and IKM
       — Crypto/PQWrapper.hs:57-58. Fix: empty/fixed non-secret salt, secret only in ikm,
       bind KEM ciphertext into info. NOTE: changes derived keys → wire/at-rest break; gate.
@@ -317,12 +319,22 @@ CLUSTER 2 — CSPRNG hardening (SAFE TO LAND NOW; no external prereq):
       PREPARE/PARENT pair to take+release the MVar around fork. Documented residual in
       Random.hs ensureState; not a key-reuse risk (deadlocked child emits no bytes).
 CLUSTER 3 — DHT (split: minimal safe subset NOW; rest BLOCKED on M24.4):
-[ ] M40.11  [MED] Remove placeholder NodeId stub (updateSender dhtAddress="") — SAFE NOW.
-[ ] M40.41a [MED] Presence staleness + 300s future-skew (keep 300s) — SAFE NOW.
-[ ] M40.41b [MED] Wire verifyPresenceRecord into a real presence/relay caller (zero
-      callers today → dead code without this). SAFE NOW.
-[ ] M40.4a  [HIGH] FIX banPeer: piBanExpiry = now + duration (PeerManager.hs:146) —
-      currently raw duration so all bans expire next sweep. SAFE NOW, independent.
+[ ] M40.11  [MED][BLOCKED:M24.4] Remove placeholder NodeId stub (updateSender
+      dhtAddress=""). Deconfliction: DEFER. updateSender's real sender address +
+      authenticated NodeId only become available once M24.4 threads them onto the
+      connection; replacing "" with a fabricated value now is cosmetic and risks
+      masking the gap. Land together with M24.4.
+[x] M40.41a [MED] Presence staleness + 300s future-skew (keep 300s) — DONE.
+      verifyPresenceRecord now takes `now` and rejects expired/future-dated records
+      (maxFutureSkewSecs=300). Standalone fix; regression test in Test.Network.Presence.
+[ ] M40.41b [MED][BLOCKED:M24.4] Wire verifyPresenceRecord into a real presence/relay
+      caller (zero callers today → dead code without this). Deconfliction: BLOCKED —
+      the caller needs an authenticated signer pubkey + real source address, which
+      M24.4 provides. Wire when M24.4 lands; the freshness logic (M40.41a) is ready.
+[x] M40.4a  [HIGH] FIX banPeer: piBanExpiry = now + duration (PeerManager.hs) — DONE.
+      Absolute deadline; non-positive duration refused (no immortal/instant ban).
+      Regression tests testBanExpiryTiming + testBanNegativeDuration in
+      Test.Network.PeerManager.
 [ ] M24.4   [PREREQ-BLOCKER] Authenticated transport dispatch; thread Noise iStaticPub
       onto session/NoiseState connection object. BLOCKS M40.4b/c, M40.10, M40.34.
 [ ] M40.4b  [HIGH] verifyNodeId branch: ephemeral-salt mode skips H(key) equality,

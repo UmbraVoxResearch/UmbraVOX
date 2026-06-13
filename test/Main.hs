@@ -115,6 +115,7 @@ import qualified Test.Network.MDNS as MDNS
 import qualified Test.Network.Noise as Noise
 import qualified Test.Network.PeerExchange as PeerExchange
 import qualified Test.Network.PeerManager as PeerManager
+import qualified Test.Network.Presence as Presence
 import qualified Test.Network.Protocol as Protocol
 import qualified Test.Network.Transport as Transport
 import qualified Test.Network.Transport.Loopback as Loopback
@@ -362,6 +363,7 @@ coreSuites =
     , Suite "dos-mitigation" DoSMitigation.runTests
     , Suite "mdns" MDNS.runTests
     , Suite "peer-manager" PeerManager.runTests
+    , Suite "presence" Presence.runTests
     , Suite "network-protocol" Protocol.runTests
     , Suite "chat-message" ChatMessage.runTests
     , Suite "chat-contacts" ChatContacts.runTests
@@ -472,6 +474,7 @@ coreNetworkSuites =
     , Suite "dos-mitigation" DoSMitigation.runTests
     , Suite "peer-exchange" PeerExchange.runTests
     , Suite "peer-manager" PeerManager.runTests
+    , Suite "presence" Presence.runTests
     , Suite "mdns" MDNS.runTests
     , Suite "network-protocol" Protocol.runTests
     ]

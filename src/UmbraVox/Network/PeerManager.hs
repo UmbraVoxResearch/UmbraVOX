@@ -135,31 +135,46 @@ removePeer :: PeerManager -> String -> IO ()
 removePeer pm addr = atomicModifyIORef' (pmPeers pm) $ \m ->
   (Map.delete addr m, ())
 
--- | Ban a peer for the given number of seconds. The ban expiry is
--- stored as an absolute timestamp; callers must pass the *current*
--- unix time plus the duration, or simply pass the duration and let
--- callers translate. Here we store the raw duration as the expiry
--- field for simplicity -- real wall-clock conversion belongs in the
--- caller.
-banPeer :: PeerManager -> String -> Int -> IO ()
-banPeer pm addr duration = atomicModifyIORef' (pmPeers pm) $ \m ->
-  let expiry = fromIntegral duration :: Word64
-      update info = info { piBanned = True, piBanExpiry = expiry, piScore = 0 }
-  in  case Map.lookup addr m of
-        Just info -> (Map.insert addr (update info) m, ())
-        Nothing   ->
-          -- Ban an unknown peer: create a record so we remember.
-          let info = PeerInfo
-                { piAddress         = addr
-                , piPublicKey       = Nothing
-                , piScore           = 0
-                , piLastSeen        = 0
-                , piBanned          = True
-                , piBanExpiry       = expiry
-                , piSource          = SourceManual
-                , piLastScoreChange = 0
-                }
-          in  (Map.insert addr info m, ())
+-- | Ban a peer for @duration@ seconds starting at @now@ (absolute unix
+-- timestamp supplied by the caller, matching the convention used by
+-- 'updateScoreAt', 'evictStale' and 'processBanExpiry').
+--
+-- Finding:     M40.4a — 'banPeer' previously stored the raw @duration@
+--              (e.g. 86400) directly in 'piBanExpiry'. 'processBanExpiry'
+--              unbans any peer whose 'piBanExpiry' (non-zero) is @<= now@.
+-- Vulnerability: Because @now@ is current POSIX seconds (~1.75e9) and
+--              durations are small (hours/days), @duration <= now@ was
+--              always true, so EVERY ban — including the 24-hour
+--              'banForNodeIdMismatch' Sybil ban — was lifted on the first
+--              maintenance sweep, defeating ban-based Sybil/abuse defence.
+-- Fix:         The expiry is now an absolute deadline @now + duration@. A
+--              non-positive @duration@ is refused (no-op) rather than
+--              creating an immortal ban: 'fromIntegral' of a negative
+--              'Int' would wrap to a near-'maxBound' 'Word64', and a zero
+--              duration would expire immediately — neither is a valid ban.
+-- Verified:    'processBanExpiry' lifts the ban only once @now@ reaches
+--              @banStart + duration@ (see Test.Network.PeerManager).
+banPeer :: PeerManager -> String -> Int -> Word64 -> IO ()
+banPeer pm addr duration now
+  | duration <= 0 = pure ()   -- refuse zero/negative-duration bans
+  | otherwise = atomicModifyIORef' (pmPeers pm) $ \m ->
+      let expiry = now + fromIntegral duration :: Word64
+          update info = info { piBanned = True, piBanExpiry = expiry, piScore = 0 }
+      in  case Map.lookup addr m of
+            Just info -> (Map.insert addr (update info) m, ())
+            Nothing   ->
+              -- Ban an unknown peer: create a record so we remember.
+              let info = PeerInfo
+                    { piAddress         = addr
+                    , piPublicKey       = Nothing
+                    , piScore           = 0
+                    , piLastSeen        = 0
+                    , piBanned          = True
+                    , piBanExpiry       = expiry
+                    , piSource          = SourceManual
+                    , piLastScoreChange = 0
+                    }
+              in  (Map.insert addr info m, ())
 
 -- | Remove a ban from a peer.
 unbanPeer :: PeerManager -> String -> IO ()
@@ -236,6 +251,7 @@ processBanExpiry pm now = atomicModifyIORef' (pmPeers pm) $ \m ->
 -- When a DHT node's claimed NodeId does not match SHA-256 of its
 -- identity public key, it is immediately banned with score 0 and a
 -- 24-hour ban duration (86400 seconds).  This prevents Sybil nodes
--- from poisoning the routing table.
-banForNodeIdMismatch :: PeerManager -> String -> IO ()
-banForNodeIdMismatch pm addr = banPeer pm addr 86400
+-- from poisoning the routing table.  The caller supplies @now@ (absolute
+-- unix timestamp) so the ban expiry is computed as @now + 86400@.
+banForNodeIdMismatch :: PeerManager -> String -> Word64 -> IO ()
+banForNodeIdMismatch pm addr now = banPeer pm addr 86400 now

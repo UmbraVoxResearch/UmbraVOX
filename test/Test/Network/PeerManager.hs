@@ -15,6 +15,7 @@ import UmbraVox.Network.PeerManager
     , getActivePeers
     , updateScore
     , evictStale
+    , processBanExpiry
     , PeerInfo(..)
     , PeerSource(..)
     )
@@ -30,6 +31,8 @@ runTests = do
         , testUnbanPeerRestored
         , testUpdateScoreClamped
         , testEvictStale
+        , testBanExpiryTiming
+        , testBanNegativeDuration
         ]
     let passed = length (filter id results)
         total  = length results
@@ -74,7 +77,7 @@ testBanPeerExcluded = do
     pm <- newPeerManager
     addPeer pm "peer-A:1000" SourcePEX
     addPeer pm "peer-B:2000" SourceMDNS
-    banPeer pm "peer-A:1000" 3600
+    banPeer pm "peer-A:1000" 3600 1000
     active <- getActivePeers pm
     allPeers <- getPeers pm
     r1 <- assertEq "all peers still 2" 2 (length allPeers)
@@ -90,7 +93,7 @@ testUnbanPeerRestored :: IO Bool
 testUnbanPeerRestored = do
     pm <- newPeerManager
     addPeer pm "peer-X:5000" SourceManual
-    banPeer pm "peer-X:5000" 3600
+    banPeer pm "peer-X:5000" 3600 1000
     active1 <- getActivePeers pm
     r1 <- assertEq "banned peer not active" 0 (length active1)
     unbanPeer pm "peer-X:5000"
@@ -131,7 +134,7 @@ testEvictStale = do
     addPeer pm "stale-B:2000" SourceManual
     addPeer pm "banned-C:3000" SourceManual
     -- Ban one peer so it survives eviction
-    banPeer pm "banned-C:3000" 7200
+    banPeer pm "banned-C:3000" 7200 1000
     -- Evict peers with lastSeen < 100 (threshold=100).
     -- stale-A and stale-B have lastSeen=0, so they should be evicted.
     -- banned-C has lastSeen=0 but is banned, so it survives.
@@ -144,3 +147,49 @@ testEvictStale = do
             r3 <- assertEq "remaining peer is banned-C" "banned-C:3000" (piAddress p)
             pure (r1 && r2 && r3)
         _ -> pure (r1 && r2 && False)
+
+-- | Test 8: ban expiry uses an absolute deadline (now + duration).
+--
+-- Finding:     M40.4a — 'banPeer' stored the raw duration in 'piBanExpiry'
+--              instead of @now + duration@.
+-- Vulnerability: 'processBanExpiry' unbans when @piBanExpiry <= now@; with a
+--              raw duration (e.g. 86400) far below real POSIX time, every ban
+--              was lifted on the first sweep, nullifying Sybil/abuse bans.
+-- Fix:         'banPeer' now records @now + duration@; the ban survives until
+--              @now@ reaches that deadline.
+-- Verified:    A peer banned at now=1000 for 60s is still banned when
+--              processBanExpiry runs at 1059, and is unbanned at 1060.
+testBanExpiryTiming :: IO Bool
+testBanExpiryTiming = do
+    pm <- newPeerManager
+    addPeer pm "ban-timing:1000" SourceManual
+    banPeer pm "ban-timing:1000" 60 1000   -- expiry = 1060
+    -- One second before expiry: ban must NOT be lifted.
+    before <- processBanExpiry pm 1059
+    r1 <- assertEq "no ban lifted before deadline" 0 before
+    activeBefore <- getActivePeers pm
+    r2 <- assertEq "peer still banned (inactive) before deadline" 0 (length activeBefore)
+    -- At expiry: ban is lifted.
+    atDeadline <- processBanExpiry pm 1060
+    r3 <- assertEq "ban lifted at deadline" 1 atDeadline
+    pure (r1 && r2 && r3)
+
+-- | Test 9: a non-positive ban duration is refused (no immortal ban).
+--
+-- Finding:     M40.4a — 'fromIntegral' of a negative 'Int' duration would
+--              wrap to a near-'maxBound' 'Word64', creating a ban that never
+--              expires; a zero duration would expire immediately.
+-- Fix:         'banPeer' treats @duration <= 0@ as a no-op.
+-- Verified:    Banning an existing peer for 0 or -1 seconds leaves it
+--              unbanned and active.
+testBanNegativeDuration :: IO Bool
+testBanNegativeDuration = do
+    pm <- newPeerManager
+    addPeer pm "no-ban:1000" SourceManual
+    banPeer pm "no-ban:1000" 0    1000   -- zero duration: no-op
+    banPeer pm "no-ban:1000" (-5) 1000   -- negative duration: no-op
+    active <- getActivePeers pm
+    r1 <- assertEq "peer not banned after non-positive duration" 1 (length active)
+    -- A subsequent never-expiring sweep must find nothing to unban.
+    lifted <- processBanExpiry pm 9999999999
+    assertEq "no ban to lift" 0 lifted >>= \r2 -> pure (r1 && r2)

@@ -547,6 +547,7 @@ test-suite umbravox-test
     Test.Network.Dandelion
     Test.Network.DoSMitigation
     Test.Network.PeerManager
+    Test.Network.Presence
     Test.Protocol.CBOR
     Test.Crypto.BIP39
     Test.Crypto.Export
