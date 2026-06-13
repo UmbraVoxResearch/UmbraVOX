@@ -2,8 +2,11 @@
 module Main (main) where
 
 import System.Directory (doesDirectoryExist, listDirectory)
+import System.Environment (getArgs)
+import System.Exit (exitFailure)
 import System.FilePath ((</>), takeExtension)
 import System.IO (hSetEncoding, stdout, stderr, utf8)
+import Control.Monad (forM, unless)
 import qualified GHC.IO.Encoding as Enc
 import qualified CryptoGen
 import qualified CBORGen
@@ -22,6 +25,42 @@ main = do
     Enc.setLocaleEncoding Enc.utf8
     hSetEncoding stdout utf8
     hSetEncoding stderr utf8
+    args <- getArgs
+    if "--check" `elem` args
+        then runCheck
+        else runGenerate
+
+-- | Drift / idempotency check: regenerate every crypto spec's artifacts
+-- in-memory and compare them against the committed on-disk files, writing
+-- nothing. Exits non-zero if any generated file has drifted (was hand-edited
+-- or is stale relative to the generator). This guards against accidental edits
+-- to Generated/*.hs and against generator changes that were never regenerated.
+runCheck :: IO ()
+runCheck = do
+    let specsDir = "app/codegen/Specs"
+    exists <- doesDirectoryExist specsDir
+    unless exists $ do
+        putStrLn $ "Error: specs directory not found: " ++ specsDir
+        exitFailure
+    files <- listDirectory specsDir
+    let specFiles = filter (\f -> takeExtension f == ".spec") files
+    putStrLn "UmbraVox CryptoGen drift check"
+    putStrLn $ "  Spec files: " ++ show (length specFiles)
+    putStrLn ""
+    reports <- forM specFiles $ \f -> CryptoGen.checkSpec (specsDir </> f)
+    let drifts = concat reports
+    if null drifts
+        then putStrLn "OK: all generated crypto artifacts match the generator (no drift)."
+        else do
+            putStrLn "DRIFT DETECTED in generated crypto artifacts:"
+            mapM_ (\d -> putStrLn ("  " ++ d)) drifts
+            putStrLn ""
+            putStrLn "Fix: do NOT hand-edit Generated/*.hs or csrc/generated/*.c."
+            putStrLn "     Edit app/codegen/CryptoGen.hs (or the .spec), then regenerate."
+            exitFailure
+
+runGenerate :: IO ()
+runGenerate = do
     let specsDir = "app/codegen/Specs"
     exists <- doesDirectoryExist specsDir
     if not exists

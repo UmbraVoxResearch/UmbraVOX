@@ -13,6 +13,7 @@
 -- spec file, section, and line number.
 module CryptoGen
     ( processSpec
+    , checkSpec
     , emitHaskell
     , emitC
     , emitFFI
@@ -26,9 +27,9 @@ module CryptoGen
     ) where
 
 import Data.Char (isAlphaNum, isSpace, isDigit, isHexDigit, isAlpha, isUpper, toLower)
-import Data.List (isPrefixOf, intercalate, foldl')
-import Data.Maybe (mapMaybe)
-import System.Directory (createDirectoryIfMissing)
+import Data.List (isPrefixOf, isInfixOf, intercalate, foldl')
+import Data.Maybe (mapMaybe, catMaybes)
+import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.FilePath ((</>), takeDirectory)
 
 -- | Parameter types in the restricted DSL.
@@ -791,6 +792,49 @@ processSpec path = do
                 putStrLn $ "    C:       " ++ cPath
                 putStrLn $ "    FFI:     " ++ ffiPath
 
+-- | Drift check: regenerate each artifact for a spec in-memory and compare it
+-- byte-for-byte against the committed on-disk file. Writes nothing. Returns a
+-- list of human-readable drift reports (empty list == no drift).
+--
+-- This is the idempotency guard: if anyone hand-edits a Generated/*.hs (or the
+-- oracle C) without going through the generator, or edits the generator/spec
+-- without regenerating, the on-disk file will no longer match the generator's
+-- deterministic output and this check fails. Paths are computed with the exact
+-- same logic as 'processSpec', so the check can never disagree with the writer.
+checkSpec :: FilePath -> IO [String]
+checkSpec path = do
+    content <- readFile path
+    case parseSpec content of
+        Left err -> pure ["ERROR parsing " ++ path ++ ": " ++ err]
+        Right ast -> do
+            let name = specAlgorithm ast
+            case validateAlgorithmName name of
+              Left err -> pure ["ERROR: unsafe algorithm name in " ++ path ++ ": " ++ err]
+              Right () -> do
+                let hsDir  = "src" </> "UmbraVox" </> "Crypto" </> "Generated"
+                    cDir   = "csrc" </> "generated"
+                    ffiDir = "src" </> "UmbraVox" </> "Crypto" </> "Generated" </> "FFI"
+                    hsPath  = hsDir  </> (name ++ ".hs")
+                    cPath   = cDir   </> (toLowerStr name ++ ".c")
+                    ffiPath = ffiDir </> (name ++ ".hs")
+                r1 <- compareGenerated hsPath  (hsModule  ast name)
+                r2 <- compareGenerated cPath   (cSource   ast name)
+                r3 <- compareGenerated ffiPath (ffiModule ast name)
+                pure (catMaybes [r1, r2, r3])
+
+-- | Compare expected generator output against the committed file. Returns
+-- Nothing when they match, otherwise a drift/missing report.
+compareGenerated :: FilePath -> String -> IO (Maybe String)
+compareGenerated p expected = do
+    exists <- doesFileExist p
+    if not exists
+      then pure (Just ("MISSING: " ++ p ++ " (generator produces output but no committed file exists)"))
+      else do
+        actual <- readFile p
+        pure $ if actual == expected
+                 then Nothing
+                 else Just ("DRIFT:   " ++ p ++ " differs from generator output (hand-edited or stale)")
+
 toLowerStr :: String -> String
 toLowerStr = map toLower
 
@@ -998,7 +1042,7 @@ hsWrapperSpec "PQWrapper" =
         [ "pqEncrypt :: ByteString -> ByteString -> IO ByteString"
         , "pqEncrypt = Reference.pqEncrypt"
         , ""
-        , "pqDecrypt :: ByteString -> ByteString -> Maybe ByteString"
+        , "pqDecrypt :: ByteString -> ByteString -> IO (Maybe ByteString)"
         , "pqDecrypt = Reference.pqDecrypt"
         ]
 hsWrapperSpec "MessageFormat" =
@@ -1032,22 +1076,22 @@ hsWrapperSpec "WireFormat" =
         [ "wrapEnvelope :: Word8 -> Word32 -> ByteString -> Word8 -> Word16 -> ByteString -> Envelope"
         , "wrapEnvelope = Reference.wrapEnvelope"
         , ""
-        , "encodeEnvelope :: ByteString -> Envelope -> ByteString"
+        , "encodeEnvelope :: ByteString -> Envelope -> IO ByteString"
         , "encodeEnvelope = Reference.encodeEnvelope"
         , ""
-        , "decodeEnvelope :: ByteString -> ByteString -> Maybe Envelope"
+        , "decodeEnvelope :: ByteString -> ByteString -> IO (Maybe Envelope)"
         , "decodeEnvelope = Reference.decodeEnvelope"
         , ""
         , "unwrapEnvelope :: Envelope -> ByteString"
         , "unwrapEnvelope = Reference.unwrapEnvelope"
         , ""
-        , "deriveEnvelopeKey :: ByteString -> ByteString"
+        , "deriveEnvelopeKey :: ByteString -> IO ByteString"
         , "deriveEnvelopeKey = Reference.deriveEnvelopeKey"
         , ""
-        , "encodeEnvelopeAEAD :: ByteString -> Word32 -> Envelope -> Either String ByteString"
+        , "encodeEnvelopeAEAD :: ByteString -> Word32 -> Envelope -> IO (Either String ByteString)"
         , "encodeEnvelopeAEAD = Reference.encodeEnvelopeAEAD"
         , ""
-        , "decodeEnvelopeAEAD :: ByteString -> Word32 -> ByteString -> Maybe Envelope"
+        , "decodeEnvelopeAEAD :: ByteString -> Word32 -> ByteString -> IO (Maybe Envelope)"
         , "decodeEnvelopeAEAD = Reference.decodeEnvelopeAEAD"
         ]
 hsWrapperSpec "Ed25519Extended" =
@@ -1236,7 +1280,16 @@ cSource ast name =
                 ws = detectWordSize (specConstants ast)
                 helperMacros = concatMap (cHelperMacro ws) helperOps
                 bodySteps = [Step Nothing bodyOps]
-                needsCTHelpers = usesConstantTimeOps allOps
+                fnLines = cFunction ws name (specParams ast) bodySteps
+                -- ct_helpers.h is only needed if a *real* (non-placeholder)
+                -- constant-time call is actually emitted in the body. CT
+                -- decision steps whose operands are out of C scope become
+                -- "/* preprocessing: ... */" placeholders (realized instead in
+                -- the Haskell/F* reference), so the op name appears only inside
+                -- a comment and must not force the include. Scanning the
+                -- emitted lines keeps the differential-oracle C self-consistent
+                -- with its committed snapshot.
+                needsCTHelpers = any emittedCTCall (helperMacros ++ fnLines)
             in  unlines $
                     cHeader
                     ++ (if needsCTHelpers then ["#include \"ct_helpers.h\""] else [])
@@ -1246,7 +1299,7 @@ cSource ast name =
                     ++ [""]
                     ++ cConstants (specConstants ast)
                     ++ [""]
-                    ++ cFunction ws name (specParams ast) bodySteps
+                    ++ fnLines
                     ++ [""]
                     ++ cLinkProbe name
 
@@ -1262,33 +1315,27 @@ detectWordSize consts
     hexDigitCount ('0':'X':rest) = length (filter isHexDigit rest)
     hexDigitCount _ = 0
 
--- | Constant-time function names that require ct_helpers.h.
-constantTimeFunctions :: [String]
-constantTimeFunctions =
+-- | Constant-time helper functions defined in ct_helpers.h (snake_case).
+--   Only a real emitted call to one of these requires the include; the
+--   camelCase spec-level CT decision names are never emitted as direct C
+--   calls (they have no ct_helpers.h definition) and always become
+--   preprocessing placeholders.
+ctHelperCalls :: [String]
+ctHelperCalls =
     [ "ct_select", "ct_select32", "ct_select64"
     , "ct_lt32", "ct_lt64"
+    , "ct_eq32", "ct_eq64", "ct_gte32", "ct_eq_zero32"
+    , "ct_cswap32", "ct_cswap64", "ct_cmov32", "ct_cmov64"
     , "cswap", "cmov"
-    , "constantTimeEq", "constantTimeLT"
-    , "constantTimeEqZero", "constantTimeGTE", "constantTimeSelect"
     ]
 
--- | Check if any operation in the list calls a constant-time helper,
---   which requires including ct_helpers.h in the generated C file.
-usesConstantTimeOps :: [Operation] -> Bool
-usesConstantTimeOps = any opUsesCT
-  where
-    opUsesCT (Assign _ expr) = exprUsesCT expr
-    opUsesCT (IfThenElse c ts fs) =
-        exprUsesCT c || any opUsesCT ts || any opUsesCT fs
-    exprUsesCT (FunCall name args) =
-        name `elem` constantTimeFunctions
-        || (name == "IF" && length args == 3)
-        || (name == "CLAMP" && length args == 3)
-        || any exprUsesCT args
-    exprUsesCT (BinOp _ l r) = exprUsesCT l || exprUsesCT r
-    exprUsesCT (UnOp _ e) = exprUsesCT e
-    exprUsesCT (Index a i) = exprUsesCT a || exprUsesCT i
-    exprUsesCT _ = False
+-- | True if an emitted C line is a real ct_helpers.h call rather than a
+--   preprocessing placeholder. Placeholder lines carry the operation only
+--   inside a "/* preprocessing: ... */" comment, so they are excluded.
+emittedCTCall :: String -> Bool
+emittedCTCall line =
+    not ("/* preprocessing" `isInfixOf` line)
+    && any (\f -> (f ++ "(") `isInfixOf` line) ctHelperCalls
 
 cHeader :: [String]
 cHeader =
@@ -1457,6 +1504,12 @@ preprocessingFunctions =
     [ "pad", "le_bytes", "zeros", "length", "repeat"
     , "HMAC", "hash_fn", "clamp", "encode", "decode"
     , "clampScalar"
+    -- CLAMP over floating-point probabilities (e.g. Dandelion fluff prob)
+    -- has no integer ct_helpers.h realization; the differential-oracle C
+    -- treats it as a preprocessing placeholder (the real clamp lives in the
+    -- Haskell/F* reference). Genuine 3-arg integer CLAMP still emits ct_select
+    -- (matched earlier in isPreprocessingOp / hasNonMacroCall).
+    , "CLAMP"
     , "concat", "truncate", "ceil", "FLOOR", "mod"
     , "absorb", "squeeze", "sponge", "xof"
     , "fAdd", "fSub", "fMul", "fInv", "fSquare", "fNeg", "fSqrt", "fPow"
@@ -1477,6 +1530,13 @@ preprocessingFunctions =
     , "encodeBE", "decodeBE", "constantTimeVerifyPad"
     -- WireFormat operations (envelope serialization)
     , "HMAC_SHA256"
+    -- Constant-time decision helpers (camelCase spec names).
+    -- These are NOT defined in ct_helpers.h (which exposes only snake_case
+    -- ct_* helpers), so they cannot be emitted as direct C calls. They are
+    -- high-level constant-time decision steps realized in the Haskell/F*
+    -- reference; the oracle C treats them as preprocessing placeholders.
+    , "constantTimeEq", "constantTimeLT", "constantTimeEqZero"
+    , "constantTimeGTE", "constantTimeSelect", "constantTimeSelectF"
     -- Loop / iteration constructs
     , "FOR_EACH"
     ]
@@ -1498,8 +1558,6 @@ callableFunctions =
     , "ct_select", "ct_select32", "ct_select64"
     , "ct_lt32", "ct_lt64"
     , "cswap", "cmov"
-    , "constantTimeEq", "constantTimeLT"
-    , "constantTimeEqZero", "constantTimeGTE", "constantTimeSelect"
     ]
 
 cFunction :: Int -> String -> [Param] -> [Step] -> [String]
@@ -1931,7 +1989,8 @@ ffiWrapperSpec "HMAC" =
         ]
 ffiWrapperSpec "HKDF" =
     Just $ ffiBridgeModule "HKDF"
-        [ "ffiLinked", "hkdf", "hkdfSHA256" ]
+        [ "ffiLinked", "hkdf", "hkdfSHA256", "hkdfExtract", "hkdfExpand"
+        , "hkdfSHA512", "hkdfSHA256Extract", "hkdfSHA256Expand" ]
         [ "import Data.Word (Word8, Word32)"
         , "import Foreign.C.Types (CInt(..))"
         , "import Foreign.Ptr (Ptr, castPtr)"
@@ -1942,7 +2001,16 @@ ffiWrapperSpec "HKDF" =
         ]
         [ "-- Bridge: calls HACL* hkdf_sha256 (csrc/hacl/bridge_hkdf.c)."
         , "-- The C bridge securely zeroes the intermediate PRK (M35B fix)."
-        , "-- RFC 5869 max output: 255 * 32 = 8160 bytes; enforced in C bridge."
+        , "-- RFC 5869 max output: 255 * 32 = 8160 bytes; enforced in C bridge AND Haskell layer."
+        , "-- Finding:       M27.6.3 — HKDF Haskell wrappers passed unchecked len to C; the C"
+        , "--                bridge silently returns without writing when len > 8160, causing"
+        , "--                allocaBytes to return uninitialized memory as \"key material\"."
+        , "-- Vulnerability: Callers requesting > 8160 bytes receive garbage bytes masquerading"
+        , "--                as derived keys, breaking all downstream cryptographic operations."
+        , "-- Fix:           Haskell-side bounds check added to each wrapper; ioError raised on"
+        , "--                out-of-range len before allocaBytes is called."
+        , "-- Verified:      Bounds check enforced at Haskell layer; C bridge guard is belt-and-"
+        , "--                suspenders for direct C callers only."
         , "-- INTERIM PRODUCTION: superseded by csrc/extracted/hkdf.c when M36B.6 lands."
         , "foreign import ccall \"hkdf_link_probe\" c_hkdf_link_probe :: IO CInt"
         , ""
@@ -1957,20 +2025,158 @@ ffiWrapperSpec "HKDF" =
         , "ffiLinked = (/= 0) <$> c_hkdf_link_probe"
         , ""
         , "hkdf :: ByteString -> ByteString -> ByteString -> Int -> IO ByteString"
-        , "hkdf salt ikm info len ="
-        , "    allocaBytes len $ \\okmPtr ->"
-        , "    BSU.unsafeUseAsCStringLen salt $ \\(saltPtr, saltLen) ->"
-        , "    BSU.unsafeUseAsCStringLen ikm  $ \\(ikmPtr,  ikmLen) ->"
-        , "    BSU.unsafeUseAsCStringLen info $ \\(infoPtr, infoLen) -> do"
-        , "        c_hkdf_sha256 okmPtr"
-        , "            (castPtr saltPtr) (fromIntegral saltLen)"
-        , "            (castPtr ikmPtr)  (fromIntegral ikmLen)"
-        , "            (castPtr infoPtr) (fromIntegral infoLen)"
-        , "            (fromIntegral len)"
-        , "        BS.packCStringLen (castPtr okmPtr, len)"
+        , "hkdf salt ikm info len"
+        , "    | len <= 0   = pure BS.empty"
+        , "    | len > 8160 = ioError (userError (\"hkdf: requested \" ++ show len ++ \" bytes exceeds RFC 5869 HKDF-SHA-256 maximum of 8160 (255 * HashLen)\"))"
+        , "    | otherwise  ="
+        , "        allocaBytes len $ \\okmPtr ->"
+        , "        BSU.unsafeUseAsCStringLen salt $ \\(saltPtr, saltLen) ->"
+        , "        BSU.unsafeUseAsCStringLen ikm  $ \\(ikmPtr,  ikmLen) ->"
+        , "        BSU.unsafeUseAsCStringLen info $ \\(infoPtr, infoLen) -> do"
+        , "            c_hkdf_sha256 okmPtr"
+        , "                (castPtr saltPtr) (fromIntegral saltLen)"
+        , "                (castPtr ikmPtr)  (fromIntegral ikmLen)"
+        , "                (castPtr infoPtr) (fromIntegral infoLen)"
+        , "                (fromIntegral len)"
+        , "            BS.packCStringLen (castPtr okmPtr, len)"
         , ""
         , "hkdfSHA256 :: ByteString -> ByteString -> ByteString -> Int -> IO ByteString"
         , "hkdfSHA256 = hkdf"
+        , ""
+        , "------------------------------------------------------------------------"
+        , "-- SHA-256 Extract / Expand (separate steps for callers that split them)"
+        , "-- Bridge: csrc/hacl/bridge_hkdf.c — hkdf_sha256_extract / hkdf_sha256_expand"
+        , "------------------------------------------------------------------------"
+        , ""
+        , "foreign import ccall safe \"hkdf_sha256_extract\""
+        , "    c_hkdf_sha256_extract"
+        , "        :: Ptr Word8            -- prk out (32 bytes, caller-allocated)"
+        , "        -> Ptr Word8 -> Word32  -- salt, salt_len"
+        , "        -> Ptr Word8 -> Word32  -- ikm, ikm_len"
+        , "        -> IO ()"
+        , ""
+        , "foreign import ccall safe \"hkdf_sha256_expand\""
+        , "    c_hkdf_sha256_expand"
+        , "        :: Ptr Word8            -- okm out (okm_len bytes, caller-allocated)"
+        , "        -> Ptr Word8 -> Word32  -- prk, prk_len"
+        , "        -> Ptr Word8 -> Word32  -- info, info_len"
+        , "        -> Word32               -- okm_len"
+        , "        -> IO ()"
+        , ""
+        , "-- | HKDF-Extract with HMAC-SHA-256. Returns a 32-byte PRK."
+        , "--"
+        , "-- @hkdfSHA256Extract salt ikm@"
+        , "hkdfSHA256Extract :: ByteString -> ByteString -> IO ByteString"
+        , "hkdfSHA256Extract salt ikm ="
+        , "    allocaBytes 32 $ \\prkPtr ->"
+        , "    BSU.unsafeUseAsCStringLen salt $ \\(saltPtr, saltLen) ->"
+        , "    BSU.unsafeUseAsCStringLen ikm  $ \\(ikmPtr,  ikmLen) -> do"
+        , "        c_hkdf_sha256_extract prkPtr"
+        , "            (castPtr saltPtr) (fromIntegral saltLen)"
+        , "            (castPtr ikmPtr)  (fromIntegral ikmLen)"
+        , "        BS.packCStringLen (castPtr prkPtr, 32)"
+        , ""
+        , "-- | HKDF-Expand with HMAC-SHA-256."
+        , "--"
+        , "-- @hkdfSHA256Expand prk info len@"
+        , "-- @prk@ must be at least 32 bytes. @len@ must be <= 8160."
+        , "hkdfSHA256Expand :: ByteString -> ByteString -> Int -> IO ByteString"
+        , "hkdfSHA256Expand prk info len"
+        , "    | len <= 0   = pure BS.empty"
+        , "    | len > 8160 = ioError (userError (\"hkdfSHA256Expand: requested \" ++ show len ++ \" bytes exceeds RFC 5869 HKDF-SHA-256 maximum of 8160 (255 * HashLen)\"))"
+        , "    | otherwise  ="
+        , "        allocaBytes len $ \\okmPtr ->"
+        , "        BSU.unsafeUseAsCStringLen prk  $ \\(prkPtr,  prkLen) ->"
+        , "        BSU.unsafeUseAsCStringLen info $ \\(infoPtr, infoLen) -> do"
+        , "            c_hkdf_sha256_expand okmPtr"
+        , "                (castPtr prkPtr)  (fromIntegral prkLen)"
+        , "                (castPtr infoPtr) (fromIntegral infoLen)"
+        , "                (fromIntegral len)"
+        , "            BS.packCStringLen (castPtr okmPtr, len)"
+        , ""
+        , "------------------------------------------------------------------------"
+        , "-- SHA-512 HKDF (for CSPRNG reseed and X3DH/Presence key derivation)"
+        , "-- Bridge: csrc/hacl/bridge_hkdf.c — hkdf_sha512_extract / hkdf_sha512"
+        , "-- RFC 5869 max output for HKDF-SHA-512: 255 * 64 = 16320 bytes."
+        , "------------------------------------------------------------------------"
+        , ""
+        , "foreign import ccall safe \"hkdf_sha512_extract\""
+        , "    c_hkdf_sha512_extract"
+        , "        :: Ptr Word8            -- prk out (64 bytes, caller-allocated)"
+        , "        -> Ptr Word8 -> Word32  -- salt, salt_len"
+        , "        -> Ptr Word8 -> Word32  -- ikm, ikm_len"
+        , "        -> IO ()"
+        , ""
+        , "foreign import ccall safe \"hkdf_sha512\""
+        , "    c_hkdf_sha512"
+        , "        :: Ptr Word8            -- okm out (okm_len bytes, caller-allocated)"
+        , "        -> Ptr Word8 -> Word32  -- salt, salt_len"
+        , "        -> Ptr Word8 -> Word32  -- ikm, ikm_len"
+        , "        -> Ptr Word8 -> Word32  -- info, info_len"
+        , "        -> Word32               -- okm_len"
+        , "        -> IO ()"
+        , ""
+        , "foreign import ccall safe \"hkdf_sha512_expand\""
+        , "    c_hkdf_sha512_expand"
+        , "        :: Ptr Word8            -- okm out (okm_len bytes, caller-allocated)"
+        , "        -> Ptr Word8 -> Word32  -- prk, prk_len"
+        , "        -> Ptr Word8 -> Word32  -- info, info_len"
+        , "        -> Word32               -- okm_len"
+        , "        -> IO ()"
+        , ""
+        , "-- | HKDF-Expand with HMAC-SHA-512."
+        , "-- Companion to 'hkdfExtract'; used in DoubleRatchet kdfRK and nonce derivation."
+        , "--"
+        , "-- @hkdfExpand prk info len@"
+        , "-- @prk@ should be 64 bytes (from 'hkdfExtract'). @len@ must be <= 16320."
+        , "hkdfExpand :: ByteString -> ByteString -> Int -> IO ByteString"
+        , "hkdfExpand prk info len"
+        , "    | len <= 0   = pure BS.empty"
+        , "    | len > 16320 = ioError (userError (\"hkdfExpand: requested \" ++ show len ++ \" bytes exceeds RFC 5869 HKDF-SHA-512 maximum of 16320 (255 * HashLen)\"))"
+        , "    | otherwise   ="
+        , "        allocaBytes len $ \\okmPtr ->"
+        , "        BSU.unsafeUseAsCStringLen prk  $ \\(prkPtr,  prkLen) ->"
+        , "        BSU.unsafeUseAsCStringLen info $ \\(infoPtr, infoLen) -> do"
+        , "            c_hkdf_sha512_expand okmPtr"
+        , "                (castPtr prkPtr)  (fromIntegral prkLen)"
+        , "                (castPtr infoPtr) (fromIntegral infoLen)"
+        , "                (fromIntegral len)"
+        , "            BS.packCStringLen (castPtr okmPtr, len)"
+        , ""
+        , "-- | HKDF-Extract with HMAC-SHA-512. Returns a 64-byte PRK."
+        , "-- Used for CSPRNG initialisation and reseed paths."
+        , "--"
+        , "-- @hkdfExtract salt ikm@"
+        , "hkdfExtract :: ByteString -> ByteString -> IO ByteString"
+        , "hkdfExtract salt ikm ="
+        , "    allocaBytes 64 $ \\prkPtr ->"
+        , "    BSU.unsafeUseAsCStringLen salt $ \\(saltPtr, saltLen) ->"
+        , "    BSU.unsafeUseAsCStringLen ikm  $ \\(ikmPtr,  ikmLen) -> do"
+        , "        c_hkdf_sha512_extract prkPtr"
+        , "            (castPtr saltPtr) (fromIntegral saltLen)"
+        , "            (castPtr ikmPtr)  (fromIntegral ikmLen)"
+        , "        BS.packCStringLen (castPtr prkPtr, 64)"
+        , ""
+        , "-- | Combined HKDF-Extract-then-Expand with HMAC-SHA-512."
+        , "-- Used for X3DH, Presence, and other protocol key derivation."
+        , "--"
+        , "-- @hkdfSHA512 salt ikm info len@"
+        , "-- @len@ must be <= 16320 (255 * 64)."
+        , "hkdfSHA512 :: ByteString -> ByteString -> ByteString -> Int -> IO ByteString"
+        , "hkdfSHA512 salt ikm info len"
+        , "    | len <= 0   = pure BS.empty"
+        , "    | len > 16320 = ioError (userError (\"hkdfSHA512: requested \" ++ show len ++ \" bytes exceeds RFC 5869 HKDF-SHA-512 maximum of 16320 (255 * HashLen)\"))"
+        , "    | otherwise   ="
+        , "        allocaBytes len $ \\okmPtr ->"
+        , "        BSU.unsafeUseAsCStringLen salt $ \\(saltPtr, saltLen) ->"
+        , "        BSU.unsafeUseAsCStringLen ikm  $ \\(ikmPtr,  ikmLen) ->"
+        , "        BSU.unsafeUseAsCStringLen info $ \\(infoPtr, infoLen) -> do"
+        , "            c_hkdf_sha512 okmPtr"
+        , "                (castPtr saltPtr) (fromIntegral saltLen)"
+        , "                (castPtr ikmPtr)  (fromIntegral ikmLen)"
+        , "                (castPtr infoPtr) (fromIntegral infoLen)"
+        , "                (fromIntegral len)"
+        , "            BS.packCStringLen (castPtr okmPtr, len)"
         ]
 ffiWrapperSpec "Poly1305" =
     Just $ ffiBridgeModule "Poly1305"
@@ -2028,16 +2234,28 @@ ffiWrapperSpec "X25519" =
         , "x25519Basepoint :: ByteString"
         , "x25519Basepoint = BS.pack (9 : replicate 31 0)"
         , ""
+        , "-- | Compute X25519(scalar, point)."
+        , "--"
+        , "-- Finding:     M35A — umbravox_x25519 is a fixed-size C API (32-byte scalar"
+        , "--              and point); passing a shorter ByteString would cause an"
+        , "--              out-of-bounds read in the C function."
+        , "-- Vulnerability: Callers supplying a malformed key shorter than 32 bytes"
+        , "--              trigger a memory-safety violation inside the C bridge."
+        , "-- Fix:         Reject inputs that are not exactly 32 bytes, returning Nothing."
+        , "-- Verified:    All existing callers supply 32-byte keys (x25519Basepoint is"
+        , "--              32 bytes; private keys are generated via randomBytes 32)."
         , "x25519 :: ByteString -> ByteString -> IO (Maybe ByteString)"
-        , "x25519 scalar point ="
-        , "    allocaBytes 32 $ \\outPtr ->"
-        , "    BSU.unsafeUseAsCStringLen scalar $ \\(sPtr, _) ->"
-        , "    BSU.unsafeUseAsCStringLen point  $ \\(pPtr, _) -> do"
-        , "        c_umbravox_x25519 outPtr (castPtr sPtr) (castPtr pPtr)"
-        , "        result <- BS.packCStringLen (castPtr outPtr, 32)"
-        , "        if BS.all (== 0) result"
-        , "            then pure Nothing"
-        , "            else pure (Just result)"
+        , "x25519 scalar point"
+        , "    | BS.length scalar /= 32 || BS.length point /= 32 = pure Nothing"
+        , "    | otherwise ="
+        , "        allocaBytes 32 $ \\outPtr ->"
+        , "        BSU.unsafeUseAsCStringLen scalar $ \\(sPtr, _) ->"
+        , "        BSU.unsafeUseAsCStringLen point  $ \\(pPtr, _) -> do"
+        , "            c_umbravox_x25519 outPtr (castPtr sPtr) (castPtr pPtr)"
+        , "            result <- BS.packCStringLen (castPtr outPtr, 32)"
+        , "            if BS.all (== 0) result"
+        , "                then pure Nothing"
+        , "                else pure (Just result)"
         ]
 ffiWrapperSpec "AES256" =
     Just $ ffiBridgeModule "AES256"
@@ -2230,7 +2448,7 @@ ffiWrapperSpec "PQWrapper" =
         , "pqDecrypt :: ByteString -> ByteString -> IO (Maybe ByteString)"
         , "pqDecrypt dk ct = do"
         , "    _ <- c_pqwrapper_link_probe"
-        , "    pure (Reference.pqDecrypt dk ct)"
+        , "    Reference.pqDecrypt dk ct"
         ]
 ffiWrapperSpec "MessageFormat" =
     Just $ ffiBridgeModule "MessageFormat"
@@ -2286,12 +2504,12 @@ ffiWrapperSpec "WireFormat" =
         , "encodeEnvelope :: ByteString -> Envelope -> IO ByteString"
         , "encodeEnvelope key env = do"
         , "    _ <- c_wireformat_link_probe"
-        , "    pure (Reference.encodeEnvelope key env)"
+        , "    Reference.encodeEnvelope key env"
         , ""
         , "decodeEnvelope :: ByteString -> ByteString -> IO (Maybe Envelope)"
         , "decodeEnvelope key bs = do"
         , "    _ <- c_wireformat_link_probe"
-        , "    pure (Reference.decodeEnvelope key bs)"
+        , "    Reference.decodeEnvelope key bs"
         , ""
         , "unwrapEnvelope :: Envelope -> IO ByteString"
         , "unwrapEnvelope env = do"
@@ -2301,17 +2519,17 @@ ffiWrapperSpec "WireFormat" =
         , "deriveEnvelopeKey :: ByteString -> IO ByteString"
         , "deriveEnvelopeKey transportKey = do"
         , "    _ <- c_wireformat_link_probe"
-        , "    pure (Reference.deriveEnvelopeKey transportKey)"
+        , "    Reference.deriveEnvelopeKey transportKey"
         , ""
         , "encodeEnvelopeAEAD :: ByteString -> Word32 -> Envelope -> IO (Either String ByteString)"
         , "encodeEnvelopeAEAD key seqNum env = do"
         , "    _ <- c_wireformat_link_probe"
-        , "    pure (Reference.encodeEnvelopeAEAD key seqNum env)"
+        , "    Reference.encodeEnvelopeAEAD key seqNum env"
         , ""
         , "decodeEnvelopeAEAD :: ByteString -> Word32 -> ByteString -> IO (Maybe Envelope)"
         , "decodeEnvelopeAEAD key seqNum bs = do"
         , "    _ <- c_wireformat_link_probe"
-        , "    pure (Reference.decodeEnvelopeAEAD key seqNum bs)"
+        , "    Reference.decodeEnvelopeAEAD key seqNum bs"
         ]
 ffiWrapperSpec "Ed25519Extended" =
     Just $ ffiBridgeModule "Ed25519Extended"

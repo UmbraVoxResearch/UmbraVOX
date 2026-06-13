@@ -56,6 +56,285 @@ ACTIVE WORK
 ================================================================================
 
 ================================================================================
+M40: CRYPTANALYSIS REVIEW FINDINGS (2026-06-13)
+Source: 11 parallel expert cryptanalysis agents (AEAD, hash/KDF, ECC, PQ, Signal,
+FFI, key-mgmt, wire-parsing, DHT/transport, generated-C, app/TUI/storage).
+Status: [ ] pending, [~] in progress, [x] fixed. Severity in brackets.
+================================================================================
+
+-- PATCHED IMMEDIATELY (this session) --
+[x] M40.1 [HIGH] Export file written world-readable — TUI/Actions/Export.hs:61
+      Finding: BS.writeFile uses process umask (~0644); encrypted export is
+      readable by any local user, enabling offline brute force (KDF not memory-hard).
+      Fix: setFileMode 0600 after write, matching Storage/Encryption.hs / RuntimeLog.hs.
+[x] M40.2 [HIGH] Export/import path traversal — TUI/Actions/Export.hs:41,61,81
+      Finding: raw user path, no canonicalization/containment (Session.hs /file has it).
+      Vuln: write blob to ~/.ssh/authorized_keys etc.; read arbitrary files on import.
+      Fix: canonicalizePath + home/cwd prefix containment (copy Session.hs:165-171).
+[x] M40.3 [MEDIUM] Handshake recvInitialMessage missing payload-length validation
+      — Protocol/Handshake.hs:293-300
+      Finding: anyRecv may short-read; n>=84 and 84+ctLen<=len never checked before
+      bsSlice; attacker ctLen yields wrong-length MLKEM ciphertext silently.
+      Fix: assert BS.length payload == n, n >= 84, 84+ct == n before slicing.
+[x] M40.23 [LOW] ProofOfWork verifyBoundChallenge clock-skew bypass of expiry
+      — Protocol/ProofOfWork.hs:169
+      Finding: `now > createdAt && ...` short-circuited to False when now<=createdAt,
+      so a future-dated challenge never expired (pre-computation defense weakened).
+      Fix: reject now<createdAt; apply expiry unconditionally (now>=createdAt → safe sub).
+
+-- CRITICAL (gated on transport integration M24.4; do NOT half-wire) --
+[ ] M40.4 [CRITICAL] DHT NodeId binding never enforced (Sybil/eclipse)
+      — Network/DHT.hs:157,192-202; DHT/Types.hs deriveNodeId
+      Finding: verifyNodeId / PeerManager.banForNodeIdMismatch exist but have ZERO
+      production call sites; updateSender inserts self-asserted NodeId unconditionally
+      for every message. Node IDs not bound to handshake key, IP, or PoW.
+      Vuln: attacker claims IDs adjacent to victim announce key, floods Ping/FindNode,
+      saturates k-buckets, monopolizes routing toward target keys.
+      Fix (at M24.4): plumb authenticated Noise IK static key into handleMessage/
+      updateSender; reject/ban where claimedId != SHA256(handshakePubKey).
+      NOTE: requires transport wiring not yet present; changing handleMessage signature
+      now breaks all callers/tests — schedule with M24.4 integration.
+
+-- HIGH (need approval / larger change; recorded, not yet patched) --
+[ ] M40.5 [HIGH] ML-KEM decaps uses data-dependent branch for implicit rejection
+      — Crypto/MLKEM.hs:594-596
+      Finding: `if ... constantEq ct' ct then ss' else rejectionSecret` is a Haskell
+      branch; FIPS 203 Alg 17 requires constant-time cmov. Lazy eval forces only one
+      secret → FO/Kyber timing oracle distinguishing valid ciphertexts (CCA key recovery).
+      Fix: constant-time byte-select forcing both operands. NOTE: MLKEM.hs is a
+      primitive impl (TODO rule: needs approval); already ASSURANCE_PENDING/non-CT.
+      Real fix lands with constant-time C (M36B.11). Approval required to touch ref.
+[ ] M40.6 [HIGH] Production Ed25519/MLKEM/VRF/StealthAddress hash secret keys with
+      non-constant-time reference SHA-512/Keccak — Ed25519.hs:319,338; MLKEM.hs:42,405;
+      VRF.hs; StealthAddress.hs
+      Finding: these import UmbraVox.Crypto.{SHA512,Keccak} (pure ref, documented non-CT)
+      directly, NOT Generated.FFI.*. sha512 sk expands the Ed25519 signing key.
+      Vuln: timing/cache side-channel on secret key material.
+      Fix: switch to Generated.FFI.{SHA512,Keccak} (IO cascade) OR gate ref so it never
+      sees secrets. This is the deferred ASSURANCE_PENDING tail of M38.4. Larger change.
+[ ] M40.7 [HIGH] CSPRNG seeds nonce from raw non-blocking /dev/urandom — Crypto/Random.hs:301,305,323,328
+      Finding: key is HKDF-conditioned but the 12-byte ChaCha20 nonce is raw urandom;
+      /dev/urandom does not block pre-pool-init; fork relies solely on getProcessID.
+      Vuln: early-boot/low-quality entropy or PID+microsecond collision → (key,nonce)
+      reuse → keystream XOR recovery of all CSPRNG-derived secrets.
+      Fix: use getrandom(2)/getentropy(2) (platform-aware: illumos getrandom, *BSD
+      getentropy) with blocking/pool-ready semantics; mix monotonic counter into reseed salt.
+[ ] M40.8 [HIGH] "FFI" wrappers for Ed25519Extended/VRF/MLKEM768/PQWrapper are
+      link-probe shims delegating to non-CT Reference.* — Generated/FFI/{Ed25519Extended,
+      VRF,MLKEM768,PQWrapper}.hs; fiat bridges (bridge_ed25519.c/bridge_x25519.c) are
+      all-zero stubs unless FIAT_VENDORED.
+      Finding: false assurance — namespace implies verified C; actually runs ref.
+      (Partly intended/ASSURANCE_PENDING per M38.1, but naming hides the gap.)
+      Fix: either make ffiLinked==False a hard fail for life-critical use, or vendor
+      fiat-crypto + route through real C; confirm production build defines FIAT_VENDORED.
+[ ] M40.9 [HIGH] Export KDF is iterated-HKDF, not memory-hard — Crypto/Export.hs:77-86
+      Finding: 100k HMAC-SHA256 chain (not even PBKDF2 XOR-accumulation); GPU-trivial.
+      Fix: land Argon2id migration (TODO M20.4.5) before shipping user-password exports.
+
+-- MEDIUM --
+[ ] M40.10 [MEDIUM] DHT unauthenticated Store — any peer overwrites any presence key
+      — Network/DHT.hs:167-170; DHT/Store.hs
+      Fix: require signed values for presence keys, or restrict writes to
+      key == announceKey(senderId); verify signature on store + serve.
+[ ] M40.11 [MEDIUM] DHT bootstrap inserts all-zero placeholder NodeId — Network/DHT.hs:307-317
+      Vuln: bootstrap peers dedup-collide on one ID (availability loss); zero-ID occupies
+      a deterministic targetable bucket. Fix: keep bootstrap addrs in a separate seed list,
+      do not insert placeholder-ID nodes into the routing table.
+[ ] M40.12 [MEDIUM] PQWrapper deriveKeyNonce uses shared secret as both HKDF salt and IKM
+      — Crypto/PQWrapper.hs:57-58. Fix: empty/fixed non-secret salt, secret only in ikm,
+      bind KEM ciphertext into info. NOTE: changes derived keys → wire/at-rest break; gate.
+[ ] M40.13 [MEDIUM] Empty-ByteString → NULL ptr passed to HACL* (NULL deref / DoS)
+      — Generated/FFI/{ChaCha20,SHA256,SHA512,Keccak,HMAC,Poly1305,HKDF}.hs, GCM/ChaChaPoly AAD
+      Fix: substitute pointer to 1-byte stack buffer (len 0) for empty inputs (as
+      bridge_hkdf.c already does for salt). NOTE: these are CryptoGen-generated; fix in
+      app/codegen/CryptoGen.hs ffiWrapperSpec, then regenerate.
+[ ] M40.14 [MEDIUM] Int→Word32 length truncation in FFI bridges — shake128/256, hkdf
+      — Generated/FFI/Keccak.hs:53-65, HKDF.hs:63-65 et al.
+      Vuln: output len >= 2^32 wraps → HACL writes fewer bytes than allocaBytes/packCStringLen
+      reads → uninitialized heap returned as key material. Fix: reject len > maxBound Word32;
+      add output-len upper bound to shake128/256. Fix in CryptoGen + regenerate.
+[ ] M40.15 [MEDIUM] Skipped-message-key cache stores msgKey/chainKey as plain ByteString,
+      never zeroized (forward-secrecy gap) — Signal/DoubleRatchet.hs:135-146,627-648;
+      SenderKeys.hs:138; Session.hs serialization. (Tracked as M15.5.) Fix: SecureBytes +
+      zeroAndFree on eviction in trySkippedKeys/evictOldest/evictByAge.
+[ ] M40.16 [MEDIUM] UDP ingress: no source validation / per-source rate limit; reflection/
+      amplification (FindNodeReply >> FindNode) — Network/Transport/UDP.hs:97-101,153.
+      Fix: require Noise handshake/cookie before sizable replies; checkRate at UDP ingress
+      keyed by source; cap concurrent sessions.
+[ ] M40.17 [MEDIUM] mlock failure silently ignored — SecureBytes.hs:116-129, secure_mlock.c:29.
+      (Tracked M35B.mlock.) Fix: verify RLIMIT_MEMLOCK at startup, fail-closed or warn.
+[ ] M40.18 [MEDIUM] KeyStore/Export identity key default empty passphrase
+      — KeyStore.hs:182-191. Fix: require real passphrase / OS keyring; no empty-pass default.
+[ ] M40.19 [MEDIUM] SecureFd writes credentials to predictable /tmp path with on-disk window
+      — SecureFd.hs:106-117. Fix: prefer memfd_create(2) on Linux; O_TMPFILE + fchmod 0600 else.
+[ ] M40.20 [MEDIUM] Compat skip-key cap silently truncates (no typed RatchetSkipExceeded)
+      — Signal/Compat.hs:319-324 (test/cleanroom module). Fix: reject when targetN-recvN > limit.
+[ ] M40.21 [MEDIUM] Noise: no cross-handshake replay defense, no Rekey() — Network/Noise.hs,
+      Noise/Handshake.hs. Fix: bind timestamp/nonce into prologue; add rekey for long sessions.
+
+-- LOW / INFO --
+[ ] M40.22 [LOW] Generated.ChaCha20 / Generated.Poly1305 re-export non-CT reference under
+      the Generated.* namespace (false-assurance naming) — only Test.Equivalence imports them.
+      Fix: rename to Crypto.Reference.* or back with EverCrypt FFI; propagate WARNING pragmas.
+[x] M40.23 [LOW] ProofOfWork clock-skew expiry bypass — FIXED (see patched group above).
+[ ] M40.24 [LOW] WireFormat validateSequence replay gap: floor width (highWater-64) wider than
+      64-entry Set (deleteMin), evicted seqs above floor accepted as new
+      — Protocol/WireFormat.hs:472-475. Fix: reject seq <= Set.findMin once window full.
+[ ] M40.25 [LOW] VRF Elligator2 sign/constant hand-derived, no RFC 9381 App.B KAT; verify
+      proofToHash cofactor for chosen suite — Crypto/VRF.hs:131-242,291-299. Fix: add KAT vectors.
+[ ] M40.26 [LOW] BIP39 export passphrase printed to stderr (redirect/scrollback capture)
+      — TUI/Actions/Export.hs:51 (documented tradeoff). Fix: controlled-clear prompt.
+[ ] M40.27 [LOW] RuntimeLog allow-lists `reason` verbatim; exception strings may embed paths/SQL
+      — App/RuntimeLog.hs:142. Fix: confirm reason call-sites pass fixed enums; cap/scrub.
+[ ] M40.28 [INFO] csrc/generated/vrf.c:10 stale "Not included in c-sources" comment contradicts
+      UmbraVox.cabal:342. Fix: correct comment.
+[ ] M40.29 [INFO] PQXDH/X3DH DH outputs + pqSS held as plain ByteString, not zeroized
+      (CRITICAL self-labeled, tracked M15.7/M15.8) — Signal/PQXDH.hs:172-181, X3DH.hs:153-163.
+[ ] M40.30 [INFO] BIP39 entropy/word Strings unzeroed on GC heap (tracked M15.6) — Crypto/BIP39.hs:16-37.
+
+--------------------------------------------------------------------------------
+M40 ROUND 2: SECOND-PASS CRYPTANALYSIS (2026-06-13, 6 parallel expert agents)
+Build blocker resolved first: CryptoGen ffiWrapperSpec "HKDF" only emitted 3 of
+8 functions; codegen regeneration inside the VM dropped the hand-added hkdfSHA512
+(+hkdfExtract/Expand/SHA256Extract/Expand), breaking Presence.hs:93. FIXED by
+making the emitter the source of truth (app/codegen/CryptoGen.hs). Build verified
+clean in VM (no "error:"/"Failed to build" in log).
+--------------------------------------------------------------------------------
+[x] M40.31 [MEDIUM] DoubleRatchet evictByAge Word64 underflow on future-dated ts
+      — DoubleRatchet.hs:225. Future ts (clock skew / injected wallTs via restored
+      session) underflowed currentTimeSecs-ts, evicting valid skipped keys; semantics
+      diverged from trySkippedKeys' guarded prune. FIXED: guard currentTimeSecs<=ts
+      before subtracting, matching trySkippedKeys. (Same class as M40.23 PoW fix.)
+[ ] M40.32 [CRITICAL] Skipped-message keys not zeroized AND persisted in plaintext —
+      DoubleRatchet.hs:135-146,688; Signal/Session.hs:125-129. rsSkippedKeys holds
+      (msgKey,chainKey) as plain ByteString; evict/delete drop without zeroAndFree;
+      serializeSession writes them verbatim. Heap/session-file dump breaks FS for the
+      whole out-of-order window. Fix: SecureBytes-wrap + zeroAndFree on evict/consume;
+      encrypt-at-rest or exclude from persistence. (Extends M40.15.)
+[ ] M40.33 [HIGH] Skip cache stores full receiving chain key per skipped msg —
+      DoubleRatchet.hs:677,688; trySkippedKeys:637-641. A leaked chain key compromises
+      the entire forward chain, not one message. Fix: store the derived 12-byte nonce
+      (or re-derive from msgKey-independent material), never the chain key.
+[ ] M40.34 [HIGH] DHT routing-table poisoning via unauthenticated reply node lists —
+      DHT.hs:184-185; Lookup.hs:275-282. Deepens M40.4: even with sender auth, the
+      [DHTNode] inside FindNode/FindValue replies (attacker-chosen NodeId + address)
+      is merged into the shortlist and insertNode with zero Sybil cost → eclipse.
+      Fix (with M24.4): ping-before-trust, cap nodes/reply, replacement-cache only
+      until verified. Schedule together with M40.4/M40.10.
+[ ] M40.35 [HIGH] CSPRNG raw /dev/urandom — no early-boot entropy guarantee —
+      Crypto/Random.hs:245-259,299-317. Confirms+widens M40.7: BOTH key and nonce
+      paths share /dev/urandom (non-blocking on Linux); HKDF-Extract debiases but
+      cannot add missing entropy. Early-boot identity/prekey secrets may be
+      predictable. Fix: getrandom(GRND_RANDOM) blocking (or getentropy) on first
+      seed, /dev/urandom fallback; verify pool readiness once at startup.
+[ ] M40.36 [HIGH] CSPRNG fork race — lazy PID-check, not pthread_atfork —
+      Crypto/Random.hs:348-361. Parent/child share CSPRNG state between fork() and
+      child's next randomBytes; same-PID/microsecond reuse risk. Fix: pthread_atfork
+      child handler that zeroes + reseeds immediately.
+[ ] M40.37 [HIGH] AEAD envelope seqNum not in AAD and caller-supplied —
+      WireFormat.hs:343-372,414. Nonce built from caller seqNum; inner envSequence
+      unauthenticated relative to nonce (AAD = version|0x80 only). Enables replay /
+      nonce-confusion at the envelope layer. Fix: bind seqNum into AAD; after decrypt
+      reject if envSequence /= seqNum. NOTE: encodeEnvelopeAEAD appears unwired (no
+      non-test caller) — fix before it is wired. (Pairs with M40.24 replay floor.)
+[ ] M40.38 [MEDIUM] FFI empty ByteString → NULL ptr into HACL* AEAD (aad/plaintext) —
+      Generated/FFI/GCM.hs:72-73,103-104; ChaCha20.hs:37; Keccak.hs. unsafeUseAsCStringLen
+      on empty BS yields NULL+len0; empty AAD is the common envelope case → possible
+      NULL deref/UB in extracted C. Fix: substitute allocaBytes-1 dummy ptr when len==0.
+      (Concrete instance of M40.13.)
+[ ] M40.39 [MEDIUM] ML-KEM encaps-key input validation missing (FIPS 203 §7.2) —
+      MLKEM.hs:462-468,563-567,339. No len==1184 check; byteDecode12 silently reduces
+      mod q instead of rejecting out-of-range coeffs; no re-encode round-trip check.
+      Malformed/crafted EK accepted. Fix: enforce length + modulus/round-trip validation.
+      (Reference impl is ASSURANCE_PENDING; coordinate with M40.5 CT work.)
+[ ] M40.40 [MEDIUM] Responder always uses 3-DH (OPK never consumed) —
+      Handshake.hs:216,238. handshakeResponder passes OPK=Nothing always; the 4-DH OPK
+      leg is never exercised and checkOPKDepletion/isBundleFresh (X3DH.hs:294-370) are
+      never called → weakened initial-message FS, no prekey rotation enforcement.
+      Fix: wire OPK consumption + depletion/freshness checks into the handshake.
+[ ] M40.41 [MEDIUM] DHT presence record verify has no freshness/expiry → replay —
+      Presence.hs:149-156. verifyPresenceRecord checks only the Ed25519 sig, ignores
+      prTimestamp/prTTL; with M40.10 unauth Store, old signed records replay
+      indefinitely. Fix: reject when now > prTimestamp+prTTL or implausibly future;
+      bind epoch into verified payload.
+[ ] M40.42 [MEDIUM] DR DH-key replay window maxSeenDHKeys=10 too small —
+      App/Defaults.hs:113; DoubleRatchet.hs:516-534. After >10 ratchet epochs an old
+      peer DH key is forgotten → epoch-replay of a captured message. Fix: enlarge
+      window substantially or track a monotonic epoch index; reject pre-epoch DH keys.
+[ ] M40.43 [LOW] PQXDH bundleVersion (0x01) checked on parse but not folded into HKDF
+      transcript — Handshake.hs:129; PQXDH.hs:131-133. Future multi-version deployment
+      could be rolled back to v1 undetected. Fix: bind bundleVersion into HKDF info.
+[ ] M40.44 [LOW] FFI Int→Word32 length truncation unguarded — GCM.hs:78,110;
+      ChaCha20.hs:41; Keccak.hs:43,50,57,64. >4 GiB / SHAKE outputLen>2^32 truncates
+      silently; output-buffer path can leak uninitialized allocaBytes memory. Fix:
+      bound BS.length <= maxBound Word32 (and outputLen>=0) before the call.
+      (Concrete instance of M40.14.)
+
+--------------------------------------------------------------------------------
+M40 ROUND 2 EXPERT-PANEL DECONFLICTION (2026-06-13)
+9 expert reviewers (3 per cluster) + 1 deconfliction architect reconciled the
+skipped-key, CSPRNG, and DHT designs. Verdicts: skipped-key serialization design
+REJECTED-as-written (phantom 2-field type); DHT eclipse + auth-Store designs
+REJECTED-as-written (assumed-present plumbing absent; key==H(signerPub) unsatisfiable).
+Reconciled sub-tasks below supersede the one-line M40.32/33/34/4/10/41 fixes above.
+KEY FINDINGS: (1) makeNonce depends only on (chainKey,counter) — both already in
+the 6-field skipped record — so the nonce is DERIVABLE; do NOT persist it (resolves
+M40.33's "store the nonce" against "never lose out-of-order msgs"). (2) banPeer sets
+piBanExpiry=duration not now+duration (PeerManager.hs:146) → every ban expires next
+sweep; bans are no-ops today. (3) presence key is a stealth/epoch token (prStealthPubKey),
+NOT H(signerPub) — the proposed Store constraint was unsatisfiable.
+--------------------------------------------------------------------------------
+CLUSTER 1 — Skipped-key FS + persistence (SAFE TO LAND NOW; no external prereq):
+[ ] M40.32a [CRITICAL] Add 0x01 version byte before skippedCount (Session.hs:146);
+      decoder legacy-detects via 0x00 MSB sentinel (legacy count always < 16M, so the
+      BE-Word32 high byte was always 0x00 — collision-safe). 6-field per-entry layout
+      UNCHANGED (dhPub,counter,msgKey,chainKey,insertSeq,wallTs).
+[ ] M40.32b [CRITICAL] Make rsSkippedKeys msgKey+chainKey fields strict (!); add
+      zeroSkippedEntry :: (ByteString,ByteString) -> IO () helper.
+[ ] M40.32c [CRITICAL] Zero on Map.delete in trySkippedKeys; zero per-step in
+      evictOldest recursion; zero oldChainKey in skipMessageKeys; confirm evictByAge
+      (M40.31) routes through zeroSkippedEntry. Strict IO mapM_, never lazy thunk.
+[ ] M40.32d [HIGH] testSerializeRoundTrip with NON-EMPTY skipped map (cross-restart
+      out-of-order decrypt survival — current test uses empty map, gap).
+[ ] M40.32e [DOC] Note nonce NOT persisted (derivable via makeNonce); no silent
+      count=0 message loss. (Folds M40.33 into M40.32 — nonce-store rejected.)
+CLUSTER 2 — CSPRNG hardening (SAFE TO LAND NOW; no external prereq):
+[ ] M40.33a [HIGH] Add CryptoGen ffiWrapperSpec "Entropy" case; generate Entropy.hs
+      (NOT hand-written — M38.4 drift hazard).
+[ ] M40.33b [HIGH] C: Linux getrandom + glibc /dev/urandom fallback; libc getentropy
+      (256-byte cap loop) on BSD/illumos/macOS (__sun, __EXTENSIONS__); BCryptGenRandom
+      +link bcrypt on Windows (BCRYPT_SUCCESS); bounded ENOSYS/EINTR /dev/urandom
+      fallback. NO raw syscall(SYS_getrandom) (NetBSD/BSD lack it). Feature-test macros
+      _GNU_SOURCE/_DEFAULT_SOURCE/__EXTENSIONS__. WASM stays /dev/urandom.
+[ ] M40.33c [HIGH] C11 atomic_int atfork flag (not bare volatile); pthread_atfork +
+      keep lazy PID check; ccall safe (blocking entropy) / unsafe (flag read).
+[ ] M40.33d [HIGH] cabal `if os(windows)` stanza: re-declare include-dirs csrc, own
+      cc-options, CPP atfork/PID fallback (no unix dep), link bcrypt.
+[ ] M40.33e [DOC] Fork window "narrowed not closed"; threaded-RTS async-signal-safe
+      child-after-fork contract.
+CLUSTER 3 — DHT (split: minimal safe subset NOW; rest BLOCKED on M24.4):
+[ ] M40.11  [MED] Remove placeholder NodeId stub (updateSender dhtAddress="") — SAFE NOW.
+[ ] M40.41a [MED] Presence staleness + 300s future-skew (keep 300s) — SAFE NOW.
+[ ] M40.41b [MED] Wire verifyPresenceRecord into a real presence/relay caller (zero
+      callers today → dead code without this). SAFE NOW.
+[ ] M40.4a  [HIGH] FIX banPeer: piBanExpiry = now + duration (PeerManager.hs:146) —
+      currently raw duration so all bans expire next sweep. SAFE NOW, independent.
+[ ] M24.4   [PREREQ-BLOCKER] Authenticated transport dispatch; thread Noise iStaticPub
+      onto session/NoiseState connection object. BLOCKS M40.4b/c, M40.10, M40.34.
+[ ] M40.4b  [HIGH] verifyNodeId branch: ephemeral-salt mode skips H(key) equality,
+      relies on authenticated static key (else 100% false-reject of salted peers).
+      BLOCKED on M24.4.
+[ ] M40.4c  [HIGH] Re-key bans on authenticated static key NOT address (CGNAT/Tor
+      collateral unacceptable); run monitor-only behind a flag. BLOCKED on M24.4.
+[ ] M40.10  [HIGH] Store auth: constraint key == prStealthPubKey pr (NOT H(signerPub) —
+      unsatisfiable); overwrite guard = signed monotonic counter (NOT prTimestamp).
+      BLOCKED on M24.4.
+[ ] M40.34  [HIGH] Route unverifiable reply-nodes to replacement cache; close FIND_VALUE
+      bucket-protection bypass (Lookup.hs:206-207). BLOCKED on M40.4 verification path.
+Prereq order: M40.4a → M24.4 → M40.4b → M40.4c → M40.10 → M40.34.
+--------------------------------------------------------------------------------
+
+================================================================================
 FULL ASSURANCE PIPELINE (M31-M39)
 Goal: 100% formally verified production crypto; our own KaRaMeL-extracted C.
 See: doc/IMPLEMENTATION-PLAN.md, doc/PROJECT-CHARTER.md
@@ -716,6 +995,64 @@ IMPLEMENTATION BACKLOG (discovered from audits, 2026-05-26)
   [x] M22.5 contrib/oracles/vm-kyber-oracle.nix — vendored (pq-crystals reference)
   Note: Oracle VMs are now vendored offline (contrib/oracles/src/ — 7 source trees).
   M22.1/M22.2 still require nix-prefetch-url in the builder VM (not on host).
+
+[~] M41 tiny-core-linux (TCL) runtime-only integration-test VM target
+  Scaffolded (host-side, compiles): nix/vm-tinycore.nix (SHA256-pinned
+  CorePure64 ISO), vm-defs/tinycore.yaml (mirrors runtime-qemu.yaml schema),
+  scripts/vm-tinycore-setup.sh (fetch + app-disk + boot + report), and the
+  `tinycore` smoke target wired into tools/cmd/umbravox-vm/cmd_image.go.
+  The following require BOOTING the VM and must be finished by an agent that can:
+  [ ] M41.1 nix/vm-tinycore.nix — lib.fakeSha256 needs real hash.
+      Checksum source: http://tinycorelinux.net/15.x/x86_64/release/CorePure64-15.0.iso.md5.txt
+      Resolve inside builder VM: nix-prefetch-url <isoUrl>  (see comment in nix/vm-tinycore.nix)
+  [ ] M41.2 In-guest auto-run mechanism for scripts/vm-tinycore-setup.sh's
+      smoke payload. TCL has no persistent rc.local by default; choose+validate
+      one of: bootcode in isolinux.cfg, a remastered core.gz with
+      /opt/bootlocal.sh, or an `init=` kernel override. QEMU args (app disk on
+      virtio + 9p /output share) are already in place; only the auto-run wiring
+      and guest device-node names (/dev/vda vs /dev/sda) need on-boot validation.
+  [ ] M41.3 Replace the placeholder `umbravox --version` smoke step with real
+      integration/e2e assertions (e.g. a non-interactive self-test subcommand)
+      once the boot path is confirmed working.
+
+[x] M42 CryptoGen idempotency / drift guard
+  Problem: Generated/*.hs and csrc/generated/*.c carry "DO NOT EDIT" but nothing
+  enforced it. A stray hand-edit (or a generator change that was never regenerated)
+  silently diverged the committed code from CryptoGen output — exactly the
+  WireFormat/PQWrapper `pure`-over-IO drift found in M40.32.
+  [x] M42.1 Add CryptoGen.checkSpec: regenerate every artifact in-memory and
+      compare byte-for-byte against the committed file (writes nothing), reusing
+      processSpec's exact path logic so the check can never disagree with the writer.
+  [x] M42.2 codegen `--check` mode in app/codegen/Main.hs — exits non-zero on drift
+      with a fix hint; normal run unchanged.
+  [x] M42.3 `./uv check generated-drift` gate (cmd_check.go) runs `cabal run codegen
+      -- --check` in the dev VM. Standalone gate is fatal; in `./uv check` run-all it
+      is report-only (warn) until M43 eliminates the pre-existing legacy drift.
+
+[ ] M43 Eliminate systemic generated-file drift (REQUIRES M35A/B/C review)
+  Finding (M43): the M42 drift gate revealed ~28 committed generated artifacts
+  diverge from current CryptoGen output. Causes: (a) M31.6/M38.7 oracle-label
+  comment blocks hand-added to csrc/generated/*.c and Generated/*.hs but never
+  emitted by the generator; (b) placeholder-oracle .c param types and word-size
+  (ROTR32/64) produced by an older generator; (c) HKDF FFI error-string line-
+  wrapping; (d) per-file hand notes (M15.3, M38.4).
+  CRITICAL sub-finding (FIXED in generator this milestone):
+    Vulnerability: Generated/FFI/X25519.hs in the committed tree carried an
+      M35A 32-byte length guard (reject scalar/point != 32B to prevent an OOB
+      read in umbravox_x25519), but app/codegen/CryptoGen.hs ffiWrapperSpec
+      "X25519" emitted the UNGUARDED body. Because `./uv build` regenerates all
+      Generated/* in-VM before compiling, the BUILT BINARY used the unguarded
+      version — the committed fix was dead (overwritten at build time).
+    Fix: folded the M35A length guard into ffiWrapperSpec "X25519" so the
+      generated (and therefore built) wrapper rejects non-32-byte inputs.
+    Verified: built binary now compiled from guarded generator output.
+  [ ] M43.1 Fold canonical oracle-label block into CryptoGen cHeader (.c) and a
+      generic oracle-label comment into wrapperModule (.hs reference modules).
+  [ ] M43.2 Audit every drifting .hs FFI/reference module for OTHER production
+      logic present only in the committed tree (like X25519) before regenerating.
+  [ ] M43.3 Regenerate all committed Generated/*.hs + csrc/generated/*.c from the
+      generator; commit the regenerations so committed == generator output.
+  [ ] M43.4 Re-enable generated-drift as a FATAL gate in `./uv check` run-all.
 
 [x] M23 Nix tier consistency
   [x] M23.1 vm-libsignal-protocol-oracle.nix — now imports tiers/base.nix (5ae3102)

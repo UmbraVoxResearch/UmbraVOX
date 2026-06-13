@@ -45,6 +45,8 @@ func runCheck(args []string) int {
 			return checkComplexity()
 		case "generated-headers":
 			return checkGeneratedHeaders()
+		case "generated-drift":
+			return checkGeneratedDrift()
 		case "assurance":
 			return checkAssurance()
 		case "pre-release":
@@ -52,7 +54,7 @@ func runCheck(args []string) int {
 		case "sbom":
 			return checkSBOM()
 		default:
-			fmt.Fprintf(os.Stderr, "Unknown check gate: %s\nAvailable: lint, format, license, complexity, generated-headers, assurance, pre-release, sbom\n", gate)
+			fmt.Fprintf(os.Stderr, "Unknown check gate: %s\nAvailable: lint, format, license, complexity, generated-headers, generated-drift, assurance, pre-release, sbom\n", gate)
 			return 2
 		}
 	}
@@ -73,6 +75,13 @@ func runCheck(args []string) int {
 	}
 	if c := checkGeneratedHeaders(); c != 0 {
 		code = c
+	}
+	// Report-only in the aggregate gate until the M43 reviewed regeneration
+	// eliminates the pre-existing legacy drift (committed generated artifacts
+	// were hand-edited / produced by an older generator). The standalone gate
+	// `./uv check generated-drift` remains fatal for explicit verification.
+	if c := checkGeneratedDrift(); c != 0 {
+		log.Warn(tag, "Generated drift is report-only here pending M43 regeneration; run `./uv check generated-drift` for the fatal gate.")
 	}
 	if c := checkAssurance(); c != 0 {
 		code = c
@@ -359,6 +368,29 @@ func checkGeneratedHeaders() int {
 		return 1
 	}
 	log.OK(tag, "Generated headers: passed")
+	return 0
+}
+
+// checkGeneratedDrift verifies that the committed generated crypto artifacts
+// (src/UmbraVox/Crypto/Generated/*.hs, .../FFI/*.hs, csrc/generated/*.c) still
+// match what CryptoGen deterministically produces. It runs the codegen
+// executable in --check mode, which regenerates every artifact in-memory and
+// diffs it byte-for-byte against the on-disk file, writing nothing and exiting
+// non-zero on any drift. This catches accidental hand-edits to generated files
+// and generator/spec changes that were never regenerated.
+//
+// Runs in the dev VM because the codegen executable must be built with the
+// project's GHC toolchain.
+func checkGeneratedDrift() int {
+	log.Info(tag, "Checking generated crypto artifacts for drift (idempotency)...")
+	cmd := "cabal run -v0 codegen -- --check"
+	if code := execInVM(cmd, qemu.ProfileDev, 15*time.Minute); code != 0 {
+		log.Fail(tag, "Generated crypto artifacts have drifted from CryptoGen output.")
+		fmt.Fprintf(os.Stderr, "  Do not hand-edit Generated/*.hs or csrc/generated/*.c.\n")
+		fmt.Fprintf(os.Stderr, "  Edit app/codegen/CryptoGen.hs (or the .spec), then regenerate.\n")
+		return code
+	}
+	log.OK(tag, "Generated drift: passed (no drift)")
 	return 0
 }
 
