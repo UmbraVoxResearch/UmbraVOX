@@ -1106,10 +1106,31 @@ IMPLEMENTATION BACKLOG (discovered from audits, 2026-05-26)
     Verified: built binary now compiled from guarded generator output.
   [ ] M43.1 Fold canonical oracle-label block into CryptoGen cHeader (.c) and a
       generic oracle-label comment into wrapperModule (.hs reference modules).
-  [ ] M43.2 Audit every drifting .hs FFI/reference module for OTHER production
+  [~] M43.2 Audit every drifting .hs FFI/reference module for OTHER production
       logic present only in the committed tree (like X25519) before regenerating.
+      DRIFT INVENTORY (2026-06-14, `./uv check generated-drift`): 24 artifacts —
+        18 oracle C (csrc/generated/*.c: sha256/sha512/chacha20/poly1305/keccak/
+        hmac/hkdf/aes256/x25519/vrf/ed25519extended/mlkem768/dandelion/wireformat/
+        messageformat/sessionstate/networkprotocol/pqwrapper) + 6 .hs.
+      .hs AUDIT COMPLETE — NO X25519-class hazard recurs; all .hs drift is cosmetic:
+        - FFI/HKDF.hs: generator (ffiWrapperSpec "HKDF") ALREADY emits all M38.4
+          exports (hkdfExtract/hkdfSHA512/hkdfSHA256Extract/hkdfSHA256Expand) AND the
+          M27.6.3 bounds checks (8160/16320). Drift = committed file hand-wraps the
+          error strings across lines; generator emits single-line. No logic lost.
+        - SHA256/SHA512/HKDF/HMAC.hs: pure `Reference.*` alias re-exports, zero logic.
+          Drift = M38.7 oracle-label header comment not emitted by generator (M43.1).
+        - SessionState.hs: generator (hsWrapperSpec, L1162) ALREADY emits matching IO
+          sigs (M15.3 fold-in done). Drift = M15.3 hand-note header comment only.
+      => Regenerating the 6 .hs files is SAFE (no production/security logic loss);
+         only effect is losing oracle-label/hand-note comments until M43.1 folds them
+         into the generator. STILL TODO: audit the 18 oracle .c files (param types/
+         word-size ROTR32/64 + oracle-label comments) before the gate goes fatal.
+      NOTE: oracle .c files are differential-testing only (NOT in UmbraVox.cabal
+        c-sources per M31.6), so their drift is non-production — lower stakes.
   [ ] M43.3 Regenerate all committed Generated/*.hs + csrc/generated/*.c from the
       generator; commit the regenerations so committed == generator output.
+      (GATED: REQUIRES M35A/B/C review — touches ~24 crypto artifacts; do M43.1 first
+      so regeneration preserves oracle labels, then verify build + drift-gate green.)
   [ ] M43.4 Re-enable generated-drift as a FATAL gate in `./uv check` run-all.
 
 [x] M23 Nix tier consistency
