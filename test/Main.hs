@@ -3,7 +3,7 @@ module Main (main) where
 
 import System.Environment (getArgs)
 import System.Exit (exitFailure, exitSuccess)
-import System.IO (hSetEncoding, stdout, stderr, utf8)
+import System.IO (hSetEncoding, hSetBuffering, BufferMode(LineBuffering), stdout, stderr, utf8)
 import Data.List (find, intercalate)
 
 import qualified Test.App.Startup as AppStartup
@@ -169,6 +169,12 @@ main :: IO ()
 main = do
     hSetEncoding stdout utf8
     hSetEncoding stderr utf8
+    -- Line-buffer so per-assertion PASS/FAIL output flushes immediately when
+    -- stdout is redirected (VM console -> log). Block buffering (GHC's default
+    -- for non-TTY handles) lost all test output when a hung run's VM was killed
+    -- before clean exit, masking which test stalled.
+    hSetBuffering stdout LineBuffering
+    hSetBuffering stderr LineBuffering
     args <- getArgs
     ok <- case args of
         ("startup-process-child":answer:_) -> AppStartup.runStartupProcessChild answer
