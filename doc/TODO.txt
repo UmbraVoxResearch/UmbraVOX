@@ -351,18 +351,26 @@ Prereq order: M40.4a → M24.4 → M40.4b → M40.4c → M40.10 → M40.34.
 --------------------------------------------------------------------------------
 PRE-EXISTING core-network test failures (found 2026-06-13, NOT Cluster-3 regressions;
 PeerManager 9/9 + Presence 5/5 pass — these are in unrelated suites):
-[ ] T-PEX-1  [LOW] PeerExchange "single peer timestamp": test expects raw 1700000000
-      but impl quantizes to the hour (got 1699999200) — the hour-bucket feature landed
-      ([x] "Quantize PEX timestamps to 1-hour buckets") but its test vector was not
-      updated. Decide test-vs-spec; if quantization is intended, update the expected
-      value to the floored bucket.
-[ ] T-DHT-1  [MED] DHT "sybil: replacement cache non-empty" expects True, got False —
-      rejected sybil nodes are not landing in the replacement cache. Likely same area
-      as M40.34 (route unverifiable reply-nodes to replacement cache); investigate
-      whether this is the pre-existing gap M40.34 will close or a separate regression.
-[ ] T-DAN-1  [LOW] Dandelion "expected StemForward, got FluffBroadcast": probabilistic
-      stem/fluff routing test — confirm whether flaky (seed/randomness dependent) or a
-      real stem-forwarding regression before fixing.
+RESOLVED 2026-06-13 (commit 6f220290): all stale tests, not impl bugs. Each test
+predated a deliberately added security/privacy feature. Scope was 4 test functions
+across 3 files (T-DHT-1 and T-DAN-1 each covered two functions). Tests-only fixes.
+[x] T-PEX-1  [LOW] PeerExchange "single peer timestamp": impl quantizes to the hour
+      (M14.1.2 privacy). Updated expected value to the floored 1-hour bucket.
+[x] T-DHT-1  [MED] TWO stale DHT tests: (a) testBucketIndexKnownDistances encoded the
+      reversed bucketIndex convention — source uses standard Kademlia
+      255 - countLeadingZeroBits since the original commit; updated expected to
+      255/0/7. (b) testSybilBucketOverflow read buckets!!0 but 0x80-prefixed sybil
+      nodes map to bucket 255; now reads bucketIndex selfId of the actual node. The
+      "replacement cache non-empty" assertion was reading the wrong (empty) bucket,
+      not an impl gap. NOTE: M40.34 (route unverifiable reply-nodes to replacement
+      cache) is still a separate, real pre-existing gap — unaffected by this fix.
+[x] T-DAN-1  [LOW] TWO stale Dandelion tests (testRotateThenStemForward,
+      testEventualFluffTransition): both used < 5 stem peers, so M23.2.5
+      effectiveFluffProb forced p=1.0 (always fluff). Supplied >= 5 peers so the
+      configured probability applies. Not flaky — deterministic given peer count.
+NOTE: VM test run on 2026-06-13 crashed at infra level (QEMU exit -1 at ~44min;
+test binary linked + started but VM hung/killed before output). Build is green
+(160/160). A clean confirmation run of `./uv test core-network` is still pending.
 --------------------------------------------------------------------------------
 
 ================================================================================
