@@ -27,7 +27,7 @@ module UmbraVox.Network.Dandelion
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.IORef
-import Data.Word (Word8, Word64)
+import Data.Word (Word64)
 import Control.Concurrent (threadDelay)
 
 import UmbraVox.Crypto.Random (randomBytes)
@@ -241,44 +241,47 @@ coinFlip p
 -- | Pick a uniform random index in [0, n-1] using CSPRNG with rejection
 -- sampling to eliminate modular bias (M23.3.6).
 --
--- For n <= 256 we draw one byte; for larger n we draw two bytes.
--- Values at or above the largest multiple of n that fits in the byte
--- range are rejected and redrawn.
+-- Draws the smallest number of bytes whose value range (256^k) covers /n/,
+-- then rejects any draw at or above the largest multiple of /n/ within that
+-- range before reducing modulo /n/. Supports arbitrary positive /n/.
+--
+-- SECURITY (M40.42): the previous implementation only handled n <= 65536
+-- (a fixed 2-byte sampler). For n > 65536 the rejection limit computed to
+-- @65536 - (65536 `mod` n) == 0@, so every draw was rejected and the sampler
+-- recursed forever. 'stemJitter' calls @uniformIndex 450001@, so every
+-- Dandelion stem-forward busy-looped indefinitely (a denial of service). The
+-- byte width is now derived from /n/ so the rejection limit is always > 0.
 uniformIndex :: Int -> IO Int
 uniformIndex n
-    | n <= 0    = return 0
-    | n == 1    = return 0
-    | n <= 256  = rejectionSample1 n
-    | otherwise = rejectionSample2 n
+    | n <= 1    = return 0
+    | otherwise = go
+  where
+    !nbytes = bytesNeeded n                  -- smallest k with 256^k >= n
+    !range  = 256 ^ nbytes :: Integer        -- size of the draw space
+    !nI     = fromIntegral n :: Integer
+    !limit  = range - (range `mod` nI)       -- largest multiple of n <= range (> 0)
+    go = do
+        bs <- randomBytes nbytes
+        let !val = BS.foldl' (\acc w -> acc * 256 + fromIntegral w) 0 bs :: Integer
+        if val >= limit
+            then go  -- reject biased tail and redraw
+            else return (fromIntegral (val `mod` nI))
 
--- | Rejection sampling with 1 byte (range 0-255).
-rejectionSample1 :: Int -> IO Int
-rejectionSample1 n = do
-    b <- randomBytes 1
-    let !val  = fromIntegral (BS.index b 0) :: Int
-        !limit = 256 - (256 `mod` n)  -- largest multiple of n <= 256
-    if val >= limit
-        then rejectionSample1 n  -- reject and retry
-        else return (val `mod` n)
-
--- | Rejection sampling with 2 bytes (range 0-65535).
-rejectionSample2 :: Int -> IO Int
-rejectionSample2 n = do
-    bs <- randomBytes 2
-    let !b0  = fromIntegral (BS.index bs 0 :: Word8) :: Int
-        !b1  = fromIntegral (BS.index bs 1 :: Word8) :: Int
-        !val = b0 + b1 * 256
-        !limit = 65536 - (65536 `mod` n)  -- largest multiple of n <= 65536
-    if val >= limit
-        then rejectionSample2 n  -- reject and retry
-        else return (val `mod` n)
+-- | Smallest number of bytes @k@ such that @256^k >= n@ (n >= 1).
+bytesNeeded :: Int -> Int
+bytesNeeded n = go 1 256
+  where
+    nI = fromIntegral n :: Integer
+    go !k !range
+        | range >= nI = k
+        | otherwise   = go (k + 1) (range * 256)
 
 -- | Generate a random stem-forwarding jitter delay in microseconds.
 -- Range: 50,000 - 500,000 us (50 - 500 ms).
 -- Uses CSPRNG via 'uniformIndex' for uniform distribution.
 stemJitter :: IO Int
 stemJitter = do
-    -- 451 possible values: [50000, 50001, ..., 500000]
+    -- 450001 possible values: [50000, 50001, ..., 500000]
     -- We sample uniformly in [0, 450000] and add 50000.
     offset <- uniformIndex 450001
     return (50000 + offset)

@@ -368,9 +368,28 @@ across 3 files (T-DHT-1 and T-DAN-1 each covered two functions). Tests-only fixe
       testEventualFluffTransition): both used < 5 stem peers, so M23.2.5
       effectiveFluffProb forced p=1.0 (always fluff). Supplied >= 5 peers so the
       configured probability applies. Not flaky — deterministic given peer count.
+[x] M40.42 [CRITICAL] DoS: infinite loop in Dandelion stem-forward jitter sampling
+      (Network/Dandelion.hs uniformIndex/rejectionSample2). EXPERT-REVIEW GATE: touches
+      production crypto-randomness path — flag for M35A/B/C before release.
+      FINDING: uniformIndex used a fixed 2-byte rejection sampler (rejectionSample2,
+        range 0..65535) for all n > 256. For n > 65536 the bias limit computed to
+        65536 - (65536 `mod` n) = 65536 - 65536 = 0, so EVERY draw was >= limit and
+        rejected, recursing forever (157% CPU busy-loop, no progress).
+      VULNERABILITY: stemJitter calls uniformIndex 450001 (uniform [50000,500000] us).
+        Therefore EVERY Dandelion stem-forward hung indefinitely in production — a
+        self-inflicted denial of service on the privacy-routing stem path. Masked until
+        now because the stale T-DAN-1 tests used < 5 peers (M23.2.5 forced all-fluff,
+        never exercising the stem branch); fixing those tests (>= 5 peers) exposed it.
+      FIX: replaced the fixed 1-/2-byte samplers with a single rejection sampler whose
+        byte width is derived from n (bytesNeeded n = smallest k with 256^k >= n), so
+        the rejection limit is always > 0. Arithmetic done in Integer to avoid overflow.
+        Removed now-dead rejectionSample1/rejectionSample2; dropped unused Word8 import.
+      VERIFIED: core-network suite (incl. Dandelion stem-forward) green; stem-forward
+        completes instead of busy-looping. (run `./uv test core-network`).
 NOTE: VM test run on 2026-06-13 crashed at infra level (QEMU exit -1 at ~44min;
-test binary linked + started but VM hung/killed before output). Build is green
-(160/160). A clean confirmation run of `./uv test core-network` is still pending.
+test binary linked + started but VM hung/killed before output). The hang was the
+M40.42 stem-forward infinite loop, not pure infra; the LineBuffering harness fix
+(test/Main.hs) made the busy-loop diagnosable. Build is green (160/160).
 --------------------------------------------------------------------------------
 
 ================================================================================
