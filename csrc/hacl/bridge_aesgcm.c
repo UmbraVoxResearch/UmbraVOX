@@ -45,8 +45,20 @@
  */
 
 #include "EverCrypt_AEAD.h"
+#include "EverCrypt_AutoConfig2.h"
 #include <stdint.h>
 #include <stddef.h>
+
+/* EverCrypt CPU capability flags (cpu_has_aesni, has_pclmulqdq, has_avx, ...)
+ * default to false and are only populated by EverCrypt_AutoConfig2_init(), which
+ * runs the cpuid probes. Without this call EverCrypt_AEAD reports
+ * UnsupportedAlgorithm for AES-256-GCM even on AES-NI-capable CPUs. The probe is
+ * idempotent (re-reads cpuid into static flags), so calling it before each
+ * one-shot encrypt/decrypt is safe and cheap. */
+static void umbravox_aesgcm_ensure_cpu_probe(void)
+{
+    EverCrypt_AutoConfig2_init();
+}
 
 int
 umbravox_aes256gcm_encrypt(
@@ -66,6 +78,7 @@ umbravox_aes256gcm_encrypt(
      * HACL* takes non-const pointers; the casts are safe — neither the key,
      * iv, aad, nor plain buffers are mutated by the implementation.
      */
+    umbravox_aesgcm_ensure_cpu_probe();
     return (int) EverCrypt_AEAD_encrypt_expand_aes256_gcm(
         (uint8_t *)(uintptr_t) key,
         (uint8_t *)(uintptr_t) iv,  iv_len,
@@ -86,6 +99,7 @@ umbravox_aes256gcm_decrypt(
     uint8_t *plain_out
 )
 {
+    umbravox_aesgcm_ensure_cpu_probe();
     return (int) EverCrypt_AEAD_decrypt_expand_aes256_gcm(
         (uint8_t *)(uintptr_t) key,
         (uint8_t *)(uintptr_t) iv,  iv_len,
