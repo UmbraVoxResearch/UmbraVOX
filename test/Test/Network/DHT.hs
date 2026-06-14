@@ -152,17 +152,23 @@ selfId = mkNodeId (BS.replicate 32 0)
 ------------------------------------------------------------------------
 
 -- | bucketIndex returns correct bucket for known XOR distances.
+--
+-- bucketIndex = 255 - countLeadingZeroBits (standard Kademlia): the bucket
+-- index is the position (0 = LSB) of the highest set bit of the XOR
+-- distance, so a node differing at the most-significant bit (largest
+-- distance) maps to bucket 255 and one differing only at the LSB maps to
+-- bucket 0.
 testBucketIndexKnownDistances :: IO Bool
 testBucketIndexKnownDistances = do
-    -- Distance with highest bit at position 255 (byte 0, bit 7) -> bucket 0
+    -- Highest set bit at the MSB (byte 0, bit 7) -> bucket 255 (farthest).
     let farId = mkNodeId (BS.cons 0x80 (BS.replicate 31 0))
-    r1 <- assertEq "bucketIndex far node (bit 255)" 0 (bucketIndex selfId farId)
-    -- Distance with highest bit at position 0 (byte 31, bit 0) -> bucket 255
+    r1 <- assertEq "bucketIndex far node (MSB set)" 255 (bucketIndex selfId farId)
+    -- Highest set bit at the LSB (byte 31, bit 0) -> bucket 0 (closest).
     let closeId = mkNodeId (BS.replicate 31 0 <> BS.singleton 0x01)
-    r2 <- assertEq "bucketIndex close node (bit 0)" 255 (bucketIndex selfId closeId)
-    -- Distance with highest bit at position 7 (byte 31, bit 7) -> bucket 248
+    r2 <- assertEq "bucketIndex close node (LSB set)" 0 (bucketIndex selfId closeId)
+    -- Highest set bit at position 7 (byte 31, bit 7) -> bucket 7.
     let midId = mkNodeId (BS.replicate 31 0 <> BS.singleton 0x80)
-    r3 <- assertEq "bucketIndex mid node (bit 7)" 248 (bucketIndex selfId midId)
+    r3 <- assertEq "bucketIndex mid node (position 7)" 7 (bucketIndex selfId midId)
     -- Self -> -1
     r4 <- assertEq "bucketIndex self" (-1) (bucketIndex selfId selfId)
     pure (r1 && r2 && r3 && r4)
@@ -474,7 +480,9 @@ testSybilBucketOverflow :: IO Bool
 testSybilBucketOverflow = do
     let k = 3
     rt <- newRoutingTable selfId k
-    -- Create 20 nodes that all fall into bucket 0 (byte 0 has high bit set)
+    -- Create 20 nodes that all fall into the same bucket: each differs from
+    -- selfId (all zeros) at the MSB (byte 0, bit 7), so bucketIndex = 255 for
+    -- every one (the index depends only on the highest set bit, not on i).
     let mkSybilNode i = mkNode (mkNodeId (BS.pack [0x80, i] <> BS.replicate 30 0))
         sybilNodes = map mkSybilNode [1..20]
     results <- mapM (insertNode rt) sybilNodes
@@ -482,15 +490,15 @@ testSybilBucketOverflow = do
         bucketFullCount = length (filter (== BucketFull) results)
     r1 <- assertEq "sybil: only k nodes inserted" k insertedCount
     r2 <- assertEq "sybil: rest got BucketFull" (20 - k) bucketFullCount
-    -- Verify actual bucket contents
+    -- Verify actual bucket contents in the bucket the nodes actually map to.
     buckets <- readIORef (rtBuckets rt)
-    let bucket0 = buckets !! 0
+    let targetBucket = buckets !! bucketIndex selfId (dhtNodeId (head sybilNodes))
     r3 <- assertEq "sybil: bucket active <= k" True
-              (length (kbEntries bucket0) <= k)
+              (length (kbEntries targetBucket) <= k)
     r4 <- assertEq "sybil: replacement cache non-empty" True
-              (not (null (kbReplacement bucket0)))
+              (not (null (kbReplacement targetBucket)))
     r5 <- assertEq "sybil: replacement cache <= k" True
-              (length (kbReplacement bucket0) <= k)
+              (length (kbReplacement targetBucket) <= k)
     pure (r1 && r2 && r3 && r4 && r5)
 
 ------------------------------------------------------------------------

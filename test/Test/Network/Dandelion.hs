@@ -63,14 +63,18 @@ testStemNoPeerDrops = do
 testRotateThenStemForward :: IO Bool
 testRotateThenStemForward = do
     ds <- newDandelionStateWith 0.0  -- fluff prob 0 = always stay in stem
-    rotateStemPeer ds ["peer-A", "peer-B", "peer-C"]
+    -- M23.2.5: effectiveFluffProb forces fluff (p=1.0) when peer count < 5
+    -- (too few hops to decorrelate origin). Supply >= 5 peers so the
+    -- configured fluff prob (0.0) applies and stem forwarding can occur.
+    let peers = ["peer-A", "peer-B", "peer-C", "peer-D", "peer-E"]
+    rotateStemPeer ds peers
     let msg = BS.pack [10, 20, 30]
     result <- routeMessage ds msg
     case result of
         StemForward peer payload -> do
             r1 <- assertEq "StemForward payload matches" msg payload
             -- Peer should be one of the provided peers
-            let valid = peer `elem` ["peer-A", "peer-B", "peer-C"]
+            let valid = peer `elem` peers
             r2 <- assertEq "StemForward peer is valid" True valid
             pure (r1 && r2)
         other -> do
@@ -103,7 +107,10 @@ testEventualFluffTransition = do
     go 0 !acc = pure acc
     go !n !acc = do
         ds <- newDandelionState  -- fresh state each time (default fluffProb=0.1)
-        rotateStemPeer ds ["stem-relay"]
+        -- M23.2.5: >= 5 peers so effectiveFluffProb uses the configured 0.1
+        -- rather than the forced 1.0 applied when peer count < 5; otherwise
+        -- every trial would fluff and the "not all Fluff" check would fail.
+        rotateStemPeer ds ["relay-A", "relay-B", "relay-C", "relay-D", "relay-E"]
         result <- routeMessage ds (BS.pack [42])
         case result of
             FluffBroadcast _ -> go (n - 1) (acc + 1)

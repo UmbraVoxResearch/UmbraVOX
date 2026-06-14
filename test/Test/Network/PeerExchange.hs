@@ -50,7 +50,11 @@ testSinglePeerRoundTrip = do
             r2 <- assertEq "single peer IP" (piIP peer) (piIP p)
             r3 <- assertEq "single peer port" (piPort peer) (piPort p)
             r4 <- assertEq "single peer pubkey" (piPubkey peer) (piPubkey p)
-            r5 <- assertEq "single peer timestamp" (piLastSeen peer) (piLastSeen p)
+            -- PRIVACY (M14.1.2): encodePeer quantizes the timestamp to the
+            -- 1-hour bucket below it, so the round-trip is intentionally lossy.
+            -- Expect the floored value, not the raw input.
+            let quantized = (piLastSeen peer `div` 3600) * 3600
+            r5 <- assertEq "single peer timestamp (hour-quantized)" quantized (piLastSeen p)
             r6 <- assertEq "decoded peer is indirect" True (piIndirect p)
             pure (r1 && r2 && r3 && r4 && r5 && r6)
         _ -> pure False
