@@ -89,15 +89,27 @@ testEmptyMessageDropped = do
     result <- routeMessage ds BS.empty
     assertEq "empty message -> DropMessage" DropMessage result
 
--- | Test 5: With default fluff probability (0.1), running 1000 times
--- should produce at least some Fluff transitions.
+-- | Test 5: The stem/fluff decision is probabilistic — over many trials it
+-- produces some Fluff transitions but not all (i.e. it is neither stuck in
+-- stem nor stuck in fluff).
+--
+-- Uses fluffProb = 0.5 (not the production default 0.1) and a modest trial
+-- count deliberately, for two reasons:
+--   * M27.6.3: every StemForward incurs a real 50-500 ms 'threadDelay'
+--     (timing jitter). With p=0.1 ~90% of trials take the stem path, so 1000
+--     trials would sleep for minutes. At p=0.5 only ~half the trials sleep
+--     and the count is small, keeping the test fast.
+--   * Statistical safety: at p=0.5, P(zero fluffs) = P(all fluffs) = 0.5^64,
+--     which is ~5e-20 — far below any meaningful flake threshold, so the
+--     "some but not all" assertions are effectively deterministic.
+-- M23.2.5: >= 5 peers so effectiveFluffProb uses the configured 0.5 rather
+-- than the forced 1.0 applied when peer count < 5.
 testEventualFluffTransition :: IO Bool
 testEventualFluffTransition = do
-    let trials = 1000 :: Int
+    let trials = 64 :: Int
     fluffCount <- go trials (0 :: Int)
     let atLeastSome = fluffCount > 0
-    r1 <- assertEq "at least some Fluff transitions in 1000 trials" True atLeastSome
-    -- With p=0.1, expected ~100 fluffs. Check we don't get all fluffs either.
+    r1 <- assertEq "at least some Fluff transitions over trials" True atLeastSome
     let notAll = fluffCount < trials
     r2 <- assertEq "not all trials are Fluff" True notAll
     putStrLn $ "    (fluff count: " ++ show fluffCount ++ "/" ++ show trials ++ ")"
@@ -106,10 +118,7 @@ testEventualFluffTransition = do
     go :: Int -> Int -> IO Int
     go 0 !acc = pure acc
     go !n !acc = do
-        ds <- newDandelionState  -- fresh state each time (default fluffProb=0.1)
-        -- M23.2.5: >= 5 peers so effectiveFluffProb uses the configured 0.1
-        -- rather than the forced 1.0 applied when peer count < 5; otherwise
-        -- every trial would fluff and the "not all Fluff" check would fail.
+        ds <- newDandelionStateWith 0.5  -- fresh state each trial, p=0.5
         rotateStemPeer ds ["relay-A", "relay-B", "relay-C", "relay-D", "relay-E"]
         result <- routeMessage ds (BS.pack [42])
         case result of
