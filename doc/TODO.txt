@@ -1104,8 +1104,14 @@ IMPLEMENTATION BACKLOG (discovered from audits, 2026-05-26)
     Fix: folded the M35A length guard into ffiWrapperSpec "X25519" so the
       generated (and therefore built) wrapper rejects non-32-byte inputs.
     Verified: built binary now compiled from guarded generator output.
-  [ ] M43.1 Fold canonical oracle-label block into CryptoGen cHeader (.c) and a
+  [~] M43.1 Fold canonical oracle-label block into CryptoGen cHeader (.c) and a
       generic oracle-label comment into wrapperModule (.hs reference modules).
+      .hs HALF DONE (2026-06-14): added wrapperModuleDoc + oracleLabel helpers;
+        wired SHA256/SHA512/HMAC/HKDF reference modules. `./uv check generated-drift`
+        confirms these 4 .hs files no longer drift (count 24 -> 20). Comment-only;
+        does not touch production .c logic or the built binary.
+      .c HALF PENDING: cHeader oracle label for the 7 oracle .c files (M31.6) still
+        to fold; gated behind the M43.2 production .c audit + M35A/B/C review.
   [~] M43.2 Audit every drifting .hs FFI/reference module for OTHER production
       logic present only in the committed tree (like X25519) before regenerating.
       DRIFT INVENTORY (2026-06-14, `./uv check generated-drift`): 24 artifacts —
