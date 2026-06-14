@@ -50,9 +50,7 @@ ffiLinked = (/= 0) <$> c_hkdf_link_probe
 hkdf :: ByteString -> ByteString -> ByteString -> Int -> IO ByteString
 hkdf salt ikm info len
     | len <= 0   = pure BS.empty
-    | len > 8160 = ioError (userError
-        ("hkdf: requested " ++ show len ++ " bytes exceeds RFC 5869 \
-        \HKDF-SHA-256 maximum of 8160 (255 * HashLen)"))
+    | len > 8160 = ioError (userError ("hkdf: requested " ++ show len ++ " bytes exceeds RFC 5869 HKDF-SHA-256 maximum of 8160 (255 * HashLen)"))
     | otherwise  =
         allocaBytes len $ \okmPtr ->
         BSU.unsafeUseAsCStringLen salt $ \(saltPtr, saltLen) ->
@@ -108,9 +106,7 @@ hkdfSHA256Extract salt ikm =
 hkdfSHA256Expand :: ByteString -> ByteString -> Int -> IO ByteString
 hkdfSHA256Expand prk info len
     | len <= 0   = pure BS.empty
-    | len > 8160 = ioError (userError
-        ("hkdfSHA256Expand: requested " ++ show len ++ " bytes exceeds RFC 5869 \
-        \HKDF-SHA-256 maximum of 8160 (255 * HashLen)"))
+    | len > 8160 = ioError (userError ("hkdfSHA256Expand: requested " ++ show len ++ " bytes exceeds RFC 5869 HKDF-SHA-256 maximum of 8160 (255 * HashLen)"))
     | otherwise  =
         allocaBytes len $ \okmPtr ->
         BSU.unsafeUseAsCStringLen prk  $ \(prkPtr,  prkLen) ->
@@ -159,9 +155,7 @@ foreign import ccall safe "hkdf_sha512_expand"
 hkdfExpand :: ByteString -> ByteString -> Int -> IO ByteString
 hkdfExpand prk info len
     | len <= 0   = pure BS.empty
-    | len > 16320 = ioError (userError
-        ("hkdfExpand: requested " ++ show len ++ " bytes exceeds RFC 5869 \
-        \HKDF-SHA-512 maximum of 16320 (255 * HashLen)"))
+    | len > 16320 = ioError (userError ("hkdfExpand: requested " ++ show len ++ " bytes exceeds RFC 5869 HKDF-SHA-512 maximum of 16320 (255 * HashLen)"))
     | otherwise   =
         allocaBytes len $ \okmPtr ->
         BSU.unsafeUseAsCStringLen prk  $ \(prkPtr,  prkLen) ->
@@ -194,9 +188,7 @@ hkdfExtract salt ikm =
 hkdfSHA512 :: ByteString -> ByteString -> ByteString -> Int -> IO ByteString
 hkdfSHA512 salt ikm info len
     | len <= 0   = pure BS.empty
-    | len > 16320 = ioError (userError
-        ("hkdfSHA512: requested " ++ show len ++ " bytes exceeds RFC 5869 \
-        \HKDF-SHA-512 maximum of 16320 (255 * HashLen)"))
+    | len > 16320 = ioError (userError ("hkdfSHA512: requested " ++ show len ++ " bytes exceeds RFC 5869 HKDF-SHA-512 maximum of 16320 (255 * HashLen)"))
     | otherwise   =
         allocaBytes len $ \okmPtr ->
         BSU.unsafeUseAsCStringLen salt $ \(saltPtr, saltLen) ->

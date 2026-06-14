@@ -1151,7 +1151,11 @@ hsWrapperSpec "NetworkProtocol" =
         , "decode = Reference.decode"
         ]
 hsWrapperSpec "SessionState" =
-    Just $ wrapperModule "SessionState"
+    Just $ wrapperModuleDoc
+        [ "-- M15.3: signatures updated — initSession, serializeSession, and"
+        , "-- deserializeSession are now IO due to SecureBytes migration."
+        ]
+        "SessionState"
         [ "SessionState(..)", "initSession"
         , "serializeSession", "deserializeSession"
         ]
@@ -2105,7 +2109,11 @@ ffiWrapperSpec "HMAC" =
         , "        BS.packCStringLen (castPtr tagPtr, 64)"
         ]
 ffiWrapperSpec "HKDF" =
-    Just $ ffiBridgeModule "HKDF"
+    Just $ ffiBridgeModuleDoc
+        [ "-- M38.4 fix: hkdfExtract, hkdfSHA512, hkdfSHA256Extract, hkdfSHA256Expand"
+        , "-- added manually — production callers updated by M38.4 expected these exports."
+        ]
+        "HKDF"
         [ "ffiLinked", "hkdf", "hkdfSHA256", "hkdfExtract", "hkdfExpand"
         , "hkdfSHA512", "hkdfSHA256Extract", "hkdfSHA256Expand" ]
         [ "import Data.Word (Word8, Word32)"
@@ -2708,10 +2716,19 @@ ffiWrapperSpec "SessionState" =
 ffiWrapperSpec _ = Nothing
 
 ffiBridgeModule :: String -> [String] -> [String] -> [String] -> [String]
-ffiBridgeModule name exports imports body =
+ffiBridgeModule = ffiBridgeModuleDoc []
+
+-- | Like 'ffiBridgeModule' but injects extra comment lines between the
+-- "Auto-generated" banner and the LANGUAGE pragma — used to fold a hand-added
+-- provenance note (e.g. HKDF's M38.4 export note) into the generator (M43.1).
+ffiBridgeModuleDoc :: [String] -> String -> [String] -> [String] -> [String] -> [String]
+ffiBridgeModuleDoc docLines name exports imports body =
     [ "-- SPDX-License-Identifier: Apache-2.0"
     , "-- | Auto-generated FFI bridge bindings by CryptoGen. DO NOT EDIT."
-    , "{-# LANGUAGE ForeignFunctionInterface #-}"
+    ]
+    ++ docLines
+    ++
+    [ "{-# LANGUAGE ForeignFunctionInterface #-}"
     , "module UmbraVox.Crypto.Generated.FFI." ++ name
     , "    ( " ++ intercalate "\n    , " exports
     , "    ) where"

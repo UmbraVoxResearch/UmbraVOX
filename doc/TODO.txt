@@ -1106,10 +1106,17 @@ IMPLEMENTATION BACKLOG (discovered from audits, 2026-05-26)
     Verified: built binary now compiled from guarded generator output.
   [~] M43.1 Fold canonical oracle-label block into CryptoGen cHeader (.c) and a
       generic oracle-label comment into wrapperModule (.hs reference modules).
-      .hs HALF DONE (2026-06-14): added wrapperModuleDoc + oracleLabel helpers;
-        wired SHA256/SHA512/HMAC/HKDF reference modules. `./uv check generated-drift`
-        confirms these 4 .hs files no longer drift (count 24 -> 20). Comment-only;
-        does not touch production .c logic or the built binary.
+      .hs HALF DONE (2026-06-14): ALL .hs drift now cleared (count 24 -> 18; the 18
+        remaining are .c files only). Steps:
+        - added wrapperModuleDoc + oracleLabel helpers; wired SHA256/SHA512/HMAC/HKDF
+          reference modules with the oracle-label header (24 -> 20).
+        - folded SessionState M15.3 note (wrapperModuleDoc) and HKDF FFI M38.4 note
+          (new ffiBridgeModuleDoc helper) into the generator (20 -> 19 -> 18).
+        - FFI/HKDF.hs residual drift was COSMETIC ONLY: committed hand-wrapped 4 long
+          error strings (Haskell string gaps) vs generator single-line; collapsed
+          string is byte-identical; M27.6.3 bounds-check logic present in BOTH (no
+          X25519-class loss). Normalized the 4 committed lines to generator form.
+        All comment/whitespace-only; does not touch production .c logic or the binary.
       .c HALF PENDING: cHeader oracle label for the 7 oracle .c files (M31.6) still
         to fold; gated behind the M43.2 production .c audit + M35A/B/C review.
   [~] M43.2 Audit every drifting .hs FFI/reference module for OTHER production
