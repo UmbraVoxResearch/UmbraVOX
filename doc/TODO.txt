@@ -1123,10 +1123,20 @@ IMPLEMENTATION BACKLOG (discovered from audits, 2026-05-26)
           sigs (M15.3 fold-in done). Drift = M15.3 hand-note header comment only.
       => Regenerating the 6 .hs files is SAFE (no production/security logic loss);
          only effect is losing oracle-label/hand-note comments until M43.1 folds them
-         into the generator. STILL TODO: audit the 18 oracle .c files (param types/
-         word-size ROTR32/64 + oracle-label comments) before the gate goes fatal.
-      NOTE: oracle .c files are differential-testing only (NOT in UmbraVox.cabal
-        c-sources per M31.6), so their drift is non-production — lower stakes.
+         into the generator.
+      .c SPLIT (corrected — NOT all .c are oracle-only; verified in UmbraVox.cabal
+        c-sources, L289-349):
+        * PRODUCTION generated C (IN the built binary; X25519-class hazard APPLIES —
+          a committed-only guard/fix would be dropped on regen and the BINARY would
+          use the unguarded generator output): aes256.c, mlkem768.c, x25519.c, vrf.c,
+          pqwrapper.c, messageformat.c, wireformat.c, ed25519extended.c, dandelion.c,
+          networkprotocol.c (10 files). These each need the per-file committed-vs-
+          generator audit (needs a VM regen to diff) and M35A/B/C review BEFORE M43.3.
+        * ORACLE-only (NOT in c-sources; differential testing per M31.6 — drift is
+          non-production, lower stakes): sha256.c, sha512.c, chacha20.c, poly1305.c,
+          keccak.c, hmac.c, hkdf.c (7 files). Drift = oracle-label block + ROTR32/64
+          word-size/param types from an older generator.
+      STILL TODO (gated): audit the 10 PRODUCTION .c files for committed-only logic.
   [ ] M43.3 Regenerate all committed Generated/*.hs + csrc/generated/*.c from the
       generator; commit the regenerations so committed == generator output.
       (GATED: REQUIRES M35A/B/C review — touches ~24 crypto artifacts; do M43.1 first
