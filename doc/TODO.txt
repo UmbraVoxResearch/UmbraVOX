@@ -1149,7 +1149,28 @@ IMPLEMENTATION BACKLOG (discovered from audits, 2026-05-26)
           non-production, lower stakes): sha256.c, sha512.c, chacha20.c, poly1305.c,
           keccak.c, hmac.c, hkdf.c (7 files). Drift = oracle-label block + ROTR32/64
           word-size/param types from an older generator.
-      STILL TODO (gated): audit the 10 PRODUCTION .c files for committed-only logic.
+      .c AUDIT (2026-06-14, `./uv exec` codegen + diff vs committed snapshot, in-VM
+        COW overlay — host tree untouched). Per-file committed-vs-generated hunks:
+        * HEADER-ONLY drift (M31.6 oracle-label block stripped; cHeader doesn't emit
+          it): aes256.c, pqwrapper.c, messageformat.c (+ oracle sha256/sha512/hmac/
+          hkdf.c). Cosmetic; SAFE.
+        * COMMENT-ONLY drift: mlkem768.c — generated emits identical N_INV + all 128
+          zeta values; committed adds `/* 17^k = ... */` explanatory comments the
+          generator strips (136 vs 135 lines = 1 comment line). Values byte-identical.
+        * CODE-LINE CHURN (equal line counts, needs paired side-by-side review before
+          ANY regen — canonical X25519-class zone): x25519.c and ed25519extended.c.
+          committed-only lines incl. variable inits (x_2_init/z_2_init/swap_init,
+          R_neg_Y/dec_Z) and ROTR32/ROTL32 #define placement. Equal counts SUGGEST
+          reorder/reformat not logic loss, but NOT confirmed — M35A/B/C must read the
+          full paired hunks. DO NOT regenerate these two without review.
+        * MINOR body hunks (whitespace/reformat, equal counts): vrf.c 33->33,
+          dandelion.c 14->14, networkprotocol.c 7->7, wireformat.c 9->9, poly1305.c
+          21->21, sessionstate.c, keccak.c 14->12.
+        * STALE oracle (generated MUCH larger, committed is old/trimmed): chacha20.c
+          171 -> 678 lines. Oracle-only (not in binary); regen just refreshes it.
+      => Production .c regen REMAINS M35-gated. x25519.c + ed25519extended.c are the
+         two files where a committed-only guard could hide; everything else is
+         cosmetic (header/comment/whitespace) or oracle-only.
   [ ] M43.3 Regenerate all committed Generated/*.hs + csrc/generated/*.c from the
       generator; commit the regenerations so committed == generator output.
       (GATED: REQUIRES M35A/B/C review — touches ~24 crypto artifacts; do M43.1 first
