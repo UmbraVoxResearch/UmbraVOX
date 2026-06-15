@@ -250,13 +250,19 @@ data StepResult = Row | Done
     deriving stock (Eq, Show)
 
 -- | Step a statement. Returns 'Row' if a row is available, 'Done' if finished.
+--
+-- NB: the result code must be compared against 'sqlite_ROW' / 'sqlite_DONE'
+-- with guards, NOT bare names in case alternatives — a lowercase name in a
+-- case pattern is a fresh binding that matches everything, which previously
+-- made this function always return 'Row' and hung every 'stepRow' loop.
 step :: Statement -> IO StepResult
 step (Statement stmtPtr) = do
     rc <- c_sqlite3_step stmtPtr
-    case rc of
-        sqlite_ROW  -> pure Row
-        sqlite_DONE -> pure Done
-        _           -> throwIO (SQLiteError (fromIntegral rc) "step failed")
+    if rc == sqlite_ROW
+        then pure Row
+        else if rc == sqlite_DONE
+            then pure Done
+            else throwIO (SQLiteError (fromIntegral rc) "step failed")
 
 -- | Step expecting a row. Returns 'True' if a row is available.
 stepRow :: Statement -> IO Bool
