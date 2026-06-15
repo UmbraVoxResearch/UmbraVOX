@@ -5,6 +5,9 @@ import System.Environment (getArgs, lookupEnv)
 import System.Exit (exitFailure, exitSuccess)
 import System.IO (hSetEncoding, hSetBuffering, BufferMode(LineBuffering), stdout, stderr, utf8)
 import System.Timeout (timeout)
+import Control.Concurrent (forkIO)
+import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
+import Control.Exception (SomeException, try)
 import Data.List (find, intercalate)
 import Text.Read (readMaybe)
 
@@ -308,17 +311,36 @@ runNamed suite = do
     limitS <- suiteTimeoutSecs
     ok <- if limitS <= 0
         then suiteAction suite
-        else do
-            mres <- timeout (limitS * 1000000) (suiteAction suite)
-            case mres of
-                Just r  -> pure r
-                Nothing -> do
-                    putStrLn $ "  FAIL: suite '" ++ suiteName suite
-                        ++ "' exceeded timeout (" ++ show limitS
-                        ++ "s) — treating as failure (likely hang)"
-                    pure False
+        else runBounded limitS suite
     putStrLn ""
     pure ok
+
+-- | Run a suite under a hard wall-clock bound that the suite cannot defeat.
+--
+-- The suite runs in a forked thread and reports its result via an MVar; the
+-- `timeout` is applied to `takeMVar` in *this* thread. The deadline exception
+-- therefore fires in the harness thread (no catch-all to swallow it), not in
+-- the suite thread. A previous attempt applied `timeout` directly to the
+-- suite action, but suites with a catch-all SomeException handler (e.g. the
+-- OutboundQueue SQLite tests) caught the Timeout sentinel, printed it, and
+-- continued into the next hanging sub-test — defeating the bound. On timeout
+-- here the stuck suite thread is simply abandoned (it leaks an OS thread
+-- parked in a blocking FFI call; harmless, the process exits shortly after).
+-- Requires the threaded RTS (-threaded), which the test suite already uses.
+runBounded :: Int -> Suite -> IO Bool
+runBounded limitS suite = do
+    resultVar <- newEmptyMVar
+    _ <- forkIO $ do
+        r <- try (suiteAction suite)
+        putMVar resultVar (either (const False) id (r :: Either SomeException Bool))
+    mres <- timeout (limitS * 1000000) (takeMVar resultVar)
+    case mres of
+        Just r  -> pure r
+        Nothing -> do
+            putStrLn $ "  FAIL: suite '" ++ suiteName suite
+                ++ "' exceeded timeout (" ++ show limitS
+                ++ "s) — abandoning suite thread (likely hang)"
+            pure False
 
 -- | Per-suite wall-clock limit in seconds. A hung suite is converted into a
 -- fast, clearly-marked failure instead of stalling until the VM's systemd
