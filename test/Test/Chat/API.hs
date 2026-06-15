@@ -51,6 +51,7 @@ runTests = do
         , testDispatchGetHistory
         , testDispatchGetHistoryMissingPeer
         , testDispatchConnect
+        , testDispatchConnectLoopbackRejected
         , testDispatchConnectMissingParams
         , testDispatchDisconnect
         , testDispatchDisconnectMissingParam
@@ -290,11 +291,14 @@ testDispatchGetHistoryMissingPeer = do
                 then pass "dispatchIO: getHistory missing peer -> error"
                 else fail' ("dispatchIO: getHistory missing peer unexpected: " ++ resp)
 
--- | Connect with valid params returns well-formed response.
+-- | Connect with a valid public host returns well-formed response.
+-- Uses RFC 5737 TEST-NET-2 (198.51.100.0/24), a public documentation range, so
+-- the isPrivateAddress SSRF/loopback guard does not reject it. (dispatchIO does
+-- not actually open the socket — it returns "connecting".)
 testDispatchConnect :: IO Bool
 testDispatchConnect = do
     cfg <- newDefaultAppConfig
-    let input = "{\"jsonrpc\":\"2.0\",\"method\":\"connect\",\"params\":{\"host\":\"127.0.0.1\",\"port\":\"7853\"},\"id\":7}"
+    let input = "{\"jsonrpc\":\"2.0\",\"method\":\"connect\",\"params\":{\"host\":\"198.51.100.20\",\"port\":\"7853\"},\"id\":7}"
     case parseRequest input of
         Left err -> fail' ("dispatchIO connect parse: " ++ err)
         Right req -> do
@@ -303,6 +307,22 @@ testDispatchConnect = do
                && "\"id\":7" `isInfixOf` resp
                 then pass "dispatchIO: connect well-formed"
                 else fail' ("dispatchIO: connect unexpected: " ++ resp)
+
+-- | Connect to a private/loopback address is rejected (SSRF guard).
+-- Locks in the isPrivateAddress hardening: a messaging client must not be
+-- coercible into dialing loopback/RFC 1918 internal addresses.
+testDispatchConnectLoopbackRejected :: IO Bool
+testDispatchConnectLoopbackRejected = do
+    cfg <- newDefaultAppConfig
+    let input = "{\"jsonrpc\":\"2.0\",\"method\":\"connect\",\"params\":{\"host\":\"127.0.0.1\",\"port\":\"7853\"},\"id\":7}"
+    case parseRequest input of
+        Left err -> fail' ("dispatchIO connect/loopback parse: " ++ err)
+        Right req -> do
+            resp <- dispatchIO cfg Connect req
+            if "\"error\":" `isInfixOf` resp
+               && "private/loopback" `isInfixOf` resp
+                then pass "dispatchIO: connect to loopback rejected"
+                else fail' ("dispatchIO: loopback not rejected: " ++ resp)
 
 -- | Connect with missing params returns error.
 testDispatchConnectMissingParams :: IO Bool

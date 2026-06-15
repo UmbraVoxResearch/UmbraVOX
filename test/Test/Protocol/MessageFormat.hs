@@ -93,7 +93,7 @@ testRoundTripEmpty = do
 -- | All packed blocks are exactly 1024 bytes.
 testBlockSizeIs1024 :: IO Bool
 testBlockSizeIs1024 = do
-    let payloads = [BS.empty, BS.replicate 1 0x41, BS.replicate 500 0x42, BS.replicate 1020 0x43]
+    let payloads = [BS.empty, BS.replicate 1 0x41, BS.replicate 500 0x42, BS.replicate 1019 0x43]
         sizes = [ BS.length (unMessageBlock mb) | Right mb <- map packBlock payloads ]
     if all (== blockSize) sizes && length sizes == length payloads
         then do
@@ -135,10 +135,11 @@ testPKCS7Padding = do
                       | otherwise = toEnum (fromEnum 'a' + fromIntegral n - 10)
         in [hexChar hi, hexChar lo]
 
--- | Payload > 1020 bytes is rejected.
+-- | Payload > 1019 bytes is rejected (maxPayload = blockSize - 4 - 1, M23.3.8
+-- guarantees >= 1 PKCS7 pad byte).
 testPayloadTooLarge :: IO Bool
 testPayloadTooLarge = do
-    case packBlock (BS.replicate 1021 0x41) of
+    case packBlock (BS.replicate 1020 0x41) of
         Left _ -> do
             putStrLn "  PASS: payload too large rejected"
             pure True
@@ -146,10 +147,10 @@ testPayloadTooLarge = do
             putStrLn "  FAIL: payload too large should be rejected"
             pure False
 
--- | Maximum payload (1020 bytes) is accepted and round-trips.
+-- | Maximum payload (1019 bytes) is accepted and round-trips.
 testMaxPayload :: IO Bool
 testMaxPayload = do
-    let payload = BS.replicate 1020 0x42
+    let payload = BS.replicate 1019 0x42
     case packBlock payload >>= unpackBlock of
         Right got | got == payload -> do
             putStrLn "  PASS: max payload round-trip"

@@ -59,6 +59,22 @@ decryptAll st0 msgs nowSecs = go st0 msgs []
             Left err -> fail ("decryptAll: decryptSenderKey failed: " ++ show err)
             Right (st', pt) -> go st' ms (pt : acc)
 
+-- | Like 'decryptAll', but returns 'Nothing' on the first failure instead of
+-- aborting the test process.  The receiver state is threaded from one message
+-- to the next: a successful 'decryptSenderKey' zeroes the consumed chain key
+-- (forward secrecy — M15.5 SecureBytes are mutable pinned buffers), so the
+-- caller MUST use the returned state for the following message.
+decryptThread :: SenderKeyState -> [SenderKeyMessage] -> Word64
+              -> IO (Maybe [BS.ByteString])
+decryptThread st0 msgs0 nowSecs = go st0 msgs0 []
+  where
+    go _  []     acc = pure (Just (reverse acc))
+    go st (m:ms) acc = do
+        res <- decryptSenderKey st m nowSecs
+        case res of
+            Left _          -> pure Nothing
+            Right (st', pt) -> go st' ms (pt : acc)
+
 ------------------------------------------------------------------------
 -- Test 1: Member addition
 --
@@ -184,9 +200,13 @@ testMemberRemoval = do
     -- Alice sends 5 post-rotation messages.
     (_aliceFinal, msgsPostRotation) <- sendN aliceStPostRotation 5 plaintext
 
-    -- Bob decrypts them all.
-    bobPostRes <- mapM (\m -> decryptSenderKey bobStPost m (fromIntegral nowSecs)) msgsPostRotation
-    r1 <- case sequence (map (\r -> case r of { Left _ -> Nothing; Right p -> Just p }) bobPostRes) of
+    -- Bob decrypts them all.  His receiver state MUST be threaded from one
+    -- message to the next: a successful decryptSenderKey zeroes the consumed
+    -- chain key (forward secrecy, M15.5 SecureBytes are mutable pinned
+    -- buffers), so reusing the iteration-0 state for every message would read
+    -- a zeroed chain key after the first decrypt and fail messages 2..5.
+    bobPostRes <- decryptThread bobStPost msgsPostRotation (fromIntegral nowSecs)
+    r1 <- case bobPostRes of
         Nothing -> do
             putStrLn "  FAIL: member-removal: Bob failed to decrypt post-rotation message"
             pure False
@@ -241,10 +261,15 @@ testOutOfOrder = do
 ------------------------------------------------------------------------
 -- Test 4: Skipped key eviction
 --
--- Encrypt 257 messages so that when Bob decrypts message 257 (iteration
--- 256) first, the cache must store iterations 0-255 (256 entries) but
--- message 0's key is evicted by the size cap (maxSkippedSenderKeys=256).
--- Attempting to decrypt message 0 afterward must fail.
+-- Encrypt 258 messages so that when Bob decrypts the iteration-257 message
+-- first, the chain advances 0->257, caching skipped keys for iterations
+-- 0..256 (257 entries).  That exceeds the cap (maxSkippedSenderKeys=256),
+-- which evicts the oldest entry (iteration 0).  Attempting to decrypt
+-- message 0 afterward must fail, while a mid-range message (128) survives.
+--
+-- The cap is strict-greater (evict only when size > 256), so caching exactly
+-- 256 entries does NOT evict — hence 257 cached entries (iteration 257), not
+-- 256, are required to force the eviction.
 ------------------------------------------------------------------------
 
 testSkippedKeyEviction :: IO Bool
@@ -259,22 +284,22 @@ testSkippedKeyEviction = do
         Left err -> fail ("testSkippedKeyEviction: processSenderKeyDistribution failed: " ++ show err)
         Right st -> pure st
 
-    -- Alice encrypts 257 messages (iterations 0..256).
-    (_, msgs) <- sendN aliceSt0 257 plaintext
+    -- Alice encrypts 258 messages (iterations 0..257).
+    (_, msgs) <- sendN aliceSt0 258 plaintext
 
-    -- Bob decrypts message 256 first (the last one). This forces the chain
-    -- to advance from 0 to 256, caching keys for iterations 0..255.
-    -- The cache holds exactly 256 entries; the oldest (iteration 0) is
-    -- evicted when iteration 256 is processed.
-    let msg256 = last msgs
+    -- Bob decrypts the iteration-257 message first (the last one). This forces
+    -- the chain to advance from 0 to 257, caching keys for iterations 0..256
+    -- (257 entries).  That exceeds the cap of 256, so the oldest entry
+    -- (iteration 0) is evicted.
+    let msg257 = last msgs
         msg0   = head msgs
-    res256 <- decryptSenderKey bobSt0 msg256 (fromIntegral nowSecs)
-    (bobSt256, _) <- case res256 of
-        Left err -> fail ("testSkippedKeyEviction: decrypt msg256 failed: " ++ show err)
+    res257 <- decryptSenderKey bobSt0 msg257 (fromIntegral nowSecs)
+    (bobSt257, _) <- case res257 of
+        Left err -> fail ("testSkippedKeyEviction: decrypt msg257 failed: " ++ show err)
         Right pair -> pure pair
 
     -- Decrypting msg0 must fail because it was evicted.
-    res0 <- decryptSenderKey bobSt256 msg0 (fromIntegral nowSecs)
+    res0 <- decryptSenderKey bobSt257 msg0 (fromIntegral nowSecs)
     r1 <- case res0 of
         Left _ ->
             assertEq "skipped-key-eviction: msg0 key evicted" True True
@@ -282,11 +307,10 @@ testSkippedKeyEviction = do
             putStrLn "  FAIL: skipped-key-eviction: msg0 decrypted (should have been evicted)"
             pure False
 
-    -- Msgs 1..255 should still be in cache (none were evicted since
-    -- evictOldestSenderKeys only removes one at a time, and msg0 was the
-    -- oldest). Spot-check msg 128 (iteration 128).
+    -- Msgs 1..256 should still be in cache (only the oldest, iteration 0,
+    -- was evicted). Spot-check msg 128 (iteration 128).
     let msg128 = msgs !! 128
-    res128 <- decryptSenderKey bobSt256 msg128 (fromIntegral nowSecs)
+    res128 <- decryptSenderKey bobSt257 msg128 (fromIntegral nowSecs)
     r2 <- case res128 of
         Left err -> do
             putStrLn ("  FAIL: skipped-key-eviction: msg128 unexpectedly evicted: " ++ show err)
