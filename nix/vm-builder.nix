@@ -14,7 +14,23 @@
 #
 # Network: QEMU user-mode with restrict=on + guestfwd through
 #          host-side allowlist filter (cache.nixos.org:443 only)
-{ pkgs ? import <nixpkgs> { system = "x86_64-linux"; } }:
+#
+# nixpkgs is pinned from flake.lock (not the ambient `<nixpkgs>` channel) so the
+# builder image is realised from the SAME nixpkgs rev that flake.lock pins for
+# `.#vm-image`.  This matters because the builder evaluates `.#vm-image` offline
+# (see ExecStart): it cannot fetch the locked nixpkgs source from github, so we
+# seed it by building the builder from that exact rev (its source store path then
+# gets copied into the builder store) and override the `.#vm-image` nixpkgs input
+# to that local path.  Falls back to the ambient channel only if flake.lock is
+# absent (e.g. ad-hoc `nix-build nix/vm-builder.nix` outside a checkout).
+{ pkgs ? let
+    lock    = builtins.fromJSON (builtins.readFile ../flake.lock);
+    nixpkgs = fetchTarball {
+      url    = "https://github.com/NixOS/nixpkgs/archive/${lock.nodes.nixpkgs.locked.rev}.tar.gz";
+      sha256 = lock.nodes.nixpkgs.locked.narHash;
+    };
+  in import nixpkgs { system = "x86_64-linux"; }
+}:
 
 let
   builderConfig = { config, lib, modulesPath, pkgs, ... }: {
@@ -119,9 +135,18 @@ let
           echo "[BUILDER] Running nix build .#vm-image ..."
           export TMPDIR=/nix-scratch/tmp
           set +e
+          # The builder VM has no network during eval (SNI allowlist permits only
+          # cache.nixos.org, and that is unreachable here too).  Flake input
+          # resolution ignores NIX_PATH, so .#vm-image would try to fetch the
+          # nixpkgs source tarball from github and fail offline.  Override the
+          # nixpkgs input to the local store path the builder was realised from
+          # (${pkgs.path} is interpolated here, making it a runtime dependency of
+          # the builder image and thus guaranteed present in this store).  It is
+          # the same nixpkgs rev that flake.lock pins, so evaluation is identical.
           nix build \
               --option build-dir /nix-scratch/tmp \
               --option sandbox-build-dir /build \
+              --override-input nixpkgs ${pkgs.path} \
               -L .#vm-image \
               -o /nix-scratch/workspace/result 2>&1
           BUILD_STATUS=$?

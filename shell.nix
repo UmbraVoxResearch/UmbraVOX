@@ -47,7 +47,10 @@ let
   # fiat-crypto: Coq-verified constant-time C field arithmetic (Curve25519/Ed25519).
   # Generated C files land under $out/include/ and $out/src/ in the nix store.
   # M13.15.2-M13.15.5 will extract these for FFI integration.
-  fiat-crypto = pkgs.fiat-crypto;
+  # Guard with hasAttr (matches nix/tiers/dev.nix): the attribute was dropped/renamed
+  # in recent nixpkgs-unstable, and it is not yet load-bearing (current production
+  # crypto is pure-Haskell + HACL*/EverCrypt; fiat-crypto FFI wiring is future work).
+  fiatCrypto = if builtins.hasAttr "fiat-crypto" pkgs then [ pkgs.fiat-crypto ] else [];
 
   # Fuzzing
   afl = pkgs.aflplusplus;
@@ -88,7 +91,6 @@ in pkgs.mkShell {
     tlaplus
     fstar
     z3
-    fiat-crypto
 
     # Go (for ./uv build system tools)
     pkgs.go
@@ -122,7 +124,7 @@ in pkgs.mkShell {
     pkgs.microsocks
     pkgs.tmux
     pkgs.asciinema
-  ];
+  ] ++ fiatCrypto;
 
   shellHook = ''
     export UMBRAVOX_ROOT="$(pwd)"

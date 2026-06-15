@@ -1,31 +1,46 @@
 {
   description = "UmbraVOX reproducible build and release entrypoints";
 
+  # nixpkgs is the ONLY flake input, by design.  The hermetic builder VM (see
+  # nix/vm-builder.nix) evaluates `nix build .#vm-image` with no network, so every
+  # flake input's source must already be present in the builder's nix store.  The
+  # builder image is itself realised from flake.lock's nixpkgs, so that source path
+  # is present; any OTHER github: input (flake-utils, karamel, …) would be fetched
+  # live from github at eval time — flake-input fetching bypasses the binary cache —
+  # and fail with "Could not resolve host: github.com".  flake-utils was therefore
+  # removed and its `eachDefaultSystem` inlined below.
+  #
+  # M36A (KaRaMeL toolchain) is deferred for the same reason: when M36B (Low* → C
+  # extraction) actually begins, KaRaMeL must be VENDORED into contrib/ and built as
+  # a nixpkgs derivation against the project's existing nixpkgs OCaml + F* (the same
+  # pattern as HACL*/fiat-crypto/PQClean), never added as a live github flake input.
+  # Until then karamelHome stays null and KRML_HOME is unset.
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    flake-utils.url = "github:numtide/flake-utils";
-
-    # KaRaMeL: F* Low* → C extractor.  Pinned to the commit used by HACL* 504c298.
-    # Required for M36B (our own formally-extracted C in csrc/extracted/).
-    # flake.lock must be updated in the dev VM: nix flake lock
-    karamel = {
-      url = "github:fstarlang/karamel?rev=254e099bd586b17461845f6b0cab44c3ef5080e9";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
   };
 
-  outputs = { self, nixpkgs, flake-utils, karamel }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs = { self, nixpkgs }:
+    let
+      # Inline replacement for flake-utils.lib.eachDefaultSystem: for each system,
+      # call `f system` and group its outputs as <output-type>.<system> = value.
+      defaultSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
+      eachDefaultSystem = f:
+        let
+          merge = acc: system:
+            let out = f system;
+            in builtins.foldl'
+                 (a: key: a // { ${key} = (a.${key} or {}) // { ${system} = out.${key}; }; })
+                 acc
+                 (builtins.attrNames out);
+        in builtins.foldl' merge {} defaultSystems;
+    in
+    eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
         hp = pkgs.haskell.packages.ghc9141;
 
-        # KaRaMeL home directory (F* Low* → C extractor).  Available via
-        # karamel.packages.${system}.karamel.home once flake.lock is updated.
-        # M36A: run 'nix flake lock' in dev VM to lock the karamel input,
-        # then KRML_HOME becomes available in devShells.full and the VM image.
-        karamelPkg = karamel.packages.${system}.karamel or null;
-        karamelHome = if karamelPkg != null then karamelPkg.home else null;
+        # KaRaMeL home directory — null until M36A vendors KaRaMeL (see note above).
+        karamelHome = null;
 
         # Minimal tools for VM orchestration (default shell)
         vmTools = with pkgs; [
@@ -49,9 +64,6 @@
           tlaplus
           fstar
           z3
-          # fiat-crypto: Coq-verified constant-time C for Curve25519/Ed25519 field ops.
-          # Generated C under $out/include/ and $out/src/; used by M13.15.2-M13.15.5.
-          fiat-crypto
           go
           sqlite
           aflplusplus
@@ -63,7 +75,12 @@
 
           # Image building
           e2fsprogs
-        ]);
+        ])
+        # fiat-crypto: Coq-verified constant-time C for Curve25519/Ed25519 field ops.
+        # Generated C under $out/include/ and $out/src/; used by M13.15.2-M13.15.5.
+        # Guarded with hasAttr (matches nix/tiers/dev.nix and shell.nix): the attribute
+        # was dropped/renamed in recent nixpkgs-unstable and is not yet load-bearing.
+        ++ (if builtins.hasAttr "fiat-crypto" pkgs then [ pkgs.fiat-crypto ] else []);
 
         mkCheck = name: cmd: pkgs.runCommand "umbravox-${name}-check" { nativeBuildInputs = devTools; } ''
           cp -r ${./.} src
@@ -93,7 +110,7 @@
           buildInputs = devTools;
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [ pkgs.glibc ];
           # KRML_HOME: KaRaMeL home for F* Low* → C extraction (M36A/M36B).
-          # Available after 'nix flake lock' populates the karamel lock entry.
+          # null (and thus omitted) until KaRaMeL is vendored — see note above outputs.
           KRML_HOME = karamelHome;
           shellHook = ''
             export UMBRAVOX_ROOT="$(pwd)"
@@ -213,10 +230,9 @@
 
         packages.vm-image = (import ./nix/vm-image.nix {
           pkgs = import nixpkgs { system = "x86_64-linux"; };
-          # M36A: pass karamelHome so KRML_HOME is set in the dev VM.
-          # karamelHome is null until 'nix flake lock' populates the lock entry.
-          karamelHome = let kp = karamel.packages.x86_64-linux or {};
-                        in kp.karamel.home or null;
+          # M36A deferred: karamelHome stays null until KaRaMeL is vendored
+          # (see the note above the outputs binding).
+          karamelHome = null;
         }).qemu;
 
         packages.qemu-runtime-image = (import ./nix/vm-runtime.nix {
