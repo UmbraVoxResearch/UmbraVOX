@@ -40,34 +40,16 @@ extern "C" {
 /* FStar integer mask helpers — extern declarations; defined in hacl_fsmath.c.
  * The full declarations are already pulled in via ../Hacl_Krmllib.h above. */
 
-/* FStar.UInt128 operations via native __uint128_t (GCC/Clang x86-64) */
-static inline FStar_UInt128_uint128
-FStar_UInt128_add(FStar_UInt128_uint128 a, FStar_UInt128_uint128 b)
-  { return a + b; }
-
-static inline FStar_UInt128_uint128
-FStar_UInt128_logor(FStar_UInt128_uint128 a, FStar_UInt128_uint128 b)
-  { return a | b; }
-
-static inline FStar_UInt128_uint128
-FStar_UInt128_shift_left(FStar_UInt128_uint128 a, uint32_t s)
-  { return a << s; }
-
-static inline FStar_UInt128_uint128 FStar_UInt128_mul_wide(uint64_t x, uint64_t y)
-  { return (FStar_UInt128_uint128)x * (FStar_UInt128_uint128)y; }
-
-static inline void store128_be(uint8_t *b, FStar_UInt128_uint128 n)
-{
-  store64_be(b,     (uint64_t)(n >> 64U));
-  store64_be(b + 8, (uint64_t)n);
-}
-
-static inline FStar_UInt128_uint128 load128_be(uint8_t *b)
-{
-  FStar_UInt128_uint128 h = (FStar_UInt128_uint128)load64_be(b);
-  FStar_UInt128_uint128 l = (FStar_UInt128_uint128)load64_be(b + 8);
-  return (h << 64U) | l;
-}
+/* FStar.UInt128 operations (add/logor/shift_left/mul_wide/store128_be/load128_be)
+ * are NOT defined here.  They are supplied by the platform-selected uint128
+ * implementation that "krml/internal/types.h" (included above) pulls in:
+ *   - fstar_uint128_gcc64.h         when HAS_INT128 (native __uint128_t)
+ *   - fstar_uint128_msvc.h          on MSVC x64
+ *   - FStar_UInt128_Verified.h +
+ *     fstar_uint128_struct_endianness.h   otherwise (portable struct impl)
+ * Defining them here too produced a "redefinition of FStar_UInt128_add" error
+ * (commit 8e6d3dc6 over-corrected a link fix that only concerned the extern
+ * mask helpers above; the UInt128 helpers are header-inline and need no TU). */
 
 #if defined(__cplusplus)
 }
