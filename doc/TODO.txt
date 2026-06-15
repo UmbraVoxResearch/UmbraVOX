@@ -473,12 +473,31 @@ See: doc/IMPLEMENTATION-PLAN.md, doc/PROJECT-CHARTER.md
 
 [ ] PHASE 3: Formal Spec + Proof Closure (dev VM, M35 gated)
   [~] M36A KaRaMeL toolchain setup (dev VM prerequisite)
-       - [x] Add fstarlang/karamel as flake input in flake.nix (rev=254e099, matches HACL* pin)
-       - [x] Expose KRML_HOME in dev VM (nix/tiers/dev.nix + vm-image.nix specialArgs)
+       - [x] VENDOR KaRaMeL full source in contrib/karamel @4697965c (NOT a flake input —
+             offline builder forbids github: inputs). Pinned to match F* 2026.03.24 /
+             OCaml 5.4.1 (OCaml-5.4.0 build fix PR #695 + krmllib lockstep). Supersedes
+             the old 254e099 flake-input plan; 'nix flake lock' step is now obsolete.
+       - [x] Build-from-source derivation: contrib/karamel/.nix/karamel.nix, "home" output =
+             canonical KRML_HOME tree (krml + krmllib/include/runtime). flake.nix mkKaramelHome.
+       - [x] Wire KRML_HOME for ONLINE host path: `nix develop .#full` (devShells.full).
+       - [x] Expose KRML_HOME in dev VM (nix/tiers/dev.nix, guarded karamelHome != null;
+             krml wrapper points at $KRML_HOME/krml — home-output layout, not bin/).
        - [x] Add csrc/extracted/ directory with README; update UmbraVox.cabal include-dirs
-       - [x] Wire karamelHome through flake.nix → vm-image.nix → dev.nix (nullable until lock)
-       - [ ] Run 'nix flake lock' in dev VM to populate flake.lock karamel entry (VM ONLY)
-       - [ ] Verify $KRML_HOME/krml --version and trivial extraction (VM ONLY)
+       - [ ] BLOCKED (offline): bake KaRaMeL into the OFFLINE dev-VM image. flake.nix
+             packages.vm-image now passes karamelHome=null because the offline builder VM
+             (nix/vm-builder.nix) cannot BUILD KaRaMeL — its OCaml dep closure (batteries,
+             zarith, ppx_deriving_yojson, …) is absent from the builder's persistent scratch
+             store and unfetchable with no network. Requires seeding KaRaMeL's built closure
+             into the builder image's /nix/store first (online pre-seed step).
+       - [ ] PRE-EXISTING INFRA GAP (not KaRaMeL): the offline builder-VM image build itself
+             fails realising gnumake-4.4.1 / stdenv-linux (nixos-disk-image.drv needs gnumake;
+             make-4.4.1.tar.gz unfetchable offline). The builder's scratch store lacks the full
+             .#vm-image build closure (stdenv assembly tools). Fix = pre-seed builder image
+             /nix/store with the complete .#vm-image closure (online), then re-bake builder
+             image. Verified independent of M36A via diff: with karamelHome=null my nix changes
+             do not alter the vm-image closure (dev.nix branch dead, comments only, flake.lock
+             unchanged). The on-host path (`./uv vm build-image --on-host`, online) is unaffected.
+       - [ ] Verify $KRML_HOME/krml --version and trivial extraction (host .#full or seeded VM)
   [x] M37.1 Implement NTT in Spec.MLKEM768.fst (host — F* verify in dev VM, M37.6)
        - Cooley-Tukey: fwd_butterfly, fwd_group, fwd_groups, ntt_fwd_layer, ntt (7 layers)
        - pow_mod, bit_rev7, zeta_of (17^bitrev7(i) mod q) defined functionally
