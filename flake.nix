@@ -11,11 +11,20 @@
   # removed and its `eachDefaultSystem` inlined below.
   #
   # M36A (KaRaMeL toolchain): KaRaMeL is VENDORED in contrib/karamel (full source at
-  # commit 254e099bd586b17461845f6b0cab44c3ef5080e9, the commit the vendored HACL*
-  # flake pins against F* v2025.10.06) and built from source as a local-path nixpkgs
-  # derivation against the project's nixpkgs OCaml + F* (the same pattern as
-  # HACL*/fiat-crypto/PQClean), never a live github flake input.  Its build needs no
-  # network, so it works inside the offline builder VM.  See mkKaramelHome below.
+  # commit 4697965c28ccb6288593ea8853b5dc1c09028a85, 2026-03-25) and built from source
+  # as a local-path nixpkgs derivation against the project's nixpkgs OCaml + F* (the
+  # same pattern as HACL*/fiat-crypto/PQClean), never a live github flake input.  Its
+  # build needs no network, so it works inside the offline builder VM.
+  #
+  # Commit pin rationale: it is pinned to MATCH the F* our toolchain actually ships
+  # (2026.03.24~dev, nixpkgs ocaml5.4.1-fstar-2026.03.24), NOT the older 254e099 the
+  # HACL* flake used for F* v2025.10.06.  Two hard constraints force this commit:
+  #   1. OCaml: our nixpkgs OCaml is 5.4.1; KaRaMeL's OCaml-5.4.0 build fix (PR #695,
+  #      c96d44be "GenCTypes: use ppxlib stable AST builder") only landed 2026-03-25,
+  #      so any earlier KaRaMeL fails to COMPILE here.
+  #   2. F* lockstep: 4697965c is contemporaneous with F* 2026.03.24 (one day apart),
+  #      within KaRaMeL<->F* interface tolerance for krmllib extraction.
+  # See mkKaramelHome below.
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
   };
@@ -49,7 +58,7 @@
         mkKaramelHome = p:
           if builtins.hasAttr "fstar" p
           then (p.callPackage ./contrib/karamel/.nix/karamel.nix {
-                  version = "254e099bd586b17461845f6b0cab44c3ef5080e9";
+                  version = "4697965c28ccb6288593ea8853b5dc1c09028a85";
                 }).home
           else null;
         karamelHome = mkKaramelHome pkgs;

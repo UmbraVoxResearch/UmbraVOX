@@ -11,11 +11,22 @@
 #   nix-build nix/vm-image.nix      (standalone)
 #
 # The output is a raw disk image: result/nixos.raw
-# M36A: karamelHome is passed from the flake (or null if not yet locked).
-# Once 'nix flake lock' is run in the VM, karamelHome is populated and
-# KRML_HOME becomes available inside the VM for F* Low* → C extraction.
+# M36A: karamelHome defaults to KaRaMeL built from the vendored source in
+# contrib/karamel (commit 4697965c, matched to our F* 2026.03.24 / OCaml 5.4.1 — see
+# flake.nix).  The "home" output is the canonical KRML_HOME tree (krml + krmllib +
+# include + runtime), baked into the dev VM for F* Low* → C extraction (M36B).
+# Built directly here (not only via the flake) because `./uv vm build-image` invokes
+# `nix-build nix/vm-image.nix -A qemu` standalone, bypassing the flake's mkKaramelHome.
+# Guarded with hasAttr "fstar": a nixpkgs lacking an fstar attr leaves KRML_HOME unset
+# rather than failing the whole image build.  The flake passes an explicit value,
+# which overrides this default (and avoids a double build).
 { pkgs ? import <nixpkgs> { system = "x86_64-linux"; }
-, karamelHome ? null
+, karamelHome ?
+    (if builtins.hasAttr "fstar" pkgs
+     then (pkgs.callPackage ../contrib/karamel/.nix/karamel.nix {
+             version = "4697965c28ccb6288593ea8853b5dc1c09028a85";
+           }).home
+     else null)
 }:
 
 let

@@ -960,6 +960,7 @@ and mk_stmts m stmts: C.stmt list =
 
 and mk_index m (e1: expr) (e2: expr): C.expr =
   match e2 with
+  | Qualified (["Pulse"; "Lib"; "Pervasives"], "_zero_for_deref")
   | Qualified (["C"], "_zero_for_deref") ->
       mk_deref m e1
   | _ ->
@@ -1401,7 +1402,7 @@ let mk_type_or_external m (w: where) ?(is_inline_static=false) (d: decl): C.decl
               else
                 failwith "TODO: support for negative enum values"
             in
-            let cases = List.map (fun (lid, v) -> to_c_name m (lid, Macro), v) cases in
+            let cases = List.map (fun (lid, v) -> to_c_name m (lid, Other), v) cases in
             wrap_verbatim name flags (Text (enum_as_macros cases)) @
             let qs, spec, decl = mk_spec_and_declarator_t m name (Int t) in
             [ Decl ([], (qs, spec, None, Some Typedef, { maybe_unused = false; target = None }, [ decl, None, None ]))]
