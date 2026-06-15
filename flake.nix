@@ -253,10 +253,21 @@
           vmPkgs = import nixpkgs { system = "x86_64-linux"; };
         in (import ./nix/vm-image.nix {
           pkgs = vmPkgs;
-          # M36A: KaRaMeL built from vendored source (contrib/karamel) for the dev VM,
-          # so `$KRML_HOME/krml` is available for F* Low* → C extraction (M36B).
-          # Built against the x86_64-linux pkgs used for the VM image itself.
-          karamelHome = mkKaramelHome vmPkgs;
+          # M36A: karamelHome left null here ON PURPOSE.  This package is built by the
+          # OFFLINE builder VM (nix/vm-builder.nix runs `nix build .#vm-image` with no
+          # network).  KaRaMeL's *source* is vendored and needs no network, but
+          # *building* it pulls a large OCaml dependency closure (batteries, zarith,
+          # ppx_deriving_yojson, …) plus stdenv build tools (file, make, python) that
+          # are NOT in the builder's persistent scratch store and cannot be fetched
+          # offline — so feeding KaRaMeL in here breaks the whole dev-VM image build
+          # (libtool/stdenv/disk-image cascade, "Could not resolve host cache.nixos.org").
+          #
+          # KaRaMeL IS wired and available via the ONLINE host path: `nix develop .#full`
+          # sets KRML_HOME (see devShells.full) using mkKaramelHome.  Baking KaRaMeL into
+          # the offline dev-VM image (M36A follow-up) requires first seeding its built
+          # closure into the builder image's /nix/store (nix/vm-builder.nix), which is a
+          # separate, builder-image-rebuild step.  Until then: null = VM boots without krml.
+          karamelHome = null;
         }).qemu;
 
         packages.qemu-runtime-image = (import ./nix/vm-runtime.nix {
