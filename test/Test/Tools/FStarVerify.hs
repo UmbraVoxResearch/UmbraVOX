@@ -243,28 +243,37 @@ fstarDir = "test/evidence/formal-proofs/fstar"
 -- | All expected Spec modules in sorted order.
 -- Keccak is split into Permutation/Sponge/SHA3 sub-modules for faster
 -- per-module F* verification; the top-level Spec.Keccak is a thin wrapper.
--- discoverModules sorts alphabetically then puts heavySpecs last.
+-- discoverModules sorts lexicographically (ASCII, uppercase before lowercase)
+-- then puts heavySpecs last (warm-cache ordering).
 expectedModules :: [String]
 expectedModules =
     [ "Spec.AES256"
     , "Spec.ChaCha20"
     , "Spec.ChaChaPoly"
+    , "Spec.Dandelion"
     , "Spec.DoubleRatchet"
     , "Spec.Ed25519"
+    , "Spec.Ed25519Extended"
     , "Spec.GCM"
     , "Spec.GaloisField"
     , "Spec.HKDF"
     , "Spec.HMAC"
+    , "Spec.IntBridge"           -- M36B.0 Low* int-type bridge prerequisite
     , "Spec.Keccak"              -- thin re-export wrapper (fast)
+    , "Spec.MessageFormat"
+    , "Spec.NetworkProtocol"
     , "Spec.NoiseIK"
+    , "Spec.PQWrapper"
     , "Spec.PQXDH"
     , "Spec.Poly1305"
     , "Spec.SHA256"
     , "Spec.SHA256.Refinement"
     , "Spec.SHA512"
     , "Spec.SenderKeys"
+    , "Spec.SessionState"
     , "Spec.StealthAddress"
     , "Spec.VRF"
+    , "Spec.WireFormat"
     , "Spec.X25519"
     , "Spec.X3DH"
     , "Spec.Keccak.Permutation"  -- heavy: verified last
@@ -284,7 +293,7 @@ testDiscoverModulesCount :: IO Bool
 testDiscoverModulesCount = do
     mods <- discoverModules fstarDir
     assertEq "discoverModules count"
-        25
+        33
         (length mods)
 
 ------------------------------------------------------------------------
