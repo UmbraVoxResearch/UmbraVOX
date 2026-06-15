@@ -11,22 +11,19 @@
 #   nix-build nix/vm-image.nix      (standalone)
 #
 # The output is a raw disk image: result/nixos.raw
-# M36A: karamelHome defaults to KaRaMeL built from the vendored source in
-# contrib/karamel (commit 4697965c, matched to our F* 2026.03.24 / OCaml 5.4.1 — see
-# flake.nix).  The "home" output is the canonical KRML_HOME tree (krml + krmllib +
-# include + runtime), baked into the dev VM for F* Low* → C extraction (M36B).
-# Built directly here (not only via the flake) because `./uv vm build-image` invokes
-# `nix-build nix/vm-image.nix -A qemu` standalone, bypassing the flake's mkKaramelHome.
-# Guarded with hasAttr "fstar": a nixpkgs lacking an fstar attr leaves KRML_HOME unset
-# rather than failing the whole image build.  The flake passes an explicit value,
-# which overrides this default (and avoids a double build).
+# M36A: karamelHome defaults to null for the STANDALONE build path.
+# `./uv vm build-image` invokes `nix-build nix/vm-image.nix -A qemu` standalone
+# inside the OFFLINE builder VM, whose persistent scratch store is seeded only from
+# the builder's baked /nix/store.  KaRaMeL's closure is not in that store, and the
+# builder has no network to fetch it, so defaulting karamelHome to a built derivation
+# here breaks the whole image build offline.  KaRaMeL is instead supplied explicitly
+# via the FLAKE path: flake.nix's mkKaramelHome passes a concrete karamelHome to
+# `nix/vm-image.nix` for `nix build .#vm-image`.  Built from the vendored source in
+# contrib/karamel (commit 4697965c, matched to our F* 2026.03.24 / OCaml 5.4.1).
+# Until the builder's offline store is seeded with KaRaMeL's closure (M36A follow-up),
+# the standalone path leaves KRML_HOME unset — the VM boots normally without krml.
 { pkgs ? import <nixpkgs> { system = "x86_64-linux"; }
-, karamelHome ?
-    (if builtins.hasAttr "fstar" pkgs
-     then (pkgs.callPackage ../contrib/karamel/.nix/karamel.nix {
-             version = "4697965c28ccb6288593ea8853b5dc1c09028a85";
-           }).home
-     else null)
+, karamelHome ? null
 }:
 
 let
