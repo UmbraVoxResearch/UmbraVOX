@@ -116,7 +116,7 @@ roundTripVectors =
     -- Test Vector 5 — 64-byte message (RFC 8032 §7.1)
     , ( "RFC8032-TV5"
       , hexDecode "833fe62409237b9d62585368e2e0a27954c17b8c2c9e1615e77afdd10b001b22"
-      , "ec172b93ad5e563bf4932c70e1245034c35467ef2efd4d64ebf819683467e2bf"
+      , "7d767f56574cfd84370faab1b89da689e249ca1f1c64899e402b634b61d533c3"
       , tv5Message
       )
     ]

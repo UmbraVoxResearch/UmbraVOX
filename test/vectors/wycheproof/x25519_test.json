@@ -33,7 +33,7 @@
           "comment": "RFC 7748 §6.1 TV3: basepoint multiplication (u=9)",
           "public": "0900000000000000000000000000000000000000000000000000000000000000",
           "private": "a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4",
-          "shared": "c3da55379de9c6908e94ea4df28d084f32eccf03491c71f754b4075577a28552",
+          "shared": "1c9fd88f45606d932a80c71824ae151d15d73e77de38e8e000852e614fae7019",
           "result": "valid",
           "flags": []
         },

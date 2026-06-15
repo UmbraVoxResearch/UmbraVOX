@@ -48,7 +48,7 @@ encryptVectors =
     , ( "SP800-38A F.1.5 block 3"
       , "603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4"
       , "30c81c46a35ce411e5fbc1191a0a52ef"
-      , "b31c08e4b4defc93df5b47cc79a00d6e"
+      , "b6ed21b99ca6f4f9f153e7b1beafed1d"
       )
     , ( "SP800-38A F.1.5 block 4"
       , "603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4"
@@ -72,7 +72,7 @@ decryptVectors =
       )
     , ( "SP800-38A F.1.6 block 3"
       , "603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4"
-      , "b31c08e4b4defc93df5b47cc79a00d6e"
+      , "b6ed21b99ca6f4f9f153e7b1beafed1d"
       , "30c81c46a35ce411e5fbc1191a0a52ef"
       )
     , ( "SP800-38A F.1.6 block 4"

@@ -105,10 +105,15 @@ lowOrderPoints =
       , "edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f")
     , ("low-order #5 (p+1)"
       , "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f")
-    , ("low-order #6 (2^255-2)"
-      , "daffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f")
-    , ("low-order #7 (2^255-1)"
-      , "dbffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f")
+    -- The two non-trivial order-8 points from the canonical curve25519
+    -- small-order blacklist (libsodium ge25519_has_small_order table).
+    -- A previous revision listed 0xda../0xdb..7f here labelled "2^255-2/-1";
+    -- those decode to p-19 / p-18, which are NOT low-order (scalarmult yields
+    -- a non-zero result) and must therefore be ACCEPTED, not rejected.
+    , ("low-order #6 (order-8 point A)"
+      , "e0eb7a7c3b41b8ae1656e3faf19fc46ada098deb9c32b1fd866205165f49b800")
+    , ("low-order #7 (order-8 point B)"
+      , "5f9c95bca3508c24b1d0b1559c83ef5b04445cc4581c8e86d8224eddd09f1157")
     , ("low-order #8 (2^255)"
       , "0000000000000000000000000000000000000000000000000000000000000080")
     ]
