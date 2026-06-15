@@ -17,6 +17,45 @@ DEFERRED — PERSISTENCE ENCRYPTION
     encryption layer can be added on top when needed.
 
 ================================================================================
+DEFERRED — M17 LOCAL IDENTITY PERSISTENCE REGRESSION (2026-06-15)
+================================================================================
+
+[!] M17.x Local identity not preserved across process restarts
+    Symptom: test testProcessRestartAroundBootPath ("process boot restart
+    preserves fingerprint") fails — a fresh child process regenerates a new
+    local identity on every startup (fp1 != fp2). The in-process sibling test
+    (testRestartPreservesIdentityAndHistory) passes because it uses the disk
+    resolver resolveIdentityAt directly.
+
+    Root cause: M17 (commit 4f14c5f6, "ephemeral-by-default + plugin
+    architecture") changed App.Startup.initializeLocalIdentity from the
+    disk-persisting resolveIdentity (loadIdentityKey / saveIdentityKey) to
+    resolveIdentityEphemeral, which routes identity I/O through the in-memory
+    cfgStorage handle and is gated by PluginIdentityPersistence. The production
+    boot order (Runtime.Headless.initCoreRuntime -> initializeLocalIdentity,
+    THEN app/umbravox/Main.hs -> applyPersistenceAnswer) resolves the identity
+    BEFORE persistence is activated and before the disk-backed Anthony storage
+    handle is installed, so the identity is never loaded from or saved to disk.
+    Identity is resolved early because the TCP listener needs it
+    (startListenerIfNeeded st identity ...). The test predates M17 (added in
+    4985a7b8) -> this is a genuine regression, not a stale test.
+
+    Security impact: restorePersistentStateAtUnsafe derives the at-rest storage
+    encryption key from the identity's Ed25519 secret (StorageKey via
+    deriveStorageKey). If the identity changes on every boot, the derived key
+    changes too, so conversations encrypted in a prior session become
+    undecryptable after restart — persistence-with-encryption is broken across
+    restarts.
+
+    Decision needed (architectural — do NOT change life-critical crypto startup
+    without sign-off):
+      (a) Treat identity as persistent when the saved persistence preference is
+          "yes": resolve the preference early and load the saved identity from
+          disk before the listener/identity init; or
+      (b) Declare identity ephemeral-by-design and update the test accordingly.
+    Tracked as task #25. Blocks full `./uv test all` green (recovery suite).
+
+================================================================================
 DEFERRED — PROVENANCE AND ATTESTATION
 ================================================================================
 

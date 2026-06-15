@@ -73,6 +73,11 @@ mkTestConfig = do
     cfg <- newDefaultAppConfig
     writeIORef (cfgDisplayName cfg) "testuser"
     writeIORef (cfgDebugLogPath cfg) "build/test-runtime.log"
+    -- Tests use ephemeral mode by default (in-memory storage, no disk
+    -- writes).  newDefaultAppConfig defaults this to False (production
+    -- default); restore the test-isolation default that was dropped when
+    -- mkTestConfig was refactored to delegate to newDefaultAppConfig.
+    writeIORef (cfgEphemeral cfg) True
     return cfg
 
 -- | Add a loopback session with empty history.
