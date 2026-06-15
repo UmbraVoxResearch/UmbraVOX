@@ -86,14 +86,16 @@ in
 {
   imports = [ ./builder.nix ];
 
+  # The karamel "home" output places the krml binary at its root ($KRML_HOME/krml),
+  # alongside krmllib/include/runtime — the canonical KRML_HOME layout — not bin/krml.
   environment.systemPackages = devToolsPkgs
     ++ (if karamelHome != null then [ (pkgs.writeShellScriptBin "krml" ''
-         exec ${karamelHome}/bin/krml "$@"
+         exec ${karamelHome}/krml "$@"
        '') ] else []);
 
   # M36A: KRML_HOME for F* Low* → C extraction (M36B).
-  # Available after 'nix flake lock' populates the karamel lock entry in the
-  # dev VM.  Once set, run: $KRML_HOME/krml --version to verify.
+  # Populated from the vendored contrib/karamel derivation (flake.nix mkKaramelHome).
+  # Run: $KRML_HOME/krml --version to verify.
   environment.variables = lib.mkIf (karamelHome != null) {
     KRML_HOME = karamelHome;
   };

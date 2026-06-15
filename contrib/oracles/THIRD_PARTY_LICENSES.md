@@ -22,9 +22,18 @@ The main UmbraVOX project is licensed under Apache-2.0.
 | `src/libsignal` | [signalapp/libsignal](https://github.com/signalapp/libsignal) | 46d867c | AGPLv3 (see src/libsignal/LICENSE) |
 | `src/hacl-star` (interim: csrc/hacl/) | [hacl-star/hacl-star](https://github.com/hacl-star/hacl-star) | 504c298 | MIT / Apache-2.0 (see csrc/hacl/README.md) |
 | `src/fiat-crypto` (interim: csrc/fiat/) | [mit-plv/fiat-crypto](https://github.com/mit-plv/fiat-crypto) | 4217de0 (v0.0.9) | MIT |
+| `contrib/karamel` (build tool — F* Low* → C extractor, not an oracle) | [FStarLang/karamel](https://github.com/FStarLang/karamel) | 254e099 | Apache-2.0 / MIT |
 
 Each source tree's own LICENSE file is present under its directory and is
 authoritative.
+
+**`contrib/karamel`** is the KaRaMeL compiler (Low* → C), vendored full-source and
+built from source as a local-path nixpkgs derivation (flake.nix `mkKaramelHome`).
+Unlike the oracle sources above it is part of the assurance *toolchain* (M36A): it
+will extract UmbraVOX's own formally-verified C into `csrc/extracted/` (M36B).  It
+is a build-time dependency, not linked into or shipped with the UmbraVOX binary.
+Commit 254e099 is the KaRaMeL revision the vendored HACL* flake pins against F*
+v2025.10.06.
 
 ---
 

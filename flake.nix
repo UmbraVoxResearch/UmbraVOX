@@ -10,11 +10,12 @@
   # and fail with "Could not resolve host: github.com".  flake-utils was therefore
   # removed and its `eachDefaultSystem` inlined below.
   #
-  # M36A (KaRaMeL toolchain) is deferred for the same reason: when M36B (Low* → C
-  # extraction) actually begins, KaRaMeL must be VENDORED into contrib/ and built as
-  # a nixpkgs derivation against the project's existing nixpkgs OCaml + F* (the same
-  # pattern as HACL*/fiat-crypto/PQClean), never added as a live github flake input.
-  # Until then karamelHome stays null and KRML_HOME is unset.
+  # M36A (KaRaMeL toolchain): KaRaMeL is VENDORED in contrib/karamel (full source at
+  # commit 254e099bd586b17461845f6b0cab44c3ef5080e9, the commit the vendored HACL*
+  # flake pins against F* v2025.10.06) and built from source as a local-path nixpkgs
+  # derivation against the project's nixpkgs OCaml + F* (the same pattern as
+  # HACL*/fiat-crypto/PQClean), never a live github flake input.  Its build needs no
+  # network, so it works inside the offline builder VM.  See mkKaramelHome below.
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
   };
@@ -39,8 +40,19 @@
         pkgs = import nixpkgs { inherit system; };
         hp = pkgs.haskell.packages.ghc9141;
 
-        # KaRaMeL home directory — null until M36A vendors KaRaMeL (see note above).
-        karamelHome = null;
+        # KaRaMeL home directory (M36A): built from the vendored source in
+        # contrib/karamel via its upstream .nix/karamel.nix, which exposes a "home"
+        # output — the canonical KRML_HOME tree (krml binary + krmllib/include/runtime
+        # at its root).  Guarded with hasAttr "fstar": if the pinned nixpkgs lacks an
+        # fstar attr the derivation cannot be built, so KRML_HOME stays unset (M36A
+        # no-op) rather than failing evaluation.  Same defensive pattern as fiat-crypto.
+        mkKaramelHome = p:
+          if builtins.hasAttr "fstar" p
+          then (p.callPackage ./contrib/karamel/.nix/karamel.nix {
+                  version = "254e099bd586b17461845f6b0cab44c3ef5080e9";
+                }).home
+          else null;
+        karamelHome = mkKaramelHome pkgs;
 
         # Minimal tools for VM orchestration (default shell)
         vmTools = with pkgs; [
@@ -228,11 +240,14 @@
           pkgs = import nixpkgs { system = "x86_64-linux"; };
         };
 
-        packages.vm-image = (import ./nix/vm-image.nix {
-          pkgs = import nixpkgs { system = "x86_64-linux"; };
-          # M36A deferred: karamelHome stays null until KaRaMeL is vendored
-          # (see the note above the outputs binding).
-          karamelHome = null;
+        packages.vm-image = let
+          vmPkgs = import nixpkgs { system = "x86_64-linux"; };
+        in (import ./nix/vm-image.nix {
+          pkgs = vmPkgs;
+          # M36A: KaRaMeL built from vendored source (contrib/karamel) for the dev VM,
+          # so `$KRML_HOME/krml` is available for F* Low* → C extraction (M36B).
+          # Built against the x86_64-linux pkgs used for the VM image itself.
+          karamelHome = mkKaramelHome vmPkgs;
         }).qemu;
 
         packages.qemu-runtime-image = (import ./nix/vm-runtime.nix {
