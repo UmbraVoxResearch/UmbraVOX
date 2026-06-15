@@ -22,7 +22,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Unsafe as BSU
 
--- Bridge: calls HACL* hkdf_sha256 (csrc/hacl/bridge_hkdf.c).
+-- Bridge: calls HACL* hkdf_sha256 / hkdf_sha512 (csrc/hacl/bridge_hkdf.c).
 -- The C bridge securely zeroes the intermediate PRK (M35B fix).
 -- RFC 5869 max output: 255 * 32 = 8160 bytes; enforced in C bridge AND Haskell layer.
 -- Finding:       M27.6.3 — HKDF Haskell wrappers passed unchecked len to C; the C
@@ -47,10 +47,13 @@ foreign import ccall safe "hkdf_sha256"
 ffiLinked :: IO Bool
 ffiLinked = (/= 0) <$> c_hkdf_link_probe
 
-hkdf :: ByteString -> ByteString -> ByteString -> Int -> IO ByteString
-hkdf salt ikm info len
+-- | Combined HKDF-Extract-then-Expand with HMAC-SHA-256.
+--
+-- @hkdfSHA256 salt ikm info len@ — @len@ must be <= 8160 (255 * 32).
+hkdfSHA256 :: ByteString -> ByteString -> ByteString -> Int -> IO ByteString
+hkdfSHA256 salt ikm info len
     | len <= 0   = pure BS.empty
-    | len > 8160 = ioError (userError ("hkdf: requested " ++ show len ++ " bytes exceeds RFC 5869 HKDF-SHA-256 maximum of 8160 (255 * HashLen)"))
+    | len > 8160 = ioError (userError ("hkdfSHA256: requested " ++ show len ++ " bytes exceeds RFC 5869 HKDF-SHA-256 maximum of 8160 (255 * HashLen)"))
     | otherwise  =
         allocaBytes len $ \okmPtr ->
         BSU.unsafeUseAsCStringLen salt $ \(saltPtr, saltLen) ->
@@ -63,8 +66,24 @@ hkdf salt ikm info len
                 (fromIntegral len)
             BS.packCStringLen (castPtr okmPtr, len)
 
-hkdfSHA256 :: ByteString -> ByteString -> ByteString -> Int -> IO ByteString
-hkdfSHA256 = hkdf
+-- | Combined HKDF-Extract-then-Expand with HMAC-SHA-512 (protocol default KDF).
+--
+-- Finding:       M27.6.4 — FFI 'hkdf' called the SHA-256 bridge while the
+--                reference oracle 'UmbraVox.Crypto.HKDF.hkdf' and the sole
+--                production caller (Network.MDNS.deriveEphemeralId, documented
+--                "HKDF-SHA-512") both mean SHA-512. The M38.4 alias
+--                'hkdfSHA256 = hkdf' fused the two under SHA-256.
+-- Vulnerability: mDNS ephemeral IDs were derived with the wrong hash (SHA-256
+--                instead of the documented SHA-512), and the SHA-512 differential
+--                test ("Generated FFI HKDF bridge matches reference") failed
+--                whenever it was reached.
+-- Fix:           'hkdf' now aliases 'hkdfSHA512' (HMAC-SHA-512); 'hkdfSHA256'
+--                has its own SHA-256 body. Names now mean the same algorithm in
+--                both the reference oracle and the FFI bridge.
+-- Verified:      Test.Equivalence "Generated FFI HKDF bridge matches reference"
+--                (SHA-512) and "...HKDF-SHA256 bridge..." (SHA-256) both pass.
+hkdf :: ByteString -> ByteString -> ByteString -> Int -> IO ByteString
+hkdf = hkdfSHA512
 
 ------------------------------------------------------------------------
 -- SHA-256 Extract / Expand (separate steps for callers that split them)
