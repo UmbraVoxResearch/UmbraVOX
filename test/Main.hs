@@ -1,10 +1,12 @@
 -- SPDX-License-Identifier: Apache-2.0
 module Main (main) where
 
-import System.Environment (getArgs)
+import System.Environment (getArgs, lookupEnv)
 import System.Exit (exitFailure, exitSuccess)
 import System.IO (hSetEncoding, hSetBuffering, BufferMode(LineBuffering), stdout, stderr, utf8)
+import System.Timeout (timeout)
 import Data.List (find, intercalate)
+import Text.Read (readMaybe)
 
 import qualified Test.App.Startup as AppStartup
 import qualified Test.Chat.API as ChatAPI
@@ -303,9 +305,31 @@ runSuiteGroup title suites = do
 runNamed :: Suite -> IO Bool
 runNamed suite = do
     putStrLn $ "[suite] " ++ suiteName suite
-    ok <- suiteAction suite
+    limitS <- suiteTimeoutSecs
+    ok <- if limitS <= 0
+        then suiteAction suite
+        else do
+            mres <- timeout (limitS * 1000000) (suiteAction suite)
+            case mres of
+                Just r  -> pure r
+                Nothing -> do
+                    putStrLn $ "  FAIL: suite '" ++ suiteName suite
+                        ++ "' exceeded timeout (" ++ show limitS
+                        ++ "s) — treating as failure (likely hang)"
+                    pure False
     putStrLn ""
     pure ok
+
+-- | Per-suite wall-clock limit in seconds. A hung suite is converted into a
+-- fast, clearly-marked failure instead of stalling until the VM's systemd
+-- TimeoutStartSec (~1h) trips with no diagnostic output. Override with
+-- UMBRAVOX_SUITE_TIMEOUT (seconds); 0 disables the limit.
+suiteTimeoutSecs :: IO Int
+suiteTimeoutSecs = do
+    mval <- lookupEnv "UMBRAVOX_SUITE_TIMEOUT"
+    pure $ case mval >>= readMaybe of
+        Just n  -> n
+        Nothing -> 600
 
 coreSuites :: [Suite]
 coreSuites =

@@ -30,10 +30,10 @@ import Data.Bits ((.&.), shiftL, shiftR, xor)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Char (digitToInt, intToDigit)
-import Data.Maybe (fromMaybe)
 import Data.Word (Word8, Word32, Word64)
-import System.Directory (createDirectoryIfMissing)
+import System.Directory (createDirectoryIfMissing, getTemporaryDirectory)
 import System.Environment (lookupEnv)
+import System.FilePath ((</>))
 
 ------------------------------------------------------------------------
 -- Hex encoding / decoding (consolidated from all test modules)
@@ -158,11 +158,27 @@ assertEq name expected got =
 -- Project-local temp directory
 ------------------------------------------------------------------------
 
--- | Get a project-local temporary directory for tests.
--- Uses UMBRAVOX_TEST_TMPDIR env var if set, otherwise build/test-tmp/.
+-- | Get a writable temporary directory for tests.
+--
+-- Resolution order:
+--   1. UMBRAVOX_TEST_TMPDIR env var, if set (explicit override).
+--   2. Inside the hermetic VM (UMBRAVOX_VM=1): the system temp dir
+--      (a real tmpfs that supports POSIX fcntl locks + mmap), under an
+--      umbravox-test subdir. SQLite-backed tests should run on a known-good
+--      local filesystem rather than the copied source tree at /work/umbravox.
+--      NOTE: this is defensive hygiene only — the OutboundQueue SQLite hang
+--      reproduces even on this tmpfs, so the root cause is in the SQLite
+--      layer itself, not the backing filesystem (see UMBRAVOX_SUITE_TIMEOUT).
+--   3. Otherwise (host runs): build/test-tmp/, so artifacts stay inspectable.
 getProjectTmpDir :: IO FilePath
 getProjectTmpDir = do
     mdir <- lookupEnv "UMBRAVOX_TEST_TMPDIR"
-    let dir = fromMaybe "build/test-tmp" mdir
+    dir <- case mdir of
+        Just d  -> pure d
+        Nothing -> do
+            inVM <- lookupEnv "UMBRAVOX_VM"
+            case inVM of
+                Just _  -> (</> "umbravox-test") <$> getTemporaryDirectory
+                Nothing -> pure "build/test-tmp"
     createDirectoryIfMissing True dir
     pure dir

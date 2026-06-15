@@ -80,13 +80,16 @@ instance Exception SQLiteError
 -- FFI imports
 ------------------------------------------------------------------------
 
-foreign import ccall unsafe "sqlite3_open"
+-- I/O-bound calls use `safe` so a blocking syscall (e.g. fcntl locks, WAL
+-- -shm mmap on a filesystem that does not support them) yields the GHC
+-- capability instead of pinning it and hanging the whole runtime.
+foreign import ccall safe "sqlite3_open"
     c_sqlite3_open :: CString -> Ptr (Ptr ()) -> IO CInt
 
-foreign import ccall unsafe "sqlite3_close"
+foreign import ccall safe "sqlite3_close"
     c_sqlite3_close :: Ptr () -> IO CInt
 
-foreign import ccall unsafe "sqlite3_prepare_v2"
+foreign import ccall safe "sqlite3_prepare_v2"
     c_sqlite3_prepare_v2 :: Ptr ()       -- ^ db
                          -> CString      -- ^ sql
                          -> CInt         -- ^ nByte (-1 for NUL-terminated)
@@ -94,10 +97,10 @@ foreign import ccall unsafe "sqlite3_prepare_v2"
                          -> Ptr (Ptr ()) -- ^ out: pzTail (unused)
                          -> IO CInt
 
-foreign import ccall unsafe "sqlite3_finalize"
+foreign import ccall safe "sqlite3_finalize"
     c_sqlite3_finalize :: Ptr () -> IO CInt
 
-foreign import ccall unsafe "sqlite3_step"
+foreign import ccall safe "sqlite3_step"
     c_sqlite3_step :: Ptr () -> IO CInt
 
 foreign import ccall unsafe "sqlite3_reset"
@@ -140,7 +143,7 @@ foreign import ccall unsafe "sqlite3_column_bytes"
 foreign import ccall unsafe "sqlite3_column_count"
     c_sqlite3_column_count :: Ptr () -> IO CInt
 
-foreign import ccall unsafe "sqlite3_exec"
+foreign import ccall safe "sqlite3_exec"
     c_sqlite3_exec :: Ptr ()      -- ^ db
                    -> CString     -- ^ sql
                    -> Ptr ()      -- ^ callback (NULL)
