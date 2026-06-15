@@ -213,7 +213,11 @@ gcmDecryptSafe :: ByteString -> ByteString -> ByteString -> ByteString
 gcmDecryptSafe !key !nonce !aad !ct !tag
     | BS.length key /= 32   = Left "AES-256-GCM: key must be 32 bytes"
     | BS.length nonce /= 12 = Left "AES-256-GCM: nonce must be 12 bytes"
-    | BS.length tag /= 16   = Left "AES-256-GCM: tag must be 16 bytes"
+    -- A wrong-length tag is an authentication failure, not a programming
+    -- error: an attacker-supplied tag of any length must be rejected like
+    -- any other non-matching tag (Right Nothing), never crash the caller.
+    -- (Wrong key/nonce length, by contrast, is a caller bug → Left.)
+    | BS.length tag /= 16   = Right Nothing
     | otherwise = Right $
     let !h  = bsToGF (aesEncrypt key (BS.replicate 16 0))
         !j0 = nonce <> BS.pack [0, 0, 0, 1]
