@@ -37,7 +37,7 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Unsafe as BU
 import Foreign.C.String (CString, withCString, peekCString)
 import Foreign.C.Types (CInt(..), CLong(..))
-import Foreign.Marshal.Alloc (alloca, free)
+import Foreign.Marshal.Alloc (alloca)
 import Foreign.Ptr (Ptr, nullPtr, castPtr)
 import Foreign.Storable (peek, poke)
 
@@ -153,6 +153,13 @@ foreign import ccall safe "sqlite3_exec"
 
 foreign import ccall unsafe "sqlite3_errmsg"
     c_sqlite3_errmsg :: Ptr () -> IO CString
+
+-- The errmsg buffer returned via sqlite3_exec's 5th argument is allocated by
+-- SQLite's own allocator and MUST be released with sqlite3_free, not libc
+-- free().  Freeing a sqlite3_malloc'd pointer with libc free() corrupts the
+-- heap ("free(): invalid pointer", SIGABRT).
+foreign import ccall unsafe "sqlite3_free"
+    c_sqlite3_free :: Ptr () -> IO ()
 
 -- SQLITE_TRANSIENT is the C macro ((sqlite3_destructor_type)-1), i.e.
 -- the pointer value (void*)(-1).  It cannot be imported directly via
@@ -325,7 +332,7 @@ exec (Database dbPtr) sql = alloca $ \ppErr -> do
             msg <- if errPtr /= nullPtr
                    then do
                        m <- peekCString errPtr
-                       free errPtr
+                       c_sqlite3_free (castPtr errPtr)
                        pure m
                    else pure "exec failed"
             throwIO (SQLiteError (fromIntegral rc) msg)
