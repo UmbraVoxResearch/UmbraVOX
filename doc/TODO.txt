@@ -5,7 +5,7 @@ Purpose: active work only.
 - Deferred/blocked items → TODO-DEFERRED.txt
 
 Status: [ ] pending, [~] in progress
-Last updated: 2026-06-06
+Last updated: 2026-06-15
 
 Rules
 -----
@@ -54,6 +54,75 @@ Completed milestones moved to CHANGELOG.txt (v0.7.0 [Unreleased] section):
 ================================================================================
 ACTIVE WORK
 ================================================================================
+
+================================================================================
+M41: EPHEMERAL IDENTITY + KEY EXPORT/IMPORT (2026-06-15)
+Resolves the M17 identity-persistence regression (task #25). Decision (b):
+ephemeral identity is intended forward-secrecy behaviour; deliberate
+preservation of identity + chat is via the export/import feature.
+Hard constraint: do NOT alter crypto boot ordering (resolveIdentityEphemeral,
+restorePersistentStateAtUnsafe key derivation) without explicit sign-off +
+M35A/B/C expert-review gate. Plan: see plan file polymorphic-snuggling-clock.md.
+Status: [ ] pending, [~] in progress, [x] done.
+================================================================================
+
+[ ] M41.1 Versioned export-bundle payload — src/UmbraVox/Crypto/Export.hs
+  [ ] M41.1.1 Add buildExportPayload :: Maybe ByteString -> [String] -> ByteString
+        (frames optional 128-byte identity hex + chat into v2 layout; Nothing =>
+        byte-identical v1 raw body).
+  [ ] M41.1.2 Add parseExportPayload :: ByteString -> (Maybe ByteString, [String])
+        (sentinel "UMBRAVOX-EXPORT v2" on line 0 => parse "IDENTITY <hex>" line +
+        chat; else legacy chat-only (Nothing, lines)). Pure split.
+  [ ] M41.1.3 Confirm v1 backward-compat: no legacy first line equals the sentinel;
+        encryptExport/decryptExport AES-256-GCM wire format untouched.
+
+[ ] M41.2 Export with optional identity — src/UmbraVox/TUI/Actions/Export.hs
+  [ ] M41.2.1 Add "Include identity key? (y/N)" confirm to exportToPath (opt-in;
+        never export the secret by accident).
+  [ ] M41.2.2 On yes: read cfgIdentity, encodeIdentityKey (IO, KeyStore.hs:257),
+        hex-encode, buildExportPayload (Just idBytes); on no: Nothing.
+  [ ] M41.2.3 Status message reports whether identity was included.
+
+[ ] M41.3 Import restoring identity — src/UmbraVox/TUI/Actions/Export.hs
+  [ ] M41.3.1 After decryptExport, run parseExportPayload; if identity present,
+        decodeIdentityKey (KeyStore.hs:268) — refuse on Nothing.
+  [ ] M41.3.2 If cfgSessions non-empty, gate behind explicit confirm dialog
+        ("replaces identity + clears N sessions; peers must re-verify safety #").
+  [ ] M41.3.3 On confirm follow regenIdentityKey discipline (Actions.hs:69-77):
+        write cfgIdentity, clear cfgSessions to mempty, restart listener via
+        RuntimeNetwork so wire identity matches.
+  [ ] M41.3.4 Import chat lines into selected session (modifyIORef' siHistory).
+  [ ] M41.3.5 Honest status: identity preserved FORWARD only; does NOT decrypt a
+        prior boot's at-rest DB. v1 / "IDENTITY -" blobs import chat only.
+  [ ] M41.3.6 DEFER/flag: bare hex-import at TUI Input.hs:~1294 swaps identity
+        WITHOUT clearing sessions/restarting listener — leave TODO, out of scope.
+
+[ ] M41.4 Tests — test/Test/App/Startup.hs
+  [ ] M41.4.1 Flip testProcessRestartAroundBootPath (~L397): fp1==fp2 =>
+        assertBool "process boot regenerates ephemeral identity" (fp1 /= fp2);
+        keep restored==2 + db-enabled assertions (metadata-survives invariant).
+  [ ] M41.4.2 Leave testRestartPreservesIdentityAndHistory (L344) green (disk path).
+  [ ] M41.4.3 New in-process testExportImportIdentityRoundTrip: genIdentity ->
+        encode/hex -> buildExportPayload -> encryptExport -> decryptExport ->
+        parseExportPayload -> decodeIdentityKey -> assert same fingerprint + chat.
+  [ ] M41.4.4 Legacy-compat case: v1 raw blob => parseExportPayload (Nothing, chat).
+  [ ] M41.4.5 Register both tests in suite list (Startup.hs:73-74); add
+        Finding/Vulnerability/Fix/Verified doc block on the regression test.
+
+[ ] M41.5 Docs
+  [ ] M41.5.1 doc/TODO-DEFERRED.txt M17 section (L20-55): mark resolved; record
+        decision (b) ephemeral-by-design + export/import; boot ordering unchanged.
+  [ ] M41.5.2 doc/CRYPTO-SAFETY.md: note ephemeral identity rotation is intentional
+        forward-secrecy; at-rest content single-lifetime unless exported; metadata
+        survives in plaintext fallback.
+  [ ] M41.5.3 doc/CHANGELOG.txt: entry for export v2 format + ephemeral invariant.
+
+[ ] M41.6 Verification
+  [ ] M41.6.1 ./uv test app-startup — flipped invariant + new round-trip + metadata
+        restore all pass.
+  [ ] M41.6.2 ./uv test all — recovery suite green end-to-end (the suite #25 blocks).
+  [ ] M41.6.3 Manual TUI smoke (if feasible): export w/ identity -> fresh boot (new
+        fp) -> import -> fingerprint matches; v1 legacy file imports chat-only.
 
 ================================================================================
 M40: CRYPTANALYSIS REVIEW FINDINGS (2026-06-13)
