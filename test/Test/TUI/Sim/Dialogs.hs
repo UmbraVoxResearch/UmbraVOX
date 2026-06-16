@@ -679,7 +679,7 @@ testSettingsTabRightSwitchesOverlay = do
     let hasLine needle = any (needle `prefixOf`) lines'
     ok1 <- assertEq "settings Right switches to discovery tab" 1 tabIx
     ok2 <- assertEq "settings discovery tab shows peer exchange control" True
-        (hasLine "   4. Peer Exchange:")
+        (hasLine "   2. Peer Exchange:")
     pure (ok1 && ok2)
 
 testSettingsTabMouseSwitchesOverlay :: IO Bool

@@ -78,6 +78,18 @@ mkTestConfig = do
     -- default); restore the test-isolation default that was dropped when
     -- mkTestConfig was refactored to delegate to newDefaultAppConfig.
     writeIORef (cfgEphemeral cfg) True
+    -- Pin the listen port deterministically.  newDefaultAppConfig calls
+    -- findAvailablePort, which probes the host and returns a non-deterministic
+    -- port; several settings-overlay tests assert the rendered "Listen port:
+    -- 1111" line.  Restore the fixed test-isolation port the pre-refactor
+    -- mkTestConfig set explicitly.
+    writeIORef (cfgListenPort cfg) 1111
+    -- Start mDNS disabled deterministically.  newDefaultAppConfig derives the
+    -- initial mDNS state from pluginEnabled PluginDiscovery (enabled in the
+    -- default profile); the pre-refactor mkTestConfig pinned it OFF so the
+    -- mDNS-toggle tests observe a known starting state ("enabled and applied"
+    -- after the first toggle).
+    writeIORef (cfgMDNSEnabled cfg) False
     return cfg
 
 -- | Add a loopback session with empty history.
